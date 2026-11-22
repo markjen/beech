@@ -11,7 +11,7 @@ import type { Scene } from '@babylonjs/core/scene';
 
 import { WAVES, WORLD_SIZE_X, WORLD_SIZE_Z, type GridSpec } from '../config';
 import type { Palette, RGB } from '../palette';
-import type { SwellComponent } from '../sim/waves';
+import { swellEnvelope, type Swell } from '../sim/waves';
 import * as S from './shaders';
 
 const c3 = (c: RGB) => new Color3(c[0], c[1], c[2]);
@@ -52,7 +52,7 @@ export class BeachRenderer {
     private readonly scene: Scene,
     grid: GridSpec,
     rest: Float32Array,
-    private readonly swell: SwellComponent[],
+    private readonly swell: Swell,
     /** world X offset of this slab (neighbors sit either side of the player's beach) */
     readonly offsetX = 0,
   ) {
@@ -103,6 +103,8 @@ export class BeachRenderer {
         'swellA',
         'swellW',
         'swellP',
+        'swellK',
+        'swellEnv',
         'simTime',
         'tide',
         'zEdge',
@@ -525,6 +527,8 @@ export class BeachRenderer {
     this.oceanMat.setVector3('swellA', new Vector3(sw[0].amp * ampScale, sw[1].amp * ampScale, sw[2].amp * ampScale));
     this.oceanMat.setVector3('swellW', new Vector3(sw[0].omega, sw[1].omega, sw[2].omega));
     this.oceanMat.setVector3('swellP', new Vector3(sw[0].phase, sw[1].phase, sw[2].phase));
+    this.oceanMat.setVector3('swellK', new Vector3(sw[0].k, sw[1].k, sw[2].k));
+    this.oceanMat.setFloat('swellEnv', swellEnvelope(simTime, sw));
     this.oceanMat.setFloat('simTime', simTime);
     this.oceanMat.setFloat('tide', tide);
     this.oceanMat.setColor3('oceanCol', c3(p.farOcean));

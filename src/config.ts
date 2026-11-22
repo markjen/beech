@@ -56,6 +56,16 @@ export const WAVES = {
     { amp: 0.14, period: 11.3 },
     { amp: 0.08, period: 7.4 },
   ],
+  /** most a swell component's crests turn from square-on (radians): waves
+   * come in at an angle and cross each other along the beach */
+  maxAngle: 0.38,
+  /** wave groups: slow swings of the whole swell (quiet spells and sets) */
+  groups: [
+    { amp: 0.3, period: 75 },
+    { amp: 0.2, period: 190 },
+  ],
+  /** now and then a set much bigger than the rest (sharp peak every `period` s) */
+  bigSet: { amp: 0.55, period: 330, sharpness: 8 },
   /** amplitude multiplier while "calm waves" is on */
   calmFactor: 0.25,
   /** tide amplitude (m) and period (s) */

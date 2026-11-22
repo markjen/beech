@@ -10,7 +10,7 @@ import type { Scene } from '@babylonjs/core/scene';
 import { WAVES, WORLD_SIZE_X, WORLD_SIZE_Z } from '../config';
 import type { Palette, RGB } from '../palette';
 import { restHeight } from '../sim/profile';
-import type { SwellComponent } from '../sim/waves';
+import { swellEnvelope, type Swell } from '../sim/waves';
 import { ORIGIN_Z } from './beachRenderer';
 import { flatVertex, shoreFragment } from './shaders';
 
@@ -36,14 +36,14 @@ export class Horizon {
 
   constructor(
     private readonly scene: Scene,
-    private readonly swell: SwellComponent[],
+    private readonly swell: Swell,
     private readonly seed: number,
     private readonly dx: number,
   ) {
     // the beachOcean / beachFlat shaders are registered by BeachRenderer
     this.seaMat = new ShaderMaterial('openSea', scene, 'beachOcean', {
       attributes: ['position'],
-      uniforms: ['world', 'viewProjection', ...LIGHT, 'swellA', 'swellW', 'swellP', 'simTime', 'tide', 'zEdge', 'waveSpeed',
+      uniforms: ['world', 'viewProjection', ...LIGHT, 'swellA', 'swellW', 'swellP', 'swellK', 'swellEnv', 'simTime', 'tide', 'zEdge', 'waveSpeed',
         'oceanCol', 'deepCol', 'foamCol', 'fogCol', 'halfX', 'centerX', 'fadeNear', 'fadeFar', 'apron', 'slabRange', 'slabHalf'],
       samplers: [],
     });
@@ -66,7 +66,7 @@ export class Horizon {
     this.sandMat = new ShaderMaterial('openShore', scene, 'beachShore', {
       attributes: ['position', 'normal'],
       uniforms: ['world', 'viewProjection', ...LIGHT, 'baseCol', 'wetCol', 'foamCol', 'fogCol', 'fadeTop', 'fadeBottom',
-        'tide', 'simTime', 'swellA', 'swellW', 'swellP'],
+        'tide', 'simTime', 'swellA', 'swellW', 'swellP', 'swellK', 'swellEnv'],
       samplers: [],
     });
     this.sandMat.setFloat('fadeTop', -40);
@@ -200,6 +200,8 @@ export class Horizon {
       m.setVector3('swellA', new Vector3(sw[0].amp * ampScale, sw[1].amp * ampScale, sw[2].amp * ampScale));
       m.setVector3('swellW', new Vector3(sw[0].omega, sw[1].omega, sw[2].omega));
       m.setVector3('swellP', new Vector3(sw[0].phase, sw[1].phase, sw[2].phase));
+      m.setVector3('swellK', new Vector3(sw[0].k, sw[1].k, sw[2].k));
+      m.setFloat('swellEnv', swellEnvelope(simTime, sw));
       m.setFloat('simTime', simTime);
       m.setFloat('tide', tide);
     }

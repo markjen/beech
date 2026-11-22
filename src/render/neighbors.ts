@@ -8,7 +8,7 @@ import { NeighborApi } from '../net/account';
 import type { Palette } from '../palette';
 import type { PlacedObject } from '../sim/objects';
 import { decodeSand, fitWorld, resampleField } from '../sim/sandCodec';
-import type { SwellComponent } from '../sim/waves';
+import type { Swell } from '../sim/waves';
 import { beachById } from '../world/locations';
 import { BeachRenderer, ORIGIN_Z } from './beachRenderer';
 import { ObjectView } from './objects';
@@ -82,7 +82,7 @@ export class NeighborView {
     private readonly scene: Scene,
     private readonly grid: GridSpec,
     private readonly rest: Float32Array,
-    private readonly swell: SwellComponent[],
+    private readonly swell: Swell,
     private readonly cam: CameraController,
     private readonly uiRoot: HTMLElement,
     account: Account,

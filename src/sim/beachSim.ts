@@ -9,7 +9,7 @@ import {
   type GridSpec,
 } from '../config';
 import { buildRestProfile } from './profile';
-import { makeSwell, swellAt, tideAt, type SwellComponent } from './waves';
+import { makeSwell, swellAt, swellEnvelope, tideAt, type Swell } from './waves';
 import { UndoStack, type UndoEntry } from './undoStack';
 import { BeachObjects, type PlacedObject } from './objects';
 
@@ -92,7 +92,8 @@ export class BeachSim {
   private tideNow = 0;
   /** swell height multiplier (calm Mediterranean vs. Atlantic surf) */
   waveScale = 1;
-  readonly swell: SwellComponent[];
+  readonly swell: Swell;
+  private etaRow: Float32Array | null = null;
   readonly seed: number;
 
   readonly undo = new UndoStack(UNDO_DEPTH);
@@ -170,11 +171,28 @@ export class BeachSim {
     this.waveScale = Math.max(0, Math.min(1.2, waveScale));
   }
 
-  /** Water surface imposed at the offshore boundary. */
-  seaLevel(t = this.time): number {
+  private swellAmp(): number {
+    return this.flags.waves ? (1 - (1 - WAVES.calmFactor) * this.calmMix) * this.waveScale : 0;
+  }
+
+  /** Water surface imposed at the offshore boundary (at world x, m along the shore; 0 = the middle). */
+  seaLevel(t = this.time, x = 0): number {
     if (this.flags.closed) return 0;
-    const amp = this.flags.waves ? (1 - (1 - WAVES.calmFactor) * this.calmMix) * this.waveScale : 0;
-    return this.meanLevel(t) + swellAt(t, this.swell, amp);
+    return this.meanLevel(t) + swellAt(t, this.swell, this.swellAmp(), x);
+  }
+
+  /** The offshore surface for every column right now (waves arrive at an angle). */
+  private seaRow(out: Float32Array): void {
+    const t = this.time;
+    const mean = this.meanLevel(t);
+    const amp = this.swellAmp() * swellEnvelope(t, this.swell);
+    const half = (this.nx * this.dx) / 2;
+    for (let i = 0; i < this.nx; i++) {
+      const x = (i + 0.5) * this.dx - half;
+      let s = 0;
+      for (const c of this.swell) s += c.amp * Math.sin(c.omega * t - c.k * x + c.phase);
+      out[i] = mean + s * amp;
+    }
   }
 
   // ---------------------------------------------------------------- stepping
@@ -215,14 +233,16 @@ export class BeachSim {
   /** Offshore boundary: hard-set the first row, relax a sponge layer behind it. */
   private force(dt: number): void {
     const { nx, sand, water } = this;
-    const eta = this.seaLevel();
+    if (this.flags.closed) return;
+    const row = (this.etaRow ??= new Float32Array(nx));
+    this.seaRow(row);
     const rows = Math.min(WAVES.spongeRows, this.ny - 1);
     for (let j = 0; j < rows; j++) {
       const w = j === 0 ? 1 : Math.min(1, dt * 6 * Math.pow(1 - j / rows, 2));
       const damp = 1 - Math.min(1, dt * 3 * Math.pow(1 - j / rows, 2));
       for (let i = 0; i < nx; i++) {
         const k = j * nx + i;
-        const target = Math.max(0, eta - sand[k]);
+        const target = Math.max(0, row[i] - sand[k]);
         water[k] += (target - water[k]) * w;
         this.fL[k] *= damp;
         this.fR[k] *= damp;
@@ -238,6 +258,7 @@ export class BeachSim {
     const cf = WATER.friction;
     const lin0 = WATER.linearDamping;
     const linDeep = WATER.deepDamping;
+    const sponge = WAVES.spongeRows;
     const area = dx * dx;
 
     for (let j = 0; j < ny; j++) {
@@ -251,7 +272,9 @@ export class BeachSim {
         const hk = sand[k] + d;
         // full damping in the shallows (where the checkerboard mode lives),
         // much less out in deep water so waves keep their height on the way in
-        const lin = d > 1.1 ? linDeep : d < 0.7 ? lin0 : lin0 + (linDeep - lin0) * ((d - 0.7) / 0.4);
+        // (and full damping in the sponge at the forced edge, which smooths the
+        // step between the hard-set first row and the free water behind it)
+        const lin = j < sponge || d < 0.7 ? lin0 : d > 1.1 ? linDeep : lin0 + (linDeep - lin0) * ((d - 0.7) / 0.4);
         let l = 0;
         let r = 0;
         let dn = 0;

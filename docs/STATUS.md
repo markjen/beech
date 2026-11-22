@@ -41,6 +41,14 @@
   deepen visibly before they widen.
 - **Second-finger cancel window: 220 ms.** Within that window the dig is rolled
   back exactly from the stroke snapshot. After it, the stroke is kept.
+- **Varied waves** (2026-11-22): each swell component arrives at its own
+  angle (up to ±22°, seeded per beach), so crests come in oblique and cross
+  along the shore. The whole swell swings in sets: two slow groups (75 s and
+  190 s), plus a sharp big set about every 5½ minutes (envelope 0.35–2×,
+  `swellEnvelope`). The sim forces each column of its offshore row at that
+  column's world x. The ocean and static-shore shaders get the same angles
+  (`swellK`) and envelope (`swellEnv`), so they match. Full damping stays in
+  the sponge rows at the forced edge.
 - **The sea goes 8 m further out** (2026-11-22): the world is 32 × 32 m
   (was 32 × 24), with the extra rows on the offshore side. The shoreline sits
   16.5 m from the edge, and the offshore depth is 2.36 m (the same Dean profile,

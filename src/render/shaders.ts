@@ -208,6 +208,9 @@ uniform mat4 viewProjection;
 uniform vec3 swellA;
 uniform vec3 swellW;
 uniform vec3 swellP;
+/** alongshore wavenumbers (crests at an angle) and the set envelope */
+uniform vec3 swellK;
+uniform float swellEnv;
 uniform float simTime;
 uniform float tide;
 uniform float zEdge;
@@ -216,13 +219,14 @@ varying vec3 vWorld;
 varying float vCrest;
 void main() {
   // a swell travelling toward +z that equals the sim's boundary forcing at zEdge
+  float wx = (world * vec4(position, 1.0)).x;
   float tt = simTime - (position.z - zEdge) / waveSpeed;
-  vec3 s = swellA * sin(swellW * tt + swellP);
+  vec3 s = swellA * sin(swellW * tt + swellP - swellK * wx) * swellEnv;
   float h = s.x + s.y + s.z;
   float chop = sin(position.x * 0.9 + simTime * 1.1 + position.z * 0.4) * 0.03 +
                sin(position.x * 0.35 - position.z * 0.7 - simTime * 0.8) * 0.04;
   float y = tide + h + chop * smoothstep(0.0, 8.0, zEdge - position.z);
-  vCrest = h / max(0.001, swellA.x + swellA.y + swellA.z);
+  vCrest = h / max(0.001, (swellA.x + swellA.y + swellA.z) * swellEnv);
   vec4 wp = world * vec4(position.x, y, position.z, 1.0);
   vWorld = wp.xyz;
   gl_Position = viewProjection * wp;
@@ -416,16 +420,18 @@ uniform float simTime;
 uniform vec3 swellA;
 uniform vec3 swellW;
 uniform vec3 swellP;
+uniform vec3 swellK;
+uniform float swellEnv;
 ${NOISE}
 void main() {
   float x = vWorld.x;
-  // swell at this point of the shore, phase-shifted along the beach
-  vec3 ph = swellW * simTime + swellP - vec3(0.021, 0.017, 0.029) * x;
-  float s = dot(swellA, sin(ph));
+  // swell at this point of the shore (it arrives at an angle, in sets)
+  vec3 ph = swellW * simTime + swellP - swellK * x;
+  float s = dot(swellA, sin(ph)) * swellEnv;
   float run = tide + 0.12 + max(s, -0.1) * 1.6;
   float h = vWorld.y;
   // wet: below the run-up, and a while after it falls back
-  float wetTop = tide + 0.12 + dot(swellA, vec3(1.0)) * 1.2;
+  float wetTop = tide + 0.12 + dot(swellA, vec3(1.0)) * 1.2 * max(1.0, swellEnv);
   float wet = 1.0 - smoothstep(wetTop - 0.15, wetTop + 0.1, h);
   vec3 base = mix(baseCol, wetCol, wet);
   float ndl = dot(normalize(vNormal), -sunDir);
