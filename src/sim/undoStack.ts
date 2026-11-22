@@ -1,3 +1,5 @@
+import type { PlacedObject } from './objects';
+
 /** A rectangular patch of sand height changes made by one stroke. */
 export interface UndoEntry {
   i0: number;
@@ -6,6 +8,8 @@ export interface UndoEntry {
   h: number;
   /** sand height after - before, row-major w*h */
   delta: Float32Array;
+  /** an object placed on / taken off the beach (no sand change) */
+  obj?: { op: 'add' | 'remove'; data: PlacedObject };
 }
 
 /**

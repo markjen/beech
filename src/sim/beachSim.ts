@@ -11,6 +11,7 @@ import {
 import { buildRestProfile } from './profile';
 import { makeSwell, swellAt, tideAt, type SwellComponent } from './waves';
 import { UndoStack, type UndoEntry } from './undoStack';
+import { BeachObjects, type PlacedObject } from './objects';
 
 export type BrushMode = 'dig' | 'pile' | 'smooth';
 
@@ -95,6 +96,8 @@ export class BeachSim {
   readonly seed: number;
 
   readonly undo = new UndoStack(UNDO_DEPTH);
+  /** rocks, driftwood and future items on the sand */
+  readonly objects: BeachObjects;
   private easing: { entry: UndoEntry; sign: number; ticksLeft: number }[] = [];
 
   // brush state
@@ -145,6 +148,7 @@ export class BeachSim {
     this.tmp = new Float32Array(n);
     this.tanMax = new Float32Array(n);
     this.swell = makeSwell(seed);
+    this.objects = new BeachObjects(this);
     const eta = this.seaLevel(0);
     for (let k = 0; k < n; k++) {
       this.water[k] = Math.max(0, eta - this.sand[k]);
@@ -191,6 +195,7 @@ export class BeachSim {
       if (!this.flags.closed) this.force(h);
       this.flow(h);
     }
+    this.objects.step(dt);
     if (this.flags.seep) this.seep(dt);
     if (this.flags.erosion) this.erode(dt);
     this.slump();
@@ -489,11 +494,14 @@ export class BeachSim {
 
   /** Very slow pull back to the rest profile wherever the sea reaches. */
   private heal(dt: number): void {
-    const { sand, rest, water, wet } = this;
+    const { sand, rest, water, wet, bottom } = this;
     const a = dt / EROSION.healingTime;
     const dry = WATER.dryDepth;
     for (let k = 0; k < this.n; k++) {
-      if (water[k] > dry || wet[k] > 0.97) sand[k] += (rest[k] - sand[k]) * a;
+      if (water[k] > dry || wet[k] > 0.97) {
+        const v = sand[k] + (rest[k] - sand[k]) * a;
+        sand[k] = v < bottom[k] ? bottom[k] : v; // never through a rock
+      }
     }
   }
 
@@ -796,7 +804,8 @@ export class BeachSim {
     if (this.stroke) this.endStroke();
     const e = this.undo.popUndo();
     if (!e) return false;
-    this.scheduleDelta(e, -1, ease);
+    if (e.obj) this.applyObject(e.obj, -1);
+    else this.scheduleDelta(e, -1, ease);
     return true;
   }
 
@@ -804,7 +813,8 @@ export class BeachSim {
     if (this.stroke) this.endStroke();
     const e = this.undo.popRedo();
     if (!e) return false;
-    this.scheduleDelta(e, 1, ease);
+    if (e.obj) this.applyObject(e.obj, 1);
+    else this.scheduleDelta(e, 1, ease);
     return true;
   }
 
@@ -816,11 +826,36 @@ export class BeachSim {
     this.easing.push({ entry: e, sign, ticksLeft: UNDO_EASE_TICKS });
   }
 
+  // ---------------------------------------------------------------- objects
+
+  /** Place an item on the beach (undoable). */
+  placeObject(o: Omit<PlacedObject, 'id'>): PlacedObject {
+    if (this.stroke) this.endStroke();
+    const data = this.objects.add(o);
+    this.undo.push({ i0: 0, j0: 0, w: 0, h: 0, delta: new Float32Array(0), obj: { op: 'add', data: { ...data } } });
+    return data;
+  }
+
+  /** Take an item back off the beach (undoable). */
+  removeObject(id: number): PlacedObject | null {
+    const data = this.objects.remove(id);
+    if (data) this.undo.push({ i0: 0, j0: 0, w: 0, h: 0, delta: new Float32Array(0), obj: { op: 'remove', data } });
+    return data;
+  }
+
+  private applyObject(obj: NonNullable<UndoEntry['obj']>, sign: number): void {
+    // undo of an add / redo of a remove takes it away; the others put it back
+    const putBack = (obj.op === 'add') === sign > 0;
+    if (putBack) this.objects.add({ ...obj.data });
+    else this.objects.remove(obj.data.id);
+  }
+
   /** Put the whole beach back to its rest shape (undoable). */
   resetBeach(): void {
     if (this.stroke) this.endStroke();
     const before = this.sand.slice();
-    this.sand.set(this.rest);
+    // back to the rest shape, but rocks stay where they are
+    for (let k = 0; k < this.n; k++) this.sand[k] = Math.max(this.rest[k], this.bottom[k]);
     this.sediment.fill(0);
     const e = this.diffRegion(before, 0, 0, this.nx - 1, this.ny - 1);
     if (e) this.undo.push(e);
@@ -830,20 +865,23 @@ export class BeachSim {
 
   /** The player's changes: sand minus the untouched beach. */
   sandDelta(): Float32Array {
-    const out = new Float32Array(this.n);
-    for (let k = 0; k < this.n; k++) out[k] = this.sand[k] - this.rest[k];
+    // rocks are saved as objects, not as sand
+    const out = this.objects.withoutRocks(this.sand.slice());
+    for (let k = 0; k < this.n; k++) out[k] -= this.rest[k];
     return out;
   }
 
   /** Restore a saved beach (same grid size). Clears undo history. */
-  loadDelta(delta: Float32Array): void {
+  loadDelta(delta: Float32Array, objects: PlacedObject[] = []): void {
     if (delta.length !== this.n) throw new Error('grid size mismatch');
     if (this.stroke) this.cancelStroke();
+    this.objects.clear();
     for (let k = 0; k < this.n; k++) {
       const v = this.rest[k] + delta[k];
       this.sand[k] = v < this.bottom[k] ? this.bottom[k] : v;
     }
     this.sediment.fill(0);
+    for (const o of objects) this.objects.add(o);
     this.undo.clear();
     this.easing = [];
   }
