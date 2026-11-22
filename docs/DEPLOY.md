@@ -13,6 +13,18 @@ One-time setup by a repo admin:
 2. Merge to `main` (or run the workflow from the Actions tab).
 3. The site appears at `https://<owner>.github.io/<repo>/`.
 
+If the run fails at `configure-pages` with "Resource not accessible by
+integration", step 1 hasn't been done: the workflow token can't turn Pages
+on by itself.
+
+## claude.ai artifact preview
+
+`npm run build && node scripts/artifact-page.mjs` writes
+`dist-artifact/index.html` and `dist-artifact/files.json` (the `dist/assets/*`
+map). Publish the page with those supporting files through the Artifact tool.
+The artifact host supplies the HTML skeleton and doesn't allow service
+workers, so this preview has no offline mode.
+
 ## Any other static host
 
 ```bash

@@ -98,10 +98,27 @@
 - Persisting the beach between sessions (save the sand field to IndexedDB).
 - WebGPU compute path for the sim at the `high` tier.
 
+## Deploy and build status
+
+- **iOS:** the Xcode project builds for the simulator on GitHub's macOS
+  runner (`mobile.yml`, first green run on the dev branch). That build is
+  unsigned. A signed archive needs an Apple Developer team (`release-mobile.yml`).
+- **Android:** a debug APK, an unsigned release AAB, and a release AAB signed
+  from the `BEECH_KEYSTORE_*` env vars (tested with a throwaway key) all built
+  locally. CI builds the debug APK and the release AAB too.
+- **GitHub Pages:** the deploy workflow runs on `main` and on the dev branch,
+  but it fails at `configure-pages` ("Create Pages site failed: Resource not
+  accessible by integration"). The workflow token isn't allowed to switch
+  Pages on. A repo admin must set **Settings → Pages → Source: GitHub
+  Actions** once and then re-run "Deploy web build to GitHub Pages".
+  If the `github-pages` environment only allows `main`, either merge first or
+  add the dev branch under Settings → Environments → github-pages.
+- **Web preview meanwhile:** the built game is published as a private
+  claude.ai artifact (Beech Seaside Toy), made with
+  `node scripts/artifact-page.mjs` after `npm run build`.
+
 ## Not verified here (needs real accounts or hardware)
 
-- The iOS build: no macOS in the dev container. The `mobile.yml` CI job builds
-  the simulator target on a macOS runner.
 - The store upload workflow (`release-mobile.yml`): needs Play and App Store
   Connect credentials. The first Play upload must be manual.
 - Feel on real phones: touch latency, haptics, audio mix, thermal behaviour.
