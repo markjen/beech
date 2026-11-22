@@ -67,6 +67,14 @@ describe('driftwood', () => {
     expect(floated).toBe(true);
     expect(maxTravel).toBeGreaterThan(0.3);
   });
+
+  it('put out at sea, comes ashore', () => {
+    const sim = new BeachSim(g, 1);
+    const w = sim.placeObject({ kind: 'driftwood', item: 'driftwood', x: 16, y: 3, angle: 0.2, size: 1.2, variant: 1 });
+    for (let s = 0; s < 30 * 120; s++) sim.step(DT);
+    const st = sim.objects.states().find((o) => o.id === w.id)!;
+    expect(st.y).toBeGreaterThan(6);
+  });
 });
 
 describe('placing is undoable', () => {

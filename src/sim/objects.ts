@@ -67,6 +67,9 @@ interface Live {
   rock?: RockCells;
 }
 
+/** m/s toward the land for anything afloat */
+const STOKES_DRIFT = 0.12;
+
 export const ROCK_HEIGHT = 0.8; // height as a fraction of radius
 export const WOOD_RADIUS = (length: number) => 0.05 + length * 0.028;
 
@@ -228,7 +231,9 @@ export class BeachObjects {
         l.floating = true;
         // pushed by the average current along its length
         const wx = (vx[k] * 2 + vx[ka] + vx[kb]) / 4;
-        const wy = (vy[k] * 2 + vy[ka] + vy[kb]) / 4;
+        // plus a gentle landward drift: waves carry floating things toward
+        // the shore (Stokes drift), so wood ends up on the beach, not out at sea
+        const wy = (vy[k] * 2 + vy[ka] + vy[kb]) / 4 + STOKES_DRIFT;
         const grip = Math.min(1, dt * 2.2);
         l.vx += (wx - l.vx) * grip;
         l.vy += (wy - l.vy) * grip;

@@ -186,7 +186,8 @@ branch, so the deploy job runs only there. Switch the default branch to
   gives back the sand that was under it, plus anything that settled on top.
   Saves store rocks as objects, not sand (`withoutRocks`).
 - **Driftwood** floats once the water is deeper than 1.1× its radius,
-  follows the current averaged along its length, turns when its two ends
+  follows the current averaged along its length plus a gentle onshore wave
+  drift (so it comes ashore rather than out to sea), turns when its two ends
   feel different flow, and is stranded with sand friction when the water
   drains. It is clamped inside the beach.
 - **Objects live in the worker** (`BeachObjects`). Their states go out with
