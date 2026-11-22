@@ -13,6 +13,7 @@ import { Haptics } from './platform/haptics';
 import { registerServiceWorker } from './platform/pwa';
 import { tierFromBench } from './platform/quality';
 import { BeachRenderer, ORIGIN_X, ORIGIN_Z } from './render/beachRenderer';
+import { ShellField } from './render/shells';
 import { Sky } from './render/sky';
 import type { BrushMode } from './sim/beachSim';
 import type { FrameInfo, FromWorker, ToWorker } from './sim/protocol';
@@ -97,6 +98,7 @@ async function boot() {
   const sky = new Sky(scene);
   const picker = new SandPicker(grid, ready.rest);
   const cam = new CameraController(scene, canvas, grid.dx);
+  const shells = new ShellField(scene, renderer, picker);
   const audio = new Ambience();
   const haptics = new Haptics();
   haptics.enabled = settings.haptics;
@@ -376,6 +378,7 @@ async function boot() {
     clear.set(palette.fog[0], palette.fog[1], palette.fog[2], 1);
     scene.clearColor = clear;
 
+    shells.update(dt, swashRate);
     if (digging) haptics.dig(info.digIntensity);
     cam.camera.getDirectionToRef(Vector3.Right(), right);
     const lim = cam.zoomLimits();
@@ -412,12 +415,13 @@ async function boot() {
     tier,
     renderScale: () => renderScale,
     origin: { x: ORIGIN_X, z: ORIGIN_Z },
-    info: () => ({ ...info, buf: undefined }),
+    info: () => ({ ...info, buf: undefined, swashRate }),
     frames: () => frames,
     send,
     sheet,
     audio,
     pickTool,
+    shells,
   };
 
   if (params.has('debug')) {

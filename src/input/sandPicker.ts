@@ -9,15 +9,42 @@ import { ORIGIN_X, ORIGIN_Z } from '../render/beachRenderer';
  */
 export class SandPicker {
   readonly sand: Float32Array;
+  /** water depth per cell (latest frame) */
+  readonly water: Float32Array;
 
-  constructor(private readonly g: GridSpec, rest: Float32Array) {
+  constructor(readonly g: GridSpec, rest: Float32Array) {
     this.sand = rest.slice();
+    this.water = new Float32Array(rest.length);
   }
 
-  /** Copy the sand channel out of a packed RGBA frame. */
+  /** Copy the sand and water channels out of a packed RGBA frame. */
   updateFromFrame(buf: Float32Array): void {
     const s = this.sand;
-    for (let k = 0, o = 0; k < s.length; k++, o += 4) s[k] = buf[o];
+    const w = this.water;
+    for (let k = 0, o = 0; k < s.length; k++, o += 4) {
+      s[k] = buf[o];
+      w[k] = buf[o + 1];
+    }
+  }
+
+  /** Water depth at world (x, z), nearest cell; 0 outside the grid. */
+  waterAt(x: number, z: number): number {
+    const { nx, ny, dx } = this.g;
+    const i = Math.round((x - ORIGIN_X) / dx - 0.5);
+    const j = Math.round((z - ORIGIN_Z) / dx - 0.5);
+    if (i < 0 || j < 0 || i >= nx || j >= ny) return 0;
+    return this.water[j * nx + i];
+  }
+
+  /** World z of the furthest-up-the-beach wet cell in the column at world x (or NaN). */
+  runupZ(x: number): number {
+    const { nx, ny, dx } = this.g;
+    const i = Math.round((x - ORIGIN_X) / dx - 0.5);
+    if (i < 0 || i >= nx) return NaN;
+    for (let j = ny - 1; j >= 0; j--) {
+      if (this.water[j * nx + i] > 0.006) return ORIGIN_Z + (j + 0.5) * dx;
+    }
+    return NaN;
   }
 
   /** Bilinear sand height at world (x, z); NaN outside the grid. */

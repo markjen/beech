@@ -40,3 +40,22 @@
 The sim uses it as the offshore boundary. The far-ocean shader evaluates the
 same sines with a travel delay, so the decorative sea flows into the
 simulated one.
+
+## Module map
+
+| Path | What |
+|---|---|
+| `src/main.ts` | Boot: engine, worker, tier choice, UI wiring and the render loop. Exposes `window.__beech` for tests. |
+| `src/config.ts` | All tuning constants (grid tiers, waves, water, sand, erosion, brush, camera) |
+| `src/palette.ts` | The four moods and the day-cycle blend |
+| `src/sim/beachSim.ts` | The simulation, no DOM. Unit tested in `tests/sim.test.ts`. |
+| `src/sim/sim.worker.ts`, `protocol.ts` | Worker loop and message types (including live `tune` and `bench`) |
+| `src/sim/profile.ts`, `waves.ts`, `undoStack.ts` | Rest beach shape, swell/tide functions, stroke-delta undo |
+| `src/render/beachRenderer.ts`, `shaders.ts` | All meshes and GLSL (sand, water, far ocean, skirts, rock, props) |
+| `src/render/sky.ts`, `shells.ts` | Gradient background; shells washing in |
+| `src/input/*` | Ortho camera, gestures (dig vs camera), heightfield picking, brush math |
+| `src/audio/ambience.ts` | Procedural Web Audio soundscape |
+| `src/platform/*` | Haptics (Capacitor or vibrate), PWA registration, quality tier from benchmark |
+| `src/ui/*` | HUD buttons and tools, start screen, hint, settings sheet, debug panel, settings storage |
+| `scripts/` | `shot.mjs` (screenshots), `smoke.mjs` (end-to-end), `make-icons.mjs`, `set-version.mjs`, `actions/*` (scripted interactions for screenshots) |
+| `android/`, `ios/` | Capacitor native shells (see docs/MOBILE.md) |

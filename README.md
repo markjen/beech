@@ -22,6 +22,9 @@ flat-shaded diorama style.
 | Zoom | pinch | wheel, + / - |
 | Rotate | two-finger twist (snaps to 45°) | right-drag, Q / E |
 | Undo / redo | ↶ button (long-press = redo) | Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z |
+| Tool | dig / build / smooth buttons above undo | 1 / 2 / 3 |
+| Calm waves | ≈ button | |
+| Settings | ☼ button (sound, music, haptics, light, detail, save a picture, smooth the beach) | Esc closes |
 
 The brush is always the same size on screen. Zoom in for fine detail, zoom out
 for broad digs.

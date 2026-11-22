@@ -1,5 +1,10 @@
 # Beech: plan
 
+> **Status:** all milestones M0 to M7 are built. Where the implementation
+> differs from this plan (WebGL2 instead of WebGPU, procedural Web Audio,
+> whole-frame uploads, disturbance-driven erosion, and so on), the reasons are
+> in [docs/STATUS.md](docs/STATUS.md). This document is the original design.
+
 A calm beach toy for phone and web. You get a small, floating stretch of sand by the ocean. You draw in the sand with your finger and watch the waves wash in and smooth it away. The look takes after the quiet diorama style of games like Monument Valley: flat pastel colors, soft gradients, an isometric camera and few details. The game itself is original.
 
 ---

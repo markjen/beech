@@ -184,9 +184,9 @@ void main() {
   float spec = pow(max(dot(reflect(sunDir, N), -cameraDir), 0.0), 50.0);
   col += sunCol * spec * 0.3;
   // lacy foam: bubbles from two octaves of drifting noise, solid only at the core
-  float n = vnoise(vWorld.xz * 4.5 + vec2(time * 0.25, -time * 0.15)) * 0.6 +
-            vnoise(vWorld.xz * 11.0 - vec2(time * 0.4, time * 0.1)) * 0.4;
-  float lace = smoothstep(0.42, 0.5, vFoam * 0.85 + (n - 0.5) * 0.9);
+  float n = vnoise(vWorld.xz * 7.0 + vec2(time * 0.25, -time * 0.15)) * 0.6 +
+            vnoise(vWorld.xz * 17.0 - vec2(time * 0.4, time * 0.1)) * 0.4;
+  float lace = smoothstep(0.47, 0.55, vFoam * 0.82 + (n - 0.5) * 0.9);
   float core = smoothstep(0.75, 0.95, vFoam);
   float foam = max(lace * 0.85, core);
   float edge = 1.0 - smoothstep(0.0, 0.03, vDepth);

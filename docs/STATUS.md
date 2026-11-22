@@ -11,7 +11,7 @@
 | M4 | Erosion (sediment pick-up/drop/transport, saturated slump, healing, `?debug=1` tuning panel) | done |
 | M5 | Ambience (procedural audio, haptics, palettes + day cycle, start screen, hint, settings sheet, vignette) | done |
 | M6 | Ship (benchmark quality tiers, dynamic resolution, PWA/offline, icons, Capacitor iOS + Android projects, mobile CI + store release workflow, docs) | done |
-| M7 | Stretch (water table seepage, pile + smooth tools, shells, screenshot share) | todo |
+| M7 | Stretch (water table seepage, build + smooth tools, shells washing in, save/share a picture) | done |
 
 ## Decisions that differ from PLAN.md
 
@@ -81,8 +81,22 @@
   so no key material is ever committed.
 - **App icon and splash are generated from code** (`scripts/make-icons.mjs`,
   an isometric beach tile), then turned into native assets by `@capacitor/assets`.
+- **Tools are a small column above the undo button** (dig / build / smooth,
+  keys 1-3). Build adds sand from a "bucket" (it isn't taken from nearby), so
+  the sand total goes up. Undo removes it like any other stroke.
+- **Shells** are decorative props on the main thread. One spawns at the top of
+  the run-up after a wave recedes (every 14-36 s), follows the sand height,
+  drifts with the swash and fades after 2.5-5 minutes. They are drawn
+  larger than life (about 15 cm) so they read at diorama scale.
 - **Camera looks from the land toward the sea** (alpha = 135°), so the waves
   come toward the viewer.
+
+## Ideas beyond the plan (not started)
+
+- Tide-pool life (tiny crabs that scurry from the finger), footprints.
+- Sand-castle stamps (bucket shapes) as a fourth tool.
+- Persisting the beach between sessions (save the sand field to IndexedDB).
+- WebGPU compute path for the sim at the `high` tier.
 
 ## Not verified here (needs real accounts or hardware)
 

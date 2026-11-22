@@ -136,6 +136,31 @@ try {
   if (!(redone > base + (dug - base) * 0.7)) fail(`redo did not re-apply (${redone.toFixed(2)})`);
   else console.log(`redo ok (${redone.toFixed(2)})`);
 
+  // build tool raises sand (sum of positive changes goes up)
+  const raised = () =>
+    page.evaluate(() => {
+      const b = window.__beech;
+      let d = 0;
+      for (let k = 0; k < b.rest.length; k++) if (b.rest[k] > 0.5) d += Math.max(0, b.picker.sand[k] - b.rest[k]);
+      return d;
+    });
+  const r0 = await raised();
+  await page.keyboard.press('2');
+  const hitOk = await page.evaluate(() => {
+    const b = window.__beech;
+    return !!b.picker.pick(b.cam.ray(330, 470));
+  });
+  if (!hitOk) fail('build test point is not on the sand');
+  await page.mouse.move(330, 470);
+  await page.mouse.down();
+  await page.waitForTimeout(900);
+  await page.mouse.up();
+  await page.keyboard.press('1');
+  await settle();
+  const r1 = await raised();
+  if (!(r1 > r0 + 0.3)) fail(`build tool did not raise sand (${r0.toFixed(2)} -> ${r1.toFixed(2)})`);
+  else console.log(`build tool ok (${r0.toFixed(2)} -> ${r1.toFixed(2)})`);
+
   if (!process.env.SMOKE_URL) {
     // production build: the service worker should let the app start offline
     await page.evaluate(() => navigator.serviceWorker?.ready);

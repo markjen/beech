@@ -169,6 +169,21 @@ export class BeachRenderer {
     this.bindFieldTextures();
   }
 
+  /** A flat-shaded lit material with a fixed colour (props such as shells). */
+  createPropMaterial(color: RGB): ShaderMaterial {
+    const m = this.material('beachFlat', {
+      attributes: ['position', 'normal'],
+      uniforms: ['sunDir', 'sunCol', 'ambCol', 'shadowCol', 'cameraDir', 'baseCol', 'fogCol', 'fadeTop', 'fadeBottom'],
+      samplers: [],
+    });
+    m.setColor3('baseCol', c3(color));
+    m.setColor3('fogCol', c3(color));
+    m.setFloat('fadeTop', -40);
+    m.setFloat('fadeBottom', -50);
+    m.backFaceCulling = false;
+    return m;
+  }
+
   private makeFieldTexture(data: Float32Array, name: string): RawTexture {
     const t = new RawTexture(
       data,
