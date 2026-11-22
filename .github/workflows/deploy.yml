@@ -15,7 +15,8 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
+  # per branch, so a skipped run on a non-default branch can't cancel the real one
+  group: pages-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
