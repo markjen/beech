@@ -18,17 +18,17 @@ const cell = (sim: BeachSim, x: number, y: number) => Math.floor(y / sim.dx) * s
 describe('rocks', () => {
   it('cannot be dug through or washed away, and sand scours around them', async () => {
     const sim = new BeachSim(g, 1);
-    const rock = sim.placeObject({ kind: 'rock', item: 'rock', x: 14, y: 10, angle: 0.3, size: 0.45, variant: 2 });
-    const k = cell(sim, 14, 10);
+    const rock = sim.placeObject({ kind: 'rock', item: 'rock', x: 14, y: 18, angle: 0.3, size: 0.45, variant: 2 });
+    const k = cell(sim, 14, 18);
     const top = sim.sand[k];
     expect(top).toBeGreaterThan(sim.rest[k] + 0.2);
     // digging on the rock does nothing to it
-    sim.stamp('dig', 14, 10, 0.3, 0.5);
+    sim.stamp('dig', 14, 18, 0.3, 0.5);
     expect(sim.sand[k]).toBeGreaterThanOrEqual(top - 1e-6);
     // a minute of waves: the rock is intact, the sand next to it has changed
     const ringBefore: number[] = [];
     const ring: number[] = [];
-    for (let a = 0; a < 16; a++) ring.push(cell(sim, 14 + Math.cos(a) * 0.75, 10 + Math.sin(a) * 0.75));
+    for (let a = 0; a < 16; a++) ring.push(cell(sim, 14 + Math.cos(a) * 0.75, 18 + Math.sin(a) * 0.75));
     for (const r of ring) ringBefore.push(sim.sand[r]);
     await run(sim, 30 * 60);
     expect(sim.sand[k]).toBeGreaterThanOrEqual(top - 1e-6);
@@ -41,29 +41,29 @@ describe('rocks', () => {
 
   it('is saved as an object, not as a lump of sand', async () => {
     const sim = new BeachSim(g, 1, { waves: false, erosion: false, healing: false, seep: false });
-    sim.placeObject({ kind: 'rock', item: 'rock', x: 16, y: 20, angle: 0, size: 0.5, variant: 1 });
+    sim.placeObject({ kind: 'rock', item: 'rock', x: 16, y: 28, angle: 0, size: 0.5, variant: 1 });
     const delta = sim.sandDelta();
-    expect(Math.abs(delta[cell(sim, 16, 20)])).toBeLessThan(0.01);
+    expect(Math.abs(delta[cell(sim, 16, 28)])).toBeLessThan(0.01);
     const saved = sim.objects.persisted();
     const other = new BeachSim(g, 1, { waves: false, erosion: false, healing: false, seep: false });
     other.loadDelta(delta, saved);
     expect(other.objects.count).toBe(1);
-    expect(other.sand[cell(other, 16, 20)]).toBeCloseTo(sim.sand[cell(sim, 16, 20)], 3);
+    expect(other.sand[cell(other, 16, 28)]).toBeCloseTo(sim.sand[cell(sim, 16, 28)], 3);
   });
 });
 
 describe('driftwood', () => {
   it('stays put high on the dry beach', async () => {
     const sim = new BeachSim(g, 1);
-    const w = sim.placeObject({ kind: 'driftwood', item: 'driftwood', x: 10, y: 20, angle: 0.4, size: 1.8, variant: 1 });
+    const w = sim.placeObject({ kind: 'driftwood', item: 'driftwood', x: 10, y: 28, angle: 0.4, size: 1.8, variant: 1 });
     await run(sim, 30 * 20);
     const now = sim.objects.persisted().find((o) => o.id === w.id)!;
-    expect(Math.hypot(now.x - 10, now.y - 20)).toBeLessThan(0.01);
+    expect(Math.hypot(now.x - 10, now.y - 28)).toBeLessThan(0.01);
   });
 
   it('floats and is carried around by the swash', async () => {
     const sim = new BeachSim(g, 1);
-    const w = sim.placeObject({ kind: 'driftwood', item: 'driftwood', x: 16, y: 8.5, angle: 0, size: 1.4, variant: 3 });
+    const w = sim.placeObject({ kind: 'driftwood', item: 'driftwood', x: 16, y: 16.5, angle: 0, size: 1.4, variant: 3 });
     let floated = false;
     let maxTravel = 0;
     for (let s = 0; s < 30 * 60; s++) {
@@ -71,7 +71,7 @@ describe('driftwood', () => {
       sim.step(DT);
       const st = sim.objects.states().find((o) => o.id === w.id)!;
       floated ||= st.floating;
-      maxTravel = Math.max(maxTravel, Math.hypot(st.x - 16, st.y - 8.5));
+      maxTravel = Math.max(maxTravel, Math.hypot(st.x - 16, st.y - 16.5));
       expect(Number.isFinite(st.x) && Number.isFinite(st.y)).toBe(true);
     }
     expect(floated).toBe(true);
@@ -80,17 +80,17 @@ describe('driftwood', () => {
 
   it('put out at sea, comes ashore', async () => {
     const sim = new BeachSim(g, 1);
-    const w = sim.placeObject({ kind: 'driftwood', item: 'driftwood', x: 16, y: 3, angle: 0.2, size: 1.2, variant: 1 });
+    const w = sim.placeObject({ kind: 'driftwood', item: 'driftwood', x: 16, y: 8, angle: 0.2, size: 1.2, variant: 1 });
     await run(sim, 30 * 120);
     const st = sim.objects.states().find((o) => o.id === w.id)!;
-    expect(st.y).toBeGreaterThan(6);
+    expect(st.y).toBeGreaterThan(14);
   });
 });
 
 describe('placing is undoable', () => {
   it('undo removes a placed item, redo puts it back; undo of a removal restores it', async () => {
     const sim = new BeachSim(g, 1, { waves: false, erosion: false, healing: false, seep: false });
-    const r = sim.placeObject({ kind: 'rock', item: 'rock', x: 12, y: 18, angle: 0, size: 0.4, variant: 1 });
+    const r = sim.placeObject({ kind: 'rock', item: 'rock', x: 12, y: 26, angle: 0, size: 0.4, variant: 1 });
     expect(sim.objects.count).toBe(1);
     sim.undoStroke(false);
     expect(sim.objects.count).toBe(0);
@@ -106,19 +106,19 @@ describe('placing is undoable', () => {
 describe('shells, sea glass and flags', () => {
   it('a shell in the swash is rolled about, then settles; a flag stays put', async () => {
     const sim = new BeachSim(g, 1);
-    const sh = sim.placeObject({ kind: 'shell', item: 'shell', x: 16, y: 8.5, angle: 0, size: 0.1, variant: 2 });
-    const fl = sim.placeObject({ kind: 'flag', item: 'flag', x: 16, y: 9, angle: 0, size: 0.4, variant: 1 });
+    const sh = sim.placeObject({ kind: 'shell', item: 'shell', x: 16, y: 16.5, angle: 0, size: 0.1, variant: 2 });
+    const fl = sim.placeObject({ kind: 'flag', item: 'flag', x: 16, y: 17, angle: 0, size: 0.4, variant: 1 });
     let travel = 0;
     for (let s = 0; s < 30 * 60; s++) {
       if (s % 150 === 0) await tick();
       sim.step(DT);
       const st = sim.objects.states().find((o) => o.id === sh.id)!;
-      travel = Math.max(travel, Math.hypot(st.x - 16, st.y - 8.5));
+      travel = Math.max(travel, Math.hypot(st.x - 16, st.y - 16.5));
       expect(Number.isFinite(st.x + st.y + st.z)).toBe(true);
     }
     expect(travel).toBeGreaterThan(0.1);
     const f = sim.objects.persisted().find((o) => o.id === fl.id)!;
-    expect([f.x, f.y]).toEqual([16, 9]);
+    expect([f.x, f.y]).toEqual([16, 17]);
   });
 
   it('the sea brings things in now and then, and keeps only a few', async () => {
@@ -134,7 +134,7 @@ describe('shells, sea glass and flags', () => {
     expect(seen.size).toBeGreaterThanOrEqual(4);
     expect(wild.length).toBeLessThanOrEqual(6);
     // nothing washed in lands outside the beach
-    for (const o of wild) expect(o.x > 0 && o.x < 32 && o.y > 0 && o.y < 24).toBe(true);
+    for (const o of wild) expect(o.x > 0 && o.x < 32 && o.y > 0 && o.y < 32).toBe(true);
     // wild things aren't on the undo stack
     expect(sim.undo.undoCount).toBe(0);
   });

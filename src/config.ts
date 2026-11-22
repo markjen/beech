@@ -12,22 +12,29 @@ export interface GridSpec {
 
 export type QualityTier = 'low' | 'medium' | 'high';
 
-/** World footprint is fixed (32 m x 24 m); tiers only change resolution. */
+/**
+ * World footprint is fixed (32 m x 32 m); tiers only change resolution.
+ * Until 2026-11 it was 32 x 24: the extra 8 m are sea, added on the offshore
+ * side (older saves are padded on load, see sandCodec.fitWorld).
+ */
 export const WORLD_SIZE_X = 32;
-export const WORLD_SIZE_Z = 24;
+export const WORLD_SIZE_Z = 32;
+/** how much further out the sea goes than in the first (32 x 24) world */
+export const EXTRA_SEA = 8;
 
 export const GRID_TIERS: Record<QualityTier, GridSpec> = {
-  low: { nx: 192, ny: 144, dx: WORLD_SIZE_X / 192 },
-  medium: { nx: 256, ny: 192, dx: WORLD_SIZE_X / 256 },
-  high: { nx: 320, ny: 240, dx: WORLD_SIZE_X / 320 },
+  low: { nx: 192, ny: 192, dx: WORLD_SIZE_X / 192 },
+  medium: { nx: 256, ny: 256, dx: WORLD_SIZE_X / 256 },
+  high: { nx: 320, ny: 320, dx: WORLD_SIZE_X / 320 },
 };
 
 /** Beach rest profile, in metres along the cross-shore axis measured from the offshore edge. */
 export const PROFILE = {
   /** distance of the still-water shoreline from the offshore edge */
-  shoreline: 8.5,
-  /** depth at the offshore edge (positive number) */
-  offshoreDepth: 1.4,
+  shoreline: 8.5 + EXTRA_SEA,
+  /** depth at the offshore edge (positive number): the same nearshore
+   * profile as the old 8.5 m sea (1.4 m deep), continued 8 m further out */
+  offshoreDepth: 2.36,
   /** swash slope (rise over run) */
   swashSlope: 1 / 12,
   /** berm crest height above sea level */
@@ -66,6 +73,9 @@ export const WATER = {
   friction: 0.012,
   /** additional linear damping of fluxes (1/s); below ~0.4 a checkerboard mode can grow */
   linearDamping: 0.5,
+  /** linear damping in water deeper than ~1 m (offshore), so waves don't lose
+   * their height crossing the extra sea */
+  deepDamping: 0.12,
   /** depth used to cap wave speed in the flux update (keeps CFL comfortably safe) */
   maxFluxDepth: 0.9,
   /** below this depth a cell counts as dry */

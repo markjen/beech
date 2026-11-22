@@ -19,6 +19,7 @@
 // Rocks are stored as objects, not as sand, so a saved rock is a rock again
 // when the beach loads. Version 1 files still load (with no objects).
 
+import { WORLD_SIZE_X, WORLD_SIZE_Z } from '../config';
 import { OBJECT_KINDS, type PlacedObject } from './objects';
 
 const MAGIC = [0x42, 0x43, 0x48, 0x31]; // "BCH1"
@@ -136,6 +137,25 @@ export function sanitizeObjects(raw: unknown): PlacedObject[] {
     });
   }
   return out;
+}
+
+/**
+ * Bring a saved beach into today's world. Beaches saved before the sea was
+ * extended (a 32 m x 24 m world, so ny/nx = 3/4) get the missing sea rows
+ * added on the offshore side (untouched: zero delta), and their objects move
+ * up by the same distance, so everything stays where it was on the sand.
+ */
+export function fitWorld(b: SavedBeach): SavedBeach {
+  const dx = WORLD_SIZE_X / b.nx;
+  const savedZ = b.ny * dx;
+  const extra = WORLD_SIZE_Z - savedZ;
+  if (Math.abs(extra) < dx * 0.5) return b;
+  const pad = Math.round(extra / dx);
+  if (pad <= 0) return b; // a larger world than ours: leave it to resampleField
+  const ny = b.ny + pad;
+  const delta = new Float32Array(b.nx * ny);
+  delta.set(b.delta, pad * b.nx);
+  return { nx: b.nx, ny, delta, objects: b.objects.map((o) => ({ ...o, y: o.y + pad * dx })) };
 }
 
 /**

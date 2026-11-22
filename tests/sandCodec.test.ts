@@ -46,6 +46,25 @@ describe('saved beach codec', () => {
     expect(sanitizeObjects({})).toEqual([]);
   });
 
+  it('beaches saved in the old 32 x 24 world get the extra sea added offshore', async () => {
+    const { fitWorld } = await import('../src/sim/sandCodec');
+    const nx = 192;
+    const ny = 144; // old low tier
+    const delta = new Float32Array(nx * ny);
+    delta[100 * nx + 50] = 0.3;
+    const old = { nx, ny, delta, objects: [{ id: 1, kind: 'rock' as const, item: 'rock', x: 5, y: 20, angle: 0, size: 0.4, variant: 1 }] };
+    const now = fitWorld(old);
+    const dx = 32 / nx;
+    expect(now.ny).toBe(Math.round(32 / dx));
+    const pad = now.ny - ny;
+    expect(now.delta[(100 + pad) * nx + 50]).toBeCloseTo(0.3, 6);
+    expect(now.delta[0]).toBe(0);
+    expect(now.objects[0].y).toBeCloseTo(20 + pad * dx, 6);
+    // today's saves are left alone
+    const fresh = { nx, ny: 192, delta: new Float32Array(nx * 192), objects: [] };
+    expect(fitWorld(fresh)).toBe(fresh);
+  });
+
   it('rejects garbage', async () => {
     await expect(decodeSand(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9]))).rejects.toThrow();
   });
@@ -58,7 +77,7 @@ describe('saved beach codec', () => {
     for (let j = 0; j < a.ny; j++)
       for (let i = 0; i < a.nx; i++) {
         const x = (i + 0.5) * a.dx - 16;
-        const y = (j + 0.5) * a.dx - 12;
+        const y = (j + 0.5) * a.dx - (a.ny * a.dx) / 2;
         src[j * a.nx + i] = Math.max(0, 1 - Math.hypot(x, y) / 3);
       }
     const out = resampleField(src, a.nx, a.ny, b.nx, b.ny);

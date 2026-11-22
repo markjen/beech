@@ -236,7 +236,8 @@ export class BeachSim {
     const g = WATER.gravity;
     const maxD = WATER.maxFluxDepth;
     const cf = WATER.friction;
-    const lin = WATER.linearDamping;
+    const lin0 = WATER.linearDamping;
+    const linDeep = WATER.deepDamping;
     const area = dx * dx;
 
     for (let j = 0; j < ny; j++) {
@@ -248,6 +249,9 @@ export class BeachSim {
           continue;
         }
         const hk = sand[k] + d;
+        // full damping in the shallows (where the checkerboard mode lives),
+        // much less out in deep water so waves keep their height on the way in
+        const lin = d > 1.1 ? linDeep : d < 0.7 ? lin0 : lin0 + (linDeep - lin0) * ((d - 0.7) / 0.4);
         let l = 0;
         let r = 0;
         let dn = 0;

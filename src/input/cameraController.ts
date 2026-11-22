@@ -5,7 +5,7 @@ import { Matrix, Vector3 } from '@babylonjs/core/Maths/math.vector';
 import '@babylonjs/core/Culling/ray';
 import type { Scene } from '@babylonjs/core/scene';
 
-import { BRUSH, CAMERA, WORLD_SIZE_X, WORLD_SIZE_Z } from '../config';
+import { BRUSH, CAMERA, EXTRA_SEA, PROFILE, WORLD_SIZE_X, WORLD_SIZE_Z } from '../config';
 import { brushRadiusOnSand, worldPerPx, zoomLimits } from './brushMath';
 
 const TAU = Math.PI * 2;
@@ -20,7 +20,7 @@ export const CHAIR = {
   eye: 1.15,
   /** where the chair stands, world metres (sea is toward -Z) */
   seatX: 0,
-  seatZ: 6.5,
+  seatZ: WORLD_SIZE_Z / 2 - 5.5,
   /** m/s when walking along the beach */
   walkSpeed: 1.8,
   fov: 0.95,
@@ -78,12 +78,13 @@ export class CameraController {
     private readonly cellSize: number,
   ) {
     const beta = Math.PI / 2 - CAMERA.elevation * DEG;
-    this.camera = new ArcRotateCamera('cam', CAMERA.alpha, beta, CAMERA.radius, new Vector3(0, PICK_Y, -2.5), scene);
+    this.camera = new ArcRotateCamera('cam', CAMERA.alpha, beta, CAMERA.radius, new Vector3(0, PICK_Y, PROFILE.shoreline - WORLD_SIZE_Z / 2 + 1), scene); // just up from the waterline
     this.camera.mode = Camera.ORTHOGRAPHIC_CAMERA;
     this.camera.minZ = 1;
     this.camera.maxZ = 400;
     this.camera.inertia = 0;
-    this.halfH = this.clampZoom(this.fitHalfHeight() * (this.aspect() < 1 ? 0.55 : 0.85));
+    // start framed on the beach and the nearshore (zoom out to see all the sea)
+    this.halfH = this.clampZoom(this.fitHalfHeight(WORLD_SIZE_Z - EXTRA_SEA) * (this.aspect() < 1 ? 0.55 : 0.85));
     this.applyOrtho();
 
     this.chairCam = new FreeCamera('chair', new Vector3(0, 2, CHAIR.seatZ), scene, false);
@@ -211,11 +212,11 @@ export class CameraController {
 
   // ------------------------------------------------------------ geometry
 
-  /** Ortho half-height that fits the whole slab horizontally at the current rotation. */
-  fitHalfHeight(): number {
+  /** Ortho half-height that fits the slab (or `depth` m of it, cross-shore) horizontally at the current rotation. */
+  fitHalfHeight(depth = WORLD_SIZE_Z): number {
     const aspect = this.aspect();
     const a = this.camera.alpha;
-    const ext = Math.abs(Math.sin(a)) * WORLD_SIZE_X + Math.abs(Math.cos(a)) * WORLD_SIZE_Z;
+    const ext = Math.abs(Math.sin(a)) * WORLD_SIZE_X + Math.abs(Math.cos(a)) * depth;
     return (ext * 0.5 * 1.08) / aspect;
   }
 

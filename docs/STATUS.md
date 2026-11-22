@@ -41,6 +41,16 @@
   deepen visibly before they widen.
 - **Second-finger cancel window: 220 ms.** Within that window the dig is rolled
   back exactly from the stroke snapshot. After it, the stroke is kept.
+- **The sea goes 8 m further out** (2026-11-22): the world is 32 × 32 m
+  (was 32 × 24), with the extra rows on the offshore side. The shoreline sits
+  16.5 m from the edge, and the offshore depth is 2.36 m (the same Dean profile,
+  continued). To keep waves from losing height on the longer way in, the
+  linear damping drops from 0.5/s in the shallows to 0.12/s in water deeper
+  than about 1 m (`WATER.deepDamping`; a test checks the deep water stays free
+  of the checkerboard mode). Run-up is back to its old reach. Older saves
+  (ny/nx = 3/4) get sea rows added offshore and their objects moved up
+  (`fitWorld`). The camera starts framed as before, and zooming out shows the
+  whole sea.
 - **Water stability:** with 2 substeps per 30 Hz tick, a checkerboard mode
   grew in deep water. The fix is linear flux damping 0.5/s plus capping the
   depth used for wave speed at 0.9 m (wave speed ≤ 3 m/s). A unit test guards

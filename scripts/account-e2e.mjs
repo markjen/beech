@@ -68,8 +68,8 @@ await page.mouse.up();
 // and put a rock and a piece of driftwood high on the beach
 await page.evaluate(() => {
   const b = window.__beech;
-  b.send({ type: 'placeObject', obj: { kind: 'rock', item: 'rock', x: 9, y: 19, angle: 0.4, size: 0.5, variant: 3 } });
-  b.send({ type: 'placeObject', obj: { kind: 'driftwood', item: 'driftwood', x: 22, y: 20, angle: 1, size: 1.5, variant: 2 } });
+  b.send({ type: 'placeObject', obj: { kind: 'rock', item: 'rock', x: 9, y: 27, angle: 0.4, size: 0.5, variant: 3 } });
+  b.send({ type: 'placeObject', obj: { kind: 'driftwood', item: 'driftwood', x: 22, y: 28, angle: 1, size: 1.5, variant: 2 } });
 });
 await page.waitForTimeout(700);
 const before = await dug();

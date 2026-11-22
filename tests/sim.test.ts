@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BeachSim } from '../src/sim/beachSim';
 import { BRUSH, GRID_TIERS } from '../src/config';
+import { PROFILE } from '../src/config';
 
 const grid = GRID_TIERS.low;
 const DT = 1 / 30;
@@ -43,9 +44,47 @@ describe('water', () => {
       expect(Number.isFinite(sim.water[k])).toBe(true);
       expect(Number.isFinite(sim.sand[k])).toBe(true);
     }
-    // the still shoreline is ~8.5 m from the offshore edge; swash should reach further
-    expect(maxRun).toBeGreaterThan(10);
-    expect(maxRun).toBeLessThan(20);
+    // swash runs up past the still shoreline, but not over the back of the beach
+    expect(maxRun).toBeGreaterThan(PROFILE.shoreline + 1.5);
+    expect(maxRun).toBeLessThan(PROFILE.shoreline + 11.5);
+  });
+});
+
+describe('deep water', () => {
+  it('stays smooth with the lighter offshore damping (no checkerboard), and keeps its waves', async () => {
+    const sim = new BeachSim(grid, 4);
+    let swing = 0;
+    for (let s = 0; s < 30 * 60; s++) {
+      if (s % 150 === 0) await new Promise((r) => setTimeout(r, 0));
+      sim.step(DT);
+    }
+    // cell-to-cell roughness of the water surface over the deep sea (away from the forced rows)
+    let rough = 0;
+    let n = 0;
+    const j0 = 12;
+    const j1 = Math.floor((PROFILE.shoreline - 4) / sim.dx);
+    for (let j = j0; j < j1; j++) {
+      for (let i = 1; i < sim.nx - 1; i++) {
+        const k = j * sim.nx + i;
+        const h = (k2: number) => sim.sand[k2] + sim.water[k2];
+        rough = Math.max(rough, Math.abs(h(k) - 0.5 * (h(k - 1) + h(k + 1))));
+        n++;
+      }
+    }
+    expect(n).toBeGreaterThan(100);
+    expect(rough).toBeLessThan(0.02);
+    // and there are still waves out there: the surface moves at mid-sea
+    const k = Math.floor((PROFILE.shoreline / 2) / sim.dx) * sim.nx + (sim.nx >> 1);
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (let s = 0; s < 30 * 12; s++) {
+      sim.step(DT);
+      const h = sim.sand[k] + sim.water[k];
+      lo = Math.min(lo, h);
+      hi = Math.max(hi, h);
+    }
+    swing = hi - lo;
+    expect(swing).toBeGreaterThan(0.15);
   });
 });
 
@@ -54,11 +93,12 @@ describe('sand', () => {
     const sim = new BeachSim(grid, 2, { closed: false, healing: false, seep: false });
     // a steep sand pile in the swash zone so everything gets exercised
     const ci = 96;
-    const cj = 60;
+    const cj = Math.round((PROFILE.shoreline + 1.5) / sim.dx); // just up the swash
     for (let j = cj - 6; j <= cj + 6; j++) for (let i = ci - 6; i <= ci + 6; i++) sim.sand[j * sim.nx + i] += 0.5;
     const s0 = sandPlusSediment(sim);
     for (let s = 0; s < 300; s++) sim.step(DT);
-    expect(Math.abs(sandPlusSediment(sim) - s0)).toBeLessThan(1e-2 * s0 + 0.05);
+    // (s0 can be negative now: the sea floor offshore is below sea level)
+    expect(Math.abs(sandPlusSediment(sim) - s0)).toBeLessThan(1e-2 * Math.abs(s0) + 0.05);
   });
 
   it('digs deeper when held still', () => {

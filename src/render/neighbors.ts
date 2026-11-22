@@ -7,7 +7,7 @@ import type { Account, Neighbors, ShoreBeach, Side } from '../net/account';
 import { NeighborApi } from '../net/account';
 import type { Palette } from '../palette';
 import type { PlacedObject } from '../sim/objects';
-import { decodeSand, resampleField } from '../sim/sandCodec';
+import { decodeSand, fitWorld, resampleField } from '../sim/sandCodec';
 import type { SwellComponent } from '../sim/waves';
 import { beachById } from '../world/locations';
 import { BeachRenderer, ORIGIN_Z } from './beachRenderer';
@@ -297,6 +297,13 @@ export class NeighborView {
   }
 
   private load(e: Entry): Promise<void> {
+    // already fetching: if that turns out older than the newest save we know
+    // of, fetch once more when it lands
+    if (e.loading) return e.loading.then(() => (e.data && e.data.updatedAt !== e.beach.updatedAt ? this.fetch(e) : undefined));
+    return this.fetch(e);
+  }
+
+  private fetch(e: Entry): Promise<void> {
     if (e.loading) return e.loading;
     e.loading = (async () => {
       const saved = e.beach.location ? await this.api.beachByCode(e.beach.code).catch(() => null) : null;
@@ -304,7 +311,7 @@ export class NeighborView {
       let objects: PlacedObject[] = [];
       if (saved) {
         try {
-          const d = await decodeSand(saved.bytes);
+          const d = fitWorld(await decodeSand(saved.bytes));
           delta = resampleField(d.delta, d.nx, d.ny, this.grid.nx, this.grid.ny);
           objects = d.objects;
         } catch {

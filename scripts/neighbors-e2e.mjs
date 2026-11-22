@@ -93,7 +93,7 @@ if (shot) await page.screenshot({ path: shot });
   await ana.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
   await ana.evaluate((n) => window.__beech.account().signInDev(n), anaName);
   await ana.waitForFunction(() => window.__beech.sync().state === 'saved', null, { timeout: 15000 });
-  await ana.evaluate(() => window.__beech.send({ type: 'placeObject', obj: { kind: 'rock', item: 'rock', x: 12, y: 19, angle: 0, size: 0.5, variant: 2 } }));
+  await ana.evaluate(() => window.__beech.send({ type: 'placeObject', obj: { kind: 'rock', item: 'rock', x: 12, y: 27, angle: 0, size: 0.5, variant: 2 } }));
   await ana.waitForTimeout(800);
   await ana.evaluate(() => window.__beech.sync().flush());
   await ctx2.close();
