@@ -24,6 +24,8 @@ flat-shaded diorama style.
 | Zoom | pinch | wheel, + / - |
 | Rotate | two-finger twist (snaps to 45°) | right-drag, Q / E |
 | Undo / redo | ↶ button (long-press = redo) | Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z |
+| Tilt | two fingers side by side, slide up/down | right-drag up/down, R / F |
+| Sit on the beach | chair button (bottom left) | V |
 | Tool | dig / build / smooth buttons above undo | 1 / 2 / 3 |
 | Calm waves | ≈ button | |
 | Settings | ☼ button (sound, music, haptics, light, detail, save a picture, smooth the beach) | Esc closes |
@@ -71,4 +73,19 @@ https://doi.org/10.1594/PANGAEA.951610, CC-BY 4.0.
 URL parameters for development: `?quality=low|medium|high`, `?seed=N`,
 `?palette=dawn|day|golden|dusk|night`, `?beach=bondi|waikiki|…`,
 `?time=2026-11-22T06:30:00Z` (start the clock elsewhere), `?speed=60`
-(time-lapse), `?debug=1`.
+(time-lapse), `?view=chair`, `?tv=1` (ambient TV mode, seated), `?debug=1`.
+
+## Views
+
+- **Diorama** (default): the floating island, orthographic. Tilt it lower to
+  see more sky and sea.
+- **Chair** (V or the chair button): sit on your sand looking out to sea, with
+  an open ocean to the horizon, the real sun and moon, and the shore running
+  on either side. Two fingers or the arrow keys look around; pinch or +/-
+  zooms; one finger still digs.
+- **Ambient / TV** (settings, or `?tv=1`): the controls fade after a few
+  quiet seconds and the screen stays awake. Use "full screen" in settings.
+  Arrow keys on a TV remote look around, V switches the view. The Android
+  app also installs on Android TV.
+
+Work queue and ideas: [docs/BACKLOG.md](docs/BACKLOG.md).

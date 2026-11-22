@@ -90,4 +90,18 @@ await render(svg({ scale: 0.85, transparent: true }), 'resources/icon-foreground
 await render(`<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${SKY.top}"/><stop offset="0.55" stop-color="${SKY.mid}"/><stop offset="1" stop-color="${SKY.bottom}"/></linearGradient></defs><rect width="1024" height="1024" fill="url(#g)"/></svg>`, 'resources/icon-background.png', 1024);
 await render(svg({ scale: 0.26 }), 'resources/splash.png', 2732);
 await render(svg({ scale: 0.26, bg: DUSK }), 'resources/splash-dark.png', 2732);
+// Android TV launcher banner (320x180, xhdpi)
+{
+  const banner = `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180" viewBox="0 0 1600 900">
+  <defs><linearGradient id="b" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${SKY.top}"/><stop offset="0.55" stop-color="${SKY.mid}"/><stop offset="1" stop-color="${SKY.bottom}"/></linearGradient></defs>
+  <rect width="1600" height="900" fill="url(#b)"/>
+  <g transform="translate(-60,60) scale(0.78)">${tile()}</g>
+  <text x="1080" y="500" font-family="Avenir Next, Futura, sans-serif" font-size="170" font-weight="300" letter-spacing="40" fill="#5f7287" text-anchor="middle">beech</text>
+</svg>`;
+  fs.mkdirSync('android/app/src/main/res/drawable-xhdpi', { recursive: true });
+  await page.setViewportSize({ width: 320, height: 180 });
+  await page.setContent(`<html><body style="margin:0">${banner}</body></html>`);
+  await page.screenshot({ path: 'android/app/src/main/res/drawable-xhdpi/banner.png', clip: { x: 0, y: 0, width: 320, height: 180 } });
+  console.log('wrote android banner');
+}
 await browser.close();

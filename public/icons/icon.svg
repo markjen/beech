@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#8fd0e6"/><stop offset="0.55" stop-color="#cfe9ee"/><stop offset="1" stop-color="#fbeedd"/>
+  </linearGradient></defs>
+  <rect width="1024" height="1024" fill="url(#sky)"/>
+  
+  <g transform="translate(-102.39999999999998,-156.39999999999998) scale(1.2)">
+  <polygon points="192,485 512,670 512,800 192,615" fill="#e6c49d"/>
+  <polygon points="512,670 832,485 832,615 512,800" fill="#d4ad86"/>
+  <polygon points="192,507 512,692 512,706 192,521" fill="#efd2a8"/>
+<polygon points="512,692 832,507 832,521 512,706" fill="#e2c197"/>
+<polygon points="192,534 512,719 512,733 192,548" fill="#d8b088"/>
+<polygon points="512,719 832,534 832,548 512,733" fill="#c89f7a"/>
+<polygon points="192,561 512,746 512,760 192,575" fill="#efd2a8"/>
+<polygon points="512,746 832,561 832,575 512,760" fill="#e2c197"/>
+<polygon points="192,588 512,773 512,787 192,602" fill="#d8b088"/>
+<polygon points="512,773 832,588 832,602 512,787" fill="#c89f7a"/>
+  <polygon points="192,615 512,800 512,840 232,633" fill="#8a97a8"/>
+  <polygon points="512,800 832,615 792,633 512,840" fill="#76849a"/>
+  <path d="M192,485 L512,670 L672,577.5 L352,392.5 Q 420,470 472,455 T 590,520 T 672,577.5 Z" fill="none"/>
+  <clipPath id="top"><polygon points="512,300 832,485 512,670 192,485"/></clipPath>
+  <g clip-path="url(#top)">
+    <polygon points="512,300 832,485 512,670 192,485" fill="#2fa4bb"/>
+    <path d="M352,392.5 Q 420,470 472,455 T 590,520 T 672,577.5 L 832,485 L 512,300 Z" fill="#45b6c9"/>
+    <path d="M352,392.5 Q 420,470 472,455 T 590,520 T 672,577.5 L 512,670 L 192,485 Z" fill="#f6e3c3" transform="translate(0,0)"/>
+    <path d="M352,392.5 Q 420,470 472,455 T 590,520 T 672,577.5 L 632,537.5 Q 560,480 470,425 T 382,367.5 Z" fill="#8ff0de" opacity="0.85"/>
+    <path d="M358,388.5 Q 420,465 472,450 T 590,515 T 666,573.5" fill="none" stroke="#ffffff" stroke-width="12" stroke-linecap="round" opacity="0.95"/>
+    <path d="M356,402.5 Q 420,480 472,466 T 590,531 T 674,585.5" fill="none" stroke="#cdb08e" stroke-width="10" stroke-linecap="round" opacity="0.6"/>
+    <ellipse cx="420" cy="560" rx="38" ry="21" fill="#e0c49d"/>
+    <ellipse cx="420" cy="556" rx="24" ry="13" fill="#cdb08e"/>
+  </g></g>
+</svg>

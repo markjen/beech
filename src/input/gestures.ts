@@ -14,11 +14,40 @@ export interface GestureHandlers {
   redo(): void;
   /** number keys 1-3 pick a tool */
   tool?(index: number): void;
+  /** V: switch between the diorama and the chair view */
+  view?(): void;
   /** any user input at all (used to unlock audio, hide hints) */
   interacted(): void;
 }
 
 type Mode = 'idle' | 'dig' | 'camera' | 'mousePan' | 'mouseRotate';
+
+export interface TwoFingers {
+  mx: number;
+  my: number;
+  dist: number;
+  angle: number;
+}
+
+/**
+ * What a two-finger gesture is, once it has moved a little: two fingers side
+ * by side sliding up or down together is a tilt (as in map apps); anything
+ * else is the usual pan + pinch + twist. Returns null while undecided.
+ */
+export function classifyTwoFinger(start: TwoFingers, now: TwoFingers): 'tilt' | 'move' | null {
+  const dx = now.mx - start.mx;
+  const dy = now.my - start.my;
+  const moved = Math.hypot(dx, dy);
+  const pinch = Math.abs(now.dist / start.dist - 1);
+  let twist = Math.abs(now.angle - start.angle);
+  if (twist > Math.PI) twist = Math.PI * 2 - twist;
+  if (moved < 10 && pinch < 0.06 && twist < 0.08) return null;
+  // fingers roughly side by side: the line between them is near horizontal
+  const a = Math.abs(Math.sin(start.angle));
+  const sideBySide = a < 0.55;
+  if (sideBySide && Math.abs(dy) > 2 * Math.abs(dx) && pinch < 0.12 && twist < 0.15 && moved >= 10) return 'tilt';
+  return 'move';
+}
 
 /** If a second finger lands within this many ms of the first, the dig is undone. */
 const CANCEL_WINDOW_MS = 220;
@@ -35,7 +64,9 @@ export class Gestures {
   private pointers = new Map<number, { x: number; y: number }>();
   private digPointer = -1;
   private digStartAt = 0;
-  private two: { mx: number; my: number; dist: number; angle: number } | null = null;
+  private two: TwoFingers | null = null;
+  private twoStart: TwoFingers | null = null;
+  private twoKind: 'tilt' | 'move' | null = null;
   private last = { x: 0, y: 0 };
   private space = false;
   enabled = true;
@@ -115,6 +146,8 @@ export class Gestures {
       this.digPointer = -1;
       this.cam.stopGlide();
       this.two = this.twoState();
+      this.twoStart = this.two;
+      this.twoKind = null;
     }
   };
 
@@ -139,7 +172,9 @@ export class Gestures {
           this.cam.panScreen(this.last.x, this.last.y, p.x, p.y);
           break;
         case 'mouseRotate':
+          // right-drag: sideways turns, up/down tilts
           this.cam.rotate(-(p.x - this.last.x) * 0.008);
+          this.cam.tilt(-(p.y - this.last.y) * 0.006);
           break;
         default:
           this.h.hover(p.x, p.y);
@@ -153,12 +188,22 @@ export class Gestures {
       this.h.digMove(p.x, p.y);
     } else if (this.mode === 'camera' && this.pointers.size === 2 && this.two) {
       const now = this.twoState();
-      this.cam.panScreen(this.two.mx, this.two.my, now.mx, now.my);
-      this.cam.zoomAt(this.two.dist / now.dist, now.mx, now.my);
-      let da = now.angle - this.two.angle;
-      if (da > Math.PI) da -= Math.PI * 2;
-      if (da < -Math.PI) da += Math.PI * 2;
-      this.cam.rotate(-da);
+      if (!this.twoKind && this.twoStart) {
+        this.twoKind = classifyTwoFinger(this.twoStart, now);
+        if (!this.twoKind) return; // wait until it's clear what this is
+        this.two = this.twoStart; // apply everything since the start
+      }
+      if (this.twoKind === 'tilt') {
+        // fingers up = toward the horizon
+        this.cam.tilt(-(now.my - this.two.my) * 0.006);
+      } else {
+        this.cam.panScreen(this.two.mx, this.two.my, now.mx, now.my);
+        this.cam.zoomAt(this.two.dist / now.dist, now.mx, now.my);
+        let da = now.angle - this.two.angle;
+        if (da > Math.PI) da -= Math.PI * 2;
+        if (da < -Math.PI) da += Math.PI * 2;
+        this.cam.rotate(-da);
+      }
       this.two = now;
     }
   };
@@ -230,6 +275,8 @@ export class Gestures {
       this.space = true;
       e.preventDefault();
     } else if (k === '1' || k === '2' || k === '3') this.h.tool?.(Number(k) - 1);
+    else if (k === 'v') this.h.view?.();
+    else if (k === 'r' || k === 'f') this.cam.held.add(k);
     else if (k === 'q') this.cam.snapRotation(-1);
     else if (k === 'e') this.cam.snapRotation(1);
     else if (['w', 'a', 's', 'd'].includes(k)) this.cam.held.add(k);

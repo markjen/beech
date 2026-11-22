@@ -37,6 +37,7 @@ export class NeighborView {
   private listeners: ((n: Neighbors | null) => void)[] = [];
   /** bumps on every refresh/clear so a slow, older refresh can't overwrite a newer one */
   private generation = 0;
+  private chairView = false;
 
   constructor(
     private readonly scene: Scene,
@@ -107,8 +108,14 @@ export class NeighborView {
     for (const fn of this.listeners) fn(null);
   }
 
+  setChairView(on: boolean): void {
+    this.chairView = on;
+    for (const s of this.slots.values()) s.renderer.setChairView(on);
+  }
+
   private add(side: Side, delta: Float32Array, name: string): void {
     const renderer = new BeachRenderer(this.scene, this.grid, this.rest, this.swell, NeighborView.offsetFor(side));
+    renderer.setChairView(this.chairView);
     const label = document.createElement('div');
     label.className = 'neighbor-tag';
     label.textContent = name;

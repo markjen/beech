@@ -210,6 +210,7 @@
 
 .actions {
   gap: 10px;
+  flex-wrap: wrap;
   padding-top: 8px;
 }
 
@@ -421,4 +422,23 @@
   background: transparent;
   color: inherit;
   opacity: 0.85;
+}
+
+/* ---------------------------------------------------------- ambient (TV) */
+
+.hud,
+.place,
+.hint {
+  transition: opacity 1.2s ease;
+}
+
+body.ambient-idle .hud,
+body.ambient-idle .place,
+body.ambient-idle .hint {
+  opacity: 0;
+  pointer-events: none;
+}
+
+body.ambient-idle {
+  cursor: none;
 }

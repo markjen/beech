@@ -113,7 +113,8 @@ void main() {
   float wet = clamp(vWet, 0.0, 1.0);
   vec3 base = mix(sandDry, sandWet, wet * wet * (3.0 - 2.0 * wet));
   base = mix(base, sandDeep, clamp(vDug * 2.0, 0.0, 0.65) * (1.0 - wet * 0.5));
-  base *= 0.975 + 0.05 * hash12(floor(vWorld.xz * 22.0));
+  // fine smooth grain (blocky hash noise showed up close in the chair view)
+  base *= 0.975 + 0.05 * vnoise(vWorld.xz * 34.0);
   vec3 col = base * mix(shadowCol, sunCol, ramp) + base * ambCol * 0.1;
   vec3 R = reflect(sunDir, N);
   float spec = pow(max(dot(R, -cameraDir), 0.0), 20.0);
@@ -240,8 +241,19 @@ uniform vec3 fogCol;
 uniform float zEdge;
 uniform float halfX;
 uniform float centerX;
+uniform float fadeNear;
+uniform float fadeFar;
+/** 1 = diorama apron (soft cut sides, fades out); 0 = open sea to the horizon */
+uniform float apron;
+/** open sea only: x centres of the simulated beaches to leave a hole for */
+uniform vec3 slabs;
+uniform float slabHalf;
 ${FACET}
 void main() {
+  if (apron < 0.5) {
+    vec3 d = abs(vec3(vWorld.x) - slabs);
+    if (vWorld.z > zEdge - 0.05 && min(d.x, min(d.y, d.z)) < slabHalf) discard;
+  }
   vec3 N = facetNormal(vWorld);
   float ndl = dot(N, -sunDir);
   float ramp = 0.7 + 0.3 * smoothstep(0.3, 0.7, ndl);
@@ -250,11 +262,18 @@ void main() {
   col = mix(col, foamCol, smoothstep(0.55, 1.0, vCrest) * 0.18);
   float spec = pow(max(dot(reflect(sunDir, N), -cameraDir), 0.0), 40.0);
   col += sunCol * spec * 0.25;
-  float f = smoothstep(2.0, 17.0, dist);
-  // soften the cut sides a little as the sea recedes into the mist
-  f = max(f, smoothstep(halfX - 0.5 - dist * 0.25, halfX, abs(vWorld.x - centerX)) * smoothstep(0.0, 6.0, dist));
-  col = mix(col, fogCol, f * 0.55);
-  float a = (1.0 - f) * 0.95;
+  float f = smoothstep(fadeNear, fadeFar, dist);
+  float a;
+  if (apron > 0.5) {
+    // soften the cut sides a little as the sea recedes into the mist
+    f = max(f, smoothstep(halfX - 0.5 - dist * 0.25, halfX, abs(vWorld.x - centerX)) * smoothstep(0.0, 6.0, dist));
+    col = mix(col, fogCol, f * 0.55);
+    a = (1.0 - f) * 0.95;
+  } else {
+    // open sea: haze toward the horizon, see-through in the shallows
+    col = mix(col, fogCol, f * 0.85);
+    a = mix(0.82, 1.0, smoothstep(-2.0, 30.0, dist));
+  }
   gl_FragColor = vec4(col, a);
 }
 `;

@@ -153,6 +153,15 @@ to adjust it on the first run. The first upload of a new app to Google Play
 must also be done by hand in the Play Console before the API will accept
 uploads.
 
+## Android TV
+
+The Android app also declares the leanback launcher, an optional
+touchscreen, and a 320×180 TV banner, so the same APK/AAB installs on
+Android TV. To list it for TV in Play Console, add the TV form factor and TV
+screenshots (1920×1080). Capture them with
+`node scripts/shot.mjs "http://localhost:5173/?tv=1&nointro" tv.png 1920 1080 8000`.
+On TV, the arrow keys look around and V switches between views.
+
 ## Platform notes
 
 - **Audio** starts on the first touch (the title card), which WebView

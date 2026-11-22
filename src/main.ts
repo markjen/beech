@@ -4,7 +4,7 @@ import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { Scene } from '@babylonjs/core/scene';
 
 import { Ambience } from './audio/ambience';
-import { GRID_TIERS, SIM_HZ, WAVES, type QualityTier } from './config';
+import { GRID_TIERS, SIM_HZ, WAVES, WORLD_SIZE_X, type QualityTier } from './config';
 import { CameraController } from './input/cameraController';
 import { Gestures } from './input/gestures';
 import { SandPicker } from './input/sandPicker';
@@ -14,18 +14,20 @@ import { registerServiceWorker } from './platform/pwa';
 import { tierFromBench } from './platform/quality';
 import { BeachRenderer, ORIGIN_X, ORIGIN_Z } from './render/beachRenderer';
 import { ShellField } from './render/shells';
+import { Horizon } from './render/horizon';
 import { Sky, type SkyDisc } from './render/sky';
 import { LiveConditions } from './world/live';
 import { BEACHES, beachById, defaultBeach, nearestBeach, type Beach } from './world/locations';
 import type { BrushMode } from './sim/beachSim';
 import type { FrameInfo, FromWorker, ToWorker } from './sim/protocol';
 import { makeSwell } from './sim/waves';
+import { Ambient, toggleFullscreen } from './ui/ambient';
 import { Hud } from './ui/hud';
 import { SettingsSheet, StartScreen, showHint } from './ui/overlays';
 import { ACCOUNTS_ENABLED, Account } from './net/account';
 import { BeachSync } from './net/beachSync';
 import { AccountPanel } from './ui/accountPanel';
-import { NeighborView } from './render/neighbors';
+import { NEIGHBOR_OFFSET, NeighborView } from './render/neighbors';
 import { loadSettings, saveSettings, type Settings } from './ui/settingsStore';
 
 const params = new URLSearchParams(location.search);
@@ -117,6 +119,8 @@ async function boot() {
   const sky = new Sky(scene);
   const picker = new SandPicker(grid, ready.rest);
   const cam = new CameraController(scene, canvas, grid.dx);
+  cam.groundHeight = (x, z) => picker.heightAt(x, z);
+  const horizon = new Horizon(scene, swell, seed, grid.dx);
   const shells = new ShellField(scene, renderer, picker);
   const audio = new Ambience();
   const haptics = new Haptics();
@@ -173,22 +177,20 @@ async function boot() {
   let brushMode: BrushMode = 'dig';
   let digging = false;
   let strokeOpen = false;
-  let lastHit: { x: number; z: number } | null = null;
-  let hover: { x: number; z: number } | null = null;
+  type Hit = { x: number; y: number; z: number };
+  let lastHit: Hit | null = null;
+  let hover: Hit | null = null;
   let ringAlpha = 0;
-  let lastRing = { x: 0, z: 0 };
+  let lastRing: Hit = { x: 0, y: 0, z: 0 };
 
-  const pickAt = (sx: number, sy: number) => {
-    const hit = picker.pick(cam.ray(sx, sy));
-    return hit ? { x: hit.x, z: hit.z } : null;
-  };
+  const pickAt = (sx: number, sy: number): Hit | null => picker.pick(cam.ray(sx, sy));
   const toSim = (p: { x: number; z: number }) => ({ x: p.x - ORIGIN_X, y: p.z - ORIGIN_Z });
 
   const strokeTo = (sx: number, sy: number) => {
     const hit = pickAt(sx, sy);
     if (!hit) return;
     lastHit = hit;
-    const r = cam.brushRadius();
+    const r = cam.brushRadius(hit);
     const s = toSim(hit);
     send({ type: 'brush', phase: strokeOpen ? 'move' : 'start', x: s.x, y: s.y, r, mode: brushMode });
     strokeOpen = true;
@@ -283,6 +285,7 @@ async function boot() {
       if (key === 'sound') audio.setSound(s.sound);
       if (key === 'music') audio.setMusic(s.music);
       if (key === 'haptics') haptics.enabled = s.haptics;
+      if (key === 'ambient') ambient.setEnabled(s.ambient);
     },
     smooth: () => {
       markDirty(1500);
@@ -290,6 +293,7 @@ async function boot() {
       audio.whoosh(false);
     },
     share: () => void share(),
+    fullscreen: () => void toggleFullscreen(),
   }, BEACHES);
   sheet.setSettings({ ...settings, beach: beach.id });
 
@@ -329,6 +333,27 @@ async function boot() {
   menuBtn.addEventListener('click', () => sheet.toggleOpen());
   hud.leftGroup.appendChild(menuBtn);
   hud.leftGroup.appendChild(calmBtn);
+
+  // ambient / TV: controls fade when idle, screen stays awake.
+  // ?tv=1 starts there, sitting on the beach.
+  const tv = params.has('tv');
+  const ambient = new Ambient();
+  ambient.setEnabled(settings.ambient || tv);
+
+  // diorama <-> chair (sitting on the sand, looking out to sea)
+  const viewBtn = hud.button('chair', 'Sit on the beach');
+  hud.leftGroup.appendChild(viewBtn);
+  viewBtn.addEventListener('click', () => cam.toggleMode());
+  cam.onModeChange((m) => {
+    const chair = m === 'chair';
+    renderer.setChairView(chair);
+    neighbors?.setChairView(chair);
+    horizon.setEnabled(chair);
+    hud.setIcon(viewBtn, chair ? 'diorama' : 'chair');
+    viewBtn.setAttribute('aria-label', chair ? 'Back to the diorama' : 'Sit on the beach');
+    viewBtn.title = viewBtn.getAttribute('aria-label')!;
+    haptics.impact('light');
+  });
 
   let hideHint: (() => void) | null = null;
   const begin = () => {
@@ -375,6 +400,7 @@ async function boot() {
     undo,
     redo,
     tool: (i) => TOOLS[i] && pickTool(TOOLS[i].id),
+    view: () => cam.toggleMode(),
     interacted: () => {
       // any input (including when there is no start screen) unlocks audio
       if (!start?.visible) audio.start();
@@ -384,7 +410,7 @@ async function boot() {
   /** Brush ring: under the finger while digging, under the mouse on hover, centre after a zoom. */
   const updateRing = (dt: number, palette: Palette) => {
     let target = 0;
-    let at: { x: number; z: number } | null = null;
+    let at: Hit | null = null;
     if (digging && lastHit) {
       target = 0.85;
       at = lastHit;
@@ -397,7 +423,7 @@ async function boot() {
     }
     ringAlpha += (target - ringAlpha) * Math.min(1, dt * 14);
     if (at) lastRing = at;
-    renderer.setBrush(lastRing.x, lastRing.z, cam.brushRadius(), ringAlpha, palette.foam);
+    renderer.setBrush(lastRing.x, lastRing.z, cam.brushRadius(lastRing), ringAlpha, palette.foam);
   };
 
   // ---------------------------------------------------------------- palette / day cycle
@@ -406,6 +432,12 @@ async function boot() {
   /** where a sky object sits on the backdrop, seen from the current camera */
   const skyDisc = (dir: [number, number, number], elevation: number): SkyDisc | undefined => {
     if (elevation < -3) return undefined;
+    if (cam.mode === 'chair') {
+      // perspective: put it exactly where it is in the sky
+      const p = cam.projectDirection(dir);
+      if (!p.front) return undefined;
+      return { x: p.x, y: p.y, alpha: Math.min(1, Math.max(0, (elevation + 3) / 5)) };
+    }
     const f = cam.forward();
     const fh = Math.hypot(f.x, f.z) || 1;
     const fx = f.x / fh;
@@ -485,6 +517,14 @@ async function boot() {
     const amp = (1 - (1 - WAVES.calmFactor) * info.calmMix) * beach.waves;
     renderer.update(palette, cam.forward(), (now - t0) / 1000, simTime, info.tide, amp);
     neighbors?.update(palette, cam.forward(), (now - t0) / 1000, simTime, info.tide, amp);
+    if (cam.mode === 'chair') {
+      // the static shore starts where the simulated beaches end
+      const centres = [0];
+      if (cam.maxX > WORLD_SIZE_X) centres.push(NEIGHBOR_OFFSET);
+      if (cam.minX < -WORLD_SIZE_X) centres.push(-NEIGHBOR_OFFSET);
+      horizon.setExtent(cam.minX + grid.dx * 0.5, cam.maxX - grid.dx * 0.5, centres);
+      horizon.update(palette, cam.forward(), simTime, info.tide, amp);
+    }
     const sk = liveState.sky;
     const moonDisc = skyDisc(sk.moon.dir, sk.moon.elevation);
     sky.update(
@@ -502,12 +542,11 @@ async function boot() {
     shells.update(dt, swashRate);
     if (digging) haptics.dig(info.digIntensity);
     cam.camera.getDirectionToRef(Vector3.Right(), right);
-    const lim = cam.zoomLimits();
     audio.update(dt, {
       swashRate,
       dig: digging ? info.digIntensity : 0,
       seaPan: -right.z,
-      zoomOut: (cam.halfH - lim.min) / Math.max(1e-3, lim.max - lim.min),
+      zoomOut: cam.zoomOut01(),
       calm: info.calmMix,
       daylight: 1 - liveState.sky.night,
     });
@@ -580,6 +619,7 @@ async function boot() {
     sheet,
     audio,
     pickTool,
+    view: (m?: 'diorama' | 'chair') => (m ? cam.setMode(m) : cam.toggleMode()),
     shells,
     beach: () => beach,
     account: () => account,
@@ -596,6 +636,8 @@ async function boot() {
     const { setupDebug } = await import('./ui/debug');
     await setupDebug(send, () => info, () => cam.brushRadius());
   }
+  // start seated (TV / ?view=chair) once everything the view switch touches exists
+  if (tv || params.get('view') === 'chair') cam.setMode('chair');
   document.body.dataset.ready = '1';
 }
 

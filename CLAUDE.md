@@ -8,6 +8,9 @@ Read these first:
    that differ from the plan. **Update it whenever you finish or change
    something.**
 3. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): module map and data flow.
+4. [docs/BACKLOG.md](docs/BACKLOG.md): the to-do list (owner tasks,
+   engineering queue, ideas). Take work from here, and update it in the same
+   commit as the work.
 
 ## Ground rules
 

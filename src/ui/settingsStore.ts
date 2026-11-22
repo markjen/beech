@@ -13,6 +13,8 @@ export interface Settings {
   quality: QualityTier | 'auto';
   batterySaver: boolean;
   seenIntro: boolean;
+  /** ambient / TV: hide the controls when idle, keep the screen awake */
+  ambient: boolean;
   /** tier picked by the first-launch benchmark (used when quality is 'auto') */
   benchTier?: QualityTier;
 }
@@ -25,6 +27,7 @@ export const DEFAULT_SETTINGS: Settings = {
   quality: 'auto',
   batterySaver: false,
   seenIntro: false,
+  ambient: false,
 };
 
 const KEY = 'beech.settings.v1';

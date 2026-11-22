@@ -68,6 +68,7 @@ export interface SettingsHandlers {
   nearMe(): void;
   smooth(): void;
   share(): void;
+  fullscreen(): void;
 }
 
 const PALETTE_LABELS: [PaletteChoice, string][] = [
@@ -111,6 +112,7 @@ export class SettingsSheet {
         <div class="row"><span>music</span>${this.toggle('music')}</div>
         <div class="row"><span>haptics</span>${this.toggle('haptics')}</div>
         <div class="row"><span>battery saver</span>${this.toggle('batterySaver')}</div>
+        <div class="row"><span>ambient (for a TV)</span>${this.toggle('ambient')}</div>
         <div class="row col"><span>light</span><div class="chips" data-key="palette">${PALETTE_LABELS.map(
           ([v, l]) => `<button type="button" data-v="${v}">${l}</button>`,
         ).join('')}</div></div>
@@ -118,6 +120,7 @@ export class SettingsSheet {
           ([v, l]) => `<button type="button" data-v="${v}">${l}</button>`,
         ).join('')}</div></div>
         <div class="row actions">
+          <button type="button" class="action" data-act="fullscreen">full screen</button>
           <button type="button" class="action" data-act="share">save a picture</button>
           <button type="button" class="action" data-act="smooth">smooth the beach</button>
         </div>
@@ -127,12 +130,16 @@ export class SettingsSheet {
     this.el.querySelector('.sheet-scrim')!.addEventListener('pointerdown', () => this.hide());
     for (const input of this.el.querySelectorAll<HTMLInputElement>('input[data-key]')) {
       input.addEventListener('change', () => {
-        const key = input.dataset.key as 'sound' | 'music' | 'haptics' | 'batterySaver';
+        const key = input.dataset.key as 'sound' | 'music' | 'haptics' | 'batterySaver' | 'ambient';
         this.settings = { ...this.settings, [key]: input.checked };
         this.h.change(this.settings, key);
       });
     }
     this.el.querySelector<HTMLButtonElement>('button[data-act="near"]')!.addEventListener('click', () => this.h.nearMe());
+    this.el.querySelector<HTMLButtonElement>('button[data-act="fullscreen"]')!.addEventListener('click', () => {
+      this.hide();
+      this.h.fullscreen();
+    });
     for (const group of this.el.querySelectorAll<HTMLDivElement>('.chips')) {
       const key = group.dataset.key as 'palette' | 'quality' | 'beach';
       for (const b of group.querySelectorAll<HTMLButtonElement>('button[data-v]')) {

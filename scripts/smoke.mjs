@@ -161,6 +161,34 @@ try {
   if (!(r1 > r0 + 0.3)) fail(`build tool did not raise sand (${r0.toFixed(2)} -> ${r1.toFixed(2)})`);
   else console.log(`build tool ok (${r0.toFixed(2)} -> ${r1.toFixed(2)})`);
 
+  // chair view (V): sitting on the sand you can still dig in front of you
+  await page.keyboard.press('v');
+  await page.waitForTimeout(400);
+  if ((await page.evaluate(() => window.__beech.cam.mode)) !== 'chair') fail('V did not switch to the chair view');
+  const c0 = await diff();
+  await page.mouse.move(500, 620);
+  await page.mouse.down();
+  for (let i = 0; i < 12; i++) {
+    await page.mouse.move(470 + i * 6, 620);
+    await page.waitForTimeout(40);
+  }
+  await page.mouse.up();
+  await settle();
+  const c1 = await diff();
+  if (!(c1 > c0 + 0.2)) fail(`digging in the chair view did nothing (${c0.toFixed(2)} -> ${c1.toFixed(2)})`);
+  else console.log(`chair view dig ok (${c0.toFixed(2)} -> ${c1.toFixed(2)})`);
+  await page.keyboard.press('v');
+  await page.waitForTimeout(300);
+
+  // tilt (R held) lowers the diorama toward the horizon
+  const e0 = await page.evaluate(() => window.__beech.cam.elevationDeg);
+  await page.keyboard.down('r');
+  await page.waitForTimeout(600);
+  await page.keyboard.up('r');
+  const e1 = await page.evaluate(() => window.__beech.cam.elevationDeg);
+  if (!(e1 < e0 - 3)) fail(`R did not tilt the view (${e0.toFixed(1)} -> ${e1.toFixed(1)})`);
+  else console.log(`tilt ok (${e0.toFixed(1)}° -> ${e1.toFixed(1)}°)`);
+
   if (!process.env.SMOKE_URL) {
     // production build: the service worker should let the app start offline
     await page.evaluate(() => navigator.serviceWorker?.ready);

@@ -44,6 +44,8 @@ export class BeachRenderer {
   private readonly waterSkirtMat: ShaderMaterial;
   private readonly rockMat: ShaderMaterial;
   readonly meshes: Mesh[] = [];
+  private apronMesh!: Mesh;
+  private waterSkirt!: Mesh;
   private brush = new Vector4(0, 0, 0.3, 0);
 
   constructor(
@@ -111,6 +113,11 @@ export class BeachRenderer {
         'fogCol',
         'halfX',
         'centerX',
+        'fadeNear',
+        'fadeFar',
+        'apron',
+        'slabs',
+        'slabHalf',
       ],
       samplers: [],
     });
@@ -383,6 +390,13 @@ export class BeachRenderer {
     this.oceanMat.setFloat('zEdge', edgeZ);
     this.oceanMat.setFloat('halfX', hx);
     this.oceanMat.setFloat('centerX', this.offsetX);
+    this.oceanMat.setFloat('fadeNear', 2);
+    this.oceanMat.setFloat('fadeFar', 17);
+    this.oceanMat.setFloat('apron', 1);
+    this.oceanMat.setVector3('slabs', new Vector3(1e6, 1e6, 1e6));
+    this.oceanMat.setFloat('slabHalf', 0);
+    this.apronMesh = ocean;
+    this.waterSkirt = wskirt;
     this.oceanMat.setFloat('waveSpeed', WAVES.farSpeed);
 
     // stepped rock base under the slab: the floating-diorama look
@@ -409,6 +423,12 @@ export class BeachRenderer {
       m.setTexture('fieldCur', this.texCur);
       m.setVector2('gridSize', new Vector2(this.grid.nx, this.grid.ny));
     }
+  }
+
+  /** The chair view has an open sea instead of the diorama's apron and cut-away water. */
+  setChairView(on: boolean): void {
+    this.apronMesh.setEnabled(!on);
+    this.waterSkirt.setEnabled(!on);
   }
 
   /** Show a still snapshot (neighbors): the same packed frame as both prev and current. */
