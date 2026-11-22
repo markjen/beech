@@ -101,7 +101,9 @@ export class Hud {
 
   /** Tint the UI to match the current palette. */
   setColors(fg: string, bg: string): void {
-    this.root.style.setProperty('--ui-fg', fg);
-    this.root.style.setProperty('--ui-bg', bg);
+    const r = document.documentElement.style;
+    if (r.getPropertyValue('--ui-fg') === fg && r.getPropertyValue('--ui-bg') === bg) return;
+    r.setProperty('--ui-fg', fg);
+    r.setProperty('--ui-bg', bg);
   }
 }

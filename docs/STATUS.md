@@ -9,7 +9,7 @@
 | M2 | Sand toy (worker grid, screen-constant brush + ring, hold-to-deepen, rim, slump, undo/redo, second-finger cancel) | done |
 | M3 | Waves (pipes water sim, swell sets, foam, wetting/drying, calm toggle) | done |
 | M4 | Erosion (sediment pick-up/drop/transport, saturated slump, healing, `?debug=1` tuning panel) | done |
-| M5 | Ambience (audio, haptics, palettes + day cycle, UI polish, start screen) | todo |
+| M5 | Ambience (procedural audio, haptics, palettes + day cycle, start screen, hint, settings sheet, vignette) | done |
 | M6 | Ship (quality tiers, PWA/offline, Capacitor iOS + Android) | todo |
 | M7 | Stretch (water table seepage, pile + smooth tools, shells, screenshot share) | todo |
 
@@ -55,6 +55,19 @@
 - **The waterline and wet line are softened** in the vertex shaders by
   averaging each cell with its 4 neighbours, so they don't stair-step along
   the grid. Geometry still uses the exact depth.
+- **Audio is procedural Web Audio, not Babylon's audio engine.** Pink noise,
+  filters, a generated reverb impulse and oscillators make the bed, the wash
+  (driven by the rate water runs up the beach face, which the worker measures
+  each tick), the backwash fizz, the granular dig scrape, rare gulls and an
+  optional pentatonic pad. The app ships no audio files.
+- **The day cycle drifts dawn → day → golden → dusk over 20 minutes.** It
+  holds each mood for 60% of its segment. A fixed palette can be picked in
+  settings.
+- **Settings are per-device conveniences in localStorage** (sound, music,
+  haptics, battery saver, light, detail). Everything still works if storage is
+  unavailable.
+- **Battery saver renders every other frame** (about 30 fps). The sim rate is
+  unchanged.
 - **Camera looks from the land toward the sea** (alpha = 135°), so the waves
   come toward the viewer.
 

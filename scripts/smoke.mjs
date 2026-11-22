@@ -47,6 +47,9 @@ try {
   await page.mouse.click(5, 5);
   await page.waitForTimeout(800);
 
+  const audioOk = await page.evaluate(() => window.__beech.audio.started);
+  if (!audioOk) fail('audio did not start after the first click');
+  else console.log('audio started');
   const frames = await page.evaluate(() => window.__beech.frames());
   if (frames < 5) fail(`only ${frames} sim frames arrived`);
 

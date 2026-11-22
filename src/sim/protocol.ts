@@ -28,6 +28,8 @@ export interface FrameInfo {
   undoCount: number;
   redoCount: number;
   digIntensity: number;
+  /** water volume on the beach face (m^3) */
+  swash: number;
   stats?: SimStats;
   tickMs: number;
 }

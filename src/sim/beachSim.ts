@@ -111,6 +111,8 @@ export class BeachSim {
   } | null = null;
   /** 0..1 how hard the brush is working this tick (for audio/haptics) */
   digIntensity = 0;
+  /** water volume (m^3) sitting on the beach face above the mean sea level (for audio) */
+  swashVolume = 0;
 
   constructor(g: GridSpec, seed = 1, flags: Partial<SimFlags> = {}) {
     this.g = g;
@@ -179,6 +181,15 @@ export class BeachSim {
     this.slump();
     if (this.flags.healing) this.heal(dt);
     this.updateWetFoam(dt);
+    this.measureSwash();
+  }
+
+  private measureSwash(): void {
+    const { rest, water } = this;
+    const level = this.meanLevel() - 0.05;
+    let v = 0;
+    for (let k = 0; k < this.n; k++) if (rest[k] > level) v += water[k];
+    this.swashVolume = v * this.dx * this.dx;
   }
 
   /** Offshore boundary: hard-set the first row, relax a sponge layer behind it. */

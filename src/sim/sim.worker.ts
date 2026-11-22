@@ -59,6 +59,7 @@ function loop() {
           undoCount: sim.undo.undoCount,
           redoCount: sim.undo.redoCount,
           digIntensity: sim.digIntensity,
+          swash: sim.swashVolume,
           stats: withStats ? sim.stats() : undefined,
           tickMs,
         },
