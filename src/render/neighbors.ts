@@ -3,7 +3,7 @@ import type { Scene } from '@babylonjs/core/scene';
 
 import { WORLD_SIZE_X, type GridSpec } from '../config';
 import type { CameraController } from '../input/cameraController';
-import type { Account, Neighbors, Side } from '../net/account';
+import type { Account, Neighbor, Neighbors, Side } from '../net/account';
 import { NeighborApi } from '../net/account';
 import type { Palette } from '../palette';
 import { decodeSand, resampleField } from '../sim/sandCodec';
@@ -12,6 +12,14 @@ import { beachById } from '../world/locations';
 import type { PlacedObject } from '../sim/objects';
 import { BeachRenderer } from './beachRenderer';
 import { ObjectView } from './objects';
+
+interface Loaded {
+  delta: Float32Array;
+  objects: PlacedObject[];
+  name: string;
+  who: string;
+  updatedAt: number | null;
+}
 
 /** gap between dioramas, so each beach reads as its own little island */
 const GAP = 1.6;
@@ -24,7 +32,14 @@ interface Slot {
   objects: ObjectView;
   label: HTMLDivElement;
   name: string;
+  /** who is there, and when they last saved (to spot new saves) */
+  who: string;
+  updatedAt: number | null;
+  placed: number;
 }
+
+/** how often to look for new saves on the beaches next door */
+const POLL_MS = 30000;
 
 /**
  * The beaches on either side of yours, drawn as still snapshots of their
@@ -41,6 +56,8 @@ export class NeighborView {
   /** bumps on every refresh/clear so a slow, older refresh can't overwrite a newer one */
   private generation = 0;
   private chairView = false;
+  private pollTimer = 0;
+  private polling = false;
 
   constructor(
     private readonly scene: Scene,
@@ -73,40 +90,94 @@ export class NeighborView {
     }
     if (gen !== this.generation) return;
     // fetch both beaches first, then swap them in together
-    const loaded = new Map<Side, { delta: Float32Array; objects: PlacedObject[]; name: string } | null>();
+    const loaded = new Map<Side, Loaded | null>();
     for (const side of ['left', 'right'] as Side[]) {
       const who = n?.[side] ?? null;
-      if (!who) {
-        loaded.set(side, null);
-        continue;
-      }
-      const saved = who.location ? await this.api.beach(side).catch(() => null) : null;
-      let delta: Float32Array = new Float32Array(this.grid.nx * this.grid.ny);
-      let objects: PlacedObject[] = [];
-      if (saved) {
-        try {
-          const d = await decodeSand(saved.bytes);
-          delta = resampleField(d.delta, d.nx, d.ny, this.grid.nx, this.grid.ny);
-          objects = d.objects;
-        } catch {
-          /* unreadable save: show their beach untouched */
-        }
-      }
-      const place = who.location ? beachById(who.location) : undefined;
-      loaded.set(side, { delta, objects, name: `${who.name || 'a neighbor'}${place ? ` · ${place.name}` : ''}` });
+      loaded.set(side, who ? await this.load(side, who) : null);
     }
     if (gen !== this.generation) return;
     this.state = n;
     for (const [side, next] of loaded) {
       if (this.slots.has(side)) this.drop(side);
-      if (next) this.add(side, next.delta, next.objects, next.name);
+      if (next) this.add(side, next);
     }
     this.updateBounds();
     for (const fn of this.listeners) fn(n);
+    this.schedulePoll();
+  }
+
+  /** Fetch and decode one neighbor's latest save. */
+  private async load(side: Side, who: Neighbor): Promise<Loaded> {
+    const saved = who.location ? await this.api.beach(side).catch(() => null) : null;
+    let delta: Float32Array = new Float32Array(this.grid.nx * this.grid.ny);
+    let objects: PlacedObject[] = [];
+    if (saved) {
+      try {
+        const d = await decodeSand(saved.bytes);
+        delta = resampleField(d.delta, d.nx, d.ny, this.grid.nx, this.grid.ny);
+        objects = d.objects;
+      } catch {
+        /* unreadable save: show their beach untouched */
+      }
+    }
+    const place = who.location ? beachById(who.location) : undefined;
+    return {
+      delta,
+      objects,
+      name: `${who.name || 'a neighbor'}${place ? ` · ${place.name}` : ''}`,
+      who: who.id,
+      updatedAt: saved?.updatedAt ?? who.updatedAt,
+    };
+  }
+
+  private schedulePoll(): void {
+    window.clearTimeout(this.pollTimer);
+    if (!this.state) return;
+    this.pollTimer = window.setTimeout(() => void this.poll().finally(() => this.schedulePoll()), POLL_MS);
+  }
+
+  /**
+   * Live-ish neighbors: look for new saves next door and swap in the new
+   * sand. Cheap when nothing changed (one small request). Skipped while the
+   * app is in the background.
+   */
+  async poll(): Promise<void> {
+    if (this.polling || document.hidden || !this.state) return;
+    this.polling = true;
+    const gen = this.generation;
+    try {
+      const n = await this.api.get();
+      if (gen !== this.generation) return;
+      for (const side of ['left', 'right'] as Side[]) {
+        const who = n[side];
+        const slot = this.slots.get(side);
+        if ((who?.id ?? null) !== (slot?.who ?? null)) {
+          // someone moved in or away: start over
+          await this.refresh();
+          return;
+        }
+        if (!who || !slot || who.updatedAt === slot.updatedAt) continue;
+        const next = await this.load(side, who);
+        if (gen !== this.generation) return;
+        this.replace(side, next);
+      }
+      this.state = { ...this.state, ...n };
+    } catch {
+      /* offline: try again next time */
+    } finally {
+      this.polling = false;
+    }
+  }
+
+  /** What's shown next door (for tests). */
+  snapshot(side: Side): { who: string; updatedAt: number | null; objects: number } | null {
+    const s = this.slots.get(side);
+    return s ? { who: s.who, updatedAt: s.updatedAt, objects: s.placed } : null;
   }
 
   clear(): void {
     this.generation++;
+    window.clearTimeout(this.pollTimer);
     for (const side of [...this.slots.keys()]) this.drop(side);
     this.state = null;
     this.updateBounds();
@@ -118,18 +189,34 @@ export class NeighborView {
     for (const s of this.slots.values()) s.renderer.setChairView(on);
   }
 
-  private add(side: Side, delta: Float32Array, placed: PlacedObject[], name: string): void {
+  private add(side: Side, l: Loaded): void {
+    const { delta, name } = l;
     const renderer = new BeachRenderer(this.scene, this.grid, this.rest, this.swell, NeighborView.offsetFor(side));
     renderer.setChairView(this.chairView);
     const objects = new ObjectView(this.scene, renderer, NeighborView.offsetFor(side));
-    objects.setStatic(placed, (x, y) => this.heightAt(delta, x, y));
+    objects.setStatic(l.objects, (x, y) => this.heightAt(delta, x, y));
     const label = document.createElement('div');
     label.className = 'neighbor-tag';
     label.textContent = name;
     this.uiRoot.appendChild(label);
-    const slot: Slot = { side, renderer, delta, objects, label, name };
+    const slot: Slot = { side, renderer, delta, objects, label, name, who: l.who, updatedAt: l.updatedAt, placed: l.objects.length };
     this.slots.set(side, slot);
     this.paint(slot);
+  }
+
+  /** A new save from the same neighbor: repaint in place (no flicker). */
+  private replace(side: Side, l: Loaded): void {
+    const s = this.slots.get(side);
+    if (!s) return;
+    s.delta = l.delta;
+    s.updatedAt = l.updatedAt;
+    s.placed = l.objects.length;
+    s.objects.setStatic(l.objects, (x, y) => this.heightAt(l.delta, x, y));
+    if (l.name !== s.name) {
+      s.name = l.name;
+      s.label.textContent = l.name;
+    }
+    this.paint(s);
   }
 
   private drop(side: Side): void {

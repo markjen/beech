@@ -65,7 +65,6 @@ _(nothing right now)_
 - [ ] **API rate limiting**: a per-IP limit in the server, or Cloud Armor in
   front.
 - [ ] **Mutual neighbors**: requests and accepts on top of codes.
-- [ ] **Live neighbor sand**: poll for their latest save, or push changes.
 
 ## Ideas
 
@@ -81,6 +80,10 @@ _(nothing right now)_
   shower night.
 
 ## Done (recent)
+
+- [x] **Live neighbor sand** (2026-11-22): every 30 s the app checks
+  `/api/neighbors` for newer saves next door and repaints in place. Paused
+  in the background. Push (SSE) is possible later if 30 s feels slow.
 
 - [x] **Shells, sea glass and flags; the sea washes things in** (2026-11-22).
 

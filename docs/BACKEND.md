@@ -52,6 +52,11 @@ camera can pan over to them. A future step could make neighbors mutual
 (requests and accepts) or show live sand. The schema already has the
 `neighbor_id` index for "who has me next door".
 
+While neighbors are shown, the app polls `GET /api/neighbors` every 30 s.
+It fetches a neighbor's beach again only when their `updatedAt` changed, and
+repaints it in place. A change of who's next door triggers a full refresh.
+Polling stops while the app is in the background.
+
 ## Client
 
 - `src/net/account.ts`: the session (token in localStorage), API calls,
