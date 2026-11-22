@@ -1,0 +1,113 @@
+/// <reference lib="webworker" />
+import { SIM_HZ } from '../config';
+import { BeachSim } from './beachSim';
+import type { FromWorker, ToWorker } from './protocol';
+
+// The worker owns the simulation. It ticks at a fixed rate and ships packed
+// RGBA float frames (sand, water, wet, foam) back to the main thread, which
+// returns each buffer after uploading it so nothing is allocated per frame.
+
+declare const self: DedicatedWorkerGlobalScope;
+
+let sim: BeachSim | null = null;
+const pool: Float32Array[] = [];
+let paused = false;
+let lastTime = 0;
+let acc = 0;
+let statsEvery = 0;
+const DT = 1 / SIM_HZ;
+
+function post(msg: FromWorker, transfer: Transferable[] = []) {
+  self.postMessage(msg, transfer);
+}
+
+function loop() {
+  const now = performance.now();
+  if (!sim || paused) {
+    lastTime = now;
+    setTimeout(loop, 50);
+    return;
+  }
+  acc += Math.min(0.25, (now - lastTime) / 1000);
+  lastTime = now;
+  let ticked = false;
+  let tickMs = 0;
+  let n = 0;
+  while (acc >= DT && n < 3) {
+    const t0 = performance.now();
+    sim.step(DT);
+    tickMs = performance.now() - t0;
+    acc -= DT;
+    n++;
+    ticked = true;
+  }
+  if (n === 3) acc = 0; // fell behind: drop time rather than spiral
+  if (ticked) {
+    const buf = pool.pop();
+    if (buf) {
+      sim.pack(buf);
+      const withStats = ++statsEvery % 15 === 0;
+      post(
+        {
+          type: 'frame',
+          buf,
+          t: sim.time,
+          eta: sim.seaLevel(),
+          tide: sim.meanLevel(),
+          calmMix: sim.calmMix,
+          undoCount: sim.undo.undoCount,
+          redoCount: sim.undo.redoCount,
+          digIntensity: sim.digIntensity,
+          stats: withStats ? sim.stats() : undefined,
+          tickMs,
+        },
+        [buf.buffer],
+      );
+    }
+  }
+  const wait = Math.max(0, (DT - acc) * 1000 - 1);
+  setTimeout(loop, wait);
+}
+
+self.onmessage = (ev: MessageEvent<ToWorker>) => {
+  const m = ev.data;
+  switch (m.type) {
+    case 'init': {
+      sim = new BeachSim(m.grid, m.seed, m.flags);
+      pool.length = 0;
+      for (let i = 0; i < 3; i++) pool.push(new Float32Array(sim.n * 4));
+      const rest = sim.rest.slice();
+      post({ type: 'ready', grid: m.grid, rest, seed: m.seed }, [rest.buffer]);
+      lastTime = performance.now();
+      acc = DT; // produce a first frame right away
+      break;
+    }
+    case 'return':
+      if (sim && m.buf.length === sim.n * 4) pool.push(m.buf);
+      break;
+    case 'brush':
+      if (!sim) break;
+      if (m.phase === 'start') sim.beginStroke(m.x, m.y, m.r, m.mode);
+      else if (m.phase === 'move') sim.moveStroke(m.x, m.y, m.r);
+      else if (m.phase === 'end') sim.endStroke();
+      else sim.cancelStroke();
+      break;
+    case 'undo':
+      sim?.undoStroke();
+      break;
+    case 'redo':
+      sim?.redoStroke();
+      break;
+    case 'reset':
+      sim?.resetBeach();
+      break;
+    case 'flags':
+      if (sim) sim.flags = { ...sim.flags, ...m.flags };
+      break;
+    case 'pause':
+      paused = m.paused;
+      break;
+  }
+};
+
+loop();

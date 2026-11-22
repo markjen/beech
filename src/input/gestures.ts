@@ -1,0 +1,254 @@
+import type { CameraController } from './cameraController';
+
+export interface GestureHandlers {
+  /** finger/mouse went down on the sand (CSS px relative to canvas) */
+  digStart(sx: number, sy: number): void;
+  digMove(sx: number, sy: number): void;
+  digEnd(): void;
+  /** the dig turned out to be the start of a camera gesture: roll it back */
+  digCancel(): void;
+  /** mouse hovering (no button) – used for the brush ring on desktop */
+  hover(sx: number, sy: number): void;
+  hoverEnd(): void;
+  undo(): void;
+  redo(): void;
+  /** any user input at all (used to unlock audio, hide hints) */
+  interacted(): void;
+}
+
+type Mode = 'idle' | 'dig' | 'camera' | 'mousePan' | 'mouseRotate';
+
+/** If a second finger lands within this many ms of the first, the dig is undone. */
+const CANCEL_WINDOW_MS = 220;
+
+/**
+ * Maps pointer input to digging and camera moves.
+ *
+ *   touch: 1 finger = dig, 2 fingers = pan + pinch zoom + twist rotate
+ *   mouse: left = dig, middle / space+left = pan, right = rotate, wheel = zoom
+ *   keys:  WASD pan, Q/E rotate 45deg, +/- zoom, Ctrl/Cmd+Z undo, +Shift redo
+ */
+export class Gestures {
+  private mode: Mode = 'idle';
+  private pointers = new Map<number, { x: number; y: number }>();
+  private digPointer = -1;
+  private digStartAt = 0;
+  private two: { mx: number; my: number; dist: number; angle: number } | null = null;
+  private last = { x: 0, y: 0 };
+  private space = false;
+  enabled = true;
+
+  constructor(
+    private readonly canvas: HTMLCanvasElement,
+    private readonly cam: CameraController,
+    private readonly h: GestureHandlers,
+  ) {
+    canvas.addEventListener('pointerdown', this.onDown);
+    canvas.addEventListener('pointermove', this.onMove);
+    canvas.addEventListener('pointerup', this.onUp);
+    canvas.addEventListener('pointercancel', this.onUp);
+    canvas.addEventListener('pointerleave', this.onLeave);
+    canvas.addEventListener('wheel', this.onWheel, { passive: false });
+    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    // stop iOS Safari's own pinch/scroll gestures
+    for (const t of ['gesturestart', 'gesturechange', 'touchmove']) {
+      document.addEventListener(t, (e) => e.preventDefault(), { passive: false });
+    }
+    window.addEventListener('keydown', this.onKeyDown);
+    window.addEventListener('keyup', this.onKeyUp);
+    window.addEventListener('blur', () => {
+      this.cam.held.clear();
+      this.space = false;
+    });
+  }
+
+  get cameraActive(): boolean {
+    return this.mode === 'camera' || this.mode === 'mousePan';
+  }
+
+  private pos(e: PointerEvent | WheelEvent) {
+    const r = this.canvas.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  }
+
+  private onDown = (e: PointerEvent) => {
+    this.h.interacted();
+    if (!this.enabled) return;
+    e.preventDefault();
+    try {
+      this.canvas.setPointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+    const p = this.pos(e);
+    if (e.pointerType === 'mouse') {
+      if (this.mode !== 'idle') return;
+      this.last = p;
+      if (e.button === 0 && !this.space) {
+        this.mode = 'dig';
+        this.digPointer = e.pointerId;
+        this.h.digStart(p.x, p.y);
+      } else if (e.button === 1 || (e.button === 0 && this.space)) {
+        this.mode = 'mousePan';
+        this.cam.stopGlide();
+      } else if (e.button === 2) {
+        this.mode = 'mouseRotate';
+      }
+      return;
+    }
+
+    this.pointers.set(e.pointerId, p);
+    if (this.pointers.size === 1 && this.mode === 'idle') {
+      this.mode = 'dig';
+      this.digPointer = e.pointerId;
+      this.digStartAt = performance.now();
+      this.cam.stopGlide();
+      this.h.digStart(p.x, p.y);
+    } else if (this.pointers.size === 2) {
+      if (this.mode === 'dig') {
+        if (performance.now() - this.digStartAt < CANCEL_WINDOW_MS) this.h.digCancel();
+        else this.h.digEnd();
+      }
+      this.mode = 'camera';
+      this.digPointer = -1;
+      this.cam.stopGlide();
+      this.two = this.twoState();
+    }
+  };
+
+  private twoState() {
+    const [a, b] = [...this.pointers.values()];
+    return {
+      mx: (a.x + b.x) / 2,
+      my: (a.y + b.y) / 2,
+      dist: Math.max(1, Math.hypot(b.x - a.x, b.y - a.y)),
+      angle: Math.atan2(b.y - a.y, b.x - a.x),
+    };
+  }
+
+  private onMove = (e: PointerEvent) => {
+    const p = this.pos(e);
+    if (e.pointerType === 'mouse') {
+      switch (this.mode) {
+        case 'dig':
+          this.h.digMove(p.x, p.y);
+          break;
+        case 'mousePan':
+          this.cam.panScreen(this.last.x, this.last.y, p.x, p.y);
+          break;
+        case 'mouseRotate':
+          this.cam.rotate(-(p.x - this.last.x) * 0.008);
+          break;
+        default:
+          this.h.hover(p.x, p.y);
+      }
+      this.last = p;
+      return;
+    }
+    if (!this.pointers.has(e.pointerId)) return;
+    this.pointers.set(e.pointerId, p);
+    if (this.mode === 'dig' && e.pointerId === this.digPointer) {
+      this.h.digMove(p.x, p.y);
+    } else if (this.mode === 'camera' && this.pointers.size === 2 && this.two) {
+      const now = this.twoState();
+      this.cam.panScreen(this.two.mx, this.two.my, now.mx, now.my);
+      this.cam.zoomAt(this.two.dist / now.dist, now.mx, now.my);
+      let da = now.angle - this.two.angle;
+      if (da > Math.PI) da -= Math.PI * 2;
+      if (da < -Math.PI) da += Math.PI * 2;
+      this.cam.rotate(-da);
+      this.two = now;
+    }
+  };
+
+  private onUp = (e: PointerEvent) => {
+    if (e.pointerType === 'mouse') {
+      if (this.mode === 'dig') this.h.digEnd();
+      if (this.mode === 'mouseRotate') this.cam.snapRotation();
+      if (this.mode === 'mousePan') this.cam.releasePan();
+      this.mode = 'idle';
+      this.digPointer = -1;
+      return;
+    }
+    this.pointers.delete(e.pointerId);
+    if (this.mode === 'dig' && e.pointerId === this.digPointer) {
+      this.h.digEnd();
+      this.mode = 'idle';
+      this.digPointer = -1;
+    } else if (this.mode === 'camera') {
+      if (this.pointers.size === 1) {
+        // one finger left: keep blocking digs until everything lifts
+        this.cam.releasePan();
+        this.cam.snapRotation();
+        this.two = null;
+      }
+      if (this.pointers.size === 0) {
+        this.cam.releasePan();
+        this.cam.snapRotation();
+        this.mode = 'idle';
+        this.two = null;
+      }
+    }
+  };
+
+  private onLeave = (e: PointerEvent) => {
+    if (e.pointerType === 'mouse' && this.mode === 'idle') this.h.hoverEnd();
+  };
+
+  private onWheel = (e: WheelEvent) => {
+    e.preventDefault();
+    this.h.interacted();
+    const p = this.pos(e);
+    const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+    if (e.ctrlKey) {
+      // trackpad pinch arrives as ctrl+wheel
+      this.cam.zoomAt(Math.exp(dy * 0.01), p.x, p.y);
+    } else {
+      this.cam.zoomAt(Math.exp(dy * 0.0015), p.x, p.y);
+    }
+  };
+
+  private onKeyDown = (e: KeyboardEvent) => {
+    if (e.target instanceof HTMLInputElement) return;
+    this.h.interacted();
+    const k = e.key.toLowerCase();
+    if ((e.ctrlKey || e.metaKey) && k === 'z') {
+      e.preventDefault();
+      if (e.shiftKey) this.h.redo();
+      else this.h.undo();
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && k === 'y') {
+      e.preventDefault();
+      this.h.redo();
+      return;
+    }
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (k === ' ') {
+      this.space = true;
+      e.preventDefault();
+    } else if (k === 'q') this.cam.snapRotation(-1);
+    else if (k === 'e') this.cam.snapRotation(1);
+    else if (['w', 'a', 's', 'd'].includes(k)) this.cam.held.add(k);
+    else if (k === '+' || k === '=') this.cam.held.add('+');
+    else if (k === '-' || k === '_') this.cam.held.add('-');
+    else if (k === 'arrowup') this.cam.held.add('w');
+    else if (k === 'arrowdown') this.cam.held.add('s');
+    else if (k === 'arrowleft') this.cam.held.add('a');
+    else if (k === 'arrowright') this.cam.held.add('d');
+  };
+
+  private onKeyUp = (e: KeyboardEvent) => {
+    const k = e.key.toLowerCase();
+    if (k === ' ') this.space = false;
+    const map: Record<string, string> = {
+      '=': '+',
+      _: '-',
+      arrowup: 'w',
+      arrowdown: 's',
+      arrowleft: 'a',
+      arrowright: 'd',
+    };
+    this.cam.held.delete(map[k] ?? k);
+  };
+}
