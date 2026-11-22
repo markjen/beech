@@ -27,6 +27,12 @@ Read these first:
 - After web changes that should ship in the apps, run `npx cap sync`. Don't
   hand-edit `android/app/src/main/assets/public` or `ios/App/App/public`; they
   are generated and git-ignored.
+- Two builds: the sandbox (default `npm run build`, used by GitHub Pages; no
+  accounts) and production (`VITE_ACCOUNTS=1 …`, served by the Worker in
+  `server/`). Keep anything that needs the network behind `ACCOUNTS_ENABLED`.
+- Server changes: `cd server && npm run typecheck && npm test`, and run the
+  API end-to-end against `npm run dev` (see docs/BACKEND.md). Never enable
+  `DEV_AUTH` outside local development.
 - Android builds here need an SDK: install the command-line tools to a scratch
   dir, set `ANDROID_HOME`, then `cd android && ./gradlew assembleDebug`. iOS
   builds need macOS; rely on the `mobile.yml` CI job.

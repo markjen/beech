@@ -1,0 +1,4 @@
+# Copy to .dev.vars for `npm run dev` (wrangler reads it automatically).
+DEV_AUTH=1
+ALLOWED_ORIGINS=http://localhost:5173,capacitor://localhost,https://localhost
+GOOGLE_CLIENT_IDS=

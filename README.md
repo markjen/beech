@@ -9,7 +9,8 @@ flat-shaded diorama style.
 - **Design plan:** [PLAN.md](PLAN.md)
 - **How the code fits together:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - **Milestone status and decisions:** [docs/STATUS.md](docs/STATUS.md)
-- **Web deploy:** [docs/DEPLOY.md](docs/DEPLOY.md)
+- **Web deploy:** [docs/DEPLOY.md](docs/DEPLOY.md). Sandbox at https://markjen.com/beech/ (GitHub Pages)
+- **Accounts, saved beaches and production hosting:** [docs/BACKEND.md](docs/BACKEND.md)
 - **App Store / Google Play:** [docs/MOBILE.md](docs/MOBILE.md)
 - **Working on this repo as an agent:** [CLAUDE.md](CLAUDE.md)
 
@@ -57,7 +58,9 @@ https://doi.org/10.1594/PANGAEA.951610, CC-BY 4.0.
 | `npm run dev` | Vite dev server with hot reload |
 | `npm run build` | Typecheck and build to `dist/` |
 | `npm run preview` | Serve the built `dist/` on :4173 |
-| `npm test` | Vitest unit tests (simulation, brush math) |
+| `npm test` | Vitest unit tests (simulation, brush math, tides, sun and moon, sand codec) |
+| `npm run server:dev` | Build with accounts + dev sign-in and run the API Worker locally on :8787 |
+| `npm run e2e:accounts` | Browser test of sign-in → dig → save → reload → restored → delete |
 | `npm run smoke` | Headless browser smoke test of the built app, including offline start (needs Playwright + Chromium) |
 | `npm run icons` | Regenerate PWA icons and native icon/splash sources from code |
 | `npm run cap:android` / `npm run cap:ios` | Build, sync and open the native project |

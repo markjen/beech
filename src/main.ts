@@ -22,6 +22,9 @@ import type { FrameInfo, FromWorker, ToWorker } from './sim/protocol';
 import { makeSwell } from './sim/waves';
 import { Hud } from './ui/hud';
 import { SettingsSheet, StartScreen, showHint } from './ui/overlays';
+import { ACCOUNTS_ENABLED, Account } from './net/account';
+import { BeachSync } from './net/beachSync';
+import { AccountPanel } from './ui/accountPanel';
 import { loadSettings, saveSettings, type Settings } from './ui/settingsStore';
 
 const params = new URLSearchParams(location.search);
@@ -137,8 +140,22 @@ async function boot() {
   let frames = 0;
   let swashRate = 0;
 
+  const sandWaiters = new Map<number, (d: Float32Array) => void>();
+  let sandReq = 0;
+  const getSand = () =>
+    new Promise<Float32Array>((resolve) => {
+      const id = ++sandReq;
+      sandWaiters.set(id, resolve);
+      send({ type: 'getSand', id });
+    });
+
   worker.onmessage = (ev: MessageEvent<FromWorker>) => {
     const m = ev.data;
+    if (m.type === 'sand') {
+      sandWaiters.get(m.id)?.(m.delta);
+      sandWaiters.delete(m.id);
+      return;
+    }
     if (m.type !== 'frame') return;
     renderer.uploadFrame(m.buf);
     picker.updateFromFrame(m.buf);
@@ -176,12 +193,17 @@ async function boot() {
     strokeOpen = true;
   };
 
+  // set up below once the account layer exists (sandbox builds never save)
+  let markDirty: (delayMs?: number) => void = () => {};
+
   const undo = () => {
+    markDirty();
     send({ type: 'undo' });
     audio.whoosh(true);
     haptics.impact('medium');
   };
   const redo = () => {
+    markDirty();
     send({ type: 'redo' });
     audio.whoosh(false);
     haptics.impact('medium');
@@ -228,6 +250,7 @@ async function boot() {
   };
 
   const setBeach = (b: Beach) => {
+    if (b.id !== beach.id) markDirty(1500);
     beach = b;
     live.setBeach(b);
     liveState = live.compute(clockNow());
@@ -261,6 +284,7 @@ async function boot() {
       if (key === 'haptics') haptics.enabled = s.haptics;
     },
     smooth: () => {
+      markDirty(1500);
       send({ type: 'reset' });
       audio.whoosh(false);
     },
@@ -329,7 +353,10 @@ async function boot() {
       if (digging) strokeTo(sx, sy);
     },
     digEnd: () => {
-      if (strokeOpen) send({ type: 'brush', phase: 'end' });
+      if (strokeOpen) {
+        send({ type: 'brush', phase: 'end' });
+        markDirty();
+      }
       digging = false;
       strokeOpen = false;
     },
@@ -492,7 +519,30 @@ async function boot() {
   };
   window.addEventListener('resize', onResize);
   window.visualViewport?.addEventListener('resize', onResize);
+  // ---------------------------------------------------------------- accounts
+  let account: Account | null = null;
+  let sync: BeachSync | null = null;
+  if (ACCOUNTS_ENABLED) {
+    account = new Account();
+    sync = new BeachSync(account, {
+      getSand,
+      setSand: (delta) => send({ type: 'setSand', delta }, [delta.buffer]),
+      grid: { nx: grid.nx, ny: grid.ny },
+      location: () => beach.id,
+      setLocation: (id) => {
+        const b = beachById(id);
+        if (b && b.id !== beach.id) setBeach(b);
+      },
+    });
+    const s = sync;
+    markDirty = (delayMs?: number) => s.markDirty(delayMs);
+    const bring = () => s.restoreOrCreate().catch(() => {});
+    new AccountPanel(sheet.accountSlot, account, s, () => void bring());
+    void account.restore().then((u) => u && bring());
+  }
+
   document.addEventListener('visibilitychange', () => {
+    if (document.hidden) void sync?.flush(true);
     send({ type: 'pause', paused: document.hidden });
     audio.suspend(document.hidden);
   });
@@ -516,6 +566,8 @@ async function boot() {
     pickTool,
     shells,
     beach: () => beach,
+    account: () => account,
+    sync: () => sync,
     live: () => ({ ...liveState, palette: undefined }),
     setBeach: (id: string) => {
       const b = beachById(id);

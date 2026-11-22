@@ -84,6 +84,15 @@ self.onmessage = (ev: MessageEvent<ToWorker>) => {
       acc = DT; // produce a first frame right away
       break;
     }
+    case 'getSand':
+      if (sim) {
+        const delta = sim.sandDelta();
+        post({ type: 'sand', id: m.id, delta }, [delta.buffer]);
+      }
+      break;
+    case 'setSand':
+      if (sim && m.delta.length === sim.n) sim.loadDelta(m.delta);
+      break;
     case 'sea':
       sim?.setSea(m.tide, m.waves);
       break;

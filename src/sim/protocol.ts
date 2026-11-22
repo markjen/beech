@@ -17,6 +17,10 @@ export type ToWorker =
   | { type: 'tune'; section: TunableSection; key: string; value: number }
   | { type: 'return'; buf: Float32Array }
   | { type: 'bench' }
+  /** ask for the player's sand (minus the rest beach) for saving */
+  | { type: 'getSand'; id: number }
+  /** replace the sand with a saved beach (same grid size) */
+  | { type: 'setSand'; delta: Float32Array }
   /** real-world sea state: diorama tide level (m) and swell multiplier */
   | { type: 'sea'; tide: number; waves: number };
 
@@ -41,4 +45,5 @@ export interface FrameInfo {
 export type FromWorker =
   | { type: 'ready'; grid: GridSpec; rest: Float32Array; seed: number }
   | { type: 'bench'; msPerTickLow: number }
+  | { type: 'sand'; id: number; delta: Float32Array }
   | ({ type: 'frame'; buf: Float32Array } & FrameInfo);

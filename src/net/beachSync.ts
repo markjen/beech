@@ -1,0 +1,93 @@
+import { decodeSand, encodeSand, resampleField } from '../sim/sandCodec';
+import type { Account } from './account';
+
+export type SyncState = 'idle' | 'saving' | 'saved' | 'offline';
+
+export interface SyncHost {
+  /** current sand minus the rest beach, at the live grid size */
+  getSand(): Promise<Float32Array>;
+  setSand(delta: Float32Array): void;
+  grid: { nx: number; ny: number };
+  location(): string;
+  setLocation(id: string): void;
+}
+
+/**
+ * Keeps the signed-in person's beach saved: after strokes (debounced), every
+ * so often while things change, and when the app goes to the background.
+ * Last write wins: one beach per person.
+ */
+export class BeachSync {
+  state: SyncState = 'idle';
+  savedAt = 0;
+  private dirty = false;
+  private timer = 0;
+  private busy = false;
+  private listeners: ((s: SyncState) => void)[] = [];
+
+  constructor(
+    private readonly account: Account,
+    private readonly host: SyncHost,
+  ) {
+    // waves keep reshaping the sand, so save now and then while signed in
+    window.setInterval(() => {
+      if (this.account.user && this.dirty) void this.flush();
+    }, 90000);
+  }
+
+  onState(fn: (s: SyncState) => void): void {
+    this.listeners.push(fn);
+  }
+
+  private set(s: SyncState): void {
+    this.state = s;
+    for (const fn of this.listeners) fn(s);
+  }
+
+  /** Something changed; save a few seconds after the player pauses. */
+  markDirty(delayMs = 6000): void {
+    if (!this.account.user) return;
+    this.dirty = true;
+    window.clearTimeout(this.timer);
+    this.timer = window.setTimeout(() => void this.flush(), delayMs);
+  }
+
+  async flush(keepalive = false): Promise<void> {
+    if (!this.account.user || this.busy) return;
+    this.busy = true;
+    window.clearTimeout(this.timer);
+    this.set('saving');
+    try {
+      const delta = await this.host.getSand();
+      const bytes = await encodeSand(delta, this.host.grid.nx, this.host.grid.ny);
+      this.savedAt = await this.account.saveBeach(bytes, this.host.location(), this.host.grid.nx, this.host.grid.ny, keepalive);
+      this.dirty = false;
+      this.set('saved');
+    } catch {
+      this.set('offline');
+      // try again later
+      this.timer = window.setTimeout(() => void this.flush(), 30000);
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  /**
+   * After signing in: bring back the saved beach, or (first time) save the
+   * beach the player is on now.
+   */
+  async restoreOrCreate(): Promise<'restored' | 'created'> {
+    const saved = await this.account.loadBeach();
+    if (!saved) {
+      await this.flush();
+      return 'created';
+    }
+    const { nx, ny, delta } = await decodeSand(saved.bytes);
+    if (saved.location) this.host.setLocation(saved.location);
+    this.host.setSand(resampleField(delta, nx, ny, this.host.grid.nx, this.host.grid.ny));
+    this.savedAt = saved.updatedAt;
+    this.dirty = false;
+    this.set('saved');
+    return 'restored';
+  }
+}

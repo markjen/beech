@@ -118,6 +118,28 @@
 - Tulum was dropped: its nearest coastal gauge is 94 km away, and its main
   tide constant (7 mm) is implausible.
 
+## Accounts and saved beaches (in progress)
+
+Built and tested locally; production hosting waits on the owner's Cloudflare and Google Cloud setup (docs/BACKEND.md).
+
+- `server/`: a Cloudflare Worker with D1. It serves the web app and `/api`
+  for Google and Apple ID-token sign-in, sessions, save/load beach, and
+  delete account. Unit tests cover token verification. The API end-to-end
+  test runs against `wrangler dev` in CI.
+- The client is gated by `VITE_ACCOUNTS`, so the GitHub Pages sandbox build
+  has no sign-in. It includes the account panel, beach sync, and the compact
+  sand codec (`src/sim/sandCodec.ts`, with resampling between quality tiers).
+- The browser end-to-end test (`npm run e2e:accounts`) covers dev sign-in,
+  dig, save, reload with the beach restored at the same real beach, then
+  deleting the account.
+- Not done: native sign-in in the Capacitor apps (Google blocks WebView
+  OAuth). Sign in with Apple on iOS is required by App Store rules once
+  Google sign-in ships there. See BACKEND.md, "Phone apps".
+- GitHub Pages: the `github-pages` environment only accepts the repo's
+  default branch (`ccr-85f84f81-0scrin` today), so Pages deploys run from
+  there. Switch the default branch to `main` (Settings → General) and allow
+  `main` under Settings → Environments → github-pages.
+
 ## Ideas beyond the plan (not started)
 
 - Tide-pool life (tiny crabs that scurry from the finger), footprints.
@@ -133,21 +155,16 @@
 - **Android:** a debug APK, an unsigned release AAB, and a release AAB signed
   from the `BEECH_KEYSTORE_*` env vars (tested with a throwaway key) all built
   locally. CI builds the debug APK and the release AAB too.
-- **GitHub Pages:** the deploy workflow runs on `main` and on the dev branch,
-  but it fails at `configure-pages` ("Create Pages site failed: Resource not
-  accessible by integration"). The workflow token isn't allowed to switch
-  Pages on. A repo admin must set **Settings → Pages → Source: GitHub
-  Actions** once and then re-run "Deploy web build to GitHub Pages".
-  If the `github-pages` environment only allows `main`, either merge first or
-  add the dev branch under Settings → Environments → github-pages.
+- **GitHub Pages:** live (the sandbox build). markjen.github.io/beech
+  redirects to markjen.com/beech/, the owner's custom domain. Deploys run
+  from the default branch (see "Accounts" above).
 - **Web preview meanwhile:** the built game is published as a private
   claude.ai artifact (Beech Seaside Toy), made with
   `node scripts/artifact-page.mjs` after `npm run build`.
 
 ## Next steps owned by the repo owner (deferred by choice, 2026-11-22)
 
-- **GitHub Pages:** skipped for now. The private claude.ai artifact is the
-  web build. To go live: enable Pages (see above) and re-run the deploy.
+- **GitHub Pages:** enabled by the owner. The sandbox is live.
 - **Store submission:** later. The owner will create the Apple Developer and
   Google Play accounts, pick the final app ID, and add the secrets listed in
   docs/MOBILE.md. Then run "Release to stores". Agents shouldn't attempt

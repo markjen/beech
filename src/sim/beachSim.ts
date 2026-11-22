@@ -826,6 +826,28 @@ export class BeachSim {
     if (e) this.undo.push(e);
   }
 
+  // ---------------------------------------------------------------- save / load
+
+  /** The player's changes: sand minus the untouched beach. */
+  sandDelta(): Float32Array {
+    const out = new Float32Array(this.n);
+    for (let k = 0; k < this.n; k++) out[k] = this.sand[k] - this.rest[k];
+    return out;
+  }
+
+  /** Restore a saved beach (same grid size). Clears undo history. */
+  loadDelta(delta: Float32Array): void {
+    if (delta.length !== this.n) throw new Error('grid size mismatch');
+    if (this.stroke) this.cancelStroke();
+    for (let k = 0; k < this.n; k++) {
+      const v = this.rest[k] + delta[k];
+      this.sand[k] = v < this.bottom[k] ? this.bottom[k] : v;
+    }
+    this.sediment.fill(0);
+    this.undo.clear();
+    this.easing = [];
+  }
+
   // ---------------------------------------------------------------- output
 
   /** Pack sand/water/wet/foam into an RGBA float buffer (for one texture upload). */

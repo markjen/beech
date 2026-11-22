@@ -103,6 +103,7 @@ export class SettingsSheet {
       <div class="sheet-scrim"></div>
       <div class="sheet" role="dialog" aria-label="Settings">
         <div class="sheet-grip"></div>
+        <div class="account-slot"></div>
         <div class="row col"><span>beach</span><div class="chips" data-key="beach">${beaches
           .map((b) => `<button type="button" data-v="${b.id}" title="${b.place}">${b.name}</button>`)
           .join('')}<button type="button" class="near" data-act="near">near me</button></div></div>
@@ -186,6 +187,11 @@ export class SettingsSheet {
   setSettings(s: Settings): void {
     this.settings = s;
     this.sync();
+  }
+
+  /** Where the account panel renders (empty in the sandbox build). */
+  get accountSlot(): HTMLDivElement {
+    return this.el.querySelector<HTMLDivElement>('.account-slot')!;
   }
 
   toggleOpen(): void {
