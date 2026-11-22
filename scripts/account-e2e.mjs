@@ -56,6 +56,7 @@ check(true, 'first save created the beach on the server');
 await page.evaluate(() => window.__beech.sheet.hide());
 
 // pick a beach and dig
+await page.click('button[data-tool="dig"]');
 await page.evaluate(() => window.__beech.setBeach('piha'));
 await page.mouse.move(300, 560);
 await page.mouse.down();

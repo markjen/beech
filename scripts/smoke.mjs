@@ -66,6 +66,23 @@ try {
     });
   const settle = () => page.waitForTimeout(700);
 
+  // the look tool is the default: a drag moves the view and leaves the sand alone
+  {
+    const d0 = await diff();
+    const t0 = await page.evaluate(() => window.__beech.cam.camera.target.x);
+    await page.mouse.move(400, 450);
+    await page.mouse.down();
+    for (let i = 0; i < 10; i++) await page.mouse.move(400 + i * 15, 450);
+    await page.mouse.up();
+    await settle();
+    const d1 = await diff();
+    const t1 = await page.evaluate(() => window.__beech.cam.camera.target.x);
+    if (Math.abs(d1 - d0) > 0.05 || Math.abs(t1 - t0) < 0.3) fail(`look tool: sand Δ ${(d1 - d0).toFixed(3)}, view moved ${(t1 - t0).toFixed(2)}`);
+    else console.log(`look tool ok (view moved ${(t1 - t0).toFixed(2)} m, sand untouched)`);
+    await page.evaluate(() => { const c = window.__beech.cam; c.camera.target.x = 0; c.stopGlide(); });
+    await page.click('button[data-tool="dig"]');
+  }
+
   // touch: one finger down, a second finger 60 ms later -> the dig is cancelled
   const beforeTouch = await diff();
   const strokesBefore = await page.evaluate(() => window.__beech.info().undoCount);
@@ -145,7 +162,7 @@ try {
       return d;
     });
   const r0 = await raised();
-  await page.keyboard.press('2');
+  await page.keyboard.press('3');
   const hitOk = await page.evaluate(() => {
     const b = window.__beech;
     return !!b.picker.pick(b.cam.ray(330, 470));
@@ -155,7 +172,7 @@ try {
   await page.mouse.down();
   await page.waitForTimeout(900);
   await page.mouse.up();
-  await page.keyboard.press('1');
+  await page.keyboard.press('2');
   await settle();
   const r1 = await raised();
   if (!(r1 > r0 + 0.3)) fail(`build tool did not raise sand (${r0.toFixed(2)} -> ${r1.toFixed(2)})`);

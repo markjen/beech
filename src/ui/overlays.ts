@@ -47,8 +47,8 @@ export function showHint(parent: HTMLElement, isTouch: boolean): () => void {
   const el = document.createElement('div');
   el.className = 'hint';
   el.innerHTML = isTouch
-    ? 'one finger draws in the sand · hold to dig deeper<br>two fingers move, pinch and turn the view'
-    : 'drag to draw in the sand · hold to dig deeper<br>right-drag turns · wheel zooms · middle-drag or WASD moves';
+    ? 'drag to look around · two fingers pinch, turn and tilt<br>pick the shovel to dig in the sand'
+    : 'drag to look around · wheel zooms · right-drag turns and tilts<br>pick the shovel to dig in the sand';
   parent.appendChild(el);
   requestAnimationFrame(() => el.classList.add('show'));
   let hidden = false;

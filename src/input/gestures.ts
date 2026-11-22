@@ -20,7 +20,7 @@ export interface GestureHandlers {
   interacted(): void;
 }
 
-type Mode = 'idle' | 'dig' | 'camera' | 'mousePan' | 'mouseRotate';
+type Mode = 'idle' | 'dig' | 'camera' | 'mousePan' | 'mouseRotate' | 'onePan';
 
 export interface TwoFingers {
   mx: number;
@@ -70,6 +70,8 @@ export class Gestures {
   private last = { x: 0, y: 0 };
   private space = false;
   enabled = true;
+  /** the look tool: one finger / left button moves the view instead of digging */
+  lookOnly = false;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -96,7 +98,7 @@ export class Gestures {
   }
 
   get cameraActive(): boolean {
-    return this.mode === 'camera' || this.mode === 'mousePan';
+    return this.mode === 'camera' || this.mode === 'mousePan' || this.mode === 'onePan';
   }
 
   private pos(e: PointerEvent | WheelEvent) {
@@ -117,7 +119,10 @@ export class Gestures {
     if (e.pointerType === 'mouse') {
       if (this.mode !== 'idle') return;
       this.last = p;
-      if (e.button === 0 && !this.space) {
+      if (e.button === 0 && this.lookOnly) {
+        this.mode = 'mousePan';
+        this.cam.stopGlide();
+      } else if (e.button === 0 && !this.space) {
         this.mode = 'dig';
         this.digPointer = e.pointerId;
         this.h.digStart(p.x, p.y);
@@ -131,13 +136,18 @@ export class Gestures {
     }
 
     this.pointers.set(e.pointerId, p);
-    if (this.pointers.size === 1 && this.mode === 'idle') {
+    if (this.pointers.size === 1 && this.mode === 'idle' && this.lookOnly) {
+      this.mode = 'onePan';
+      this.last = p;
+      this.cam.stopGlide();
+    } else if (this.pointers.size === 1 && this.mode === 'idle') {
       this.mode = 'dig';
       this.digPointer = e.pointerId;
       this.digStartAt = performance.now();
       this.cam.stopGlide();
       this.h.digStart(p.x, p.y);
     } else if (this.pointers.size === 2) {
+      if (this.mode === 'onePan') this.cam.releasePan();
       if (this.mode === 'dig') {
         if (performance.now() - this.digStartAt < CANCEL_WINDOW_MS) this.h.digCancel();
         else this.h.digEnd();
@@ -186,6 +196,9 @@ export class Gestures {
     this.pointers.set(e.pointerId, p);
     if (this.mode === 'dig' && e.pointerId === this.digPointer) {
       this.h.digMove(p.x, p.y);
+    } else if (this.mode === 'onePan') {
+      this.cam.panScreen(this.last.x, this.last.y, p.x, p.y);
+      this.last = p;
     } else if (this.mode === 'camera' && this.pointers.size === 2 && this.two) {
       const now = this.twoState();
       if (!this.twoKind && this.twoStart) {
@@ -218,7 +231,10 @@ export class Gestures {
       return;
     }
     this.pointers.delete(e.pointerId);
-    if (this.mode === 'dig' && e.pointerId === this.digPointer) {
+    if (this.mode === 'onePan') {
+      this.cam.releasePan();
+      if (this.pointers.size === 0) this.mode = 'idle';
+    } else if (this.mode === 'dig' && e.pointerId === this.digPointer) {
       this.h.digEnd();
       this.mode = 'idle';
       this.digPointer = -1;
@@ -274,7 +290,7 @@ export class Gestures {
     if (k === ' ') {
       this.space = true;
       e.preventDefault();
-    } else if (k === '1' || k === '2' || k === '3') this.h.tool?.(Number(k) - 1);
+    } else if (k >= '1' && k <= '4' && k.length === 1) this.h.tool?.(Number(k) - 1);
     else if (k === 'v') this.h.view?.();
     else if (k === 'r' || k === 'f') this.cam.held.add(k);
     else if ((k === 'q' || k === 'e') && this.cam.mode === 'chair') this.cam.held.add(k); // walk along the beach

@@ -341,25 +341,31 @@ async function boot() {
     }
   };
   updatePlace(true);
-  const TOOLS: { id: BrushMode; icon: 'dig' | 'build' | 'smooth'; label: string }[] = [
+  // the look tool (the default) only moves the view: pan, zoom, tilt, turn
+  const TOOLS: { id: BrushMode | 'look'; icon: 'hand' | 'dig' | 'build' | 'smooth'; label: string }[] = [
+    { id: 'look', icon: 'hand', label: 'Look around' },
     { id: 'dig', icon: 'dig', label: 'Dig' },
     { id: 'pile', icon: 'build', label: 'Build up sand' },
     { id: 'smooth', icon: 'smooth', label: 'Smooth' },
   ];
+  let tool = 'look';
   const pickTool = (id: string) => {
-    brushMode = id as BrushMode;
+    tool = id;
+    if (id !== 'look') brushMode = id as BrushMode;
+    gestures.lookOnly = id === 'look';
     placing = null;
     inventory.deselect();
     placeBar.show(null, DEFAULT_SIZE);
     hud.setTool(id);
     haptics.impact('light');
   };
-  hud.setTools(TOOLS, brushMode, pickTool);
+  hud.setTools(TOOLS, tool, pickTool);
 
   // the bag: rocks and driftwood (free, unlimited) for now
   const inventory = new InventoryTray((n, l, c) => hud.button(n, l, c), hud.root, ITEMS, (item) => {
     placing = item;
-    hud.setTool(item ? 'place' : brushMode);
+    gestures.lookOnly = !item && tool === 'look';
+    hud.setTool(item ? 'place' : tool);
     placeBar.show(item, DEFAULT_SIZE);
     haptics.impact('light');
   });
@@ -371,9 +377,11 @@ async function boot() {
       settings = { ...settings, itemSizes: { ...settings.itemSizes, [id]: v } };
       saveSettings(settings);
     },
-    () => pickTool(brushMode),
+    () => pickTool(tool),
   );
   hud.toolGroup.prepend(inventory.button);
+  // the look tool sits at the very top, above the bag
+  hud.toolGroup.prepend(hud.toolGroup.querySelector('button[data-tool="look"]')!);
 
   /** Tap with an item in hand: pick up what's there, or set the item down. */
   const putDown = (sx: number, sy: number) => {
@@ -521,6 +529,7 @@ async function boot() {
       if (!start?.visible) audio.start();
     },
   });
+  gestures.lookOnly = true;
 
   /** Brush ring: under the finger while digging, under the mouse on hover, centre after a zoom. */
   const updateRing = (dt: number, palette: Palette) => {

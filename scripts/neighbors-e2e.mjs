@@ -34,6 +34,7 @@ await page.waitForTimeout(600);
 const anaName = `ana${Date.now() % 100000}`;
 await page.evaluate((n) => window.__beech.account().signInDev(n), anaName);
 await page.waitForFunction(() => window.__beech.sync().state === 'saved', null, { timeout: 15000 });
+await page.click('button[data-tool="dig"]');
 await page.mouse.move(260, 560);
 await page.mouse.down();
 for (let i = 0; i < 40; i++) {
