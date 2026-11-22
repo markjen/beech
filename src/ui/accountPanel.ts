@@ -172,22 +172,57 @@ export class AccountPanel {
     wrap.appendChild(share);
     const help = document.createElement('div');
     help.className = 'status';
-    help.textContent = 'share your code so friends can put your beach next to theirs';
+    help.textContent = 'neighbors are mutual: share your code, ask for a side, and they accept';
     wrap.appendChild(help);
+
+    // people asking to move in next to you
+    for (const r of n.requests) {
+      const row = document.createElement('div');
+      row.className = 'slot request';
+      const label = document.createElement('span');
+      label.className = 'fav-name';
+      const place = r.location ? beachById(r.location) : undefined;
+      label.textContent = `${r.name || 'someone'}${place ? ` · ${place.name}` : ''} wants to be on your ${r.side}`;
+      const yes = document.createElement('button');
+      yes.type = 'button';
+      yes.className = 'action';
+      yes.dataset.act = `accept-${r.code}`;
+      yes.textContent = 'accept';
+      const taken = !!n[r.side];
+      yes.disabled = taken;
+      if (taken) yes.title = `Move your ${r.side} neighbor away first`;
+      yes.addEventListener('click', () => void this.guard(async () => {
+        await nv.api.accept(r.code);
+        await nv.refresh();
+      }));
+      const no = document.createElement('button');
+      no.type = 'button';
+      no.className = 'action';
+      no.dataset.act = `decline-${r.code}`;
+      no.textContent = 'no thanks';
+      no.addEventListener('click', () => void this.guard(async () => {
+        await nv.api.decline(r.code);
+        await nv.refresh();
+      }));
+      row.append(label, yes, no);
+      wrap.appendChild(row);
+    }
 
     for (const side of ['left', 'right'] as Side[]) {
       const row = document.createElement('div');
       row.className = 'slot';
       row.innerHTML = `<span>${side}</span>`;
       const who = n[side];
-      if (who) {
+      const asked = n.asked[side];
+      if (who || asked) {
         const label = document.createElement('span');
-        label.textContent = who.name || 'a neighbor';
+        label.className = 'fav-name';
+        label.textContent = who ? who.name || 'a neighbor' : `waiting for ${asked!.name || 'them'}…`;
         const remove = document.createElement('button');
         remove.type = 'button';
         remove.className = 'action';
         remove.dataset.act = `remove-${side}`;
-        remove.textContent = 'move away';
+        remove.textContent = who ? 'move away' : 'take back';
         remove.addEventListener('click', () => void this.guard(async () => {
           await nv.api.remove(side);
           await nv.refresh();
@@ -204,7 +239,7 @@ export class AccountPanel {
         add.type = 'button';
         add.className = 'action';
         add.dataset.act = `add-${side}`;
-        add.textContent = 'move in';
+        add.textContent = 'ask';
         const go = () => void this.guard(async () => {
           await nv.api.set(side, input.value);
           await nv.refresh();
@@ -214,12 +249,6 @@ export class AccountPanel {
         row.append(input, add);
       }
       wrap.appendChild(row);
-    }
-    if (n.pickedBy > 0) {
-      const p = document.createElement('div');
-      p.className = 'status';
-      p.textContent = n.pickedBy === 1 ? '1 beach has you next door' : `${n.pickedBy} beaches have you next door`;
-      wrap.appendChild(p);
     }
     return wrap;
   }

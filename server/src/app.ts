@@ -9,9 +9,12 @@
 //   PUT    /api/beach            sand bytes, X-Beach-Location/Nx/Ny -> { version, updatedAt }
 //   DELETE /api/account                                    -> 204 (user, sessions, beach, neighbor links)
 //
-//   GET    /api/neighbors                                  -> { code, left, right, pickedBy }
-//   PUT    /api/neighbors/:side  { code }                  -> { neighbor }      side = left | right
-//   DELETE /api/neighbors/:side                            -> 204
+//   GET    /api/neighbors                                  -> { code, left, right, asked, requests }
+//   PUT    /api/neighbors/:side  { code }                  -> { status: asked | linked, neighbor }
+//   POST   /api/neighbors/requests/:code/accept            -> { side, neighbor }
+//   DELETE /api/neighbors/requests/:code                   -> 204 (decline)
+//   DELETE /api/neighbors/:side                            -> 204 (move away / take back the request)
+//   GET    /api/shore?code=&depth=, /api/shore/more?from=&dir=&count=   the global beachfront
 //   GET    /api/neighbors/:side/beach                      -> that neighbor's sand bytes | 404
 //   POST   /api/neighbors/code                             -> { code } (new code; old one stops working)
 //
@@ -241,86 +244,166 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   });
 
   // ---------------------------------------------------------------- neighbors
+  // Mutual: you ask someone to be on your left (or right); when they accept,
+  // you're on their right (or left). One person per side, both ways.
   const parseSide = (c: Context<Env>): Side => {
     const s = c.req.param('side') as Side;
     if (!SIDES.includes(s)) fail(400, 'side must be left or right');
     return s;
   };
+  const opposite = (s: Side): Side => (s === 'left' ? 'right' : 'left');
 
-  interface NeighborRow {
-    side: Side;
+  interface NodeRow {
     id: string;
     name: string;
+    code: string;
+    created_at: string;
     location: string | null;
     updated_at: string | null;
   }
-  const neighborJson = (r: NeighborRow) => ({
-    id: r.id,
+  const NODE = `u.id, u.name, u.neighbor_code AS code, u.created_at, b.location, b.updated_at`;
+  const beachJson = (r: NodeRow) => ({
+    code: r.code,
     name: r.name,
     location: r.location,
     updatedAt: r.updated_at === null ? null : Number(r.updated_at),
   });
+  const nodeById = async (id: string): Promise<NodeRow | null> =>
+    (await db.query<NodeRow>(`SELECT ${NODE} FROM users u LEFT JOIN beaches b ON b.user_id = u.id WHERE u.id = $1`, [id]))[0] ?? null;
+  const nodeByCode = async (raw: string): Promise<NodeRow | null> => {
+    const code = normalizeCode(raw ?? '');
+    if (code.length !== 6) return null;
+    return (await db.query<NodeRow>(`SELECT ${NODE} FROM users u LEFT JOIN beaches b ON b.user_id = u.id WHERE u.neighbor_code = $1`, [code]))[0] ?? null;
+  };
+  /** who's on `id`'s `side`, if anyone */
+  const linked = async (id: string, side: Side): Promise<NodeRow | null> =>
+    (
+      await db.query<NodeRow>(
+        `SELECT ${NODE} FROM neighbors n JOIN users u ON u.id = n.neighbor_id LEFT JOIN beaches b ON b.user_id = u.id
+          WHERE n.user_id = $1 AND n.side = $2`,
+        [id, side],
+      )
+    )[0] ?? null;
+
+  /** Join a and b: b on a's `side`, a on b's other side. One statement, so it's all or nothing. */
+  const link = async (a: string, side: Side, b: string) => {
+    const now = Date.now();
+    try {
+      await db.query(
+        `WITH l1 AS (INSERT INTO neighbors (user_id, side, neighbor_id, created_at) VALUES ($1, $2, $3, $5) RETURNING 1),
+              l2 AS (INSERT INTO neighbors (user_id, side, neighbor_id, created_at) VALUES ($3, $4, $1, $5) RETURNING 1)
+         SELECT (SELECT COUNT(*) FROM l1) + (SELECT COUNT(*) FROM l2) AS n`,
+        [a, side, b, opposite(side), now],
+      );
+    } catch (e) {
+      if ((e as { code?: string }).code === '23505') fail(409, 'that side was just taken');
+      throw e;
+    }
+    // requests that can't happen any more: these two, and anyone else asking for the sides now taken
+    await db.query(
+      `DELETE FROM neighbor_requests
+        WHERE (from_id = $1 AND (side = $2 OR to_id = $3)) OR (from_id = $3 AND (side = $4 OR to_id = $1))
+           OR (to_id = $1 AND side = $4) OR (to_id = $3 AND side = $2)`,
+      [a, side, b, opposite(side)],
+    );
+  };
 
   app.get('/neighbors', requireUser, async (c) => {
     const me = c.get('user').id;
-    const [codeRows, rows, picked] = await Promise.all([
-      db.query<{ neighbor_code: string }>('SELECT neighbor_code FROM users WHERE id = $1', [me]),
-      db.query<NeighborRow>(
-        `SELECT n.side, u.id, u.name, b.location, b.updated_at
-           FROM neighbors n JOIN users u ON u.id = n.neighbor_id LEFT JOIN beaches b ON b.user_id = u.id
-          WHERE n.user_id = $1`,
+    const [self, left, right, outgoing, incoming] = await Promise.all([
+      nodeById(me),
+      linked(me, 'left'),
+      linked(me, 'right'),
+      db.query<NodeRow & { side: Side }>(
+        `SELECT r.side, ${NODE} FROM neighbor_requests r JOIN users u ON u.id = r.to_id LEFT JOIN beaches b ON b.user_id = u.id
+          WHERE r.from_id = $1`,
         [me],
       ),
-      db.query<{ n: string }>('SELECT COUNT(*) AS n FROM neighbors WHERE neighbor_id = $1', [me]),
+      db.query<NodeRow & { side: Side }>(
+        `SELECT r.side, ${NODE} FROM neighbor_requests r JOIN users u ON u.id = r.from_id LEFT JOIN beaches b ON b.user_id = u.id
+          WHERE r.to_id = $1 ORDER BY r.created_at DESC LIMIT 50`,
+        [me],
+      ),
     ]);
-    const bySide = (s: Side) => {
-      const r = rows.find((x) => x.side === s);
-      return r ? neighborJson(r) : null;
+    const out = (s: Side) => {
+      const r = outgoing.find((x) => x.side === s);
+      return r ? beachJson(r) : null;
     };
-    return c.json({ code: codeRows[0]?.neighbor_code, left: bySide('left'), right: bySide('right'), pickedBy: Number(picked[0]?.n ?? 0) });
+    return c.json({
+      code: self?.code,
+      left: left ? beachJson(left) : null,
+      right: right ? beachJson(right) : null,
+      // who you've asked, per side of your beach
+      asked: { left: out('left'), right: out('right') },
+      // who's asking you; `side` is where they'd be on YOUR beach
+      requests: incoming.map((r) => ({ ...beachJson(r), side: opposite(r.side) })),
+    });
   });
 
+  // ask someone to be on your `side` (if they already asked for the same, you're linked now)
   app.put('/neighbors/:side', requireUser, async (c) => {
     const side = parseSide(c);
     const me = c.get('user').id;
     const { code } = await body<{ code?: string }>(c);
-    const norm = normalizeCode(code ?? '');
-    if (norm.length !== 6) fail(400, 'neighbor codes are 6 letters and numbers');
-    const found = await db.query<{ id: string }>('SELECT id FROM users WHERE neighbor_code = $1', [norm]);
-    const them = found[0];
+    if (normalizeCode(code ?? '').length !== 6) fail(400, 'neighbor codes are 6 letters and numbers');
+    const them = await nodeByCode(code!);
     if (!them) fail(404, 'no beach has that code');
     if (them!.id === me) fail(400, "that's your own code");
-    const other = side === 'left' ? 'right' : 'left';
-    const clash = await db.query('SELECT 1 FROM neighbors WHERE user_id = $1 AND side = $2 AND neighbor_id = $3', [me, other, them!.id]);
-    if (clash.length) fail(409, `they're already your ${other} neighbor`);
+    if (await linked(me, side)) fail(409, `you already have a ${side} neighbor: move them away first`);
+    if ((await linked(me, opposite(side)))?.id === them!.id) fail(409, `they're already your ${opposite(side)} neighbor`);
+    if (await linked(them!.id, opposite(side))) fail(409, `their ${opposite(side)} side is taken`);
+    const theirs = await db.query('SELECT 1 FROM neighbor_requests WHERE from_id = $1 AND to_id = $2 AND side = $3', [
+      them!.id,
+      me,
+      opposite(side),
+    ]);
+    if (theirs.length) {
+      await link(me, side, them!.id);
+      return c.json({ status: 'linked', neighbor: beachJson(them!) });
+    }
     await db.query(
-      `INSERT INTO neighbors (user_id, side, neighbor_id, created_at) VALUES ($1, $2, $3, $4)
-       ON CONFLICT (user_id, side) DO UPDATE SET neighbor_id = EXCLUDED.neighbor_id, created_at = EXCLUDED.created_at`,
-      [me, side, them!.id, Date.now()],
+      `INSERT INTO neighbor_requests (from_id, to_id, side, created_at) VALUES ($1, $2, $3, $4)
+       ON CONFLICT (from_id, side) DO UPDATE SET to_id = EXCLUDED.to_id, created_at = EXCLUDED.created_at`,
+      [me, them!.id, side, Date.now()],
     );
-    const rows = await db.query<NeighborRow>(
-      `SELECT $2::text AS side, u.id, u.name, b.location, b.updated_at
-         FROM users u LEFT JOIN beaches b ON b.user_id = u.id WHERE u.id = $1`,
-      [them!.id, side],
-    );
-    return c.json({ neighbor: neighborJson(rows[0]) });
+    return c.json({ status: 'asked', neighbor: beachJson(them!) });
   });
 
+  // accept someone's request: they go on the side they asked for
+  app.post('/neighbors/requests/:code/accept', requireUser, async (c) => {
+    const me = c.get('user').id;
+    const them = await nodeByCode(c.req.param('code') ?? '');
+    if (!them) fail(404, 'no beach has that code');
+    const req = (
+      await db.query<{ side: Side }>('SELECT side FROM neighbor_requests WHERE from_id = $1 AND to_id = $2', [them!.id, me])
+    )[0];
+    if (!req) fail(404, 'that request is gone');
+    // they asked for me on their req.side, so they go on my other side
+    if (await linked(me, opposite(req!.side))) fail(409, `your ${opposite(req!.side)} side is taken: move them away first`);
+    await link(them!.id, req!.side, me);
+    return c.json({ side: opposite(req!.side), neighbor: beachJson(them!) });
+  });
+
+  app.delete('/neighbors/requests/:code', requireUser, async (c) => {
+    const them = await nodeByCode(c.req.param('code') ?? '');
+    if (them) await db.query('DELETE FROM neighbor_requests WHERE from_id = $1 AND to_id = $2', [them.id, c.get('user').id]);
+    return c.body(null, 204);
+  });
+
+  // move away from your `side` neighbor (both ends of the link go), or take back your request
   app.delete('/neighbors/:side', requireUser, async (c) => {
     const side = parseSide(c);
-    await db.query('DELETE FROM neighbors WHERE user_id = $1 AND side = $2', [c.get('user').id, side]);
+    const me = c.get('user').id;
+    await db.query('DELETE FROM neighbors WHERE (user_id = $1 AND side = $2) OR (neighbor_id = $1 AND side = $3)', [me, side, opposite(side)]);
+    await db.query('DELETE FROM neighbor_requests WHERE from_id = $1 AND side = $2', [me, side]);
     return c.body(null, 204);
   });
 
   app.get('/neighbors/:side/beach', requireUser, async (c) => {
     const side = parseSide(c);
-    // you can only see the beaches you've chosen as neighbors
-    const rows = await db.query<{ neighbor_id: string }>('SELECT neighbor_id FROM neighbors WHERE user_id = $1 AND side = $2', [
-      c.get('user').id,
-      side,
-    ]);
-    if (!rows[0]) return c.json({ error: 'no neighbor on that side' }, 404);
-    return sendBeach(c, rows[0].neighbor_id);
+    const n = await linked(c.get('user').id, side);
+    if (!n) return c.json({ error: 'no neighbor on that side' }, 404);
+    return sendBeach(c, n.id);
   });
 
   // what you own beyond the free items (empty until the shop and pulls exist)
@@ -343,75 +426,97 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   });
 
   // ---------------------------------------------------------------- the shore
-  // Beaches are found by their neighbor code: whoever has a code can visit
-  // (that's what the code is for). The shore is the chain of neighbor links:
-  // the beach on my left, the one on its left, and so on, each way.
-  interface ShoreRow {
-    id: string;
-    name: string;
-    code: string;
-    location: string | null;
-    updated_at: string | null;
-  }
-  const shoreJson = (r: ShoreRow) => ({
-    code: r.code,
-    name: r.name,
-    location: r.location,
-    updatedAt: r.updated_at === null ? null : Number(r.updated_at),
-  });
-  const byCode = async (raw: string): Promise<ShoreRow | null> => {
-    const code = normalizeCode(raw ?? '');
-    if (code.length !== 6) return null;
-    const rows = await db.query<ShoreRow>(
-      `SELECT u.id, u.name, u.neighbor_code AS code, b.location, b.updated_at
-         FROM users u LEFT JOIN beaches b ON b.user_id = u.id WHERE u.neighbor_code = $1`,
-      [code],
-    );
-    return rows[0] ?? null;
+  // One global beachfront. Linked neighbors make stretches of shore; past the
+  // end of a stretch the shore carries on into the next stretch, in a fixed
+  // order (by when each stretch's right-hand end joined), round and round. So
+  // you can keep walking either way and meet everyone.
+  /** the far end of a's stretch, going `side` */
+  const endOf = async (a: NodeRow, side: Side): Promise<NodeRow> => {
+    let at = a;
+    const seen = new Set([a.id]);
+    for (let i = 0; i < 2000; i++) {
+      const next = await linked(at.id, side);
+      if (!next || seen.has(next.id)) break;
+      seen.add(next.id);
+      at = next;
+    }
+    return at;
   };
-  const byId = async (id: string): Promise<ShoreRow> =>
-    (
-      await db.query<ShoreRow>(
-        `SELECT u.id, u.name, u.neighbor_code AS code, b.location, b.updated_at
-           FROM users u LEFT JOIN beaches b ON b.user_id = u.id WHERE u.id = $1`,
-        [id],
-      )
-    )[0];
-
-  // GET /shore?code=K7F2QX&depth=4: a beach (default: yours) and the beaches
-  // down the shore each way, nearest first; stops at the end or a loop
-  app.get('/shore', requireUser, async (c) => {
-    const depth = Math.min(8, Math.max(0, Number(c.req.query('depth') ?? 4) | 0));
-    const code = c.req.query('code');
-    const center = code ? await byCode(code) : await byId(c.get('user').id);
-    if (!center) return c.json({ error: 'no beach with that code' }, 404);
-    const seen = new Set([center.id]);
-    const walk = async (side: Side) => {
-      const out: ShoreRow[] = [];
-      let at = center.id;
-      for (let i = 0; i < depth; i++) {
-        const rows = await db.query<ShoreRow>(
-          `SELECT u.id, u.name, u.neighbor_code AS code, b.location, b.updated_at
-             FROM neighbors n JOIN users u ON u.id = n.neighbor_id LEFT JOIN beaches b ON b.user_id = u.id
-            WHERE n.user_id = $1 AND n.side = $2`,
-          [at, side],
+  // the right-hand ends of stretches worth visiting (someone with a beach, or linked to someone)
+  const ENDS = `FROM users u LEFT JOIN beaches b ON b.user_id = u.id
+     WHERE NOT EXISTS (SELECT 1 FROM neighbors n WHERE n.user_id = u.id AND n.side = 'right')
+       AND (b.user_id IS NOT NULL OR EXISTS (SELECT 1 FROM neighbors n WHERE n.user_id = u.id))`;
+  /** From the end of a stretch, the first beach of the next stretch going `dir`. */
+  const nextStretch = async (at: NodeRow, dir: Side): Promise<NodeRow | null> => {
+    const r = await endOf(at, 'right');
+    const key = [r.created_at, r.id];
+    if (dir === 'left') {
+      const rows =
+        (await db.query<NodeRow>(`SELECT ${NODE} ${ENDS} AND (u.created_at, u.id) > ($1::bigint, $2::uuid) ORDER BY u.created_at, u.id LIMIT 1`, key)).concat(
+          await db.query<NodeRow>(`SELECT ${NODE} ${ENDS} ORDER BY u.created_at, u.id LIMIT 1`),
         );
-        const next = rows[0];
-        if (!next || seen.has(next.id)) break;
+      return rows[0] ?? null; // enter it at its right-hand end, walking left
+    }
+    const rows =
+      (await db.query<NodeRow>(`SELECT ${NODE} ${ENDS} AND (u.created_at, u.id) < ($1::bigint, $2::uuid) ORDER BY u.created_at DESC, u.id DESC LIMIT 1`, key)).concat(
+        await db.query<NodeRow>(`SELECT ${NODE} ${ENDS} ORDER BY u.created_at DESC, u.id DESC LIMIT 1`),
+      );
+    return rows[0] ? endOf(rows[0], 'left') : null; // enter it at its left-hand end, walking right
+  };
+  type Step = ReturnType<typeof beachJson> & { linked: boolean };
+  /**
+   * Walk up to `count` beaches each way from `from` (one step left, one step
+   * right, and so on, so the nearest come first and a small world isn't all
+   * used up on one side). `linked` says if a beach is a real neighbor of the
+   * one before it. Stops in a direction once it comes round to someone seen.
+   */
+  const walk = async (from: NodeRow, dirs: Side[], count: number, seen: Set<string>) => {
+    const out: Record<Side, Step[]> = { left: [], right: [] };
+    const at: Record<Side, NodeRow> = { left: from, right: from };
+    const done = new Set<Side>(SIDES.filter((d) => !dirs.includes(d)));
+    for (let i = 0; i < count && done.size < 2; i++) {
+      for (const dir of dirs) {
+        if (done.has(dir)) continue;
+        let next = await linked(at[dir].id, dir);
+        let isLink = true;
+        if (!next) {
+          next = await nextStretch(at[dir], dir);
+          isLink = false;
+        }
+        if (!next || seen.has(next.id)) {
+          done.add(dir); // been all the way round
+          continue;
+        }
         seen.add(next.id);
-        out.push(next);
-        at = next.id;
+        out[dir].push({ ...beachJson(next), linked: isLink });
+        at[dir] = next;
       }
-      return out;
-    };
-    const left = await walk('left');
-    const right = await walk('right');
-    return c.json({
-      center: { ...shoreJson(center), you: center.id === c.get('user').id },
-      left: left.map(shoreJson),
-      right: right.map(shoreJson),
-    });
+    }
+    return out;
+  };
+
+  // GET /shore?code=K7F2QX&depth=6: a beach (default: yours) and the shore each way, nearest first
+  app.get('/shore', requireUser, async (c) => {
+    const depth = Math.min(12, Math.max(0, Number(c.req.query('depth') ?? 6) | 0));
+    const code = c.req.query('code');
+    const center = code ? await nodeByCode(code) : await nodeById(c.get('user').id);
+    if (!center) return c.json({ error: 'no beach with that code' }, 404);
+    const { left, right } = await walk(center, ['left', 'right'], depth, new Set([center.id]));
+    return c.json({ center: { ...beachJson(center), you: center.id === c.get('user').id }, left, right });
   });
+
+  // GET /shore/more?from=K7F2QX&dir=left&count=6: keep walking (infinite scroll)
+  app.get('/shore/more', requireUser, async (c) => {
+    const dir = c.req.query('dir') as Side;
+    if (!SIDES.includes(dir)) fail(400, 'dir must be left or right');
+    const count = Math.min(12, Math.max(1, Number(c.req.query('count') ?? 6) | 0));
+    const from = await nodeByCode(c.req.query('from') ?? '');
+    if (!from) return c.json({ error: 'no beach with that code' }, 404);
+    return c.json({ beaches: (await walk(from, [dir], count, new Set([from.id])))[dir] });
+  });
+
+  const byCode = nodeByCode;
+  const shoreJson = beachJson;
 
   app.get('/beaches/:code', requireUser, async (c) => {
     const who = await byCode(c.req.param('code') ?? '');
@@ -421,8 +526,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
 
   // ---------------------------------------------------------------- favorites
   app.get('/favorites', requireUser, async (c) => {
-    const rows = await db.query<ShoreRow>(
-      `SELECT u.id, u.name, u.neighbor_code AS code, b.location, b.updated_at
+    const rows = await db.query<NodeRow>(
+      `SELECT ${NODE}
          FROM favorites f JOIN users u ON u.id = f.fav_id LEFT JOIN beaches b ON b.user_id = u.id
         WHERE f.user_id = $1 ORDER BY f.created_at DESC LIMIT 200`,
       [c.get('user').id],

@@ -16,8 +16,12 @@ import { ObjectView } from './objects';
 /** gap between dioramas, so each beach reads as its own little island */
 const GAP = 1.6;
 export const NEIGHBOR_OFFSET = WORLD_SIZE_X + GAP;
-/** how far down the shore to look, each way */
-const DEPTH = 8;
+/** how far down the shore to load at first, each way */
+const DEPTH = 6;
+/** load more of the shore when the view gets this close to the end of what's loaded */
+const AHEAD = 3;
+/** how many more to load at a time */
+const PAGE = 6;
 /** beaches drawn either side of the one you're looking at */
 const RENDER = 2;
 /** beaches kept in memory (decoded) either side of it */
@@ -77,6 +81,9 @@ export class NeighborView {
   private chairView = false;
   private pollTimer = 0;
   private win: [number, number] = [0, 0];
+  /** a direction where the whole world has been walked (the shore came round) */
+  private exhausted = new Set<Side>();
+  private paging = new Set<Side>();
 
   constructor(
     private readonly scene: Scene,
@@ -146,10 +153,18 @@ export class NeighborView {
       shore.left.forEach((b, i) => next.set(i + 1, b));
       shore.right.forEach((b, i) => next.set(-(i + 1), b));
     }
+    // beaches loaded further out by scrolling stay, unless the shore near the middle changed
+    const changed = [...next].some(([i, b]) => this.entries.has(i) && this.entries.get(i)!.beach.code !== b.code);
+    const reach = { left: shore?.left.length ?? 0, right: shore?.right.length ?? 0 };
     for (const [i, e] of this.entries) {
+      const beyond = i > 0 ? i > reach.left : i < 0 && -i > reach.right;
+      if (beyond && !changed && (i > 0 ? reach.left >= DEPTH : reach.right >= DEPTH)) continue;
       const b = next.get(i);
       if (!b || b.code !== e.beach.code) this.forget(i);
     }
+    if (changed || !shore) this.exhausted.clear();
+    if (shore && shore.left.length < DEPTH) this.exhausted.add('left');
+    if (shore && shore.right.length < DEPTH) this.exhausted.add('right');
     for (const [i, b] of next) {
       const e = this.entries.get(i);
       if (e) {
@@ -247,6 +262,40 @@ export class NeighborView {
   private clearEntries(): void {
     for (const i of [...this.entries.keys()]) this.forget(i);
     this.win = [0, 0];
+    this.exhausted.clear();
+  }
+
+  /** Near the end of what's loaded: fetch the next stretch of shore that way (infinite scroll). */
+  private async more(dir: Side): Promise<void> {
+    if (this.paging.has(dir) || this.exhausted.has(dir) || !this.entries.size) return;
+    const { left, right } = this.extent;
+    const last = dir === 'left' ? left : -right;
+    const from = last === 0 ? (this.visiting?.code ?? this.state?.code) : this.entries.get(last)?.beach.code;
+    if (!from) return;
+    this.paging.add(dir);
+    const gen = this.generation;
+    try {
+      const got = await this.api.shoreMore(from, dir, PAGE);
+      if (gen !== this.generation) return;
+      const known = new Set([...this.entries.values()].map((e) => e.beach.code));
+      if (this.state?.code && !this.visiting) known.add(this.state.code);
+      let i = last;
+      for (const b of got) {
+        if (known.has(b.code)) {
+          // came all the way round the world
+          this.exhausted.add(dir);
+          break;
+        }
+        i += dir === 'left' ? 1 : -1;
+        this.entries.set(i, { index: i, beach: b });
+      }
+      if (got.length < PAGE) this.exhausted.add(dir);
+      this.updateBounds();
+    } catch {
+      /* offline: try again when the view moves */
+    } finally {
+      this.paging.delete(dir);
+    }
   }
 
   setChairView(on: boolean): void {
@@ -419,6 +468,11 @@ export class NeighborView {
       return;
     }
     void this.fillWindow();
+    // infinite scroll: keep the shore loaded a few beaches past the view
+    const c = Math.round(this.cam.focusX / NEIGHBOR_OFFSET);
+    const ext = this.extent;
+    if (ext.left - c < AHEAD) void this.more('left');
+    if (ext.right + c < AHEAD) void this.more('right');
     const now = performance.now();
     const slots = [...this.entries.values()].filter((e) => e.slot);
     if (Math.abs(tide - this.tide) > 0.01 && now - this.lastTideRefresh > 5000) {

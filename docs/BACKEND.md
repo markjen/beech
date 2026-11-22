@@ -27,14 +27,16 @@ Migrations live in `src/migrations.ts` and are applied at startup.
 | `GET /api/beach` | your compressed sand, with `X-Beach-Location/Nx/Ny/Version/Updated` headers; 404 if none |
 | `PUT /api/beach` | save it (body = sand bytes, plus `X-Beach-Location/Nx/Ny`); last write wins |
 | `DELETE /api/account` | deletes you, your sessions and beach, and you from other people's neighbor slots |
-| `GET /api/neighbors` | `{ code, left, right, pickedBy }` |
-| `PUT /api/neighbors/:side { code }` | put the beach with that code on your `left` or `right` |
-| `DELETE /api/neighbors/:side` | move them away |
+| `GET /api/neighbors` | `{ code, left, right, asked: { left, right }, requests: [{ code, name, location, side }] }` |
+| `PUT /api/neighbors/:side { code }` | ask them to be on your `side` (`status: asked`); if they'd already asked for the matching sides, `linked` at once. 409 if either side is taken |
+| `POST /api/neighbors/requests/:code/accept`, `DELETE /api/neighbors/requests/:code` | accept or decline someone's request |
+| `DELETE /api/neighbors/:side` | move away (both ends of the link go), or take back your request for that side |
+| `GET /api/shore?code=&depth=` | a beach (yours, or anyone's by code) and the global shore each way, nearest first (alternating sides), up to 12; each beach says if it's `linked` to the one before |
+| `GET /api/shore/more?from=&dir=&count=` | keep walking from a beach (infinite scroll) |
 | `GET /api/neighbors/:side/beach` | that neighbor's sand (only your own neighbors' beaches are readable) |
 | `POST /api/neighbors/code` | new code; the old one stops working, and current neighbors keep you |
 | `GET /api/pulls` | `{ pools: [{ id, name, odds, items, free }], nextFree }`: the machines, their published odds, and whether today's free go is left |
 | `POST /api/pulls/:pool` | today's free go (`daily`): the server draws, records it (one per UTC day, enforced by the primary key) and adds the prize to `inventory`; 409 if already used |
-| `GET /api/shore?code=&depth=` | a beach (yours, or anyone's by code) and the beaches down the shore each way, nearest first (left's left's…), up to 8; stops at loops |
 | `GET /api/beaches/:code` | anyone's saved beach, by code |
 | `GET /api/favorites`, `PUT`/`DELETE /api/favorites/:code` | your starred beaches |
 | `GET /api/inventory` | `{ items: [{ item, quantity, source, acquiredAt, expiresAt }] }`: what you own beyond the free items, unexpired. Empty until the shop and pulls exist; rows are only written by the server. |
@@ -46,29 +48,36 @@ code, and your beach. No email or photo. Every API response is
 earlier build cached it, which served one person's data to the next account
 on the same device.
 
-### Neighbors
+### Neighbors: one global beachfront
 
-Every player has a 6-character neighbor code (no 0/O or 1/I). Sharing it is
-the consent: nobody can find or see your beach without it. You choose who
-sits on your left and right. The client draws their beaches as still
-snapshots of their last save, as dioramas either side of yours (facing the
-sea, left is world +X), with your sky, sea and tide, and a name tag. The
-camera can pan over to them. A future step could make neighbors mutual
-(requests and accepts) or show live sand. The schema already has the
-`neighbor_id` index for "who has me next door".
+Neighbors are **mutual**. You ask someone (by their code) to be on your left.
+When they accept, they're on your left and you're on their right. Each side
+holds one person. A link is two rows in `neighbors`, written in one SQL
+statement. A unique index on `(neighbor_id, side)` means nobody is on two
+people's same side. Pending asks live in `neighbor_requests`, one per side
+per person. If both people ask for matching sides, they're linked at once.
+Accepting clears requests that can no longer happen. Moving away removes
+both rows. Migration 5 kept the old one-way picks that were already mutual
+as links, and turned the rest into requests.
 
-While neighbors are shown, the app polls `GET /api/neighbors` every 30 s.
-It fetches a neighbor's beach again only when their `updatedAt` changed, and
-repaints it in place. A change of who's next door triggers a full refresh.
-Polling stops while the app is in the background.
+**The beachfront.** Links make stretches of shore. Past the end of a stretch
+the shore carries on into the next stretch. Stretches are ordered by when
+their right-hand end joined (`users.created_at, id`), round and round, so
+walking either way eventually meets every beach (anyone with a saved beach or
+a link). `GET /api/shore` walks one step each way at a time, so the nearest
+beaches come first, and never shows anyone twice. The app pages more with
+`/api/shore/more` as you near the end of what's loaded, and stops a
+direction once it comes round to a beach it already has.
 
-**Codes are how you find a beach.** Anyone signed in who has a beach's code
-can visit it and see its first name, real location and sand. Walking down the
-shore shows the codes of the beaches you pass, so a beach you link to can be
-reached from its neighbors' neighbors. Getting a new code makes the old one
-stop working: links to you stay, but people who only had the old code lose
-the way. Before the store privacy forms, Muse should check that this wording
-matches: the first name and the beach are visible to other users.
+**Privacy.** On the global shore, **every saved beach is visible to every
+signed-in person**: first name, real beach location, sand and things. Codes
+are still how you ask someone to be a neighbor or jump straight to a beach.
+The store privacy forms must say that the first name and the beach are
+public to other users. A "keep my beach off the shore" setting is on the
+backlog.
+
+While the shore is shown, the app polls `GET /api/neighbors` and the shore
+every 30 s, and refetches a beach only when its `updatedAt` changed.
 
 ## Client
 

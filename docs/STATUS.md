@@ -251,10 +251,26 @@ branch, so the deploy job runs only there. Switch the default branch to
   `GET /api/inventory` for owned, unexpired non-free items. Nothing writes to
   it yet.
 
+## Mutual neighbors and the global beachfront (added after the bulldozer)
+
+- **Asking and accepting:** in settings, put a code in "left" or "right" and
+  press ask. The row says "waiting for … · take back" until they accept.
+  The other person gets a dot on the settings button and an "X wants to be
+  on your left · accept · no thanks" row. Accept is disabled while that side
+  is taken.
+- **Global shore:** past the ends of your stretch, the shore carries on into
+  everyone else's beaches (see BACKEND.md). The shore view loads 6 each way,
+  then pages 6 more whenever the view gets within 3 of the end of what's
+  loaded. Beaches loaded by scrolling survive the 30 s refresh unless the
+  shore near the middle changed.
+- `npm run e2e:neighbors` covers asking, the badge, accepting from the
+  sheet, the live update and unlinking both ends. `npm run e2e:shore` covers
+  a 3-beach stretch, the shore continuing past it, and infinite scroll.
+
 ## The shore, visiting and favorites (added after item sizes)
 
-- **The shore** is the chain of neighbor links: your left neighbor, their
-  left neighbor, and so on, each way (up to 8; `GET /api/shore`). Beach `k`
+- **The shore** follows neighbor links: your left neighbor, their left
+  neighbor, and so on, each way, then on into everyone else (`GET /api/shore`). Beach `k`
   sits at x = k × 33.6 m. Only the beaches within 2 of the one under the view
   are drawn (`RENDER`). Beaches within 5 stay decoded in memory, and the rest
   load as you approach. Your own live beach is hidden once it's outside that

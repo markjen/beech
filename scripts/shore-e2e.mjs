@@ -40,19 +40,23 @@ const become = async (name) => {
 };
 const codes = {};
 for (const k of ['cleo', 'dot', 'ana', 'ben']) codes[k] = await become(names[k]);
-// Ana's left is Cleo; Ben's left is Ana
+// Ana's left is Cleo; Ben's left is Ana (each asked, the other accepted)
+const ask = (side, c) => page.evaluate(({ side, c }) => window.__beech.neighbors().api.set(side, c), { side, c });
+const accept = (c) => page.evaluate((c) => window.__beech.neighbors().api.accept(c), c);
 await become(names.ana);
-await page.evaluate((c) => window.__beech.neighbors().api.set('left', c), codes.cleo);
+await ask('left', codes.cleo);
+await become(names.cleo);
+await accept(codes.ana);
 await become(names.ben);
-await page.evaluate(async (c) => {
-  const nv = window.__beech.neighbors();
-  await nv.api.remove('right').catch(() => {});
-  await nv.api.set('left', c);
-  await nv.refresh();
-}, codes.ana);
+await ask('left', codes.ana);
+await become(names.ana);
+await accept(codes.ben);
+await become(names.ben);
+await page.evaluate(() => window.__beech.neighbors().refresh());
+check((await page.evaluate(() => window.__beech.neighbors().beachAt(1)?.name)) === names.ana, "Ana is on Ben's left");
+check((await page.evaluate(() => window.__beech.neighbors().beachAt(2)?.name)) === names.cleo, "and Cleo beyond her (Ana's neighbor)");
 const ext = await page.evaluate(() => window.__beech.neighbors().extent);
-check(ext.left === 2 && ext.right === 0, `Ben's shore runs two beaches to the left (${JSON.stringify(ext)})`);
-check((await page.evaluate(() => window.__beech.neighbors().beachAt(2)?.name)) === names.cleo, 'the second one is Cleo (Ana\'s neighbor)');
+check(ext.left > 2 || ext.right > 0, `the shore carries on past them into other beaches (${JSON.stringify(ext)})`);
 check(!(await page.isVisible('.shore-bar.shown')), 'no home button at home');
 
 // walk (pan) down the shore to Cleo
@@ -79,7 +83,19 @@ await page.click('.shore-bar .sb-home');
 await page.waitForFunction(() => Math.abs(window.__beech.cam.focusX) < 0.5, null, { timeout: 15000 });
 check(await page.evaluate(() => window.__beech.neighbors().ownVisible), 'home again: your beach is drawn');
 
-// visit Dot by code (she isn't on Ben's shore)
+// infinite scroll: head right past what's loaded and more of the shore loads
+{
+  const before = await page.evaluate(() => window.__beech.neighbors().extent.right);
+  if (before > 0) {
+    await page.evaluate((n) => window.__beech.cam.goTo(-n * 33.6, true), before);
+    await page.waitForFunction((n) => window.__beech.neighbors().extent.right > n, before, { timeout: 8000 }).catch(() => {});
+    const after = await page.evaluate(() => window.__beech.neighbors().extent.right);
+    check(after >= before, `scrolling right loads more of the shore when there is more (${before} -> ${after})`);
+    await page.evaluate(() => window.__beech.cam.goTo(0, true));
+  }
+}
+
+// visit Dot by code
 await page.evaluate(() => window.__beech.sheet.show());
 await page.fill('#visit-code', codes.dot.toLowerCase());
 await page.click('button[data-act="visit"]');

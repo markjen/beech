@@ -201,7 +201,7 @@ export class Account {
 export type Side = 'left' | 'right';
 
 export interface Neighbor {
-  id: string;
+  code: string;
   name: string;
   /** their real beach id, or null if they haven't saved yet */
   location: string | null;
@@ -213,8 +213,10 @@ export interface Neighbors {
   code: string;
   left: Neighbor | null;
   right: Neighbor | null;
-  /** how many beaches have you as a neighbor */
-  pickedBy: number;
+  /** who you've asked to move in, per side of your beach (waiting for them to accept) */
+  asked: { left: Neighbor | null; right: Neighbor | null };
+  /** people asking to move in next to you; `side` is where they'd be on your beach */
+  requests: (Neighbor & { side: Side })[];
 }
 
 export interface OwnedItem {
@@ -242,19 +244,39 @@ export class NeighborApi {
     return (await res.json()) as Neighbors;
   }
 
-  async set(side: Side, code: string): Promise<Neighbor> {
+  /** Ask someone to be on your `side`. 'linked' if they had already asked for the same. */
+  async set(side: Side, code: string): Promise<{ status: 'asked' | 'linked'; neighbor: Neighbor }> {
     const res = await this.account.fetch(`/api/neighbors/${side}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code }),
     });
-    if (!res.ok) throw await errorOf(res, 'could not add that neighbor');
-    return ((await res.json()) as { neighbor: Neighbor }).neighbor;
+    if (!res.ok) throw await errorOf(res, 'could not ask them');
+    return (await res.json()) as { status: 'asked' | 'linked'; neighbor: Neighbor };
   }
 
+  /** Move away from your `side` neighbor (both ends), or take back your request for that side. */
   async remove(side: Side): Promise<void> {
     const res = await this.account.fetch(`/api/neighbors/${side}`, { method: 'DELETE' });
     if (!res.ok) throw await errorOf(res, 'could not remove that neighbor');
+  }
+
+  async accept(code: string): Promise<void> {
+    const res = await this.account.fetch(`/api/neighbors/requests/${encodeURIComponent(code)}/accept`, { method: 'POST' });
+    if (!res.ok) throw await errorOf(res, 'could not accept');
+  }
+
+  async decline(code: string): Promise<void> {
+    const res = await this.account.fetch(`/api/neighbors/requests/${encodeURIComponent(code)}`, { method: 'DELETE' });
+    if (!res.ok) throw await errorOf(res, 'could not decline');
+  }
+
+  /** Keep walking the shore from `from` (infinite scroll), nearest first. */
+  async shoreMore(from: string, dir: Side, count: number): Promise<ShoreBeach[]> {
+    const q = new URLSearchParams({ from, dir, count: String(count) });
+    const res = await this.account.fetch(`/api/shore/more?${q}`);
+    if (!res.ok) throw await errorOf(res, 'could not load more of the shore');
+    return ((await res.json()) as { beaches: ShoreBeach[] }).beaches;
   }
 
   async beach(side: Side): Promise<SavedBeach | null> {
@@ -318,6 +340,8 @@ export interface ShoreBeach {
   /** their real beach id, or null if they haven't saved yet */
   location: string | null;
   updatedAt: number | null;
+  /** a real (mutual) neighbor of the beach before it along the shore */
+  linked?: boolean;
 }
 
 export interface Shore {

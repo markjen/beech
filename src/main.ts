@@ -773,6 +773,12 @@ async function boot() {
       }
       signedInAs = u?.id ?? null;
     });
+    // a dot on the settings button when someone has asked to move in next to you
+    nv.onChange((n) => {
+      const asking = n?.requests.length ?? 0;
+      menuBtn.classList.toggle('badge', asking > 0);
+      menuBtn.setAttribute('aria-label', asking ? `Settings (${asking} neighbor request${asking > 1 ? 's' : ''})` : 'Settings');
+    });
     new AccountPanel(sheet.accountSlot, account, s, () => {}, nv, async (code) => {
       await nv.visit(code);
       cam.goTo(0, true);

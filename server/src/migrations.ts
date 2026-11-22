@@ -85,14 +85,39 @@ const MIGRATIONS: string[] = [
     CHECK (user_id <> fav_id)
   );
   `,
+  // 5: mutual neighbors on one global beachfront. A link is two rows (my
+  // left is you, your right is me); it's made only when the other person
+  // accepts a request. Old one-way picks become pending requests.
+  `
+  CREATE TABLE neighbor_requests (
+    from_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    to_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    side TEXT NOT NULL CHECK (side IN ('left', 'right')), -- where to_id would go on from_id's beach
+    created_at BIGINT NOT NULL,
+    PRIMARY KEY (from_id, side),
+    CHECK (from_id <> to_id)
+  );
+  CREATE INDEX neighbor_requests_to ON neighbor_requests (to_id);
+  INSERT INTO neighbor_requests (from_id, to_id, side, created_at)
+    SELECT n.user_id, n.neighbor_id, n.side, n.created_at FROM neighbors n
+     WHERE NOT EXISTS (SELECT 1 FROM neighbors m
+                        WHERE m.user_id = n.neighbor_id AND m.neighbor_id = n.user_id AND m.side <> n.side);
+  DELETE FROM neighbors n
+   WHERE NOT EXISTS (SELECT 1 FROM neighbors m
+                      WHERE m.user_id = n.neighbor_id AND m.neighbor_id = n.user_id AND m.side <> n.side);
+  -- nobody is on two people's same side
+  CREATE UNIQUE INDEX neighbors_once ON neighbors (neighbor_id, side);
+  CREATE INDEX users_created ON users (created_at, id);
+  `,
 ];
 
-export async function migrate(db: Db): Promise<number> {
+/** Apply migrations up to `upTo` (default: all). Tests use `upTo` to check a migration on older data. */
+export async function migrate(db: Db, upTo = MIGRATIONS.length): Promise<number> {
   return db.withLock(7351, async () => {
     await db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at BIGINT NOT NULL)`);
     const rows = await db.query<{ v: number | null }>('SELECT MAX(version) AS v FROM schema_migrations');
     const current = Number(rows[0]?.v ?? 0);
-    for (let i = current; i < MIGRATIONS.length; i++) {
+    for (let i = current; i < Math.min(upTo, MIGRATIONS.length); i++) {
       await db.exec(`BEGIN; ${MIGRATIONS[i]}; INSERT INTO schema_migrations (version, applied_at) VALUES (${i + 1}, ${Date.now()}); COMMIT;`);
     }
     return MIGRATIONS.length;

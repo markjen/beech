@@ -128,29 +128,45 @@ describe('inventory', () => {
 });
 
 describe('the shore and favorites', () => {
-  it('walks neighbor links down the shore each way, stops at loops, finds beaches by code', async () => {
+  type Beach = { code: string; name: string; linked: boolean; location: string | null };
+  type Shore = { center: { code: string; you: boolean }; left: Beach[]; right: Beach[] };
+
+  it('one global beachfront: linked stretches first, then on into everyone else, never repeating', async () => {
     const u = await Promise.all(['Sam', 'Tia', 'Uma', 'Vic'].map((n) => signIn(n)));
     const code = async (t: string) => ((await (await req('/neighbors', {}, t)).json()) as { code: string }).code;
     const [sam, tia, uma, vic] = u;
     const [cs, ct, cu, cv] = await Promise.all(u.map((x) => code(x.token)));
-    const setSide = (t: string, side: string, c: string) => req(`/neighbors/${side}`, json('PUT', { code: c }), t);
-    // Sam -left-> Tia -left-> Uma -left-> Sam (a loop); Sam -right-> Vic
-    expect((await setSide(sam.token, 'left', ct)).status).toBe(200);
-    expect((await setSide(tia.token, 'left', cu)).status).toBe(200);
-    expect((await setSide(uma.token, 'left', cs)).status).toBe(200);
-    expect((await setSide(sam.token, 'right', cv)).status).toBe(200);
+    const ask = (t: string, side: string, c: string) => req(`/neighbors/${side}`, json('PUT', { code: c }), t);
+    const accept = (t: string, c: string) => req(`/neighbors/requests/${c}/accept`, { method: 'POST' }, t);
+    // Tia - Sam - Uma (Tia on Sam's left, Uma on Sam's right), Vic on her own
+    expect((await ask(sam.token, 'left', ct)).status).toBe(200);
+    expect((await accept(tia.token, cs)).status).toBe(200);
+    expect((await ask(sam.token, 'right', cu)).status).toBe(200);
+    expect((await accept(uma.token, cs)).status).toBe(200);
+    await putBeach(vic.token, new Uint8Array([4]), 'bondi');
     await putBeach(uma.token, new Uint8Array([1, 2, 3]), 'piha');
 
-    type Shore = { center: { code: string; you: boolean }; left: { code: string; name: string }[]; right: { code: string }[] };
-    const mine = (await (await req('/shore?depth=5', {}, sam.token)).json()) as Shore;
+    const mine = (await (await req('/shore?depth=12', {}, sam.token)).json()) as Shore;
     expect(mine.center).toMatchObject({ code: cs, you: true });
-    expect(mine.left.map((e) => e.name)).toEqual(['Tia', 'Uma']);
-    expect(mine.right.map((e) => e.code)).toEqual([cv]);
+    expect(mine.left[0]).toMatchObject({ name: 'Tia', linked: true });
+    expect(mine.right[0]).toMatchObject({ name: 'Uma', linked: true });
+    // past the ends the shore carries on into other people's beaches
+    expect(mine.left[1]?.linked).toBe(false);
+    const all = [cs, ...mine.left.map((b) => b.code), ...mine.right.map((b) => b.code)];
+    expect(new Set(all).size).toBe(all.length); // nobody twice
+    expect(all).toContain(cv); // Vic is out there somewhere
 
-    // anyone's shore, by code (lower case and spaces are fine)
-    const theirs = (await (await req(`/shore?code=${ct.toLowerCase()}`, {}, vic.token)).json()) as Shore;
-    expect(theirs.center).toMatchObject({ code: ct, you: false });
-    expect(theirs.left.map((e) => e.name)).toEqual(['Uma', 'Sam']);
+    // keep walking from the far end (infinite scroll), still never repeating
+    const far = mine.left[mine.left.length - 1].code;
+    const more = (await (await req(`/shore/more?from=${far}&dir=left&count=12`, {}, sam.token)).json()) as { beaches: Beach[] };
+    for (const b of more.beaches) expect(b.code).not.toBe(far);
+    expect((await req('/shore/more?from=ZZZZZZ&dir=left', {}, sam.token)).status).toBe(404);
+    expect((await req(`/shore/more?from=${far}&dir=up`, {}, sam.token)).status).toBe(400);
+
+    // anyone's shore, by code: Uma's left is Sam, then Tia
+    const theirs = (await (await req(`/shore?code=${cu.toLowerCase()}`, {}, vic.token)).json()) as Shore;
+    expect(theirs.center).toMatchObject({ code: cu, you: false });
+    expect(theirs.left.slice(0, 2).map((e) => [e.name, e.linked])).toEqual([['Sam', true], ['Tia', true]]);
     expect((await req('/shore?code=ZZZZZZ', {}, vic.token)).status).toBe(404);
 
     // a beach by code
@@ -206,58 +222,84 @@ describe('neighbors', () => {
     expect(normalizeCode(' k7f-2qx ')).toBe('K7F2QX');
   });
 
-  it('picks neighbors by code on either side and sees their beaches', async () => {
+  it('neighbors are mutual: ask, they accept, and you are on each other\'s facing sides', async () => {
     const me = await signIn('me');
     const ana = await signIn('ana');
     const ben = await signIn('ben');
-    const codeOf = async (t: string) => ((await (await req('/neighbors', {}, t)).json()) as { code: string }).code;
-    const anaCode = await codeOf(ana.token);
-    const benCode = await codeOf(ben.token);
+    const cleo = await signIn('cleo');
+    type N = {
+      code: string;
+      left: { name: string; location: string } | null;
+      right: { name: string } | null;
+      asked: { left: { name: string } | null; right: { name: string } | null };
+      requests: { name: string; side: string; code: string }[];
+    };
+    const get = async (t: string) => (await (await req('/neighbors', {}, t)).json()) as N;
+    const [meCode, anaCode, benCode, cleoCode] = await Promise.all([me, ana, ben, cleo].map(async (x) => (await get(x.token)).code));
     expect(anaCode).toMatch(/^[A-Z2-9]{6}$/);
+    const ask = (t: string, side: string, c: string) => req(`/neighbors/${side}`, json('PUT', { code: c }), t);
 
-    const empty = (await (await req('/neighbors', {}, me.token)).json()) as { left: unknown; right: unknown };
-    expect(empty.left).toBeNull();
-    expect(empty.right).toBeNull();
+    expect((await ask(me.token, 'up', anaCode)).status).toBe(400);
+    expect((await ask(me.token, 'left', 'ZZZZZZ')).status).toBe(404);
+    expect((await ask(me.token, 'left', meCode)).status).toBe(400);
 
-    expect((await req('/neighbors/up', json('PUT', { code: anaCode }), me.token)).status).toBe(400);
-    expect((await req('/neighbors/left', json('PUT', { code: 'ZZZZZZ' }), me.token)).status).toBe(404);
-    expect((await req('/neighbors/left', json('PUT', { code: await codeOf(me.token) }), me.token)).status).toBe(400);
-
-    const set = await req('/neighbors/left', json('PUT', { code: anaCode.toLowerCase() }), me.token);
-    expect(set.status).toBe(200);
-    expect(((await set.json()) as { neighbor: { name: string } }).neighbor.name).toBe('ana');
-    expect((await req('/neighbors/right', json('PUT', { code: anaCode }), me.token)).status).toBe(409);
-    expect((await req('/neighbors/right', json('PUT', { code: benCode }), me.token)).status).toBe(200);
-
-    // no beach saved yet on ana's side
+    // I ask Ana to be on my left: pending until she accepts
+    const r1 = await ask(me.token, 'left', anaCode.toLowerCase());
+    expect(r1.status).toBe(200);
+    expect(((await r1.json()) as { status: string }).status).toBe('asked');
+    expect((await get(me.token)).left).toBeNull();
+    expect((await get(me.token)).asked.left?.name).toBe('ana');
+    const anaSees = await get(ana.token);
+    expect(anaSees.requests).toEqual([expect.objectContaining({ name: 'me', side: 'right', code: meCode })]);
+    // no peeking at a beach that isn't linked yet
     expect((await req('/neighbors/left/beach', {}, me.token)).status).toBe(404);
+
+    // she accepts: I'm on her right, she's on my left
+    const acc = await req(`/neighbors/requests/${meCode}/accept`, { method: 'POST' }, ana.token);
+    expect(acc.status).toBe(200);
+    expect(((await acc.json()) as { side: string }).side).toBe('right');
+    expect((await get(me.token)).left?.name).toBe('ana');
+    expect((await get(ana.token)).right?.name).toBe('me');
+    expect((await get(ana.token)).requests).toEqual([]);
+    expect((await get(me.token)).asked.left).toBeNull();
     await putBeach(ana.token, new Uint8Array([9, 9, 9]), 'brighton');
     const nb = await req('/neighbors/left/beach', {}, me.token);
     expect(nb.status).toBe(200);
-    expect(nb.headers.get('X-Beach-Location')).toBe('brighton');
     expect([...new Uint8Array(await nb.arrayBuffer())]).toEqual([9, 9, 9]);
 
-    const list = (await (await req('/neighbors', {}, me.token)).json()) as { left: { name: string; location: string }; right: { name: string } };
-    expect(list.left.name).toBe('ana');
-    expect(list.left.location).toBe('brighton');
-    expect(list.right.name).toBe('ben');
-    expect(((await (await req('/neighbors', {}, ana.token)).json()) as { pickedBy: number }).pickedBy).toBe(1);
+    // one per side, both ways
+    expect((await ask(me.token, 'left', benCode)).status).toBe(409); // my left is taken
+    expect((await ask(cleo.token, 'left', meCode)).status).toBe(200); // asking me for my right…
+    expect((await ask(ben.token, 'left', anaCode)).status).toBe(409); // …but Ana's right is taken (by me)
+    expect((await ask(me.token, 'right', anaCode)).status).toBe(409); // already my left
+    // both asking for matching sides links at once
+    expect((await ask(me.token, 'right', cleoCode)).status).toBe(200);
+    const both = (await get(me.token)) as N;
+    expect(both.right?.name).toBe('cleo');
+    expect((await get(cleo.token)).left?.name).toBe('me');
 
-    // ben can't read ana's beach: she isn't his neighbor
-    expect((await req('/neighbors/left/beach', {}, ben.token)).status).toBe(404);
+    // declining, and taking a request back
+    expect((await ask(ben.token, 'left', cleoCode)).status).toBe(200);
+    expect((await get(cleo.token)).requests.map((r) => r.name)).toEqual(['ben']);
+    expect((await req(`/neighbors/requests/${benCode}`, { method: 'DELETE' }, cleo.token)).status).toBe(204);
+    expect((await get(cleo.token)).requests).toEqual([]);
+    expect((await ask(ben.token, 'right', anaCode)).status).toBe(200);
+    expect((await req('/neighbors/right', { method: 'DELETE' }, ben.token)).status).toBe(204);
+    expect((await get(ana.token)).requests).toEqual([]);
 
-    // removing a neighbor
+    // moving away undoes both ends
     expect((await req('/neighbors/right', { method: 'DELETE' }, me.token)).status).toBe(204);
-    expect(((await (await req('/neighbors', {}, me.token)).json()) as { right: unknown }).right).toBeNull();
+    expect((await get(me.token)).right).toBeNull();
+    expect((await get(cleo.token)).left).toBeNull();
 
-    // rotating a code: the old one stops working, existing neighbors stay
+    // rotating a code: the old one stops working, links stay
     const rotated = (await (await req('/neighbors/code', { method: 'POST' }, ana.token)).json()) as { code: string };
     expect(rotated.code).not.toBe(anaCode);
-    expect((await req('/neighbors/right', json('PUT', { code: anaCode }), ben.token)).status).toBe(404);
-    expect(((await (await req('/neighbors', {}, me.token)).json()) as { left: { name: string } }).left.name).toBe('ana');
+    expect((await ask(ben.token, 'right', anaCode)).status).toBe(404);
+    expect((await get(me.token)).left?.name).toBe('ana');
 
     // deleting an account removes it from everyone's beach
     await req('/account', { method: 'DELETE' }, ana.token);
-    expect(((await (await req('/neighbors', {}, me.token)).json()) as { left: unknown }).left).toBeNull();
+    expect((await get(me.token)).left).toBeNull();
   });
 });

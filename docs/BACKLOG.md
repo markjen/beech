@@ -64,7 +64,12 @@ _(nothing right now)_
   leanback banner). Add Chromecast / AirPlay casting for phones → TV.
 - [ ] **API rate limiting**: a per-IP limit in the server, or Cloud Armor in
   front.
-- [ ] **Mutual neighbors**: requests and accepts on top of codes.
+- [ ] **Keep my beach off the shore**: a setting to leave the global beachfront
+  (and only be visited by code or as someone's neighbor).
+- [ ] **Ask from the shore**: when walking past a beach at the end of a
+  stretch, offer "ask to be neighbors" right on its name tag.
+- [ ] **Push for neighbor requests**: today you see them the next time the
+  app polls (30 s) or opens.
 - [ ] **Long-press to pick up and drag items**: long-press on an item picks
   it up, then drag it somewhere else and release to put it down.
 
@@ -82,6 +87,9 @@ _(nothing right now)_
   shower night.
 
 ## Done (recent)
+
+- [x] **Mutual neighbors on one global beachfront, with infinite scroll**
+  (2026-11-22).
 
 - [x] **Bulldozer; the sea 8 m further out; varied waves (sets, big
   sets, swell at an angle)** (2026-11-22).

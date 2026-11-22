@@ -572,3 +572,20 @@
     bottom: calc(var(--pad) + 80px + env(safe-area-inset-bottom));
   }
 }
+
+/* something waiting for you in the settings (a neighbor request) */
+.hud-btn.badge {
+  position: relative;
+}
+
+.hud-btn.badge::after {
+  content: '';
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #e06a4f;
+  box-shadow: 0 0 0 2px var(--ui-bg);
+}
