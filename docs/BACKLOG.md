@@ -83,6 +83,9 @@ _(nothing right now)_
 
 ## Done (recent)
 
+- [x] **Bulldozer; the sea 8 m further out; varied waves (sets, big
+  sets, swell at an angle)** (2026-11-22).
+
 - [x] **Look tool; walk the whole shore; home button; visit by code;
   favorites** (2026-11-22).
 

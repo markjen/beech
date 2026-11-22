@@ -290,7 +290,7 @@ export class Gestures {
     if (k === ' ') {
       this.space = true;
       e.preventDefault();
-    } else if (k >= '1' && k <= '4' && k.length === 1) this.h.tool?.(Number(k) - 1);
+    } else if (k >= '1' && k <= '5' && k.length === 1) this.h.tool?.(Number(k) - 1);
     else if (k === 'v') this.h.view?.();
     else if (k === 'r' || k === 'f') this.cam.held.add(k);
     else if ((k === 'q' || k === 'e') && this.cam.mode === 'chair') this.cam.held.add(k); // walk along the beach

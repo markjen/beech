@@ -555,3 +555,20 @@
     display: none;
   }
 }
+
+/* short screens (phones in landscape): tools in a row beside the undo button */
+@media (max-height: 460px) {
+  .hud-right {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .hud-tools {
+    flex-direction: row;
+  }
+
+  .inv-tray {
+    right: calc(var(--pad) + env(safe-area-inset-right));
+    bottom: calc(var(--pad) + 80px + env(safe-area-inset-bottom));
+  }
+}

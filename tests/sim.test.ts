@@ -267,3 +267,47 @@ describe('stability', () => {
     expect(worst).toBeLessThan(0.05);
   });
 });
+
+describe('bulldozer', () => {
+  it('pushes the sand back to the untouched beach along its path, leaves rocks alone, and undoes', () => {
+    const sim = new BeachSim(grid, 1, { waves: false, erosion: false, healing: false, seep: false });
+    const y = PROFILE.shoreline + 10; // dry beach
+    // a dug hole and a pile, plus a rock
+    sim.stamp('dig', 10, y, 0.6, 0.4);
+    sim.stamp('pile', 14, y, 0.6, 0.5);
+    const rock = sim.placeObject({ kind: 'rock', item: 'rock', x: 18, y, angle: 0, size: 0.5, variant: 1 });
+    // mean |sand - rest| along the blade's path (sand from outside can slump back in a little)
+    const off = (x: number) => {
+      let m = 0;
+      let n = 0;
+      for (let j = Math.floor((y - 0.4) / sim.dx); j <= Math.ceil((y + 0.4) / sim.dx); j++)
+        for (let i = Math.floor((x - 0.6) / sim.dx); i <= Math.ceil((x + 0.6) / sim.dx); i++) {
+          const k = j * sim.nx + i;
+          m += Math.abs(sim.sand[k] - sim.rest[k]);
+          n++;
+        }
+      return m / n;
+    };
+    expect(off(10)).toBeGreaterThan(0.03);
+    expect(off(14)).toBeGreaterThan(0.03);
+    const rk = Math.floor(y / sim.dx) * sim.nx + Math.floor(18 / sim.dx);
+    const rockTop = sim.sand[rk];
+    // drive the bulldozer along the row, over the rock too
+    sim.beginStroke(8, y, 0.5, 'flatten');
+    for (let s = 0; s <= 60; s++) {
+      sim.moveStroke(8 + s * 0.2, y, 0.5);
+      sim.step(DT);
+    }
+    sim.endStroke();
+    expect(off(10)).toBeLessThan(0.004);
+    expect(off(14)).toBeLessThan(0.004);
+    expect(sim.sand[rk]).toBeCloseTo(rockTop, 4);
+    expect(sim.objects.count).toBe(1);
+    expect(rock.id).toBeGreaterThan(0);
+    // finite everywhere, and one undo brings the hole and pile back
+    for (let k = 0; k < sim.n; k++) expect(Number.isFinite(sim.sand[k])).toBe(true);
+    sim.undoStroke(false);
+    expect(off(10)).toBeGreaterThan(0.03);
+    expect(off(14)).toBeGreaterThan(0.03);
+  });
+});

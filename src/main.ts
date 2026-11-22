@@ -342,11 +342,12 @@ async function boot() {
   };
   updatePlace(true);
   // the look tool (the default) only moves the view: pan, zoom, tilt, turn
-  const TOOLS: { id: BrushMode | 'look'; icon: 'hand' | 'dig' | 'build' | 'smooth'; label: string }[] = [
+  const TOOLS: { id: BrushMode | 'look'; icon: 'hand' | 'dig' | 'build' | 'smooth' | 'dozer'; label: string }[] = [
     { id: 'look', icon: 'hand', label: 'Look around' },
     { id: 'dig', icon: 'dig', label: 'Dig' },
     { id: 'pile', icon: 'build', label: 'Build up sand' },
     { id: 'smooth', icon: 'smooth', label: 'Smooth' },
+    { id: 'flatten', icon: 'dozer', label: 'Bulldozer: flatten back to the beach' },
   ];
   let tool = 'look';
   const pickTool = (id: string) => {

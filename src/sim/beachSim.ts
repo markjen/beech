@@ -13,7 +13,8 @@ import { makeSwell, swellAt, swellEnvelope, tideAt, type Swell } from './waves';
 import { UndoStack, type UndoEntry } from './undoStack';
 import { BeachObjects, type PlacedObject } from './objects';
 
-export type BrushMode = 'dig' | 'pile' | 'smooth';
+/** dig, build up, smooth, or bulldoze (flatten back to the untouched beach) */
+export type BrushMode = 'dig' | 'pile' | 'smooth' | 'flatten';
 
 export interface SimFlags {
   waves: boolean;
@@ -698,7 +699,7 @@ export class BeachSim {
       const y = st.lastY + dym * t;
       this.stamp(st.mode, x, y, st.r, amount, dist > 1e-6 ? st.dirX : 0, dist > 1e-6 ? st.dirY : 0);
       const [ci, cj] = this.toCell(x, y);
-      const rc = Math.ceil((st.r * BRUSH.rimOuter) / this.dx) + 1;
+      const rc = Math.ceil((st.r * Math.max(BRUSH.rimOuter, BRUSH.flattenWidth)) / this.dx) + 1;
       st.i0 = Math.min(st.i0, Math.floor(ci) - rc);
       st.j0 = Math.min(st.j0, Math.floor(cj) - rc);
       st.i1 = Math.max(st.i1, Math.ceil(ci) + rc);
@@ -730,6 +731,24 @@ export class BeachSim {
           const k = j * nx + i;
           const avg = (sand[k - 1] + sand[k + 1] + sand[k - nx] + sand[k + nx]) * 0.25;
           sand[k] += (avg - sand[k]) * Math.min(1, w * amount * 25);
+        }
+      }
+      return;
+    }
+
+    if (mode === 'flatten') {
+      // the bulldozer: a wide blade with a flat middle that pushes the sand
+      // back to the untouched beach (never through a rock: those raise `bottom`)
+      const { rest } = this;
+      const rb = rc * BRUSH.flattenWidth;
+      for (let j = Math.max(0, Math.floor(cj - rb)); j <= Math.min(ny - 1, Math.ceil(cj + rb)); j++) {
+        for (let i = Math.max(0, Math.floor(ci - rb)); i <= Math.min(nx - 1, Math.ceil(ci + rb)); i++) {
+          const q = Math.hypot(i - ci, j - cj) / rb;
+          if (q >= 1) continue;
+          const w = q < 0.6 ? 1 : 1 - smoothstep(0.6, 1, q);
+          const k = j * nx + i;
+          const target = Math.max(rest[k], bottom[k]);
+          sand[k] += (target - sand[k]) * Math.min(1, w * amount * BRUSH.flattenRate);
         }
       }
       return;

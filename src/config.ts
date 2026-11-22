@@ -132,6 +132,10 @@ export const BRUSH = {
   holdRamp: 1.2,
   /** pointer speed (m/s) above which holding counts as moving */
   moveSpeed: 0.6,
+  /** bulldozer: blade radius as a multiple of the brush, and how fast it
+   * pushes the sand back (fraction per metre of brush "depth") */
+  flattenWidth: 1.5,
+  flattenRate: 120,
   /** rim ring extends from R to rimOuter * R */
   rimOuter: 1.9,
   /** fraction of dug sand placed on the rim (rest is "carried away") */

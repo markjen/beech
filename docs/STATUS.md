@@ -103,10 +103,15 @@
   so no key material is ever committed.
 - **App icon and splash are generated from code** (`scripts/make-icons.mjs`,
   an isometric beach tile), then turned into native assets by `@capacitor/assets`.
+- **Bulldozer** (last tool, key 5): drag to push the sand back to the
+  untouched beach under a wide blade (1.5× the brush, flat in the middle).
+  It never cuts through rocks, since it flattens to `max(rest, bottom)`. One
+  stroke is one undo. On short screens (landscape phones) the tools sit in
+  a row beside the undo button.
 - **The look tool (hand, top of the column) is the default.** One finger or
   the left mouse button pans (in the chair view: looks around). Pinch, twist
-  and two-finger tilt work as in every tool. Keys 1–4 pick look / dig /
-  build / smooth.
+  and two-finger tilt work as in every tool. Keys 1–5 pick look / dig /
+  build / smooth / bulldozer.
 - **Tools are a small column above the undo button** (dig / build / smooth,
   keys 1-3). Build adds sand from a "bucket" (it isn't taken from nearby), so
   the sand total goes up. Undo removes it like any other stroke.

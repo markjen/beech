@@ -178,6 +178,26 @@ try {
   if (!(r1 > r0 + 0.3)) fail(`build tool did not raise sand (${r0.toFixed(2)} -> ${r1.toFixed(2)})`);
   else console.log(`build tool ok (${r0.toFixed(2)} -> ${r1.toFixed(2)})`);
 
+  // bulldozer (key 5): drag over the strokes above and the sand goes back to the untouched beach
+  {
+    const before = await diff();
+    await page.keyboard.press('5');
+    for (const y of [470, 520, 560]) {
+      await page.mouse.move(220, y);
+      await page.mouse.down();
+      for (let i = 0; i < 24; i++) {
+        await page.mouse.move(220 + i * 14, y);
+        await page.waitForTimeout(30);
+      }
+      await page.mouse.up();
+    }
+    await page.keyboard.press('2');
+    await settle();
+    const after = await diff();
+    if (!(after < before * 0.6)) fail(`bulldozer did not flatten (${before.toFixed(2)} -> ${after.toFixed(2)})`);
+    else console.log(`bulldozer ok (${before.toFixed(2)} -> ${after.toFixed(2)})`);
+  }
+
   // chair view (V): sitting on the sand you can still dig in front of you
   await page.keyboard.press('v');
   await page.waitForFunction(() => !window.__beech.cam.animating, null, { timeout: 30000 });
