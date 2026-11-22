@@ -1,0 +1,28 @@
+name: Debug signing secrets (temporary)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Decode keystore and check secrets
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          echo "$KEYSTORE_B64" | base64 -d > /tmp/k.jks
+          echo "keystore bytes: $(wc -c < /tmp/k.jks)"
+          echo "keystore sha256: $(sha256sum /tmp/k.jks | cut -d' ' -f1)"
+          echo "storepass sha256: $(printf '%s' "$STORE_PASS" | sha256sum | cut -d' ' -f1)"
+          echo "keypass sha256: $(printf '%s' "$KEY_PASS" | sha256sum | cut -d' ' -f1)"
+          echo "alias: $KEY_ALIAS"
+          echo "--- keytool list attempt:"
+          keytool -list -keystore /tmp/k.jks -storepass "$STORE_PASS" || echo "KEYTOOL FAILED"
