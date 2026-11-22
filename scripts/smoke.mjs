@@ -177,6 +177,15 @@ try {
   const c1 = await diff();
   if (!(c1 > c0 + 0.2)) fail(`digging in the chair view did nothing (${c0.toFixed(2)} -> ${c1.toFixed(2)})`);
   else console.log(`chair view dig ok (${c0.toFixed(2)} -> ${c1.toFixed(2)})`);
+  // walk the chair along the beach (E held: to your right, world -X)
+  const sx0 = await page.evaluate(() => window.__beech.cam.seatX);
+  await page.keyboard.down('e');
+  await page.waitForTimeout(900);
+  await page.keyboard.up('e');
+  await page.waitForTimeout(600);
+  const sx1 = await page.evaluate(() => window.__beech.cam.seatX);
+  if (!(sx1 < sx0 - 0.5)) fail(`E did not walk the chair (${sx0.toFixed(2)} -> ${sx1.toFixed(2)})`);
+  else console.log(`chair walk ok (${sx0.toFixed(2)} -> ${sx1.toFixed(2)})`);
   await page.keyboard.press('v');
   await page.waitForFunction(() => !window.__beech.cam.animating, null, { timeout: 30000 });
 

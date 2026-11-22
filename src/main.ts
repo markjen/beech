@@ -22,6 +22,7 @@ import type { BrushMode } from './sim/beachSim';
 import type { PlacedObject } from './sim/objects';
 import type { FrameInfo, FromWorker, ToWorker } from './sim/protocol';
 import { makeSwell } from './sim/waves';
+import { restHeight } from './sim/profile';
 import { Ambient, toggleFullscreen } from './ui/ambient';
 import { Hud } from './ui/hud';
 import { SettingsSheet, StartScreen, showHint } from './ui/overlays';
@@ -123,7 +124,15 @@ async function boot() {
   const sky = new Sky(scene);
   const picker = new SandPicker(grid, ready.rest);
   const cam = new CameraController(scene, canvas, grid.dx);
-  cam.groundHeight = (x, z) => picker.heightAt(x, z);
+  // set up with the account layer (production builds)
+  let neighbors: NeighborView | null = null;
+  // your sand, else a neighbor's, else the untouched shore (the chair can walk along all of it)
+  cam.groundHeight = (x, z) => {
+    const h = picker.heightAt(x, z);
+    if (Number.isFinite(h)) return h;
+    const n = neighbors?.heightAtWorld(x, z) ?? NaN;
+    return Number.isFinite(n) ? n : restHeight(x + WORLD_SIZE_X / 2, z - ORIGIN_Z, seed);
+  };
   const horizon = new Horizon(scene, swell, seed, grid.dx);
   const objectView = new ObjectView(scene, renderer);
   const audio = new Ambience();
@@ -398,11 +407,33 @@ async function boot() {
   const viewBtn = hud.button('chair', 'Sit on the beach');
   hud.leftGroup.appendChild(viewBtn);
   viewBtn.addEventListener('click', () => cam.toggleMode());
+  // chair: hold ‹ or › to walk the chair along the beach (and over to the neighbors)
+  const walkGroup = document.createElement('div');
+  walkGroup.className = 'hud-walk';
+  for (const [dir, icon, label] of [[-1, 'left', 'Walk left'], [1, 'right', 'Walk right']] as const) {
+    const b = hud.button(icon, label);
+    b.dataset.walk = String(dir);
+    const stop = () => {
+      if (cam.walk === dir) cam.walk = 0;
+      b.classList.remove('pressed');
+    };
+    b.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      cam.walk = dir;
+      b.classList.add('pressed');
+    });
+    b.addEventListener('pointerup', stop);
+    b.addEventListener('pointerleave', stop);
+    b.addEventListener('pointercancel', stop);
+    walkGroup.appendChild(b);
+  }
+  hud.root.appendChild(walkGroup);
   cam.onModeChange((m) => {
     const chair = m === 'chair';
     renderer.setChairView(chair);
     neighbors?.setChairView(chair);
     horizon.setEnabled(chair);
+    walkGroup.classList.toggle('shown', chair);
     hud.setIcon(viewBtn, chair ? 'diorama' : 'chair');
     viewBtn.setAttribute('aria-label', chair ? 'Back to the diorama' : 'Sit on the beach');
     viewBtn.title = viewBtn.getAttribute('aria-label')!;
@@ -625,7 +656,6 @@ async function boot() {
   window.visualViewport?.addEventListener('resize', onResize);
   // ---------------------------------------------------------------- accounts
   let account: Account | null = null;
-  let neighbors: NeighborView | null = null;
   let sync: BeachSync | null = null;
   if (ACCOUNTS_ENABLED) {
     account = new Account();

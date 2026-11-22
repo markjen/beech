@@ -45,8 +45,6 @@ _(nothing right now)_
   5.1.1(v). Needs a Sign in with Apple private key in Secret Manager and a
   call to Apple's `/auth/revoke`.
 - [ ] **Store privacy forms** (DevOps): the wording is in MOBILE.md.
-- [ ] **Chair view polish**: let the chair move along the beach (and over to
-  neighbors). Add surf foam lines on the static shore either side.
 - [ ] **More free items**: a bucket that stamps sand castles, and a beach
   umbrella that casts a shadow (needs a shadow decal in the sand shader).
 - [ ] **A "found" collection**: count what the sea brought in that you kept,
@@ -80,6 +78,11 @@ _(nothing right now)_
   shower night.
 
 ## Done (recent)
+
+- [x] **Chair view: walk along the beach, surf on the shore either side**
+  (2026-11-22). Hold ‹ › (or Q/E) to walk the chair across your beach and
+  your neighbors'. The static shore has a wet band and a foam edge driven by
+  the same swell.
 
 - [x] **Live neighbor sand** (2026-11-22): every 30 s the app checks
   `/api/neighbors` for newer saves next door and repaints in place. Paused

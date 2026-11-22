@@ -243,3 +243,37 @@
   font-size: 12px;
   opacity: 0.75;
 }
+
+/* ---- chair view: walk along the beach ---- */
+.hud-walk {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--pad) + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  display: flex;
+  gap: 56px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.hud-walk.shown {
+  opacity: 1;
+}
+
+.hud-walk.shown .hud-btn {
+  pointer-events: auto;
+}
+
+.hud-walk .hud-btn {
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+@media (max-width: 520px) {
+  /* narrow phones: above the bottom row of buttons */
+  .hud-walk {
+    bottom: calc(var(--pad) + 70px + env(safe-area-inset-bottom));
+  }
+}

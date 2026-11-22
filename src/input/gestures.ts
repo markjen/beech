@@ -277,6 +277,7 @@ export class Gestures {
     } else if (k === '1' || k === '2' || k === '3') this.h.tool?.(Number(k) - 1);
     else if (k === 'v') this.h.view?.();
     else if (k === 'r' || k === 'f') this.cam.held.add(k);
+    else if ((k === 'q' || k === 'e') && this.cam.mode === 'chair') this.cam.held.add(k); // walk along the beach
     else if (k === 'q') this.cam.snapRotation(-1);
     else if (k === 'e') this.cam.snapRotation(1);
     else if (['w', 'a', 's', 'd'].includes(k)) this.cam.held.add(k);

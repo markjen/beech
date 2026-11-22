@@ -10,7 +10,7 @@ import { decodeSand, resampleField } from '../sim/sandCodec';
 import type { SwellComponent } from '../sim/waves';
 import { beachById } from '../world/locations';
 import type { PlacedObject } from '../sim/objects';
-import { BeachRenderer } from './beachRenderer';
+import { BeachRenderer, ORIGIN_Z } from './beachRenderer';
 import { ObjectView } from './objects';
 
 interface Loaded {
@@ -232,6 +232,16 @@ export class NeighborView {
     const half = WORLD_SIZE_X / 2;
     this.cam.maxX = this.slots.has('left') ? NEIGHBOR_OFFSET + half : half;
     this.cam.minX = this.slots.has('right') ? -NEIGHBOR_OFFSET - half : -half;
+  }
+
+  /** Sand height at a world point on a neighbor's beach, or NaN if it isn't on one. */
+  heightAtWorld(x: number, z: number): number {
+    for (const s of this.slots.values()) {
+      const sx = x - s.renderer.offsetX + WORLD_SIZE_X / 2;
+      const sy = z - ORIGIN_Z;
+      if (sx >= 0 && sx <= WORLD_SIZE_X && sy >= 0 && sy <= this.grid.ny * this.grid.dx) return this.heightAt(s.delta, sx, sy);
+    }
+    return NaN;
   }
 
   /** Their sand height at sim metres (bilinear). */

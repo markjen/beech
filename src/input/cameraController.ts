@@ -21,6 +21,8 @@ export const CHAIR = {
   /** where the chair stands, world metres (sea is toward -Z) */
   seatX: 0,
   seatZ: 6.5,
+  /** m/s when walking along the beach */
+  walkSpeed: 1.8,
   fov: 0.95,
   minFov: 0.3,
   maxFov: 1.35,
@@ -59,6 +61,9 @@ export class CameraController {
   pitch = CHAIR.defaultPitch;
   fov = CHAIR.fov;
   seatX = CHAIR.seatX;
+  /** chair: walking along the beach, -1 (to your left) .. 1 (to your right); set by the on-screen buttons */
+  walk = 0;
+  private walkVel = 0;
   /** sand height lookup (set by main), so the chair sits on the real surface */
   groundHeight: (x: number, z: number) => number = () => 0.8;
   private listeners: ((m: ViewMode) => void)[] = [];
@@ -422,6 +427,14 @@ export class CameraController {
         this.look((this.held.has('d') ? s : 0) - (this.held.has('a') ? s : 0), up);
         if (this.held.has('+')) this.zoomAt(Math.exp(-dt * 1.2), 0, 0);
         if (this.held.has('-')) this.zoomAt(Math.exp(dt * 1.2), 0, 0);
+      }
+      // walking along the beach (buttons, or Q/E). Facing the sea, your right is -X.
+      const dir = Math.max(-1, Math.min(1, this.walk + (this.held.has('e') ? 1 : 0) - (this.held.has('q') ? 1 : 0)));
+      this.walkVel += (dir * CHAIR.walkSpeed - this.walkVel) * Math.min(1, dt * 4);
+      if (Math.abs(this.walkVel) > 1e-3) {
+        this.seatX = Math.min(this.maxX - 1.5, Math.max(this.minX + 1.5, this.seatX - this.walkVel * dt));
+      } else {
+        this.walkVel = 0;
       }
       this.applyChair(); // the sand under the chair can change
       return;

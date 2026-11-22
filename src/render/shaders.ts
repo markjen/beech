@@ -390,3 +390,52 @@ void main() {
   gl_FragColor = vec4(col, 1.0);
 }
 `;
+
+// ------------------------------------------------------------------ static shore (chair view)
+
+/**
+ * The beach either side of the simulated ones: flat-shaded sand with a swash
+ * painted on. The run-up line rises and falls with the same swell as the
+ * simulation (shifted a little along the shore so it isn't in lock-step),
+ * leaving a darker wet band and a lacy foam edge.
+ */
+export const shoreFragment = /* glsl */ `
+precision highp float;
+varying vec3 vNormal;
+varying vec3 vWorld;
+${LIGHT_UNIFORMS}
+uniform vec3 baseCol;
+uniform vec3 wetCol;
+uniform vec3 foamCol;
+uniform vec3 fogCol;
+uniform float fadeTop;
+uniform float fadeBottom;
+uniform float tide;
+uniform float simTime;
+uniform vec3 swellA;
+uniform vec3 swellW;
+uniform vec3 swellP;
+${NOISE}
+void main() {
+  float x = vWorld.x;
+  // swell at this point of the shore, phase-shifted along the beach
+  vec3 ph = swellW * simTime + swellP - vec3(0.021, 0.017, 0.029) * x;
+  float s = dot(swellA, sin(ph));
+  float run = tide + 0.12 + max(s, -0.1) * 1.6;
+  float h = vWorld.y;
+  // wet: below the run-up, and a while after it falls back
+  float wetTop = tide + 0.12 + dot(swellA, vec3(1.0)) * 1.2;
+  float wet = 1.0 - smoothstep(wetTop - 0.15, wetTop + 0.1, h);
+  vec3 base = mix(baseCol, wetCol, wet);
+  float ndl = dot(normalize(vNormal), -sunDir);
+  float lit = 0.5 + 0.5 * smoothstep(-0.2, 0.5, ndl);
+  vec3 col = base * mix(shadowCol, sunCol, lit);
+  // foam: a broken line at the run-up edge, thinning out below it
+  float n = vnoise(vWorld.xz * vec2(1.3, 3.0) + vec2(simTime * 0.15, 0.0));
+  float edge = exp(-abs(h - run) / 0.05) * smoothstep(0.15, 0.45, n);
+  float trail = smoothstep(run, run - 0.1, h) * smoothstep(run - 0.5, run - 0.15, h) * smoothstep(0.4, 0.7, n) * 0.8;
+  col = mix(col, foamCol, clamp(edge + trail, 0.0, 1.0));
+  col = mix(col, fogCol, (1.0 - smoothstep(fadeBottom, fadeTop, vWorld.y)) * 0.85);
+  gl_FragColor = vec4(col, 1.0);
+}
+`;

@@ -168,6 +168,12 @@ branch, so the deploy job runs only there. Switch the default branch to
   haze over about 900 m) plus static shore either side, built from the same
   rest profile. Sun and moon discs are projected exactly. The brush radius
   depends on distance so it stays the same size on screen.
+- **Walking the chair:** hold the ‹ › buttons (chair view only) or Q/E to
+  move along the beach at 1.8 m/s (eased), across your neighbors' beaches
+  too. The seat height follows your sand, then a neighbor's, then the rest
+  profile. The static shore shader (`shoreFragment`) paints the swash: a wet
+  band and a foam edge that rises and falls with the swell, phase-shifted
+  along the shore.
 - **Ambient/TV:** `src/ui/ambient.ts` hides idle controls and holds a screen
   wake lock. There's a full-screen button. Android TV gets the leanback
   launcher, optional touchscreen, and `res/drawable-xhdpi/banner.png`

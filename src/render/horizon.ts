@@ -1,4 +1,5 @@
 import { Constants } from '@babylonjs/core/Engines/constants';
+import { Effect } from '@babylonjs/core/Materials/effect';
 import { ShaderMaterial } from '@babylonjs/core/Materials/shaderMaterial';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
@@ -11,6 +12,7 @@ import type { Palette, RGB } from '../palette';
 import { restHeight } from '../sim/profile';
 import type { SwellComponent } from '../sim/waves';
 import { ORIGIN_Z } from './beachRenderer';
+import { flatVertex, shoreFragment } from './shaders';
 
 const c3 = (c: RGB) => new Color3(c[0], c[1], c[2]);
 const LIGHT = ['sunDir', 'sunCol', 'ambCol', 'shadowCol', 'cameraDir'];
@@ -59,9 +61,12 @@ export class Horizon {
     this.seaMat.setFloat('centerX', 0);
     this.seaMat.setFloat('slabHalf', WORLD_SIZE_X / 2 - dx * 0.5);
 
-    this.sandMat = new ShaderMaterial('openShore', scene, 'beachFlat', {
+    Effect.ShadersStore['beachShoreVertexShader'] = flatVertex;
+    Effect.ShadersStore['beachShoreFragmentShader'] = shoreFragment;
+    this.sandMat = new ShaderMaterial('openShore', scene, 'beachShore', {
       attributes: ['position', 'normal'],
-      uniforms: ['world', 'viewProjection', ...LIGHT, 'baseCol', 'fogCol', 'fadeTop', 'fadeBottom'],
+      uniforms: ['world', 'viewProjection', ...LIGHT, 'baseCol', 'wetCol', 'foamCol', 'fogCol', 'fadeTop', 'fadeBottom',
+        'tide', 'simTime', 'swellA', 'swellW', 'swellP'],
       samplers: [],
     });
     this.sandMat.setFloat('fadeTop', -40);
@@ -175,12 +180,16 @@ export class Horizon {
       m.setColor3('fogCol', c3(p.fog));
     }
     this.sandMat.setColor3('baseCol', c3(p.sandDry));
+    this.sandMat.setColor3('wetCol', c3(p.sandWet));
+    this.sandMat.setColor3('foamCol', c3(p.foam));
     const sw = this.swell;
-    this.seaMat.setVector3('swellA', new Vector3(sw[0].amp * ampScale, sw[1].amp * ampScale, sw[2].amp * ampScale));
-    this.seaMat.setVector3('swellW', new Vector3(sw[0].omega, sw[1].omega, sw[2].omega));
-    this.seaMat.setVector3('swellP', new Vector3(sw[0].phase, sw[1].phase, sw[2].phase));
-    this.seaMat.setFloat('simTime', simTime);
-    this.seaMat.setFloat('tide', tide);
+    for (const m of [this.seaMat, this.sandMat]) {
+      m.setVector3('swellA', new Vector3(sw[0].amp * ampScale, sw[1].amp * ampScale, sw[2].amp * ampScale));
+      m.setVector3('swellW', new Vector3(sw[0].omega, sw[1].omega, sw[2].omega));
+      m.setVector3('swellP', new Vector3(sw[0].phase, sw[1].phase, sw[2].phase));
+      m.setFloat('simTime', simTime);
+      m.setFloat('tide', tide);
+    }
     this.seaMat.setColor3('oceanCol', c3(p.farOcean));
     this.seaMat.setColor3('deepCol', c3(p.waterDeep));
     this.seaMat.setColor3('foamCol', c3(p.foam));
