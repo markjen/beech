@@ -21,8 +21,10 @@ export interface Item {
   source: ItemSource;
   /** free items are never used up */
   unlimited: boolean;
-  /** random size range when placed (rock radius / driftwood length, metres) */
+  /** size range you can pick from (rock radius / driftwood length, metres) */
   size: [number, number];
+  /** fixed size (the slider is hidden) */
+  fixedSize?: boolean;
   /** number of shape variants */
   variants: number;
   /** only obtainable between these dates (ISO), for time-limited items */
@@ -32,16 +34,16 @@ export interface Item {
 }
 
 export const ITEMS: Item[] = [
-  { id: 'rock', name: 'Rock', kind: 'rock', rarity: 'common', source: 'free', unlimited: true, size: [0.25, 0.6], variants: 8 },
-  { id: 'driftwood', name: 'Driftwood', kind: 'driftwood', rarity: 'common', source: 'free', unlimited: true, size: [0.9, 2.2], variants: 6 },
-  { id: 'shell', name: 'Shell', kind: 'shell', rarity: 'common', source: 'free', unlimited: true, size: [0.07, 0.14], variants: 8 },
-  { id: 'seaglass', name: 'Sea glass', kind: 'seaglass', rarity: 'common', source: 'free', unlimited: true, size: [0.07, 0.11], variants: 4 },
-  { id: 'flag', name: 'Flag', kind: 'flag', rarity: 'common', source: 'free', unlimited: true, size: [0.4, 0.4], variants: 4 },
+  { id: 'rock', name: 'Rock', kind: 'rock', rarity: 'common', source: 'free', unlimited: true, size: [0.12, 1.3], variants: 8 },
+  { id: 'driftwood', name: 'Driftwood', kind: 'driftwood', rarity: 'common', source: 'free', unlimited: true, size: [0.5, 3.2], variants: 6 },
+  { id: 'shell', name: 'Shell', kind: 'shell', rarity: 'common', source: 'free', unlimited: true, size: [0.05, 0.22], variants: 8 },
+  { id: 'seaglass', name: 'Sea glass', kind: 'seaglass', rarity: 'common', source: 'free', unlimited: true, size: [0.05, 0.16], variants: 4 },
+  { id: 'flag', name: 'Flag', kind: 'flag', rarity: 'common', source: 'free', unlimited: true, size: [0.4, 0.4], variants: 4, fixedSize: true },
   // won from the claw machine (server/src/pulls.ts); you can place as many as you own
-  { id: 'conch', name: 'Conch', kind: 'conch', rarity: 'common', source: 'pull', unlimited: false, size: [0.16, 0.22], variants: 3 },
-  { id: 'sanddollar', name: 'Sand dollar', kind: 'sanddollar', rarity: 'common', source: 'pull', unlimited: false, size: [0.08, 0.11], variants: 2 },
-  { id: 'starfish', name: 'Starfish', kind: 'starfish', rarity: 'rare', source: 'pull', unlimited: false, size: [0.12, 0.17], variants: 3 },
-  { id: 'bottle', name: 'Message in a bottle', kind: 'bottle', rarity: 'legendary', source: 'pull', unlimited: false, size: [0.3, 0.34], variants: 2 },
+  { id: 'conch', name: 'Conch', kind: 'conch', rarity: 'common', source: 'pull', unlimited: false, size: [0.1, 0.35], variants: 3 },
+  { id: 'sanddollar', name: 'Sand dollar', kind: 'sanddollar', rarity: 'common', source: 'pull', unlimited: false, size: [0.06, 0.16], variants: 2 },
+  { id: 'starfish', name: 'Starfish', kind: 'starfish', rarity: 'rare', source: 'pull', unlimited: false, size: [0.08, 0.26], variants: 3 },
+  { id: 'bottle', name: 'Message in a bottle', kind: 'bottle', rarity: 'legendary', source: 'pull', unlimited: false, size: [0.22, 0.45], variants: 2 },
 ];
 
 export const itemById = (id: string): Item | undefined => ITEMS.find((i) => i.id === id);
@@ -54,10 +56,22 @@ export function isAvailable(item: Item, now: Date): boolean {
   return true;
 }
 
-/** A random placement of an item: size, shape variant and turn. */
-export function rollPlacement(item: Item, rand: () => number = Math.random): { size: number; variant: number; angle: number } {
+/** Default slider position (0 = smallest, 1 = largest). */
+export const DEFAULT_SIZE = 0.35;
+
+/**
+ * A placement of an item: the size you picked (0..1 across its range) with a
+ * little natural variation, plus a random shape variant and turn.
+ */
+export function rollPlacement(
+  item: Item,
+  size01 = DEFAULT_SIZE,
+  rand: () => number = Math.random,
+): { size: number; variant: number; angle: number } {
   const [lo, hi] = item.size;
-  // more small ones than big ones
-  const size = lo + (hi - lo) * Math.pow(rand(), 1.6);
+  const t = Math.min(1, Math.max(0, size01));
+  // sizes feel even across the slider (a 2x step anywhere looks the same)
+  const base = lo * Math.pow(hi / lo, t);
+  const size = Math.min(hi, Math.max(lo, base * (0.92 + rand() * 0.16)));
   return { size, variant: 1 + Math.floor(rand() * item.variants), angle: rand() * Math.PI * 2 };
 }

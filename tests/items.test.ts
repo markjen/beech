@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { POOLS } from '../server/src/pulls';
-import { ITEMS, itemById } from '../src/world/items';
+import { ITEMS, itemById, rollPlacement } from '../src/world/items';
 import { OBJECT_KINDS } from '../src/sim/objects';
 
 describe('item catalog', () => {
@@ -25,5 +25,21 @@ describe('item catalog', () => {
       if (it.source === 'free') expect(it.unlimited).toBe(true);
       expect(it.size[0]).toBeGreaterThanOrEqual(0.05);
     }
+  });
+
+  it('the size slider spans the item range, smallest to largest, with a little variation', () => {
+    const rock = itemById('rock')!;
+    const fixed = () => 0.5;
+    expect(rollPlacement(rock, 0, fixed).size).toBeCloseTo(rock.size[0], 6);
+    expect(rollPlacement(rock, 1, fixed).size).toBeCloseTo(rock.size[1], 6);
+    const mid = rollPlacement(rock, 0.5, fixed).size;
+    expect(mid).toBeCloseTo(Math.sqrt(rock.size[0] * rock.size[1]), 6);
+    for (let i = 0; i < 200; i++) {
+      const s = rollPlacement(rock, Math.random()).size;
+      expect(s).toBeGreaterThanOrEqual(rock.size[0]);
+      expect(s).toBeLessThanOrEqual(rock.size[1]);
+    }
+    // a bigger pick is bigger, despite the variation
+    expect(rollPlacement(rock, 0.8, () => 0).size).toBeGreaterThan(rollPlacement(rock, 0.6, () => 0.999).size);
   });
 });

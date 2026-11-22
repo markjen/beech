@@ -83,6 +83,8 @@ _(nothing right now)_
 
 ## Done (recent)
 
+- [x] **Zoom in closer; choose item sizes** (2026-11-22).
+
 - [x] **Free daily claw machine** (2026-11-22): server-side draws with
   published odds, one go a day, prizes (conch, sand dollar, starfish,
   message in a bottle) in the bag with counts.

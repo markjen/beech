@@ -11,13 +11,19 @@ export function brushWorldRadius(halfH: number, viewportHeightPx: number, screen
 }
 
 /**
- * Zoom limits (ortho half-height). Zooming in stops when the brush would be
- * smaller than BRUSH.minCells grid cells; zooming out stops when the whole
- * diorama fits (or the brush would exceed ~2.2 m).
+ * Zoom limits (ortho half-height). Zooming in goes down to
+ * CAMERA.minHalfHeight (close enough to look at a shell); zooming out stops
+ * when the whole diorama fits (or the brush would exceed ~2.2 m).
  */
 export function zoomLimits(viewportHeightPx: number, cellSize: number, fitHalfH: number): { min: number; max: number } {
   const perRadius = Math.max(1, viewportHeightPx) / (2 * BRUSH.screenRadiusPx);
-  const min = BRUSH.minCells * cellSize * perRadius;
-  const max = Math.max(min * 1.5, Math.min(Math.max(CAMERA.maxHalfHeight, fitHalfH), 2.2 * perRadius));
+  const brushMin = BRUSH.minCells * cellSize * perRadius;
+  const min = Math.min(CAMERA.minHalfHeight, brushMin);
+  const max = Math.max(brushMin * 1.5, Math.min(Math.max(CAMERA.maxHalfHeight, fitHalfH), 2.2 * perRadius));
   return { min, max };
+}
+
+/** Brush radius on the sand: constant on screen, but never under BRUSH.minCells cells. */
+export function brushRadiusOnSand(halfH: number, viewportHeightPx: number, cellSize: number): number {
+  return Math.max(BRUSH.minCells * cellSize, brushWorldRadius(halfH, viewportHeightPx));
 }

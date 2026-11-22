@@ -6,7 +6,7 @@ import '@babylonjs/core/Culling/ray';
 import type { Scene } from '@babylonjs/core/scene';
 
 import { BRUSH, CAMERA, WORLD_SIZE_X, WORLD_SIZE_Z } from '../config';
-import { brushWorldRadius, worldPerPx, zoomLimits } from './brushMath';
+import { brushRadiusOnSand, worldPerPx, zoomLimits } from './brushMath';
 
 const TAU = Math.PI * 2;
 const PICK_Y = 0.2;
@@ -24,7 +24,7 @@ export const CHAIR = {
   /** m/s when walking along the beach */
   walkSpeed: 1.8,
   fov: 0.95,
-  minFov: 0.3,
+  minFov: 0.12,
   maxFov: 1.35,
   /** look up / down limits (radians, + = up) */
   minPitch: -40 * DEG,
@@ -229,7 +229,7 @@ export class CameraController {
    * depends on how far away the touched sand is.
    */
   brushRadius(at?: { x: number; y: number; z: number } | null): number {
-    if (this.mode === 'diorama') return brushWorldRadius(this.halfH, this.canvas.clientHeight);
+    if (this.mode === 'diorama') return brushRadiusOnSand(this.halfH, this.canvas.clientHeight, this.cellSize);
     const p = this.chairCam.position;
     const dist = at ? Math.hypot(at.x - p.x, at.y - p.y, at.z - p.z) : 6;
     const wpp = (2 * dist * Math.tan(this.fov / 2)) / (this.canvas.clientHeight || 1);

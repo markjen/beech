@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { brushWorldRadius, zoomLimits } from '../src/input/brushMath';
-import { BRUSH, GRID_TIERS } from '../src/config';
+import { brushRadiusOnSand, brushWorldRadius, zoomLimits } from '../src/input/brushMath';
+import { BRUSH, CAMERA, GRID_TIERS } from '../src/config';
 
 describe('brush math', () => {
   it('keeps the brush the same on screen: world size scales with zoom', () => {
@@ -15,7 +15,10 @@ describe('brush math', () => {
     const g = GRID_TIERS.medium;
     for (const h of [390, 800, 1080, 1440]) {
       const { min, max } = zoomLimits(h, g.dx, 20);
-      expect(brushWorldRadius(min, h)).toBeCloseTo(BRUSH.minCells * g.dx, 6);
+      // zoom in close; the brush on the sand never drops below minCells
+      expect(min).toBeLessThanOrEqual(CAMERA.minHalfHeight);
+      expect(brushRadiusOnSand(min, h, g.dx)).toBeCloseTo(BRUSH.minCells * g.dx, 6);
+      expect(brushRadiusOnSand(max, h, g.dx)).toBeCloseTo(brushWorldRadius(max, h), 6);
       expect(brushWorldRadius(max, h)).toBeLessThanOrEqual(2.2 + 1e-6);
       expect(max).toBeGreaterThan(min);
     }

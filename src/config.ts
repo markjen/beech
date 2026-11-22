@@ -129,6 +129,9 @@ export const CAMERA = {
   alpha: Math.PI * 0.75,
   /** largest allowed ortho half-height (m) */
   maxHalfHeight: 17,
+  /** closest zoom: ortho half-height (m). Past the brush's own limit the brush
+   * stops shrinking on the sand (it grows on screen instead). */
+  minHalfHeight: 0.45,
   /** default ortho half-height (m) */
   defaultHalfHeight: 11,
   /** rotation snap step after a twist (radians) */

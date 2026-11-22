@@ -17,6 +17,8 @@ export interface Settings {
   ambient: boolean;
   /** tier picked by the first-launch benchmark (used when quality is 'auto') */
   benchTier?: QualityTier;
+  /** last size picked for each item, 0..1 across its range */
+  itemSizes?: Record<string, number>;
 }
 
 export const DEFAULT_SETTINGS: Settings = {

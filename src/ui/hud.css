@@ -443,3 +443,115 @@
     opacity: 0;
   }
 }
+
+/* ---- item in hand: size slider ---- */
+.place-bar {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--pad) + env(safe-area-inset-bottom));
+  transform: translate(-50%, 8px);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100vw - 32px);
+  padding: 6px 6px 6px 12px;
+  border-radius: 999px;
+  color: var(--ui-fg);
+  background: var(--ui-bg);
+  box-shadow: 0 6px 18px var(--ui-shadow);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
+}
+
+.place-bar.shown {
+  opacity: 1;
+  transform: translate(-50%, 0);
+  pointer-events: auto;
+}
+
+.place-bar .pb-icon svg {
+  display: block;
+  width: 26px;
+  height: 26px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.place-bar .pb-name {
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.place-bar .pb-size {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  opacity: 0.85;
+}
+
+.place-bar .pb-size[hidden] {
+  display: none;
+}
+
+.place-bar input[type='range'] {
+  width: clamp(80px, 22vw, 160px);
+  accent-color: var(--ui-fg);
+}
+
+.place-bar .pb-close {
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  font-size: 22px;
+  cursor: pointer;
+}
+
+/* above the walk buttons in the chair view, and above the bottom row on phones */
+.hud.chair .place-bar {
+  bottom: calc(var(--pad) + 70px + env(safe-area-inset-bottom));
+}
+
+@media (max-width: 520px) {
+  /* left of the tool column */
+  .place-bar {
+    left: calc(var(--pad) + env(safe-area-inset-left));
+    right: calc(var(--pad) + 70px + env(safe-area-inset-right));
+    bottom: calc(var(--pad) + 70px + env(safe-area-inset-bottom));
+    max-width: none;
+    transform: translateY(8px);
+  }
+
+  .place-bar.shown {
+    transform: none;
+  }
+
+  .place-bar input[type='range'] {
+    flex: 1;
+    width: auto;
+    min-width: 60px;
+  }
+
+  .place-bar .pb-size {
+    flex: 1;
+  }
+
+  .hud.chair .place-bar {
+    bottom: calc(var(--pad) + 140px + env(safe-area-inset-bottom));
+  }
+
+  .place-bar .pb-size span {
+    display: none;
+  }
+}

@@ -26,9 +26,9 @@ import { restHeight } from './sim/profile';
 import { Ambient, toggleFullscreen } from './ui/ambient';
 import { Hud } from './ui/hud';
 import { SettingsSheet, StartScreen, showHint } from './ui/overlays';
-import { InventoryTray } from './ui/inventory';
+import { InventoryTray, PlaceBar } from './ui/inventory';
 import { ClawMachine } from './ui/clawMachine';
-import { ITEMS, rollPlacement, type Item } from './world/items';
+import { DEFAULT_SIZE, ITEMS, rollPlacement, type Item } from './world/items';
 import { WOOD_RADIUS } from './sim/objects';
 import { ACCOUNTS_ENABLED, Account, PullApi } from './net/account';
 import { BeachSync } from './net/beachSync';
@@ -350,6 +350,7 @@ async function boot() {
     brushMode = id as BrushMode;
     placing = null;
     inventory.deselect();
+    placeBar.show(null, DEFAULT_SIZE);
     hud.setTool(id);
     haptics.impact('light');
   };
@@ -359,8 +360,19 @@ async function boot() {
   const inventory = new InventoryTray((n, l, c) => hud.button(n, l, c), hud.root, ITEMS, (item) => {
     placing = item;
     hud.setTool(item ? 'place' : brushMode);
+    placeBar.show(item, DEFAULT_SIZE);
     haptics.impact('light');
   });
+  const sizeOf = (id: string) => settings.itemSizes?.[id] ?? DEFAULT_SIZE;
+  const placeBar = new PlaceBar(
+    hud.root,
+    () => settings.itemSizes ?? {},
+    (id, v) => {
+      settings = { ...settings, itemSizes: { ...settings.itemSizes, [id]: v } };
+      saveSettings(settings);
+    },
+    () => pickTool(brushMode),
+  );
   hud.toolGroup.prepend(inventory.button);
 
   /** Tap with an item in hand: pick up what's there, or set the item down. */
@@ -394,7 +406,7 @@ async function boot() {
       haptics.impact('light');
       return;
     } else {
-      const r = rollPlacement(placing);
+      const r = rollPlacement(placing, sizeOf(placing.id));
       send({ type: 'placeObject', obj: { kind: placing.kind, item: placing.id, x: p.x, y: p.y, ...r } });
       if (placing.kind === 'rock' || placing.kind === 'driftwood') audio.thunk(placing.kind === 'rock');
       haptics.impact(placing.kind === 'rock' ? 'medium' : 'light');
@@ -444,6 +456,7 @@ async function boot() {
     neighbors?.setChairView(chair);
     horizon.setEnabled(chair);
     walkGroup.classList.toggle('shown', chair);
+    hud.root.classList.toggle('chair', chair);
     hud.setIcon(viewBtn, chair ? 'diorama' : 'chair');
     viewBtn.setAttribute('aria-label', chair ? 'Back to the diorama' : 'Sit on the beach');
     viewBtn.title = viewBtn.getAttribute('aria-label')!;

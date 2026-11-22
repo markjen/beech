@@ -175,3 +175,50 @@ export class InventoryTray {
     this.tray.appendChild(tip);
   }
 }
+
+/**
+ * Shown while an item is in hand: what it is, a size slider (remembered per
+ * item), and a button to put it away.
+ */
+export class PlaceBar {
+  private readonly root: HTMLDivElement;
+  private readonly name: HTMLElement;
+  private readonly ico: HTMLElement;
+  private readonly slider: HTMLInputElement;
+  private readonly sizeRow: HTMLElement;
+  private item: Item | null = null;
+
+  constructor(
+    parent: HTMLElement,
+    private readonly sizes: () => Record<string, number>,
+    private readonly setSize: (id: string, v: number) => void,
+    private readonly putAway: () => void,
+  ) {
+    this.root = document.createElement('div');
+    this.root.className = 'place-bar';
+    this.root.innerHTML = `
+      <span class="pb-icon"></span>
+      <b class="pb-name"></b>
+      <label class="pb-size"><span>small</span><input type="range" min="0" max="1" step="0.01" aria-label="Size"><span>big</span></label>
+      <button type="button" class="pb-close" aria-label="Put it away">×</button>`;
+    parent.appendChild(this.root);
+    this.ico = this.root.querySelector('.pb-icon')!;
+    this.name = this.root.querySelector('.pb-name')!;
+    this.slider = this.root.querySelector('input')!;
+    this.sizeRow = this.root.querySelector('.pb-size')!;
+    this.slider.addEventListener('input', () => {
+      if (this.item) this.setSize(this.item.id, Number(this.slider.value));
+    });
+    this.root.querySelector('.pb-close')!.addEventListener('click', () => this.putAway());
+  }
+
+  show(item: Item | null, size01: number): void {
+    this.item = item;
+    this.root.classList.toggle('shown', !!item);
+    if (!item) return;
+    this.ico.innerHTML = icon(item.id as IconName);
+    this.name.textContent = item.name;
+    this.sizeRow.hidden = !!item.fixedSize;
+    this.slider.value = String(this.sizes()[item.id] ?? size01);
+  }
+}

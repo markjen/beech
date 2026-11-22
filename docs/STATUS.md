@@ -31,6 +31,10 @@
 - **Sand shading uses smooth heightfield normals plus 30% facet normal**, with
   a three-band toon ramp. Pure facets looked speckled at cell scale because of
   the alternating triangle diagonals.
+- **Zoom goes in to a 0.45 m half-height** (`CAMERA.minHalfHeight`), close
+  enough to look at a shell. Past the point where the 24 px brush would
+  cover fewer than 2 cells, the brush stays 2 cells on the sand and grows on
+  screen. The chair view zooms to a 0.12 rad field of view.
 - **Minimum brush is 2 grid cells** (25 cm at the medium tier). This caps
   zoom-in, so the finest dig still looks clean on a 12.5 cm grid.
 - **Dry sand angle of repose is 36°** (not 33°), so held digs in dry sand
@@ -196,6 +200,11 @@ branch, so the deploy job runs only there. Switch the default branch to
   drift (so it comes ashore rather than out to sea), turns when its two ends
   feel different flow, and is stranded with sand friction when the water
   drains. It is clamped inside the beach.
+- **Item size:** with an item in hand, a bar shows its name and a size
+  slider, remembered per item in local settings. The slider maps
+  logarithmically across the item's range (rocks 0.12–1.3 m radius,
+  driftwood 0.5–3.2 m), with ±8% variation per placement. Flags have one
+  size.
 - **Shells and sea glass** sit on the sand and are rolled along at about
   half the flow speed when the water is fast (> 0.35 m/s), with a slight
   landward nudge. **Flags** stay put; the pennant flutters and points
