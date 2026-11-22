@@ -33,4 +33,6 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- "near me" in settings picks the closest beach; coarse is plenty -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 </manifest>

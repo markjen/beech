@@ -115,6 +115,27 @@ export const PALETTES: Palette[] = [
     fog: hex('#c98f9f'),
     ui: hex('#e9d6e6'),
   },
+  {
+    name: 'night',
+    skyTop: hex('#141a3a'),
+    skyBottom: hex('#3a3f6e'),
+    sun: hex('#a9bdf0'), // moonlight
+    sunDir: [0.3, -0.85, 0.4],
+    ambient: hex('#3c4778'),
+    shadow: hex('#363d6a'),
+    sandDry: hex('#a39db8'),
+    sandWet: hex('#6f6b8e'),
+    sandDeep: hex('#8a84a2'),
+    strataA: hex('#8f89a8'),
+    strataB: hex('#76718f'),
+    rock: hex('#363a60'),
+    waterShallow: hex('#6fb0d6'),
+    waterDeep: hex('#1b3566'),
+    foam: hex('#f2f6ff'),
+    farOcean: hex('#203c6c'),
+    fog: hex('#4a4f80'),
+    ui: hex('#dfe4ff'),
+  },
 ];
 
 const lerp3 = (a: RGB, b: RGB, t: number): RGB => [
@@ -133,22 +154,25 @@ export function mixPalette(a: Palette, b: Palette, t: number): Palette {
   return out;
 }
 
-/**
- * Palette at a position in the day cycle. phase in [0,1) walks
- * dawn -> day -> golden -> dusk -> (back to dawn), holding on each a while.
- */
-export function paletteAtPhase(phase: number): Palette {
-  const n = PALETTES.length;
-  const p = (((phase % 1) + 1) % 1) * n;
-  const i = Math.floor(p);
-  const f = p - i;
-  // hold for the first 60% of each segment, then ease into the next
-  const t = f < 0.6 ? 0 : smooth((f - 0.6) / 0.4);
-  return mixPalette(PALETTES[i % n], PALETTES[(i + 1) % n], t);
-}
-
 function smooth(x: number): number {
   return x * x * (3 - 2 * x);
+}
+
+/** Piecewise blend between palettes keyed by a value (e.g. sun elevation). */
+export function paletteAlong(keys: [number, string][], v: number): Palette {
+  if (v <= keys[0][0]) return paletteByName(keys[0][1]);
+  for (let i = 1; i < keys.length; i++) {
+    if (v <= keys[i][0]) {
+      const t = (v - keys[i - 1][0]) / (keys[i][0] - keys[i - 1][0]);
+      return mixPalette(paletteByName(keys[i - 1][1]), paletteByName(keys[i][1]), smooth(t));
+    }
+  }
+  return paletteByName(keys[keys.length - 1][1]);
+}
+
+/** Mix a colour tint into a palette entry. */
+export function tint(c: RGB, t: RGB, amount: number): RGB {
+  return lerp3(c, t, amount);
 }
 
 export function paletteByName(name: string): Palette {

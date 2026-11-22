@@ -93,7 +93,9 @@ cd android && ./gradlew bundleRelease          # app/build/outputs/bundle/releas
    1080×1920, or straight from a device.
 4. Content rating questionnaire: no violence, no user content, no ads.
 5. Data safety: **no data collected or shared.** The app has no network
-   calls, analytics or accounts. Settings stay on the device.
+   calls, analytics or accounts. Settings stay on the device. "Near me" reads
+   the coarse location once, on the device, to pick a beach. It is never
+   stored or sent.
 6. Target audience: everyone. The app has no ads and no in-app purchases.
 
 ## iOS → App Store
@@ -124,7 +126,8 @@ Already set in `Info.plist`:
 3. Listing: subtitle, description, keywords, support URL (the GitHub Pages URL
    works), a privacy policy URL, and screenshots for 6.9" and 6.5" iPhones
    (and 13" iPad, since the app supports iPad).
-4. App Privacy: **Data Not Collected**.
+4. App Privacy: **Data Not Collected**. Location is used on the device
+   only, for "near me".
 5. Age rating: 4+.
 
 ## CI

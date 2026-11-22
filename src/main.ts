@@ -8,13 +8,15 @@ import { GRID_TIERS, SIM_HZ, WAVES, type QualityTier } from './config';
 import { CameraController } from './input/cameraController';
 import { Gestures } from './input/gestures';
 import { SandPicker } from './input/sandPicker';
-import { paletteAtPhase, paletteByName, rgbToCss, type Palette } from './palette';
+import { rgbToCss, type Palette } from './palette';
 import { Haptics } from './platform/haptics';
 import { registerServiceWorker } from './platform/pwa';
 import { tierFromBench } from './platform/quality';
 import { BeachRenderer, ORIGIN_X, ORIGIN_Z } from './render/beachRenderer';
 import { ShellField } from './render/shells';
-import { Sky } from './render/sky';
+import { Sky, type SkyDisc } from './render/sky';
+import { LiveConditions } from './world/live';
+import { BEACHES, beachById, defaultBeach, nearestBeach, type Beach } from './world/locations';
 import type { BrushMode } from './sim/beachSim';
 import type { FrameInfo, FromWorker, ToWorker } from './sim/protocol';
 import { makeSwell } from './sim/waves';
@@ -23,8 +25,14 @@ import { SettingsSheet, StartScreen, showHint } from './ui/overlays';
 import { loadSettings, saveSettings, type Settings } from './ui/settingsStore';
 
 const params = new URLSearchParams(location.search);
-/** One full dawn -> day -> golden -> dusk drift, in seconds. */
-const DAY_CYCLE_SECONDS = 20 * 60;
+/**
+ * The clock is the real one. For testing: ?time=2026-11-22T06:30:00Z starts
+ * from another moment and ?speed=60 runs it faster (time-lapse).
+ */
+const clockStart = Date.parse(params.get('time') ?? '') || Date.now();
+const clockSpeed = Number(params.get('speed') ?? 1) || 1;
+const perfStart = performance.now();
+const clockNow = () => new Date(clockStart + (performance.now() - perfStart) * clockSpeed);
 
 function benchmark(worker: Worker): Promise<number> {
   return new Promise((resolve) => {
@@ -95,6 +103,13 @@ async function boot() {
 
   const swell = makeSwell(seed);
   const renderer = new BeachRenderer(scene, grid, ready.rest, swell);
+
+  // ---------------------------------------------------------------- the real beach
+  let beach: Beach = beachById(params.get('beach')) ?? beachById(settings.beach) ?? defaultBeach();
+  const live = new LiveConditions(beach);
+  let liveState = live.compute(clockNow());
+  const sendSea = () => send({ type: 'sea', tide: liveState.simTide, waves: beach.waves });
+  sendSea();
   const sky = new Sky(scene);
   const picker = new SandPicker(grid, ready.rest);
   const cam = new CameraController(scene, canvas, grid.dx);
@@ -212,8 +227,33 @@ async function boot() {
     window.setTimeout(() => URL.revokeObjectURL(a.href), 4000);
   };
 
+  const setBeach = (b: Beach) => {
+    beach = b;
+    live.setBeach(b);
+    liveState = live.compute(clockNow());
+    sendSea();
+    settings = { ...settings, beach: b.id };
+    saveSettings(settings);
+    sheet.setSettings(settings);
+    updatePlace(true);
+  };
   const sheet = new SettingsSheet(uiRoot, settings, {
+    nearMe: () => {
+      if (!('geolocation' in navigator)) return;
+      navigator.geolocation.getCurrentPosition(
+        (pos) => setBeach(nearestBeach(pos.coords.latitude, pos.coords.longitude)),
+        () => {
+          /* denied or unavailable: keep the current beach */
+        },
+        { maximumAge: 3600000, timeout: 10000 },
+      );
+    },
     change: (s, key) => {
+      if (key === 'beach') {
+        const b = beachById(s.beach);
+        if (b) setBeach(b);
+        return;
+      }
       settings = s;
       saveSettings(settings);
       if (key === 'sound') audio.setSound(s.sound);
@@ -225,7 +265,29 @@ async function boot() {
       audio.whoosh(false);
     },
     share: () => void share(),
-  });
+  }, BEACHES);
+  sheet.setSettings({ ...settings, beach: beach.id });
+
+  // place + time + tide, top left; tapping it opens the beach picker
+  const place = document.createElement('button');
+  place.type = 'button';
+  place.className = 'place';
+  place.setAttribute('aria-label', 'Choose a beach');
+  uiRoot.appendChild(place);
+  place.addEventListener('click', () => sheet.show());
+  let placeText = '';
+  let placeAt = 0;
+  const updatePlace = (force = false) => {
+    const t = performance.now();
+    if (!force && t - placeAt < 1000) return;
+    placeAt = t;
+    const text = `<b>${beach.name}, ${beach.place}</b><span>${live.describe(liveState)}</span>`;
+    if (text !== placeText) {
+      placeText = text;
+      place.innerHTML = text;
+    }
+  };
+  updatePlace(true);
   const TOOLS: { id: BrushMode; icon: 'dig' | 'build' | 'smooth'; label: string }[] = [
     { id: 'dig', icon: 'dig', label: 'Dig' },
     { id: 'pile', icon: 'build', label: 'Build up sand' },
@@ -312,11 +374,24 @@ async function boot() {
 
   // ---------------------------------------------------------------- palette / day cycle
   const fixedPalette = params.get('palette');
-  let dayPhase = 0.27; // start in full daylight
-  const currentPalette = (): Palette => {
-    if (fixedPalette) return paletteByName(fixedPalette);
-    if (settings.palette !== 'cycle') return paletteByName(settings.palette);
-    return paletteAtPhase(dayPhase);
+  let seaSentAt = 0;
+  /** where a sky object sits on the backdrop, seen from the current camera */
+  const skyDisc = (dir: [number, number, number], elevation: number): SkyDisc | undefined => {
+    if (elevation < -3) return undefined;
+    const f = cam.forward();
+    const fh = Math.hypot(f.x, f.z) || 1;
+    const fx = f.x / fh;
+    const fz = f.z / fh;
+    const h = Math.hypot(dir[0], dir[2]) || 1;
+    const vx = dir[0] / h;
+    const vz = dir[2] / h;
+    const front = vx * fx + vz * fz;
+    // screen right of a camera looking along (fx, fz) is (fz, -fx) in this left-handed scene
+    const side = vx * fz - vz * fx;
+    const e = Math.max(0, elevation) * (Math.PI / 180);
+    const alpha = Math.min(1, Math.max(0, (front + 0.1) / 0.4)) * Math.min(1, Math.max(0, (elevation + 3) / 5));
+    if (alpha <= 0) return undefined;
+    return { x: 0.5 + side * 0.48, y: 0.24 - Math.sin(e) * 0.2, alpha };
   };
   const clear = new Color4(0, 0, 0, 1);
   const applyUiColors = (p: Palette) => {
@@ -360,10 +435,17 @@ async function boot() {
     }
     const dt = Math.min(0.1, (now - last) / 1000);
     last = now;
-    dayPhase += dt / DAY_CYCLE_SECONDS;
+    const now0 = clockNow();
+    const fixed = fixedPalette ?? (settings.palette !== 'live' ? settings.palette : undefined);
+    liveState = live.compute(now0, fixed);
+    if (now - seaSentAt > 2000) {
+      seaSentAt = now;
+      sendSea();
+    }
+    updatePlace();
     if (!document.hidden && !params.has('fixedres')) adaptResolution(dt);
 
-    const palette = currentPalette();
+    const palette = liveState.palette;
     cam.update(dt, gestures.cameraActive);
     updateRing(dt, palette);
     hud.setUndoState(info.undoCount, info.redoCount);
@@ -372,9 +454,19 @@ async function boot() {
     const mix = Math.min(1, (now - frameAt) / (1000 / SIM_HZ));
     renderer.setFrameMix(mix);
     const simTime = prevT + (info.t - prevT) * mix;
-    const amp = 1 - (1 - WAVES.calmFactor) * info.calmMix;
+    const amp = (1 - (1 - WAVES.calmFactor) * info.calmMix) * beach.waves;
     renderer.update(palette, cam.forward(), (now - t0) / 1000, simTime, info.tide, amp);
-    sky.update(palette);
+    const sk = liveState.sky;
+    const moonDisc = skyDisc(sk.moon.dir, sk.moon.elevation);
+    sky.update(
+      palette,
+      {
+        sun: fixed ? undefined : skyDisc(sk.sun.dir, sk.sun.elevation),
+        moon: fixed || !moonDisc ? undefined : { ...moonDisc, alpha: moonDisc.alpha * (0.35 + 0.65 * sk.night), phase: sk.moon.phase, fraction: sk.moon.fraction },
+        stars: fixed ? (fixed === 'night' ? 1 : 0) : sk.night,
+      },
+      cam.aspect(),
+    );
     clear.set(palette.fog[0], palette.fog[1], palette.fog[2], 1);
     scene.clearColor = clear;
 
@@ -388,6 +480,7 @@ async function boot() {
       seaPan: -right.z,
       zoomOut: (cam.halfH - lim.min) / Math.max(1e-3, lim.max - lim.min),
       calm: info.calmMix,
+      daylight: 1 - liveState.sky.night,
     });
 
     scene.render();
@@ -422,6 +515,12 @@ async function boot() {
     audio,
     pickTool,
     shells,
+    beach: () => beach,
+    live: () => ({ ...liveState, palette: undefined }),
+    setBeach: (id: string) => {
+      const b = beachById(id);
+      if (b) setBeach(b);
+    },
   };
 
   if (params.has('debug')) {

@@ -1,6 +1,7 @@
 import './overlays.css';
 
 import type { QualityTier } from '../config';
+import type { Beach } from '../world/locations';
 import type { PaletteChoice, Settings } from './settingsStore';
 
 /** Title card shown until the first touch (which also unlocks audio). */
@@ -63,16 +64,19 @@ export function showHint(parent: HTMLElement, isTouch: boolean): () => void {
 
 export interface SettingsHandlers {
   change(s: Settings, key: keyof Settings): void;
+  /** "near me": ask for the device location and pick the closest beach */
+  nearMe(): void;
   smooth(): void;
   share(): void;
 }
 
 const PALETTE_LABELS: [PaletteChoice, string][] = [
-  ['cycle', 'drift'],
+  ['live', 'live'],
   ['dawn', 'dawn'],
   ['day', 'day'],
   ['golden', 'golden'],
   ['dusk', 'dusk'],
+  ['night', 'night'],
 ];
 
 const QUALITY_LABELS: [QualityTier | 'auto', string][] = [
@@ -91,6 +95,7 @@ export class SettingsSheet {
     parent: HTMLElement,
     private settings: Settings,
     private readonly h: SettingsHandlers,
+    beaches: Beach[],
   ) {
     this.el = document.createElement('div');
     this.el.className = 'sheet-wrap';
@@ -98,6 +103,9 @@ export class SettingsSheet {
       <div class="sheet-scrim"></div>
       <div class="sheet" role="dialog" aria-label="Settings">
         <div class="sheet-grip"></div>
+        <div class="row col"><span>beach</span><div class="chips" data-key="beach">${beaches
+          .map((b) => `<button type="button" data-v="${b.id}" title="${b.place}">${b.name}</button>`)
+          .join('')}<button type="button" class="near" data-act="near">near me</button></div></div>
         <div class="row"><span>sound</span>${this.toggle('sound')}</div>
         <div class="row"><span>music</span>${this.toggle('music')}</div>
         <div class="row"><span>haptics</span>${this.toggle('haptics')}</div>
@@ -123,9 +131,10 @@ export class SettingsSheet {
         this.h.change(this.settings, key);
       });
     }
+    this.el.querySelector<HTMLButtonElement>('button[data-act="near"]')!.addEventListener('click', () => this.h.nearMe());
     for (const group of this.el.querySelectorAll<HTMLDivElement>('.chips')) {
-      const key = group.dataset.key as 'palette' | 'quality';
-      for (const b of group.querySelectorAll<HTMLButtonElement>('button')) {
+      const key = group.dataset.key as 'palette' | 'quality' | 'beach';
+      for (const b of group.querySelectorAll<HTMLButtonElement>('button[data-v]')) {
         b.addEventListener('click', () => {
           this.settings = { ...this.settings, [key]: b.dataset.v } as Settings;
           this.sync();
@@ -134,7 +143,7 @@ export class SettingsSheet {
       }
     }
     let confirmSmooth = 0;
-    for (const b of this.el.querySelectorAll<HTMLButtonElement>('button[data-act]')) {
+    for (const b of this.el.querySelectorAll<HTMLButtonElement>('button[data-act="share"], button[data-act="smooth"]')) {
       b.addEventListener('click', () => {
         if (b.dataset.act === 'share') {
           this.hide();
@@ -166,11 +175,17 @@ export class SettingsSheet {
 
   private sync(): void {
     for (const group of this.el.querySelectorAll<HTMLDivElement>('.chips')) {
-      const key = group.dataset.key as 'palette' | 'quality';
-      for (const b of group.querySelectorAll<HTMLButtonElement>('button')) {
+      const key = group.dataset.key as 'palette' | 'quality' | 'beach';
+      for (const b of group.querySelectorAll<HTMLButtonElement>('button[data-v]')) {
         b.classList.toggle('on', b.dataset.v === this.settings[key]);
       }
     }
+  }
+
+  /** Reflect a change made outside the sheet (e.g. "near me" or the default beach). */
+  setSettings(s: Settings): void {
+    this.settings = s;
+    this.sync();
   }
 
   toggleOpen(): void {

@@ -16,7 +16,9 @@ export type ToWorker =
   | { type: 'pause'; paused: boolean }
   | { type: 'tune'; section: TunableSection; key: string; value: number }
   | { type: 'return'; buf: Float32Array }
-  | { type: 'bench' };
+  | { type: 'bench' }
+  /** real-world sea state: diorama tide level (m) and swell multiplier */
+  | { type: 'sea'; tide: number; waves: number };
 
 export interface FrameInfo {
   /** sim time (s) */

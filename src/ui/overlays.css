@@ -84,7 +84,7 @@
 .hint {
   position: fixed;
   left: 50%;
-  top: calc(18px + env(safe-area-inset-top));
+  top: calc(84px + env(safe-area-inset-top));
   transform: translate(-50%, -8px);
   max-width: min(92vw, 520px);
   padding: 10px 16px;
@@ -275,4 +275,51 @@
 .switch input:focus-visible + i {
   outline: 2px solid currentColor;
   outline-offset: 2px;
+}
+
+.sheet {
+  max-height: 88vh;
+  overflow-y: auto;
+}
+
+.chips button.near {
+  border-style: dashed;
+}
+
+/* ---------------------------------------------------------- place label */
+
+.place {
+  position: fixed;
+  left: calc(16px + env(safe-area-inset-left));
+  top: calc(14px + env(safe-area-inset-top));
+  max-width: calc(100vw - 32px);
+  padding: 8px 14px 9px;
+  border: none;
+  border-radius: 16px;
+  text-align: left;
+  font: inherit;
+  color: var(--ui-fg);
+  background: var(--ui-bg);
+  box-shadow: 0 6px 18px var(--ui-shadow);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  pointer-events: auto;
+  cursor: pointer;
+  transition: opacity 0.4s ease;
+}
+
+.place b {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.place span {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  opacity: 0.75;
+  font-variant-numeric: tabular-nums;
 }

@@ -70,6 +70,8 @@
 	<true/>
 	<key>UIRequiresFullScreen</key>
 	<true/>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Used once, on your device, to pick the beach nearest to you. Your location is never stored or sent anywhere.</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 </dict>

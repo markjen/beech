@@ -19,6 +19,8 @@ export interface AmbienceInput {
   zoomOut: number;
   /** 0..1 how calm the waves are */
   calm: number;
+  /** 0 at night .. 1 in daylight (gulls sleep at night) */
+  daylight?: number;
 }
 
 function makeNoise(ctx: BaseAudioContext, seconds: number): AudioBuffer {
@@ -301,7 +303,8 @@ export class Ambience {
     this.washLevel += (Math.min(1, up / 1.6) - this.washLevel) * k;
     this.backLevel += (Math.min(1, down / 1.6) - this.backLevel) * k;
 
-    this.bedGain.gain.setTargetAtTime((0.22 + this.washLevel * 0.12) * near, now, 0.4);
+    const hush = 0.8 + 0.2 * (s.daylight ?? 1);
+    this.bedGain.gain.setTargetAtTime((0.22 + this.washLevel * 0.12) * near * hush, now, 0.4);
     this.washGain.gain.setTargetAtTime(this.washLevel * 0.55 * near * energy, now, 0.15);
     this.washFilter.frequency.setTargetAtTime(500 + this.washLevel * 1600, now, 0.2);
     this.backGain.gain.setTargetAtTime(this.backLevel * 0.16 * near * energy, now, 0.25);
@@ -313,7 +316,7 @@ export class Ambience {
     this.scrapeFilter.frequency.setTargetAtTime(1300 + s.dig * 900 + Math.random() * 300, now, 0.05);
 
     if (now > this.nextGull) {
-      if (this.soundOn) this.gull();
+      if (this.soundOn && (s.daylight ?? 1) > 0.4) this.gull();
       this.nextGull = now + 25 + Math.random() * 45;
     }
     if (this.musicOn && now > this.nextChord) {

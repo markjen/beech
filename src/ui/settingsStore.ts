@@ -1,12 +1,15 @@
 import type { QualityTier } from '../config';
 
-export type PaletteChoice = 'cycle' | 'dawn' | 'day' | 'golden' | 'dusk';
+/** 'live' follows the real sun at the chosen beach; the others pin a mood */
+export type PaletteChoice = 'live' | 'dawn' | 'day' | 'golden' | 'dusk' | 'night';
 
 export interface Settings {
   sound: boolean;
   music: boolean;
   haptics: boolean;
   palette: PaletteChoice;
+  /** beach id (src/world/locations.ts); unset = pick from the device's time zone */
+  beach?: string;
   quality: QualityTier | 'auto';
   batterySaver: boolean;
   seenIntro: boolean;
@@ -18,7 +21,7 @@ export const DEFAULT_SETTINGS: Settings = {
   sound: true,
   music: false,
   haptics: true,
-  palette: 'cycle',
+  palette: 'live',
   quality: 'auto',
   batterySaver: false,
   seenIntro: false,
@@ -30,7 +33,12 @@ const KEY = 'beech.settings.v1';
 export function loadSettings(): Settings {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) return { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as Partial<Settings>) };
+    if (raw) {
+      const s = { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as Partial<Settings>) };
+      // older builds had a 20-minute "cycle"; it became the live sky
+      if ((s.palette as string) === 'cycle') s.palette = 'live';
+      return s;
+    }
   } catch {
     /* ignore */
   }

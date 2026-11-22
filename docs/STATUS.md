@@ -91,6 +91,33 @@
 - **Camera looks from the land toward the sea** (alpha = 135°), so the waves
   come toward the viewer.
 
+## Real-world beaches (added after M7)
+
+- `src/world/locations.ts` defines 13 popular beaches: lat/lon, IANA time
+  zone, the compass bearing the beach faces, a wave scale, and sand and water
+  tints.
+- `src/world/astro.ts` holds the SunCalc-style sun and moon positions and moon
+  phase. `src/world/live.ts` turns them into scene light (the sea is −Z, and
+  facing the sea your right is −X), a sun-elevation palette with the new
+  night palette, sky discs, stars and the status line.
+- `src/world/tides.ts` is the harmonic prediction engine (28 constituents,
+  Schureman phase convention as NOAA uses, nodal corrections). Constants come
+  from TICON-3 via `scripts/extract-tides.mjs`. Tested against NOAA official
+  predictions: Honolulu RMS 2.3 cm and highs/lows within 20 min (2 min
+  observed); Santa Monica RMS 6.4 cm from a gauge 62 km away.
+- Real tide → diorama: `0.3 m × sign(h) × (1 − e^(−|h|/1 m))`, sent to the
+  worker every 2 s (`sea` message) and eased in over about 20 s.
+- The sun and moon are drawn on the backdrop where the camera would see them
+  over the sea. The far-ocean apron now fades out by 17 m, so a band of sky
+  shows above the sea.
+- Gulls only call in daylight, and the ocean bed is a little quieter at night.
+- "Near me" uses the browser/OS geolocation once, on the device. The iOS
+  `NSLocationWhenInUseUsageDescription` and Android `ACCESS_COARSE_LOCATION`
+  are declared. The store privacy answer is still "Data Not Collected"
+  (nothing leaves the device).
+- Tulum was dropped: its nearest coastal gauge is 94 km away, and its main
+  tide constant (7 mm) is implausible.
+
 ## Ideas beyond the plan (not started)
 
 - Tide-pool life (tiny crabs that scurry from the finger), footprints.

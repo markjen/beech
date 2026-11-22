@@ -29,6 +29,27 @@ flat-shaded diorama style.
 The brush is always the same size on screen. Zoom in for fine detail, zoom out
 for broad digs.
 
+## Real beaches, real time
+
+You're on a real beach: Bondi, Waikīkī, Santa Monica, South Beach, Copacabana,
+Brighton, Biarritz, Camps Bay, Patong, Kuta, Nice, Kamakura or Piha. It
+starts on the one in your time zone (or the nearest UTC offset). Tap the label
+in the top-left to pick another, or "near me". At that beach, right now:
+
+- **The sun and moon** are where they really are, computed from the beach's
+  latitude, longitude and the current time. They light the sand from that
+  direction, and the moon is drawn at its real phase.
+- **Time of day** comes from the sun's height. Dawn colours come in the
+  morning, golden and dusk in the evening, and stars at night.
+- **The tide** comes from the harmonic constants of the nearest real tide
+  gauge. Highs and lows land within minutes of official predictions. Big tide
+  ranges are squashed to fit the diorama, but the timing and rise/fall are real.
+- **The waves and colours** suit the place: calm and blue in Nice, big surf at
+  Biarritz and Piha, black sand at Piha.
+
+Tide data: TICON-3 (Hart-Davis, Dettmering & Seitz), PANGAEA,
+https://doi.org/10.1594/PANGAEA.951610, CC-BY 4.0.
+
 ## Scripts
 
 | Command | What it does |
@@ -43,4 +64,6 @@ for broad digs.
 | `node scripts/set-version.mjs 1.2.0 7` | Set the version name and build number everywhere |
 
 URL parameters for development: `?quality=low|medium|high`, `?seed=N`,
-`?palette=dawn|day|golden|dusk`, `?debug=1`.
+`?palette=dawn|day|golden|dusk|night`, `?beach=bondi|waikiki|…`,
+`?time=2026-11-22T06:30:00Z` (start the clock elsewhere), `?speed=60`
+(time-lapse), `?debug=1`.

@@ -249,7 +249,7 @@ void main() {
   col = mix(col, foamCol, smoothstep(0.55, 1.0, vCrest) * 0.18);
   float spec = pow(max(dot(reflect(sunDir, N), -cameraDir), 0.0), 40.0);
   col += sunCol * spec * 0.25;
-  float f = smoothstep(3.0, 30.0, dist);
+  float f = smoothstep(2.0, 17.0, dist);
   // soften the cut sides a little as the sea recedes into the mist
   f = max(f, smoothstep(halfX - 0.5 - dist * 0.25, halfX, abs(vWorld.x)) * smoothstep(0.0, 6.0, dist));
   col = mix(col, fogCol, f * 0.55);

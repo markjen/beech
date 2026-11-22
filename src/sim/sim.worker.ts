@@ -84,6 +84,9 @@ self.onmessage = (ev: MessageEvent<ToWorker>) => {
       acc = DT; // produce a first frame right away
       break;
     }
+    case 'sea':
+      sim?.setSea(m.tide, m.waves);
+      break;
     case 'bench': {
       // time a few ticks of the smallest grid to pick a quality tier
       const b = new BeachSim(CONFIG.GRID_TIERS.low, 1);

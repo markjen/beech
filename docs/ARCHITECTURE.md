@@ -54,8 +54,9 @@ simulated one.
 | `src/render/beachRenderer.ts`, `shaders.ts` | All meshes and GLSL (sand, water, far ocean, skirts, rock, props) |
 | `src/render/sky.ts`, `shells.ts` | Gradient background; shells washing in |
 | `src/input/*` | Ortho camera, gestures (dig vs camera), heightfield picking, brush math |
+| `src/world/*` | Real beaches: `locations.ts` (catalogue), `astro.ts` (sun and moon), `tides.ts` (harmonic tide engine), `tideStations.json` (TICON-3 constants), `live.ts` (turns a beach and the current time into a palette, light, sky and tide) |
 | `src/audio/ambience.ts` | Procedural Web Audio soundscape |
 | `src/platform/*` | Haptics (Capacitor or vibrate), PWA registration, quality tier from benchmark |
 | `src/ui/*` | HUD buttons and tools, start screen, hint, settings sheet, debug panel, settings storage |
-| `scripts/` | `shot.mjs` (screenshots), `smoke.mjs` (end-to-end), `make-icons.mjs`, `set-version.mjs`, `actions/*` (scripted interactions for screenshots) |
+| `scripts/` | `shot.mjs` (screenshots), `smoke.mjs` (end-to-end), `make-icons.mjs`, `set-version.mjs`, `extract-tides.mjs` (rebuild tide constants from TICON-3), `artifact-page.mjs` (claude.ai preview), `actions/*` (scripted interactions for screenshots) |
 | `android/`, `ios/` | Capacitor native shells (see docs/MOBILE.md) |

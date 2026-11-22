@@ -5,30 +5,131 @@ import type { Scene } from '@babylonjs/core/scene';
 
 import { rgbToCss, type Palette } from '../palette';
 
-/** Full-screen background gradient, redrawn only when the palette changes. */
+/** Where to draw a sun or moon on the backdrop (fractions of the screen). */
+export interface SkyDisc {
+  x: number;
+  y: number;
+  alpha: number;
+}
+
+export interface SkyScene {
+  sun?: SkyDisc;
+  moon?: SkyDisc & { phase: number; fraction: number };
+  /** 0..1 star visibility */
+  stars: number;
+}
+
+const STARS: [number, number, number][] = [];
+{
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  for (let i = 0; i < 140; i++) STARS.push([rnd(), Math.pow(rnd(), 1.6) * 0.62, 0.4 + rnd() * 0.6]);
+}
+
+/**
+ * Full-screen backdrop: palette gradient, stars at night, and the real sun
+ * and moon (with its phase) where they would sit over the sea. Redrawn only
+ * when something visible changes.
+ */
 export class Sky {
-  private readonly tex: DynamicTexture;
+  private tex: DynamicTexture;
   private readonly layer: Layer;
   private lastKey = '';
+  private w = 4;
+  private h = 256;
 
-  constructor(scene: Scene) {
-    this.tex = new DynamicTexture('sky', { width: 4, height: 256 }, scene, false);
+  constructor(private readonly scene: Scene) {
+    this.tex = new DynamicTexture('sky', { width: this.w, height: this.h }, scene, false);
     this.layer = new Layer('skyLayer', null, scene, true);
     this.layer.texture = this.tex;
   }
 
-  update(p: Palette): void {
-    const key = rgbToCss(p.skyTop) + rgbToCss(p.skyBottom) + rgbToCss(p.fog);
+  private ensureSize(aspect: number): void {
+    const h = 320;
+    const w = Math.max(64, Math.round(h * aspect));
+    if (w === this.w && h === this.h) return;
+    this.w = w;
+    this.h = h;
+    this.tex.dispose();
+    this.tex = new DynamicTexture('sky', { width: w, height: h }, this.scene, false);
+    this.layer.texture = this.tex;
+    this.lastKey = '';
+  }
+
+  update(p: Palette, sky: SkyScene = { stars: 0 }, aspect = 1): void {
+    this.ensureSize(aspect);
+    const r = (v: number) => Math.round(v * 200) / 200;
+    const key = [
+      rgbToCss(p.skyTop),
+      rgbToCss(p.skyBottom),
+      rgbToCss(p.fog),
+      r(sky.stars),
+      sky.sun ? [r(sky.sun.x), r(sky.sun.y), r(sky.sun.alpha)].join() : '',
+      sky.moon ? [r(sky.moon.x), r(sky.moon.y), r(sky.moon.alpha), r(sky.moon.phase)].join() : '',
+    ].join('|');
     if (key === this.lastKey) return;
     this.lastKey = key;
+    const { w, h } = this;
     const ctx = this.tex.getContext() as CanvasRenderingContext2D;
-    const g = ctx.createLinearGradient(0, 0, 0, 256);
-    // texture v runs bottom-to-top on screen
-    g.addColorStop(0, rgbToCss(p.fog));
-    g.addColorStop(0.45, rgbToCss(p.skyBottom));
-    g.addColorStop(1, rgbToCss(p.skyTop));
+    // the layer samples the texture bottom-up, so draw upside down
+    ctx.save();
+    ctx.setTransform(1, 0, 0, -1, 0, h);
+    const g = ctx.createLinearGradient(0, 0, 0, h);
+    g.addColorStop(0, rgbToCss(p.skyTop));
+    g.addColorStop(0.55, rgbToCss(p.skyBottom));
+    g.addColorStop(1, rgbToCss(p.fog));
     ctx.fillStyle = g;
-    ctx.fillRect(0, 0, 4, 256);
+    ctx.fillRect(0, 0, w, h);
+
+    if (sky.stars > 0.01) {
+      for (const [sx, sy, b] of STARS) {
+        ctx.fillStyle = `rgba(255,255,245,${(sky.stars * b * 0.85).toFixed(3)})`;
+        const size = b > 0.9 ? 1.6 : 1.1;
+        ctx.fillRect(sx * w, sy * h, size, size);
+      }
+    }
+
+    const unit = h / 320;
+    if (sky.sun && sky.sun.alpha > 0.01) {
+      const { x, y, alpha } = sky.sun;
+      const cx = x * w;
+      const cy = y * h;
+      const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, 70 * unit);
+      glow.addColorStop(0, `rgba(255,246,220,${0.55 * alpha})`);
+      glow.addColorStop(1, 'rgba(255,246,220,0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(cx - 80 * unit, cy - 80 * unit, 160 * unit, 160 * unit);
+      ctx.fillStyle = `rgba(255,250,236,${0.95 * alpha})`;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 13 * unit, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    if (sky.moon && sky.moon.alpha > 0.01) {
+      const { x, y, alpha, phase } = sky.moon;
+      const cx = x * w;
+      const cy = y * h;
+      const rad = 9 * unit;
+      const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, 40 * unit);
+      glow.addColorStop(0, `rgba(230,236,255,${0.3 * alpha * sky.moon.fraction})`);
+      glow.addColorStop(1, 'rgba(230,236,255,0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(cx - 45 * unit, cy - 45 * unit, 90 * unit, 90 * unit);
+      // lit part: a half disc plus an ellipse whose width follows the phase
+      ctx.fillStyle = `rgba(244,246,255,${0.95 * alpha})`;
+      const waxing = phase < 0.5;
+      const k = Math.cos(phase * 2 * Math.PI); // 1 new, -1 full
+      ctx.beginPath();
+      ctx.arc(cx, cy, rad, -Math.PI / 2, Math.PI / 2, !waxing);
+      ctx.ellipse(cx, cy, Math.abs(k) * rad, rad, 0, Math.PI / 2, -Math.PI / 2, k > 0 ? waxing : !waxing);
+      ctx.fill();
+      // faint earthshine on the dark side
+      ctx.fillStyle = `rgba(200,210,240,${0.12 * alpha})`;
+      ctx.beginPath();
+      ctx.arc(cx, cy, rad, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
     this.tex.update(false);
   }
 }

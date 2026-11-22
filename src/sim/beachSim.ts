@@ -86,6 +86,11 @@ export class BeachSim {
   time = 0;
   /** eased 0..1 amount of "calm" (so toggling doesn't jolt the water) */
   calmMix = 0;
+  /** tide level set from outside (the real tide at a real beach), or null for the built-in demo tide */
+  private externalTide: number | null = null;
+  private tideNow = 0;
+  /** swell height multiplier (calm Mediterranean vs. Atlantic surf) */
+  waveScale = 1;
   readonly swell: SwellComponent[];
   readonly seed: number;
 
@@ -149,13 +154,22 @@ export class BeachSim {
 
   /** Mean water level (tide only) at time t. */
   meanLevel(t = this.time): number {
-    return tideAt(t, this.flags.tide && !this.flags.closed);
+    if (this.flags.closed || !this.flags.tide) return 0;
+    if (this.externalTide !== null) return this.tideNow;
+    return tideAt(t);
+  }
+
+  /** Drive the tide from outside (m). The first call snaps, later ones ease in. */
+  setSea(tide: number, waveScale: number): void {
+    if (this.externalTide === null) this.tideNow = tide;
+    this.externalTide = tide;
+    this.waveScale = Math.max(0, Math.min(1.2, waveScale));
   }
 
   /** Water surface imposed at the offshore boundary. */
   seaLevel(t = this.time): number {
     if (this.flags.closed) return 0;
-    const amp = this.flags.waves ? 1 - (1 - WAVES.calmFactor) * this.calmMix : 0;
+    const amp = this.flags.waves ? (1 - (1 - WAVES.calmFactor) * this.calmMix) * this.waveScale : 0;
     return this.meanLevel(t) + swellAt(t, this.swell, amp);
   }
 
@@ -165,6 +179,7 @@ export class BeachSim {
   step(dt: number): void {
     const calmTarget = this.flags.calm ? 1 : 0;
     this.calmMix += (calmTarget - this.calmMix) * Math.min(1, dt / 2.5);
+    if (this.externalTide !== null) this.tideNow += (this.externalTide - this.tideNow) * Math.min(1, dt / 20);
 
     this.applyBrush(dt);
     this.applyUndoEasing();
