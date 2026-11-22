@@ -87,24 +87,111 @@ export class CameraController {
   }
 
   get active(): Camera {
-    return this.mode === 'chair' ? this.chairCam : this.camera;
+    return this.mode === 'chair' || this.anim ? this.chairCam : this.camera;
   }
 
   onModeChange(fn: (m: ViewMode) => void): void {
     this.listeners.push(fn);
   }
 
-  setMode(m: ViewMode): void {
+  /**
+   * Switch views. Animated by default: a dolly-zoom from the floating island
+   * down into the beach chair (or back up). The scenery swaps halfway.
+   */
+  setMode(m: ViewMode, animate = true): void {
+    if (this.anim) {
+      // reversing mid-flight: turn around from where we are
+      if ((m === 'chair') !== this.anim.toChair) {
+        this.anim.toChair = m === 'chair';
+        this.anim.t = 1 - this.anim.t;
+        this.anim.switched = this.anim.t >= 0.5;
+      }
+      return;
+    }
     if (m === this.mode) return;
-    this.mode = m;
     this.panVel.setAll(0);
     if (m === 'chair') {
       // sit facing where the diorama camera was looking, roughly
       this.seatX = Math.min(this.maxX - 2, Math.max(this.minX + 2, this.camera.target.x));
-      this.applyChair();
+      this.yaw = 0;
+      this.pitch = CHAIR.defaultPitch;
+      this.fov = CHAIR.fov;
     }
+    if (!animate) {
+      this.finishMode(m);
+      return;
+    }
+    this.anim = { toChair: m === 'chair', t: 0, switched: false };
+    this.scene.activeCamera = this.chairCam;
+    this.applyAnim();
+  }
+
+  /** true while the view is flying between diorama and chair */
+  get animating(): boolean {
+    return this.anim !== null;
+  }
+
+  private anim: { toChair: boolean; t: number; switched: boolean } | null = null;
+
+  private finishMode(m: ViewMode): void {
+    const changed = m !== this.mode;
+    this.mode = m;
+    if (m === 'chair') this.applyChair();
+    this.chairCam.minZ = 0.05;
     this.scene.activeCamera = this.active;
-    for (const fn of this.listeners) fn(m);
+    if (changed) for (const fn of this.listeners) fn(m);
+  }
+
+  /** Camera pose a fraction s of the way from the diorama (0) to the chair (1). */
+  private applyAnim(): void {
+    const a = this.anim!;
+    const s0 = a.toChair ? a.t : 1 - a.t;
+    const e = s0 * s0 * s0 * (s0 * (s0 * 6 - 15) + 10); // smootherstep
+    // diorama end: far away along the orbit direction with a narrow lens that
+    // frames exactly what the orthographic camera shows
+    const focus0 = this.camera.target.clone();
+    const dir0 = this.camera.position.subtract(this.camera.target).normalize();
+    const D0 = 300;
+    const H0 = 2 * this.halfH;
+    // chair end
+    const ground = this.groundHeight(this.seatX, CHAIR.seatZ);
+    const eye1 = new Vector3(this.seatX, (Number.isFinite(ground) ? ground : 0.8) + CHAIR.eye, CHAIR.seatZ);
+    const cp = Math.cos(this.pitch);
+    const fwd = new Vector3(-Math.sin(this.yaw) * cp, Math.sin(this.pitch), -Math.cos(this.yaw) * cp);
+    const D1 = 12;
+    const focus1 = eye1.add(fwd.scale(D1));
+    const dir1 = fwd.scale(-1);
+    const H1 = 2 * D1 * Math.tan(this.fov / 2);
+    const lerp = (x: number, y: number) => x + (y - x) * e;
+    const focus = Vector3.Lerp(focus0, focus1, e);
+    const dir = Vector3.Lerp(dir0, dir1, e).normalize();
+    const D = Math.exp(lerp(Math.log(D0), Math.log(D1)));
+    const H = Math.exp(lerp(Math.log(H0), Math.log(H1)));
+    this.chairCam.position.copyFrom(focus.add(dir.scale(D)));
+    this.chairCam.setTarget(focus);
+    this.chairCam.fov = 2 * Math.atan(H / (2 * D));
+    // keep depth precision sensible while far away
+    this.chairCam.minZ = Math.max(0.05, D * 0.05);
+  }
+
+  private stepAnim(dt: number): void {
+    const a = this.anim!;
+    a.t = Math.min(1, a.t + dt / 1.7);
+    const target: ViewMode = a.toChair ? 'chair' : 'diorama';
+    if (!a.switched && a.t >= 0.5) {
+      a.switched = true;
+      // swap the scenery (island apron vs open sea) mid-flight
+      if (target !== this.mode) {
+        this.mode = target;
+        for (const fn of this.listeners) fn(target);
+      }
+    }
+    if (a.t >= 1) {
+      this.anim = null;
+      this.finishMode(target);
+      return;
+    }
+    this.applyAnim();
   }
 
   toggleMode(): void {
@@ -195,6 +282,7 @@ export class CameraController {
   // ------------------------------------------------------------ actions
 
   zoomAt(factor: number, sx: number, sy: number): void {
+    if (this.anim) return;
     if (this.mode === 'chair') {
       this.fov = Math.min(CHAIR.maxFov, Math.max(CHAIR.minFov, this.fov * factor));
       this.applyChair();
@@ -213,6 +301,7 @@ export class CameraController {
   }
 
   panScreen(px: number, py: number, sx: number, sy: number): void {
+    if (this.anim) return;
     if (this.mode === 'chair') {
       // drag the view: the scene follows the fingers
       const k = this.fov / (this.canvas.clientHeight || 1);
@@ -247,6 +336,7 @@ export class CameraController {
   }
 
   rotate(dAlpha: number): void {
+    if (this.anim) return;
     if (this.mode === 'chair') {
       this.look(-dAlpha, 0);
       return;
@@ -260,6 +350,7 @@ export class CameraController {
    * chair = look up/down. Positive = toward the horizon.
    */
   tilt(d: number): void {
+    if (this.anim) return;
     if (this.mode === 'chair') {
       this.look(0, d * 0.6);
       return;
@@ -319,6 +410,10 @@ export class CameraController {
   }
 
   update(dt: number, panning: boolean): void {
+    if (this.anim) {
+      this.stepAnim(dt);
+      return;
+    }
     if (this.mode === 'chair') {
       // keys / TV remote: look around, +/- zoom
       if (this.held.size) {

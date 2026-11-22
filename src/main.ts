@@ -369,6 +369,7 @@ async function boot() {
 
   const gestures = new Gestures(canvas, cam, {
     digStart: (sx, sy) => {
+      if (cam.animating) return;
       digging = true;
       strokeOpen = false;
       hover = null;
@@ -637,7 +638,7 @@ async function boot() {
     await setupDebug(send, () => info, () => cam.brushRadius());
   }
   // start seated (TV / ?view=chair) once everything the view switch touches exists
-  if (tv || params.get('view') === 'chair') cam.setMode('chair');
+  if (tv || params.get('view') === 'chair') cam.setMode('chair', false);
   document.body.dataset.ready = '1';
 }
 

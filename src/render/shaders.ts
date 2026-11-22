@@ -252,7 +252,7 @@ ${FACET}
 void main() {
   if (apron < 0.5) {
     vec3 d = abs(vec3(vWorld.x) - slabs);
-    if (vWorld.z > zEdge - 0.05 && min(d.x, min(d.y, d.z)) < slabHalf) discard;
+    if (vWorld.z > zEdge + 0.02 && min(d.x, min(d.y, d.z)) < slabHalf) discard;
   }
   vec3 N = facetNormal(vWorld);
   float ndl = dot(N, -sunDir);

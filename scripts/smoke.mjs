@@ -163,7 +163,7 @@ try {
 
   // chair view (V): sitting on the sand you can still dig in front of you
   await page.keyboard.press('v');
-  await page.waitForTimeout(400);
+  await page.waitForFunction(() => !window.__beech.cam.animating, null, { timeout: 30000 });
   if ((await page.evaluate(() => window.__beech.cam.mode)) !== 'chair') fail('V did not switch to the chair view');
   const c0 = await diff();
   await page.mouse.move(500, 620);
@@ -178,7 +178,7 @@ try {
   if (!(c1 > c0 + 0.2)) fail(`digging in the chair view did nothing (${c0.toFixed(2)} -> ${c1.toFixed(2)})`);
   else console.log(`chair view dig ok (${c0.toFixed(2)} -> ${c1.toFixed(2)})`);
   await page.keyboard.press('v');
-  await page.waitForTimeout(300);
+  await page.waitForFunction(() => !window.__beech.cam.animating, null, { timeout: 30000 });
 
   // tilt (R held) lowers the diorama toward the horizon
   const e0 = await page.evaluate(() => window.__beech.cam.elevationDeg);
