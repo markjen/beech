@@ -280,7 +280,34 @@
 
 .sheet {
   max-height: 88vh;
+  max-height: 88dvh;
   overflow-y: auto;
+  /* the page itself is touch-action: none; the sheet scrolls */
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.sheet-close {
+  position: sticky;
+  top: 0;
+  float: right;
+  width: 40px;
+  height: 40px;
+  margin: -6px -12px 0 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--ui-bg);
+  color: inherit;
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+  z-index: 1;
+  touch-action: manipulation;
+}
+
+.sheet-close:focus-visible {
+  outline: 2px solid currentColor;
 }
 
 .chips button.near {

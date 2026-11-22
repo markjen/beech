@@ -104,6 +104,7 @@ export class SettingsSheet {
       <div class="sheet-scrim"></div>
       <div class="sheet" role="dialog" aria-label="Settings">
         <div class="sheet-grip"></div>
+        <button type="button" class="sheet-close" data-act="close" aria-label="Close settings">×</button>
         <div class="account-slot"></div>
         <div class="row col"><span>beach</span><div class="chips" data-key="beach">${beaches
           .map((b) => `<button type="button" data-v="${b.id}" title="${b.place}">${b.name}</button>`)
@@ -128,6 +129,7 @@ export class SettingsSheet {
       </div>`;
     parent.appendChild(this.el);
     this.el.querySelector('.sheet-scrim')!.addEventListener('pointerdown', () => this.hide());
+    this.el.querySelector('.sheet-close')!.addEventListener('click', () => this.hide());
     for (const input of this.el.querySelectorAll<HTMLInputElement>('input[data-key]')) {
       input.addEventListener('change', () => {
         const key = input.dataset.key as 'sound' | 'music' | 'haptics' | 'batterySaver' | 'ambient';

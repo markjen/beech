@@ -209,6 +209,7 @@ export class PlaceBar {
     this.slider.addEventListener('input', () => {
       if (this.item) this.setSize(this.item.id, Number(this.slider.value));
     });
+    dragSlider(this.slider);
     this.root.querySelector('.pb-close')!.addEventListener('click', () => this.putAway());
   }
 
@@ -221,4 +222,47 @@ export class PlaceBar {
     this.sizeRow.hidden = !!item.fixedSize;
     this.slider.value = String(this.sizes()[item.id] ?? size01);
   }
+}
+
+/**
+ * Make a range input follow a finger. The page turns off the browser's own
+ * touch handling (so the beach gets every gesture), which on phones leaves
+ * a native slider tap-only; this drives it from pointer events instead.
+ */
+export function dragSlider(input: HTMLInputElement): void {
+  let id = -1;
+  const setFrom = (e: PointerEvent) => {
+    const r = input.getBoundingClientRect();
+    const min = Number(input.min || 0);
+    const max = Number(input.max || 1);
+    const step = Number(input.step) || 0;
+    const t = Math.min(1, Math.max(0, (e.clientX - r.left) / Math.max(1, r.width)));
+    let v = min + t * (max - min);
+    if (step) v = Math.round(v / step) * step;
+    if (String(v) !== input.value) {
+      input.value = String(v);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  };
+  input.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse') return; // mice already work
+    e.preventDefault();
+    id = e.pointerId;
+    try {
+      input.setPointerCapture(id);
+    } catch {
+      /* ignore */
+    }
+    setFrom(e);
+  });
+  input.addEventListener('pointermove', (e) => {
+    if (e.pointerId === id) setFrom(e);
+  });
+  const end = (e: PointerEvent) => {
+    if (e.pointerId !== id) return;
+    id = -1;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+  input.addEventListener('pointerup', end);
+  input.addEventListener('pointercancel', end);
 }

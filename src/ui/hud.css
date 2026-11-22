@@ -589,3 +589,14 @@
   background: #e06a4f;
   box-shadow: 0 0 0 2px var(--ui-bg);
 }
+
+/* panels that scroll, and sliders: the page is touch-action: none */
+.inv-tray,
+.claw-card {
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+}
+
+.place-bar input[type='range'] {
+  height: 32px;
+}

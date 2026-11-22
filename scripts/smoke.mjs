@@ -255,6 +255,64 @@ try {
     await page.click('button[data-tool="dig"]');
   }
 
+  // phone (GitHub issues #4, #5, #6): the settings sheet scrolls by touch and
+  // has a close button, and the size slider follows a finger
+  {
+    const { devices } = require('playwright');
+    const ctx = await browser.newContext({ ...devices['iPhone 13'] });
+    const ph = await ctx.newPage();
+    ph.on('pageerror', (e) => errors.push(`phone: ${e.message}`));
+    await ph.goto(url + '?seed=1&smoke=1&nointro');
+    await ph.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
+    const cdp = await ctx.newCDPSession(ph);
+    const drag = async (x0, y0, x1, y1) => {
+      const pt = (x, y) => [{ x, y }];
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: pt(x0, y0) });
+      for (let i = 1; i <= 10; i++) {
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: pt(x0 + ((x1 - x0) * i) / 10, y0 + ((y1 - y0) * i) / 10) });
+        await ph.waitForTimeout(16);
+      }
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    };
+    await ph.evaluate(() => window.__beech.sheet.show());
+    // wait for the sheet to finish sliding up
+    await ph.waitForFunction(() => {
+      const r = document.querySelector('.sheet').getBoundingClientRect();
+      return r.bottom <= innerHeight + 1;
+    }, null, { timeout: 10000 });
+    await ph.waitForTimeout(200);
+    const box = await ph.locator('.sheet').boundingBox();
+    const scrollable = await ph.evaluate(() => { const s = document.querySelector('.sheet'); return s.scrollHeight > s.clientHeight; });
+    await drag(box.x + box.width / 2, box.y + box.height - 40, box.x + box.width / 2, box.y + 60);
+    await ph.waitForTimeout(400);
+    const top = await ph.evaluate(() => document.querySelector('.sheet').scrollTop);
+    if (scrollable && !(top > 20)) fail(`settings sheet does not scroll by touch (scrollTop ${top})`);
+    else console.log(`phone: settings scrolls by touch (scrollTop ${top}${scrollable ? '' : ', fits without scrolling'})`);
+    await ph.locator('.sheet-close').tap();
+    await ph.waitForTimeout(500);
+    if (await ph.evaluate(() => document.querySelector('.sheet-wrap')?.classList.contains('open'))) fail('settings close button did not close it');
+    else console.log('phone: settings close button ok');
+    // the size slider: pick a rock, drag the slider
+    await ph.locator('button[data-tool="place"]').tap();
+    await ph.locator('.inv-item.rarity-common >> nth=0').tap();
+    await ph.waitForTimeout(300);
+    const sb = await ph.locator('.place-bar input[type=range]').boundingBox();
+    const v0 = Number(await ph.locator('.place-bar input[type=range]').inputValue());
+    await drag(sb.x + sb.width * 0.15, sb.y + sb.height / 2, sb.x + sb.width * 0.9, sb.y + sb.height / 2);
+    await ph.waitForTimeout(200);
+    const v1 = Number(await ph.locator('.place-bar input[type=range]').inputValue());
+    if (!(v1 > 0.8 && v1 !== v0)) fail(`size slider does not follow a finger (${v0} -> ${v1})`);
+    else console.log(`phone: size slider drags (${v0} -> ${v1})`);
+    // and the beach still gets its gestures: a touch drag on the canvas is not scrolled by the page
+    const blocked = await ph.evaluate(() => {
+      const ev = new Event('touchmove', { bubbles: true, cancelable: true });
+      document.getElementById('scene').dispatchEvent(ev);
+      return ev.defaultPrevented;
+    });
+    if (!blocked) fail('touchmove on the beach is no longer held back from the browser');
+    await ctx.close();
+  }
+
   if (!process.env.SMOKE_URL) {
     // production build: the service worker should let the app start offline
     await page.evaluate(() => navigator.serviceWorker?.ready);

@@ -59,6 +59,13 @@ const CANCEL_WINDOW_MS = 220;
  *   mouse: left = dig, middle / space+left = pan, right = rotate, wheel = zoom
  *   keys:  WASD pan, Q/E rotate 45deg, +/- zoom, Ctrl/Cmd+Z undo, +Shift redo
  */
+/** UI that needs the browser's own touch handling: scrolling panels and form controls. */
+export const TOUCH_UI = '.sheet, .inv-tray, .claw-card, input, textarea, select';
+
+export function letTouchThrough(target: EventTarget | null): boolean {
+  return !!(target as Element | null)?.closest?.(TOUCH_UI);
+}
+
 export class Gestures {
   private mode: Mode = 'idle';
   private pointers = new Map<number, { x: number; y: number }>();
@@ -85,9 +92,17 @@ export class Gestures {
     canvas.addEventListener('pointerleave', this.onLeave);
     canvas.addEventListener('wheel', this.onWheel, { passive: false });
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-    // stop iOS Safari's own pinch/scroll gestures
+    // stop iOS Safari's own pinch/scroll gestures over the beach, but let
+    // panels scroll and sliders slide (they're driven by touchmove on iOS)
     for (const t of ['gesturestart', 'gesturechange', 'touchmove']) {
-      document.addEventListener(t, (e) => e.preventDefault(), { passive: false });
+      document.addEventListener(
+        t,
+        (e) => {
+          if (t === 'touchmove' && letTouchThrough(e.target)) return;
+          e.preventDefault();
+        },
+        { passive: false },
+      );
     }
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('keyup', this.onKeyUp);
