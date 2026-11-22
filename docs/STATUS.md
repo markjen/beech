@@ -117,6 +117,15 @@
   claude.ai artifact (Beech Seaside Toy), made with
   `node scripts/artifact-page.mjs` after `npm run build`.
 
+## Next steps owned by the repo owner (deferred by choice, 2026-11-22)
+
+- **GitHub Pages:** skipped for now. The private claude.ai artifact is the
+  web build. To go live: enable Pages (see above) and re-run the deploy.
+- **Store submission:** later. The owner will create the Apple Developer and
+  Google Play accounts, pick the final app ID, and add the secrets listed in
+  docs/MOBILE.md. Then run "Release to stores". Agents shouldn't attempt
+  uploads before those secrets exist.
+
 ## Not verified here (needs real accounts or hardware)
 
 - The store upload workflow (`release-mobile.yml`): needs Play and App Store
