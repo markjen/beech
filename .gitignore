@@ -13,3 +13,7 @@ ios/App/build/
 ios/App/Pods/
 ios/DerivedData/
 dist-artifact/
+# terraform state (contains secrets) — never commit
+*.tfstate
+*.tfstate.*
+.terraform/

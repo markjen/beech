@@ -4,7 +4,19 @@ name: Deploy production (Google Cloud Run)
 # deploys it to Cloud Run, connected to Cloud SQL for PostgreSQL.
 # GitHub Pages keeps serving the public sandbox build (no sign-in).
 #
-# One-time setup and the variables below: docs/GCP.md
+# TRIGGER BRANCH — why the default branch, not main:
+# This repo's default branch is `ccr-85f84f81-0scrin`. That is where
+# development lands, and it is the only branch the github-pages environment
+# accepts (see deploy.yml: the build job is gated on
+# `github.ref_name == github.event.repository.default_branch`, and pushes to
+# `main` are skipped there). `main` exists and is kept in sync with the
+# default branch, but work is never pushed to it first — so the previous
+# version of this workflow, which triggered only on `main`, could never
+# fire on a real push. Trigger on the default branch. If the default
+# branch is ever renamed to `main`, update the list below.
+# (docs/GCP.md says "push to main" — that predates this branch setup.)
+#
+# One-time setup and the variables below: docs/GCP.md (or infra/README.md)
 #   vars.GCP_ENABLED = 1            turns this workflow on
 #   vars.GCP_PROJECT_ID, vars.GCP_REGION
 #   vars.GCP_WIF_PROVIDER           projects/<num>/locations/global/workloadIdentityPools/github/providers/github
@@ -18,7 +30,7 @@ name: Deploy production (Google Cloud Run)
 # and the database password lives in Secret Manager (beech-db-password).
 on:
   push:
-    branches: [main]
+    branches: [ccr-85f84f81-0scrin]
   workflow_dispatch:
 
 permissions:
