@@ -6,7 +6,7 @@ name: Mobile builds
 # Store uploads are a separate, manual workflow (release-mobile.yml).
 on:
   push:
-    branches: [main]
+    branches: [main, ccr-85f84f81-0scrin]
     paths: ['src/**', 'android/**', 'ios/**', 'capacitor.config.ts', 'package*.json', '.github/workflows/mobile.yml']
   workflow_dispatch:
 

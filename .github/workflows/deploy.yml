@@ -1,10 +1,12 @@
 name: Deploy web build to GitHub Pages
 
-# Publishes dist/ to GitHub Pages on every push to main.
-# One-time setup: repo Settings -> Pages -> Source: "GitHub Actions".
+# Publishes dist/ to GitHub Pages on every push to main (and the agent
+# development branch, so work can be played before it is merged).
+# configure-pages tries to switch Pages on; if the token isn't allowed to, a
+# repo admin sets Settings -> Pages -> Source: "GitHub Actions" once.
 on:
   push:
-    branches: [main]
+    branches: [main, ccr-85f84f81-0scrin]
   workflow_dispatch:
 
 permissions:
@@ -25,6 +27,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
       - run: npm ci
       - run: npm test
       - run: npm run build
