@@ -13,7 +13,6 @@ import { Haptics } from './platform/haptics';
 import { registerServiceWorker } from './platform/pwa';
 import { tierFromBench } from './platform/quality';
 import { BeachRenderer, ORIGIN_X, ORIGIN_Z } from './render/beachRenderer';
-import { ShellField } from './render/shells';
 import { ObjectView } from './render/objects';
 import { Horizon } from './render/horizon';
 import { Sky, type SkyDisc } from './render/sky';
@@ -126,7 +125,6 @@ async function boot() {
   const cam = new CameraController(scene, canvas, grid.dx);
   cam.groundHeight = (x, z) => picker.heightAt(x, z);
   const horizon = new Horizon(scene, swell, seed, grid.dx);
-  const shells = new ShellField(scene, renderer, picker);
   const objectView = new ObjectView(scene, renderer);
   const audio = new Ambience();
   const haptics = new Haptics();
@@ -359,7 +357,7 @@ async function boot() {
     // something already there? pick it back up
     let near: { id: number; d: number } | null = null;
     for (const o of info.objects) {
-      const reach = o.kind === 'rock' ? o.size : Math.max(WOOD_RADIUS(o.size) * 3, 0.25);
+      const reach = o.kind === 'driftwood' ? Math.max(WOOD_RADIUS(o.size) * 3, 0.25) : Math.max(o.size * 1.5, 0.25);
       // driftwood: distance to the log's centre line
       let d: number;
       if (o.kind === 'driftwood') {
@@ -379,7 +377,7 @@ async function boot() {
     } else {
       const r = rollPlacement(placing);
       send({ type: 'placeObject', obj: { kind: placing.kind, item: placing.id, x: p.x, y: p.y, ...r } });
-      audio.thunk(placing.kind === 'rock');
+      if (placing.kind === 'rock' || placing.kind === 'driftwood') audio.thunk(placing.kind === 'rock');
       haptics.impact(placing.kind === 'rock' ? 'medium' : 'light');
     }
     markDirty();
@@ -604,7 +602,6 @@ async function boot() {
     clear.set(palette.fog[0], palette.fog[1], palette.fog[2], 1);
     scene.clearColor = clear;
 
-    shells.update(dt, swashRate);
     objectView.update(dt);
     if (digging) haptics.dig(info.digIntensity);
     cam.camera.getDirectionToRef(Vector3.Right(), right);
@@ -688,7 +685,6 @@ async function boot() {
     audio,
     pickTool,
     view: (m?: 'diorama' | 'chair') => (m ? cam.setMode(m) : cam.toggleMode()),
-    shells,
     beach: () => beach,
     account: () => account,
     neighbors: () => neighbors,

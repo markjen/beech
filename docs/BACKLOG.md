@@ -47,11 +47,10 @@ _(nothing right now)_
 - [ ] **Store privacy forms** (DevOps): the wording is in MOBILE.md.
 - [ ] **Chair view polish**: let the chair move along the beach (and over to
   neighbors). Add surf foam lines on the static shore either side.
-- [ ] **More free items**: shells and sea glass to place, a bucket for sand
-  castles, a beach umbrella (casts a shadow), a little flag. Each needs a
-  catalog entry, a sim behaviour (fixed / floats / blows away) and a mesh.
-- [ ] **Driftwood that washes in**: now and then the sea brings a piece in
-  (like the shells), and you can keep it.
+- [ ] **More free items**: a bucket that stamps sand castles, and a beach
+  umbrella that casts a shadow (needs a shadow decal in the sand shader).
+- [ ] **A "found" collection**: count what the sea brought in that you kept,
+  and show rare finds (it could drop items here later).
 - [ ] **Shop (paid items)**: App Store / Play billing (both stores require
   their own in-app purchase for digital goods) and Stripe on the web.
   Purchases are verified on the server, which writes `inventory` rows.
@@ -82,6 +81,8 @@ _(nothing right now)_
   shower night.
 
 ## Done (recent)
+
+- [x] **Shells, sea glass and flags; the sea washes things in** (2026-11-22).
 
 - [x] **Native sign-in in the apps** (2026-11-22): Google (Android + iOS) and
   Sign in with Apple (iOS) through `@capgo/capacitor-social-login`. Facebook

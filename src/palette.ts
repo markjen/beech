@@ -187,4 +187,8 @@ export function rgbToCss(c: RGB, alpha = 1): string {
 export const PROP_COLORS = {
   rock: [hex('#b3aeb4'), hex('#a59cab'), hex('#bfb2a6'), hex('#9ba3a8')] as RGB[],
   driftwood: [hex('#e0d2bd'), hex('#cfbfa8'), hex('#eae0d2')] as RGB[],
+  shell: [hex('#fad6cc'), hex('#fdf2e1'), hex('#f0c09a'), hex('#f3e6ef')] as RGB[],
+  seaglass: [hex('#9fd8c0'), hex('#a8d4e6'), hex('#e8c27a'), hex('#e6f0ee')] as RGB[],
+  flag: [hex('#f07f6b'), hex('#f4c95d'), hex('#5fb8b2'), hex('#8f7fd1')] as RGB[],
+  pole: hex('#d8c7ae'),
 };

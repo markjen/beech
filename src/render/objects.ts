@@ -4,7 +4,7 @@ import { VertexData } from '@babylonjs/core/Meshes/mesh.vertexData';
 import type { Scene } from '@babylonjs/core/scene';
 
 import { PROP_COLORS } from '../palette';
-import { ROCK_HEIGHT, WOOD_RADIUS, type ObjectState, type PlacedObject } from '../sim/objects';
+import { OBJECT_KINDS, ROCK_HEIGHT, WOOD_RADIUS, type ObjectKind, type ObjectState, type PlacedObject } from '../sim/objects';
 import { ORIGIN_X, ORIGIN_Z, type BeachRenderer } from './beachRenderer';
 
 /** Small deterministic random numbers from an object's variant, so a rock looks the same everywhere. */
@@ -149,6 +149,75 @@ function woodMesh(scene: Scene, o: PlacedObject): Mesh {
   return finish(scene, `wood${o.id}`, P, I);
 }
 
+/** A ribbed scallop, `size` metres across its fan. */
+function shellMesh(scene: Scene, o: PlacedObject): Mesh {
+  const r = rng(o.variant * 31 + 5);
+  const rad = o.size;
+  const ribs = 7 + (o.variant % 4);
+  const h = rad * (0.25 + r() * 0.12);
+  const P: number[] = [0, h * 0.4, -rad * 0.35];
+  for (let k = 0; k <= ribs; k++) {
+    const a = Math.PI * (0.08 + (0.84 * k) / ribs);
+    P.push(Math.cos(a) * rad, k % 2 ? h : h * 0.45, Math.sin(a) * rad - rad * 0.35);
+  }
+  const base = P.length / 3;
+  P.push(0, 0, -rad * 0.35);
+  for (let k = 0; k <= ribs; k++) {
+    const a = Math.PI * (0.08 + (0.84 * k) / ribs);
+    P.push(Math.cos(a) * rad, 0, Math.sin(a) * rad - rad * 0.35);
+  }
+  const I: number[] = [];
+  for (let k = 1; k <= ribs; k++) I.push(0, k, k + 1, base, base + k + 1, base + k, k, base + k, base + k + 1, k, base + k + 1, k + 1);
+  orient(P, I, (x, y, z) => [x * 0.5, y > h * 0.3 ? -1 : 1, z * 0.5]);
+  return finish(scene, `shell${o.id}`, P, I);
+}
+
+/** A frosted, tumbled pebble of glass. */
+function glassMesh(scene: Scene, o: PlacedObject): Mesh {
+  const r = rng(o.variant * 977 + 3);
+  const seg = 6;
+  const P: number[] = [0, o.size * 0.55, 0];
+  for (let k = 0; k < seg; k++) {
+    const a = (k / seg) * Math.PI * 2;
+    const w = o.size * (0.75 + r() * 0.35);
+    P.push(Math.cos(a) * w, o.size * 0.22, Math.sin(a) * w * 0.7);
+  }
+  P.push(0, 0, 0);
+  const I: number[] = [];
+  for (let k = 0; k < seg; k++) {
+    const a = 1 + k;
+    const b = 1 + ((k + 1) % seg);
+    I.push(0, a, b, seg + 1, b, a);
+  }
+  orient(P, I, () => [0, o.size * 0.25, 0]);
+  return finish(scene, `glass${o.id}`, P, I);
+}
+
+/** A little beach flag: a pole, and a pennant (a child mesh, so it can flutter). */
+function flagMesh(scene: Scene, o: PlacedObject): { pole: Mesh; cloth: Mesh } {
+  const H = 0.9 + (o.variant % 3) * 0.15;
+  const w = 0.025;
+  const P: number[] = [];
+  const I: number[] = [];
+  for (let k = 0; k < 4; k++) {
+    const a = (k / 4) * Math.PI * 2 + 0.4;
+    P.push(Math.cos(a) * w, -0.15, Math.sin(a) * w, Math.cos(a) * w, H, Math.sin(a) * w);
+  }
+  for (let k = 0; k < 4; k++) {
+    const a = k * 2;
+    const b = ((k + 1) % 4) * 2;
+    I.push(a, a + 1, b, b, a + 1, b + 1);
+  }
+  orient(P, I, (_x, y) => [0, y, 0]);
+  const pole = finish(scene, `flag${o.id}`, P, I);
+  const L = 0.42;
+  const C = [0, 0, 0, 0, -0.26, 0, L * 0.5, -0.12, 0.02, L, -0.06, 0];
+  const cloth = finish(scene, `cloth${o.id}`, C, [0, 1, 2, 0, 2, 3, 0, 2, 1, 0, 3, 2]);
+  cloth.parent = pole;
+  cloth.position.y = H;
+  return { pole, cloth };
+}
+
 interface Shown {
   mesh: Mesh;
   key: string;
@@ -157,6 +226,7 @@ interface Shown {
   z: number;
   angle: number;
   bob: number;
+  cloth?: Mesh;
 }
 
 /**
@@ -166,7 +236,8 @@ interface Shown {
  */
 export class ObjectView {
   private readonly shown = new Map<number, Shown>();
-  private readonly mats: { rock: ShaderMaterial[]; driftwood: ShaderMaterial[] };
+  private readonly mats: Record<ObjectKind, ShaderMaterial[]>;
+  private readonly poleMat: ShaderMaterial;
   private target = new Map<number, ObjectState>();
   private time = 0;
 
@@ -175,10 +246,10 @@ export class ObjectView {
     renderer: BeachRenderer,
     private readonly offsetX = 0,
   ) {
-    this.mats = {
-      rock: PROP_COLORS.rock.map((c) => renderer.createPropMaterial(c)),
-      driftwood: PROP_COLORS.driftwood.map((c) => renderer.createPropMaterial(c)),
-    };
+    this.mats = Object.fromEntries(
+      OBJECT_KINDS.map((k) => [k, PROP_COLORS[k].map((c) => renderer.createPropMaterial(c))]),
+    ) as Record<ObjectKind, ShaderMaterial[]>;
+    this.poleMat = renderer.createPropMaterial(PROP_COLORS.pole);
   }
 
   get count(): number {
@@ -199,10 +270,25 @@ export class ObjectView {
       const cur = this.shown.get(st.id);
       if (cur && cur.key === key) continue;
       cur?.mesh.dispose();
-      const mesh = st.kind === 'rock' ? rockMesh(this.scene, st) : woodMesh(this.scene, st);
       const set = this.mats[st.kind];
-      mesh.material = set[st.variant % set.length];
-      this.shown.set(st.id, { mesh, key, x: st.x, y: st.y, z: st.z, angle: st.angle, bob: Math.random() * 6 });
+      const mat = set[st.variant % set.length];
+      let mesh: Mesh;
+      let cloth: Mesh | undefined;
+      if (st.kind === 'flag') {
+        const f = flagMesh(this.scene, st);
+        mesh = f.pole;
+        cloth = f.cloth;
+        mesh.material = this.poleMat;
+        cloth.material = mat;
+      } else {
+        mesh =
+          st.kind === 'rock' ? rockMesh(this.scene, st)
+          : st.kind === 'driftwood' ? woodMesh(this.scene, st)
+          : st.kind === 'shell' ? shellMesh(this.scene, st)
+          : glassMesh(this.scene, st);
+        mesh.material = mat;
+      }
+      this.shown.set(st.id, { mesh, key, x: st.x, y: st.y, z: st.z, angle: st.angle, bob: Math.random() * 6, cloth });
       this.place(this.shown.get(st.id)!, st, 0);
     }
   }
@@ -240,7 +326,12 @@ export class ObjectView {
     m.position.set(s.x + ORIGIN_X + this.offsetX, s.z + bob, s.y + ORIGIN_Z);
     // sim angles turn x toward y (world z); Babylon's yaw turns x away from z
     m.rotation.y = -s.angle;
-    m.rotation.x = t.floating ? Math.sin(this.time * 1.3 + s.bob) * 0.06 : 0;
+    m.rotation.x = t.floating && t.kind === 'driftwood' ? Math.sin(this.time * 1.3 + s.bob) * 0.06 : 0;
+    // the flag always points downwind (the sea breeze blows inland), fluttering
+    if (s.cloth) {
+      m.rotation.y = -Math.PI / 2;
+      s.cloth.rotation.y = Math.sin(this.time * 3.1 + s.bob) * 0.35 + Math.sin(this.time * 7.3 + s.bob) * 0.1;
+    }
   }
 
   clear(): void {
@@ -251,7 +342,8 @@ export class ObjectView {
 
   dispose(): void {
     this.clear();
-    for (const m of [...this.mats.rock, ...this.mats.driftwood]) m.dispose();
+    for (const set of Object.values(this.mats)) for (const m of set) m.dispose();
+    this.poleMat.dispose();
   }
 }
 

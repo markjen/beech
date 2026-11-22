@@ -34,6 +34,9 @@ export interface Item {
 export const ITEMS: Item[] = [
   { id: 'rock', name: 'Rock', kind: 'rock', rarity: 'common', source: 'free', unlimited: true, size: [0.25, 0.6], variants: 8 },
   { id: 'driftwood', name: 'Driftwood', kind: 'driftwood', rarity: 'common', source: 'free', unlimited: true, size: [0.9, 2.2], variants: 6 },
+  { id: 'shell', name: 'Shell', kind: 'shell', rarity: 'common', source: 'free', unlimited: true, size: [0.07, 0.14], variants: 8 },
+  { id: 'seaglass', name: 'Sea glass', kind: 'seaglass', rarity: 'common', source: 'free', unlimited: true, size: [0.07, 0.11], variants: 4 },
+  { id: 'flag', name: 'Flag', kind: 'flag', rarity: 'common', source: 'free', unlimited: true, size: [0.4, 0.4], variants: 4 },
 ];
 
 export const itemById = (id: string): Item | undefined => ITEMS.find((i) => i.id === id);

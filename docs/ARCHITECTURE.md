@@ -50,12 +50,12 @@ simulated one.
 | `src/palette.ts` | The four moods and the day-cycle blend |
 | `src/sim/beachSim.ts` | The simulation, no DOM. Unit tested in `tests/sim.test.ts`. |
 | `src/sim/sim.worker.ts`, `protocol.ts` | Worker loop and message types (including live `tune` and `bench`) |
-| `src/sim/objects.ts` | Things placed on the beach: rocks (raise the non-erodible floor) and driftwood (floats, drifts, strands). Tested in `tests/objects.test.ts`. |
+| `src/sim/objects.ts` | Things on the beach: rocks (raise the non-erodible floor), driftwood (floats, drifts, strands), shells and sea glass (rolled by fast water), flags (fixed), and what the sea washes in. Tested in `tests/objects.test.ts`. |
 | `src/sim/sandCodec.ts` | Saved-beach format: BCH1 (sand) and BCH2 (sand plus placed objects, validated on load) |
 | `src/sim/profile.ts`, `waves.ts`, `undoStack.ts` | Rest beach shape, swell/tide functions, stroke-delta undo |
 | `src/render/beachRenderer.ts`, `shaders.ts` | All meshes and GLSL (sand, water, far ocean, skirts, rock, props) |
-| `src/render/sky.ts`, `shells.ts` | Gradient background; shells washing in |
-| `src/render/objects.ts` | Faceted rock and driftwood meshes (shape from the object's variant), eased to the sim's positions |
+| `src/render/sky.ts` | Gradient background |
+| `src/render/objects.ts` | Faceted rock, driftwood, shell, sea glass and flag meshes (shape from the object's variant), eased to the sim's positions |
 | `src/world/items.ts`, `src/ui/inventory.ts` | Item catalog (rarity, source, availability, price) and the bag tray |
 | `src/input/*` | Ortho camera, gestures (dig vs camera), heightfield picking, brush math |
 | `src/world/*` | Items (`items.ts`, above) and real beaches: `locations.ts` (catalogue), `astro.ts` (sun and moon), `tides.ts` (harmonic tide engine), `tideStations.json` (TICON-3 constants), `live.ts` (turns a beach and the current time into a palette, light, sky and tide) |

@@ -92,3 +92,45 @@ describe('placing is undoable', () => {
     expect(sim.objects.count).toBe(1);
   });
 });
+
+describe('shells, sea glass and flags', () => {
+  it('a shell in the swash is rolled about, then settles; a flag stays put', () => {
+    const sim = new BeachSim(g, 1);
+    const sh = sim.placeObject({ kind: 'shell', item: 'shell', x: 16, y: 8.5, angle: 0, size: 0.1, variant: 2 });
+    const fl = sim.placeObject({ kind: 'flag', item: 'flag', x: 16, y: 9, angle: 0, size: 0.4, variant: 1 });
+    let travel = 0;
+    for (let s = 0; s < 30 * 60; s++) {
+      sim.step(DT);
+      const st = sim.objects.states().find((o) => o.id === sh.id)!;
+      travel = Math.max(travel, Math.hypot(st.x - 16, st.y - 8.5));
+      expect(Number.isFinite(st.x + st.y + st.z)).toBe(true);
+    }
+    expect(travel).toBeGreaterThan(0.1);
+    const f = sim.objects.persisted().find((o) => o.id === fl.id)!;
+    expect([f.x, f.y]).toEqual([16, 9]);
+  });
+
+  it('the sea brings things in now and then, and keeps only a few', () => {
+    const sim = new BeachSim(g, 3);
+    const seen = new Set<number>();
+    for (let s = 0; s < 30 * 60; s++) {
+      if (s % 90 === 0) sim.objects.washSoon(); // speed the sea up: something every 3 s
+      sim.step(DT);
+      if (s % 30 === 0) for (const o of sim.objects.states()) if (o.wild) seen.add(o.id);
+    }
+    const wild = sim.objects.states().filter((o) => o.wild);
+    expect(seen.size).toBeGreaterThanOrEqual(4);
+    expect(wild.length).toBeLessThanOrEqual(6);
+    // nothing washed in lands outside the beach
+    for (const o of wild) expect(o.x > 0 && o.x < 32 && o.y > 0 && o.y < 24).toBe(true);
+    // wild things aren't on the undo stack
+    expect(sim.undo.undoCount).toBe(0);
+  });
+
+  it('no wash-ins while the waves are off', () => {
+    const sim = new BeachSim(g, 3, { waves: false });
+    sim.objects.washSoon();
+    for (let s = 0; s < 30 * 5; s++) sim.step(DT);
+    expect(sim.objects.count).toBe(0);
+  });
+});

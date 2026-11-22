@@ -148,7 +148,7 @@ export class BeachSim {
     this.tmp = new Float32Array(n);
     this.tanMax = new Float32Array(n);
     this.swell = makeSwell(seed);
-    this.objects = new BeachObjects(this);
+    this.objects = new BeachObjects(this, seed);
     const eta = this.seaLevel(0);
     for (let k = 0; k < n; k++) {
       this.water[k] = Math.max(0, eta - this.sand[k]);
@@ -195,7 +195,7 @@ export class BeachSim {
       if (!this.flags.closed) this.force(h);
       this.flow(h);
     }
-    this.objects.step(dt);
+    this.objects.step(dt, this.flags.waves);
     if (this.flags.seep) this.seep(dt);
     if (this.flags.erosion) this.erode(dt);
     this.slump();

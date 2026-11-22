@@ -19,11 +19,11 @@
 // Rocks are stored as objects, not as sand, so a saved rock is a rock again
 // when the beach loads. Version 1 files still load (with no objects).
 
-import type { PlacedObject } from './objects';
+import { OBJECT_KINDS, type PlacedObject } from './objects';
 
 const MAGIC = [0x42, 0x43, 0x48, 0x31]; // "BCH1"
 const MAGIC2 = [0x42, 0x43, 0x48, 0x32]; // "BCH2"
-const KINDS = new Set(['rock', 'driftwood']);
+const KINDS = new Set<string>(OBJECT_KINDS);
 /** a saved beach never holds more than this many objects */
 export const MAX_OBJECTS = 400;
 const MM = 1000;
@@ -132,6 +132,7 @@ export function sanitizeObjects(raw: unknown): PlacedObject[] {
       angle: p.angle as number,
       size: p.size as number,
       variant: p.variant as number,
+      ...(p.wild === true ? { wild: true } : {}),
     });
   }
   return out;

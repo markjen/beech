@@ -190,6 +190,15 @@ branch, so the deploy job runs only there. Switch the default branch to
   drift (so it comes ashore rather than out to sea), turns when its two ends
   feel different flow, and is stranded with sand friction when the water
   drains. It is clamped inside the beach.
+- **Shells and sea glass** sit on the sand and are rolled along at about
+  half the flow speed when the water is fast (> 0.35 m/s), with a slight
+  landward nudge. **Flags** stay put; the pennant flutters and points
+  inland on the sea breeze.
+- **The sea brings things in** every 70–160 s while the waves run:
+  driftwood out at sea (it drifts ashore), or a shell or sea glass at the
+  waterline. These are `wild`, are not undoable, and at most 6 stay; the
+  oldest is taken back. This replaced the old decorative `ShellField`, so
+  washed-up shells are now real objects that save with your beach.
 - **Objects live in the worker** (`BeachObjects`). Their states go out with
   every frame, and the renderer eases toward them. Save format **BCH2** adds a
   deflated JSON list of objects. BCH1 saves still load. Loaded objects are

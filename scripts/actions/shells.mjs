@@ -1,18 +1,13 @@
+// Wait for the sea to bring something in, then zoom in on it.
 export default async function (page) {
+  await page.waitForFunction(() => window.__beech.info().objects.some((o) => o.wild), null, { timeout: 240000 });
   await page.evaluate(() => {
     const b = window.__beech;
-    b.cam.halfH = 4;
-    b.cam.applyOrtho();
-    b.cam.camera.target.z = -1.5;
-  });
-  await page.waitForFunction(() => window.__beech.shells.count > 0, null, { timeout: 90000 });
-  await page.evaluate(() => {
-    const b = window.__beech;
-    const s = b.shells.shells[0];
+    const s = b.info().objects.find((o) => o.wild);
     b.cam.halfH = 2.6;
     b.cam.applyOrtho();
-    b.cam.camera.target.x = s.x;
-    b.cam.camera.target.z = s.z;
+    b.cam.camera.target.x = s.x + b.origin.x;
+    b.cam.camera.target.z = s.y + b.origin.z;
   });
   await page.waitForTimeout(2500);
 }
