@@ -92,10 +92,13 @@ cd android && ./gradlew bundleRelease          # app/build/outputs/bundle/releas
    phone screenshots. Capture them with `node scripts/shot.mjs` at
    1080×1920, or straight from a device.
 4. Content rating questionnaire: no violence, no user content, no ads.
-5. Data safety: **no data collected or shared.** The app has no network
-   calls, analytics or accounts. Settings stay on the device. "Near me" reads
-   the coarse location once, on the device, to pick a beach. It is never
-   stored or sent.
+5. Data safety: with accounts on (production builds), declare **User IDs**
+   and **app activity/content** (the saved beach), plus the **name** shown to
+   neighbors you choose. All of it is collected, linked to the user, used for
+   app functionality only, and never shared or used for tracking. Users can
+   delete their account in the app. With no accounts (sandbox builds),
+   nothing is collected. "Near me" reads the coarse location once, on the
+   device, to pick a beach. It is never stored or sent.
 6. Target audience: everyone. The app has no ads and no in-app purchases.
 
 ## iOS → App Store
@@ -126,8 +129,12 @@ Already set in `Info.plist`:
 3. Listing: subtitle, description, keywords, support URL (the GitHub Pages URL
    works), a privacy policy URL, and screenshots for 6.9" and 6.5" iPhones
    (and 13" iPad, since the app supports iPad).
-4. App Privacy: **Data Not Collected**. Location is used on the device
-   only, for "near me".
+4. App Privacy (production builds with accounts): **User ID**, **Other
+   User Content** (the beach) and **Name** (first name, shown to chosen
+   neighbors). All are linked to the user, for App Functionality, and not
+   used for tracking. Location is used on the device only, for "near me".
+   Sign in with Apple must be enabled on the App ID; see BACKEND.md, "Phone
+   apps".
 5. Age rating: 4+.
 
 ## CI
@@ -161,6 +168,12 @@ Android TV. To list it for TV in Play Console, add the TV form factor and TV
 screenshots (1920×1080). Capture them with
 `node scripts/shot.mjs "http://localhost:5173/?tv=1&nointro" tv.png 1920 1080 8000`.
 On TV, the arrow keys look around and V switches between views.
+
+## Sign-in
+
+Google and Apple sign-in use the native sheets (`src/net/nativeAuth.ts`). The
+setup steps (OAuth clients, Info.plist URL scheme, Apple capability, server
+client IDs) are in [BACKEND.md](BACKEND.md), "Phone apps".
 
 ## Platform notes
 

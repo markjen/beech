@@ -37,13 +37,14 @@ _(nothing right now)_
 
 ## Up next (engineering)
 
-- [ ] **Native sign-in in the apps**: Google blocks OAuth in WebViews, so add
-  a native social-login plugin (Google + Apple) that returns ID tokens. See
-  BACKEND.md, "Phone apps".
-- [ ] **Sign in with Apple**: required on iOS once Google sign-in ships there.
-  The server already accepts Apple tokens.
-- [ ] **Store privacy forms**: declare the user ID, the beach, and the first
-  name shown to chosen neighbors.
+- [ ] **Release setup for native sign-in** (DevOps): Android and iOS OAuth
+  clients, build env vars, the Info.plist URL scheme, the Apple capability,
+  and server client IDs. Steps are in BACKEND.md, "Phone apps". Then test on
+  real devices.
+- [ ] **Revoke Apple tokens on account delete**: App Store guideline
+  5.1.1(v). Needs a Sign in with Apple private key in Secret Manager and a
+  call to Apple's `/auth/revoke`.
+- [ ] **Store privacy forms** (DevOps): the wording is in MOBILE.md.
 - [ ] **Chair view polish**: let the chair move along the beach (and over to
   neighbors). Add surf foam lines on the static shore either side.
 - [ ] **More free items**: shells and sea glass to place, a bucket for sand
@@ -81,6 +82,11 @@ _(nothing right now)_
   shower night.
 
 ## Done (recent)
+
+- [x] **Native sign-in in the apps** (2026-11-22): Google (Android + iOS) and
+  Sign in with Apple (iOS) through `@capgo/capacitor-social-login`. Facebook
+  and Twitter SDKs are excluded. The Android debug build passes; device
+  testing waits on the release setup above.
 
 - [x] **Inventory: rocks and driftwood** (2026-11-22). Bag tray, place and
   pick up (undoable), rocks shape the flow and erosion, driftwood floats and

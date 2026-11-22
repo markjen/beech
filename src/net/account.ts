@@ -1,4 +1,5 @@
 import { Capacitor } from '@capacitor/core';
+import { nativeSignOut } from './nativeAuth';
 
 // Accounts are a build-time feature. The public GitHub Pages build is a
 // sandbox (no sign-in, nothing saved); the production build sets:
@@ -119,6 +120,15 @@ export class Account {
     }).then((r) => this.session(r));
   }
 
+  /** Sign in with Apple (the iOS app). Apple only shares the name on the very first sign-in. */
+  signInWithApple(identityToken: string, name: string): Promise<AccountUser> {
+    return this.call('/api/auth/apple', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identityToken, name }),
+    }).then((r) => this.session(r));
+  }
+
   signInDev(name: string): Promise<AccountUser> {
     return this.call('/api/auth/dev', {
       method: 'POST',
@@ -133,6 +143,7 @@ export class Account {
     } catch {
       /* offline: forget the token locally anyway */
     }
+    void nativeSignOut();
     this.token = null;
     writeToken(null);
     this.user = null;
@@ -142,6 +153,7 @@ export class Account {
   async deleteAccount(): Promise<void> {
     const res = await this.call('/api/account', { method: 'DELETE' });
     if (!res.ok && res.status !== 401) throw new ApiError(res.status, 'could not delete the account');
+    void nativeSignOut();
     this.token = null;
     writeToken(null);
     this.user = null;

@@ -359,6 +359,37 @@
   min-height: 44px;
 }
 
+/* native sign-in (apps): follows Apple's and Google's button guidelines */
+.account .native-signin {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 260px;
+  height: 44px;
+  border-radius: 999px;
+  font: 500 15px/1 -apple-system, system-ui, sans-serif;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.account .native-signin svg {
+  width: 18px;
+  height: 18px;
+}
+
+.account .native-signin.apple {
+  border: none;
+  color: #fff;
+  background: #000;
+}
+
+.account .native-signin.google {
+  border: 1px solid #747775;
+  color: #1f1f1f;
+  background: #fff;
+}
+
 .account .err {
   font-size: 12px;
   color: #b0414a;

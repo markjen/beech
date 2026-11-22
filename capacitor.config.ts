@@ -19,6 +19,15 @@ const config: CapacitorConfig = {
   android: {
     backgroundColor: '#fbeedd',
   },
+  plugins: {
+    // native sign-in (src/net/nativeAuth.ts): Google everywhere, Apple on iOS.
+    // Facebook and Twitter are left out so their SDKs (and Facebook's
+    // advertising-ID permission) never ship.
+    SocialLogin: {
+      providers: { google: true, apple: true, facebook: false, twitter: false },
+      logLevel: 1,
+    },
+  },
 };
 
 export default config;

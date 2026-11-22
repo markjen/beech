@@ -200,6 +200,22 @@ branch, so the deploy job runs only there. Switch the default branch to
   `GET /api/inventory` for owned, unexpired non-free items. Nothing writes to
   it yet.
 
+## Native sign-in (added after inventory)
+
+- `src/net/nativeAuth.ts` wraps `@capgo/capacitor-social-login` 8.7.6. It is
+  loaded only inside the apps, so the web bundle doesn't include it. Android
+  offers Google (Credential Manager, token for the web client ID). iOS
+  offers Sign in with Apple, plus Google when `VITE_GOOGLE_IOS_CLIENT_ID` is
+  set. A cancelled sheet shows no error. Signing out also signs out of the
+  provider.
+- Facebook and Twitter are off in `capacitor.config.ts`. The merged Android
+  manifest has no AD_ID permission.
+- iOS: `App.entitlements` (Sign in with Apple) is wired via
+  `CODE_SIGN_ENTITLEMENTS`. `scripts/native-auth-config.mjs` writes the Google
+  URL scheme into Info.plist.
+- Not verified on devices yet: that needs the OAuth clients and the Apple
+  capability (DevOps; see BACKEND.md, "Phone apps").
+
 ## Deploy and build status
 
 - **iOS:** the Xcode project builds for the simulator on GitHub's macOS

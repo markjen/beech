@@ -79,15 +79,41 @@ npm run e2e:neighbors                   # Ana saves; Ben adds her code on his le
 CI runs the server tests on PGlite and on a Postgres 16 service, builds the
 production image, boots it and probes it.
 
-## Phone apps (next steps)
+## Phone apps
 
-1. Google blocks its sign-in inside app WebViews, so add a native
-   social-login plugin that returns Google and Apple ID tokens (for example
-   `@capgo/capacitor-social-login`). Add the iOS and Android OAuth client IDs
-   to `GOOGLE_CLIENT_IDS`.
-2. **Sign in with Apple is required on iOS** once Google sign-in ships there
-   (App Store guideline 4.8). The server already accepts Apple tokens.
-3. Build the apps with `VITE_ACCOUNTS=1 VITE_API_URL=https://<production domain>`.
-4. Update both stores' privacy forms: user ID, the beach, and a first name
-   shown to neighbors you choose; linked to the user, for app functionality,
-   not used for tracking.
+Google blocks its web sign-in inside app WebViews, so the apps use the
+system sign-in sheets through `@capgo/capacitor-social-login`
+(`src/net/nativeAuth.ts`). Each returns an ID token that goes to the same
+`/api/auth/google` or `/api/auth/apple` endpoint as the web.
+
+| | Android | iOS |
+|---|---|---|
+| Google | Credential Manager; token audience = the **web** client ID | GoogleSignIn; token audience = the **iOS** client ID |
+| Apple | not offered (needs a web redirect flow; Play doesn't require it) | AuthenticationServices; audience = the bundle ID. Required by App Store guideline 4.8 because Google is offered. |
+
+Facebook and Twitter are switched off in `capacitor.config.ts`, so their SDKs
+(and Facebook's advertising-ID permission) don't ship.
+
+**Release setup** (DevOps):
+1. Google Cloud → Credentials (same project as the web client):
+   - an **Android** OAuth client for package `app.beech.beach` with the
+     SHA-1 of the Play **app signing** key (Play Console → App integrity) and
+     of the upload/debug keys used for testing;
+   - an **iOS** OAuth client for bundle ID `app.beech.beach`.
+2. Build the apps with `VITE_ACCOUNTS=1`,
+   `VITE_API_URL=https://<production domain>`, `VITE_GOOGLE_CLIENT_ID=<web
+   client>` and `VITE_GOOGLE_IOS_CLIENT_ID=<iOS client>`, then `npx cap sync`.
+3. Run `VITE_GOOGLE_IOS_CLIENT_ID=… node scripts/native-auth-config.mjs` once,
+   and commit the result. It adds the reversed client ID URL scheme to
+   `ios/App/App/Info.plist`. Client IDs are public, not secrets.
+4. Apple Developer → Identifiers → `app.beech.beach`: enable **Sign in with
+   Apple**. The entitlement is already in `ios/App/App/App.entitlements`.
+5. Server: `GOOGLE_CLIENT_IDS=<web>,<iOS>` (Android tokens carry the web ID)
+   and `APPLE_CLIENT_IDS=app.beech.beach`.
+6. Store privacy forms: user ID, the beach, and a first name shown to
+   neighbors you choose. These are linked to the user, used for app
+   functionality, and not used for tracking.
+
+Still to do: when someone who signed in with Apple deletes their account, the
+server should also revoke their Apple token (App Store guideline 5.1.1(v)).
+That needs a Sign in with Apple key on the server; see BACKLOG.md.
