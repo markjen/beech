@@ -277,3 +277,169 @@
     bottom: calc(var(--pad) + 70px + env(safe-area-inset-bottom));
   }
 }
+
+.inv-item.used {
+  opacity: 0.5;
+}
+
+.inv-item.claw-tile {
+  background: linear-gradient(160deg, rgba(242, 196, 90, 0.35), rgba(142, 197, 232, 0.35));
+}
+
+/* ---- claw machine ---- */
+.claw {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(46, 40, 78, 0.25);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  z-index: 20;
+}
+
+.claw.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.claw-card {
+  position: relative;
+  width: min(340px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  padding: 18px 18px 14px;
+  border-radius: 24px;
+  color: var(--ui-fg);
+  background: var(--ui-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 14px 40px var(--ui-shadow);
+  text-align: center;
+}
+
+.claw-card h2 {
+  margin: 0 0 10px;
+  font-size: 17px;
+}
+
+.claw-card canvas {
+  width: 100%;
+  max-width: 300px;
+  aspect-ratio: 1;
+}
+
+.claw-close {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  width: 36px;
+  height: 36px;
+  border: none;
+  background: none;
+  color: inherit;
+  font-size: 24px;
+  cursor: pointer;
+}
+
+.claw-go,
+.claw-place {
+  margin-top: 8px;
+  padding: 12px 26px;
+  border: none;
+  border-radius: 999px;
+  color: var(--ui-bg);
+  background: var(--ui-fg);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.claw-go:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.claw-note {
+  margin: 8px 0 4px;
+  font-size: 13px;
+}
+
+.claw-odds {
+  font-size: 12px;
+  text-align: left;
+  opacity: 0.85;
+}
+
+.claw-odds p {
+  margin: 6px 0 4px;
+}
+
+.claw-odds ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.claw-odds li {
+  margin: 3px 0;
+}
+
+.claw-odds .dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  border-radius: 50%;
+  vertical-align: -1px;
+}
+
+.claw-reveal {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border-radius: 24px;
+  /* three layers of the translucent panel colour: opaque enough to hide the machine */
+  background-color: var(--ui-bg);
+  background-image: linear-gradient(var(--ui-bg), var(--ui-bg)), linear-gradient(var(--ui-bg), var(--ui-bg));
+  animation: claw-pop 0.35s ease;
+}
+
+.claw-reveal[hidden] {
+  display: none;
+}
+
+.claw-reveal b {
+  font-size: 20px;
+}
+
+.claw-prize svg {
+  width: 96px;
+  height: 96px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.claw-reveal.rarity-rare .claw-prize {
+  filter: drop-shadow(0 0 12px #8ec5e8);
+}
+
+.claw-reveal.rarity-legendary .claw-prize {
+  filter: drop-shadow(0 0 16px #f2c45a);
+}
+
+@keyframes claw-pop {
+  from {
+    transform: scale(0.85);
+    opacity: 0;
+  }
+}

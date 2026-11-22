@@ -32,6 +32,8 @@ Migrations live in `src/migrations.ts` and are applied at startup.
 | `DELETE /api/neighbors/:side` | move them away |
 | `GET /api/neighbors/:side/beach` | that neighbor's sand (only your own neighbors' beaches are readable) |
 | `POST /api/neighbors/code` | new code; the old one stops working, and current neighbors keep you |
+| `GET /api/pulls` | `{ pools: [{ id, name, odds, items, free }], nextFree }`: the machines, their published odds, and whether today's free go is left |
+| `POST /api/pulls/:pool` | today's free go (`daily`): the server draws, records it (one per UTC day, enforced by the primary key) and adds the prize to `inventory`; 409 if already used |
 | `GET /api/inventory` | `{ items: [{ item, quantity, source, acquiredAt, expiresAt }] }`: what you own beyond the free items, unexpired. Empty until the shop and pulls exist; rows are only written by the server. |
 
 Sessions are 60-day random bearer tokens, and only their SHA-256 is stored.

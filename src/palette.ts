@@ -190,5 +190,11 @@ export const PROP_COLORS = {
   shell: [hex('#fad6cc'), hex('#fdf2e1'), hex('#f0c09a'), hex('#f3e6ef')] as RGB[],
   seaglass: [hex('#9fd8c0'), hex('#a8d4e6'), hex('#e8c27a'), hex('#e6f0ee')] as RGB[],
   flag: [hex('#f07f6b'), hex('#f4c95d'), hex('#5fb8b2'), hex('#8f7fd1')] as RGB[],
+  conch: [hex('#f6c7b6'), hex('#f2dcc4'), hex('#e9b4a8')] as RGB[],
+  sanddollar: [hex('#efe6d4'), hex('#e8dcc6')] as RGB[],
+  starfish: [hex('#ef8a5f'), hex('#d9645a'), hex('#f2a65a')] as RGB[],
+  bottle: [hex('#8fc9b3'), hex('#9cc3d9')] as RGB[],
   pole: hex('#d8c7ae'),
+  /** the rolled-up message inside a bottle */
+  paper: hex('#f7efd9'),
 };

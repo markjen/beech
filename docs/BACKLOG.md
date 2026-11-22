@@ -53,11 +53,13 @@ _(nothing right now)_
   their own in-app purchase for digital goods) and Stripe on the web.
   Purchases are verified on the server, which writes `inventory` rows.
   Limited items use `available.until` and `expires_at`.
-- [ ] **Mystery boxes and the claw machine**: server-side draws with
-  published odds (Apple and Google require shown odds for paid random
-  items, and some countries restrict them; check before shipping), rarity
-  tiers, and a little claw-machine mini-game in front of the draw. Unique
-  items: one owner only, enforced in the database.
+- [ ] **Mystery boxes (paid pulls)**: reuse `draw()` and the pulls table
+  once billing exists. Before shipping, check the odds-disclosure rules and
+  country restrictions for paid random items.
+- [ ] **Unique items**: one owner only, enforced with a partial unique index
+  on `inventory`, and a "found by …" note.
+- [ ] **More prizes**: each pool item needs a catalog entry, a kind, a mesh
+  and an icon; `tests/items.test.ts` keeps the pools and catalog in step.
 - [ ] **TV**: test on a real Android TV (D-pad focus on the settings sheet,
   leanback banner). Add Chromecast / AirPlay casting for phones → TV.
 - [ ] **API rate limiting**: a per-IP limit in the server, or Cloud Armor in
@@ -78,6 +80,10 @@ _(nothing right now)_
   shower night.
 
 ## Done (recent)
+
+- [x] **Free daily claw machine** (2026-11-22): server-side draws with
+  published odds, one go a day, prizes (conch, sand dollar, starfish,
+  message in a bottle) in the bag with counts.
 
 - [x] **Chair view: walk along the beach, surf on the shore either side**
   (2026-11-22). Hold ‹ › (or Q/E) to walk the chair across your beach and

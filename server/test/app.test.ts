@@ -127,6 +127,37 @@ describe('inventory', () => {
   });
 });
 
+describe('pulls', () => {
+  it('shows the odds, gives one free go a day, and puts the prize in your bag', async () => {
+    const cleo = await signIn('Cleo');
+    const list = (await (await req('/pulls', {}, cleo.token)).json()) as { pools: { id: string; odds: Record<string, number>; free: boolean }[] };
+    const daily = list.pools.find((p) => p.id === 'daily')!;
+    expect(Object.values(daily.odds).reduce((a, b) => a + b, 0)).toBeCloseTo(1, 9);
+    expect(daily.free).toBe(true);
+    // two at once: exactly one wins the day
+    const [a, b] = await Promise.all([req('/pulls/daily', { method: 'POST' }, cleo.token), req('/pulls/daily', { method: 'POST' }, cleo.token)]);
+    expect([a.status, b.status].sort()).toEqual([200, 409]);
+    const won = (await (a.status === 200 ? a : b).json()) as { item: string; rarity: string };
+    const inv = (await (await req('/inventory', {}, cleo.token)).json()) as { items: { item: string; source: string }[] };
+    expect(inv.items).toEqual([expect.objectContaining({ item: won.item, source: 'pull' })]);
+    const after = (await (await req('/pulls', {}, cleo.token)).json()) as { pools: { id: string; free: boolean }[] };
+    expect(after.pools.find((p) => p.id === 'daily')!.free).toBe(false);
+    expect((await req('/pulls/nope', { method: 'POST' }, cleo.token)).status).toBe(404);
+    expect((await req('/pulls/__proto__', { method: 'POST' }, cleo.token)).status).toBe(404);
+    expect((await req('/pulls/daily', { method: 'POST' })).status).toBe(401);
+  });
+
+  it('draws with the published odds', async () => {
+    const { POOLS, draw } = await import('../src/pulls.js');
+    const n = 20000;
+    const count: Record<string, number> = { common: 0, rare: 0, legendary: 0 };
+    let seed = 12345;
+    const rand = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+    for (let i = 0; i < n; i++) count[draw(POOLS.daily, rand).rarity]++;
+    for (const k of Object.keys(count)) expect(count[k] / n).toBeCloseTo(POOLS.daily.odds[k as 'common'], 1);
+  });
+});
+
 describe('neighbors', () => {
   it('normalizes codes people type', () => {
     expect(normalizeCode(' k7f-2qx ')).toBe('K7F2QX');

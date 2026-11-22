@@ -62,6 +62,19 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX inventory_user ON inventory (user_id);
   `,
+  // 3: pulls (claw machine / mystery boxes). One row per draw; the primary
+  // key makes "one free pull per day" hold even with two requests at once.
+  `
+  CREATE TABLE pulls (
+    user_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    pool TEXT NOT NULL,
+    day TEXT NOT NULL,                 -- UTC date, YYYY-MM-DD
+    item_id TEXT NOT NULL,
+    rarity TEXT NOT NULL,
+    created_at BIGINT NOT NULL,
+    PRIMARY KEY (user_id, pool, day)
+  );
+  `,
 ];
 
 export async function migrate(db: Db): Promise<number> {

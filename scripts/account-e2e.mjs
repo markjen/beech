@@ -40,6 +40,12 @@ const syncState = () => page.evaluate(() => window.__beech.sync()?.state ?? 'non
 
 await open();
 check((await page.evaluate(() => !!window.__beech.account())) === true, 'accounts are enabled in this build');
+// start clean: an earlier, interrupted run may have left the test account behind
+await page.evaluate(async () => {
+  const a = window.__beech.account();
+  await a.signInDev('tester');
+  await a.deleteAccount();
+});
 await page.evaluate(() => window.__beech.sheet.show());
 await page.waitForTimeout(400);
 await page.click('button[data-act="dev"]');
@@ -66,6 +72,7 @@ await page.evaluate(() => {
 });
 await page.waitForTimeout(700);
 const before = await dug();
+const kindsBefore = await page.evaluate(() => window.__beech.info().objects.filter((o) => !o.wild).map((o) => o.kind).sort().join());
 check(before > 1, `dug the sand (${before.toFixed(1)})`);
 await page.evaluate(() => window.__beech.sync().flush());
 check((await syncState()) === 'saved', 'saved after digging');
@@ -76,10 +83,36 @@ await page.waitForFunction(() => window.__beech.sync()?.state === 'saved', null,
 await page.waitForTimeout(800);
 const after = await dug();
 check(Math.abs(after - before) / before < 0.15, `beach restored after reload (${before.toFixed(1)} -> ${after.toFixed(1)})`);
-const kinds = await page.evaluate(() => window.__beech.info().objects.map((o) => o.kind).sort().join());
-check(kinds === 'driftwood,rock', `the rock and driftwood came back too (${kinds})`);
+const kinds = await page.evaluate(() => window.__beech.info().objects.filter((o) => !o.wild).map((o) => o.kind).sort().join());
+check(kinds === kindsBefore && kinds.includes('driftwood') && kinds.includes('rock'), `the rock and driftwood came back too (${kinds})`);
 check((await page.evaluate(() => window.__beech.beach().id)) === 'piha', 'and it is the same real beach (Piha)');
 check((await page.evaluate(() => window.__beech.account().user?.name)) === 'tester', 'still signed in');
+
+// the claw machine: one free go, the prize goes in the bag and onto the beach
+await page.click('button[data-tool="place"]');
+await page.click('button[data-act="claw"]');
+await page.waitForSelector('.claw.open .claw-go:not([disabled])', { timeout: 10000 });
+const odds = await page.textContent('.claw-odds');
+check(/Common 70%.*Rare 25%.*Legendary 5%/s.test(odds ?? ''), 'the machine shows its odds');
+if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/claw.png` });
+await page.click('.claw-go');
+await page.waitForSelector('.claw-reveal:not([hidden])', { timeout: 60000 });
+const prize = await page.textContent('.claw-reveal b');
+check(!!prize, `won: ${prize}`);
+if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/claw-prize.png` });
+await page.click('.claw-place');
+await page.waitForFunction(() => window.__beech.inventory.current !== null, null, { timeout: 10000 });
+const prizeId = await page.evaluate(() => window.__beech.inventory.current);
+const countOf = (id) => page.evaluate((i) => window.__beech.info().objects.filter((o) => o.item === i).length, id);
+await page.mouse.click(520, 420);
+await page.waitForTimeout(800);
+check((await countOf(prizeId)) === 1, `the ${prizeId} is on the beach`);
+await page.mouse.click(620, 380);
+await page.waitForTimeout(800);
+check((await countOf(prizeId)) === 1, 'and you can only put down as many as you own');
+const again = await page.evaluate(() => window.__beech.account().fetch('/api/pulls/daily', { method: 'POST' }).then((r) => r.status));
+check(again === 409, 'one free go a day');
+await page.click('button[data-tool="dig"]');
 
 // delete the account (two taps)
 await page.evaluate(() => window.__beech.sheet.show());

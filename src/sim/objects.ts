@@ -15,8 +15,8 @@
 // shells and sea glass at the waterline). Those are marked `wild`; only a few
 // stay at a time, and the oldest is taken back by the sea.
 
-export type ObjectKind = 'rock' | 'driftwood' | 'shell' | 'seaglass' | 'flag';
-export const OBJECT_KINDS: ObjectKind[] = ['rock', 'driftwood', 'shell', 'seaglass', 'flag'];
+export type ObjectKind = 'rock' | 'driftwood' | 'shell' | 'seaglass' | 'flag' | 'conch' | 'sanddollar' | 'starfish' | 'bottle';
+export const OBJECT_KINDS: ObjectKind[] = ['rock', 'driftwood', 'shell', 'seaglass', 'flag', 'conch', 'sanddollar', 'starfish', 'bottle'];
 
 type Behaviour = 'rock' | 'float' | 'tumble' | 'fixed';
 const BEHAVIOUR: Record<ObjectKind, Behaviour> = {
@@ -25,6 +25,11 @@ const BEHAVIOUR: Record<ObjectKind, Behaviour> = {
   shell: 'tumble',
   seaglass: 'tumble',
   flag: 'fixed',
+  conch: 'tumble',
+  sanddollar: 'tumble',
+  starfish: 'tumble',
+  // a message in a bottle floats like driftwood
+  bottle: 'float',
 };
 
 /** What is saved with a beach. Coordinates are sim metres (x alongshore, y from the offshore edge). */
@@ -97,6 +102,8 @@ const WASH_IN = [70, 160];
 
 export const ROCK_HEIGHT = 0.8; // height as a fraction of radius
 export const WOOD_RADIUS = (length: number) => 0.05 + length * 0.028;
+/** radius of something afloat (its draft is about this) */
+export const floatRadius = (o: { kind: ObjectKind; size: number }) => (o.kind === 'bottle' ? o.size * 0.2 : WOOD_RADIUS(o.size));
 
 export class BeachObjects {
   private live = new Map<number, Live>();
@@ -292,8 +299,8 @@ export class BeachObjects {
         l.z = this.sandAt(o.x, o.y);
         continue;
       }
-      // driftwood
-      const r = WOOD_RADIUS(o.size);
+      // driftwood and bottles
+      const r = floatRadius(o);
       const k = this.cellAt(o.x, o.y);
       const d = water[k];
       const ca = Math.cos(o.angle);

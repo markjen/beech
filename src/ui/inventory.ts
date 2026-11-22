@@ -5,8 +5,10 @@ import { isAvailable, type Item } from '../world/items';
 const COMING = [
   { name: 'Shop', note: 'Special items, some only for a while' },
   { name: 'Mystery box', note: 'Rare, legendary and one-of-a-kind finds' },
-  { name: 'Claw machine', note: 'Try your luck' },
 ];
+
+/** How the claw machine tile behaves: play, ask to sign in, or not here (sandbox). */
+export type ClawState = 'play' | 'signin' | 'none';
 
 /**
  * The bag: a small tray of things you can put on the beach. Pick one, then
@@ -17,6 +19,12 @@ export class InventoryTray {
   private readonly tray: HTMLDivElement;
   private selected: string | null = null;
   private open = false;
+  /** how many of each non-free item you own, and how many are on the beach */
+  private owned = new Map<string, number>();
+  private placed = new Map<string, number>();
+  private claw: ClawState = 'none';
+  /** opens the claw machine (or the sign-in sheet) */
+  onClaw: () => void = () => {};
 
   constructor(
     hudButton: (name: IconName, label: string, cls?: string) => HTMLButtonElement,
@@ -39,6 +47,40 @@ export class InventoryTray {
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && this.open) this.setOpen(false);
     });
+  }
+
+  setOwned(owned: Map<string, number>): void {
+    this.owned = owned;
+    if (this.selected && !this.canPlace(this.selected) && this.placedOf(this.selected) === 0 && !this.ownedOf(this.selected)) this.select(null);
+    this.render();
+  }
+
+  setPlaced(placed: Map<string, number>): void {
+    const key = (m: Map<string, number>) => [...m].sort().join();
+    if (key(placed) === key(this.placed)) return;
+    this.placed = placed;
+    this.render();
+  }
+
+  setClaw(state: ClawState): void {
+    if (state === this.claw) return;
+    this.claw = state;
+    this.render();
+  }
+
+  private ownedOf(id: string): number {
+    return this.owned.get(id) ?? 0;
+  }
+
+  private placedOf(id: string): number {
+    return this.placed.get(id) ?? 0;
+  }
+
+  /** Is there one left to put down? (free items: always) */
+  canPlace(id: string): boolean {
+    const it = this.items.find((i) => i.id === id);
+    if (!it) return false;
+    return it.unlimited || this.placedOf(id) < this.ownedOf(id);
   }
 
   get current(): string | null {
@@ -85,18 +127,39 @@ export class InventoryTray {
     const grid = document.createElement('div');
     grid.className = 'inv-grid';
     for (const it of this.items) {
-      if (!isAvailable(it, now)) continue;
+      if (!isAvailable(it, now) && !this.ownedOf(it.id)) continue;
+      // things you win or buy show once you have them
+      if (!it.unlimited && !this.ownedOf(it.id)) continue;
       const b = document.createElement('button');
       b.type = 'button';
       b.className = `inv-item rarity-${it.rarity}`;
       b.classList.toggle('selected', it.id === this.selected);
       b.setAttribute('aria-pressed', String(it.id === this.selected));
-      b.innerHTML = `${icon(it.id as IconName)}<b>${it.name}</b><span>${it.unlimited ? 'Free · ∞' : ''}</span>`;
+      const left = this.ownedOf(it.id) - this.placedOf(it.id);
+      b.innerHTML = `${icon(it.id as IconName)}<b>${it.name}</b><span>${it.unlimited ? 'Free · ∞' : `${Math.max(0, left)} of ${this.ownedOf(it.id)} left`}</span>`;
+      if (!it.unlimited && left <= 0 && it.id !== this.selected) b.classList.add('used');
       b.addEventListener('click', () => {
         this.select(it.id === this.selected ? null : it.id);
         this.setOpen(false);
       });
       grid.appendChild(b);
+    }
+    if (this.claw !== 'none') {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'inv-item claw-tile';
+      b.dataset.act = 'claw';
+      b.innerHTML = `${icon('claw')}<b>Claw machine</b><span>${this.claw === 'play' ? 'One free go a day' : 'Sign in to play'}</span>`;
+      b.addEventListener('click', () => {
+        this.setOpen(false);
+        this.onClaw();
+      });
+      grid.appendChild(b);
+    } else {
+      const d = document.createElement('div');
+      d.className = 'inv-item soon';
+      d.innerHTML = `<b>Claw machine</b><span>Coming soon</span>`;
+      grid.appendChild(d);
     }
     for (const c of COMING) {
       const d = document.createElement('div');

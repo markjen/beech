@@ -27,9 +27,10 @@ import { Ambient, toggleFullscreen } from './ui/ambient';
 import { Hud } from './ui/hud';
 import { SettingsSheet, StartScreen, showHint } from './ui/overlays';
 import { InventoryTray } from './ui/inventory';
+import { ClawMachine } from './ui/clawMachine';
 import { ITEMS, rollPlacement, type Item } from './world/items';
 import { WOOD_RADIUS } from './sim/objects';
-import { ACCOUNTS_ENABLED, Account } from './net/account';
+import { ACCOUNTS_ENABLED, Account, PullApi } from './net/account';
 import { BeachSync } from './net/beachSync';
 import { AccountPanel } from './ui/accountPanel';
 import { NEIGHBOR_OFFSET, NeighborView } from './render/neighbors';
@@ -126,6 +127,7 @@ async function boot() {
   const cam = new CameraController(scene, canvas, grid.dx);
   // set up with the account layer (production builds)
   let neighbors: NeighborView | null = null;
+  let clawMachine: ClawMachine | null = null;
   // your sand, else a neighbor's, else the untouched shore (the chair can walk along all of it)
   cam.groundHeight = (x, z) => {
     const h = picker.heightAt(x, z);
@@ -179,6 +181,10 @@ async function boot() {
     if (m.type !== 'frame') return;
     renderer.uploadFrame(m.buf);
     objectView.set(m.objects);
+    // how many of each item you've put down (prizes can only go down as often as you own them)
+    const placed = new Map<string, number>();
+    for (const o of m.objects) if (!o.wild) placed.set(o.item, (placed.get(o.item) ?? 0) + 1);
+    inventory.setPlaced(placed);
     picker.updateFromFrame(m.buf);
     send({ type: 'return', buf: m.buf }, [m.buf.buffer]);
     const dtSim = m.t - info.t;
@@ -383,6 +389,10 @@ async function boot() {
       send({ type: 'removeObject', id: near.id });
       audio.whoosh(true);
       haptics.impact('light');
+    } else if (!inventory.canPlace(placing.id)) {
+      // all of them are already on the beach
+      haptics.impact('light');
+      return;
     } else {
       const r = rollPlacement(placing);
       send({ type: 'placeObject', obj: { kind: placing.kind, item: placing.id, x: p.x, y: p.y, ...r } });
@@ -686,6 +696,31 @@ async function boot() {
       signedInAs = u?.id ?? null;
     });
     new AccountPanel(sheet.accountSlot, account, s, () => {}, nv);
+
+    // what you've won (and later bought), and the claw machine
+    const acct = account;
+    const loadOwned = async () => {
+      if (!acct.user) return inventory.setOwned(new Map());
+      try {
+        const owned = new Map<string, number>();
+        for (const it of await acct.inventory()) owned.set(it.item, (owned.get(it.item) ?? 0) + it.quantity);
+        inventory.setOwned(owned);
+      } catch {
+        /* offline: keep what we had */
+      }
+    };
+    const claw = new ClawMachine(uiRoot, new PullApi(acct), (item, place) => {
+      void loadOwned().then(() => {
+        if (place) inventory.select(item);
+      });
+    });
+    clawMachine = claw;
+    inventory.onClaw = () => (acct.user ? void claw.open() : sheet.show());
+    inventory.setClaw(acct.user ? 'play' : 'signin');
+    acct.onChange((u) => {
+      inventory.setClaw(u ? 'play' : 'signin');
+      void loadOwned();
+    });
     void account.restore();
   }
 
@@ -711,6 +746,7 @@ async function boot() {
     send,
     sheet,
     inventory,
+    claw: () => clawMachine,
     objectView,
     audio,
     pickTool,

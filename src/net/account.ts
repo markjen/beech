@@ -277,6 +277,33 @@ export class NeighborApi {
   }
 }
 
+export interface PullPool {
+  id: string;
+  name: string;
+  /** published chance of each rarity */
+  odds: Record<'common' | 'rare' | 'legendary', number>;
+  items: Record<'common' | 'rare' | 'legendary', string[]>;
+  /** your free go today is still there */
+  free: boolean;
+}
+
+/** The claw machine (and later, mystery boxes): draws happen on the server. */
+export class PullApi {
+  constructor(private readonly account: Account) {}
+
+  async status(): Promise<{ pools: PullPool[]; nextFree: number }> {
+    const res = await this.account.fetch('/api/pulls');
+    if (!res.ok) throw await errorOf(res, 'The claw machine is out of order');
+    return res.json();
+  }
+
+  async pull(pool: string): Promise<{ item: string; rarity: string; nextFree: number }> {
+    const res = await this.account.fetch(`/api/pulls/${encodeURIComponent(pool)}`, { method: 'POST' });
+    if (!res.ok) throw await errorOf(res, 'The claw machine is out of order');
+    return res.json();
+  }
+}
+
 // ------------------------------------------------------------------ Google
 
 interface GoogleId {

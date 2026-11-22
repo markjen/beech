@@ -37,6 +37,11 @@ export const ITEMS: Item[] = [
   { id: 'shell', name: 'Shell', kind: 'shell', rarity: 'common', source: 'free', unlimited: true, size: [0.07, 0.14], variants: 8 },
   { id: 'seaglass', name: 'Sea glass', kind: 'seaglass', rarity: 'common', source: 'free', unlimited: true, size: [0.07, 0.11], variants: 4 },
   { id: 'flag', name: 'Flag', kind: 'flag', rarity: 'common', source: 'free', unlimited: true, size: [0.4, 0.4], variants: 4 },
+  // won from the claw machine (server/src/pulls.ts); you can place as many as you own
+  { id: 'conch', name: 'Conch', kind: 'conch', rarity: 'common', source: 'pull', unlimited: false, size: [0.16, 0.22], variants: 3 },
+  { id: 'sanddollar', name: 'Sand dollar', kind: 'sanddollar', rarity: 'common', source: 'pull', unlimited: false, size: [0.08, 0.11], variants: 2 },
+  { id: 'starfish', name: 'Starfish', kind: 'starfish', rarity: 'rare', source: 'pull', unlimited: false, size: [0.12, 0.17], variants: 3 },
+  { id: 'bottle', name: 'Message in a bottle', kind: 'bottle', rarity: 'legendary', source: 'pull', unlimited: false, size: [0.3, 0.34], variants: 2 },
 ];
 
 export const itemById = (id: string): Item | undefined => ITEMS.find((i) => i.id === id);

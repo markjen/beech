@@ -215,6 +215,25 @@ branch, so the deploy job runs only there. Switch the default branch to
   `GET /api/inventory` for owned, unexpired non-free items. Nothing writes to
   it yet.
 
+## Claw machine (added after chair polish)
+
+- **Free daily claw machine** (production builds, signed in): one go per
+  UTC day. The server draws the prize (`server/src/pulls.ts`, crypto
+  randomness) with published odds: common 70% (conch, sand dollar), rare 25%
+  (starfish), legendary 5% (message in a bottle). The app shows the odds
+  before every go. Migration 3 adds `pulls`, keyed on `(user, pool, day)`;
+  claiming the day and adding the prize happen in one SQL statement.
+- **The game is cosmetic:** the claw wanders, you drop it, and it always
+  comes back with a capsule coloured by the server's result. The request
+  goes out as the claw drops.
+- **Prizes in the bag** show "N of M left". You can have as many of an item
+  on the beach as you own, and pulled items count toward that, not wild
+  ones. Conch, sand dollar and starfish roll like shells; the bottle floats
+  like driftwood.
+- **Sandbox build:** the tile says "coming soon". Signed out (production):
+  "Sign in to play". `tests/items.test.ts` checks that the server's pool
+  items exist in the client catalog with matching rarity.
+
 ## Native sign-in (added after inventory)
 
 - `src/net/nativeAuth.ts` wraps `@capgo/capacitor-social-login` 8.7.6. It is

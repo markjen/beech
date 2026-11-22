@@ -20,6 +20,7 @@
 import { Hono, type Context } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 
+import { POOLS, draw, nextDay, pullDay } from './pulls.js';
 import { hashToken, newSessionToken, SESSION_DAYS, verifyAppleIdToken, verifyGoogleIdToken, type VerifiedIdentity } from './auth.js';
 import { toBytes, type Db } from './db.js';
 
@@ -339,6 +340,39 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
         expiresAt: r.expires_at === null ? null : Number(r.expires_at),
       })),
     });
+  });
+
+  // ---------------------------------------------------------------- pulls
+  // the pools, their published odds, and whether your free go is ready
+  app.get('/pulls', requireUser, async (c) => {
+    const now = Date.now();
+    const rows = await db.query<{ pool: string }>('SELECT pool FROM pulls WHERE user_id = $1 AND day = $2', [c.get('user').id, pullDay(now)]);
+    const used = new Set(rows.map((r) => r.pool));
+    return c.json({
+      pools: Object.values(POOLS).map((p) => ({ id: p.id, name: p.name, odds: p.odds, items: p.items, free: !used.has(p.id) })),
+      nextFree: nextDay(now),
+    });
+  });
+
+  // your free daily go: the server draws, records it and adds the item to your bag
+  app.post('/pulls/:pool', requireUser, async (c) => {
+    const id = c.req.param('pool') ?? '';
+    const pool = Object.hasOwn(POOLS, id) ? POOLS[id] : undefined;
+    if (!pool) fail(404, 'no such machine');
+    const now = Date.now();
+    const got = draw(pool!);
+    // one statement, so the day is claimed and the item given together
+    const rows = await db.query<{ item_id: string }>(
+      `WITH claim AS (
+         INSERT INTO pulls (user_id, pool, day, item_id, rarity, created_at) VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT DO NOTHING RETURNING user_id, item_id
+       )
+       INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at, expires_at)
+       SELECT user_id, item_id, 1, 'pull', $6, NULL FROM claim RETURNING item_id`,
+      [c.get('user').id, pool!.id, pullDay(now), got.item, got.rarity, now],
+    );
+    if (!rows[0]) return c.json({ error: 'come back tomorrow', nextFree: nextDay(now) }, 409);
+    return c.json({ item: got.item, rarity: got.rarity, nextFree: nextDay(now) });
   });
 
   app.post('/neighbors/code', requireUser, async (c) => {
