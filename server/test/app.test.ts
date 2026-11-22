@@ -4,6 +4,8 @@ import { createPgDb, createPgliteDb, type Db } from '../src/db.js';
 import { migrate } from '../src/migrations.js';
 
 let db: Db;
+/** the server's clock in these tests: real time plus however far a test moved it on */
+let skew = 0;
 let app: ReturnType<typeof createApp>;
 
 beforeAll(async () => {
@@ -22,6 +24,7 @@ beforeAll(async () => {
     appleClientIds: [],
     allowedOrigins: ['capacitor://localhost'],
     devAuth: true,
+    now: () => Date.now() + skew,
     verifyGoogle: async (t) => {
       if (t !== 'good-google-token') throw new Error('bad token');
       return { provider: 'google', sub: 'g-1', name: 'Grace' };
@@ -187,23 +190,44 @@ describe('the shore and favorites', () => {
 });
 
 describe('pulls', () => {
-  it('shows the odds, gives one free go a day, and puts the prize in your bag', async () => {
+  it('shows the odds; the wait between goes starts at 5 minutes and doubles up to a day', async () => {
     const cleo = await signIn('Cleo');
-    const list = (await (await req('/pulls', {}, cleo.token)).json()) as { pools: { id: string; odds: Record<string, number>; free: boolean }[] };
-    const daily = list.pools.find((p) => p.id === 'daily')!;
-    expect(Object.values(daily.odds).reduce((a, b) => a + b, 0)).toBeCloseTo(1, 9);
-    expect(daily.free).toBe(true);
-    // two at once: exactly one wins the day
+    type Pools = { pools: { id: string; odds: Record<string, number>; free: boolean; nextCooldown: number }[]; nextFree: number };
+    const status = async () => ((await (await req('/pulls', {}, cleo.token)).json()) as Pools).pools.find((p) => p.id === 'daily')!;
+    const first = await status();
+    expect(Object.values(first.odds).reduce((a, b) => a + b, 0)).toBeCloseTo(1, 9);
+    expect(first.free).toBe(true);
+    expect(first.nextCooldown).toBe(5 * 60000);
+
+    // two at once: exactly one gets the go
     const [a, b] = await Promise.all([req('/pulls/daily', { method: 'POST' }, cleo.token), req('/pulls/daily', { method: 'POST' }, cleo.token)]);
     expect([a.status, b.status].sort()).toEqual([200, 409]);
-    const won = (await (a.status === 200 ? a : b).json()) as { item: string; rarity: string };
+    const won = (await (a.status === 200 ? a : b).json()) as { item: string; rarity: string; nextFree: number };
+    expect(won.nextFree - (Date.now() + skew)).toBeGreaterThan(4.9 * 60000);
+    expect(won.nextFree - (Date.now() + skew)).toBeLessThanOrEqual(5 * 60000);
     const inv = (await (await req('/inventory', {}, cleo.token)).json()) as { items: { item: string; source: string }[] };
     expect(inv.items).toEqual([expect.objectContaining({ item: won.item, source: 'pull' })]);
-    const after = (await (await req('/pulls', {}, cleo.token)).json()) as { pools: { id: string; free: boolean }[] };
-    expect(after.pools.find((p) => p.id === 'daily')!.free).toBe(false);
+    expect((await status()).free).toBe(false);
+
+    // each go makes the next wait twice as long: 5, 10, 20, 40, … minutes, never more than a day
+    const waits: number[] = [];
+    let next = won.nextFree;
+    for (let go = 2; go <= 12; go++) {
+      skew += next - (Date.now() + skew) - 1000; // just before it's free: still resting
+      expect((await req('/pulls/daily', { method: 'POST' }, cleo.token)).status).toBe(409);
+      skew += 2000; // and now it's free
+      const r = await req('/pulls/daily', { method: 'POST' }, cleo.token);
+      expect(r.status).toBe(200);
+      const body = (await r.json()) as { nextFree: number };
+      waits.push(Math.round((body.nextFree - (Date.now() + skew)) / 60000));
+      next = body.nextFree;
+    }
+    expect(waits).toEqual([10, 20, 40, 80, 160, 320, 640, 1280, 1440, 1440, 1440]);
+
     expect((await req('/pulls/nope', { method: 'POST' }, cleo.token)).status).toBe(404);
     expect((await req('/pulls/__proto__', { method: 'POST' }, cleo.token)).status).toBe(404);
     expect((await req('/pulls/daily', { method: 'POST' })).status).toBe(401);
+    skew = 0;
   });
 
   it('draws with the published odds', async () => {

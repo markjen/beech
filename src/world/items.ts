@@ -36,7 +36,7 @@ export interface Item {
 export const ITEMS: Item[] = [
   { id: 'rock', name: 'Rock', kind: 'rock', rarity: 'common', source: 'free', unlimited: true, size: [0.12, 1.3], variants: 8 },
   { id: 'driftwood', name: 'Driftwood', kind: 'driftwood', rarity: 'common', source: 'free', unlimited: true, size: [0.5, 3.2], variants: 6 },
-  { id: 'shell', name: 'Shell', kind: 'shell', rarity: 'common', source: 'free', unlimited: true, size: [0.05, 0.22], variants: 8 },
+  { id: 'shell', name: 'Shell', kind: 'shell', rarity: 'common', source: 'free', unlimited: true, size: [0.05, 0.5], variants: 8 },
   { id: 'seaglass', name: 'Sea glass', kind: 'seaglass', rarity: 'common', source: 'free', unlimited: true, size: [0.05, 0.16], variants: 4 },
   { id: 'flag', name: 'Flag', kind: 'flag', rarity: 'common', source: 'free', unlimited: true, size: [0.4, 0.4], variants: 4, fixedSize: true },
   // won from the claw machine (server/src/pulls.ts); you can place as many as you own

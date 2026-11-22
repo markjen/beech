@@ -149,7 +149,7 @@ export class InventoryTray {
       b.type = 'button';
       b.className = 'inv-item claw-tile';
       b.dataset.act = 'claw';
-      b.innerHTML = `${icon('claw')}<b>Claw machine</b><span>${this.claw === 'play' ? 'One free go a day' : 'Sign in to play'}</span>`;
+      b.innerHTML = `${icon('claw')}<b>Claw machine</b><span>${this.claw === 'play' ? 'Free goes' : 'Sign in to play'}</span>`;
       b.addEventListener('click', () => {
         this.setOpen(false);
         this.onClaw();

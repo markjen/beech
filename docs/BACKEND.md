@@ -35,8 +35,8 @@ Migrations live in `src/migrations.ts` and are applied at startup.
 | `GET /api/shore/more?from=&dir=&count=` | keep walking from a beach (infinite scroll) |
 | `GET /api/neighbors/:side/beach` | that neighbor's sand (only your own neighbors' beaches are readable) |
 | `POST /api/neighbors/code` | new code; the old one stops working, and current neighbors keep you |
-| `GET /api/pulls` | `{ pools: [{ id, name, odds, items, free }], nextFree }`: the machines, their published odds, and whether today's free go is left |
-| `POST /api/pulls/:pool` | today's free go (`daily`): the server draws, records it (one per UTC day, enforced by the primary key) and adds the prize to `inventory`; 409 if already used |
+| `GET /api/pulls` | `{ pools: [{ id, name, odds, items, free, nextCooldown }], nextFree }`: the machines, their published odds, and whether a free go is ready |
+| `POST /api/pulls/:pool` | a free go (`daily`): the server draws, logs it and adds the prize to `inventory`. The rest before the next go starts at 5 min and doubles each go, up to a day (`pull_state`). 409 while it's resting |
 | `GET /api/beaches/:code` | anyone's saved beach, by code |
 | `GET /api/favorites`, `PUT`/`DELETE /api/favorites/:code` | your starred beaches |
 | `GET /api/inventory` | `{ items: [{ item, quantity, source, acquiredAt, expiresAt }] }`: what you own beyond the free items, unexpired. Empty until the shop and pulls exist; rows are only written by the server. |

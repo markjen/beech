@@ -13,7 +13,8 @@ const RARITY_NAME: Record<string, string> = { common: 'Common', rare: 'Rare', le
 type Phase = 'idle' | 'drop' | 'grab' | 'lift' | 'carry' | 'open' | 'done';
 
 /**
- * The claw machine: one free go a day. The prize is drawn on the server
+ * The claw machine: free goes, with a rest between them that starts at
+ * 5 minutes and doubles each go, up to a day. The prize is drawn on the server
  * (with the odds printed under the machine); the claw is the fun part. Hold
  * the button to steer, let go to drop, and it always comes back with a
  * capsule.
@@ -122,7 +123,7 @@ export class ClawMachine {
     this.btn.disabled = !free || this.phase !== 'idle';
     if (this.error) this.note.textContent = this.error;
     else if (!this.pool) this.note.textContent = '';
-    else if (free) this.note.textContent = 'One free go a day.';
+    else if (free) this.note.textContent = `A free go! After it the claw rests ${duration(this.pool.nextCooldown)}.`;
     else this.note.textContent = `Your next free go is in ${until(this.nextFree)}.`;
     if (!this.pool) {
       this.oddsEl.innerHTML = '';
@@ -304,6 +305,13 @@ function roundRect(c: CanvasRenderingContext2D, x: number, y: number, w: number,
   c.arcTo(x, y + h, x, y, r);
   c.arcTo(x, y, x + w, y, r);
   c.closePath();
+}
+
+/** 5 min, 1 h 20 min, 1 day */
+function duration(ms: number): string {
+  const m = Math.round(ms / 60000);
+  if (m >= 1440) return '1 day';
+  return m >= 60 ? `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ''}` : `${m} min`;
 }
 
 function until(t: number): string {

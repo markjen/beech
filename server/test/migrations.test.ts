@@ -33,3 +33,21 @@ describe('migration 5: mutual neighbors', () => {
     await db.close();
   });
 });
+
+describe('migration 6: growing claw cooldown', () => {
+  it('carries earlier daily goes over as a count and a next free time', async () => {
+    const db = await createPgliteDb();
+    await migrate(db, 5);
+    const id = '00000000-0000-4000-8000-000000000009';
+    await db.query("INSERT INTO users (id, provider, provider_sub, name, neighbor_code, created_at) VALUES ($1, 'dev', 'x', 'x', 'CODEXX', 0)", [id]);
+    for (const [day, at] of [['2026-11-20', 1000], ['2026-11-21', 2000], ['2026-11-22', 3000]] as const)
+      await db.query("INSERT INTO pulls (user_id, pool, day, item_id, rarity, created_at) VALUES ($1, 'daily', $2, 'conch', 'common', $3)", [id, day, at]);
+    await migrate(db);
+    const st = await db.query<{ count: number; next_at: string }>('SELECT count, next_at FROM pull_state WHERE user_id = $1', [id]);
+    expect(Number(st[0].count)).toBe(3);
+    expect(Number(st[0].next_at)).toBe(3000 + 20 * 60000); // after the 3rd go: 20 minutes
+    // and pulls is now a history (several a day are fine)
+    await db.query("INSERT INTO pulls (user_id, pool, day, item_id, rarity, created_at) VALUES ($1, 'daily', '2026-11-22', 'conch', 'common', 4000)", [id]);
+    await db.close();
+  });
+});

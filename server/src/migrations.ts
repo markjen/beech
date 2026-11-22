@@ -109,6 +109,25 @@ const MIGRATIONS: string[] = [
   CREATE UNIQUE INDEX neighbors_once ON neighbors (neighbor_id, side);
   CREATE INDEX users_created ON users (created_at, id);
   `,
+  // 6: the claw machine's wait grows with each go (5 min, doubling, up to a
+  // day) instead of one go per day. pull_state holds when you're free next;
+  // pulls becomes a plain history.
+  `
+  CREATE TABLE pull_state (
+    user_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    pool TEXT NOT NULL,
+    count INTEGER NOT NULL,            -- goes so far
+    next_at BIGINT NOT NULL,           -- free again at (ms)
+    PRIMARY KEY (user_id, pool)
+  );
+  ALTER TABLE pulls DROP CONSTRAINT pulls_pkey;
+  ALTER TABLE pulls ADD PRIMARY KEY (user_id, pool, created_at);
+  -- people who already played: carry their count on; their next go follows the new rule
+  INSERT INTO pull_state (user_id, pool, count, next_at)
+    SELECT user_id, pool, COUNT(*),
+           MAX(created_at) + LEAST(86400000, 300000 * POWER(2, COUNT(*) - 1))::bigint
+      FROM pulls GROUP BY user_id, pool;
+  `,
 ];
 
 /** Apply migrations up to `upTo` (default: all). Tests use `upTo` to check a migration on older data. */

@@ -88,6 +88,9 @@ _(nothing right now)_
 
 ## Done (recent)
 
+- [x] **Phone fixes (#4, #5, #6); claw cooldown 5 min doubling to a day;
+  bigger shells** (2026-11-22).
+
 - [x] **Mutual neighbors on one global beachfront, with infinite scroll**
   (2026-11-22).
 

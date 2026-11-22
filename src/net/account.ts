@@ -357,8 +357,10 @@ export interface PullPool {
   /** published chance of each rarity */
   odds: Record<'common' | 'rare' | 'legendary', number>;
   items: Record<'common' | 'rare' | 'legendary', string[]>;
-  /** your free go today is still there */
+  /** a free go is ready now */
   free: boolean;
+  /** how long the claw will rest after your next go (ms): 5 min, doubling, up to a day */
+  nextCooldown: number;
 }
 
 /** The claw machine (and later, mystery boxes): draws happen on the server. */
