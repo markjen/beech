@@ -17,7 +17,7 @@ try {
 let server;
 let url = process.env.SMOKE_URL;
 if (!url) {
-  server = spawn('npx', ['vite', 'preview', '--port', '4173', '--strictPort'], { stdio: 'pipe' });
+  server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', 'preview', '--port', '4173', '--strictPort'], { stdio: 'pipe' });
   url = 'http://localhost:4173/';
   await new Promise((resolve, reject) => {
     const t = setTimeout(() => reject(new Error('preview server did not start')), 20000);
@@ -136,6 +136,22 @@ try {
   if (!(redone > base + (dug - base) * 0.7)) fail(`redo did not re-apply (${redone.toFixed(2)})`);
   else console.log(`redo ok (${redone.toFixed(2)})`);
 
+  if (!process.env.SMOKE_URL) {
+    // production build: the service worker should let the app start offline
+    await page.evaluate(() => navigator.serviceWorker?.ready);
+    await page.reload();
+    await page.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
+    await page.context().setOffline(true);
+    await page.reload();
+    try {
+      await page.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
+      console.log('offline start ok');
+    } catch {
+      fail('app did not start offline');
+    }
+    await page.context().setOffline(false);
+  }
+
   const info = await page.evaluate(() => window.__beech.info());
   console.log(`sim tick ${info.tickMs.toFixed(1)} ms, undo ${info.undoCount}, redo ${info.redoCount}`);
   if (errors.length) fail('page errors: ' + errors.join(' | '));
@@ -144,3 +160,4 @@ try {
   server?.kill();
 }
 if (!process.exitCode) console.log('SMOKE PASS');
+process.exit(process.exitCode ?? 0);

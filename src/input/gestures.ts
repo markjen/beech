@@ -12,6 +12,8 @@ export interface GestureHandlers {
   hoverEnd(): void;
   undo(): void;
   redo(): void;
+  /** number keys 1-3 pick a tool */
+  tool?(index: number): void;
   /** any user input at all (used to unlock audio, hide hints) */
   interacted(): void;
 }
@@ -227,7 +229,8 @@ export class Gestures {
     if (k === ' ') {
       this.space = true;
       e.preventDefault();
-    } else if (k === 'q') this.cam.snapRotation(-1);
+    } else if (k === '1' || k === '2' || k === '3') this.h.tool?.(Number(k) - 1);
+    else if (k === 'q') this.cam.snapRotation(-1);
     else if (k === 'e') this.cam.snapRotation(1);
     else if (['w', 'a', 's', 'd'].includes(k)) this.cam.held.add(k);
     else if (k === '+' || k === '=') this.cam.held.add('+');

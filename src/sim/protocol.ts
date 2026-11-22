@@ -15,7 +15,8 @@ export type ToWorker =
   | { type: 'flags'; flags: Partial<SimFlags> }
   | { type: 'pause'; paused: boolean }
   | { type: 'tune'; section: TunableSection; key: string; value: number }
-  | { type: 'return'; buf: Float32Array };
+  | { type: 'return'; buf: Float32Array }
+  | { type: 'bench' };
 
 export interface FrameInfo {
   /** sim time (s) */
@@ -37,4 +38,5 @@ export interface FrameInfo {
 /** Messages from the worker to the main thread. */
 export type FromWorker =
   | { type: 'ready'; grid: GridSpec; rest: Float32Array; seed: number }
+  | { type: 'bench'; msPerTickLow: number }
   | ({ type: 'frame'; buf: Float32Array } & FrameInfo);

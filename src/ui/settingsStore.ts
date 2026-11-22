@@ -10,6 +10,8 @@ export interface Settings {
   quality: QualityTier | 'auto';
   batterySaver: boolean;
   seenIntro: boolean;
+  /** tier picked by the first-launch benchmark (used when quality is 'auto') */
+  benchTier?: QualityTier;
 }
 
 export const DEFAULT_SETTINGS: Settings = {

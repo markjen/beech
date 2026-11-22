@@ -16,6 +16,35 @@
 .hud-right {
   right: calc(var(--pad) + env(safe-area-inset-right));
   bottom: calc(var(--pad) + env(safe-area-inset-bottom));
+  flex-direction: column;
+  align-items: center;
+}
+
+.hud-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 6px;
+  border-radius: 999px;
+  background: var(--ui-bg);
+  box-shadow: 0 6px 18px var(--ui-shadow);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  pointer-events: auto;
+}
+
+.hud-tools .hud-btn {
+  width: 40px;
+  height: 40px;
+  box-shadow: none;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.hud-tools .hud-btn.active {
+  background: var(--ui-fg);
+  color: var(--ui-bg);
 }
 
 .hud-left {

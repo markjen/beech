@@ -10,7 +10,7 @@
 | M3 | Waves (pipes water sim, swell sets, foam, wetting/drying, calm toggle) | done |
 | M4 | Erosion (sediment pick-up/drop/transport, saturated slump, healing, `?debug=1` tuning panel) | done |
 | M5 | Ambience (procedural audio, haptics, palettes + day cycle, start screen, hint, settings sheet, vignette) | done |
-| M6 | Ship (quality tiers, PWA/offline, Capacitor iOS + Android) | todo |
+| M6 | Ship (benchmark quality tiers, dynamic resolution, PWA/offline, icons, Capacitor iOS + Android projects, mobile CI + store release workflow, docs) | done |
 | M7 | Stretch (water table seepage, pile + smooth tools, shells, screenshot share) | todo |
 
 ## Decisions that differ from PLAN.md
@@ -68,8 +68,30 @@
   unavailable.
 - **Battery saver renders every other frame** (about 30 fps). The sim rate is
   unchanged.
+- **Quality tier** comes from a benchmark of the low grid in the worker on
+  first launch (remembered in settings). `high` is desktop-only. On top of that,
+  **dynamic resolution** drops the render scale in 0.25 steps (down to 0.75)
+  when frames run long for 2 s, and climbs back after 8 s of headroom. The
+  smoke and screenshot scripts pass `?fixedres` to turn this off.
+- **PWA:** hand-written `public/sw.js`, network-first for page loads and
+  cache-first for hashed assets. Not registered in dev or in the native shells.
+- **Capacitor 8 with SPM for iOS** (no CocoaPods), appId `app.beech.beach`
+  (a placeholder: choose the final one before the first store upload, see
+  docs/MOBILE.md). Android release signing reads `BEECH_KEYSTORE_*` env vars,
+  so no key material is ever committed.
+- **App icon and splash are generated from code** (`scripts/make-icons.mjs`,
+  an isometric beach tile), then turned into native assets by `@capacitor/assets`.
 - **Camera looks from the land toward the sea** (alpha = 135°), so the waves
   come toward the viewer.
+
+## Not verified here (needs real accounts or hardware)
+
+- The iOS build: no macOS in the dev container. The `mobile.yml` CI job builds
+  the simulator target on a macOS runner.
+- The store upload workflow (`release-mobile.yml`): needs Play and App Store
+  Connect credentials. The first Play upload must be manual.
+- Feel on real phones: touch latency, haptics, audio mix, thermal behaviour.
+  The tuning panel (`?debug=1`) is the place to adjust these.
 
 ## Verification
 

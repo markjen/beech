@@ -84,6 +84,16 @@ self.onmessage = (ev: MessageEvent<ToWorker>) => {
       acc = DT; // produce a first frame right away
       break;
     }
+    case 'bench': {
+      // time a few ticks of the smallest grid to pick a quality tier
+      const b = new BeachSim(CONFIG.GRID_TIERS.low, 1);
+      for (let i = 0; i < 3; i++) b.step(DT);
+      const t0 = performance.now();
+      const N = 12;
+      for (let i = 0; i < N; i++) b.step(DT);
+      post({ type: 'bench', msPerTickLow: (performance.now() - t0) / N });
+      break;
+    }
     case 'return':
       if (sim && m.buf.length === sim.n * 4) pool.push(m.buf);
       break;

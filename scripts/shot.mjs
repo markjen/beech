@@ -19,7 +19,8 @@ const page = await browser.newPage({ viewport: { width: +w, height: +h }, device
 const logs = [];
 page.on('console', (m) => logs.push(`[${m.type()}] ${m.text()}`));
 page.on('pageerror', (e) => logs.push(`[pageerror] ${e.message}`));
-await page.goto(url);
+// fixedres: keep full resolution even though software rendering is slow
+await page.goto(url + (url.includes('?') ? '&' : '?') + 'fixedres');
 await page.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
 await page.waitForTimeout(+wait);
 if (actions) {

@@ -9,6 +9,8 @@ flat-shaded diorama style.
 - **Design plan:** [PLAN.md](PLAN.md)
 - **How the code fits together:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - **Milestone status and decisions:** [docs/STATUS.md](docs/STATUS.md)
+- **Web deploy:** [docs/DEPLOY.md](docs/DEPLOY.md)
+- **App Store / Google Play:** [docs/MOBILE.md](docs/MOBILE.md)
 - **Working on this repo as an agent:** [CLAUDE.md](CLAUDE.md)
 
 ## Controls
@@ -32,7 +34,10 @@ for broad digs.
 | `npm run build` | Typecheck and build to `dist/` |
 | `npm run preview` | Serve the built `dist/` on :4173 |
 | `npm test` | Vitest unit tests (simulation, brush math) |
-| `npm run smoke` | Headless browser smoke test of the built app (needs Playwright + Chromium) |
+| `npm run smoke` | Headless browser smoke test of the built app, including offline start (needs Playwright + Chromium) |
+| `npm run icons` | Regenerate PWA icons and native icon/splash sources from code |
+| `npm run cap:android` / `npm run cap:ios` | Build, sync and open the native project |
+| `node scripts/set-version.mjs 1.2.0 7` | Set the version name and build number everywhere |
 
 URL parameters for development: `?quality=low|medium|high`, `?seed=N`,
 `?palette=dawn|day|golden|dusk`, `?debug=1`.

@@ -5,6 +5,9 @@ const ICONS = {
   redo: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 7h4V3" /><path d="M18.4 7.2A8 8 0 1 0 19.7 14" /></svg>`,
   wave: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 14c2.5 0 2.5-3 5-3s2.5 3 5 3 2.5-3 5-3 2.5 3 5 3" /><path d="M2 19c2.5 0 2.5-3 5-3s2.5 3 5 3 2.5-3 5-3 2.5 3 5 3" opacity=".55"/></svg>`,
   calm: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 13h18" /><path d="M5 18h14" opacity=".55"/></svg>`,
+  dig: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 15c3 3.5 13 3.5 16 0" /><path d="M7 15.5c2 1.6 8 1.6 10 0" opacity=".55"/><path d="M12 3v8" /><path d="M9.5 8.5 12 11l2.5-2.5" /></svg>`,
+  build: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 18h18" /><path d="M6 18l3.2-7h5.6L18 18" /><path d="M9.2 11V7.5h5.6V11" /><path d="M9.2 7.5V5.5M12 7.5V5.5M14.8 7.5V5.5" /></svg>`,
+  smooth: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 16c3-1.5 6-1.5 9 0s6 1.5 9 0" /><path d="M7 11.5c1.6-.8 3.4-.8 5 0" opacity=".55"/></svg>`,
   menu: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2" /><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1" /></svg>`,
 };
 
@@ -24,6 +27,7 @@ export class Hud {
   readonly root: HTMLDivElement;
   readonly undoBtn: HTMLButtonElement;
   readonly leftGroup: HTMLDivElement;
+  readonly toolGroup: HTMLDivElement;
   private pressTimer = 0;
   private longPressed = false;
 
@@ -39,6 +43,12 @@ export class Hud {
     const right = document.createElement('div');
     right.className = 'hud-group hud-right';
     this.root.appendChild(right);
+
+    this.toolGroup = document.createElement('div');
+    this.toolGroup.className = 'hud-tools';
+    this.toolGroup.setAttribute('role', 'radiogroup');
+    this.toolGroup.setAttribute('aria-label', 'Tool');
+    right.appendChild(this.toolGroup);
 
     this.undoBtn = this.button('undo', 'Undo (hold to redo)', 'hud-btn hud-big');
     right.appendChild(this.undoBtn);
@@ -92,6 +102,27 @@ export class Hud {
     void b.offsetWidth;
     b.classList.add('flash');
     window.setTimeout(() => this.setIcon(b, 'undo'), 450);
+  }
+
+  /** Small column of tool buttons above the undo button. */
+  setTools(tools: { id: string; icon: IconName; label: string }[], current: string, pick: (id: string) => void): void {
+    this.toolGroup.innerHTML = '';
+    for (const t of tools) {
+      const b = this.button(t.icon, t.label, 'hud-btn hud-tool');
+      b.setAttribute('role', 'radio');
+      b.dataset.tool = t.id;
+      b.addEventListener('click', () => pick(t.id));
+      this.toolGroup.appendChild(b);
+    }
+    this.setTool(current);
+  }
+
+  setTool(id: string): void {
+    for (const b of this.toolGroup.querySelectorAll<HTMLButtonElement>('button')) {
+      const on = b.dataset.tool === id;
+      b.classList.toggle('active', on);
+      b.setAttribute('aria-checked', String(on));
+    }
   }
 
   setUndoState(undoCount: number, redoCount: number): void {

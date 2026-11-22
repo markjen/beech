@@ -24,3 +24,9 @@ Read these first:
 - The app must stay playable after every commit (a milestone rule).
 - Never put secrets in the repo. Store-signing material for the native apps
   stays outside git (see docs/MOBILE.md).
+- After web changes that should ship in the apps, run `npx cap sync`. Don't
+  hand-edit `android/app/src/main/assets/public` or `ios/App/App/public`; they
+  are generated and git-ignored.
+- Android builds here need an SDK: install the command-line tools to a scratch
+  dir, set `ANDROID_HOME`, then `cd android && ./gradlew assembleDebug`. iOS
+  builds need macOS; rely on the `mobile.yml` CI job.

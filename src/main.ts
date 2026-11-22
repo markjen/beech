@@ -10,6 +10,8 @@ import { Gestures } from './input/gestures';
 import { SandPicker } from './input/sandPicker';
 import { paletteAtPhase, paletteByName, rgbToCss, type Palette } from './palette';
 import { Haptics } from './platform/haptics';
+import { registerServiceWorker } from './platform/pwa';
+import { tierFromBench } from './platform/quality';
 import { BeachRenderer, ORIGIN_X, ORIGIN_Z } from './render/beachRenderer';
 import { Sky } from './render/sky';
 import type { BrushMode } from './sim/beachSim';
@@ -23,18 +25,30 @@ const params = new URLSearchParams(location.search);
 /** One full dawn -> day -> golden -> dusk drift, in seconds. */
 const DAY_CYCLE_SECONDS = 20 * 60;
 
-function autoTier(): QualityTier {
-  const cores = navigator.hardwareConcurrency || 4;
-  const mem = (navigator as unknown as { deviceMemory?: number }).deviceMemory ?? 4;
-  if (cores <= 4 || mem <= 2) return 'low';
-  return 'medium';
+function benchmark(worker: Worker): Promise<number> {
+  return new Promise((resolve) => {
+    const prev = worker.onmessage;
+    const timer = window.setTimeout(() => resolve(10), 4000);
+    worker.onmessage = (ev: MessageEvent<FromWorker>) => {
+      if (ev.data.type !== 'bench') return;
+      window.clearTimeout(timer);
+      worker.onmessage = prev;
+      resolve(ev.data.msPerTickLow);
+    };
+    worker.postMessage({ type: 'bench' } satisfies ToWorker);
+  });
 }
 
-function chooseTier(s: Settings): QualityTier {
+async function chooseTier(s: Settings, worker: Worker): Promise<{ tier: QualityTier; settings: Settings }> {
   const q = params.get('quality');
-  if (q === 'low' || q === 'medium' || q === 'high') return q;
-  if (s.quality !== 'auto') return s.quality;
-  return autoTier();
+  if (q === 'low' || q === 'medium' || q === 'high') return { tier: q, settings: s };
+  if (s.quality !== 'auto') return { tier: s.quality, settings: s };
+  if (s.benchTier) return { tier: s.benchTier, settings: s };
+  const ms = await benchmark(worker);
+  const tier = tierFromBench(ms, isTouch);
+  const next = { ...s, benchTier: tier };
+  saveSettings(next);
+  return { tier, settings: next };
 }
 
 const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
@@ -48,22 +62,28 @@ async function boot() {
     preserveDrawingBuffer: true,
     powerPreference: 'high-performance',
   });
-  engine.setHardwareScalingLevel(1 / Math.min(window.devicePixelRatio || 1, 2));
+  // render scale: start at the device's pixel ratio (max 2) and back off if
+  // frames get slow (dynamic resolution keeps phones smooth and cool)
+  const maxScale = Math.min(window.devicePixelRatio || 1, 2);
+  let renderScale = maxScale;
+  engine.setHardwareScalingLevel(1 / renderScale);
 
   const scene = new Scene(engine);
   scene.clearColor = new Color4(0.97, 0.92, 0.85, 1);
   scene.skipPointerMovePicking = true;
   scene.skipFrustumClipping = true;
 
-  const tier = chooseTier(settings);
-  const grid = GRID_TIERS[tier];
-  const seed = Number(params.get('seed') ?? 1) || 1;
-
   const worker = new Worker(new URL('./sim/sim.worker.ts', import.meta.url), { type: 'module' });
   const send = (m: ToWorker, transfer: Transferable[] = []) => {
     if (params.has('trace') && m.type !== 'return') console.log('send', JSON.stringify(m));
     worker.postMessage(m, transfer);
   };
+
+  const chosen = await chooseTier(settings, worker);
+  settings = chosen.settings;
+  const tier = chosen.tier;
+  const grid = GRID_TIERS[tier];
+  const seed = Number(params.get('seed') ?? 1) || 1;
 
   const ready = await new Promise<Extract<FromWorker, { type: 'ready' }>>((resolve) => {
     worker.onmessage = (ev: MessageEvent<FromWorker>) => {
@@ -115,7 +135,7 @@ async function boot() {
   };
 
   // ---------------------------------------------------------------- digging
-  const brushMode: BrushMode = 'dig';
+  let brushMode: BrushMode = 'dig';
   let digging = false;
   let strokeOpen = false;
   let lastHit: { x: number; z: number } | null = null;
@@ -204,6 +224,18 @@ async function boot() {
     },
     share: () => void share(),
   });
+  const TOOLS: { id: BrushMode; icon: 'dig' | 'build' | 'smooth'; label: string }[] = [
+    { id: 'dig', icon: 'dig', label: 'Dig' },
+    { id: 'pile', icon: 'build', label: 'Build up sand' },
+    { id: 'smooth', icon: 'smooth', label: 'Smooth' },
+  ];
+  const pickTool = (id: string) => {
+    brushMode = id as BrushMode;
+    hud.setTool(id);
+    haptics.impact('light');
+  };
+  hud.setTools(TOOLS, brushMode, pickTool);
+
   const menuBtn = hud.button('menu', 'Settings');
   menuBtn.addEventListener('click', () => sheet.toggleOpen());
   hud.leftGroup.appendChild(menuBtn);
@@ -250,6 +282,7 @@ async function boot() {
     },
     undo,
     redo,
+    tool: (i) => TOOLS[i] && pickTool(TOOLS[i].id),
     interacted: () => {
       // any input (including when there is no start screen) unlocks audio
       if (!start?.visible) audio.start();
@@ -295,6 +328,27 @@ async function boot() {
   const t0 = last;
   let skip = false;
   const right = new Vector3();
+  let slowTime = 0;
+  let fastTime = 0;
+  const adaptResolution = (dt: number) => {
+    const budget = settings.batterySaver ? 1 / 24 : 1 / 45;
+    if (dt > budget) {
+      slowTime += dt;
+      fastTime = 0;
+    } else if (dt < budget * 0.7) {
+      fastTime += dt;
+      slowTime = Math.max(0, slowTime - dt * 0.5);
+    }
+    if (slowTime > 2 && renderScale > 0.75) {
+      renderScale = Math.max(0.75, renderScale - 0.25);
+      engine.setHardwareScalingLevel(1 / renderScale);
+      slowTime = 0;
+    } else if (fastTime > 8 && renderScale < maxScale) {
+      renderScale = Math.min(maxScale, renderScale + 0.25);
+      engine.setHardwareScalingLevel(1 / renderScale);
+      fastTime = 0;
+    }
+  };
 
   engine.runRenderLoop(() => {
     const now = performance.now();
@@ -305,6 +359,7 @@ async function boot() {
     const dt = Math.min(0.1, (now - last) / 1000);
     last = now;
     dayPhase += dt / DAY_CYCLE_SECONDS;
+    if (!document.hidden && !params.has('fixedres')) adaptResolution(dt);
 
     const palette = currentPalette();
     cam.update(dt, gestures.cameraActive);
@@ -355,12 +410,14 @@ async function boot() {
     rest: ready.rest,
     grid,
     tier,
+    renderScale: () => renderScale,
     origin: { x: ORIGIN_X, z: ORIGIN_Z },
     info: () => ({ ...info, buf: undefined }),
     frames: () => frames,
     send,
     sheet,
     audio,
+    pickTool,
   };
 
   if (params.has('debug')) {
@@ -369,6 +426,8 @@ async function boot() {
   }
   document.body.dataset.ready = '1';
 }
+
+registerServiceWorker();
 
 boot().catch((err) => {
   console.error(err);
