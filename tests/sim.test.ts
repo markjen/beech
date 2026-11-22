@@ -173,3 +173,57 @@ describe('determinism', () => {
     expect(run()).toBe(run());
   });
 });
+
+describe('erosion', () => {
+  it('waves wear down a mound in the swash zone and fill a pit', () => {
+    const sim = new BeachSim(grid, 1);
+    for (let s = 0; s < 8; s++) sim.stamp('pile', 12, 9.5, 0.6, 0.05);
+    for (let s = 0; s < 8; s++) sim.stamp('dig', 20, 9.5, 0.5, 0.05);
+    const extreme = (x: number, sign: number) => {
+      let m = -Infinity;
+      for (let j = Math.floor(9 / sim.dx); j < 10 / sim.dx; j++)
+        for (let i = Math.floor((x - 0.5) / sim.dx); i < (x + 0.5) / sim.dx; i++) {
+          const k = j * sim.nx + i;
+          m = Math.max(m, sign * (sim.sand[k] - sim.rest[k]));
+        }
+      return m;
+    };
+    const mound0 = extreme(12, 1);
+    const pit0 = extreme(20, -1);
+    for (let s = 0; s < 30 * 60; s++) sim.step(DT);
+    expect(extreme(12, 1)).toBeLessThan(mound0 * 0.6);
+    expect(extreme(20, -1)).toBeLessThan(pit0 * 0.5);
+  });
+
+  it('leaves the untouched beach (nearly) as it was', () => {
+    const sim = new BeachSim(grid, 1);
+    for (let s = 0; s < 30 * 60; s++) sim.step(DT);
+    let sum = 0;
+    let max = 0;
+    for (let k = 0; k < sim.n; k++) {
+      const d = Math.abs(sim.sand[k] - sim.rest[k]);
+      sum += d;
+      max = Math.max(max, d);
+    }
+    expect(sum / sim.n).toBeLessThan(0.005);
+    expect(max).toBeLessThan(0.12);
+  });
+});
+
+describe('stability', () => {
+  it('has no growing checkerboard mode near the offshore boundary', () => {
+    const sim = new BeachSim(grid, 1, { erosion: false, healing: false, seep: false });
+    let worst = 0;
+    for (let s = 0; s < 30 * 20; s++) {
+      sim.step(DT);
+      if (s < 150) continue;
+      for (let j = 1; j < 20; j++)
+        for (let i = 1; i < sim.nx - 1; i++) {
+          const k = j * sim.nx + i;
+          const e = (q: number) => sim.sand[q] + sim.water[q];
+          worst = Math.max(worst, Math.abs(e(k) - 0.25 * (e(k - 1) + e(k + 1) + e(k - sim.nx) + e(k + sim.nx))));
+        }
+    }
+    expect(worst).toBeLessThan(0.05);
+  });
+});

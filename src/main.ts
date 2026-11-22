@@ -52,7 +52,7 @@ async function boot() {
     worker.onmessage = (ev: MessageEvent<FromWorker>) => {
       if (ev.data.type === 'ready') resolve(ev.data);
     };
-    send({ type: 'init', grid, seed, flags: { waves: false, erosion: false, healing: false, seep: false } });
+    send({ type: 'init', grid, seed, flags: { waves: true, tide: true, erosion: true, healing: true, seep: true } });
   });
 
   const swell = makeSwell(seed);
@@ -114,6 +114,19 @@ async function boot() {
   const hud = new Hud(document.getElementById('ui')!, {
     undo: () => send({ type: 'undo' }),
     redo: () => send({ type: 'redo' }),
+  });
+
+  // calm waves toggle
+  let calm = false;
+  const calmBtn = hud.button('wave', 'Calm the waves');
+  hud.leftGroup.appendChild(calmBtn);
+  calmBtn.addEventListener('click', () => {
+    calm = !calm;
+    calmBtn.classList.toggle('active', calm);
+    hud.setIcon(calmBtn, calm ? 'calm' : 'wave');
+    calmBtn.setAttribute('aria-label', calm ? 'Let the waves back in' : 'Calm the waves');
+    calmBtn.title = calmBtn.getAttribute('aria-label')!;
+    send({ type: 'flags', flags: { calm } });
   });
 
   const gestures = new Gestures(canvas, cam, {
@@ -182,7 +195,7 @@ async function boot() {
     renderer.setFrameMix(mix);
     const simTime = prevT + (info.t - prevT) * mix;
     const amp = 1 - (1 - WAVES.calmFactor) * info.calmMix;
-    renderer.update(palette, cam.forward(), (now - start) / 1000, simTime, info.tide, 0 * amp);
+    renderer.update(palette, cam.forward(), (now - start) / 1000, simTime, info.tide, amp);
     sky.update(palette);
     scene.render();
   });
@@ -210,6 +223,10 @@ async function boot() {
     send,
     frames: () => frames,
   };
+  if (params.has('debug')) {
+    const { setupDebug } = await import('./ui/debug');
+    await setupDebug(send, () => info, () => cam.brushRadius());
+  }
   document.body.dataset.ready = '1';
 }
 

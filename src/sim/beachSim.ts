@@ -323,7 +323,7 @@ export class BeachSim {
 
   /** Sediment pick-up / drop and transport by the water. */
   private erode(dt: number): void {
-    const { nx, ny, dx, sand, water, sediment, vx, vy, bottom, tmp } = this;
+    const { nx, ny, dx, sand, water, sediment, vx, vy, bottom, tmp, rest } = this;
     // (tmp is reused below for the transport step)
     const Kc = EROSION.capacity;
     const Ks = EROSION.dissolve;
@@ -343,8 +343,11 @@ export class BeachSim {
           }
           continue;
         }
-        const gx = (sand[k + 1] - sand[k - 1]) / (2 * dx);
-        const gy = (sand[k + nx] - sand[k - nx]) / (2 * dx);
+        // The rest profile is in equilibrium with the waves, so capacity is
+        // driven by the slope of the *disturbance* (what the player made).
+        // That keeps the natural beach stable while castles and pits erode.
+        const gx = (sand[k + 1] - rest[k + 1] - sand[k - 1] + rest[k - 1]) / (2 * dx);
+        const gy = (sand[k + nx] - rest[k + nx] - sand[k - nx] + rest[k - nx]) / (2 * dx);
         const g2 = gx * gx + gy * gy;
         const sinA = Math.max(minS, Math.sqrt(g2 / (1 + g2)));
         const speed = Math.hypot(vx[k], vy[k]);
@@ -400,8 +403,22 @@ export class BeachSim {
     const tDamp = Math.tan(SAND.reposeDamp * DEG) * dx;
     const tSat = Math.tan(SAND.reposeSaturated * DEG) * dx;
     const sub = WATER.dryDepth * 3;
-    for (let k = 0; k < this.n; k++) {
-      tanMax[k] = water[k] > sub ? tSat : tDry + (tDamp - tDry) * Math.min(1, wet[k] * 1.25);
+    // Saturated sand (under water, or right next to moving water) gives way at
+    // a low angle: this is what lets waves undercut walls and castles.
+    for (let j = 0; j < ny; j++) {
+      for (let i = 0; i < nx; i++) {
+        const k = j * nx + i;
+        let wetHere = water[k] > sub;
+        if (!wetHere) {
+          const near =
+            (i > 0 && water[k - 1] > sub) ||
+            (i < nx - 1 && water[k + 1] > sub) ||
+            (j > 0 && water[k - nx] > sub) ||
+            (j < ny - 1 && water[k + nx] > sub);
+          wetHere = near;
+        }
+        tanMax[k] = wetHere ? tSat : tDry + (tDamp - tDry) * Math.min(1, wet[k] * 1.25);
+      }
     }
     const rate = SAND.slumpRate * 0.5;
     for (let it = 0; it < SAND.slumpIterations; it++) {
@@ -457,23 +474,33 @@ export class BeachSim {
   private updateWetFoam(dt: number): void {
     const { nx, ny, dx, sand, water, wet, foam, vx, vy } = this;
     const dryK = Math.exp(-dt / SAND.dryingTime);
-    const foamK = Math.exp(-dt / 1.7);
+    const foamK = Math.exp(-dt / 1.3);
     const foamDryK = Math.exp(-dt / 0.5);
     const level = this.meanLevel();
     const capH = SAND.capillaryHeight;
     const dry = WATER.dryDepth;
+    const sponge = WAVES.spongeRows;
     for (let j = 0; j < ny; j++) {
       for (let i = 0; i < nx; i++) {
         const k = j * nx + i;
         const d = water[k];
+        if (j < sponge) {
+          // the forced boundary rows would otherwise sprout a line of foam
+          wet[k] = d > dry ? 1 : wet[k];
+          foam[k] = 0;
+          continue;
+        }
         if (d > dry) {
           wet[k] = 1;
-          const sp = Math.hypot(vx[k], vy[k]);
-          let f = smoothstep(0.35, 1.4, sp) * (1 - smoothstep(0.03, 0.45, d));
-          if (i > 0 && i < nx - 1 && j > 0 && j < ny - 1 && d > 0.015) {
+          // foam forms where the wave front runs up the sand (thin, fast,
+          // moving landward) and on steep incoming bores
+          const up = vy[k];
+          let f = smoothstep(0.25, 0.9, up) * (1 - smoothstep(0.03, 0.12, d));
+          f = Math.max(f, smoothstep(0.6, 1.8, Math.hypot(vx[k], up)) * (1 - smoothstep(0.02, 0.3, d)) * 0.6);
+          if (i > 0 && i < nx - 1 && j > 0 && j < ny - 1 && d > 0.015 && up > 0.05) {
             const ex = (sand[k + 1] + water[k + 1] - sand[k - 1] - water[k - 1]) / (2 * dx);
             const ey = (sand[k + nx] + water[k + nx] - sand[k - nx] - water[k - nx]) / (2 * dx);
-            f = Math.max(f, smoothstep(0.05, 0.22, Math.hypot(ex, ey)) * 0.9);
+            f = Math.max(f, smoothstep(0.06, 0.2, Math.hypot(ex, ey)) * 0.85);
           }
           const fo = foam[k] * foamK;
           foam[k] = fo > f ? fo : f;

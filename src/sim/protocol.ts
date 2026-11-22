@@ -1,6 +1,9 @@
 import type { GridSpec } from '../config';
 import type { BrushMode, SimFlags, SimStats } from './beachSim';
 
+/** Config sections the debug panel may change live (they're mirrored into the worker). */
+export type TunableSection = 'WATER' | 'SAND' | 'EROSION' | 'BRUSH' | 'WAVES';
+
 /** Messages from the main thread to the simulation worker. */
 export type ToWorker =
   | { type: 'init'; grid: GridSpec; seed: number; flags: Partial<SimFlags> }
@@ -11,6 +14,7 @@ export type ToWorker =
   | { type: 'reset' }
   | { type: 'flags'; flags: Partial<SimFlags> }
   | { type: 'pause'; paused: boolean }
+  | { type: 'tune'; section: TunableSection; key: string; value: number }
   | { type: 'return'; buf: Float32Array };
 
 export interface FrameInfo {

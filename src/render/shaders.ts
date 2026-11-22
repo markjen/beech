@@ -79,7 +79,9 @@ void main() {
              fieldAt(c + vec2(0.0, 2.0)).r + fieldAt(c - vec2(0.0, 2.0)).r) * 0.25;
   vCav = clamp((a - h) * 6.0, 0.0, 1.0);
   vDug = texture2D(restTex, (c + 0.5) / gridSize).r - h;
-  vWet = f.b;
+  // soften the per-cell wetness so the wet line doesn't stair-step
+  vWet = f.b * 0.4 + (fieldAt(c - vec2(1.0, 0.0)).b + fieldAt(c + vec2(1.0, 0.0)).b +
+                      fieldAt(c - vec2(0.0, 1.0)).b + fieldAt(c + vec2(0.0, 1.0)).b) * 0.15;
   vWater = f.g;
   vec4 wp = world * vec4(position.x, h, position.z, 1.0);
   vWorld = wp.xyz;
@@ -142,13 +144,19 @@ varying float vFoam;
 void main() {
   vec2 c = floor(uv * gridSize);
   vec4 f = fieldAt(c);
+  vec4 l = fieldAt(c - vec2(1.0, 0.0));
+  vec4 r = fieldAt(c + vec2(1.0, 0.0));
+  vec4 dn = fieldAt(c - vec2(0.0, 1.0));
+  vec4 up = fieldAt(c + vec2(0.0, 1.0));
   float d = f.g;
   float y = f.r + d;
-  if (d < 0.003) y = f.r - 0.05;
+  // dry cells tuck just under the sand so the waterline sits close to the true edge
+  if (d < 0.003) y = f.r - 0.012;
   float rip = (sin(position.x * 2.3 + time * 1.7) + sin(position.z * 2.9 - time * 1.3 + position.x * 0.8)) * 0.006;
   y += rip * clamp(d * 4.0, 0.0, 1.0);
-  vDepth = d;
-  vFoam = f.a;
+  // softened depth/foam for colour and alpha (geometry keeps the exact depth)
+  vDepth = d * 0.4 + (l.g + r.g + dn.g + up.g) * 0.15;
+  vFoam = f.a * 0.4 + (l.a + r.a + dn.a + up.a) * 0.15;
   vec4 wp = world * vec4(position.x, y, position.z, 1.0);
   vWorld = wp.xyz;
   gl_Position = viewProjection * wp;
@@ -175,13 +183,16 @@ void main() {
   vec3 col = mix(shallowCol, deepCol, dt) * mix(shadowCol * 1.1, sunCol, ramp);
   float spec = pow(max(dot(reflect(sunDir, N), -cameraDir), 0.0), 50.0);
   col += sunCol * spec * 0.3;
-  float n = vnoise(vWorld.xz * 2.2 + vec2(time * 0.15, -time * 0.1)) * 0.6 +
-            vnoise(vWorld.xz * 6.0 - vec2(time * 0.3, 0.0)) * 0.4;
-  float foam = smoothstep(0.3, 0.62, vFoam + (n - 0.5) * 0.55);
+  // lacy foam: bubbles from two octaves of drifting noise, solid only at the core
+  float n = vnoise(vWorld.xz * 4.5 + vec2(time * 0.25, -time * 0.15)) * 0.6 +
+            vnoise(vWorld.xz * 11.0 - vec2(time * 0.4, time * 0.1)) * 0.4;
+  float lace = smoothstep(0.42, 0.5, vFoam * 0.85 + (n - 0.5) * 0.9);
+  float core = smoothstep(0.75, 0.95, vFoam);
+  float foam = max(lace * 0.85, core);
   float edge = 1.0 - smoothstep(0.0, 0.03, vDepth);
-  col = mix(col, foamCol, max(foam * 0.92, edge * 0.3));
-  float a = smoothstep(0.0, 0.025, vDepth) * mix(0.5, 0.9, dt);
-  a = max(a, foam * 0.92 * smoothstep(0.0, 0.006, vDepth));
+  col = mix(col, foamCol, max(foam * 0.9, edge * 0.25));
+  float a = smoothstep(0.0, 0.03, vDepth) * mix(0.45, 0.9, dt);
+  a = max(a, foam * 0.9 * smoothstep(0.0, 0.008, vDepth));
   gl_FragColor = vec4(col, a);
 }
 `;

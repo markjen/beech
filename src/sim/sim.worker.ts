@@ -1,4 +1,5 @@
 /// <reference lib="webworker" />
+import * as CONFIG from '../config';
 import { SIM_HZ } from '../config';
 import { BeachSim } from './beachSim';
 import type { FromWorker, ToWorker } from './protocol';
@@ -107,6 +108,11 @@ self.onmessage = (ev: MessageEvent<ToWorker>) => {
     case 'pause':
       paused = m.paused;
       break;
+    case 'tune': {
+      const section = (CONFIG as unknown as Record<string, Record<string, number>>)[m.section];
+      if (section && typeof section[m.key] === 'number') section[m.key] = m.value;
+      break;
+    }
   }
 };
 

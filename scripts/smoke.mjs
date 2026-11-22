@@ -50,14 +50,15 @@ try {
   const frames = await page.evaluate(() => window.__beech.frames());
   if (frames < 5) fail(`only ${frames} sim frames arrived`);
 
-  // total |sand - rest| over the grid
+  // total |sand - rest| over the dry backshore (waves never reach it, so only
+  // the player's strokes change it)
   const diff = () =>
     page.evaluate(() => {
       const b = window.__beech;
       const s = b.picker.sand;
       const r = b.rest;
       let d = 0;
-      for (let k = 0; k < s.length; k++) d += Math.abs(s[k] - r[k]);
+      for (let k = 0; k < s.length; k++) if (r[k] > 0.5) d += Math.abs(s[k] - r[k]);
       return d;
     });
   const settle = () => page.waitForTimeout(700);
@@ -71,13 +72,13 @@ try {
       c.dispatchEvent(new PointerEvent(type, { pointerId: id, pointerType: 'touch', clientX: x, clientY: y, bubbles: true, isPrimary: id === 11, button: 0, buttons: 1 }));
     // (both downs back to back: headless rendering makes timers too slow to
     // reliably land inside the cancel window)
-    ev('pointerdown', 11, 600, 400);
-    ev('pointermove', 11, 604, 402);
+    ev('pointerdown', 11, 300, 480);
+    ev('pointermove', 11, 304, 482);
     ev('pointerdown', 12, 700, 420);
     await new Promise((r) => setTimeout(r, 50));
     ev('pointermove', 12, 720, 430);
     ev('pointerup', 12, 720, 430);
-    ev('pointerup', 11, 600, 400);
+    ev('pointerup', 11, 300, 480);
   });
   await settle();
   const afterTouch = await diff();
@@ -91,12 +92,12 @@ try {
     const c = document.getElementById('scene');
     const ev = (type, x, y) =>
       c.dispatchEvent(new PointerEvent(type, { pointerId: 21, pointerType: 'touch', clientX: x, clientY: y, bubbles: true, isPrimary: true, button: 0, buttons: 1 }));
-    ev('pointerdown', 450, 480);
+    ev('pointerdown', 250, 520);
     for (let i = 0; i < 10; i++) {
       await new Promise((r) => setTimeout(r, 40));
-      ev('pointermove', 450 + i * 8, 480);
+      ev('pointermove', 250 + i * 8, 520);
     }
-    ev('pointerup', 530, 480);
+    ev('pointerup', 330, 520);
   });
   await settle();
   const touchDug = await diff();
@@ -108,10 +109,10 @@ try {
 
 
   const base = await diff();
-  await page.mouse.move(400, 450);
+  await page.mouse.move(300, 560);
   await page.mouse.down();
   for (let i = 0; i < 20; i++) {
-    await page.mouse.move(400 + i * 6, 450 + i * 2);
+    await page.mouse.move(300 + i * 6, 560 + i * 2);
     await page.waitForTimeout(30);
   }
   await page.mouse.up();

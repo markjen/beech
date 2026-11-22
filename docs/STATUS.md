@@ -7,8 +7,8 @@
 | M0 | Scaffold (Vite + TS + Babylon, CI, Pages deploy workflow) | done |
 | M1 | Diorama + camera (rest profile, slab strata, sky, far ocean, ortho camera with pan / pinch zoom to fingers / twist with 45° snap, desktop controls) | done |
 | M2 | Sand toy (worker grid, screen-constant brush + ring, hold-to-deepen, rim, slump, undo/redo, second-finger cancel) | done |
-| M3 | Waves (pipes water sim, swell sets, foam, wetting/drying) | todo |
-| M4 | Erosion (sediment pick-up/drop/transport, saturated slump, healing, tuning panel) | todo |
+| M3 | Waves (pipes water sim, swell sets, foam, wetting/drying, calm toggle) | done |
+| M4 | Erosion (sediment pick-up/drop/transport, saturated slump, healing, `?debug=1` tuning panel) | done |
 | M5 | Ambience (audio, haptics, palettes + day cycle, UI polish, start screen) | todo |
 | M6 | Ship (quality tiers, PWA/offline, Capacitor iOS + Android) | todo |
 | M7 | Stretch (water table seepage, pile + smooth tools, shells, screenshot share) | todo |
@@ -37,6 +37,24 @@
   deepen visibly before they widen.
 - **Second-finger cancel window: 220 ms.** Within that window the dig is rolled
   back exactly from the stroke snapshot. After it, the stroke is kept.
+- **Water stability:** with 2 substeps per 30 Hz tick, a checkerboard mode
+  grew in deep water. The fix is linear flux damping 0.5/s plus capping the
+  depth used for wave speed at 0.9 m (wave speed ≤ 3 m/s). A unit test guards
+  this (`stability`).
+- **Erosion capacity uses the slope of the disturbance** (`sand - rest`), not
+  the absolute slope. The natural beach profile is treated as being in
+  equilibrium with the waves. Without this, the whole swash zone eroded
+  steadily. Player-made features still wear down (a 30 cm mound in the swash
+  is gone in about a minute) while the untouched beach drifts by under 5 mm on
+  average.
+- **Saturated slump also applies next to water**, not only under it, so waves
+  undercut walls the way they do in real sand.
+- **Foam** only forms on thin, fast water moving landward (the run-up front)
+  and on steep incoming bores. The offshore sponge rows never foam. The
+  shader draws it as lace from two octaves of drifting noise, with a solid core.
+- **The waterline and wet line are softened** in the vertex shaders by
+  averaging each cell with its 4 neighbours, so they don't stair-step along
+  the grid. Geometry still uses the exact depth.
 - **Camera looks from the land toward the sea** (alpha = 135°), so the waves
   come toward the viewer.
 

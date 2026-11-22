@@ -45,9 +45,9 @@ export const PROFILE = {
 export const WAVES = {
   /** swell components: amplitude (m), period (s). Beat between them creates sets. */
   components: [
-    { amp: 0.17, period: 9.0 },
-    { amp: 0.12, period: 11.3 },
-    { amp: 0.07, period: 7.4 },
+    { amp: 0.21, period: 9.0 },
+    { amp: 0.14, period: 11.3 },
+    { amp: 0.08, period: 7.4 },
   ],
   /** amplitude multiplier while "calm waves" is on */
   calmFactor: 0.25,
@@ -64,10 +64,10 @@ export const WATER = {
   gravity: 9.81,
   /** quadratic bed friction coefficient */
   friction: 0.012,
-  /** additional linear damping of fluxes (1/s) for stability */
-  linearDamping: 0.15,
-  /** depth used to cap wave speed in the flux update (keeps CFL safe) */
-  maxFluxDepth: 1.5,
+  /** additional linear damping of fluxes (1/s); below ~0.4 a checkerboard mode can grow */
+  linearDamping: 0.5,
+  /** depth used to cap wave speed in the flux update (keeps CFL comfortably safe) */
+  maxFluxDepth: 0.9,
   /** below this depth a cell counts as dry */
   dryDepth: 0.004,
   /** substeps per sim tick */
@@ -90,15 +90,15 @@ export const SAND = {
 
 export const EROSION = {
   /** sediment capacity constant */
-  capacity: 0.012,
+  capacity: 0.08,
   /** pick-up rate (1/s) */
-  dissolve: 0.9,
+  dissolve: 1.6,
   /** drop rate (1/s) */
-  deposit: 1.4,
+  deposit: 1.2,
   /** minimum effective slope so flat but fast water can still carry a bit */
-  minSlope: 0.06,
+  minSlope: 0.02,
   /** time constant (s) of the slow return to the rest profile where water reaches */
-  healingTime: 240,
+  healingTime: 150,
 };
 
 export const BRUSH = {

@@ -357,7 +357,8 @@ export class BeachRenderer {
     wskirt.material = this.waterSkirtMat;
     wskirt.alphaIndex = 3;
 
-    const edgeZ = ORIGIN_Z + this.grid.dx * 0.5;
+    // overlap the simulated water by one cell so no hairline crack shows at the seam
+    const edgeZ = ORIGIN_Z + this.grid.dx * 1.5;
     const ocean = this.planeMesh('ocean', -hx + this.grid.dx * 0.5, hx - this.grid.dx * 0.5, edgeZ - 34, edgeZ, 96, 48);
     ocean.material = this.oceanMat;
     ocean.alphaIndex = 1;
