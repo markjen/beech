@@ -32,6 +32,7 @@ Migrations live in `src/migrations.ts` and are applied at startup.
 | `DELETE /api/neighbors/:side` | move them away |
 | `GET /api/neighbors/:side/beach` | that neighbor's sand (only your own neighbors' beaches are readable) |
 | `POST /api/neighbors/code` | new code; the old one stops working, and current neighbors keep you |
+| `GET /api/inventory` | `{ items: [{ item, quantity, source, acquiredAt, expiresAt }] }`: what you own beyond the free items, unexpired. Empty until the shop and pulls exist; rows are only written by the server. |
 
 Sessions are 60-day random bearer tokens, and only their SHA-256 is stored.
 We keep the provider's user id, a first name (neighbors see it), your neighbor

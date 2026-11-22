@@ -322,6 +322,25 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     return sendBeach(c, rows[0].neighbor_id);
   });
 
+  // what you own beyond the free items (empty until the shop and pulls exist)
+  app.get('/inventory', requireUser, async (c) => {
+    const rows = await db.query<{ item_id: string; quantity: number; source: string; acquired_at: string; expires_at: string | null }>(
+      `SELECT item_id, quantity, source, acquired_at, expires_at FROM inventory
+        WHERE user_id = $1 AND quantity > 0 AND (expires_at IS NULL OR expires_at > $2)
+        ORDER BY acquired_at`,
+      [c.get('user').id, Date.now()],
+    );
+    return c.json({
+      items: rows.map((r) => ({
+        item: r.item_id,
+        quantity: Number(r.quantity),
+        source: r.source,
+        acquiredAt: Number(r.acquired_at),
+        expiresAt: r.expires_at === null ? null : Number(r.expires_at),
+      })),
+    });
+  });
+
   app.post('/neighbors/code', requireUser, async (c) => {
     for (let attempt = 0; attempt < 5; attempt++) {
       const code = newNeighborCode();

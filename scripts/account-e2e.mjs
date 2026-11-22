@@ -58,6 +58,12 @@ for (let i = 0; i < 25; i++) {
   await page.waitForTimeout(30);
 }
 await page.mouse.up();
+// and put a rock and a piece of driftwood high on the beach
+await page.evaluate(() => {
+  const b = window.__beech;
+  b.send({ type: 'placeObject', obj: { kind: 'rock', item: 'rock', x: 9, y: 19, angle: 0.4, size: 0.5, variant: 3 } });
+  b.send({ type: 'placeObject', obj: { kind: 'driftwood', item: 'driftwood', x: 22, y: 20, angle: 1, size: 1.5, variant: 2 } });
+});
 await page.waitForTimeout(700);
 const before = await dug();
 check(before > 1, `dug the sand (${before.toFixed(1)})`);
@@ -70,6 +76,8 @@ await page.waitForFunction(() => window.__beech.sync()?.state === 'saved', null,
 await page.waitForTimeout(800);
 const after = await dug();
 check(Math.abs(after - before) / before < 0.15, `beach restored after reload (${before.toFixed(1)} -> ${after.toFixed(1)})`);
+const kinds = await page.evaluate(() => window.__beech.info().objects.map((o) => o.kind).sort().join());
+check(kinds === 'driftwood,rock', `the rock and driftwood came back too (${kinds})`);
 check((await page.evaluate(() => window.__beech.beach().id)) === 'piha', 'and it is the same real beach (Piha)');
 check((await page.evaluate(() => window.__beech.account().user?.name)) === 'tester', 'still signed in');
 

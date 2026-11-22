@@ -44,9 +44,22 @@ _(nothing right now)_
   The server already accepts Apple tokens.
 - [ ] **Store privacy forms**: declare the user ID, the beach, and the first
   name shown to chosen neighbors.
-- [ ] **Chair view polish**: animate the camera between the diorama and the
-  chair. Let the chair move along the beach (and over to neighbors). Add
-  surf foam lines on the static shore either side.
+- [ ] **Chair view polish**: let the chair move along the beach (and over to
+  neighbors). Add surf foam lines on the static shore either side.
+- [ ] **More free items**: shells and sea glass to place, a bucket for sand
+  castles, a beach umbrella (casts a shadow), a little flag. Each needs a
+  catalog entry, a sim behaviour (fixed / floats / blows away) and a mesh.
+- [ ] **Driftwood that washes in**: now and then the sea brings a piece in
+  (like the shells), and you can keep it.
+- [ ] **Shop (paid items)**: App Store / Play billing (both stores require
+  their own in-app purchase for digital goods) and Stripe on the web.
+  Purchases are verified on the server, which writes `inventory` rows.
+  Limited items use `available.until` and `expires_at`.
+- [ ] **Mystery boxes and the claw machine**: server-side draws with
+  published odds (Apple and Google require shown odds for paid random
+  items, and some countries restrict them; check before shipping), rarity
+  tiers, and a little claw-machine mini-game in front of the draw. Unique
+  items: one owner only, enforced in the database.
 - [ ] **TV**: test on a real Android TV (D-pad focus on the settings sheet,
   leanback banner). Add Chromecast / AirPlay casting for phones → TV.
 - [ ] **API rate limiting**: a per-IP limit in the server, or Cloud Armor in
@@ -68,6 +81,13 @@ _(nothing right now)_
   shower night.
 
 ## Done (recent)
+
+- [x] **Inventory: rocks and driftwood** (2026-11-22). Bag tray, place and
+  pick up (undoable), rocks shape the flow and erosion, driftwood floats and
+  strands, saved with the beach (BCH2), shown on neighbors' beaches. Item
+  catalog and server `inventory` table ready for paid, limited and pulled
+  items.
+- [x] **Animated diorama ↔ chair transition** (2026-11-22).
 
 - [x] **Tilt and chair view, landscape and TV** (2026-11-22). Tilt the
   diorama (two fingers sliding up/down, right-drag, or R/F). The chair view

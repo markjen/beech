@@ -148,6 +148,13 @@ export class Account {
     this.emit();
   }
 
+  /** Items you own beyond the free ones (bought, won, given). Empty for now. */
+  async inventory(): Promise<OwnedItem[]> {
+    const res = await this.call('/api/inventory');
+    if (!res.ok) throw await errorOf(res, 'Could not load your bag');
+    return ((await res.json()) as { items: OwnedItem[] }).items;
+  }
+
   async loadBeach(): Promise<SavedBeach | null> {
     const res = await this.call('/api/beach');
     if (res.status === 404) return null;
@@ -196,6 +203,16 @@ export interface Neighbors {
   right: Neighbor | null;
   /** how many beaches have you as a neighbor */
   pickedBy: number;
+}
+
+export interface OwnedItem {
+  /** catalog id (src/world/items.ts) */
+  item: string;
+  quantity: number;
+  source: 'shop' | 'event' | 'pull' | 'gift';
+  acquiredAt: number;
+  /** null: yours for good */
+  expiresAt: number | null;
 }
 
 async function errorOf(res: Response, fallback: string): Promise<ApiError> {

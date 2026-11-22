@@ -100,6 +100,33 @@ describe('accounts', () => {
   });
 });
 
+describe('inventory', () => {
+  it('lists what you own that has not expired, and only yours', async () => {
+    const ana = await signIn('Ana');
+    const ben = await signIn('Ben');
+    const empty = (await (await req('/inventory', {}, ana.token)).json()) as { items: unknown[] };
+    expect(empty.items).toEqual([]);
+    expect((await req('/inventory')).status).toBe(401);
+    const now = Date.now();
+    const add = (user: string, item: string, qty: number, expires: number | null) =>
+      db.query('INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at, expires_at) VALUES ($1, $2, $3, $4, $5, $6)', [
+        user, item, qty, 'pull', now, expires,
+      ]);
+    await add(ana.user.id, 'sea-glass', 3, null);
+    await add(ana.user.id, 'lantern', 1, now + 86400000);
+    await add(ana.user.id, 'old-event-flag', 1, now - 1000);
+    await add(ana.user.id, 'used-up', 0, null);
+    await add(ben.user.id, 'bens-shell', 1, null);
+    const { items } = (await (await req('/inventory', {}, ana.token)).json()) as { items: { item: string; quantity: number; expiresAt: number | null }[] };
+    expect(items.map((i) => i.item).sort()).toEqual(['lantern', 'sea-glass']);
+    expect(items.find((i) => i.item === 'sea-glass')).toMatchObject({ quantity: 3, expiresAt: null });
+    // deleting the account removes the inventory
+    expect((await req('/account', { method: 'DELETE' }, ana.token)).status).toBeLessThan(300);
+    const left = await db.query<{ n: string }>('SELECT COUNT(*) AS n FROM inventory WHERE user_id = $1', [ana.user.id]);
+    expect(Number(left[0].n)).toBe(0);
+  });
+});
+
 describe('neighbors', () => {
   it('normalizes codes people type', () => {
     expect(normalizeCode(' k7f-2qx ')).toBe('K7F2QX');

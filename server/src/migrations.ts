@@ -47,6 +47,21 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX neighbors_of ON neighbors (neighbor_id);
   `,
+  // 2: inventory. Free items (rocks, driftwood) need no rows; this holds what
+  // a person owns of everything else: bought, won from a pull, or given at an
+  // event. Rows are only ever written by the server (purchases, pulls).
+  `
+  CREATE TABLE inventory (
+    id BIGSERIAL PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    item_id TEXT NOT NULL,             -- src/world/items.ts
+    quantity INTEGER NOT NULL CHECK (quantity >= 0),
+    source TEXT NOT NULL CHECK (source IN ('shop', 'event', 'pull', 'gift')),
+    acquired_at BIGINT NOT NULL,
+    expires_at BIGINT                  -- NULL: yours for good
+  );
+  CREATE INDEX inventory_user ON inventory (user_id);
+  `,
 ];
 
 export async function migrate(db: Db): Promise<number> {
