@@ -65,6 +65,8 @@ _(nothing right now)_
 - [ ] **API rate limiting**: a per-IP limit in the server, or Cloud Armor in
   front.
 - [ ] **Mutual neighbors**: requests and accepts on top of codes.
+- [ ] **Long-press to pick up and drag items**: long-press on an item picks
+  it up, then drag it somewhere else and release to put it down.
 
 ## Ideas
 
