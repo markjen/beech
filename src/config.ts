@@ -76,7 +76,7 @@ export const WATER = {
 
 export const SAND = {
   /** angle of repose in degrees */
-  reposeDry: 33,
+  reposeDry: 36,
   reposeDamp: 52,
   reposeSaturated: 17,
   /** fraction of excess moved per slump iteration */
@@ -117,7 +117,7 @@ export const BRUSH = {
   /** fraction of dug sand placed on the rim (rest is "carried away") */
   rimFraction: 0.85,
   /** minimum world radius in grid cells; zoom-in is limited so the brush never goes below this */
-  minCells: 1.6,
+  minCells: 2.0,
   /** maximum world radius (m) at full zoom-out */
   maxRadius: 1.4,
 };

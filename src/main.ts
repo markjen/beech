@@ -8,6 +8,8 @@ import { Gestures } from './input/gestures';
 import { SandPicker } from './input/sandPicker';
 import { paletteByName, type Palette } from './palette';
 import { BeachRenderer, ORIGIN_X, ORIGIN_Z } from './render/beachRenderer';
+import { Hud } from './ui/hud';
+import type { BrushMode } from './sim/beachSim';
 import { Sky } from './render/sky';
 import type { FrameInfo, FromWorker, ToWorker } from './sim/protocol';
 import { makeSwell } from './sim/waves';
@@ -41,7 +43,10 @@ async function boot() {
   const seed = Number(params.get('seed') ?? 1) || 1;
 
   const worker = new Worker(new URL('./sim/sim.worker.ts', import.meta.url), { type: 'module' });
-  const send = (m: ToWorker, transfer: Transferable[] = []) => worker.postMessage(m, transfer);
+  const send = (m: ToWorker, transfer: Transferable[] = []) => {
+    if (params.has('trace') && m.type !== 'return') console.log('send', JSON.stringify(m));
+    worker.postMessage(m, transfer);
+  };
 
   const ready = await new Promise<Extract<FromWorker, { type: 'ready' }>>((resolve) => {
     worker.onmessage = (ev: MessageEvent<FromWorker>) => {
@@ -82,17 +87,85 @@ async function boot() {
     frames++;
   };
 
-  new Gestures(canvas, cam, {
-    digStart: () => {},
-    digMove: () => {},
-    digEnd: () => {},
-    digCancel: () => {},
-    hover: () => {},
-    hoverEnd: () => {},
-    undo: () => {},
-    redo: () => {},
+  // ---------------------------------------------------------------- digging
+  const brushMode: BrushMode = 'dig';
+  let digging = false;
+  let strokeOpen = false;
+  let lastHit: { x: number; z: number } | null = null;
+  let hover: { x: number; z: number } | null = null;
+  let ringAlpha = 0;
+
+  const pickAt = (sx: number, sy: number) => {
+    const hit = picker.pick(cam.ray(sx, sy));
+    return hit ? { x: hit.x, z: hit.z } : null;
+  };
+  const toSim = (p: { x: number; z: number }) => ({ x: p.x - ORIGIN_X, y: p.z - ORIGIN_Z });
+
+  const strokeTo = (sx: number, sy: number) => {
+    const hit = pickAt(sx, sy);
+    if (!hit) return;
+    lastHit = hit;
+    const r = cam.brushRadius();
+    const s = toSim(hit);
+    send({ type: 'brush', phase: strokeOpen ? 'move' : 'start', x: s.x, y: s.y, r, mode: brushMode });
+    strokeOpen = true;
+  };
+
+  const hud = new Hud(document.getElementById('ui')!, {
+    undo: () => send({ type: 'undo' }),
+    redo: () => send({ type: 'redo' }),
+  });
+
+  const gestures = new Gestures(canvas, cam, {
+    digStart: (sx, sy) => {
+      digging = true;
+      strokeOpen = false;
+      hover = null;
+      strokeTo(sx, sy);
+    },
+    digMove: (sx, sy) => {
+      if (digging) strokeTo(sx, sy);
+    },
+    digEnd: () => {
+      if (strokeOpen) send({ type: 'brush', phase: 'end' });
+      digging = false;
+      strokeOpen = false;
+    },
+    digCancel: () => {
+      if (strokeOpen) send({ type: 'brush', phase: 'cancel' });
+      digging = false;
+      strokeOpen = false;
+    },
+    hover: (sx, sy) => {
+      hover = pickAt(sx, sy);
+    },
+    hoverEnd: () => {
+      hover = null;
+    },
+    undo: () => send({ type: 'undo' }),
+    redo: () => send({ type: 'redo' }),
     interacted: () => {},
   });
+
+  /** Brush ring: under the finger while digging, under the mouse on hover, centre after a zoom. */
+  const updateRing = (dt: number) => {
+    let target = 0;
+    let at: { x: number; z: number } | null = null;
+    if (digging && lastHit) {
+      target = 0.85;
+      at = lastHit;
+    } else if (hover) {
+      target = 0.6;
+      at = hover;
+    } else if (cam.zoomHint > 0) {
+      at = pickAt(canvas.clientWidth / 2, canvas.clientHeight / 2);
+      target = at ? Math.min(1, cam.zoomHint * 1.5) * 0.8 : 0;
+    }
+    ringAlpha += (target - ringAlpha) * Math.min(1, dt * 14);
+    if (at) lastRing = at;
+    renderer.setBrush(lastRing.x, lastRing.z, cam.brushRadius(), ringAlpha, palette.foam);
+  };
+  let lastRing = { x: 0, z: 0 };
 
   const palette: Palette = paletteByName(params.get('palette') ?? 'day');
   let last = performance.now();
@@ -102,7 +175,9 @@ async function boot() {
     const now = performance.now();
     const dt = Math.min(0.1, (now - last) / 1000);
     last = now;
-    cam.update(dt, false);
+    cam.update(dt, gestures.cameraActive);
+    updateRing(dt);
+    hud.setUndoState(info.undoCount, info.redoCount);
     const mix = Math.min(1, (now - frameAt) / (1000 / SIM_HZ));
     renderer.setFrameMix(mix);
     const simTime = prevT + (info.t - prevT) * mix;
@@ -127,10 +202,12 @@ async function boot() {
     scene,
     cam,
     picker,
+    rest: ready.rest,
     grid,
     tier,
     origin: { x: ORIGIN_X, z: ORIGIN_Z },
-    info: () => info,
+    info: () => ({ ...info, buf: undefined }),
+    send,
     frames: () => frames,
   };
   document.body.dataset.ready = '1';

@@ -36,7 +36,8 @@ vec3 facetNormal(vec3 p) {
   return n.y < 0.0 ? -n : n;
 }
 float toonRamp(float ndl) {
-  return 0.5 * smoothstep(-0.05, 0.12, ndl) + 0.5 * smoothstep(0.42, 0.6, ndl);
+  // three soft bands: shade / half-lit / lit
+  return 0.3 + 0.35 * smoothstep(-0.02, 0.1, ndl) + 0.35 * smoothstep(0.45, 0.58, ndl);
 }
 `;
 
@@ -63,10 +64,17 @@ varying float vWet;
 varying float vCav;
 varying float vDug;
 varying float vWater;
+varying vec3 vNormal;
+uniform float cellSize;
 void main() {
   vec2 c = floor(uv * gridSize);
   vec4 f = fieldAt(c);
   float h = f.r;
+  float hl = fieldAt(c - vec2(1.0, 0.0)).r;
+  float hr = fieldAt(c + vec2(1.0, 0.0)).r;
+  float hd = fieldAt(c - vec2(0.0, 1.0)).r;
+  float hu = fieldAt(c + vec2(0.0, 1.0)).r;
+  vNormal = normalize(vec3(hl - hr, 2.0 * cellSize, hd - hu));
   float a = (fieldAt(c + vec2(2.0, 0.0)).r + fieldAt(c - vec2(2.0, 0.0)).r +
              fieldAt(c + vec2(0.0, 2.0)).r + fieldAt(c - vec2(0.0, 2.0)).r) * 0.25;
   vCav = clamp((a - h) * 6.0, 0.0, 1.0);
@@ -86,6 +94,7 @@ varying float vWet;
 varying float vCav;
 varying float vDug;
 varying float vWater;
+varying vec3 vNormal;
 ${LIGHT_UNIFORMS}
 uniform vec3 sandDry;
 uniform vec3 sandWet;
@@ -95,7 +104,8 @@ uniform vec3 brushCol;
 ${NOISE}
 ${FACET}
 void main() {
-  vec3 N = facetNormal(vWorld);
+  // mostly smooth (clean toon bands) with a hint of facet for the low-poly feel
+  vec3 N = normalize(mix(normalize(vNormal), facetNormal(vWorld), 0.3));
   float ndl = dot(N, -sunDir);
   float ramp = toonRamp(ndl);
   float wet = clamp(vWet, 0.0, 1.0);

@@ -78,10 +78,11 @@ export class BeachRenderer {
 
     this.sandMat = this.material('beachSand', {
       attributes: ['position', 'uv'],
-      uniforms: [...light, ...field, 'sandDry', 'sandWet', 'sandDeep', 'brush', 'brushCol'],
+      uniforms: [...light, ...field, 'sandDry', 'sandWet', 'sandDeep', 'brush', 'brushCol', 'cellSize'],
       samplers: [...fieldSamplers, 'restTex'],
     });
     this.sandMat.setTexture('restTex', this.restTex);
+    this.sandMat.setFloat('cellSize', grid.dx);
     this.sandMat.backFaceCulling = false;
 
     this.waterMat = this.material('beachWater', {
