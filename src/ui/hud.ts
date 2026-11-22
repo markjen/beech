@@ -10,13 +10,16 @@ const ICONS = {
   smooth: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 16c3-1.5 6-1.5 9 0s6 1.5 9 0" /><path d="M7 11.5c1.6-.8 3.4-.8 5 0" opacity=".55"/></svg>`,
   chair: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4l3 9h7" /><path d="M10 13l-2 7M17 13l2 7" /><path d="M5 13h14" opacity=".55"/></svg>`,
   diorama: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l8 4.5-8 4.5-8-4.5z" /><path d="M4 8.5V14l8 4.5 8-4.5V8.5" /><path d="M12 13v5.5" /></svg>`,
+  bag: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 9h14l-1.2 10.5a1.5 1.5 0 0 1-1.5 1.3H7.7a1.5 1.5 0 0 1-1.5-1.3z" /><path d="M9 9V7a3 3 0 0 1 6 0v2" /></svg>`,
+  rock: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 18.5l2.2-6.3 4.6-4.4 5.6 1.1 3.6 4.4 1 5.2z" /><path d="M10.3 7.8l1.4 5.2 4.2-3.9M11.7 13l-6-0.8" opacity=".55"/></svg>`,
+  driftwood: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 15.5c4-1.8 10-3.2 18-4" /><path d="M3.6 18.2c4.4-1.6 10.4-3 17-3.9" /><path d="M3 15.5l.6 2.7M21 11.5l-.4 2.8" /><path d="M12 13.6l2.5-3.6" opacity=".55"/></svg>`,
   menu: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2" /><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1" /></svg>`,
 };
 
 export type IconName = keyof typeof ICONS;
 
 export function icon(name: IconName): string {
-  return ICONS[name];
+  return ICONS[name] ?? ICONS.bag;
 }
 
 export interface HudHandlers {

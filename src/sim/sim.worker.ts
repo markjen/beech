@@ -60,6 +60,7 @@ function loop() {
           redoCount: sim.undo.redoCount,
           digIntensity: sim.digIntensity,
           swash: sim.swashVolume,
+          objects: sim.objects.states(),
           stats: withStats ? sim.stats() : undefined,
           tickMs,
         },
@@ -87,11 +88,17 @@ self.onmessage = (ev: MessageEvent<ToWorker>) => {
     case 'getSand':
       if (sim) {
         const delta = sim.sandDelta();
-        post({ type: 'sand', id: m.id, delta }, [delta.buffer]);
+        post({ type: 'sand', id: m.id, delta, objects: sim.objects.persisted() }, [delta.buffer]);
       }
       break;
     case 'setSand':
-      if (sim && m.delta.length === sim.n) sim.loadDelta(m.delta);
+      if (sim && m.delta.length === sim.n) sim.loadDelta(m.delta, m.objects ?? []);
+      break;
+    case 'placeObject':
+      sim?.placeObject(m.obj);
+      break;
+    case 'removeObject':
+      sim?.removeObject(m.id);
       break;
     case 'sea':
       sim?.setSea(m.tide, m.waves);

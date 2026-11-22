@@ -1,12 +1,13 @@
 import { decodeSand, encodeSand, resampleField } from '../sim/sandCodec';
+import type { PlacedObject } from '../sim/objects';
 import type { Account } from './account';
 
 export type SyncState = 'idle' | 'saving' | 'saved' | 'offline';
 
 export interface SyncHost {
-  /** current sand minus the rest beach, at the live grid size */
-  getSand(): Promise<Float32Array>;
-  setSand(delta: Float32Array): void;
+  /** current sand minus the rest beach, at the live grid size, plus what's on it */
+  getSand(): Promise<{ delta: Float32Array; objects: PlacedObject[] }>;
+  setSand(delta: Float32Array, objects: PlacedObject[]): void;
   grid: { nx: number; ny: number };
   location(): string;
   setLocation(id: string): void;
@@ -71,8 +72,8 @@ export class BeachSync {
     window.clearTimeout(this.timer);
     this.set('saving');
     try {
-      const delta = await this.host.getSand();
-      const bytes = await encodeSand(delta, this.host.grid.nx, this.host.grid.ny);
+      const { delta, objects } = await this.host.getSand();
+      const bytes = await encodeSand(delta, this.host.grid.nx, this.host.grid.ny, objects);
       if (this.account.user?.id !== forUser) return; // switched accounts mid-save
       this.savedAt = await this.account.saveBeach(bytes, this.host.location(), this.host.grid.nx, this.host.grid.ny, keepalive);
       this.dirty = false;
@@ -96,9 +97,9 @@ export class BeachSync {
       await this.flush();
       return 'created';
     }
-    const { nx, ny, delta } = await decodeSand(saved.bytes);
+    const { nx, ny, delta, objects } = await decodeSand(saved.bytes);
     if (saved.location) this.host.setLocation(saved.location);
-    this.host.setSand(resampleField(delta, nx, ny, this.host.grid.nx, this.host.grid.ny));
+    this.host.setSand(resampleField(delta, nx, ny, this.host.grid.nx, this.host.grid.ny), objects);
     this.savedAt = saved.updatedAt;
     this.dirty = false;
     this.set('saved');

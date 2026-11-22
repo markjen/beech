@@ -23,6 +23,29 @@ describe('saved beach codec', () => {
     expect(Math.abs(fresh.sand[50 * g.nx + 60] - sim.sand[50 * g.nx + 60])).toBeLessThan(0.001);
   });
 
+  it('saves placed rocks and driftwood (v2) and still reads v1', async () => {
+    const g = GRID_TIERS.low;
+    const sim = new BeachSim(g, 1, { waves: false, erosion: false, healing: false, seep: false });
+    sim.stamp('dig', 12, 18, 0.6, 0.3);
+    sim.placeObject({ kind: 'rock', item: 'rock', x: 16, y: 19, angle: 0.5, size: 0.4, variant: 3 });
+    sim.placeObject({ kind: 'driftwood', item: 'driftwood', x: 10.123456, y: 20, angle: 1, size: 1.6, variant: 2 });
+    const bytes = await encodeSand(sim.sandDelta(), g.nx, g.ny, sim.objects.persisted());
+    expect(String.fromCharCode(...bytes.subarray(0, 4))).toBe('BCH2');
+    const back = await decodeSand(bytes);
+    expect(back.objects.map((o) => o.kind)).toEqual(['rock', 'driftwood']);
+    expect(back.objects[1].x).toBeCloseTo(10.123, 3);
+    const v1 = await decodeSand(await encodeSand(sim.sandDelta(), g.nx, g.ny));
+    expect(String.fromCharCode(...(await encodeSand(sim.sandDelta(), g.nx, g.ny)).subarray(0, 4))).toBe('BCH1');
+    expect(v1.objects).toEqual([]);
+  });
+
+  it('drops malformed objects from a saved beach', async () => {
+    const { sanitizeObjects } = await import('../src/sim/sandCodec');
+    const ok = { id: 1, kind: 'rock', item: 'rock', x: 3, y: 4, angle: 0, size: 0.4, variant: 1 };
+    expect(sanitizeObjects([ok, { ...ok, id: 2, kind: 'boat' }, { ...ok, id: 3, x: NaN }, { ...ok }, null, 'x'])).toEqual([ok]);
+    expect(sanitizeObjects({})).toEqual([]);
+  });
+
   it('rejects garbage', async () => {
     await expect(decodeSand(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9]))).rejects.toThrow();
   });

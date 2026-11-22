@@ -189,6 +189,26 @@ try {
   if (!(e1 < e0 - 3)) fail(`R did not tilt the view (${e0.toFixed(1)} -> ${e1.toFixed(1)})`);
   else console.log(`tilt ok (${e0.toFixed(1)}° -> ${e1.toFixed(1)}°)`);
 
+  // the bag: pick a rock, tap the sand to set it down, tap it to pick it up, undo brings it back
+  {
+    const count = () => page.evaluate(() => window.__beech.info().objects.length);
+    const n0 = await count();
+    await page.click('button[data-tool="place"]');
+    await page.click('.inv-item.rarity-common >> nth=0');
+    await page.mouse.click(420, 430);
+    await page.waitForFunction((n) => window.__beech.info().objects.length === n + 1, n0, { timeout: 10000 }).catch(() => {});
+    const n1 = await count();
+    await page.mouse.click(420, 430);
+    await page.waitForFunction((n) => window.__beech.info().objects.length === n, n0, { timeout: 10000 }).catch(() => {});
+    const n2 = await count();
+    await page.keyboard.press('Control+z');
+    await page.waitForFunction((n) => window.__beech.info().objects.length === n + 1, n0, { timeout: 10000 }).catch(() => {});
+    const n3 = await count();
+    if (!(n1 === n0 + 1 && n2 === n0 && n3 === n0 + 1)) fail(`placing a rock: ${n0} -> ${n1} -> ${n2} -> undo ${n3}`);
+    else console.log('place / pick up / undo ok');
+    await page.click('button[data-tool="dig"]');
+  }
+
   if (!process.env.SMOKE_URL) {
     // production build: the service worker should let the app start offline
     await page.evaluate(() => navigator.serviceWorker?.ready);

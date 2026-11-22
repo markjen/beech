@@ -68,7 +68,7 @@ interface Live {
 }
 
 export const ROCK_HEIGHT = 0.8; // height as a fraction of radius
-export const WOOD_RADIUS = (length: number) => 0.045 + length * 0.018;
+export const WOOD_RADIUS = (length: number) => 0.05 + length * 0.028;
 
 export class BeachObjects {
   private live = new Map<number, Live>();
@@ -140,10 +140,11 @@ export class BeachObjects {
 
   private embedRock(o: PlacedObject): RockCells {
     const { nx, ny, dx, sand, bottom } = this.h;
-    const rx = o.size;
-    const ry = o.size * (0.7 + 0.3 * frac(o.variant * 0.618));
+    // a little inside the drawn rock, so the rock always covers the sand it lifts
+    const rx = o.size * 0.88;
+    const ry = o.size * (0.7 + 0.3 * frac(o.variant * 0.618)) * 0.88;
     const base = this.sandAt(o.x, o.y);
-    const H = o.size * ROCK_HEIGHT * 0.9; // a touch under the drawn rock so it covers the sand
+    const H = o.size * ROCK_HEIGHT * 0.75;
     const c = Math.cos(o.angle);
     const s = Math.sin(o.angle);
     const cells: number[] = [];

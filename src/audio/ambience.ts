@@ -221,6 +221,26 @@ export class Ambience {
     src.start(t, Math.random() * 4, 0.45);
   }
 
+  /** A dull thud for setting something down on the sand (heavier for rocks). */
+  thunk(heavy = true): void {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(heavy ? 420 : 900, t);
+    lp.frequency.exponentialRampToValueAtTime(120, t + 0.18);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(heavy ? 0.9 : 0.5, t + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.001, t + (heavy ? 0.22 : 0.14));
+    src.connect(lp).connect(g);
+    g.connect(this.sfx);
+    src.start(t, Math.random() * 4, 0.3);
+  }
+
   private gull(): void {
     const ctx = this.ctx!;
     const t0 = ctx.currentTime;

@@ -9,7 +9,9 @@ import type { Palette } from '../palette';
 import { decodeSand, resampleField } from '../sim/sandCodec';
 import type { SwellComponent } from '../sim/waves';
 import { beachById } from '../world/locations';
+import type { PlacedObject } from '../sim/objects';
 import { BeachRenderer } from './beachRenderer';
+import { ObjectView } from './objects';
 
 /** gap between dioramas, so each beach reads as its own little island */
 const GAP = 1.6;
@@ -19,6 +21,7 @@ interface Slot {
   side: Side;
   renderer: BeachRenderer;
   delta: Float32Array;
+  objects: ObjectView;
   label: HTMLDivElement;
   name: string;
 }
@@ -70,7 +73,7 @@ export class NeighborView {
     }
     if (gen !== this.generation) return;
     // fetch both beaches first, then swap them in together
-    const loaded = new Map<Side, { delta: Float32Array; name: string } | null>();
+    const loaded = new Map<Side, { delta: Float32Array; objects: PlacedObject[]; name: string } | null>();
     for (const side of ['left', 'right'] as Side[]) {
       const who = n?.[side] ?? null;
       if (!who) {
@@ -79,22 +82,24 @@ export class NeighborView {
       }
       const saved = who.location ? await this.api.beach(side).catch(() => null) : null;
       let delta: Float32Array = new Float32Array(this.grid.nx * this.grid.ny);
+      let objects: PlacedObject[] = [];
       if (saved) {
         try {
           const d = await decodeSand(saved.bytes);
           delta = resampleField(d.delta, d.nx, d.ny, this.grid.nx, this.grid.ny);
+          objects = d.objects;
         } catch {
           /* unreadable save: show their beach untouched */
         }
       }
       const place = who.location ? beachById(who.location) : undefined;
-      loaded.set(side, { delta, name: `${who.name || 'a neighbor'}${place ? ` · ${place.name}` : ''}` });
+      loaded.set(side, { delta, objects, name: `${who.name || 'a neighbor'}${place ? ` · ${place.name}` : ''}` });
     }
     if (gen !== this.generation) return;
     this.state = n;
     for (const [side, next] of loaded) {
       if (this.slots.has(side)) this.drop(side);
-      if (next) this.add(side, next.delta, next.name);
+      if (next) this.add(side, next.delta, next.objects, next.name);
     }
     this.updateBounds();
     for (const fn of this.listeners) fn(n);
@@ -113,14 +118,16 @@ export class NeighborView {
     for (const s of this.slots.values()) s.renderer.setChairView(on);
   }
 
-  private add(side: Side, delta: Float32Array, name: string): void {
+  private add(side: Side, delta: Float32Array, placed: PlacedObject[], name: string): void {
     const renderer = new BeachRenderer(this.scene, this.grid, this.rest, this.swell, NeighborView.offsetFor(side));
     renderer.setChairView(this.chairView);
+    const objects = new ObjectView(this.scene, renderer, NeighborView.offsetFor(side));
+    objects.setStatic(placed, (x, y) => this.heightAt(delta, x, y));
     const label = document.createElement('div');
     label.className = 'neighbor-tag';
     label.textContent = name;
     this.uiRoot.appendChild(label);
-    const slot: Slot = { side, renderer, delta, label, name };
+    const slot: Slot = { side, renderer, delta, objects, label, name };
     this.slots.set(side, slot);
     this.paint(slot);
   }
@@ -128,6 +135,7 @@ export class NeighborView {
   private drop(side: Side): void {
     const s = this.slots.get(side);
     if (!s) return;
+    s.objects.dispose();
     s.renderer.dispose();
     s.label.remove();
     this.slots.delete(side);
@@ -137,6 +145,20 @@ export class NeighborView {
     const half = WORLD_SIZE_X / 2;
     this.cam.maxX = this.slots.has('left') ? NEIGHBOR_OFFSET + half : half;
     this.cam.minX = this.slots.has('right') ? -NEIGHBOR_OFFSET - half : -half;
+  }
+
+  /** Their sand height at sim metres (bilinear). */
+  private heightAt(delta: Float32Array, x: number, y: number): number {
+    const { nx, ny, dx } = this.grid;
+    const fi = Math.min(nx - 1.001, Math.max(0, x / dx - 0.5));
+    const fj = Math.min(ny - 1.001, Math.max(0, y / dx - 0.5));
+    const i = fi | 0;
+    const j = fj | 0;
+    const tx = fi - i;
+    const ty = fj - j;
+    const h = (k: number) => this.rest[k] + delta[k];
+    const k = j * nx + i;
+    return (h(k) * (1 - tx) + h(k + 1) * tx) * (1 - ty) + (h(k + nx) * (1 - tx) + h(k + nx + 1) * tx) * ty;
   }
 
   /** Pack their sand with still water at the current tide into a field frame. */

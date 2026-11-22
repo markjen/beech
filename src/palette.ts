@@ -182,3 +182,9 @@ export function paletteByName(name: string): Palette {
 export function rgbToCss(c: RGB, alpha = 1): string {
   return `rgba(${Math.round(c[0] * 255)},${Math.round(c[1] * 255)},${Math.round(c[2] * 255)},${alpha})`;
 }
+
+/** Fixed colours for things placed on the beach (lit by the scene's light). */
+export const PROP_COLORS = {
+  rock: [hex('#b3aeb4'), hex('#a59cab'), hex('#bfb2a6'), hex('#9ba3a8')] as RGB[],
+  driftwood: [hex('#e0d2bd'), hex('#cfbfa8'), hex('#eae0d2')] as RGB[],
+};

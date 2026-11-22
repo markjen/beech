@@ -1,0 +1,258 @@
+import type { ShaderMaterial } from '@babylonjs/core/Materials/shaderMaterial';
+import { Mesh } from '@babylonjs/core/Meshes/mesh';
+import { VertexData } from '@babylonjs/core/Meshes/mesh.vertexData';
+import type { Scene } from '@babylonjs/core/scene';
+
+import { PROP_COLORS } from '../palette';
+import { ROCK_HEIGHT, WOOD_RADIUS, type ObjectState, type PlacedObject } from '../sim/objects';
+import { ORIGIN_X, ORIGIN_Z, type BeachRenderer } from './beachRenderer';
+
+/** Small deterministic random numbers from an object's variant, so a rock looks the same everywhere. */
+function rng(seed: number): () => number {
+  let s = (Math.imul(seed | 0, 2654435761) ^ 0x9e3779b9) >>> 0;
+  return () => {
+    s = (Math.imul(s ^ (s >>> 15), 2246822507) + 0x6d2b79f5) >>> 0;
+    s ^= s >>> 13;
+    return (s >>> 0) / 4294967296;
+  };
+}
+
+/**
+ * Turn every triangle to face away from the shape's core (a point on its
+ * axis), so the lighting is right whichever way the triangles were listed.
+ */
+function orient(P: number[], I: number[], core: (x: number, y: number, z: number) => [number, number, number]): void {
+  for (let t = 0; t < I.length; t += 3) {
+    const [a, b, c] = [I[t] * 3, I[t + 1] * 3, I[t + 2] * 3];
+    const e1 = [P[b] - P[a], P[b + 1] - P[a + 1], P[b + 2] - P[a + 2]];
+    const e2 = [P[c] - P[a], P[c + 1] - P[a + 1], P[c + 2] - P[a + 2]];
+    const n = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
+    const cx = (P[a] + P[b] + P[c]) / 3;
+    const cy = (P[a + 1] + P[b + 1] + P[c + 1]) / 3;
+    const cz = (P[a + 2] + P[b + 2] + P[c + 2]) / 3;
+    const k = core(cx, cy, cz);
+    // Babylon (left-handed, clockwise front faces) wants this cross product pointing inward
+    if (n[0] * (cx - k[0]) + n[1] * (cy - k[1]) + n[2] * (cz - k[2]) > 0) {
+      const tmp = I[t + 1];
+      I[t + 1] = I[t + 2];
+      I[t + 2] = tmp;
+    }
+  }
+}
+
+function finish(scene: Scene, name: string, P: number[], I: number[]): Mesh {
+  const vd = new VertexData();
+  vd.positions = P;
+  vd.indices = I;
+  const normals: number[] = [];
+  VertexData.ComputeNormals(P, I, normals);
+  vd.normals = normals;
+  const m = new Mesh(name, scene);
+  vd.applyToMesh(m, false);
+  m.convertToFlatShadedMesh();
+  m.isPickable = false;
+  m.alwaysSelectAsActiveMesh = true;
+  return m;
+}
+
+/**
+ * A faceted boulder: a squashed, jittered dome over the same ellipse the
+ * simulation uses for its footprint, with a skirt that sinks into the sand.
+ */
+function rockMesh(scene: Scene, o: PlacedObject): Mesh {
+  const r = rng(o.variant * 7919 + 13);
+  const rx = o.size;
+  const ry = o.size * (0.7 + 0.3 * frac(o.variant * 0.618));
+  const H = o.size * ROCK_HEIGHT;
+  const seg = 7 + (o.variant % 3);
+  const rings = 3;
+  const P: number[] = [];
+  const I: number[] = [];
+  // ring 0 is a skirt below the sand, then rings up the dome, then the top
+  const jitter: number[] = [];
+  for (let s = 0; s < seg; s++) jitter.push(1.0 + r() * 0.18);
+  for (let k = 0; k <= rings; k++) {
+    const t = k / (rings + 0.6);
+    const rad = k === 0 ? 1.02 : Math.cos((t * Math.PI) / 2);
+    const y = k === 0 ? -0.25 * H : Math.sin((t * Math.PI) / 2) * H * (0.9 + r() * 0.15);
+    const twist = r() * 0.4;
+    for (let s = 0; s < seg; s++) {
+      const a = ((s + twist) / seg) * Math.PI * 2;
+      const j = jitter[s] * (0.97 + r() * 0.08);
+      P.push(Math.cos(a) * rx * rad * j, y, Math.sin(a) * ry * rad * j);
+    }
+  }
+  const top = P.length / 3;
+  P.push((r() - 0.5) * rx * 0.2, H * (1 + r() * 0.08), (r() - 0.5) * ry * 0.2);
+  for (let k = 0; k < rings; k++) {
+    for (let s = 0; s < seg; s++) {
+      const a = k * seg + s;
+      const b = k * seg + ((s + 1) % seg);
+      I.push(a, a + seg, b, b, a + seg, b + seg);
+    }
+  }
+  for (let s = 0; s < seg; s++) I.push(rings * seg + s, top, rings * seg + ((s + 1) % seg));
+  orient(P, I, (_x, y) => [0, Math.min(y, H * 0.3) - H * 0.2, 0]);
+  return finish(scene, `rock${o.id}`, P, I);
+}
+
+/** A weathered log: a tapering, slightly bent prism with a stub of a branch. */
+function woodMesh(scene: Scene, o: PlacedObject): Mesh {
+  const r = rng(o.variant * 104729 + 7);
+  const len = o.size;
+  const rad = WOOD_RADIUS(len);
+  const seg = 6;
+  const slices = 6;
+  const bend = (r() - 0.5) * 0.12 * len;
+  const P: number[] = [];
+  const I: number[] = [];
+  const ring = (x: number, cy: number, cz: number, rr: number, twist: number) => {
+    for (let s = 0; s < seg; s++) {
+      const a = ((s + twist) / seg) * Math.PI * 2;
+      const w = rr * (0.85 + r() * 0.3);
+      P.push(x, cy + Math.sin(a) * w * 0.85, cz + Math.cos(a) * w);
+    }
+  };
+  for (let k = 0; k <= slices; k++) {
+    const t = k / slices;
+    const x = (t - 0.5) * len;
+    const taper = 1 - 0.35 * Math.abs(t - 0.4) * 2;
+    ring(x, 0, Math.sin(t * Math.PI) * bend, rad * taper, k * 0.15);
+  }
+  for (let k = 0; k < slices; k++) {
+    for (let s = 0; s < seg; s++) {
+      const a = k * seg + s;
+      const b = k * seg + ((s + 1) % seg);
+      I.push(a, b, a + seg, b, b + seg, a + seg);
+    }
+  }
+  // end caps
+  const c0 = P.length / 3;
+  P.push(-len / 2 - rad * 0.3, 0, 0);
+  const c1 = P.length / 3;
+  P.push(len / 2 + rad * 0.2, 0, bend * 0);
+  for (let s = 0; s < seg; s++) {
+    I.push(c0, (s + 1) % seg, s);
+    I.push(c1, slices * seg + s, slices * seg + ((s + 1) % seg));
+  }
+  // a broken-off branch
+  if (o.variant % 2 === 0) {
+    const bx = (r() * 0.4 - 0.1) * len;
+    const side = r() < 0.5 ? -1 : 1;
+    const bl = len * (0.18 + r() * 0.12);
+    const b0 = P.length / 3;
+    P.push(bx - rad * 0.6, 0, side * rad * 0.5, bx + rad * 0.6, 0, side * rad * 0.5, bx, rad * 0.5, side * rad * 0.4);
+    P.push(bx + bl * 0.5, rad * 0.1, side * (rad + bl * 0.8));
+    I.push(b0, b0 + 2, b0 + 3, b0 + 2, b0 + 1, b0 + 3, b0 + 1, b0, b0 + 3);
+  }
+  orient(P, I, (x) => [Math.max(-len / 2, Math.min(len / 2, x)) * 0.9, 0, Math.sin((x / len + 0.5) * Math.PI) * bend]);
+  return finish(scene, `wood${o.id}`, P, I);
+}
+
+interface Shown {
+  mesh: Mesh;
+  key: string;
+  x: number;
+  y: number;
+  z: number;
+  angle: number;
+  bob: number;
+}
+
+/**
+ * Draws the rocks and driftwood on one beach. Positions come from the
+ * simulation at 30 Hz; the meshes ease toward them every rendered frame so
+ * floating wood moves smoothly, and bob a little while afloat.
+ */
+export class ObjectView {
+  private readonly shown = new Map<number, Shown>();
+  private readonly mats: { rock: ShaderMaterial[]; driftwood: ShaderMaterial[] };
+  private target = new Map<number, ObjectState>();
+  private time = 0;
+
+  constructor(
+    private readonly scene: Scene,
+    renderer: BeachRenderer,
+    private readonly offsetX = 0,
+  ) {
+    this.mats = {
+      rock: PROP_COLORS.rock.map((c) => renderer.createPropMaterial(c)),
+      driftwood: PROP_COLORS.driftwood.map((c) => renderer.createPropMaterial(c)),
+    };
+  }
+
+  get count(): number {
+    return this.shown.size;
+  }
+
+  /** The latest positions from the simulation. */
+  set(states: ObjectState[]): void {
+    this.target = new Map(states.map((s) => [s.id, s]));
+    for (const [id, s] of this.shown) {
+      if (!this.target.has(id)) {
+        s.mesh.dispose();
+        this.shown.delete(id);
+      }
+    }
+    for (const st of states) {
+      const key = `${st.kind}:${st.variant}:${st.size}`;
+      const cur = this.shown.get(st.id);
+      if (cur && cur.key === key) continue;
+      cur?.mesh.dispose();
+      const mesh = st.kind === 'rock' ? rockMesh(this.scene, st) : woodMesh(this.scene, st);
+      const set = this.mats[st.kind];
+      mesh.material = set[st.variant % set.length];
+      this.shown.set(st.id, { mesh, key, x: st.x, y: st.y, z: st.z, angle: st.angle, bob: Math.random() * 6 });
+      this.place(this.shown.get(st.id)!, st, 0);
+    }
+  }
+
+  /** Static objects (a neighbor's beach): heights from their sand. */
+  setStatic(objects: PlacedObject[], heightAt: (x: number, y: number) => number): void {
+    this.set(
+      objects.map((o) => ({
+        ...o,
+        z: heightAt(o.x, o.y) + (o.kind === 'driftwood' ? WOOD_RADIUS(o.size) * 0.7 : 0),
+        floating: false,
+      })),
+    );
+  }
+
+  update(dt: number): void {
+    this.time += dt;
+    const ease = 1 - Math.exp(-dt * 12);
+    for (const [id, s] of this.shown) {
+      const t = this.target.get(id);
+      if (t) this.place(s, t, ease);
+    }
+  }
+
+  private place(s: Shown, t: ObjectState, ease: number): void {
+    const k = ease === 0 ? 1 : ease;
+    s.x += (t.x - s.x) * k;
+    s.y += (t.y - s.y) * k;
+    s.z += (t.z - s.z) * k;
+    let da = t.angle - s.angle;
+    da -= Math.round(da / (Math.PI * 2)) * Math.PI * 2;
+    s.angle += da * k;
+    const m = s.mesh;
+    const bob = t.floating ? Math.sin(this.time * 1.7 + s.bob) * 0.015 : 0;
+    m.position.set(s.x + ORIGIN_X + this.offsetX, s.z + bob, s.y + ORIGIN_Z);
+    // sim angles turn x toward y (world z); Babylon's yaw turns x away from z
+    m.rotation.y = -s.angle;
+    m.rotation.x = t.floating ? Math.sin(this.time * 1.3 + s.bob) * 0.06 : 0;
+  }
+
+  clear(): void {
+    for (const s of this.shown.values()) s.mesh.dispose();
+    this.shown.clear();
+    this.target.clear();
+  }
+
+  dispose(): void {
+    this.clear();
+    for (const m of [...this.mats.rock, ...this.mats.driftwood]) m.dispose();
+  }
+}
+
+const frac = (x: number) => x - Math.floor(x);

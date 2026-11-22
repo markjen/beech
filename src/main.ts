@@ -14,16 +14,21 @@ import { registerServiceWorker } from './platform/pwa';
 import { tierFromBench } from './platform/quality';
 import { BeachRenderer, ORIGIN_X, ORIGIN_Z } from './render/beachRenderer';
 import { ShellField } from './render/shells';
+import { ObjectView } from './render/objects';
 import { Horizon } from './render/horizon';
 import { Sky, type SkyDisc } from './render/sky';
 import { LiveConditions } from './world/live';
 import { BEACHES, beachById, defaultBeach, nearestBeach, type Beach } from './world/locations';
 import type { BrushMode } from './sim/beachSim';
+import type { PlacedObject } from './sim/objects';
 import type { FrameInfo, FromWorker, ToWorker } from './sim/protocol';
 import { makeSwell } from './sim/waves';
 import { Ambient, toggleFullscreen } from './ui/ambient';
 import { Hud } from './ui/hud';
 import { SettingsSheet, StartScreen, showHint } from './ui/overlays';
+import { InventoryTray } from './ui/inventory';
+import { ITEMS, rollPlacement, type Item } from './world/items';
+import { WOOD_RADIUS } from './sim/objects';
 import { ACCOUNTS_ENABLED, Account } from './net/account';
 import { BeachSync } from './net/beachSync';
 import { AccountPanel } from './ui/accountPanel';
@@ -122,6 +127,7 @@ async function boot() {
   cam.groundHeight = (x, z) => picker.heightAt(x, z);
   const horizon = new Horizon(scene, swell, seed, grid.dx);
   const shells = new ShellField(scene, renderer, picker);
+  const objectView = new ObjectView(scene, renderer);
   const audio = new Ambience();
   const haptics = new Haptics();
   haptics.enabled = settings.haptics;
@@ -138,6 +144,7 @@ async function boot() {
     redoCount: 0,
     digIntensity: 0,
     swash: 0,
+    objects: [],
     tickMs: 0,
   };
   let prevT = 0;
@@ -145,10 +152,11 @@ async function boot() {
   let frames = 0;
   let swashRate = 0;
 
-  const sandWaiters = new Map<number, (d: Float32Array) => void>();
+  type SandReply = { delta: Float32Array; objects: PlacedObject[] };
+  const sandWaiters = new Map<number, (d: SandReply) => void>();
   let sandReq = 0;
   const getSand = () =>
-    new Promise<Float32Array>((resolve) => {
+    new Promise<SandReply>((resolve) => {
       const id = ++sandReq;
       sandWaiters.set(id, resolve);
       send({ type: 'getSand', id });
@@ -157,12 +165,13 @@ async function boot() {
   worker.onmessage = (ev: MessageEvent<FromWorker>) => {
     const m = ev.data;
     if (m.type === 'sand') {
-      sandWaiters.get(m.id)?.(m.delta);
+      sandWaiters.get(m.id)?.({ delta: m.delta, objects: m.objects });
       sandWaiters.delete(m.id);
       return;
     }
     if (m.type !== 'frame') return;
     renderer.uploadFrame(m.buf);
+    objectView.set(m.objects);
     picker.updateFromFrame(m.buf);
     send({ type: 'return', buf: m.buf }, [m.buf.buffer]);
     const dtSim = m.t - info.t;
@@ -175,6 +184,8 @@ async function boot() {
 
   // ---------------------------------------------------------------- digging
   let brushMode: BrushMode = 'dig';
+  /** an inventory item in hand: taps set it down instead of digging */
+  let placing: Item | null = null;
   let digging = false;
   let strokeOpen = false;
   type Hit = { x: number; y: number; z: number };
@@ -324,10 +335,55 @@ async function boot() {
   ];
   const pickTool = (id: string) => {
     brushMode = id as BrushMode;
+    placing = null;
+    inventory.deselect();
     hud.setTool(id);
     haptics.impact('light');
   };
   hud.setTools(TOOLS, brushMode, pickTool);
+
+  // the bag: rocks and driftwood (free, unlimited) for now
+  const inventory = new InventoryTray((n, l, c) => hud.button(n, l, c), hud.root, ITEMS, (item) => {
+    placing = item;
+    hud.setTool(item ? 'place' : brushMode);
+    haptics.impact('light');
+  });
+  hud.toolGroup.prepend(inventory.button);
+
+  /** Tap with an item in hand: pick up what's there, or set the item down. */
+  const putDown = (sx: number, sy: number) => {
+    if (!placing) return;
+    const hit = pickAt(sx, sy);
+    if (!hit) return;
+    const p = toSim(hit);
+    // something already there? pick it back up
+    let near: { id: number; d: number } | null = null;
+    for (const o of info.objects) {
+      const reach = o.kind === 'rock' ? o.size : Math.max(WOOD_RADIUS(o.size) * 3, 0.25);
+      // driftwood: distance to the log's centre line
+      let d: number;
+      if (o.kind === 'driftwood') {
+        const ca = Math.cos(o.angle);
+        const sa = Math.sin(o.angle);
+        const along = Math.max(-o.size / 2, Math.min(o.size / 2, (p.x - o.x) * ca + (p.y - o.y) * sa));
+        d = Math.hypot(p.x - (o.x + ca * along), p.y - (o.y + sa * along));
+      } else {
+        d = Math.hypot(p.x - o.x, p.y - o.y);
+      }
+      if (d < reach && (!near || d < near.d)) near = { id: o.id, d };
+    }
+    if (near) {
+      send({ type: 'removeObject', id: near.id });
+      audio.whoosh(true);
+      haptics.impact('light');
+    } else {
+      const r = rollPlacement(placing);
+      send({ type: 'placeObject', obj: { kind: placing.kind, item: placing.id, x: p.x, y: p.y, ...r } });
+      audio.thunk(placing.kind === 'rock');
+      haptics.impact(placing.kind === 'rock' ? 'medium' : 'light');
+    }
+    markDirty();
+  };
 
   const menuBtn = hud.button('menu', 'Settings');
   menuBtn.addEventListener('click', () => sheet.toggleOpen());
@@ -370,6 +426,12 @@ async function boot() {
   const gestures = new Gestures(canvas, cam, {
     digStart: (sx, sy) => {
       if (cam.animating) return;
+      inventory.setOpen(false);
+      if (placing) {
+        hideHint?.();
+        putDown(sx, sy);
+        return;
+      }
       digging = true;
       strokeOpen = false;
       hover = null;
@@ -412,7 +474,9 @@ async function boot() {
   const updateRing = (dt: number, palette: Palette) => {
     let target = 0;
     let at: Hit | null = null;
-    if (digging && lastHit) {
+    if (placing) {
+      target = 0;
+    } else if (digging && lastHit) {
       target = 0.85;
       at = lastHit;
     } else if (hover) {
@@ -541,6 +605,7 @@ async function boot() {
     scene.clearColor = clear;
 
     shells.update(dt, swashRate);
+    objectView.update(dt);
     if (digging) haptics.dig(info.digIntensity);
     cam.camera.getDirectionToRef(Vector3.Right(), right);
     audio.update(dt, {
@@ -569,7 +634,7 @@ async function boot() {
     account = new Account();
     sync = new BeachSync(account, {
       getSand,
-      setSand: (delta) => send({ type: 'setSand', delta }, [delta.buffer]),
+      setSand: (delta, objects) => send({ type: 'setSand', delta, objects }, [delta.buffer]),
       grid: { nx: grid.nx, ny: grid.ny },
       location: () => beach.id,
       setLocation: (id) => {
@@ -618,6 +683,8 @@ async function boot() {
     frames: () => frames,
     send,
     sheet,
+    inventory,
+    objectView,
     audio,
     pickTool,
     view: (m?: 'diorama' | 'chair') => (m ? cam.setMode(m) : cam.toggleMode()),
