@@ -342,6 +342,112 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     });
   });
 
+  // ---------------------------------------------------------------- the shore
+  // Beaches are found by their neighbor code: whoever has a code can visit
+  // (that's what the code is for). The shore is the chain of neighbor links:
+  // the beach on my left, the one on its left, and so on, each way.
+  interface ShoreRow {
+    id: string;
+    name: string;
+    code: string;
+    location: string | null;
+    updated_at: string | null;
+  }
+  const shoreJson = (r: ShoreRow) => ({
+    code: r.code,
+    name: r.name,
+    location: r.location,
+    updatedAt: r.updated_at === null ? null : Number(r.updated_at),
+  });
+  const byCode = async (raw: string): Promise<ShoreRow | null> => {
+    const code = normalizeCode(raw ?? '');
+    if (code.length !== 6) return null;
+    const rows = await db.query<ShoreRow>(
+      `SELECT u.id, u.name, u.neighbor_code AS code, b.location, b.updated_at
+         FROM users u LEFT JOIN beaches b ON b.user_id = u.id WHERE u.neighbor_code = $1`,
+      [code],
+    );
+    return rows[0] ?? null;
+  };
+  const byId = async (id: string): Promise<ShoreRow> =>
+    (
+      await db.query<ShoreRow>(
+        `SELECT u.id, u.name, u.neighbor_code AS code, b.location, b.updated_at
+           FROM users u LEFT JOIN beaches b ON b.user_id = u.id WHERE u.id = $1`,
+        [id],
+      )
+    )[0];
+
+  // GET /shore?code=K7F2QX&depth=4: a beach (default: yours) and the beaches
+  // down the shore each way, nearest first; stops at the end or a loop
+  app.get('/shore', requireUser, async (c) => {
+    const depth = Math.min(8, Math.max(0, Number(c.req.query('depth') ?? 4) | 0));
+    const code = c.req.query('code');
+    const center = code ? await byCode(code) : await byId(c.get('user').id);
+    if (!center) return c.json({ error: 'no beach with that code' }, 404);
+    const seen = new Set([center.id]);
+    const walk = async (side: Side) => {
+      const out: ShoreRow[] = [];
+      let at = center.id;
+      for (let i = 0; i < depth; i++) {
+        const rows = await db.query<ShoreRow>(
+          `SELECT u.id, u.name, u.neighbor_code AS code, b.location, b.updated_at
+             FROM neighbors n JOIN users u ON u.id = n.neighbor_id LEFT JOIN beaches b ON b.user_id = u.id
+            WHERE n.user_id = $1 AND n.side = $2`,
+          [at, side],
+        );
+        const next = rows[0];
+        if (!next || seen.has(next.id)) break;
+        seen.add(next.id);
+        out.push(next);
+        at = next.id;
+      }
+      return out;
+    };
+    const left = await walk('left');
+    const right = await walk('right');
+    return c.json({
+      center: { ...shoreJson(center), you: center.id === c.get('user').id },
+      left: left.map(shoreJson),
+      right: right.map(shoreJson),
+    });
+  });
+
+  app.get('/beaches/:code', requireUser, async (c) => {
+    const who = await byCode(c.req.param('code') ?? '');
+    if (!who) return c.json({ error: 'no beach with that code' }, 404);
+    return sendBeach(c, who.id);
+  });
+
+  // ---------------------------------------------------------------- favorites
+  app.get('/favorites', requireUser, async (c) => {
+    const rows = await db.query<ShoreRow>(
+      `SELECT u.id, u.name, u.neighbor_code AS code, b.location, b.updated_at
+         FROM favorites f JOIN users u ON u.id = f.fav_id LEFT JOIN beaches b ON b.user_id = u.id
+        WHERE f.user_id = $1 ORDER BY f.created_at DESC LIMIT 200`,
+      [c.get('user').id],
+    );
+    return c.json({ favorites: rows.map(shoreJson) });
+  });
+
+  app.put('/favorites/:code', requireUser, async (c) => {
+    const who = await byCode(c.req.param('code') ?? '');
+    if (!who) return c.json({ error: 'no beach with that code' }, 404);
+    if (who.id === c.get('user').id) fail(400, "that's your own beach");
+    await db.query('INSERT INTO favorites (user_id, fav_id, created_at) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING', [
+      c.get('user').id,
+      who.id,
+      Date.now(),
+    ]);
+    return c.json({ favorite: shoreJson(who) });
+  });
+
+  app.delete('/favorites/:code', requireUser, async (c) => {
+    const who = await byCode(c.req.param('code') ?? '');
+    if (who) await db.query('DELETE FROM favorites WHERE user_id = $1 AND fav_id = $2', [c.get('user').id, who.id]);
+    return c.body(null, 204);
+  });
+
   // ---------------------------------------------------------------- pulls
   // the pools, their published odds, and whether your free go is ready
   app.get('/pulls', requireUser, async (c) => {

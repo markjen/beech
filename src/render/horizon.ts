@@ -32,19 +32,19 @@ export class Horizon {
   private shores: Mesh[] = [];
   private enabled = false;
   private extent = { minX: -WORLD_SIZE_X / 2, maxX: WORLD_SIZE_X / 2 };
-  private slabCentres: number[] = [0];
+  private range = new Vector3(0, 0, 1e6);
 
   constructor(
     private readonly scene: Scene,
     private readonly swell: SwellComponent[],
     private readonly seed: number,
-    dx: number,
+    private readonly dx: number,
   ) {
     // the beachOcean / beachFlat shaders are registered by BeachRenderer
     this.seaMat = new ShaderMaterial('openSea', scene, 'beachOcean', {
       attributes: ['position'],
       uniforms: ['world', 'viewProjection', ...LIGHT, 'swellA', 'swellW', 'swellP', 'simTime', 'tide', 'zEdge', 'waveSpeed',
-        'oceanCol', 'deepCol', 'foamCol', 'fogCol', 'halfX', 'centerX', 'fadeNear', 'fadeFar', 'apron', 'slabs', 'slabHalf'],
+        'oceanCol', 'deepCol', 'foamCol', 'fogCol', 'halfX', 'centerX', 'fadeNear', 'fadeFar', 'apron', 'slabRange', 'slabHalf'],
       samplers: [],
     });
     this.seaMat.needAlphaBlending = () => true;
@@ -80,11 +80,18 @@ export class Horizon {
     this.setEnabled(false);
   }
 
-  /** The simulated beaches occupy [minX, maxX] (yours plus any neighbors). */
-  setExtent(minX: number, maxX: number, slabCentres: number[]): void {
-    if (minX === this.extent.minX && maxX === this.extent.maxX && slabCentres.join() === this.slabCentres.join()) return;
+  /**
+   * The drawn beaches are shore indices [from, to], `step` metres apart (0 is
+   * the middle one). The static shore runs on from both ends, and the open
+   * sea leaves a hole for each drawn beach.
+   */
+  setExtent(from: number, to: number, step: number): void {
+    const half = WORLD_SIZE_X / 2 - this.dx * 0.5;
+    const minX = from * step - half;
+    const maxX = to * step + half;
+    if (minX === this.extent.minX && maxX === this.extent.maxX) return;
     this.extent = { minX, maxX };
-    this.slabCentres = slabCentres;
+    this.range = new Vector3(from, to, step);
     this.buildShores();
     this.setEnabled(this.enabled);
   }
@@ -127,14 +134,13 @@ export class Horizon {
     return m;
   }
 
-  /** Static beach from `x0` running `dir` (+1 / -1) along the shore. */
-  private shore(x0: number, dir: number): Mesh {
+  /** Static beach from `x0` running `dir` (+1 / -1) along the shore for `length` m. */
+  private shore(x0: number, dir: number, length = SHORE_LENGTH, NX = 170, spread = 1.7): Mesh {
     const P: number[] = [];
     const I: number[] = [];
-    const NX = 170;
     const NY = 48;
     for (let i = 0; i <= NX; i++) {
-      const x = x0 + dir * SHORE_LENGTH * Math.pow(i / NX, 1.7);
+      const x = x0 + dir * length * Math.pow(i / NX, spread);
       for (let j = 0; j <= NY; j++) {
         const y = (j / NY) * WORLD_SIZE_Z;
         // the profile's x is metres from the left edge of your beach
@@ -164,8 +170,15 @@ export class Horizon {
   private buildShores(): void {
     for (const m of this.shores) m.dispose();
     this.shores = [this.shore(this.extent.maxX, 1), this.shore(this.extent.minX, -1)];
-    const c = [...this.slabCentres, 1e6, 1e6, 1e6].slice(0, 3);
-    this.seaMat.setVector3('slabs', new Vector3(c[0], c[1], c[2]));
+    // the gaps between the drawn beaches (the diorama's island spacing) are
+    // sand too when you're sitting on the beach
+    const { x: from, y: to, z: step } = this.range;
+    const edge = WORLD_SIZE_X / 2 - this.dx * 0.5;
+    for (let k = from; k < to; k++) {
+      const x0 = k * step + edge;
+      this.shores.push(this.shore(x0, 1, (k + 1) * step - edge - x0, 3, 1));
+    }
+    this.seaMat.setVector3('slabRange', this.range);
   }
 
   update(p: Palette, cameraDir: Vector3, simTime: number, tide: number, ampScale: number): void {

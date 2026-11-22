@@ -83,6 +83,9 @@ _(nothing right now)_
 
 ## Done (recent)
 
+- [x] **Look tool; walk the whole shore; home button; visit by code;
+  favorites** (2026-11-22).
+
 - [x] **Zoom in closer; choose item sizes** (2026-11-22).
 
 - [x] **Free daily claw machine** (2026-11-22): server-side draws with

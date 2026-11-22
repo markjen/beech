@@ -61,7 +61,7 @@ simulated one.
 | `src/world/*` | Items (`items.ts`, above) and real beaches: `locations.ts` (catalogue), `astro.ts` (sun and moon), `tides.ts` (harmonic tide engine), `tideStations.json` (TICON-3 constants), `live.ts` (turns a beach and the current time into a palette, light, sky and tide) |
 | `src/net/*` | Accounts (`account.ts`: session, API, Google button) and `beachSync.ts` (restore and save the player's beach) |
 | `server/` | Node + Hono + Postgres (PGlite locally): serves the production web app and `/api` (sign-in, sessions, saved beach, neighbors, delete account). Runs on Cloud Run. See docs/BACKEND.md and docs/GCP.md. |
-| `src/render/neighbors.ts` | Neighbors' beaches as snapshot dioramas either side of yours, with name tags |
+| `src/render/neighbors.ts` | The shore: beaches down the chain of neighbor links as snapshot dioramas (drawn near the view), visiting by code, favorites, name tags |
 | `Dockerfile` | Production image: web app (accounts on) + API server |
 | `src/audio/ambience.ts` | Procedural Web Audio soundscape |
 | `src/platform/*` | Haptics (Capacitor or vibrate), PWA registration, quality tier from benchmark |

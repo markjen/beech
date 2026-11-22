@@ -75,6 +75,16 @@ const MIGRATIONS: string[] = [
     PRIMARY KEY (user_id, pool, day)
   );
   `,
+  // 4: favorite beaches (anyone's, found by code or down the shore)
+  `
+  CREATE TABLE favorites (
+    user_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    fav_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    created_at BIGINT NOT NULL,
+    PRIMARY KEY (user_id, fav_id),
+    CHECK (user_id <> fav_id)
+  );
+  `,
 ];
 
 export async function migrate(db: Db): Promise<number> {

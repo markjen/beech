@@ -1,3 +1,4 @@
+import { beachById } from '../world/locations';
 import { DEV_AUTH, googleSignInAvailable, renderGoogleButton, type Account } from '../net/account';
 import { nativeProviders, nativeSignIn, SignInCancelled, type NativeProvider } from '../net/nativeAuth';
 
@@ -28,9 +29,12 @@ export class AccountPanel {
     private readonly sync: BeachSync,
     private readonly onSignedIn: () => void,
     private readonly neighbors?: NeighborView,
+    /** go to anyone's beach by code */
+    private readonly onVisit?: (code: string) => Promise<void>,
   ) {
     account.onChange(() => this.render());
     neighbors?.onChange(() => this.render());
+    neighbors?.onFavorites(() => this.render());
     sync.onState(() => this.renderStatus());
     window.setInterval(() => this.renderStatus(), 20000);
     this.render();
@@ -65,6 +69,7 @@ export class AccountPanel {
         </div>`;
       if (u.name) box.querySelector('b')!.textContent = u.name;
       if (this.neighbors) box.appendChild(this.neighborSection(this.neighbors));
+      if (this.neighbors && this.onVisit) box.appendChild(this.visitSection(this.neighbors, this.onVisit));
       box.querySelector('[data-act="signout"]')!.addEventListener('click', () => void this.account.signOut());
       const del = box.querySelector<HTMLButtonElement>('[data-act="delete"]')!;
       del.addEventListener('click', async () => {
@@ -215,6 +220,61 @@ export class AccountPanel {
       p.className = 'status';
       p.textContent = n.pickedBy === 1 ? '1 beach has you next door' : `${n.pickedBy} beaches have you next door`;
       wrap.appendChild(p);
+    }
+    return wrap;
+  }
+
+  /** Visit any beach by its code, and the beaches you've starred. */
+  private visitSection(nv: NeighborView, visit: (code: string) => Promise<void>): HTMLElement {
+    const wrap = document.createElement('div');
+    wrap.className = 'neighbors visit';
+    const row = document.createElement('div');
+    row.className = 'slot';
+    row.innerHTML = `<span>visit</span>`;
+    const input = document.createElement('input');
+    input.id = 'visit-code';
+    input.placeholder = 'a beach code';
+    input.maxLength = 8;
+    input.autocomplete = 'off';
+    input.setAttribute('aria-label', 'Code of a beach to visit');
+    const go = document.createElement('button');
+    go.type = 'button';
+    go.className = 'action';
+    go.dataset.act = 'visit';
+    go.textContent = 'go';
+    const doGo = () => void this.guard(() => visit(input.value));
+    go.addEventListener('click', doGo);
+    input.addEventListener('keydown', (e) => e.key === 'Enter' && doGo());
+    row.append(input, go);
+    wrap.appendChild(row);
+
+    const favs = [...nv.favorites.values()];
+    const h = document.createElement('div');
+    h.className = 'status';
+    h.textContent = favs.length ? 'favorite beaches' : 'tap ☆ on a beach to keep it here';
+    wrap.appendChild(h);
+    for (const f of favs) {
+      const r = document.createElement('div');
+      r.className = 'slot fav-row';
+      const place = f.location ? beachById(f.location) : undefined;
+      const name = document.createElement('span');
+      name.className = 'fav-name';
+      name.textContent = `${f.name || 'a beach'}${place ? ` · ${place.name}` : ''}`;
+      const v = document.createElement('button');
+      v.type = 'button';
+      v.className = 'action';
+      v.dataset.act = `visit-${f.code}`;
+      v.textContent = 'visit';
+      v.addEventListener('click', () => void this.guard(() => visit(f.code)));
+      const x = document.createElement('button');
+      x.type = 'button';
+      x.className = 'action';
+      x.textContent = '★';
+      x.title = 'Remove from favorites';
+      x.setAttribute('aria-label', `Remove ${name.textContent} from favorites`);
+      x.addEventListener('click', () => void this.guard(() => nv.toggleFavorite(f)));
+      r.append(name, v, x);
+      wrap.appendChild(r);
     }
     return wrap;
   }

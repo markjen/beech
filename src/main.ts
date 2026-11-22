@@ -437,6 +437,50 @@ async function boot() {
   const viewBtn = hud.button('chair', 'Sit on the beach');
   hud.leftGroup.appendChild(viewBtn);
   viewBtn.addEventListener('click', () => cam.toggleMode());
+  // the shore bar (top right): who you're visiting, and the way home
+  const shoreBar = document.createElement('div');
+  shoreBar.className = 'shore-bar';
+  shoreBar.innerHTML = `<span class="sb-where"></span><button type="button" class="sb-fav"></button><button type="button" class="sb-home" data-act="home">⌂ <span>my beach</span></button>`;
+  hud.root.appendChild(shoreBar);
+  const sbWhere = shoreBar.querySelector<HTMLElement>('.sb-where')!;
+  const sbFav = shoreBar.querySelector<HTMLButtonElement>('.sb-fav')!;
+  let shoreKey = '';
+  /** the beach under the view, along the shore (null: your own) */
+  const beachHere = () => {
+    if (!neighbors) return null;
+    const i = Math.round(cam.focusX / NEIGHBOR_OFFSET);
+    return i === 0 && !neighbors.visiting ? null : neighbors.beachAt(i);
+  };
+  const goHome = async () => {
+    if (neighbors?.visiting) {
+      await neighbors.visit(null);
+      cam.goTo(0, true);
+    } else {
+      cam.goTo(0);
+    }
+    haptics.impact('light');
+  };
+  shoreBar.querySelector('.sb-home')!.addEventListener('click', () => void goHome());
+  sbFav.addEventListener('click', () => {
+    const b = beachHere();
+    if (b && neighbors) void neighbors.toggleFavorite(b).catch(() => {});
+  });
+  const updateShoreBar = () => {
+    const away = !!neighbors && (!!neighbors.visiting || Math.abs(cam.focusX) > WORLD_SIZE_X / 2 + 2);
+    const b = away ? beachHere() : null;
+    const fav = !!b && !!neighbors?.favorites.has(b.code);
+    const key = `${away}|${b?.code}|${b?.name}|${fav}|${!!neighbors?.visiting}`;
+    if (key === shoreKey) return;
+    shoreKey = key;
+    shoreBar.classList.toggle('shown', away);
+    const place = b?.location ? beachById(b.location) : undefined;
+    sbWhere.textContent = b ? `${neighbors?.visiting ? 'Visiting ' : ''}${b.name || 'a beach'}${place ? ` · ${place.name}` : ''}` : 'Down the shore';
+    sbFav.hidden = !b;
+    sbFav.textContent = fav ? '★' : '☆';
+    sbFav.classList.toggle('on', fav);
+    sbFav.setAttribute('aria-label', fav ? 'Remove from favorites' : 'Add to favorites');
+  };
+
   // chair: hold ‹ or › to walk the chair along the beach (and over to the neighbors)
   const walkGroup = document.createElement('div');
   walkGroup.className = 'hud-walk';
@@ -486,6 +530,13 @@ async function boot() {
   const gestures = new Gestures(canvas, cam, {
     digStart: (sx, sy) => {
       if (cam.animating) return;
+      if (neighbors && (neighbors.visiting || !neighbors.ownVisible)) {
+        // someone else's beach: look, don't touch
+        shoreBar.classList.remove('nudge');
+        void shoreBar.offsetWidth;
+        shoreBar.classList.add('nudge');
+        return;
+      }
       inventory.setOpen(false);
       if (placing) {
         hideHint?.();
@@ -643,12 +694,15 @@ async function boot() {
     const amp = (1 - (1 - WAVES.calmFactor) * info.calmMix) * beach.waves;
     renderer.update(palette, cam.forward(), (now - t0) / 1000, simTime, info.tide, amp);
     neighbors?.update(palette, cam.forward(), (now - t0) / 1000, simTime, info.tide, amp);
+    // your beach is drawn while it's near the view (not while visiting someone)
+    const ownShown = neighbors ? neighbors.ownVisible : true;
+    renderer.setVisible(ownShown);
+    objectView.setVisible(ownShown);
+    updateShoreBar();
     if (cam.mode === 'chair') {
-      // the static shore starts where the simulated beaches end
-      const centres = [0];
-      if (cam.maxX > WORLD_SIZE_X) centres.push(NEIGHBOR_OFFSET);
-      if (cam.minX < -WORLD_SIZE_X) centres.push(-NEIGHBOR_OFFSET);
-      horizon.setExtent(cam.minX + grid.dx * 0.5, cam.maxX - grid.dx * 0.5, centres);
+      // the static shore starts where the drawn beaches end
+      const [from, to] = neighbors?.window ?? [0, 0];
+      horizon.setExtent(from, to, NEIGHBOR_OFFSET);
       horizon.update(palette, cam.forward(), simTime, info.tide, amp);
     }
     const sk = liveState.sky;
@@ -712,12 +766,17 @@ async function boot() {
       if (u && u.id !== signedInAs) {
         void s.restoreOrCreate().catch(() => {});
         void nv.refresh();
+        void nv.loadFavorites();
       } else if (!u) {
         nv.clear();
       }
       signedInAs = u?.id ?? null;
     });
-    new AccountPanel(sheet.accountSlot, account, s, () => {}, nv);
+    new AccountPanel(sheet.accountSlot, account, s, () => {}, nv, async (code) => {
+      await nv.visit(code);
+      cam.goTo(0, true);
+      sheet.hide();
+    });
 
     // what you've won (and later bought), and the claw machine
     const acct = account;

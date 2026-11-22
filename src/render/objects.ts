@@ -369,6 +369,7 @@ export class ObjectView {
   private readonly poleMat: ShaderMaterial;
   private target = new Map<number, ObjectState>();
   private time = 0;
+  private hidden = false;
 
   constructor(
     private readonly scene: Scene,
@@ -426,6 +427,7 @@ export class ObjectView {
         mesh.material = mat;
       }
       this.shown.set(st.id, { mesh, key, x: st.x, y: st.y, z: st.z, angle: st.angle, bob: Math.random() * 6, cloth });
+      if (this.hidden) mesh.setEnabled(false);
       this.place(this.shown.get(st.id)!, st, 0);
     }
   }
@@ -471,6 +473,11 @@ export class ObjectView {
       m.rotation.y = -Math.PI / 2;
       s.cloth.rotation.y = Math.sin(this.time * 3.1 + s.bob) * 0.35 + Math.sin(this.time * 7.3 + s.bob) * 0.1;
     }
+  }
+
+  setVisible(on: boolean): void {
+    for (const s of this.shown.values()) s.mesh.setEnabled(on);
+    this.hidden = !on;
   }
 
   clear(): void {

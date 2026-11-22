@@ -64,6 +64,10 @@ export class CameraController {
   /** chair: walking along the beach, -1 (to your left) .. 1 (to your right); set by the on-screen buttons */
   walk = 0;
   private walkVel = 0;
+  /** seconds the walk has been held (walking speeds up the longer you hold) */
+  private walkHeld = 0;
+  /** gliding along the shore to this x (the home button) */
+  private glideX: number | null = null;
   /** sand height lookup (set by main), so the chair sits on the real surface */
   groundHeight: (x: number, z: number) => number = () => 0.8;
   private listeners: ((m: ViewMode) => void)[] = [];
@@ -115,6 +119,8 @@ export class CameraController {
     }
     if (m === this.mode) return;
     this.panVel.setAll(0);
+    // stand up where you were sitting
+    if (m === 'diorama') this.camera.target.x = Math.min(this.maxX, Math.max(this.minX, this.seatX));
     if (m === 'chair') {
       // sit facing where the diorama camera was looking, roughly
       this.seatX = Math.min(this.maxX - 2, Math.max(this.minX + 2, this.camera.target.x));
@@ -305,8 +311,28 @@ export class CameraController {
     }
   }
 
+  /** Where along the shore the view is (world x): the chair, or the diorama's centre. */
+  get focusX(): number {
+    return this.mode === 'chair' || this.anim ? this.seatX : this.camera.target.x;
+  }
+
+  /** Move along the shore to world x: glide there, or jump. */
+  goTo(x: number, instant = false): void {
+    this.panVel.setAll(0);
+    this.walkVel = 0;
+    if (instant) {
+      this.glideX = null;
+      this.seatX = x;
+      this.camera.target.x = x;
+      if (this.mode === 'chair') this.applyChair();
+      return;
+    }
+    this.glideX = x;
+  }
+
   panScreen(px: number, py: number, sx: number, sy: number): void {
     if (this.anim) return;
+    this.glideX = null;
     if (this.mode === 'chair') {
       // drag the view: the scene follows the fingers
       const k = this.fov / (this.canvas.clientHeight || 1);
@@ -430,7 +456,16 @@ export class CameraController {
       }
       // walking along the beach (buttons, or Q/E). Facing the sea, your right is -X.
       const dir = Math.max(-1, Math.min(1, this.walk + (this.held.has('e') ? 1 : 0) - (this.held.has('q') ? 1 : 0)));
-      this.walkVel += (dir * CHAIR.walkSpeed - this.walkVel) * Math.min(1, dt * 4);
+      // hold longer to stride out (up to 4x): beaches down the shore are 34 m apart
+      this.walkHeld = dir ? this.walkHeld + dt : 0;
+      if (dir) this.glideX = null;
+      const speed = CHAIR.walkSpeed * (1 + Math.min(3, Math.max(0, this.walkHeld - 1) * 1.2));
+      this.walkVel += (dir * speed - this.walkVel) * Math.min(1, dt * 4);
+      if (this.glideX !== null) {
+        const d = this.glideX - this.seatX;
+        this.seatX += d * Math.min(1, dt * 2.5) + Math.sign(d) * Math.min(Math.abs(d), dt * 2);
+        if (Math.abs(d) < 0.02) this.glideX = null;
+      }
       if (Math.abs(this.walkVel) > 1e-3) {
         this.seatX = Math.min(this.maxX - 1.5, Math.max(this.minX + 1.5, this.seatX - this.walkVel * dt));
       } else {
@@ -459,6 +494,12 @@ export class CameraController {
       if (this.held.has('-')) this.zoomAt(Math.exp(dt * 1.5), cx, cy);
       if (this.held.has('r')) this.tilt(dt * 0.8);
       if (this.held.has('f')) this.tilt(-dt * 0.8);
+    }
+    if (this.glideX !== null) {
+      const t = this.camera.target;
+      const d = this.glideX - t.x;
+      t.x += d * Math.min(1, dt * 2.5) + Math.sign(d) * Math.min(Math.abs(d), dt * 2);
+      if (Math.abs(d) < 0.02 || panning) this.glideX = null;
     }
     // glide after a pan
     if (!panning && this.panVel.lengthSquared() > 1e-6) {

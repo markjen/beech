@@ -127,6 +127,49 @@ describe('inventory', () => {
   });
 });
 
+describe('the shore and favorites', () => {
+  it('walks neighbor links down the shore each way, stops at loops, finds beaches by code', async () => {
+    const u = await Promise.all(['Sam', 'Tia', 'Uma', 'Vic'].map((n) => signIn(n)));
+    const code = async (t: string) => ((await (await req('/neighbors', {}, t)).json()) as { code: string }).code;
+    const [sam, tia, uma, vic] = u;
+    const [cs, ct, cu, cv] = await Promise.all(u.map((x) => code(x.token)));
+    const setSide = (t: string, side: string, c: string) => req(`/neighbors/${side}`, json('PUT', { code: c }), t);
+    // Sam -left-> Tia -left-> Uma -left-> Sam (a loop); Sam -right-> Vic
+    expect((await setSide(sam.token, 'left', ct)).status).toBe(200);
+    expect((await setSide(tia.token, 'left', cu)).status).toBe(200);
+    expect((await setSide(uma.token, 'left', cs)).status).toBe(200);
+    expect((await setSide(sam.token, 'right', cv)).status).toBe(200);
+    await putBeach(uma.token, new Uint8Array([1, 2, 3]), 'piha');
+
+    type Shore = { center: { code: string; you: boolean }; left: { code: string; name: string }[]; right: { code: string }[] };
+    const mine = (await (await req('/shore?depth=5', {}, sam.token)).json()) as Shore;
+    expect(mine.center).toMatchObject({ code: cs, you: true });
+    expect(mine.left.map((e) => e.name)).toEqual(['Tia', 'Uma']);
+    expect(mine.right.map((e) => e.code)).toEqual([cv]);
+
+    // anyone's shore, by code (lower case and spaces are fine)
+    const theirs = (await (await req(`/shore?code=${ct.toLowerCase()}`, {}, vic.token)).json()) as Shore;
+    expect(theirs.center).toMatchObject({ code: ct, you: false });
+    expect(theirs.left.map((e) => e.name)).toEqual(['Uma', 'Sam']);
+    expect((await req('/shore?code=ZZZZZZ', {}, vic.token)).status).toBe(404);
+
+    // a beach by code
+    const b = await req(`/beaches/${cu}`, {}, vic.token);
+    expect(b.status).toBe(200);
+    expect([...new Uint8Array(await b.arrayBuffer())]).toEqual([1, 2, 3]);
+    expect((await req(`/beaches/${cu}`)).status).toBe(401);
+
+    // favorites
+    expect((await req(`/favorites/${cu}`, { method: 'PUT' }, vic.token)).status).toBe(200);
+    expect((await req(`/favorites/${cu}`, { method: 'PUT' }, vic.token)).status).toBe(200); // twice is fine
+    expect((await req(`/favorites/${cv}`, { method: 'PUT' }, vic.token)).status).toBe(400); // your own
+    const favs = (await (await req('/favorites', {}, vic.token)).json()) as { favorites: { code: string; name: string; location: string }[] };
+    expect(favs.favorites).toEqual([expect.objectContaining({ code: cu, name: 'Uma', location: 'piha' })]);
+    expect((await req(`/favorites/${cu}`, { method: 'DELETE' }, vic.token)).status).toBe(204);
+    expect(((await (await req('/favorites', {}, vic.token)).json()) as { favorites: unknown[] }).favorites).toEqual([]);
+  });
+});
+
 describe('pulls', () => {
   it('shows the odds, gives one free go a day, and puts the prize in your bag', async () => {
     const cleo = await signIn('Cleo');

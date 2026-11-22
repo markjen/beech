@@ -245,14 +245,15 @@ uniform float fadeNear;
 uniform float fadeFar;
 /** 1 = diorama apron (soft cut sides, fades out); 0 = open sea to the horizon */
 uniform float apron;
-/** open sea only: x centres of the simulated beaches to leave a hole for */
-uniform vec3 slabs;
+/** open sea only: the drawn beaches to leave a hole for, as shore indices
+ * (from, to) and the spacing between beach centres */
+uniform vec3 slabRange;
 uniform float slabHalf;
 ${FACET}
 void main() {
   if (apron < 0.5) {
-    vec3 d = abs(vec3(vWorld.x) - slabs);
-    if (vWorld.z > zEdge + 0.02 && min(d.x, min(d.y, d.z)) < slabHalf) discard;
+    float k = clamp(floor(vWorld.x / slabRange.z + 0.5), slabRange.x, slabRange.y);
+    if (vWorld.z > zEdge + 0.02 && abs(vWorld.x - k * slabRange.z) < slabHalf) discard;
   }
   vec3 N = facetNormal(vWorld);
   float ndl = dot(N, -sunDir);

@@ -275,6 +275,56 @@ export class NeighborApi {
     if (!res.ok) throw await errorOf(res, 'could not make a new code');
     return ((await res.json()) as { code: string }).code;
   }
+
+  /** A beach (yours, or anyone's by code) and the beaches down the shore each way, nearest first. */
+  async shore(code: string | null, depth: number): Promise<Shore> {
+    const q = new URLSearchParams({ depth: String(depth) });
+    if (code) q.set('code', code);
+    const res = await this.account.fetch(`/api/shore?${q}`);
+    if (!res.ok) throw await errorOf(res, 'could not find that beach');
+    return (await res.json()) as Shore;
+  }
+
+  /** Anyone's saved beach, by their code (null if they haven't saved one). */
+  async beachByCode(code: string): Promise<SavedBeach | null> {
+    const res = await this.account.fetch(`/api/beaches/${encodeURIComponent(code)}`);
+    if (res.status === 404) return null;
+    if (!res.ok) throw await errorOf(res, 'could not load their beach');
+    return {
+      location: res.headers.get('X-Beach-Location') ?? '',
+      nx: Number(res.headers.get('X-Beach-Nx')),
+      ny: Number(res.headers.get('X-Beach-Ny')),
+      updatedAt: Number(res.headers.get('X-Beach-Updated')),
+      bytes: new Uint8Array(await res.arrayBuffer()),
+    };
+  }
+
+  async favorites(): Promise<ShoreBeach[]> {
+    const res = await this.account.fetch('/api/favorites');
+    if (!res.ok) throw await errorOf(res, 'could not load your favorites');
+    return ((await res.json()) as { favorites: ShoreBeach[] }).favorites;
+  }
+
+  async favorite(code: string, on: boolean): Promise<void> {
+    const res = await this.account.fetch(`/api/favorites/${encodeURIComponent(code)}`, { method: on ? 'PUT' : 'DELETE' });
+    if (!res.ok) throw await errorOf(res, 'could not change your favorites');
+  }
+}
+
+/** A beach somewhere along the shore (found by code or by walking). */
+export interface ShoreBeach {
+  code: string;
+  name: string;
+  /** their real beach id, or null if they haven't saved yet */
+  location: string | null;
+  updatedAt: number | null;
+}
+
+export interface Shore {
+  center: ShoreBeach & { you: boolean };
+  /** nearest first */
+  left: ShoreBeach[];
+  right: ShoreBeach[];
 }
 
 export interface PullPool {

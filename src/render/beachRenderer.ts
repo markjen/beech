@@ -116,7 +116,7 @@ export class BeachRenderer {
         'fadeNear',
         'fadeFar',
         'apron',
-        'slabs',
+        'slabRange',
         'slabHalf',
       ],
       samplers: [],
@@ -393,7 +393,7 @@ export class BeachRenderer {
     this.oceanMat.setFloat('fadeNear', 2);
     this.oceanMat.setFloat('fadeFar', 17);
     this.oceanMat.setFloat('apron', 1);
-    this.oceanMat.setVector3('slabs', new Vector3(1e6, 1e6, 1e6));
+    this.oceanMat.setVector3('slabRange', new Vector3(0, 0, 1e6));
     this.oceanMat.setFloat('slabHalf', 0);
     this.apronMesh = ocean;
     this.waterSkirt = wskirt;
@@ -425,10 +425,26 @@ export class BeachRenderer {
     }
   }
 
+  private chair = false;
+  private visible = true;
+
   /** The chair view has an open sea instead of the diorama's apron and cut-away water. */
   setChairView(on: boolean): void {
-    this.apronMesh.setEnabled(!on);
-    this.waterSkirt.setEnabled(!on);
+    this.chair = on;
+    this.applyVisibility();
+  }
+
+  /** Hide the whole beach (yours, while you're visiting or far down the shore). */
+  setVisible(on: boolean): void {
+    if (on === this.visible) return;
+    this.visible = on;
+    this.applyVisibility();
+  }
+
+  private applyVisibility(): void {
+    for (const m of this.meshes) m.setEnabled(this.visible);
+    this.apronMesh.setEnabled(this.visible && !this.chair);
+    this.waterSkirt.setEnabled(this.visible && !this.chair);
   }
 
   /** Show a still snapshot (neighbors): the same packed frame as both prev and current. */

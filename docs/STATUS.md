@@ -228,6 +228,29 @@ branch, so the deploy job runs only there. Switch the default branch to
   `GET /api/inventory` for owned, unexpired non-free items. Nothing writes to
   it yet.
 
+## The shore, visiting and favorites (added after item sizes)
+
+- **The shore** is the chain of neighbor links: your left neighbor, their
+  left neighbor, and so on, each way (up to 8; `GET /api/shore`). Beach `k`
+  sits at x = k × 33.6 m. Only the beaches within 2 of the one under the view
+  are drawn (`RENDER`). Beaches within 5 stay decoded in memory, and the rest
+  load as you approach. Your own live beach is hidden once it's outside that
+  window, and digging is off.
+- **Walking:** pan along it in the diorama, or walk in the chair view (hold ‹
+  › or Q/E). After a second of holding, walking speeds up to 4×. In the chair
+  view the static shore fills the gaps between drawn beaches and runs on past
+  both ends.
+- **Home:** away from your own beach, a bar (top right; under the place
+  label on phones) says whose beach you're on, with ☆ to favorite it and
+  "⌂ my beach" to glide home. It pulses if you try to dig someone else's
+  beach.
+- **Visiting by code** (settings → visit): their beach takes the middle, with
+  their shore either side, until you head home. **Favorites** come from ☆ on
+  a name tag or on the bar. The list sits in the settings sheet, with visit
+  buttons (`favorites` table, migration 4).
+- The neighbor tags poll every 30 s across the whole shore.
+- `npm run e2e:shore` covers walking, home, visiting by code, and favorites.
+
 ## Claw machine (added after chair polish)
 
 - **Free daily claw machine** (production builds, signed in): one go per

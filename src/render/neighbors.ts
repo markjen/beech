@@ -3,61 +3,80 @@ import type { Scene } from '@babylonjs/core/scene';
 
 import { WORLD_SIZE_X, type GridSpec } from '../config';
 import type { CameraController } from '../input/cameraController';
-import type { Account, Neighbor, Neighbors, Side } from '../net/account';
+import type { Account, Neighbors, ShoreBeach, Side } from '../net/account';
 import { NeighborApi } from '../net/account';
 import type { Palette } from '../palette';
+import type { PlacedObject } from '../sim/objects';
 import { decodeSand, resampleField } from '../sim/sandCodec';
 import type { SwellComponent } from '../sim/waves';
 import { beachById } from '../world/locations';
-import type { PlacedObject } from '../sim/objects';
 import { BeachRenderer, ORIGIN_Z } from './beachRenderer';
 import { ObjectView } from './objects';
-
-interface Loaded {
-  delta: Float32Array;
-  objects: PlacedObject[];
-  name: string;
-  who: string;
-  updatedAt: number | null;
-}
 
 /** gap between dioramas, so each beach reads as its own little island */
 const GAP = 1.6;
 export const NEIGHBOR_OFFSET = WORLD_SIZE_X + GAP;
-
-interface Slot {
-  side: Side;
-  renderer: BeachRenderer;
-  delta: Float32Array;
-  objects: ObjectView;
-  label: HTMLDivElement;
-  name: string;
-  /** who is there, and when they last saved (to spot new saves) */
-  who: string;
-  updatedAt: number | null;
-  placed: number;
-}
-
-/** how often to look for new saves on the beaches next door */
+/** how far down the shore to look, each way */
+const DEPTH = 8;
+/** beaches drawn either side of the one you're looking at */
+const RENDER = 2;
+/** beaches kept in memory (decoded) either side of it */
+const KEEP = 5;
+/** how often to look for new saves along the shore */
 const POLL_MS = 30000;
 
+interface Loaded {
+  delta: Float32Array;
+  objects: PlacedObject[];
+  updatedAt: number | null;
+}
+
+interface Slot {
+  renderer: BeachRenderer;
+  objects: ObjectView;
+  label: HTMLDivElement;
+  star: HTMLButtonElement;
+}
+
+/** One beach along the shore. Index 0 is yours (or the one you're visiting); +1 is the next one on the left, and so on. */
+interface Entry {
+  index: number;
+  beach: ShoreBeach;
+  data?: Loaded;
+  /** a load is in flight */
+  loading?: Promise<void>;
+  slot?: Slot;
+}
+
 /**
- * The beaches on either side of yours, drawn as still snapshots of their
- * last save (their own sand; your sky, sea and tide), each with a name tag.
+ * The shore: your beach in the middle, your neighbors either side, their
+ * neighbors beyond them, and so on (following each beach's left / right
+ * neighbor), as far as anyone has linked up. Walk or pan along it; the
+ * beaches near the view are drawn as snapshots of their last save (their
+ * sand and things, your sky, sea and tide), the rest load as you get close.
+ *
+ * You can also visit anyone's beach by code: their beach takes the middle,
+ * with their shore either side, until you head home.
+ *
  * Facing the sea, "left" is world +X (your right hand points to -X).
  */
 export class NeighborView {
   readonly api: NeighborApi;
-  private slots = new Map<Side, Slot>();
+  /** your own neighbor slots and code (for the settings panel) */
+  state: Neighbors | null = null;
+  /** the beach you're visiting (by code), or null when at home */
+  visiting: ShoreBeach | null = null;
+  readonly favorites = new Map<string, ShoreBeach>();
+  private entries = new Map<number, Entry>();
   private tide = 0;
   private lastTideRefresh = 0;
-  state: Neighbors | null = null;
   private listeners: ((n: Neighbors | null) => void)[] = [];
+  private favListeners: (() => void)[] = [];
   /** bumps on every refresh/clear so a slow, older refresh can't overwrite a newer one */
   private generation = 0;
   private chairView = false;
   private pollTimer = 0;
-  private polling = false;
+  private win: [number, number] = [0, 0];
 
   constructor(
     private readonly scene: Scene,
@@ -75,173 +94,286 @@ export class NeighborView {
     this.listeners.push(fn);
   }
 
+  onFavorites(fn: () => void): void {
+    this.favListeners.push(fn);
+  }
+
   static offsetFor(side: Side): number {
     return side === 'left' ? NEIGHBOR_OFFSET : -NEIGHBOR_OFFSET;
   }
 
-  /** Reload the neighbor list and their beaches from the server. */
+  /** The beaches currently drawn, as shore indices [from, to] (0 = the middle one). */
+  get window(): [number, number] {
+    return this.win;
+  }
+
+  /** Is your own (live) beach in view? False while visiting or far down the shore. */
+  get ownVisible(): boolean {
+    return !this.visiting && this.win[0] <= 0 && this.win[1] >= 0;
+  }
+
+  /** How many beaches the shore has each way (for tests and the UI). */
+  get extent(): { left: number; right: number } {
+    let left = 0;
+    let right = 0;
+    for (const i of this.entries.keys()) {
+      left = Math.max(left, i);
+      right = Math.max(right, -i);
+    }
+    return { left, right };
+  }
+
+  /** The beach at a shore index, if there is one. */
+  beachAt(index: number): ShoreBeach | null {
+    return this.entries.get(index)?.beach ?? null;
+  }
+
+  /** Reload your neighbors and the shore (from you, or from the beach you're visiting). */
   async refresh(): Promise<void> {
     const gen = ++this.generation;
-    let n: Neighbors | null = null;
-    try {
-      n = await this.api.get();
-    } catch {
-      n = null;
-    }
-    if (gen !== this.generation) return;
-    // fetch both beaches first, then swap them in together
-    const loaded = new Map<Side, Loaded | null>();
-    for (const side of ['left', 'right'] as Side[]) {
-      const who = n?.[side] ?? null;
-      loaded.set(side, who ? await this.load(side, who) : null);
-    }
+    const [n, shore] = await Promise.all([
+      this.api.get().catch(() => null),
+      this.api.shore(this.visiting?.code ?? null, DEPTH).catch(() => null),
+    ]);
     if (gen !== this.generation) return;
     this.state = n;
-    for (const [side, next] of loaded) {
-      if (this.slots.has(side)) this.drop(side);
-      if (next) this.add(side, next);
+    const next = new Map<number, ShoreBeach>();
+    if (shore) {
+      if (this.visiting) {
+        next.set(0, shore.center);
+        this.visiting = shore.center;
+      }
+      shore.left.forEach((b, i) => next.set(i + 1, b));
+      shore.right.forEach((b, i) => next.set(-(i + 1), b));
+    }
+    for (const [i, e] of this.entries) {
+      const b = next.get(i);
+      if (!b || b.code !== e.beach.code) this.forget(i);
+    }
+    for (const [i, b] of next) {
+      const e = this.entries.get(i);
+      if (e) {
+        e.beach = b;
+        // a newer save: fetch it again when it's near the view
+        if (e.data && e.data.updatedAt !== b.updatedAt) e.data = { ...e.data, updatedAt: -1 };
+        if (e.slot) e.slot.label.querySelector('.name')!.textContent = this.title(b);
+      } else {
+        this.entries.set(i, { index: i, beach: b });
+      }
     }
     this.updateBounds();
     for (const fn of this.listeners) fn(n);
     this.schedulePoll();
+    await this.fillWindow(true);
   }
 
-  /** Fetch and decode one neighbor's latest save. */
-  private async load(side: Side, who: Neighbor): Promise<Loaded> {
-    const saved = who.location ? await this.api.beach(side).catch(() => null) : null;
-    let delta: Float32Array = new Float32Array(this.grid.nx * this.grid.ny);
-    let objects: PlacedObject[] = [];
-    if (saved) {
-      try {
-        const d = await decodeSand(saved.bytes);
-        delta = resampleField(d.delta, d.nx, d.ny, this.grid.nx, this.grid.ny);
-        objects = d.objects;
-      } catch {
-        /* unreadable save: show their beach untouched */
+  /** Visit anyone's beach by code (null: go home). Throws if there's no such beach. */
+  async visit(code: string | null): Promise<void> {
+    if (code) {
+      const shore = await this.api.shore(code, 0); // check it exists first
+      if (shore.center.you) code = null;
+      else {
+        this.clearEntries();
+        this.visiting = shore.center;
       }
     }
-    const place = who.location ? beachById(who.location) : undefined;
-    return {
-      delta,
-      objects,
-      name: `${who.name || 'a neighbor'}${place ? ` · ${place.name}` : ''}`,
-      who: who.id,
-      updatedAt: saved?.updatedAt ?? who.updatedAt,
-    };
+    if (!code) {
+      if (!this.visiting) return;
+      this.visiting = null;
+      this.clearEntries();
+    }
+    await this.refresh();
+  }
+
+  async loadFavorites(): Promise<void> {
+    try {
+      const list = await this.api.favorites();
+      this.favorites.clear();
+      for (const f of list) this.favorites.set(f.code, f);
+    } catch {
+      /* offline: keep what we had */
+    }
+    this.favChanged();
+  }
+
+  async toggleFavorite(b: ShoreBeach): Promise<void> {
+    const on = !this.favorites.has(b.code);
+    if (on) this.favorites.set(b.code, b);
+    else this.favorites.delete(b.code);
+    this.favChanged();
+    try {
+      await this.api.favorite(b.code, on);
+    } catch (e) {
+      await this.loadFavorites();
+      throw e;
+    }
+  }
+
+  private favChanged(): void {
+    for (const e of this.entries.values()) if (e.slot) this.paintStar(e);
+    for (const fn of this.favListeners) fn();
   }
 
   private schedulePoll(): void {
     window.clearTimeout(this.pollTimer);
-    if (!this.state) return;
     this.pollTimer = window.setTimeout(() => void this.poll().finally(() => this.schedulePoll()), POLL_MS);
   }
 
-  /**
-   * Live-ish neighbors: look for new saves next door and swap in the new
-   * sand. Cheap when nothing changed (one small request). Skipped while the
-   * app is in the background.
-   */
+  /** Look for new saves along the shore (skipped while the app is in the background). */
   async poll(): Promise<void> {
-    if (this.polling || document.hidden || !this.state) return;
-    this.polling = true;
-    const gen = this.generation;
-    try {
-      const n = await this.api.get();
-      if (gen !== this.generation) return;
-      for (const side of ['left', 'right'] as Side[]) {
-        const who = n[side];
-        const slot = this.slots.get(side);
-        if ((who?.id ?? null) !== (slot?.who ?? null)) {
-          // someone moved in or away: start over
-          await this.refresh();
-          return;
-        }
-        if (!who || !slot || who.updatedAt === slot.updatedAt) continue;
-        const next = await this.load(side, who);
-        if (gen !== this.generation) return;
-        this.replace(side, next);
-      }
-      this.state = { ...this.state, ...n };
-    } catch {
-      /* offline: try again next time */
-    } finally {
-      this.polling = false;
-    }
+    if (document.hidden) return;
+    await this.refresh();
   }
 
-  /** What's shown next door (for tests). */
-  snapshot(side: Side): { who: string; updatedAt: number | null; objects: number } | null {
-    const s = this.slots.get(side);
-    return s ? { who: s.who, updatedAt: s.updatedAt, objects: s.placed } : null;
+  /** What's drawn next door (for tests): left = index 1, right = index -1. */
+  snapshot(side: Side | number): { who: string; updatedAt: number | null; objects: number } | null {
+    const e = this.entries.get(typeof side === 'number' ? side : side === 'left' ? 1 : -1);
+    if (!e?.data) return null;
+    return { who: e.beach.code, updatedAt: e.data.updatedAt, objects: e.data.objects.length };
   }
 
   clear(): void {
     this.generation++;
     window.clearTimeout(this.pollTimer);
-    for (const side of [...this.slots.keys()]) this.drop(side);
+    this.clearEntries();
+    this.visiting = null;
     this.state = null;
+    this.favorites.clear();
     this.updateBounds();
     for (const fn of this.listeners) fn(null);
+    this.favChanged();
+  }
+
+  private clearEntries(): void {
+    for (const i of [...this.entries.keys()]) this.forget(i);
+    this.win = [0, 0];
   }
 
   setChairView(on: boolean): void {
     this.chairView = on;
-    for (const s of this.slots.values()) s.renderer.setChairView(on);
+    for (const e of this.entries.values()) e.slot?.renderer.setChairView(on);
   }
 
-  private add(side: Side, l: Loaded): void {
-    const { delta, name } = l;
-    const renderer = new BeachRenderer(this.scene, this.grid, this.rest, this.swell, NeighborView.offsetFor(side));
-    renderer.setChairView(this.chairView);
-    const objects = new ObjectView(this.scene, renderer, NeighborView.offsetFor(side));
-    objects.setStatic(l.objects, (x, y) => this.heightAt(delta, x, y));
-    const label = document.createElement('div');
-    label.className = 'neighbor-tag';
-    label.textContent = name;
-    this.uiRoot.appendChild(label);
-    const slot: Slot = { side, renderer, delta, objects, label, name, who: l.who, updatedAt: l.updatedAt, placed: l.objects.length };
-    this.slots.set(side, slot);
-    this.paint(slot);
-  }
-
-  /** A new save from the same neighbor: repaint in place (no flicker). */
-  private replace(side: Side, l: Loaded): void {
-    const s = this.slots.get(side);
-    if (!s) return;
-    s.delta = l.delta;
-    s.updatedAt = l.updatedAt;
-    s.placed = l.objects.length;
-    s.objects.setStatic(l.objects, (x, y) => this.heightAt(l.delta, x, y));
-    if (l.name !== s.name) {
-      s.name = l.name;
-      s.label.textContent = l.name;
-    }
-    this.paint(s);
-  }
-
-  private drop(side: Side): void {
-    const s = this.slots.get(side);
-    if (!s) return;
-    s.objects.dispose();
-    s.renderer.dispose();
-    s.label.remove();
-    this.slots.delete(side);
+  private forget(i: number): void {
+    const e = this.entries.get(i);
+    if (!e) return;
+    this.dropSlot(e);
+    this.entries.delete(i);
   }
 
   private updateBounds(): void {
     const half = WORLD_SIZE_X / 2;
-    this.cam.maxX = this.slots.has('left') ? NEIGHBOR_OFFSET + half : half;
-    this.cam.minX = this.slots.has('right') ? -NEIGHBOR_OFFSET - half : -half;
+    const { left, right } = this.extent;
+    this.cam.maxX = left * NEIGHBOR_OFFSET + half;
+    this.cam.minX = -right * NEIGHBOR_OFFSET - half;
   }
 
-  /** Sand height at a world point on a neighbor's beach, or NaN if it isn't on one. */
-  heightAtWorld(x: number, z: number): number {
-    for (const s of this.slots.values()) {
-      const sx = x - s.renderer.offsetX + WORLD_SIZE_X / 2;
-      const sy = z - ORIGIN_Z;
-      if (sx >= 0 && sx <= WORLD_SIZE_X && sy >= 0 && sy <= this.grid.ny * this.grid.dx) return this.heightAt(s.delta, sx, sy);
+  private title(b: ShoreBeach): string {
+    const place = b.location ? beachById(b.location) : undefined;
+    return `${b.name || 'a neighbor'}${place ? ` · ${place.name}` : ''}`;
+  }
+
+  // ------------------------------------------------------------ loading and drawing
+
+  /** Draw the beaches near the view, load the ones about to come into view, let go of far ones. */
+  private async fillWindow(wait = false): Promise<void> {
+    const c = Math.round(this.cam.focusX / NEIGHBOR_OFFSET);
+    const { left, right } = this.extent;
+    const lo = Math.max(-right, c - RENDER);
+    const hi = Math.min(left, c + RENDER);
+    this.win = [lo, hi];
+    const pending: Promise<void>[] = [];
+    for (const e of this.entries.values()) {
+      const d = Math.abs(e.index - c);
+      if (e.index >= lo && e.index <= hi) {
+        if (!e.data || e.data.updatedAt === -1) pending.push(this.load(e));
+        else if (!e.slot) this.makeSlot(e);
+      } else {
+        this.dropSlot(e);
+        if (d > KEEP) e.data = undefined;
+      }
     }
-    return NaN;
+    if (wait) await Promise.all(pending);
+  }
+
+  private load(e: Entry): Promise<void> {
+    if (e.loading) return e.loading;
+    e.loading = (async () => {
+      const saved = e.beach.location ? await this.api.beachByCode(e.beach.code).catch(() => null) : null;
+      let delta: Float32Array = new Float32Array(this.grid.nx * this.grid.ny);
+      let objects: PlacedObject[] = [];
+      if (saved) {
+        try {
+          const d = await decodeSand(saved.bytes);
+          delta = resampleField(d.delta, d.nx, d.ny, this.grid.nx, this.grid.ny);
+          objects = d.objects;
+        } catch {
+          /* unreadable save: show their beach untouched */
+        }
+      }
+      if (this.entries.get(e.index) !== e) return; // the shore changed meanwhile
+      e.data = { delta, objects, updatedAt: saved?.updatedAt ?? e.beach.updatedAt };
+      if (e.slot) this.repaint(e);
+      else if (e.index >= this.win[0] && e.index <= this.win[1]) this.makeSlot(e);
+    })().finally(() => (e.loading = undefined));
+    return e.loading;
+  }
+
+  private makeSlot(e: Entry): void {
+    if (!e.data || e.slot) return;
+    const x = e.index * NEIGHBOR_OFFSET;
+    const renderer = new BeachRenderer(this.scene, this.grid, this.rest, this.swell, x);
+    renderer.setChairView(this.chairView);
+    const objects = new ObjectView(this.scene, renderer, x);
+    const label = document.createElement('div');
+    label.className = 'neighbor-tag';
+    label.innerHTML = `<span class="name"></span>`;
+    label.querySelector('.name')!.textContent = this.title(e.beach);
+    const star = document.createElement('button');
+    star.type = 'button';
+    star.className = 'fav';
+    star.addEventListener('click', () => void this.toggleFavorite(e.beach).catch(() => {}));
+    label.appendChild(star);
+    this.uiRoot.appendChild(label);
+    e.slot = { renderer, objects, label, star };
+    this.paintStar(e);
+    this.repaint(e);
+  }
+
+  private paintStar(e: Entry): void {
+    if (!e.slot) return;
+    const on = this.favorites.has(e.beach.code);
+    e.slot.star.textContent = on ? '★' : '☆';
+    e.slot.star.classList.toggle('on', on);
+    e.slot.star.setAttribute('aria-label', on ? 'Remove from favorites' : 'Add to favorites');
+    e.slot.star.title = e.slot.star.getAttribute('aria-label')!;
+  }
+
+  private dropSlot(e: Entry): void {
+    if (!e.slot) return;
+    e.slot.objects.dispose();
+    e.slot.renderer.dispose();
+    e.slot.label.remove();
+    e.slot = undefined;
+  }
+
+  private repaint(e: Entry): void {
+    const s = e.slot;
+    const d = e.data;
+    if (!s || !d) return;
+    s.objects.setStatic(d.objects, (x, y) => this.heightAt(d.delta, x, y));
+    this.paint(s.renderer, d.delta);
+  }
+
+  /** Sand height at a world point on a drawn beach along the shore, or NaN if it isn't on one. */
+  heightAtWorld(x: number, z: number): number {
+    const i = Math.round(x / NEIGHBOR_OFFSET);
+    const e = this.entries.get(i);
+    if (!e?.data || (i === 0 && !this.visiting)) return NaN;
+    const sx = x - i * NEIGHBOR_OFFSET + WORLD_SIZE_X / 2;
+    const sy = z - ORIGIN_Z;
+    if (sx < 0 || sx > WORLD_SIZE_X || sy < 0 || sy > this.grid.ny * this.grid.dx) return NaN;
+    return this.heightAt(e.data.delta, sx, sy);
   }
 
   /** Their sand height at sim metres (bilinear). */
@@ -259,45 +391,46 @@ export class NeighborView {
   }
 
   /** Pack their sand with still water at the current tide into a field frame. */
-  private paint(s: Slot): void {
+  private paint(r: BeachRenderer, delta: Float32Array): void {
     const n = this.grid.nx * this.grid.ny;
     const buf = new Float32Array(n * 4);
     for (let k = 0, o = 0; k < n; k++, o += 4) {
-      const sand = this.rest[k] + s.delta[k];
+      const sand = this.rest[k] + delta[k];
       const water = Math.max(0, this.tide - sand);
       buf[o] = sand;
       buf[o + 1] = water;
       buf[o + 2] = water > 0.004 ? 1 : Math.max(0, Math.min(0.8, 1 - (sand - this.tide) / 0.35));
       buf[o + 3] = 0;
     }
-    s.renderer.showStatic(buf);
+    r.showStatic(buf);
   }
 
-  /** Per frame: shared lighting/sea, slow tide refresh, name tags follow the slabs. */
+  /** Per frame: which beaches to draw, shared lighting/sea, slow tide refresh, name tags. */
   update(p: Palette, camForward: Vector3, time: number, simTime: number, tide: number, amp: number): void {
-    if (!this.slots.size) return;
+    if (!this.entries.size) {
+      this.win = [0, 0];
+      return;
+    }
+    void this.fillWindow();
     const now = performance.now();
+    const slots = [...this.entries.values()].filter((e) => e.slot);
     if (Math.abs(tide - this.tide) > 0.01 && now - this.lastTideRefresh > 5000) {
       this.tide = tide;
       this.lastTideRefresh = now;
-      for (const s of this.slots.values()) this.paint(s);
+      for (const e of slots) this.repaint(e);
     }
     const engine = this.scene.getEngine();
     const cam = this.scene.activeCamera!;
     const vp = cam.viewport.toGlobal(engine.getRenderWidth(), engine.getRenderHeight());
     const scale = engine.getHardwareScalingLevel();
-    for (const s of this.slots.values()) {
+    for (const e of slots) {
+      const s = e.slot!;
       s.renderer.update(p, camForward, time, simTime, tide, amp);
-      const at = Vector3.Project(
-        new Vector3(s.renderer.offsetX, 1.4, 0),
-        Matrix.Identity(),
-        this.scene.getTransformMatrix(),
-        vp,
-      );
+      const at = Vector3.Project(new Vector3(s.renderer.offsetX, 1.4, 0), Matrix.Identity(), this.scene.getTransformMatrix(), vp);
       const x = at.x * scale;
       const y = at.y * scale;
       const visible = at.z > 0 && at.z < 1 && x > -100 && x < window.innerWidth + 100;
-      s.label.style.display = visible ? 'block' : 'none';
+      s.label.style.display = visible ? 'flex' : 'none';
       if (visible) s.label.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px) translate(-50%, -100%)`;
     }
   }

@@ -34,6 +34,9 @@ Migrations live in `src/migrations.ts` and are applied at startup.
 | `POST /api/neighbors/code` | new code; the old one stops working, and current neighbors keep you |
 | `GET /api/pulls` | `{ pools: [{ id, name, odds, items, free }], nextFree }`: the machines, their published odds, and whether today's free go is left |
 | `POST /api/pulls/:pool` | today's free go (`daily`): the server draws, records it (one per UTC day, enforced by the primary key) and adds the prize to `inventory`; 409 if already used |
+| `GET /api/shore?code=&depth=` | a beach (yours, or anyone's by code) and the beaches down the shore each way, nearest first (left's left's…), up to 8; stops at loops |
+| `GET /api/beaches/:code` | anyone's saved beach, by code |
+| `GET /api/favorites`, `PUT`/`DELETE /api/favorites/:code` | your starred beaches |
 | `GET /api/inventory` | `{ items: [{ item, quantity, source, acquiredAt, expiresAt }] }`: what you own beyond the free items, unexpired. Empty until the shop and pulls exist; rows are only written by the server. |
 
 Sessions are 60-day random bearer tokens, and only their SHA-256 is stored.
@@ -59,6 +62,14 @@ It fetches a neighbor's beach again only when their `updatedAt` changed, and
 repaints it in place. A change of who's next door triggers a full refresh.
 Polling stops while the app is in the background.
 
+**Codes are how you find a beach.** Anyone signed in who has a beach's code
+can visit it and see its first name, real location and sand. Walking down the
+shore shows the codes of the beaches you pass, so a beach you link to can be
+reached from its neighbors' neighbors. Getting a new code makes the old one
+stop working: links to you stay, but people who only had the old code lose
+the way. Before the store privacy forms, Muse should check that this wording
+matches: the first name and the beach are visible to other users.
+
 ## Client
 
 - `src/net/account.ts`: the session (token in localStorage), API calls,
@@ -81,6 +92,7 @@ Polling stops while the app is in the background.
 npm run server:dev                      # then, in another terminal:
 npm run e2e:accounts                    # sign in, dig, save, reload, restored, delete
 npm run e2e:neighbors                   # Ana saves; Ben adds her code on his left and sees her beach
+npm run e2e:shore                       # walk down a 3-beach shore, head home, visit by code, favorites
 ```
 
 CI runs the server tests on PGlite and on a Postgres 16 service, builds the
