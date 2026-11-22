@@ -21,6 +21,9 @@ export class CameraController {
   private panVel = new Vector3();
   private zoomFlash = 0;
   private lastPanAt = 0;
+  /** how far the camera may pan along the shore (widens when neighbors are shown) */
+  minX = -WORLD_SIZE_X / 2;
+  maxX = WORLD_SIZE_X / 2;
   /** keys currently held for keyboard panning */
   readonly held = new Set<string>();
 
@@ -148,7 +151,7 @@ export class CameraController {
 
   private moveTarget(d: Vector3): void {
     const t = this.camera.target;
-    t.x = Math.min(WORLD_SIZE_X / 2, Math.max(-WORLD_SIZE_X / 2, t.x + d.x));
+    t.x = Math.min(this.maxX, Math.max(this.minX, t.x + d.x));
     t.z = Math.min(WORLD_SIZE_Z / 2, Math.max(-WORLD_SIZE_Z / 2 - 4, t.z + d.z));
     t.y = PICK_Y;
     this.camera.target = t;

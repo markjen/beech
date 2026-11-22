@@ -76,8 +76,12 @@ check((await page.evaluate(() => window.__beech.account().user?.name)) === 'test
 // delete the account (two taps)
 await page.evaluate(() => window.__beech.sheet.show());
 await page.waitForTimeout(300);
-await page.click('button[data-act="delete"]');
-await page.click('button[data-act="delete"]');
+// both taps in one go: headless rendering is slow enough to miss the confirm window
+await page.evaluate(() => {
+  const b = document.querySelector('button[data-act="delete"]');
+  b.click();
+  b.click();
+});
 await page.waitForFunction(() => !window.__beech.account().user, null, { timeout: 10000 });
 check(true, 'account deleted and signed out');
 check(await page.isVisible('button[data-act="dev"]'), 'sign-in button is back');

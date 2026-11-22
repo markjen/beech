@@ -239,6 +239,7 @@ uniform vec3 foamCol;
 uniform vec3 fogCol;
 uniform float zEdge;
 uniform float halfX;
+uniform float centerX;
 ${FACET}
 void main() {
   vec3 N = facetNormal(vWorld);
@@ -251,7 +252,7 @@ void main() {
   col += sunCol * spec * 0.25;
   float f = smoothstep(2.0, 17.0, dist);
   // soften the cut sides a little as the sea recedes into the mist
-  f = max(f, smoothstep(halfX - 0.5 - dist * 0.25, halfX, abs(vWorld.x)) * smoothstep(0.0, 6.0, dist));
+  f = max(f, smoothstep(halfX - 0.5 - dist * 0.25, halfX, abs(vWorld.x - centerX)) * smoothstep(0.0, 6.0, dist));
   col = mix(col, fogCol, f * 0.55);
   float a = (1.0 - f) * 0.95;
   gl_FragColor = vec4(col, a);

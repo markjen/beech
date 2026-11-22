@@ -51,6 +51,8 @@ export class BeachRenderer {
     grid: GridSpec,
     rest: Float32Array,
     private readonly swell: SwellComponent[],
+    /** world X offset of this slab (neighbors sit either side of the player's beach) */
+    readonly offsetX = 0,
   ) {
     this.grid = grid;
     const { nx, ny } = grid;
@@ -108,6 +110,7 @@ export class BeachRenderer {
         'foamCol',
         'fogCol',
         'halfX',
+        'centerX',
       ],
       samplers: [],
     });
@@ -379,6 +382,7 @@ export class BeachRenderer {
     ocean.alphaIndex = 1;
     this.oceanMat.setFloat('zEdge', edgeZ);
     this.oceanMat.setFloat('halfX', hx);
+    this.oceanMat.setFloat('centerX', this.offsetX);
     this.oceanMat.setFloat('waveSpeed', WAVES.farSpeed);
 
     // stepped rock base under the slab: the floating-diorama look
@@ -391,6 +395,7 @@ export class BeachRenderer {
     for (const r of rocks) r.material = this.rockMat;
 
     for (const m of [sand, water, skirt, wskirt, ocean, ...rocks]) {
+      m.position.x = this.offsetX;
       m.alwaysSelectAsActiveMesh = true;
       m.isPickable = false;
       m.freezeWorldMatrix();
@@ -404,6 +409,25 @@ export class BeachRenderer {
       m.setTexture('fieldCur', this.texCur);
       m.setVector2('gridSize', new Vector2(this.grid.nx, this.grid.ny));
     }
+  }
+
+  /** Show a still snapshot (neighbors): the same packed frame as both prev and current. */
+  showStatic(buf: Float32Array): void {
+    this.uploadFrame(buf);
+    this.uploadFrame(buf);
+    this.frameMix = 1;
+  }
+
+  dispose(): void {
+    const mats = new Set<ShaderMaterial>();
+    for (const m of this.meshes) {
+      if (m.material) mats.add(m.material as ShaderMaterial);
+      m.dispose();
+    }
+    for (const m of mats) m.dispose();
+    this.texPrev.dispose();
+    this.texCur.dispose();
+    this.restTex.dispose();
   }
 
   // ---------------------------------------------------------------- per frame

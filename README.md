@@ -10,7 +10,8 @@ flat-shaded diorama style.
 - **How the code fits together:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - **Milestone status and decisions:** [docs/STATUS.md](docs/STATUS.md)
 - **Web deploy:** [docs/DEPLOY.md](docs/DEPLOY.md). Sandbox at https://markjen.com/beech/ (GitHub Pages)
-- **Accounts, saved beaches and production hosting:** [docs/BACKEND.md](docs/BACKEND.md)
+- **Accounts, saved beaches and neighbors:** [docs/BACKEND.md](docs/BACKEND.md)
+- **Production on Google Cloud (Cloud Run + Cloud SQL):** [docs/GCP.md](docs/GCP.md)
 - **App Store / Google Play:** [docs/MOBILE.md](docs/MOBILE.md)
 - **Working on this repo as an agent:** [CLAUDE.md](CLAUDE.md)
 
@@ -59,7 +60,8 @@ https://doi.org/10.1594/PANGAEA.951610, CC-BY 4.0.
 | `npm run build` | Typecheck and build to `dist/` |
 | `npm run preview` | Serve the built `dist/` on :4173 |
 | `npm test` | Vitest unit tests (simulation, brush math, tides, sun and moon, sand codec) |
-| `npm run server:dev` | Build with accounts + dev sign-in and run the API Worker locally on :8787 |
+| `npm run server:dev` | Build with accounts + dev sign-in and run the server locally on :8787 (embedded Postgres) |
+| `npm run e2e:neighbors` | Browser test: add a neighbor by code and see their beach |
 | `npm run e2e:accounts` | Browser test of sign-in → dig → save → reload → restored → delete |
 | `npm run smoke` | Headless browser smoke test of the built app, including offline start (needs Playwright + Chromium) |
 | `npm run icons` | Regenerate PWA icons and native icon/splash sources from code |

@@ -1,0 +1,76 @@
+name: Deploy production (Google Cloud Run)
+
+# Builds the production container (web app with accounts + API server) and
+# deploys it to Cloud Run, connected to Cloud SQL for PostgreSQL.
+# GitHub Pages keeps serving the public sandbox build (no sign-in).
+#
+# One-time setup and the variables below: docs/GCP.md
+#   vars.GCP_ENABLED = 1            turns this workflow on
+#   vars.GCP_PROJECT_ID, vars.GCP_REGION
+#   vars.GCP_WIF_PROVIDER           projects/<num>/locations/global/workloadIdentityPools/github/providers/github
+#   vars.GCP_DEPLOY_SA              deployer service account email
+#   vars.GCP_RUNTIME_SA             service account the service runs as
+#   vars.GCP_SQL_INSTANCE           <project>:<region>:beech-db
+#   vars.GOOGLE_CLIENT_ID           OAuth web client ID (public)
+#   vars.GOOGLE_CLIENT_IDS          accepted client IDs, comma-separated (web, iOS, Android)
+#   vars.APPLE_CLIENT_IDS           optional
+# No keys are stored in GitHub: authentication is Workload Identity Federation,
+# and the database password lives in Secret Manager (beech-db-password).
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: gcp-prod
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: ${{ vars.GCP_ENABLED == '1' }}
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      REGION: ${{ vars.GCP_REGION }}
+      IMAGE: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/beech/beech:${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci && npm test
+      - name: Server tests
+        working-directory: server
+        run: npm ci && npm run typecheck && npm test
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Build and push the image
+        run: |
+          gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet
+          docker build -t "$IMAGE" --build-arg "VITE_GOOGLE_CLIENT_ID=${{ vars.GOOGLE_CLIENT_ID }}" .
+          docker push "$IMAGE"
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy beech \
+            --image "$IMAGE" \
+            --region "$REGION" \
+            --allow-unauthenticated \
+            --service-account "${{ vars.GCP_RUNTIME_SA }}" \
+            --add-cloudsql-instances "${{ vars.GCP_SQL_INSTANCE }}" \
+            --set-env-vars "^@^DB_SOCKET=/cloudsql/${{ vars.GCP_SQL_INSTANCE }}@DB_NAME=beech@DB_USER=beech@GOOGLE_CLIENT_IDS=${{ vars.GOOGLE_CLIENT_IDS }}@APPLE_CLIENT_IDS=${{ vars.APPLE_CLIENT_IDS }}" \
+            --set-secrets "DB_PASSWORD=beech-db-password:latest" \
+            --cpu 1 --memory 512Mi --concurrency 80 \
+            --min-instances 0 --max-instances 10
+      - name: Smoke test
+        run: |
+          URL=$(gcloud run services describe beech --region "$REGION" --format 'value(status.url)')
+          curl -fsS "$URL/api/health"
+          curl -fsS -o /dev/null "$URL/"

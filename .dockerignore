@@ -1,0 +1,16 @@
+node_modules
+server/node_modules
+server/build
+server/.data
+dist
+dist-artifact
+android
+ios
+resources
+.git
+.github
+docs
+tests
+scripts
+coverage
+*.log

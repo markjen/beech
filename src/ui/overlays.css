@@ -362,3 +362,63 @@
   font-size: 12px;
   color: #b0414a;
 }
+
+/* ---------------------------------------------------------- neighbors */
+
+.neighbor-tag {
+  position: fixed;
+  left: 0;
+  top: 0;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  color: var(--ui-fg);
+  background: var(--ui-bg);
+  box-shadow: 0 4px 14px var(--ui-shadow);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  pointer-events: none;
+}
+
+.neighbors {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.neighbors .code {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 17px;
+  letter-spacing: 0.2em;
+  font-weight: 600;
+}
+
+.neighbors .slot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-height: 40px;
+}
+
+.neighbors .slot > span:first-child {
+  width: 3.2em;
+  opacity: 0.7;
+}
+
+.neighbors input {
+  font: inherit;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  width: 8.5em;
+  padding: 7px 10px;
+  border-radius: 10px;
+  border: 1.5px solid currentColor;
+  background: transparent;
+  color: inherit;
+  opacity: 0.85;
+}

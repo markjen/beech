@@ -118,27 +118,42 @@
 - Tulum was dropped: its nearest coastal gauge is 94 km away, and its main
   tide constant (7 mm) is implausible.
 
-## Accounts and saved beaches (in progress)
+## Accounts, saved beaches and neighbors (built; production waits on GCP setup)
 
-Built and tested locally; production hosting waits on the owner's Cloudflare and Google Cloud setup (docs/BACKEND.md).
+- **Production target: Google Cloud.** Cloud Run runs one container (the web
+  app plus the API), backed by Cloud SQL for PostgreSQL. It deploys from
+  `deploy-gcp.yml` with Workload Identity Federation. The setup commands are
+  in docs/GCP.md, and the workflow is gated on `vars.GCP_ENABLED`.
+  This replaced the earlier Cloudflare Worker + D1 draft, at the owner's
+  request.
+- **`server/`:** Node 22 + Hono + `pg`, with PGlite for local dev and tests.
+  It covers Google/Apple ID-token sign-in, hashed bearer sessions, save/load
+  beach, delete account, and neighbors (codes, left/right slots, reading a
+  neighbor's beach, rotating a code). Migrations run at startup under an
+  advisory lock.
+- **Verified here:**
+  - 11 server tests, on PGlite and on a real Postgres 16
+  - the production Docker image builds; booted against Postgres it serves the
+    app with immutable asset caching, rejects forged tokens, keeps dev auth
+    off, and refuses to start with `DEV_AUTH=1`
+  - browser end-to-end tests for accounts (sign in, dig, save, reload, delete)
+    and neighbors (add by code, see their beach and name tag, pan over, move
+    away)
+- **Bugs found and fixed while building neighbors:**
+  - the service worker cached `/api/*` GETs, which served one account's data
+    to the next. It now bypasses the API (cache bumped to v2), and every API
+    response is `no-store`.
+  - a queued save from one account could land in the next account after a
+    switch.
+- **Not done:**
+  - native sign-in in the Capacitor apps (Google blocks WebView OAuth)
+  - Sign in with Apple on iOS (required once Google sign-in ships there)
+  - mutual neighbor requests
+  - live (rather than snapshot) neighbor sand
 
-- `server/`: a Cloudflare Worker with D1. It serves the web app and `/api`
-  for Google and Apple ID-token sign-in, sessions, save/load beach, and
-  delete account. Unit tests cover token verification. The API end-to-end
-  test runs against `wrangler dev` in CI.
-- The client is gated by `VITE_ACCOUNTS`, so the GitHub Pages sandbox build
-  has no sign-in. It includes the account panel, beach sync, and the compact
-  sand codec (`src/sim/sandCodec.ts`, with resampling between quality tiers).
-- The browser end-to-end test (`npm run e2e:accounts`) covers dev sign-in,
-  dig, save, reload with the beach restored at the same real beach, then
-  deleting the account.
-- Not done: native sign-in in the Capacitor apps (Google blocks WebView
-  OAuth). Sign in with Apple on iOS is required by App Store rules once
-  Google sign-in ships there. See BACKEND.md, "Phone apps".
-- GitHub Pages: the `github-pages` environment only accepts the repo's
-  default branch (`ccr-85f84f81-0scrin` today), so Pages deploys run from
-  there. Switch the default branch to `main` (Settings → General) and allow
-  `main` under Settings → Environments → github-pages.
+GitHub Pages: the `github-pages` environment only accepts the repo's default
+branch, so the deploy job runs only there. Switch the default branch to
+`main` to deploy Pages from `main`.
 
 ## Ideas beyond the plan (not started)
 

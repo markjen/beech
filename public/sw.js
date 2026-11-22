@@ -3,7 +3,8 @@
 // - everything else from this origin (hashed JS/CSS, icons): cache first
 // Vite gives built assets content hashes, so a new deploy just adds new files;
 // old ones are pruned when this file's CACHE version changes.
-const CACHE = 'beech-v1';
+// /api/* always goes to the network.
+const CACHE = 'beech-v2';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icons/icon-192.png'];
 
 self.addEventListener('install', (event) => {
@@ -29,6 +30,8 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
+  // the API is live, per-user data: never serve it from a cache
+  if (url.pathname.includes('/api/')) return;
 
   if (req.mode === 'navigate') {
     event.respondWith(

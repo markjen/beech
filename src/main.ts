@@ -25,6 +25,7 @@ import { SettingsSheet, StartScreen, showHint } from './ui/overlays';
 import { ACCOUNTS_ENABLED, Account } from './net/account';
 import { BeachSync } from './net/beachSync';
 import { AccountPanel } from './ui/accountPanel';
+import { NeighborView } from './render/neighbors';
 import { loadSettings, saveSettings, type Settings } from './ui/settingsStore';
 
 const params = new URLSearchParams(location.search);
@@ -483,6 +484,7 @@ async function boot() {
     const simTime = prevT + (info.t - prevT) * mix;
     const amp = (1 - (1 - WAVES.calmFactor) * info.calmMix) * beach.waves;
     renderer.update(palette, cam.forward(), (now - t0) / 1000, simTime, info.tide, amp);
+    neighbors?.update(palette, cam.forward(), (now - t0) / 1000, simTime, info.tide, amp);
     const sk = liveState.sky;
     const moonDisc = skyDisc(sk.moon.dir, sk.moon.elevation);
     sky.update(
@@ -521,6 +523,7 @@ async function boot() {
   window.visualViewport?.addEventListener('resize', onResize);
   // ---------------------------------------------------------------- accounts
   let account: Account | null = null;
+  let neighbors: NeighborView | null = null;
   let sync: BeachSync | null = null;
   if (ACCOUNTS_ENABLED) {
     account = new Account();
@@ -536,9 +539,22 @@ async function boot() {
     });
     const s = sync;
     markDirty = (delayMs?: number) => s.markDirty(delayMs);
-    const bring = () => s.restoreOrCreate().catch(() => {});
-    new AccountPanel(sheet.accountSlot, account, s, () => void bring());
-    void account.restore().then((u) => u && bring());
+    neighbors = new NeighborView(scene, grid, ready.rest, swell, cam, uiRoot, account);
+    const nv = neighbors;
+    // whenever someone new signs in (or a saved session comes back), bring
+    // back their beach and their neighbors
+    let signedInAs: string | null = null;
+    account.onChange((u) => {
+      if (u && u.id !== signedInAs) {
+        void s.restoreOrCreate().catch(() => {});
+        void nv.refresh();
+      } else if (!u) {
+        nv.clear();
+      }
+      signedInAs = u?.id ?? null;
+    });
+    new AccountPanel(sheet.accountSlot, account, s, () => {}, nv);
+    void account.restore();
   }
 
   document.addEventListener('visibilitychange', () => {
@@ -567,6 +583,7 @@ async function boot() {
     shells,
     beach: () => beach,
     account: () => account,
+    neighbors: () => neighbors,
     sync: () => sync,
     live: () => ({ ...liveState, palette: undefined }),
     setBeach: (id: string) => {

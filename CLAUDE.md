@@ -28,11 +28,13 @@ Read these first:
   hand-edit `android/app/src/main/assets/public` or `ios/App/App/public`; they
   are generated and git-ignored.
 - Two builds: the sandbox (default `npm run build`, used by GitHub Pages; no
-  accounts) and production (`VITE_ACCOUNTS=1 …`, served by the Worker in
-  `server/`). Keep anything that needs the network behind `ACCOUNTS_ENABLED`.
-- Server changes: `cd server && npm run typecheck && npm test`, and run the
-  API end-to-end against `npm run dev` (see docs/BACKEND.md). Never enable
-  `DEV_AUTH` outside local development.
+  accounts) and production (`VITE_ACCOUNTS=1 …`, served by the Node server in
+  `server/`, which runs on Cloud Run, see docs/GCP.md). Keep anything that needs the network behind `ACCOUNTS_ENABLED`.
+- Server changes: `cd server && npm run typecheck && npm test` (PGlite; set
+  `TEST_DATABASE_URL` to also run against real Postgres), then
+  `npm run server:dev` with `npm run e2e:accounts` and `npm run e2e:neighbors`.
+  Schema changes are new entries appended to `server/src/migrations.ts`, never
+  edits to applied ones. Never enable `DEV_AUTH` outside local development.
 - Android builds here need an SDK: install the command-line tools to a scratch
   dir, set `ANDROID_HOME`, then `cd android && ./gradlew assembleDebug`. iOS
   builds need macOS; rely on the `mobile.yml` CI job.

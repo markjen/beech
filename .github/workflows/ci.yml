@@ -20,28 +20,36 @@ jobs:
 
   server:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: beech
+          POSTGRES_PASSWORD: beech
+          POSTGRES_DB: beech_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U beech" --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
-      - name: Build the app with accounts + dev sign-in (for the local Worker)
-        run: npm run build
-        env:
-          VITE_ACCOUNTS: '1'
-          VITE_DEV_AUTH: '1'
-      - name: Server unit tests + typecheck
+      - name: Server typecheck + tests on PGlite
         working-directory: server
         run: npm ci && npm run typecheck && npm test
-      - name: API end-to-end against wrangler dev (local D1)
+      - name: Same tests on real Postgres 16
         working-directory: server
         env:
-          WRANGLER_SEND_METRICS: 'false'
+          TEST_DATABASE_URL: postgres://beech:beech@localhost:5432/beech_test
+        run: npm test
+      - name: Production image builds and boots
         run: |
-          cp .dev.vars.example .dev.vars
-          npm run migrate:local
-          (npx wrangler dev --local --persist-to .wrangler/state --port 8787 --ip 127.0.0.1 > wrangler.log 2>&1 &)
-          for i in $(seq 1 60); do curl -sf http://127.0.0.1:8787/api/health && break; sleep 1; done
-          BEECH_API=http://127.0.0.1:8787 npm run test:e2e || (cat wrangler.log; exit 1)
+          docker build -t beech:ci --build-arg VITE_GOOGLE_CLIENT_ID=ci-client .
+          docker run -d --name beech --network host -e PORT=8080 \
+            -e DATABASE_URL=postgres://beech:beech@localhost:5432/beech_test beech:ci
+          for i in $(seq 1 30); do curl -fs http://localhost:8080/api/health && break; sleep 1; done
+          curl -fs -o /dev/null http://localhost:8080/
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/api/me)" = 401
+          docker logs beech

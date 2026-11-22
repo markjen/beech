@@ -29,6 +29,18 @@ export class BeachSync {
     private readonly account: Account,
     private readonly host: SyncHost,
   ) {
+    // a different person (or nobody): drop anything queued for the last one,
+    // so one person's sand is never saved into another's account
+    let who = account.user?.id ?? null;
+    account.onChange((u) => {
+      const next = u?.id ?? null;
+      if (next === who) return;
+      who = next;
+      window.clearTimeout(this.timer);
+      this.dirty = false;
+      this.savedAt = 0;
+      this.set('idle');
+    });
     // waves keep reshaping the sand, so save now and then while signed in
     window.setInterval(() => {
       if (this.account.user && this.dirty) void this.flush();
@@ -54,12 +66,14 @@ export class BeachSync {
 
   async flush(keepalive = false): Promise<void> {
     if (!this.account.user || this.busy) return;
+    const forUser = this.account.user.id;
     this.busy = true;
     window.clearTimeout(this.timer);
     this.set('saving');
     try {
       const delta = await this.host.getSand();
       const bytes = await encodeSand(delta, this.host.grid.nx, this.host.grid.ny);
+      if (this.account.user?.id !== forUser) return; // switched accounts mid-save
       this.savedAt = await this.account.saveBeach(bytes, this.host.location(), this.host.grid.nx, this.host.grid.ny, keepalive);
       this.dirty = false;
       this.set('saved');

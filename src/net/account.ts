@@ -68,6 +68,11 @@ export class Account {
     for (const fn of this.listeners) fn(this.user);
   }
 
+  /** Authenticated request to the API (used by NeighborApi). */
+  fetch(path: string, init: RequestInit = {}): Promise<Response> {
+    return this.call(path, init);
+  }
+
   private async call(path: string, init: RequestInit = {}): Promise<Response> {
     const headers = new Headers(init.headers);
     if (this.token) headers.set('Authorization', `Bearer ${this.token}`);
@@ -171,6 +176,75 @@ export class Account {
     });
     if (!res.ok) throw new ApiError(res.status, 'could not save your beach');
     return ((await res.json()) as { updatedAt: number }).updatedAt;
+  }
+}
+
+export type Side = 'left' | 'right';
+
+export interface Neighbor {
+  id: string;
+  name: string;
+  /** their real beach id, or null if they haven't saved yet */
+  location: string | null;
+  updatedAt: number | null;
+}
+
+export interface Neighbors {
+  /** your code, to share with people who want you next door */
+  code: string;
+  left: Neighbor | null;
+  right: Neighbor | null;
+  /** how many beaches have you as a neighbor */
+  pickedBy: number;
+}
+
+async function errorOf(res: Response, fallback: string): Promise<ApiError> {
+  const data = (await res.json().catch(() => ({}))) as { error?: string };
+  return new ApiError(res.status, data.error ?? fallback);
+}
+
+/** The beaches on either side of yours. */
+export class NeighborApi {
+  constructor(private readonly account: Account) {}
+
+  async get(): Promise<Neighbors> {
+    const res = await this.account.fetch('/api/neighbors');
+    if (!res.ok) throw await errorOf(res, 'could not load your neighbors');
+    return (await res.json()) as Neighbors;
+  }
+
+  async set(side: Side, code: string): Promise<Neighbor> {
+    const res = await this.account.fetch(`/api/neighbors/${side}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
+    });
+    if (!res.ok) throw await errorOf(res, 'could not add that neighbor');
+    return ((await res.json()) as { neighbor: Neighbor }).neighbor;
+  }
+
+  async remove(side: Side): Promise<void> {
+    const res = await this.account.fetch(`/api/neighbors/${side}`, { method: 'DELETE' });
+    if (!res.ok) throw await errorOf(res, 'could not remove that neighbor');
+  }
+
+  async beach(side: Side): Promise<SavedBeach | null> {
+    const res = await this.account.fetch(`/api/neighbors/${side}/beach`);
+    if (res.status === 404) return null;
+    if (!res.ok) throw await errorOf(res, 'could not load their beach');
+    return {
+      location: res.headers.get('X-Beach-Location') ?? '',
+      nx: Number(res.headers.get('X-Beach-Nx')),
+      ny: Number(res.headers.get('X-Beach-Ny')),
+      updatedAt: Number(res.headers.get('X-Beach-Updated')),
+      bytes: new Uint8Array(await res.arrayBuffer()),
+    };
+  }
+
+  async newCode(): Promise<string> {
+    const res = await this.account.fetch('/api/neighbors/code', { method: 'POST' });
+    if (!res.ok) throw await errorOf(res, 'could not make a new code');
+    return ((await res.json()) as { code: string }).code;
   }
 }
 
