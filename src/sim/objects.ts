@@ -218,6 +218,16 @@ export class BeachObjects {
     return best ? { ...best } : null;
   }
 
+  /** Every object within `radius` metres of a point (a big object's reach counts, as in nearest). */
+  within(x: number, y: number, radius: number): PlacedObject[] {
+    const out: PlacedObject[] = [];
+    for (const l of this.live.values()) {
+      const reach = l.data.kind === 'driftwood' ? l.data.size / 2 : l.data.size;
+      if (Math.hypot(l.data.x - x, l.data.y - y) - reach * 0.6 <= radius) out.push({ ...l.data });
+    }
+    return out;
+  }
+
   private embedRock(o: PlacedObject): RockCells {
     const { nx, ny, dx, sand, bottom } = this.h;
     // a little inside the drawn rock, so the rock always covers the sand it lifts

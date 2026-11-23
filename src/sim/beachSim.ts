@@ -14,7 +14,17 @@ import { UndoStack, type UndoEntry } from './undoStack';
 import { BeachObjects, type PlacedObject } from './objects';
 
 /** dig, build up, smooth, or bulldoze (flatten back to the untouched beach) */
-export type BrushMode = 'dig' | 'pile' | 'smooth' | 'flatten';
+export type BrushMode = 'dig' | 'pile' | 'smooth' | 'flatten' | 'dozer' | 'vacuum';
+
+/**
+ * The three modes of the one top-level clearing tool: flatten the sand back
+ * to the untouched beach, bulldoze (flatten + scoop up what's in the blade's
+ * path), or vacuum (pick items up, sand untouched).
+ */
+export type ClearingMode = 'flatten' | 'dozer' | 'vacuum';
+export const CLEARING_MODES: ClearingMode[] = ['flatten', 'dozer', 'vacuum'];
+export const isClearingMode = (id: string): id is ClearingMode =>
+  (CLEARING_MODES as string[]).includes(id);
 
 export interface SimFlags {
   waves: boolean;
@@ -118,6 +128,8 @@ export class BeachSim {
     j0: number;
     i1: number;
     j1: number;
+    /** objects the stroke swept up (dozer blade or vacuum) */
+    swept: PlacedObject[];
   } | null = null;
   /** 0..1 how hard the brush is working this tick (for audio/haptics) */
   digIntensity = 0;
@@ -601,6 +613,7 @@ export class BeachSim {
       j0: Math.floor(cj),
       i1: Math.ceil(ci),
       j1: Math.ceil(cj),
+      swept: [],
     };
   }
 
@@ -621,7 +634,13 @@ export class BeachSim {
     if (!st) return;
     this.stroke = null;
     const entry = this.diffRegion(st.snapshot, st.i0, st.j0, st.i1, st.j1);
-    if (entry) this.undo.push(entry);
+    if (entry) {
+      if (st.swept.length) entry.removed = st.swept;
+      this.undo.push(entry);
+    } else if (st.swept.length) {
+      // the stroke only swept up objects: still undoable, sand untouched
+      this.undo.push({ i0: 0, j0: 0, w: 0, h: 0, delta: new Float32Array(0), removed: st.swept });
+    }
   }
 
   /** Abort the current stroke and put the sand back exactly as it was. */
@@ -636,6 +655,8 @@ export class BeachSim {
         this.sand[k] = st.snapshot[k];
       }
     }
+    // and anything the blade or vacuum already swept up goes back on the beach
+    for (const o of st.swept) this.objects.add({ ...o });
   }
 
   private clipBox(i0: number, j0: number, i1: number, j1: number) {
@@ -698,6 +719,8 @@ export class BeachSim {
       const x = st.lastX + dxm * t;
       const y = st.lastY + dym * t;
       this.stamp(st.mode, x, y, st.r, amount, dist > 1e-6 ? st.dirX : 0, dist > 1e-6 ? st.dirY : 0);
+      if (st.mode === 'dozer') this.sweepAt(st, x, y, st.r * BRUSH.flattenWidth);
+      else if (st.mode === 'vacuum') this.sweepAt(st, x, y, st.r);
       const [ci, cj] = this.toCell(x, y);
       const rc = Math.ceil((st.r * Math.max(BRUSH.rimOuter, BRUSH.flattenWidth)) / this.dx) + 1;
       st.i0 = Math.min(st.i0, Math.floor(ci) - rc);
@@ -710,9 +733,26 @@ export class BeachSim {
     this.digIntensity = Math.min(1, 0.25 + rate / BRUSH.rateHeld * 0.5 + Math.min(1, speed / 3) * 0.5);
   }
 
+  /**
+   * The dozer blade or the vacuum nozzle sweeps up whatever it passes over.
+   * Taking it off the beach is the return to the bag: the inventory counts
+   * what's placed, so the next save (which persists the objects list) puts
+   * it back in hand. Rocks stay — they're terrain. The sea's strays (wild)
+   * are swept away too, but they were never yours.
+   */
+  private sweepAt(st: NonNullable<typeof this.stroke>, x: number, y: number, radius: number): void {
+    for (const o of this.objects.within(x, y, radius)) {
+      if (o.kind === 'rock') continue;
+      const taken = this.objects.remove(o.id);
+      if (taken) st.swept.push(taken);
+    }
+  }
+
   /** One brush dab. amount = depth (m) at the centre. */
   stamp(mode: BrushMode, x: number, y: number, r: number, amount: number, dirX = 0, dirY = 0): void {
     const { nx, ny, dx, sand, bottom } = this;
+    // the vacuum moves no sand at all: it only sweeps up objects (see sweepAt)
+    if (mode === 'vacuum') return;
     const [ci, cj] = this.toCell(x, y);
     const rc = r / dx;
     const outer = rc * BRUSH.rimOuter;
@@ -736,7 +776,7 @@ export class BeachSim {
       return;
     }
 
-    if (mode === 'flatten') {
+    if (mode === 'flatten' || mode === 'dozer') {
       // the bulldozer: a wide blade with a flat middle that pushes the sand
       // back to the untouched beach (never through a rock: those raise `bottom`)
       const { rest } = this;
@@ -851,7 +891,8 @@ export class BeachSim {
     const e = this.undo.popUndo();
     if (!e) return false;
     if (e.obj) this.applyObject(e.obj, -1);
-    else this.scheduleDelta(e, -1, ease);
+    if (e.removed) this.applyRemoved(e.removed, -1);
+    if (e.w > 0 && e.h > 0) this.scheduleDelta(e, -1, ease);
     return true;
   }
 
@@ -860,7 +901,8 @@ export class BeachSim {
     const e = this.undo.popRedo();
     if (!e) return false;
     if (e.obj) this.applyObject(e.obj, 1);
-    else this.scheduleDelta(e, 1, ease);
+    if (e.removed) this.applyRemoved(e.removed, 1);
+    if (e.w > 0 && e.h > 0) this.scheduleDelta(e, 1, ease);
     return true;
   }
 
@@ -894,6 +936,15 @@ export class BeachSim {
     const putBack = (obj.op === 'add') === sign > 0;
     if (putBack) this.objects.add({ ...obj.data });
     else this.objects.remove(obj.data.id);
+  }
+
+  /** Undo of a dozer/vacuum stroke puts the swept-up objects back; redo takes them off again. */
+  private applyRemoved(removed: PlacedObject[], sign: number): void {
+    if (sign < 0) {
+      for (const o of removed) this.objects.add({ ...o });
+    } else {
+      for (const o of removed) this.objects.remove(o.id);
+    }
   }
 
   /** Put the whole beach back to its rest shape (undoable). */

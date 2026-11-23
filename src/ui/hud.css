@@ -47,6 +47,28 @@
   color: var(--ui-bg);
 }
 
+/* modes of a grouped tool (the clearing tool): a small strip under its button */
+.hud-modes {
+  display: none;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 0 2px;
+}
+
+.hud-modes.open {
+  display: flex;
+}
+
+.hud-tools .hud-mode {
+  width: 32px;
+  height: 32px;
+}
+
+.hud-tools .hud-mode.active {
+  background: var(--ui-fg);
+  color: var(--ui-bg);
+}
+
 .hud-left {
   left: calc(var(--pad) + env(safe-area-inset-left));
   bottom: calc(var(--pad) + env(safe-area-inset-bottom));
@@ -821,6 +843,11 @@
 
   .hud-tools {
     flex-direction: row;
+  }
+
+  .hud-modes {
+    flex-direction: row;
+    padding: 0 6px 0 2px;
   }
 
   .inv-tray {
