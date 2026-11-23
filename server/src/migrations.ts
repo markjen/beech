@@ -224,6 +224,18 @@ const MIGRATIONS: string[] = [
   INSERT INTO star_first (user_id, beach_id, at) SELECT user_id, beach_id, created_at FROM favorites;
   CREATE INDEX favorites_beach ON favorites (beach_id);
   `,
+  // 11: digging finds (docs/DIGGING_FINDS.md). One row per person: how many
+  // buried items they dug up today (UTC), and when they last rolled, so a
+  // fast client can't spin the roll. The finds themselves are logged in
+  // `pulls` (pool 'dig') and granted in `inventory` (source 'pull').
+  `
+  CREATE TABLE dig_state (
+    user_id UUID PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,
+    day TEXT NOT NULL,                 -- UTC date of the last roll, YYYY-MM-DD
+    finds INTEGER NOT NULL DEFAULT 0 CHECK (finds >= 0),
+    last_roll_at BIGINT NOT NULL DEFAULT 0
+  );
+  `,
 ];
 
 /** Apply migrations up to `upTo` (default: all). Tests use `upTo` to check a migration on older data. */

@@ -628,6 +628,110 @@
   filter: drop-shadow(0 0 16px #c06fd6);
 }
 
+/* ---- digging finds ---- */
+.digfind {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(46, 40, 78, 0.25);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  z-index: 20;
+}
+
+.digfind.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.digfind-card {
+  position: relative;
+  width: min(340px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  padding: 18px 18px 14px;
+  border-radius: 24px;
+  color: var(--ui-fg);
+  background: var(--ui-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 14px 40px var(--ui-shadow);
+  text-align: center;
+}
+
+.digfind-card h2 {
+  margin: 0 0 10px;
+  font-size: 17px;
+}
+
+.digfind-close {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  width: 36px;
+  height: 36px;
+  border: none;
+  background: none;
+  color: inherit;
+  font-size: 24px;
+  cursor: pointer;
+}
+
+.digfind-place {
+  margin-top: 8px;
+  padding: 12px 26px;
+  border: none;
+  border-radius: 999px;
+  color: var(--ui-bg);
+  background: var(--ui-fg);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.digfind-note {
+  margin: 8px 0 4px;
+  font-size: 13px;
+}
+
+.digfind-reveal {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  animation: claw-pop 0.35s ease;
+}
+
+.digfind-reveal b {
+  font-size: 20px;
+}
+
+.digfind-prize svg {
+  width: 96px;
+  height: 96px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.digfind-reveal.rarity-uncommon .digfind-prize {
+  filter: drop-shadow(0 0 12px #a8d8a0);
+}
+
+.digfind-reveal.rarity-rare .digfind-prize {
+  filter: drop-shadow(0 0 12px #8ec5e8);
+}
+
+.digfind-reveal.rarity-unique .digfind-prize {
+  filter: drop-shadow(0 0 16px #c06fd6);
+}
+
 /* ---- item in hand: size slider ---- */
 .place-bar {
   position: absolute;
