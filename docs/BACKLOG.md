@@ -74,7 +74,10 @@ _(nothing right now)_
 - [ ] **More prizes**: each pool item needs a catalog entry, a kind, a mesh
   and an icon; `tests/items.test.ts` keeps the pools and catalog in step.
 - [ ] **TV**: test on a real Android TV (D-pad focus on the settings sheet,
-  leanback banner). Add Chromecast / AirPlay casting for phones → TV.
+  leanback banner). Add Chromecast / AirPlay casting for phones → TV
+  (an in-app cast button needs a custom Cast receiver app — $5 console
+  registration; tab casting from Chrome works today, see
+  [CHROME_TV_CAST.md](CHROME_TV_CAST.md)).
 - [ ] **API rate limiting**: a per-IP limit in the server, or Cloud Armor in
   front.
 - [ ] **Keep my beach off the shore**: a setting to leave the global beachfront
@@ -110,8 +113,26 @@ _(nothing right now)_
 - [x] **Leaderboard of the most-starred beaches** (2026-11-23): a trophy
   button opens "All time" (stars now) and "Rising" (star velocity: this
   week's stars, halved every 2 days of age). Visit or star from each row.
-  `GET /api/leaderboard`, migration 9 (`star_first`), `npm run e2e:leaderboard`.
+  `GET /api/leaderboard`, migration 10 (`star_first`), `npm run e2e:leaderboard`.
 
+- [x] **Chrome fullscreen + TV casting** (2026-11-22): the PWA manifest
+  named `.webp` icons that were never shipped, so Chrome never offered to
+  install — now the real 192/512/maskable PNGs, with `tests/pwa.test.ts`
+  guarding them; one-tap "watch on TV" in settings (ambient + chair view
+  + fullscreen). Packaged Chrome Apps are deprecated/removed, so the path
+  is install the PWA, fullscreen, cast the tab — see
+  [CHROME_TV_CAST.md](CHROME_TV_CAST.md).
+- [x] **Observability** (2026-11-22): structured JSON request logs +
+  log-based metrics, client error/perf reporting, a Monitoring dashboard,
+  uptime checks and 5 alerts to markjen@gmail.com (branch
+  `feat/observability`, commit f98ff9d, pushed; Terraform applied,
+  all 17 resources live — see docs/OBSERVABILITY.md).
+- [x] **Share your beach by link, and gift items** (2026-11-22):
+  `?visit=CODE` opens that beach once signed in; copy-link button next
+  to your code; Open Graph previews for shared links; `POST /api/gifts`
+  moves one owned item to the owner of the beach with that code — instant,
+  atomic, 20 an hour. Design and decisions in
+  [SHARING_GIFTING.md](SHARING_GIFTING.md). Commit `6d05a46`.
 - [x] **Claw starter gifts** (rare, shop item, extra beach after a day),
   the Deckchair, and the multi-beach design (2026-11-23).
 

@@ -350,7 +350,7 @@ branch, so the deploy job runs only there. Switch the default branch to
   shore bar) update the open board.
 - Off-shore and never-saved beaches aren't listed. Signed out, the panel
   offers sign-in. The sandbox has no button.
-- Migration 9 adds `star_first` (when each person first starred each
+- Migration 10 adds `star_first` (when each person first starred each
   beach), so re-starring can't make a star look new.
 - `npm run e2e:leaderboard` covers ordering, rising, starring from the
   board and the shore bar, visiting from the board, and signed out.

@@ -25,21 +25,30 @@ import { makeSwell } from './sim/waves';
 import { restHeight } from './sim/profile';
 import { Ambient, toggleFullscreen } from './ui/ambient';
 import { Hud } from './ui/hud';
-import { SettingsSheet, StartScreen, showHint } from './ui/overlays';
+import { SettingsSheet, StartScreen, showHint, showToast } from './ui/overlays';
 import { InventoryTray, PlaceBar } from './ui/inventory';
 import { ClawMachine } from './ui/clawMachine';
 import { Shop } from './ui/shop';
 import { ShopApi } from './net/shop';
 import { DEFAULT_SIZE, ITEMS, rollPlacement, type Item } from './world/items';
 import { WOOD_RADIUS } from './sim/objects';
-import { ACCOUNTS_ENABLED, Account, PullApi } from './net/account';
+import { ACCOUNTS_ENABLED, Account, GiftApi, PullApi } from './net/account';
+import { visitCodeFromUrl, withoutVisitParam } from './net/share';
 import { BeachSync } from './net/beachSync';
 import { AccountPanel } from './ui/accountPanel';
 import { Leaderboard } from './ui/leaderboard';
 import { NEIGHBOR_OFFSET, NeighborView } from './render/neighbors';
 import { loadSettings, saveSettings, type Settings } from './ui/settingsStore';
+import { initTelemetry } from './net/telemetry';
+
+// Unhandled errors + one page-load timing sample go to /api/client-events,
+// so phones are visible in Cloud Logging too. First, so early errors count.
+// Production only: the sandbox build (GitHub Pages) has no server to send to.
+if (ACCOUNTS_ENABLED) initTelemetry();
 
 const params = new URLSearchParams(location.search);
+/** a share link (?visit=CODE) opens that person's beach once signed in */
+const visitCode = visitCodeFromUrl(location.search);
 /**
  * The clock is the real one. For testing: ?time=2026-11-22T06:30:00Z starts
  * from another moment and ?speed=60 runs it faster (time-lapse).
@@ -323,6 +332,16 @@ async function boot() {
     },
     share: () => void share(),
     fullscreen: () => void toggleFullscreen(),
+    tv: () => {
+      // one tap for the TV: idle controls + wake lock, seated on the sand,
+      // fullscreen. (Fullscreen needs the tap; that is why it is a button.)
+      settings = { ...settings, ambient: true };
+      saveSettings(settings);
+      ambient.setEnabled(true);
+      sheet.setSettings(settings);
+      cam.setMode('chair', false);
+      void toggleFullscreen();
+    },
   }, BEACHES);
   sheet.setSettings({ ...settings, beach: beach.id });
 
@@ -766,6 +785,21 @@ async function boot() {
     neighbors = new NeighborView(scene, grid, ready.rest, swell, cam, uiRoot, account);
     const nv = neighbors;
     const acct = account;
+    // a share link (?visit=CODE) waits for sign-in, then lands on that beach
+    let pendingVisit: string | null = visitCode;
+    const applyPendingVisit = async () => {
+      const me = account;
+      if (!pendingVisit || !me?.user) return;
+      const code = pendingVisit;
+      pendingVisit = null;
+      history.replaceState(null, '', location.pathname + withoutVisitParam(location.search) + location.hash);
+      try {
+        await nv.visit(code);
+        cam.goTo(0, true);
+      } catch {
+        showToast(uiRoot, 'No beach has that code');
+      }
+    };
     // whenever someone new signs in (or a saved session comes back), bring
     // back their beach and their neighbors
     let signedInAs: string | null = null;
@@ -779,6 +813,7 @@ async function boot() {
           await nv.refresh();
         })();
         void nv.loadFavorites();
+        void applyPendingVisit();
       } else if (!u) {
         nv.clear();
       }
@@ -871,6 +906,16 @@ async function boot() {
         /* offline: keep what we had */
       }
     };
+    // gifting: an item in hand can go to someone else, by their code
+    const giftApi = new GiftApi(acct);
+    placeBar.setGift({
+      giftable: (item) => !item.unlimited && inventory.ownedCount(item.id) > 0,
+      sendGift: async (item, code) => {
+        const res = await giftApi.gift(code, item.id);
+        void loadOwned();
+        return { name: res.to.name };
+      },
+    });
     const claw = new ClawMachine(uiRoot, new PullApi(acct), (item, place) => {
       void loadOwned().then(() => {
         if (place) inventory.select(item);

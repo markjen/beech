@@ -11,6 +11,7 @@ const ICONS = {
   chair: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4l3 9h7" /><path d="M10 13l-2 7M17 13l2 7" /><path d="M5 13h14" opacity=".55"/></svg>`,
   diorama: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l8 4.5-8 4.5-8-4.5z" /><path d="M4 8.5V14l8 4.5 8-4.5V8.5" /><path d="M12 13v5.5" /></svg>`,
   bag: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 9h14l-1.2 10.5a1.5 1.5 0 0 1-1.5 1.3H7.7a1.5 1.5 0 0 1-1.5-1.3z" /><path d="M9 9V7a3 3 0 0 1 6 0v2" /></svg>`,
+  gift: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 8.5h17v2.5h-17z" /><path d="M5.5 11h13v8.5h-13z" /><path d="M12 8.5V19.5" /><path d="M12 8.5C9.5 8.5 8 7.5 8 6c0-1.6 2-2 4 2.5zM12 8.5c2.5 0 4-1 4-2.5 0-1.6-2-2-4 2.5z" /></svg>`,
   rock: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 18.5l2.2-6.3 4.6-4.4 5.6 1.1 3.6 4.4 1 5.2z" /><path d="M10.3 7.8l1.4 5.2 4.2-3.9M11.7 13l-6-0.8" opacity=".55"/></svg>`,
   driftwood: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 15.5c4-1.8 10-3.2 18-4" /><path d="M3.6 18.2c4.4-1.6 10.4-3 17-3.9" /><path d="M3 15.5l.6 2.7M21 11.5l-.4 2.8" /><path d="M12 13.6l2.5-3.6" opacity=".55"/></svg>`,
   shell: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19.5L4 10a8.5 8.5 0 0 1 16 0z" /><path d="M12 19.5L8.2 6.3M12 19.5l3.8-13.2M12 19.5V5.2" opacity=".55"/><path d="M10 19.5h4" /></svg>`,

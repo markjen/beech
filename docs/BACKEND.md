@@ -45,6 +45,7 @@ Migrations live in `src/migrations.ts` and are applied at startup.
 | `POST /api/store/google/rtdn` | Google Play real-time developer notifications (Pub/Sub push, OIDC-checked): voided purchases expire what they granted |
 | `GET /api/leaderboard?board=all\|rising&limit=50` | the most-starred beaches (see "Leaderboard" below): `{ board, window, halfLife, entries: [{ rank, code, name, beachName?, location, updatedAt, stars, recent, velocity, starred, yours }] }`; limit 1–100 |
 | `GET /api/inventory` | `{ items: [{ item, quantity, source, acquiredAt, expiresAt }] }`: what you own beyond the free items, unexpired. Empty until the shop and pulls exist; rows are only written by the server. |
+| `POST /api/gifts { code, item }` | give one of your items to someone else, by their neighbor code — instant, one atomic statement, 20 an hour (see [SHARING_GIFTING.md](SHARING_GIFTING.md)). |
 
 Sessions are 60-day random bearer tokens, and only their SHA-256 is stored.
 We keep the provider's user id, a first name (neighbors see it), your neighbor
@@ -100,7 +101,7 @@ only beaches that are on the shore (`on_shore`) and have been saved
   rise. Exponential decay over the stars themselves is smooth, needs no
   per-beach age, ranks "5 stars today" above "5 stars last week", and is
   one `SUM` in SQL.
-- **Hard to game:** a star's age comes from `star_first` (migration 9), the
+- **Hard to game:** a star's age comes from `star_first` (migration 10), the
   first time that person starred that beach, which survives un-starring. So
   un-starring and starring again doesn't make a star look new. One person
   adds at most 1 to any beach, and the owner's own stars are blocked (and
@@ -110,6 +111,14 @@ only beaches that are on the shore (`on_shore`) and have been saved
 - **Cost:** one grouped query over `favorites` per request (index
   `favorites_beach`). Fine for now; if stars grow to millions, cache the
   board for a minute and look up the caller's `starred` flags separately.
+**Sharing and gifting.** A share link is `?visit=<code>` on the site's own
+URL (`src/net/share.ts`); opening it visits that beach once you're signed
+in. The Cloud Run server injects Open Graph tags for the beach into
+`index.html` for such requests (`server/src/shareMeta.ts`), so the link
+shows a preview where it's pasted. Gifting (`POST /api/gifts`) moves one
+inventory row to someone else by code, instantly and atomically; see
+[SHARING_GIFTING.md](SHARING_GIFTING.md) for the design and the decisions
+that are still the owner's to make.
 
 While the shore is shown, the app polls `GET /api/neighbors` and the shore
 every 30 s, and refetches a beach only when its `updatedAt` changed.

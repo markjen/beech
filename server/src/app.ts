@@ -17,6 +17,8 @@
 //   GET    /api/shore?code=&depth=, /api/shore/more?from=&dir=&count=   the global beachfront
 //   GET    /api/neighbors/:side/beach                      -> that neighbor's sand bytes | 404
 //   POST   /api/neighbors/code                             -> { code } (new code; old one stops working)
+//   POST   /api/gifts            { code, item }            -> { item, to: { name, code } }
+//   GET    /api/inventory                                  -> { items: [{ item, quantity, source, ... }] }
 //
 // Auth: `Authorization: Bearer <token>`; only the token's SHA-256 is stored.
 
@@ -28,6 +30,7 @@ import { appleRefund, googleVoided, verifyAppleTransaction, verifyGooglePurchase
 import { POOLS, cooldownAfter, draw, pullDay, starterPrize, STARTER } from './pulls.js';
 import { hashToken, newSessionToken, SESSION_DAYS, verifyAppleIdToken, verifyGoogleIdToken, type VerifiedIdentity } from './auth.js';
 import { toBytes, type Db } from './db.js';
+import { createRateLimiter, logEvent, parseClientEvent, routeLabel } from './observability.js';
 
 export interface AppConfig {
   googleClientIds: string[];
@@ -70,7 +73,7 @@ const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O or 1/I
 const SIDES = ['left', 'right'] as const;
 type Side = (typeof SIDES)[number];
 
-const fail = (status: 400 | 401 | 403 | 404 | 409 | 413 | 426 | 500, message: string): never => {
+const fail = (status: 400 | 401 | 403 | 404 | 409 | 413 | 426 | 429 | 500, message: string): never => {
   throw new HTTPException(status, { message });
 };
 
@@ -89,6 +92,10 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   const verifyGoogle = cfg.verifyGoogle ?? verifyGoogleIdToken;
   const verifyApple = cfg.verifyApple ?? verifyAppleIdToken;
   const app = new Hono<Env>();
+
+  // Request logging (httpLogger) is mounted once, on the root app in
+  // server.ts, so it covers /api/* and the CORS preflight. Mounting it here
+  // too would log every API request twice and double the metrics.
 
   // ---------------------------------------------------------------- CORS
   app.use('*', async (c, next) => {
@@ -109,7 +116,13 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
 
   app.onError((err, c) => {
     if (err instanceof HTTPException) return c.json({ error: err.message }, err.status);
-    console.error(err);
+    // A real 500: log it structured (the request line already has the status).
+    // The stack stays in Cloud Logging; the client only ever sees the generic text.
+    logEvent(
+      'api_error',
+      { route: routeLabel(c), message: err.message, stack: String(err.stack ?? '').slice(0, 1000) },
+      'ERROR',
+    );
     return c.json({ error: 'something went wrong' }, 500);
   });
   app.notFound((c) => c.json({ error: 'not found' }, 404));
@@ -179,6 +192,35 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
 
   // ---------------------------------------------------------------- auth
   app.get('/health', (c) => c.json({ ok: true }));
+
+  // ---------------------------------------------------------------- client events
+  // The web app reports unhandled errors and one page-load timing sample per
+  // visit, so phones (where nobody watches the console) are visible too.
+  // Unauthenticated by design: it only writes a log line, never the database.
+  // Validated, size-capped (2 KB) and rate-limited per IP (30/min); anything
+  // else is dropped with a 4xx and never reaches the logs.
+  const clientEvents = createRateLimiter(30);
+  app.post('/client-events', async (c) => {
+    const ip = (c.req.header('x-forwarded-for') ?? '').split(',')[0]?.trim() || 'unknown';
+    if (!clientEvents(ip)) return c.json({ error: 'slow down' }, 429);
+    const text = await c.req.text();
+    if (text.length > 2048) return c.json({ error: 'event too large' }, 413);
+    let body: unknown;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      return c.json({ error: 'expected a JSON body' }, 400);
+    }
+    const parsed = parseClientEvent(body);
+    if (!parsed.ok) return c.json({ error: parsed.reason }, 400);
+    const e = parsed.event;
+    if (e.kind === 'error') {
+      logEvent('client_error', { message: e.message, source: e.source ?? null, path: e.path ?? null }, 'WARNING');
+    } else {
+      logEvent('client_perf', { load_ms: e.load_ms, dcl_ms: e.dcl_ms });
+    }
+    return c.body(null, 204);
+  });
 
   app.post('/auth/google', async (c) => {
     const { credential } = await body<{ credential?: string }>(c);
@@ -976,6 +1018,59 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const who = await byCode(c.req.param('code') ?? '');
     if (!who) return c.json({ error: 'no beach with that code' }, 404);
     return sendBeach(c, who.id);
+  });
+
+  // ---------------------------------------------------------------- gifts
+  // Give one of your items to the owner of the beach with that code. Instant:
+  // there is no inbox to accept it in. One statement moves it, so two gifts
+  // of the same last item can't both go through: the second UPDATE finds
+  // quantity 0 and moves nothing. Free items have no inventory rows, so
+  // there is nothing to give (everyone already has them). The row on the
+  // sand is untouched: gifting moves what you own, not what's placed.
+  const GIFT_PER_HOUR = 20;
+  app.post('/gifts', requireUser, async (c) => {
+    const { code, item } = await body<{ code?: string; item?: string }>(c);
+    if (normalizeCode(code ?? '').length !== 6) fail(400, 'neighbor codes are 6 letters and numbers');
+    if (!item || typeof item !== 'string' || item.length > 40) fail(400, 'say which item to give');
+    const me = c.get('user').id;
+    const them = await nodeByCode(code!);
+    if (!them) fail(404, 'no beach has that code');
+    if (them!.owner_id === me) fail(400, "that's your own code");
+    const now = Date.now();
+    const recent = await db.query<{ n: string }>(
+      'SELECT COUNT(*) AS n FROM gifts WHERE from_id = $1 AND created_at > $2',
+      [me, now - 3600000],
+    );
+    if (Number(recent[0].n) >= GIFT_PER_HOUR) fail(429, 'slow down: 20 gifts an hour is the limit');
+    // take your oldest unexpired row of that item (one statement, so a race
+    // on the last one leaves the second gift with nothing to move)
+    const rows = await db.query<{ moved: string }>(
+      `WITH giver AS (
+         UPDATE inventory SET quantity = quantity - 1
+          WHERE id = (
+            SELECT id FROM inventory
+             WHERE user_id = $1 AND item_id = $2 AND quantity > 0
+               AND (expires_at IS NULL OR expires_at > $3)
+             ORDER BY acquired_at ASC LIMIT 1
+          ) AND quantity > 0
+         RETURNING item_id, expires_at, purchase_id
+       ), given AS (
+         -- the gift keeps the purchase it came from, so a refund of that
+         -- purchase takes it back from the recipient too (otherwise: buy,
+         -- gift it to a second account, get a refund, keep the item)
+         INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at, expires_at, purchase_id)
+         SELECT $4, item_id, 1, 'gift', $3, expires_at, purchase_id FROM giver
+         RETURNING item_id
+       ), logged AS (
+         INSERT INTO gifts (from_id, to_id, item_id, created_at)
+         SELECT $1, $4, item_id, $3 FROM giver
+         RETURNING item_id
+       )
+       SELECT (SELECT COUNT(*) FROM giver) AS moved`,
+      [me, item, now, them!.owner_id],
+    );
+    if (Number(rows[0].moved) === 0) fail(409, "you don't have one of those to give");
+    return c.json({ item, to: { name: them!.name, code: them!.code } });
   });
 
   return app;

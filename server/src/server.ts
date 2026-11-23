@@ -28,6 +28,8 @@ import { fileURLToPath } from 'node:url';
 import { createApp } from './app.js';
 import { createPgDb, createPgliteDb, type Db } from './db.js';
 import { migrate } from './migrations.js';
+import { httpLogger, logEvent } from './observability.js';
+import { createSharePageHandler } from './shareMeta.js';
 
 const env = process.env;
 const list = (v?: string) => (v ?? '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -38,7 +40,7 @@ async function openDb(): Promise<Db> {
   if (env.DB_SOCKET) return createPgDb({ socket: env.DB_SOCKET, user: env.DB_USER, password: env.DB_PASSWORD, database: env.DB_NAME });
   if (env.NODE_ENV === 'production') throw new Error('no database configured (DATABASE_URL or DB_SOCKET)');
   const dir = env.PGLITE_DIR ?? path.join(here, '..', '.data');
-  console.log(`using embedded PGlite (${dir === 'memory' ? 'in memory' : dir})`);
+  logEvent('database', { mode: 'pglite', dir: dir === 'memory' ? 'memory' : dir });
   return createPgliteDb(dir === 'memory' ? undefined : dir);
 }
 
@@ -47,7 +49,15 @@ if (devAuth && env.NODE_ENV === 'production') throw new Error('DEV_AUTH must nev
 
 const db = await openDb();
 const applied = await migrate(db);
-console.log(`database ready (schema v${applied})`);
+logEvent('database_ready', { schema: applied });
+
+// Query counters + latency percentiles, once a minute (see observability.ts).
+// The db_error / db_slow_query lines fire as they happen; this is the trend.
+const dbSummary = setInterval(() => {
+  const s = db.stats?.();
+  if (s) logEvent('db_summary', { ...s });
+}, 60000);
+dbSummary.unref();
 
 const api = createApp(db, {
   googleClientIds: list(env.GOOGLE_CLIENT_IDS),
@@ -61,8 +71,14 @@ const api = createApp(db, {
 
 const publicDir = path.resolve(env.PUBLIC_DIR ?? path.join(here, '..', '..', 'dist'));
 const root = new Hono();
+// One structured log line per request, including static files and /healthz.
+root.use('*', httpLogger);
 root.get('/healthz', (c) => c.text('ok'));
 root.route('/api', api);
+// a shared beach link (?visit=CODE) gets Open Graph tags for that beach, so
+// the link shows a preview where it's pasted; everything else passes through
+const indexHtml = path.join(publicDir, 'index.html');
+root.get('/', createSharePageHandler(db, indexHtml));
 root.use(
   '/*',
   serveStatic({
@@ -74,7 +90,6 @@ root.use(
   }),
 );
 // single-page app: anything else gets the page
-const indexHtml = path.join(publicDir, 'index.html');
 root.get('*', (c) => {
   if (!fs.existsSync(indexHtml)) return c.text('web app not built (npm run build in the repo root)', 404);
   c.header('Cache-Control', 'no-cache');
@@ -83,7 +98,9 @@ root.get('*', (c) => {
 
 const port = Number(env.PORT ?? 8080);
 const server = serve({ fetch: root.fetch, port, hostname: env.HOST ?? '0.0.0.0' }, () =>
-  console.log(`beech listening on :${port} (web app from ${publicDir})`),
+  // The revision is the deploy marker: find a deploy in Logs Explorer by
+  // jsonPayload.revision, or by this line's time.
+  logEvent('server_start', { port, public_dir: publicDir }),
 );
 
 // Cloud Run sends SIGTERM before stopping an instance
