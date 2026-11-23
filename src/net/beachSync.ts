@@ -3,11 +3,15 @@ import type { PlacedObject } from '../sim/objects';
 import { ApiError, type Account } from './account';
 import { itemById } from '../world/items';
 
-/** How many of each non-free item are on a beach (so your bag can count across beaches). */
+/**
+ * How many of each non-free item are on a beach (so your bag can count across
+ * beaches). Wild ones count too, as the server counts them: the sea only
+ * brings free kinds, so a "wild" lighthouse would be a made-up save.
+ */
 export function countItems(objects: PlacedObject[]): Record<string, number> {
   const out: Record<string, number> = {};
   for (const o of objects) {
-    if (o.wild || itemById(o.item)?.unlimited !== false) continue;
+    if (itemById(o.item)?.unlimited !== false) continue;
     out[o.item] = (out[o.item] ?? 0) + 1;
   }
   return out;

@@ -1,7 +1,12 @@
 # Checkpoints (design)
 
-Status: **designed, not built.** Milestones are at the end and in
-BACKLOG.md ("Checkpoints").
+Status: **server built (C1, C2)**, 2026-11-23. The app comes next (C3 on).
+Milestones are at the end and in BACKLOG.md ("Checkpoints").
+
+Built as designed, except: the migration is **13** (11 and 12 were taken by
+dig finds and gift cards), and the owner decisions at the end were taken as
+suggested (5 per beach slot and 16 MB; beach files only in the sandbox;
+stars kept).
 
 A checkpoint is a named copy of one of your beaches: its sand and the things
 on it. You can save one from any of your beaches and later put it back on
@@ -42,7 +47,7 @@ automatic checkpoint, so every restore can be undone.
 
 ## Data model
 
-Migration **11** (the next entry in `server/src/migrations.ts`):
+Migration **13** (`server/src/migrations.ts`):
 
 ```sql
 CREATE TABLE checkpoints (

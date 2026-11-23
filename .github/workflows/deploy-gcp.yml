@@ -1,7 +1,11 @@
 name: Deploy production (Google Cloud Run)
 
-# Builds the production container (web app with accounts + API server) and
-# deploys it to Cloud Run, connected to Cloud SQL for PostgreSQL.
+# Builds the production containers and deploys them to Cloud Run, both
+# connected to the same Cloud SQL for PostgreSQL database:
+#   beech        the game: web app with accounts + API server
+#   beech-admin  the admin console (gift cards, promo codes, beaches). Its own
+#                service; nothing loads there without a Google sign-in by an
+#                ADMIN_EMAILS account (docs/GIFT_CARDS_PROMOS.md).
 # GitHub Pages keeps serving the public sandbox build (no sign-in).
 #
 # TRIGGER BRANCH — main is the build source:
@@ -20,6 +24,9 @@ name: Deploy production (Google Cloud Run)
 #   vars.GOOGLE_CLIENT_ID           OAuth web client ID (public)
 #   vars.GOOGLE_CLIENT_IDS          accepted client IDs, comma-separated (web, iOS, Android)
 #   vars.APPLE_CLIENT_IDS           optional
+#   vars.ADMIN_EMAILS               Google accounts allowed into the admin console
+# Secret Manager: beech-db-password, beech-admin-token (admin service only),
+#   beech-gift-code-pepper (both: the game redeems, the admin service issues)
 # No keys are stored in GitHub: authentication is Workload Identity Federation,
 # and the database password lives in Secret Manager (beech-db-password).
 on:
@@ -43,6 +50,7 @@ jobs:
     env:
       REGION: ${{ vars.GCP_REGION }}
       IMAGE: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/beech/beech:${{ github.sha }}
+      ADMIN_IMAGE: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/beech/beech-admin:${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -58,11 +66,13 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
           service_account: ${{ vars.GCP_DEPLOY_SA }}
       - uses: google-github-actions/setup-gcloud@v2
-      - name: Build and push the image
+      - name: Build and push the images
         run: |
           gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet
           docker build -t "$IMAGE" --build-arg "VITE_GOOGLE_CLIENT_ID=${{ vars.GOOGLE_CLIENT_ID }}" .
+          docker build --target admin -t "$ADMIN_IMAGE" .
           docker push "$IMAGE"
+          docker push "$ADMIN_IMAGE"
       - name: Deploy to Cloud Run
         run: |
           gcloud run deploy beech \
@@ -71,12 +81,33 @@ jobs:
             --allow-unauthenticated \
             --service-account "${{ vars.GCP_RUNTIME_SA }}" \
             --add-cloudsql-instances "${{ vars.GCP_SQL_INSTANCE }}" \
-            --set-env-vars "^;^DB_SOCKET=/cloudsql/${{ vars.GCP_SQL_INSTANCE }};DB_NAME=beech;DB_USER=beech;GOOGLE_CLIENT_IDS=${{ vars.GOOGLE_CLIENT_IDS }};APPLE_CLIENT_IDS=${{ vars.APPLE_CLIENT_IDS }};ADMIN_EMAILS=${{ vars.ADMIN_EMAILS }}" \
-            --set-secrets "DB_PASSWORD=beech-db-password:latest,ADMIN_API_TOKEN=beech-admin-token:latest,GIFT_CODE_PEPPER=beech-gift-code-pepper:latest" \
+            --set-env-vars "^;^DB_SOCKET=/cloudsql/${{ vars.GCP_SQL_INSTANCE }};DB_NAME=beech;DB_USER=beech;GOOGLE_CLIENT_IDS=${{ vars.GOOGLE_CLIENT_IDS }};APPLE_CLIENT_IDS=${{ vars.APPLE_CLIENT_IDS }}" \
+            --set-secrets "DB_PASSWORD=beech-db-password:latest,GIFT_CODE_PEPPER=beech-gift-code-pepper:latest" \
             --cpu 1 --memory 512Mi --concurrency 80 \
             --min-instances 0 --max-instances 10
+      - name: Deploy the admin console to Cloud Run
+        run: |
+          APP_URL=$(gcloud run services describe beech --region "$REGION" --format 'value(status.url)')
+          gcloud run deploy beech-admin \
+            --image "$ADMIN_IMAGE" \
+            --region "$REGION" \
+            --allow-unauthenticated \
+            --service-account "${{ vars.GCP_RUNTIME_SA }}" \
+            --add-cloudsql-instances "${{ vars.GCP_SQL_INSTANCE }}" \
+            --set-env-vars "^;^DB_SOCKET=/cloudsql/${{ vars.GCP_SQL_INSTANCE }};DB_NAME=beech;DB_USER=beech;GOOGLE_CLIENT_ID=${{ vars.GOOGLE_CLIENT_ID }};ADMIN_EMAILS=${{ vars.ADMIN_EMAILS }};BEECH_APP_URL=$APP_URL" \
+            --set-secrets "DB_PASSWORD=beech-db-password:latest,ADMIN_API_TOKEN=beech-admin-token:latest,GIFT_CODE_PEPPER=beech-gift-code-pepper:latest" \
+            --cpu 1 --memory 256Mi --concurrency 20 \
+            --min-instances 0 --max-instances 1
       - name: Smoke test
         run: |
           URL=$(gcloud run services describe beech --region "$REGION" --format 'value(status.url)')
           curl -fsS "$URL/api/health"
           curl -fsS -o /dev/null "$URL/"
+          # the game no longer has an admin API
+          test "$(curl -s -o /dev/null -w '%{http_code}' "$URL/api/admin/me")" = 404
+          ADMIN_URL=$(gcloud run services describe beech-admin --region "$REGION" --format 'value(status.url)')
+          curl -fsS "$ADMIN_URL/health"
+          # signed out: the sign-in page only, and the API refuses
+          curl -fsS "$ADMIN_URL/" | grep -q 'beech admin sign-in'
+          test "$(curl -s -o /dev/null -w '%{http_code}' "$ADMIN_URL/api/me")" = 401
+          echo "admin console: $ADMIN_URL"

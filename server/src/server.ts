@@ -15,11 +15,8 @@
 //                        (on Cloud Run the runtime service account is used instead)
 //   GOOGLE_RTDN_AUDIENCE, GOOGLE_RTDN_SERVICE_ACCOUNT  the Pub/Sub push subscription's
 //                        OIDC audience and service account, for Play refund notifications
-//   ADMIN_EMAILS         comma-separated verified Google emails allowed into the
-//                        admin console /admin (production: markjen@gmail.com). Empty: no admin.
-//   ADMIN_API_TOKEN      the CLI's credential (set from Secret Manager; never in
-//                        the repo). Hashed at startup; the raw value is never kept.
-//   GIFT_CODE_PEPPER     pepper for gift card code hashes (Secret Manager).
+//   GIFT_CODE_PEPPER     pepper for gift card code hashes (Secret Manager), for
+//                        redeeming. Must match the admin service's (adminServer.ts).
 //                        Optional in development; set it in production (a
 //                        missing pepper logs a warning and still works).
 //   XSOLLA_PROJECT_ID, XSOLLA_API_KEY, XSOLLA_WEBHOOK_SECRET   web checkout (docs/WEB_PAYMENTS.md;
@@ -29,6 +26,14 @@
 //   WEB_CHECKOUT_RETURN_URL  where Pay Station returns to (default https://beech.markjen.com/)
 //   ALLOWED_ORIGINS      extra CORS origins, default the Capacitor app shells
 //   DEV_AUTH             "1" enables /api/auth/dev; refused when NODE_ENV=production
+//   ADMIN_DEV_PORT       local development only: also serve the admin console
+//                        (adminServer.ts) on this port, sharing this process's
+//                        database (PGlite can't be opened by two processes).
+//                        Refused when NODE_ENV=production; production runs the
+//                        admin console as its own Cloud Run service.
+//
+// The admin console is not served here: it is a separate app (adminServer.ts,
+// docs/GIFT_CARDS_PROMOS.md), deployed as its own service.
 
 import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
@@ -38,9 +43,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { createApp } from './app.js';
-import { adminPageHtml } from './adminPage.js';
-import { hashToken } from './auth.js';
-import { createPgDb, createPgliteDb, type Db } from './db.js';
+import { startAdminServer } from './adminServer.js';
+import { openDbFromEnv } from './dbEnv.js';
 import { migrate } from './migrations.js';
 import { httpLogger, logEvent } from './observability.js';
 import { createSharePageHandler } from './shareMeta.js';
@@ -50,29 +54,15 @@ const env = process.env;
 const list = (v?: string) => (v ?? '').split(',').map((s) => s.trim()).filter(Boolean);
 const here = path.dirname(fileURLToPath(import.meta.url));
 
-async function openDb(): Promise<Db> {
-  if (env.DATABASE_URL) return createPgDb({ url: env.DATABASE_URL });
-  if (env.DB_SOCKET) return createPgDb({ socket: env.DB_SOCKET, user: env.DB_USER, password: env.DB_PASSWORD, database: env.DB_NAME });
-  if (env.NODE_ENV === 'production') throw new Error('no database configured (DATABASE_URL or DB_SOCKET)');
-  const dir = env.PGLITE_DIR ?? path.join(here, '..', '.data');
-  logEvent('database', { mode: 'pglite', dir: dir === 'memory' ? 'memory' : dir });
-  return createPgliteDb(dir === 'memory' ? undefined : dir);
-}
-
 const devAuth = env.DEV_AUTH === '1';
 if (devAuth && env.NODE_ENV === 'production') throw new Error('DEV_AUTH must never be on in production');
 
-// Gift cards / admin (docs/GIFT_CARDS_PROMOS.md). The pepper is
-// defense-in-depth on top of 80-bit codes, so a missing pepper is a
-// warning, not a refusal: the server must keep starting after a merge
-// even before the secrets are set. The CLI token is hashed once here; the
-// raw value is dropped.
+// The gift card pepper (docs/GIFT_CARDS_PROMOS.md): redeeming hashes the
+// code with it. Defense-in-depth on top of 80-bit codes, so a missing pepper
+// is a warning, not a refusal.
 const codePepper = env.GIFT_CODE_PEPPER ?? '';
 if (!codePepper && env.NODE_ENV === 'production')
   logEvent('admin_config', { warning: 'GIFT_CODE_PEPPER is not set: gift card codes are hashed without a pepper' }, 'WARNING');
-const adminTokenHash = env.ADMIN_API_TOKEN ? await hashToken(env.ADMIN_API_TOKEN) : undefined;
-const adminEmails = list(env.ADMIN_EMAILS);
-logEvent('admin_config', { admin_token: !!adminTokenHash, admin_emails: adminEmails.length, code_pepper: !!codePepper });
 
 // Web checkout (docs/WEB_PAYMENTS.md): on only when fully configured, so the
 // server keeps starting after a merge before the Xsolla secrets exist.
@@ -81,7 +71,10 @@ if (!xsolla.cfg && xsolla.missing.length < 3)
   logEvent('web_checkout_config', { warning: `web checkout is off: ${xsolla.missing.join(', ')} not set` }, 'WARNING');
 logEvent('web_checkout_config', { enabled: !!xsolla.cfg, sandbox: !!xsolla.cfg?.sandbox });
 
-const db = await openDb();
+const adminDevPort = env.ADMIN_DEV_PORT ? Number(env.ADMIN_DEV_PORT) : null;
+if (adminDevPort && env.NODE_ENV === 'production') throw new Error('ADMIN_DEV_PORT is for local development only');
+
+const db = await openDbFromEnv(env, path.join(here, '..', '.data'));
 const applied = await migrate(db);
 logEvent('database_ready', { schema: applied });
 
@@ -101,8 +94,6 @@ const api = createApp(db, {
   appleBundleId: env.APPLE_BUNDLE_ID || undefined,
   androidPackage: env.ANDROID_PACKAGE || undefined,
   googleRtdn: env.GOOGLE_RTDN_AUDIENCE && env.GOOGLE_RTDN_SERVICE_ACCOUNT ? { audience: env.GOOGLE_RTDN_AUDIENCE, email: env.GOOGLE_RTDN_SERVICE_ACCOUNT } : undefined,
-  adminEmails,
-  adminTokenHash,
   codePepper,
   xsolla: xsolla.cfg ?? undefined,
 });
@@ -112,13 +103,6 @@ const root = new Hono();
 // One structured log line per request, including static files and /healthz.
 root.use('*', httpLogger);
 root.get('/healthz', (c) => c.text('ok'));
-// The admin console (docs/GIFT_CARDS_PROMOS.md): a small page of its own,
-// not part of the beach app. It signs in with Google and talks to /api/admin;
-// the API, not this page, decides who is an admin.
-root.get('/admin', (c) => {
-  c.header('Cache-Control', 'no-cache');
-  return c.html(adminPageHtml(list(env.GOOGLE_CLIENT_IDS)[0] ?? null));
-});
 root.route('/api', api);
 // a shared beach link (?visit=CODE) gets Open Graph tags for that beach, so
 // the link shows a preview where it's pasted; everything else passes through
@@ -148,10 +132,14 @@ const server = serve({ fetch: root.fetch, port, hostname: env.HOST ?? '0.0.0.0' 
   logEvent('server_start', { port, public_dir: publicDir }),
 );
 
+// local development: the admin console on its own port, same database
+const adminDev = adminDevPort ? await startAdminServer(db, { ...env, PORT: String(adminDevPort) }) : null;
+
 // Cloud Run sends SIGTERM before stopping an instance
 for (const sig of ['SIGTERM', 'SIGINT'] as const) {
   process.on(sig, () => {
     server.close();
+    adminDev?.close();
     void db.close().finally(() => process.exit(0));
   });
 }

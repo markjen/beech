@@ -149,7 +149,7 @@ Xsolla's retries are harmless. A paid order in another currency (Xsolla
 converts at checkout) is granted after the SKU and player checks, and the
 currency is logged.
 
-### Data (migration 13)
+### Data (migration 15)
 
 ```sql
 ALTER TABLE purchases DROP CONSTRAINT purchases_store_check;
@@ -277,7 +277,7 @@ What changed from the plan in PR 21, and why:
   reservation scheme in the draft isn't needed yet.
 - **Schema fixes.** `users.id` is a UUID, not TEXT (the draft's foreign
   key wouldn't have applied); `purchases.store` has a CHECK that rejected
-  `'xsolla'`, so migration 13 widens it.
+  `'xsolla'`, so migration 15 widens it.
 - **`order.id` is the transaction id** — it's in both `order_paid` and
   `order_canceled`, where the billing transaction id isn't always.
 - **Sandbox payments are refused on live** (missing from the draft: they

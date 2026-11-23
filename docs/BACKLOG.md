@@ -66,11 +66,11 @@ The single list of what's left to do, for the owner and for agents.
 - [ ] **Checkpoints**: save named copies of any of your beaches and restore
   one onto any of them, if your bag still holds its non-free things. Design
   in [CHECKPOINTS.md](CHECKPOINTS.md); owner decisions at its end.
-  - [ ] **C1** Server: migration 11 (`checkpoints`, `beach.epoch`),
+  - [x] **C1** (2026-11-23; migration 13) Server: migration 11 (`checkpoints`, `beach.epoch`),
     `inspectBlob` (counts items from the BCH2 bytes), list / create from a
     beach / import / get / rename / delete with limits; client `countItems`
     counts `wild` non-free items. No visible change.
-  - [ ] **C2** Server: fit check and restore (strict and drop-missing), the
+  - [x] **C2** (2026-11-23) Server: fit check and restore (strict and drop-missing), the
     automatic "before restore" checkpoint, a per-user lock, the epoch on
     beach GET/PUT. Server tests for the race and stale saves.
   - [ ] **C3** App: checkpoints in settings (save, list, rename, delete,
@@ -141,13 +141,30 @@ The single list of what's left to do, for the owner and for agents.
 
 ## Done (recent)
 
+
 - [x] **Web checkout through Xsolla** (2026-11-23): reviewed the PR 21 plan
   and built it — `POST /api/store/web-checkout`, the signed webhook
   (`order_paid` grants once, `order_canceled`/`refund` revoke, sandbox
-  refused on live), `GET /api/store/web-orders/:id`, migration 13
+  refused on live), `GET /api/store/web-orders/:id`, migration 15
   (`web_orders`, `purchases.store` allows `xsolla`), the web shop's card
   button and the return-from-checkout toast. Off until the Xsolla settings
   exist. `server/test/webCheckout.test.ts`.
+
+- [x] **Admin console is its own app, and manages beaches** (2026-11-23):
+  `/admin` and `/api/admin/*` are gone from the game server. The console
+  is a separate Cloud Run service, `beech-admin` (`server/src/adminServer.ts`,
+  `adminApp.ts`, `adminPage.ts`; Dockerfile target `admin`), on the same
+  database. Nothing loads until a Google sign-in by an `ADMIN_EMAILS`
+  account: an HttpOnly session cookie (`admin_sessions`, migration 14), the
+  allowlist re-checked on every request, a CSRF header, and a nonce CSP.
+  New Beaches tab: counts, search, a beach's details, and rename, hide from
+  the shore, new code, part neighbors, clear the sand (undoable via a
+  checkpoint) and delete a non-home beach. All actions are audited, and
+  there's a new Audit log tab. The CLI gained `beach …` and `audit` and now
+  takes `BEECH_ADMIN_URL`. Design in
+  [GIFT_CARDS_PROMOS.md](GIFT_CARDS_PROMOS.md#admin-console). **Owner:**
+  add the `beech-admin` URL (printed by the deploy's smoke test) to the web
+  OAuth client's Authorized JavaScript origins.
 
 - [x] **QA pass of main** (2026-11-23): neighbor name tags kept on screen
   and off the place card and tool column (`src/ui/tagPlace.ts`, tested);
@@ -173,7 +190,7 @@ The single list of what's left to do, for the owner and for agents.
   credit (16-char bearer codes, HMAC-SHA-256 under a pepper, shown once at
   issue, never stored); promo codes discount a server-side credit purchase
   (percent/fixed, per-product, usage caps, expiry, claimed atomically with
-  the purchase). Admin console at `/admin` (Google sign-in + allowlist:
+  the purchase). Admin console (then at `/admin`; now its own service) (Google sign-in + allowlist:
   markjen@gmail.com only) and CLI `scripts/beech-admin.mjs` (admin API
   token from the environment, hashed server-side). Design and setup in
   [GIFT_CARDS_PROMOS.md](GIFT_CARDS_PROMOS.md). **Before merging: create

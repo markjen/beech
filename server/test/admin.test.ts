@@ -1,6 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createHash, createHmac } from 'node:crypto';
 import { createApp } from '../src/app.js';
+import { ADMIN_COOKIE, createAdminApp } from '../src/adminApp.js';
+import type { VerifiedIdentity } from '../src/auth.js';
 import { createPgliteDb, type Db } from '../src/db.js';
 import { claimCreditPurchase } from '../src/giftCards.js';
 import { migrate } from '../src/migrations.js';
@@ -9,6 +11,15 @@ let db: Db;
 /** the server's clock in these tests: real time plus however far a test moved it on */
 let skew = 0;
 let app: ReturnType<typeof createApp>;
+let admin: ReturnType<typeof createAdminApp>;
+const audiences: string[][] = [];
+
+const verifyGoogle = async (t: string): Promise<VerifiedIdentity> => {
+  if (t === 'admin-google') return { provider: 'google', sub: 'g-admin', name: 'Ada', email: 'Admin@Example.com' };
+  if (t === 'other-google') return { provider: 'google', sub: 'g-other', name: 'Otto', email: 'someone@example.com' };
+  if (t === 'unverified-google') return { provider: 'google', sub: 'g-unv', name: 'Uma' };
+  throw new Error('bad token');
+};
 
 const PEPPER = 'test-pepper';
 const CLI_TOKEN = 'cli-secret-token';
@@ -22,14 +33,19 @@ beforeAll(async () => {
     allowedOrigins: ['capacitor://localhost'],
     devAuth: true,
     now: () => Date.now() + skew,
-    adminEmails: ['markjen@gmail.com'],
+    codePepper: PEPPER,
+    verifyGoogle,
+  });
+  admin = createAdminApp(db, {
+    googleClientId: 'web',
+    adminEmails: ['admin@example.com'],
     adminTokenHash: createHash('sha256').update(CLI_TOKEN).digest('hex'),
     codePepper: PEPPER,
-    verifyGoogle: async (t) => {
-      if (t === 'admin-google') return { provider: 'google', sub: 'g-admin', name: 'Mark', email: 'markjen@gmail.com' };
-      if (t === 'other-google') return { provider: 'google', sub: 'g-other', name: 'Otto', email: 'someone@example.com' };
-      if (t === 'unverified-google') return { provider: 'google', sub: 'g-unv', name: 'Uma' };
-      throw new Error('bad token');
+    appUrl: 'https://beech.example',
+    now: () => Date.now() + skew,
+    verifyGoogle: async (t, aud) => {
+      audiences.push(aud);
+      return verifyGoogle(t);
     },
   });
 });
@@ -45,45 +61,133 @@ async function signInDev(name: string): Promise<string> {
   expect(r.status).toBe(200);
   return ((await r.json()) as { token: string }).token;
 }
-async function signInGoogle(credential: string): Promise<string> {
-  const r = await req('/auth/google', json('POST', { credential }));
-  expect(r.status).toBe(200);
-  return ((await r.json()) as { token: string }).token;
+/** sign in to the admin console: the session cookie's value */
+async function adminSignIn(credential: string): Promise<Response> {
+  return admin.request('/auth/google', { method: 'POST', body: JSON.stringify({ credential }), headers: { 'Content-Type': 'application/json', 'X-Beech-Admin': '1' } });
 }
+const cookieOf = (r: Response) => {
+  const m = new RegExp(`${ADMIN_COOKIE.replace(/[-]/g, '\\-')}=([^;]+)`).exec(r.headers.get('set-cookie') ?? '');
+  return m ? m[1] : '';
+};
+/**
+ * An admin console request. `who` is the session cookie's value (sent with
+ * the CSRF header), or the CLI token (sent as a bearer token).
+ */
+const areq = (path: string, init: RequestInit = {}, who?: string, opts: { csrf?: boolean } = {}) => {
+  const headers: Record<string, string> = { ...(init.headers as Record<string, string>) };
+  if (who === CLI_TOKEN || who === 'wrong-token') headers.Authorization = `Bearer ${who}`;
+  else if (who) {
+    headers.Cookie = `${ADMIN_COOKIE}=${who}`;
+    if (opts.csrf !== false) headers['X-Beech-Admin'] = '1';
+  }
+  return admin.request(path, { ...init, headers });
+};
 
 let adminToken: string;
 let playerToken: string;
 let issuedCode = '';
 let issuedId = '';
 
-describe('admin gating', () => {
-  it('rejects the unauthenticated, dev users, and non-allowlisted Google accounts', async () => {
-    expect((await req('/admin/me')).status).toBe(401);
-    expect((await req('/admin/me', {}, 'nonsense')).status).toBe(401);
-    const dev = await signInDev('dev-player');
-    expect((await req('/admin/me', {}, dev)).status).toBe(403); // DEV_AUTH never counts as admin
-    const other = await signInGoogle('other-google');
-    expect((await req('/admin/me', {}, other)).status).toBe(403);
-    const unverified = await signInGoogle('unverified-google');
-    expect((await req('/admin/me', {}, unverified)).status).toBe(403); // no verified email
+describe('the admin console is its own app', () => {
+  it('the game no longer serves any admin route', async () => {
+    const dev = await signInDev('dev-player-0');
+    expect((await req('/admin/me', {}, dev)).status).toBe(404);
+    expect((await req('/admin/gift-cards', json('POST', { amountCents: 999 }), dev)).status).toBe(404);
+    expect((await req('/config')).status).toBe(404);
   });
 
-  it('admits the allowlisted Google account and the CLI token', async () => {
-    adminToken = await signInGoogle('admin-google');
-    const r = await req('/admin/me', {}, adminToken);
+  it('shows only the sign-in page until signed in', async () => {
+    const r = await admin.request('/');
     expect(r.status).toBe(200);
-    expect(await r.json()).toEqual({ admin: true, via: 'session', email: 'markjen@gmail.com' });
-    const cli = await req('/admin/me', {}, CLI_TOKEN);
+    const html = await r.text();
+    expect(html).toContain('beech admin sign-in');
+    // none of the console is in it
+    expect(html).not.toContain('gift-form');
+    expect(html).not.toContain('/api/');
+    expect(r.headers.get('content-security-policy')).toContain("frame-ancestors 'none'");
+    expect(r.headers.get('cache-control')).toBe('no-store');
+  });
+
+  it('rejects the unauthenticated, non-allowlisted and unverified Google accounts', async () => {
+    expect((await areq('/api/me')).status).toBe(401);
+    expect((await areq('/api/me', {}, 'nonsense')).status).toBe(401);
+    expect((await areq('/api/me', {}, 'wrong-token')).status).toBe(401);
+    for (const cred of ['other-google', 'unverified-google']) {
+      const r = await adminSignIn(cred);
+      expect(r.status).toBe(403);
+      expect(r.headers.get('set-cookie')).toBeNull();
+    }
+    expect((await adminSignIn('garbage')).status).toBe(401);
+    // a player's game session is not an admin session
+    const dev = await signInDev('dev-player');
+    expect((await areq('/api/me', {}, dev)).status).toBe(401);
+    // sign-in without the CSRF header is refused
+    const noHeader = await admin.request('/auth/google', { method: 'POST', body: JSON.stringify({ credential: 'admin-google' }), headers: { 'Content-Type': 'application/json' } });
+    expect(noHeader.status).toBe(403);
+  });
+
+  it('admits the allowlisted Google account (verified email, case-insensitive) and the CLI token', async () => {
+    const r = await adminSignIn('admin-google');
+    expect(r.status).toBe(204);
+    const cookie = r.headers.get('set-cookie') ?? '';
+    expect(cookie).toContain('HttpOnly');
+    expect(cookie).toContain('Secure');
+    expect(cookie).toContain('SameSite=Strict');
+    adminToken = cookieOf(r);
+    expect(adminToken.length).toBeGreaterThan(20);
+    // the audience is the web client only
+    expect(audiences.at(-1)).toEqual(['web']);
+    // only the hash of the session token is stored
+    const rows = await db.query<{ token_hash: string; email: string }>('SELECT token_hash, email FROM admin_sessions');
+    expect(rows.some((x) => x.token_hash === createHash('sha256').update(adminToken).digest('hex'))).toBe(true);
+    expect(rows.every((x) => x.token_hash !== adminToken)).toBe(true);
+
+    const me = await areq('/api/me', {}, adminToken);
+    expect(me.status).toBe(200);
+    expect(await me.json()).toEqual({ admin: true, via: 'session', email: 'admin@example.com' });
+    const cli = await areq('/api/me', {}, CLI_TOKEN);
     expect(cli.status).toBe(200);
     expect(await cli.json()).toEqual({ admin: true, via: 'token', email: null });
-    // a wrong CLI token alone gets in nowhere
-    expect((await req('/admin/me', {}, 'wrong-token')).status).toBe(401);
+    // signed in, the page is the console
+    const page = await areq('/', {}, adminToken);
+    const html = await page.text();
+    expect(html).toContain('gift-form');
+    expect(html).toContain('admin@example.com');
+    // signing in made no game account
+    expect((await db.query("SELECT 1 FROM users WHERE provider_sub = 'g-admin'")).length).toBe(0);
+  });
+
+  it('a session cookie without the CSRF header gets nothing', async () => {
+    expect((await areq('/api/me', {}, adminToken, { csrf: false })).status).toBe(403);
+    expect((await areq('/api/gift-cards', json('POST', { amountCents: 999 }), adminToken, { csrf: false })).status).toBe(403);
+  });
+
+  it('expired sessions and sign-out end access', async () => {
+    const r = await adminSignIn('admin-google');
+    const t = cookieOf(r);
+    expect((await areq('/api/me', {}, t)).status).toBe(200);
+    skew = 13 * 3600000; // past the 12-hour session
+    try {
+      expect((await areq('/api/me', {}, t)).status).toBe(401);
+      expect(await (await areq('/', {}, t)).text()).toContain('beech admin sign-in');
+    } finally {
+      skew = 0;
+    }
+    const out = await areq('/auth/logout', { method: 'POST' }, t);
+    expect(out.status).toBe(204);
+    expect((await areq('/api/me', {}, t)).status).toBe(401);
+  });
+
+  it('taking an email off the allowlist locks its sessions out at once', async () => {
+    const strict = createAdminApp(db, { googleClientId: 'web', adminEmails: ['someone-else@example.com'], verifyGoogle });
+    const r = await strict.request('/api/me', { headers: { Cookie: `${ADMIN_COOKIE}=${adminToken}`, 'X-Beech-Admin': '1' } });
+    expect(r.status).toBe(401);
   });
 });
 
 describe('gift cards', () => {
   it('issues a card, shows the code once, and never stores it', async () => {
-    const r = await req('/admin/gift-cards', json('POST', { amountCents: 999, note: 'for a friend' }), adminToken);
+    const r = await areq('/api/gift-cards', json('POST', { amountCents: 999, note: 'for a friend' }), adminToken);
     expect(r.status).toBe(200);
     const g = (await r.json()) as { id: string; code: string; amountCents: number; status: string };
     expect(g.amountCents).toBe(999);
@@ -92,16 +196,16 @@ describe('gift cards', () => {
     issuedCode = g.code;
     issuedId = g.id;
     // the list never shows the code…
-    const list = await req('/admin/gift-cards', {}, adminToken);
+    const list = await areq('/api/gift-cards', {}, adminToken);
     expect(list.status).toBe(200);
     expect(JSON.stringify(await list.json())).not.toContain(g.code);
     // …and the database only holds its hash
     const rows = await db.query<{ code_hash: string }>('SELECT code_hash FROM gift_cards WHERE id = $1', [g.id]);
     expect(rows[0].code_hash).toBe(createHmac('sha256', PEPPER).update(g.code).digest('hex'));
     // bad amounts are refused
-    expect((await req('/admin/gift-cards', json('POST', { amountCents: 10 }), adminToken)).status).toBe(400);
-    expect((await req('/admin/gift-cards', json('POST', { amountCents: 100001 }), adminToken)).status).toBe(400);
-    expect((await req('/admin/gift-cards', json('POST', { amountCents: 999 }))).status).toBe(401);
+    expect((await areq('/api/gift-cards', json('POST', { amountCents: 10 }), adminToken)).status).toBe(400);
+    expect((await areq('/api/gift-cards', json('POST', { amountCents: 100001 }), adminToken)).status).toBe(400);
+    expect((await areq('/api/gift-cards', json('POST', { amountCents: 999 }))).status).toBe(401);
   });
 
   it('redeems once into credit, then refuses the same code', async () => {
@@ -122,16 +226,16 @@ describe('gift cards', () => {
   });
 
   it('a disabled card cannot be redeemed', async () => {
-    const r = await req('/admin/gift-cards', json('POST', { amountCents: 500 }), adminToken);
+    const r = await areq('/api/gift-cards', json('POST', { amountCents: 500 }), adminToken);
     const g = (await r.json()) as { id: string; code: string };
-    const dis = await req(`/admin/gift-cards/${g.id}/disable`, json('POST', {}), adminToken);
+    const dis = await areq(`/api/gift-cards/${g.id}/disable`, json('POST', {}), adminToken);
     expect(dis.status).toBe(200);
     expect((await req('/gift-cards/redeem', json('POST', { code: g.code }), playerToken)).status).toBe(409);
-    expect((await req(`/admin/gift-cards/${g.id}/disable`, json('POST', {}), adminToken)).status).toBe(404);
+    expect((await areq(`/api/gift-cards/${g.id}/disable`, json('POST', {}), adminToken)).status).toBe(404);
   });
 
   it('an expired card cannot be redeemed', async () => {
-    const r = await req('/admin/gift-cards', json('POST', { amountCents: 500, expiresAt: Date.now() + 60_000 }), adminToken);
+    const r = await areq('/api/gift-cards', json('POST', { amountCents: 500, expiresAt: Date.now() + 60_000 }), adminToken);
     const g = (await r.json()) as { id: string; code: string };
     skew = 120_000; // past the expiry
     try {
@@ -142,7 +246,7 @@ describe('gift cards', () => {
   });
 
   it('the CLI token can issue and list gift cards', async () => {
-    const r = await req('/admin/gift-cards', json('POST', { amountCents: 100 }), CLI_TOKEN);
+    const r = await areq('/api/gift-cards', json('POST', { amountCents: 100 }), CLI_TOKEN);
     expect(r.status).toBe(200);
     expect(((await r.json()) as { code: string }).code).toMatch(/^[A-HJ-NP-Z2-9]{16}$/);
   });
@@ -150,17 +254,17 @@ describe('gift cards', () => {
 
 describe('promo codes and credit purchases', () => {
   it('creates a promo, quotes it, and spends credit with it', async () => {
-    const c = await req('/admin/promo-codes', json('POST', { code: 'launch20', kind: 'percent', value: 20 }), adminToken);
+    const c = await areq('/api/promo-codes', json('POST', { code: 'launch20', kind: 'percent', value: 20 }), adminToken);
     expect(c.status).toBe(200);
     expect((await c.json()) as { promo: { code: string } }).toEqual(
       expect.objectContaining({ promo: expect.objectContaining({ code: 'LAUNCH20' }) }),
     );
     // a duplicate code is refused
-    expect((await req('/admin/promo-codes', json('POST', { code: 'LAUNCH20', kind: 'percent', value: 10 }), adminToken)).status).toBe(409);
+    expect((await areq('/api/promo-codes', json('POST', { code: 'LAUNCH20', kind: 'percent', value: 10 }), adminToken)).status).toBe(409);
     // bad definitions are refused
-    expect((await req('/admin/promo-codes', json('POST', { code: 'X', kind: 'percent', value: 10 }), adminToken)).status).toBe(400);
-    expect((await req('/admin/promo-codes', json('POST', { code: 'BADPCT', kind: 'percent', value: 101 }), adminToken)).status).toBe(400);
-    expect((await req('/admin/promo-codes', json('POST', { code: 'BADPROD', kind: 'fixed', value: 100, appliesTo: 'nope' }), adminToken)).status).toBe(400);
+    expect((await areq('/api/promo-codes', json('POST', { code: 'X', kind: 'percent', value: 10 }), adminToken)).status).toBe(400);
+    expect((await areq('/api/promo-codes', json('POST', { code: 'BADPCT', kind: 'percent', value: 101 }), adminToken)).status).toBe(400);
+    expect((await areq('/api/promo-codes', json('POST', { code: 'BADPROD', kind: 'fixed', value: 100, appliesTo: 'nope' }), adminToken)).status).toBe(400);
 
     const q = await req('/store/quote', json('POST', { productId: 'beach_1', promoCode: 'launch20' }), playerToken);
     expect(q.status).toBe(200);
@@ -187,24 +291,23 @@ describe('promo codes and credit purchases', () => {
   });
 
   it('a one-use promo is spent after one purchase', async () => {
-    await req('/admin/promo-codes', json('POST', { code: 'FREEPARA', kind: 'percent', value: 100, maxUses: 1 }), adminToken);
+    await areq('/api/promo-codes', json('POST', { code: 'FREEPARA', kind: 'percent', value: 100, maxUses: 1 }), adminToken);
     const first = await req('/store/credit-purchase', json('POST', { productId: 'item_parasol', promoCode: 'FREEPARA' }), playerToken);
     expect(first.status).toBe(200);
     expect(((await first.json()) as { paidCents: number }).paidCents).toBe(0);
     const second = await req('/store/quote', json('POST', { productId: 'item_parasol', promoCode: 'FREEPARA' }), playerToken);
     expect(second.status).toBe(400);
-    const list = await req('/admin/promo-codes', {}, adminToken);
+    const list = await areq('/api/promo-codes', {}, adminToken);
     const promos = ((await list.json()) as { promos: { code: string; uses: number }[] }).promos;
     expect(promos.find((p) => p.code === 'FREEPARA')?.uses).toBe(1);
   });
 
   it('refuses expired and wrong-product promos', async () => {
-    await req(
-      '/admin/promo-codes',
+    await areq('/api/promo-codes',
       json('POST', { code: 'SHORTLIVED', kind: 'fixed', value: 100, expiresAt: Date.now() + 60_000 }),
       adminToken,
     );
-    await req('/admin/promo-codes', json('POST', { code: 'LIGHTONLY', kind: 'percent', value: 50, appliesTo: 'item_lighthouse' }), adminToken);
+    await areq('/api/promo-codes', json('POST', { code: 'LIGHTONLY', kind: 'percent', value: 50, appliesTo: 'item_lighthouse' }), adminToken);
     skew = 120_000;
     try {
       expect((await req('/store/quote', json('POST', { productId: 'beach_1', promoCode: 'SHORTLIVED' }), playerToken)).status).toBe(400);
@@ -214,15 +317,15 @@ describe('promo codes and credit purchases', () => {
     expect((await req('/store/quote', json('POST', { productId: 'beach_1', promoCode: 'LIGHTONLY' }), playerToken)).status).toBe(400);
     expect((await req('/store/quote', json('POST', { productId: 'beach_1', promoCode: 'NOSUCHCODE' }), playerToken)).status).toBe(404);
     // a disabled promo is refused too
-    const dis = await req('/admin/promo-codes/LIGHTONLY/disable', json('POST', {}), adminToken);
+    const dis = await areq('/api/promo-codes/LIGHTONLY/disable', json('POST', {}), adminToken);
     expect(dis.status).toBe(200);
     expect((await req('/store/quote', json('POST', { productId: 'item_lighthouse', promoCode: 'LIGHTONLY' }), playerToken)).status).toBe(400);
   });
 
   it('the CLI token can create promos and read redemptions', async () => {
-    const c = await req('/admin/promo-codes', json('POST', { code: 'CLICODE', kind: 'fixed', value: 100 }), CLI_TOKEN);
+    const c = await areq('/api/promo-codes', json('POST', { code: 'CLICODE', kind: 'fixed', value: 100 }), CLI_TOKEN);
     expect(c.status).toBe(200);
-    const red = await req('/admin/redemptions', {}, CLI_TOKEN);
+    const red = await areq('/api/redemptions', {}, CLI_TOKEN);
     expect(red.status).toBe(200);
     const body = (await red.json()) as { giftCards: { id: string }[]; promoUses: { code: string }[]; credit: { kind: string }[] };
     expect(body.giftCards.some((g) => g.id === issuedId)).toBe(true);
@@ -246,12 +349,12 @@ describe('promo codes and credit purchases', () => {
     // loser's credit is gone by the time its payment runs, so it must fail
     // without burning a promo use or taking any more credit.
     const racer = await signInDev('player-race-one');
-    const issue = await req('/admin/gift-cards', json('POST', { amountCents: 240 }), adminToken);
+    const issue = await areq('/api/gift-cards', json('POST', { amountCents: 240 }), adminToken);
     expect(issue.status).toBe(200);
     const card = (await issue.json()) as { code: string };
     expect((await req('/gift-cards/redeem', json('POST', { code: card.code }), racer)).status).toBe(200);
     const promoList = async () =>
-      ((await (await req('/admin/promo-codes', {}, adminToken)).json()) as { promos: { code: string; uses: number }[] }).promos;
+      ((await (await areq('/api/promo-codes', {}, adminToken)).json()) as { promos: { code: string; uses: number }[] }).promos;
     const before = (await promoList()).find((p) => p.code === 'LAUNCH20')?.uses;
     const [r1, r2] = await Promise.all([
       req('/store/credit-purchase', json('POST', { productId: 'beach_1', promoCode: 'LAUNCH20' }), racer),
@@ -272,10 +375,10 @@ describe('promo codes and credit purchases', () => {
   it('a one-use promo is claimed by exactly one of two concurrent buyers', async () => {
     // The reverse race: the promo runs out between the payment check and
     // the claim. The loser must keep its credit and get nothing.
-    await req('/admin/promo-codes', json('POST', { code: 'ONCEONLY', kind: 'percent', value: 50, maxUses: 1 }), adminToken);
+    await areq('/api/promo-codes', json('POST', { code: 'ONCEONLY', kind: 'percent', value: 50, maxUses: 1 }), adminToken);
     const fund = async (name: string) => {
       const t = await signInDev(name);
-      const issue = await req('/admin/gift-cards', json('POST', { amountCents: 500 }), adminToken);
+      const issue = await areq('/api/gift-cards', json('POST', { amountCents: 500 }), adminToken);
       expect(issue.status).toBe(200);
       const card = (await issue.json()) as { code: string };
       expect((await req('/gift-cards/redeem', json('POST', { code: card.code }), t)).status).toBe(200);
@@ -293,7 +396,7 @@ describe('promo codes and credit purchases', () => {
     const statuses = [r1.status, r2.status].sort();
     expect(statuses[0]).toBe(200);
     expect(statuses[1]).not.toBe(200);
-    const promos = ((await (await req('/admin/promo-codes', {}, adminToken)).json()) as { promos: { code: string; uses: number }[] }).promos;
+    const promos = ((await (await areq('/api/promo-codes', {}, adminToken)).json()) as { promos: { code: string; uses: number }[] }).promos;
     expect(promos.find((p) => p.code === 'ONCEONLY')?.uses).toBe(1);
     // beach_1 at 50% off is $1.50; the winner paid it, the loser paid nothing
     const creditOf = async (t: string) => ((await (await req('/credit', {}, t)).json()) as { creditCents: number }).creditCents;

@@ -453,6 +453,21 @@ offline. The spec and milestones are in [BEACH_FILE.md](BEACH_FILE.md).
   every restore; a beach epoch so other devices don't save over a restore.
   Milestones C1–C6 are in BACKLOG.md.
 
+## Admin console (2026-11-23)
+
+The admin console is its own app: Cloud Run service `beech-admin`, on the
+same database as the game (`server/src/adminServer.ts`; design and setup
+in docs/GIFT_CARDS_PROMOS.md#admin-console). The game server no longer
+serves `/admin` or `/api/admin/*`. Nothing loads until a Google sign-in by
+an `ADMIN_EMAILS` account. It manages gift cards, promo codes, redemptions
+and **beaches**: search, details, rename, hide from the shore, new code,
+part neighbors, clear the sand (undoable via a checkpoint) and delete a
+non-home beach. Every action is audited, and there's an Audit log tab.
+`npm run server:dev` also serves it on port 8788.
+
+The Google sign-in round trip on the deployed service is not verified
+here: it needs the service's URL on the web OAuth client.
+
 ## Deploy and build status
 
 - **iOS:** the Xcode project builds for the simulator on GitHub's macOS
@@ -482,6 +497,10 @@ offline. The spec and milestones are in [BEACH_FILE.md](BEACH_FILE.md).
   Connect credentials. The first Play upload must be manual.
 - Feel on real phones: touch latency, haptics, audio mix, thermal behaviour.
   The tuning panel (`?debug=1`) is the place to adjust these.
+- The admin console's real Google sign-in and the `beech-admin` Cloud Run
+  deploy. Tests cover sign-in with a stubbed Google verifier, and both
+  entry points were run locally. The Docker `admin` target wasn't built
+  here, because no Docker daemon was available.
 
 ## Verification
 

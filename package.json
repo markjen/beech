@@ -1,7 +1,7 @@
 {
   "name": "beech",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "type": "module",
   "description": "A calm beach sand-and-waves toy for web and mobile, built with Babylon.js.",
   "scripts": {
@@ -16,7 +16,7 @@
     "cap:sync": "npm run build && cap sync",
     "cap:ios": "npm run cap:sync && cap open ios",
     "cap:android": "npm run cap:sync && cap open android",
-    "server:dev": "npm run build:accounts && cd server && npm run build && DEV_AUTH=1 PORT=8787 ALLOWED_ORIGINS=http://localhost:5173,capacitor://localhost,https://localhost node build/server.js",
+    "server:dev": "npm run build:accounts && cd server && npm run build && DEV_AUTH=1 PORT=8787 ADMIN_DEV_PORT=8788 BEECH_APP_URL=http://localhost:8787 ALLOWED_ORIGINS=http://localhost:5173,capacitor://localhost,https://localhost node build/server.js",
     "build:accounts": "VITE_ACCOUNTS=1 VITE_DEV_AUTH=1 vite build",
     "e2e:accounts": "node scripts/account-e2e.mjs",
     "e2e:neighbors": "node scripts/neighbors-e2e.mjs",

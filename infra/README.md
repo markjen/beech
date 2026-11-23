@@ -81,7 +81,7 @@ are **no secrets** to add — these are all public identifiers.
 | `GOOGLE_CLIENT_ID` | OAuth web client ID (below) |
 | `GOOGLE_CLIENT_IDS` | web client ID, plus iOS/Android client IDs when they exist, comma-separated |
 | `APPLE_CLIENT_IDS` | later, for Sign in with Apple |
-| `ADMIN_EMAILS` | the Google account(s) allowed into the admin console, comma-separated — production: `markjen@gmail.com` |
+| `ADMIN_EMAILS` | the Google account(s) allowed into the admin console (the `beech-admin` service), comma-separated — production: `markjen@gmail.com` |
 
 ## 4. Google sign-in (Console, once)
 
@@ -144,16 +144,29 @@ From `server/src/server.ts` — what the container needs at runtime:
 | `GOOGLE_CLIENT_IDS` | comma-separated client IDs (web, iOS, Android) |
 | `APPLE_CLIENT_IDS` | comma-separated (bundle id, Services ID); empty until Apple sign-in ships |
 | `ALLOWED_ORIGINS` | unset — defaults to `capacitor://localhost,https://localhost` |
-| `ADMIN_EMAILS` | comma-separated verified Google emails allowed into the admin console — production: `markjen@gmail.com`; empty: no admin |
-| `ADMIN_API_TOKEN` | the CLI's credential, from Secret Manager secret `beech-admin-token`; unset: the CLI can't authenticate |
-| `GIFT_CODE_PEPPER` | pepper for gift card code hashes, from Secret Manager secret `beech-gift-code-pepper`; unset: works, but logs a warning |
+| `GIFT_CODE_PEPPER` | pepper for gift card code hashes, from Secret Manager secret `beech-gift-code-pepper`; unset: works, but logs a warning. Must match `beech-admin`'s |
 | `DEV_AUTH` | **never set in production** (enables a dev-only sign-in; the server refuses to start with it when `NODE_ENV=production`) |
 
 `DATABASE_URL` is an alternative to the socket vars (used locally and
 in CI's image boot test); production uses the socket. The DB pool is
 capped at 5 connections per instance (`server/src/db.ts`).
 
-### Gift cards / admin secrets (docs/GIFT_CARDS_PROMOS.md)
+### The admin console service, `beech-admin` (docs/GIFT_CARDS_PROMOS.md)
+
+The deploy workflow deploys a second service, `beech-admin`, from the
+Dockerfile's `admin` target. It uses the same runtime service account and
+Cloud SQL connection, with `--max-instances 1`. Its environment:
+
+| Variable | Value |
+|---|---|
+| `DB_SOCKET` / `DB_USER` / `DB_PASSWORD` / `DB_NAME` | same as `beech` |
+| `GOOGLE_CLIENT_ID` | the web OAuth client; **add this service's URL to the client's Authorized JavaScript origins** |
+| `ADMIN_EMAILS` | comma-separated verified Google emails allowed in — production: `markjen@gmail.com`; empty: nobody |
+| `ADMIN_API_TOKEN` | the CLI's credential, from secret `beech-admin-token`; unset: the CLI can't authenticate |
+| `GIFT_CODE_PEPPER` | from secret `beech-gift-code-pepper` (same value as `beech`) |
+| `BEECH_APP_URL` | the `beech` service URL, for "open in the game" links (set by the workflow) |
+
+### Gift cards / admin secrets
 
 The two admin secrets are **not** in Terraform: create them by hand, then
 add them to the deploy workflow's `--set-secrets` next to `DB_PASSWORD`.

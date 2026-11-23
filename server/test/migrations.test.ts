@@ -87,3 +87,30 @@ describe('migration 7: beaches of their own', () => {
     await db.close();
   });
 });
+
+describe('migration 13: checkpoints', () => {
+  it('adds the table and an epoch to beaches that already have sand', async () => {
+    const db = await createPgliteDb();
+    await migrate(db, 12);
+    const a = '00000000-0000-4000-8000-0000000000c3';
+    await db.query("INSERT INTO users (id, provider, provider_sub, name, neighbor_code, created_at) VALUES ($1, 'dev', 'c', 'c', 'CCCCCC', 1)", [a]);
+    await db.query("INSERT INTO beach (id, owner_id, code, home, location, nx, ny, version, updated_at, sand, created_at) VALUES ($1, $1, 'CCCCCC', true, 'piha', 8, 8, 4, 9, $2, 1)", [a, new Uint8Array([1])]);
+    await migrate(db);
+    expect(await db.query('SELECT version, epoch FROM beach')).toEqual([{ version: 4, epoch: 0 }]);
+    await db.query(
+      "INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, nx, ny, sand, bytes, objects, created_at) VALUES ($1, $2, 'x', 'auto', 'beach', $2, 8, 8, $3, 1, 0, 1)",
+      ['00000000-0000-4000-8000-0000000000d4', a, new Uint8Array([1])],
+    );
+    // one automatic checkpoint per beach
+    await expect(
+      db.query(
+        "INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, nx, ny, sand, bytes, objects, created_at) VALUES ($1, $2, 'y', 'auto', 'beach', $2, 8, 8, $3, 1, 0, 1)",
+        ['00000000-0000-4000-8000-0000000000d5', a, new Uint8Array([1])],
+      ),
+    ).rejects.toThrow();
+    // a removed beach leaves its checkpoints; the account takes them
+    await db.query('DELETE FROM users WHERE id = $1', [a]);
+    expect(await db.query('SELECT * FROM checkpoints')).toEqual([]);
+    await db.close();
+  });
+});
