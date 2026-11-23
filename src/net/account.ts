@@ -516,6 +516,8 @@ export interface PullPool {
   /** published chance of each rarity */
   odds: Record<'common' | 'rare' | 'legendary', number>;
   items: Record<'common' | 'rare' | 'legendary', string[]>;
+  /** how often the claw holds on to a ball of each rarity (a miss spends the go) */
+  grab: Record<'common' | 'rare' | 'legendary', number>;
   /** a free go is ready now */
   free: boolean;
   /** how long the claw will rest after your next go (ms): 5 min, doubling, up to a day */
@@ -554,7 +556,15 @@ export class PullApi {
     return res.json();
   }
 
-  async pull(pool: string): Promise<{ item: string; rarity: string; nextFree: number }> {
+  /** A go: `missed` when the claw dropped the ball — the go is spent, nothing
+   *  is won, and `dropped` says what slipped out. */
+  async pull(pool: string): Promise<{
+    item: string | null;
+    rarity: string | null;
+    missed: boolean;
+    dropped?: { item: string; rarity: string };
+    nextFree: number;
+  }> {
     const res = await this.account.fetch(`/api/pulls/${encodeURIComponent(pool)}`, { method: 'POST' });
     if (!res.ok) throw await errorOf(res, 'The claw machine is out of order');
     return res.json();

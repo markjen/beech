@@ -108,6 +108,16 @@ _(nothing right now)_
   beach (live on different devices at once), purchases checked with Apple
   and Google, a pricing plan (PRICING.md) (2026-11-23).
 
+- [x] **Settings beach map: your beaches on a world map, west to east**
+  (2026-11-23, 6b4f36d): `src/ui/beachMap.ts` plots each beach at its real lon/lat
+  on a self-contained stylized SVG world map (no tiles); the settings list
+  and favorites are ordered west to east; dots are tappable to open a beach.
+- [x] **Claw machine can miss** (2026-11-22): the server rolls a grab after
+  the draw — the claw keeps a common ball 80% of the time, a rare one 65%,
+  a legendary one 40% (about 1 go in 4 comes up empty). Starter gifts always
+  hold. A miss spends the go, wins nothing, and the claw lifts empty with an
+  "It slipped out of the claw!" reveal naming what dropped. Grab chances are
+  published (GET /pulls) and shown under the odds.
 - [x] **Objects floating off Rose's beach** (2026-11-23): server refuses
   saves from the old 32 × 24 app; `fitWorld` repairs objects it shifted.
 - [x] **Leaderboard of the most-starred beaches** (2026-11-23): a trophy

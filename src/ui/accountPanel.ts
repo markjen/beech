@@ -1,4 +1,5 @@
 import { beachById } from '../world/locations';
+import { renderBeachMap, sortBeachesWestToEast } from './beachMap';
 import { DEV_AUTH, googleSignInAvailable, renderGoogleButton, type Account } from '../net/account';
 import { shareUrl } from '../net/share';
 import { nativeProviders, nativeSignIn, SignInCancelled, type NativeProvider } from '../net/nativeAuth';
@@ -290,6 +291,14 @@ export class AccountPanel {
     h.className = 'status';
     h.textContent = a.beaches.length > 1 ? `your beaches (${a.beaches.length} of ${a.allowance})` : 'your beach';
     wrap.appendChild(h);
+    // West to east, on a map and in the list below it.
+    const ordered = sortBeachesWestToEast(a.beaches);
+    const openHere = (id: string) =>
+      void this.guard(async () => {
+        await mine.open(id);
+        mine.changed();
+      });
+    wrap.appendChild(renderBeachMap(ordered, a.beachId, openHere));
     const act = (label: string, key: string, fn: () => Promise<void>, title = '') => {
       const b = document.createElement('button');
       b.type = 'button';
@@ -303,7 +312,7 @@ export class AccountPanel {
       }));
       return b;
     };
-    for (const b of a.beaches) {
+    for (const b of ordered) {
       const row = document.createElement('div');
       row.className = `slot beach-row${b.id === a.beachId ? ' here' : ''}`;
       const place = b.location ? beachById(b.location) : undefined;
@@ -389,7 +398,7 @@ export class AccountPanel {
     row.append(input, go);
     wrap.appendChild(row);
 
-    const favs = [...nv.favorites.values()];
+    const favs = sortBeachesWestToEast([...nv.favorites.values()]);
     const h = document.createElement('div');
     h.className = 'status';
     h.textContent = favs.length ? 'favorite beaches' : 'tap ☆ on a beach to keep it here';

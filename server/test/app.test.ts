@@ -3,10 +3,13 @@ import { createApp, normalizeCode } from '../src/app.js';
 import type { VerifiedPurchase } from '../src/store.js';
 import { createPgDb, createPgliteDb, type Db } from '../src/db.js';
 import { migrate } from '../src/migrations.js';
+import { cryptoRandom } from '../src/pulls.js';
 
 let db: Db;
 /** the server's clock in these tests: real time plus however far a test moved it on */
 let skew = 0;
+/** the server's dice in these tests: a test can force them (a miss), then put them back */
+let forcedRand: (() => number) | null = null;
 let app: ReturnType<typeof createApp>;
 
 beforeAll(async () => {
@@ -26,6 +29,7 @@ beforeAll(async () => {
     allowedOrigins: ['capacitor://localhost'],
     devAuth: true,
     now: () => Date.now() + skew,
+    rand: () => (forcedRand?.() ?? cryptoRandom()),
     // pretend stores: a "jws"/"token" here is just the purchase as JSON (store.test.ts checks the real verification)
     stores: {
       apple: async (jws) => {
@@ -442,6 +446,87 @@ describe('pulls', () => {
     const inv = (await (await req('/inventory', {}, dora.token)).json()) as { items: { item: string }[] };
     expect(inv.items.map((i) => i.item)).toEqual(expect.arrayContaining(['starfish', 'deckchair', 'beach']));
     skew = 0;
+  });
+
+  it('the claw can drop a ball: a miss spends the go and wins nothing', async () => {
+    // a fresh name: dev sign-in keys users by name, and Eve/Fay already have
+    // beach rows from the multi-beach tests above
+    const eve = await signIn('Nia');
+    type Status = { pools: { id: string; grab: Record<string, number> }[] };
+    const status = async () => ((await (await req('/pulls', {}, eve.token)).json()) as Status).pools.find((p) => p.id === 'daily')!;
+    expect((await status()).grab).toEqual({ common: 0.8, rare: 0.65, legendary: 0.4 });
+    type Go = { item: string | null; rarity: string | null; missed: boolean; dropped?: { item: string; rarity: string }; nextFree: number };
+    const go = async () => {
+      const r = await req('/pulls/daily', { method: 'POST' }, eve.token);
+      expect(r.status).toBe(200);
+      return (await r.json()) as Go;
+    };
+    const waitOut = (nextFree: number) => {
+      skew += nextFree - (Date.now() + skew) + 1000;
+    };
+    try {
+      // the two starter gifts always land
+      const first = await go();
+      expect(first).toMatchObject({ missed: false, item: 'starfish' });
+      waitOut(first.nextFree);
+      const second = await go();
+      expect(second).toMatchObject({ missed: false, item: 'deckchair' });
+      waitOut(second.nextFree);
+      // the third go is an ordinary draw: force the claw to drop a common ball
+      // (draw: rarity 0.5 -> common, pick 0.5 -> sanddollar; grab 0.9 >= 0.8 -> miss)
+      const drops = [0.5, 0.5, 0.9];
+      forcedRand = () => drops.shift() ?? 0.5;
+      const missed = await go();
+      expect(missed).toMatchObject({ missed: true, dropped: { item: 'sanddollar', rarity: 'common' } });
+      expect(missed.item).toBeNull();
+      // the go is spent: the next wait is 20 minutes, and it's resting now
+      expect(Math.round((missed.nextFree - (Date.now() + skew)) / 60000)).toBe(20);
+      expect((await req('/pulls/daily', { method: 'POST' }, eve.token)).status).toBe(409);
+      // and nothing was won: only the two starter gifts are in the bag
+      const inv = (await (await req('/inventory', {}, eve.token)).json()) as { items: { item: string }[] };
+      expect(inv.items.map((i) => i.item).sort()).toEqual(['deckchair', 'starfish']);
+      // the next go, with a kind roll, can win again
+      waitOut(missed.nextFree);
+      const holds = [0.5, 0.5, 0.1];
+      forcedRand = () => holds.shift() ?? 0.5;
+      expect(await go()).toMatchObject({ missed: false, item: 'sanddollar' });
+    } finally {
+      forcedRand = null;
+      skew = 0;
+    }
+  });
+
+  it('starter gifts never miss, even when the claw would drop anything', async () => {
+    // a fresh name, as above: Fay already has a beach row from another test
+    const fay = await signIn('Ola');
+    // a roll of 0.999 fails every grab (and draws a common ball) — the gifts land anyway
+    forcedRand = () => 0.999;
+    try {
+      const go = async () => {
+        const r = await req('/pulls/daily', { method: 'POST' }, fay.token);
+        expect(r.status).toBe(200);
+        const body = (await r.json()) as { item: string; missed: boolean; nextFree: number };
+        skew += body.nextFree - (Date.now() + skew) + 1000; // wait out the rest
+        return body;
+      };
+      expect(await go()).toMatchObject({ missed: false, item: 'starfish' });
+      expect(await go()).toMatchObject({ missed: false, item: 'deckchair' });
+    } finally {
+      forcedRand = null;
+      skew = 0;
+    }
+  });
+
+  it('the claw holds on at the published rates', async () => {
+    const { GRAB_CHANCE, grab } = await import('../src/pulls.js');
+    const n = 20000;
+    for (const k of ['common', 'rare', 'legendary'] as const) {
+      let seed = 987654321;
+      const rand = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+      let held = 0;
+      for (let i = 0; i < n; i++) if (grab(k, rand)) held++;
+      expect(held / n).toBeCloseTo(GRAB_CHANCE[k], 1);
+    }
   });
 
   it('draws with the published odds', async () => {

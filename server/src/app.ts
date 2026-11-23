@@ -27,7 +27,7 @@ import { HTTPException } from 'hono/http-exception';
 
 import { PRODUCTS, productById } from './products.js';
 import { appleRefund, googleVoided, verifyAppleTransaction, verifyGooglePurchase, type VerifiedPurchase } from './store.js';
-import { POOLS, cooldownAfter, draw, pullDay, starterPrize, STARTER } from './pulls.js';
+import { POOLS, GRAB_CHANCE, cooldownAfter, cryptoRandom, draw, grab, pullDay, starterPrize, STARTER } from './pulls.js';
 import { hashToken, newSessionToken, SESSION_DAYS, verifyAppleIdToken, verifyGoogleIdToken, type VerifiedIdentity } from './auth.js';
 import { toBytes, type Db } from './db.js';
 import { createRateLimiter, logEvent, parseClientEvent, routeLabel } from './observability.js';
@@ -43,6 +43,8 @@ export interface AppConfig {
   verifyApple?: typeof verifyAppleIdToken;
   /** the clock (tests move it forward) */
   now?: () => number;
+  /** the dice (tests force a miss) */
+  rand?: () => number;
   /** the iOS bundle id and Android package the store purchases are for */
   appleBundleId?: string;
   androidPackage?: string;
@@ -742,6 +744,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
 
   // ---------------------------------------------------------------- pulls
   // the pools, their published odds, and whether your free go is ready
+  const rand = () => cfg.rand?.() ?? cryptoRandom();
   // when each of your machines is free again (no row: right now)
   const freeAt = async (user: string) => {
     const rows = await db.query<{ pool: string; next_at: string; count: number }>(
@@ -763,6 +766,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
           name: p.name,
           odds: p.odds,
           items: p.items,
+          // how often the claw holds on to a ball of each rarity (a miss spends the go)
+          grab: GRAB_CHANCE,
           free: !st || st.at <= now,
           // how long you'll wait after this go before the next
           nextCooldown: cooldownAfter((st?.count ?? 0) + 1),
@@ -774,7 +779,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     });
   });
 
-  // your free go: the server draws, records it and adds the prize to your bag.
+  // your free go: the server draws, records it and adds the prize to your bag —
+  // unless the claw drops it, in which case the go is spent and nothing is won.
   // The wait before the next go starts at 5 minutes and doubles each time, up
   // to once a day.
   app.post('/pulls/:pool', requireUser, async (c) => {
@@ -792,27 +798,42 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
         [me, pool!.id, STARTER.beach.item],
       )
     )[0];
-    const got =
-      starterPrize(count + 1, hist?.first == null ? null : Number(hist.first), now, !!hist?.beach) ?? draw(pool!);
+    // A normal draw can slip out of the claw — never a starter gift — and a
+    // miss still spends the go: the rest starts either way.
+    const starter =
+      starterPrize(count + 1, hist?.first == null ? null : Number(hist.first), now, !!hist?.beach);
+    const got = starter ?? draw(pool!, rand);
+    const missed = !starter && !grab(got.rarity, rand);
     const wait = cooldownAfter(count + 1);
     // one statement: claim the go (only if it's free and nobody claimed it
-    // meanwhile), log it, and give the prize
-    const rows = await db.query<{ item_id: string }>(
-      `WITH claim AS (
-         UPDATE pull_state SET count = count + 1, next_at = $6 + $7
-          WHERE user_id = $1 AND pool = $2 AND next_at <= $6 AND count = $8
-          RETURNING user_id
-       ), logged AS (
-         INSERT INTO pulls (user_id, pool, day, item_id, rarity, created_at)
-         SELECT user_id, $2, $3, $4, $5, $6 FROM claim RETURNING user_id
-       )
-       INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at, expires_at)
-       SELECT user_id, $4, 1, 'pull', $6, NULL FROM logged RETURNING item_id`,
-      [me, pool!.id, pullDay(now), got.item, got.rarity, now, wait, count],
-    );
+    // meanwhile); on a win, log it and give the prize. On a miss nothing is
+    // won, so there is nothing to log or give — only the claim runs. (The
+    // miss claim has its own numbering: every parameter must be used, or
+    // Postgres can't tell its type.)
+    const rows = missed
+      ? await db.query(
+          `UPDATE pull_state SET count = count + 1, next_at = $3 + $4
+            WHERE user_id = $1 AND pool = $2 AND next_at <= $3 AND count = $5
+            RETURNING user_id`,
+          [me, pool!.id, now, wait, count],
+        )
+      : await db.query<{ item_id: string }>(
+          `WITH claim AS (
+             UPDATE pull_state SET count = count + 1, next_at = $6 + $7
+              WHERE user_id = $1 AND pool = $2 AND next_at <= $6 AND count = $8
+              RETURNING user_id
+           ), logged AS (
+             INSERT INTO pulls (user_id, pool, day, item_id, rarity, created_at)
+             SELECT user_id, $2, $3, $4, $5, $6 FROM claim RETURNING user_id
+           )
+           INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at, expires_at)
+           SELECT user_id, $4, 1, 'pull', $6, NULL FROM logged RETURNING item_id`,
+          [me, pool!.id, pullDay(now), got.item, got.rarity, now, wait, count],
+        );
     const st = (await freeAt(me)).get(pool!.id);
     if (!rows[0]) return c.json({ error: 'not yet: the claw is resting', nextFree: st?.at ?? now }, 409);
-    return c.json({ item: got.item, rarity: got.rarity, nextFree: st?.at ?? now + wait });
+    if (missed) return c.json({ missed: true, item: null, rarity: null, dropped: { item: got.item, rarity: got.rarity }, nextFree: st?.at ?? now + wait });
+    return c.json({ missed: false, item: got.item, rarity: got.rarity, nextFree: st?.at ?? now + wait });
   });
 
   app.post('/neighbors/code', requireUser, async (c) => {
