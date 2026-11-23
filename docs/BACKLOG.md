@@ -127,12 +127,12 @@ _(nothing right now)_
 
 ## Done (recent)
 
-- [x] **Discord links** (2026-11-23): the Discord server is the feedback
-  channel — "Talk to us" section + footer link on the landing page,
-  footer link on the shore site, "Join our Discord" at the bottom of the
-  in-game account panel. All three read the invite from one constant,
-  `DISCORD_INVITE_URL` in `server/src/community.ts`. The URL there is a
-  placeholder until the server exists (owner item above).
+- [x] **Discord links** (2026-11-23, PR #40 draft): the Discord server is
+  the feedback channel — "Talk to us" section + footer link on the
+  landing page, footer link on the shore site, "Join our Discord" at the
+  bottom of the in-game account panel. All three read the invite from one
+  constant, `DISCORD_INVITE_URL` in `server/src/community.ts`. The URL
+  there is a placeholder until the server exists (owner item above).
 - [x] **Production domains** (2026-11-23): game at https://play.beech.games,
   home page + guide + privacy at https://beech.games (landing), shore at
   https://beechshore.com (mapping + DNS still to do), admin at
