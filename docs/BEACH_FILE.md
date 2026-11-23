@@ -1,8 +1,8 @@
 # Beach files: export, import and design offline
 
-Status: **E1 and E2 done** (2026-11-23): the format, reader, writer, schema,
-examples, and export/import in the web app. Next: the phone apps' share
-sheet and file picker (E3). This page is the plan and the file
+Status: **E1 to E3 done** (2026-11-23): the format, reader, writer, schema,
+examples, and export/import on the web and in the phone apps. Next: the
+offline tool and guide (E4). This page is the plan and the file
 specification. The spec is the contract: once version 1 ships, readers keep
 accepting every version 1 file.
 
@@ -227,7 +227,7 @@ Each one leaves the app playable and passes `npm test` and `npm run build`.
 | **E0** ✅ | This plan and spec | Committed. |
 | **E1** ✅ | Format, codec and spec complete | `beachFile.ts` parses and writes all three encodings and the four shapes with all modes, gives errors and warnings as specified, and round-trips with the app's save format. JSON Schema and examples are added. The rest-profile table is in this page. Unit tests cover the round trip, each shape and mode, clamping, bad files, the size limit, resampling and `reconcileItems`. No UI changes yet. |
 | **E2** ✅ | Export and import in the app (web) | Settings and account-panel buttons. Export downloads a file. Import uses a file picker, then the preview with inventory and warnings, then replaces the beach as one undo step, and it saves. Screenshots at desktop and phone sizes, and an e2e step in `scripts/account-e2e.mjs`. |
-| **E3** | Phone apps | Export through the share sheet (`@capacitor/filesystem` and `@capacitor/share`). Import through the system file picker in both WebViews. `npx cap sync`, and the Android debug build passes. |
+| **E3** ✅ | Phone apps | Export through the share sheet (`@capacitor/filesystem` and `@capacitor/share`). Import through the system file picker in both WebViews. `npx cap sync`, and the Android debug build passes. |
 | **E4** | Offline tools and guide | `scripts/beach-file.mjs` (validate, rows/compact, heightmap PNG with its own small PNG decoder, no new dependencies). A short "Design a beach offline" guide at the end of this page, with a worked example and a 20-line generator script. |
 | **E5** | With checkpoints | "Save as checkpoint" in the import preview, "Export" on a checkpoint, and the automatic "Before import" checkpoint. Built once checkpoints land; see CHECKPOINTS.md. |
 

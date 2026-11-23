@@ -27,8 +27,10 @@
     "@babylonjs/core": "8.56.2",
     "@capacitor/android": "^8.6.0",
     "@capacitor/core": "^8.6.0",
+    "@capacitor/filesystem": "8.1.4",
     "@capacitor/haptics": "^8.0.2",
     "@capacitor/ios": "^8.6.0",
+    "@capacitor/share": "8.0.2",
     "@capgo/capacitor-social-login": "8.7.6",
     "@capgo/native-purchases": "8.9.6",
     "lil-gui": "^0.21.0"

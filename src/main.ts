@@ -43,7 +43,7 @@ import { Leaderboard } from './ui/leaderboard';
 import { NEIGHBOR_OFFSET, NeighborView } from './render/neighbors';
 import { loadSettings, saveSettings, type Settings } from './ui/settingsStore';
 import { initTelemetry } from './net/telemetry';
-import { BeachFileDialog, beachFileName, downloadText } from './ui/beachFileDialog';
+import { BeachFileDialog, beachFileName, saveText } from './ui/beachFileDialog';
 import { writeBeachFile } from './world/beachFile';
 import { version as APP_VERSION } from '../package.json';
 
@@ -470,7 +470,7 @@ async function boot() {
       { nx: grid.nx, ny: grid.ny, delta, objects },
       { name, location: beach.id, createdWith: `beech ${APP_VERSION}` },
     );
-    downloadText(beachFileName(name), text);
+    await saveText(beachFileName(name), text);
   };
   const beachFiles = new BeachFileDialog(uiRoot, {
     grid: () => grid,

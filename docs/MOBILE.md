@@ -7,7 +7,7 @@ The phone apps are the same web build wrapped with **Capacitor 8**:
 | Config | `capacitor.config.ts` (appId `app.beech.beach`, webDir `dist`) |
 | Android project | `android/` (Gradle, compile/target SDK 36, min SDK 24) |
 | iOS project | `ios/App/App.xcodeproj` (Swift Package Manager, no CocoaPods) |
-| Native plugin | `@capacitor/haptics` (Taptic Engine / vibrator) |
+| Native plugins | `@capacitor/haptics` (Taptic Engine / vibrator); `@capacitor/filesystem` and `@capacitor/share` (exporting a beach file through the share sheet) |
 | Icons & splash sources | `resources/` (regenerate with `npm run icons`, then `npx @capacitor/assets generate`, see below) |
 
 > **Before the first store upload, decide the final `appId`.** It is the
@@ -250,6 +250,11 @@ privacy forms.
 
 - **Audio** starts on the first touch (the title card), which WebView
   autoplay rules require.
+- **Beach files:** export writes the file to the app's cache folder and
+  opens the share sheet (save to Files, AirDrop, email…). Import uses the
+  system file picker, which the WebView opens for `<input type=file>`. In
+  the apps the picker accepts any file, since the phones don't know the
+  `.beach.json` type; the reader rejects anything that isn't a beach file.
 - **Haptics:** native apps use `@capacitor/haptics`. Android web uses
   `navigator.vibrate`. iOS web has no vibration API, so there are no haptics there.
 - **Backgrounding** pauses the sim worker and audio (`visibilitychange`).

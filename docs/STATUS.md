@@ -420,6 +420,10 @@ offline. The spec and milestones are in [BEACH_FILE.md](BEACH_FILE.md).
   only. Checked in the browser (desktop and phone) and in
   `npm run e2e:accounts` (import with a parasol short, the save survives a
   reload, export).
+- **E3 done:** in the phone apps, export goes through the share sheet
+  (`@capacitor/filesystem` and `@capacitor/share`), and import uses the
+  system file picker. The Android debug build passes here; iOS builds in CI.
+  Neither has been tried on a real device yet.
 
 ## Checkpoints (designed, not built)
 

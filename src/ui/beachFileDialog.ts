@@ -3,6 +3,7 @@
 // The format is docs/BEACH_FILE.md; reading and writing live in
 // src/world/beachFile.ts.
 
+import { Capacitor } from '@capacitor/core';
 import { PROFILE, WORLD_SIZE_X } from '../config';
 import type { PlacedObject } from '../sim/objects';
 import { restHeight } from '../sim/profile';
@@ -32,7 +33,10 @@ export function pickFile(accept = '.json,.beach.json,application/json'): Promise
   return new Promise((resolve) => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = accept;
+    // the phone pickers grey out files whose type they can't map from the
+    // extension (".beach.json" is often unknown), so let any file be picked
+    // there; the reader says if it isn't a beach file
+    if (!Capacitor.isNativePlatform()) input.accept = accept;
     input.style.display = 'none';
     document.body.appendChild(input);
     let done = false;
@@ -46,6 +50,24 @@ export function pickFile(accept = '.json,.beach.json,application/json'): Promise
     input.addEventListener('cancel', () => finish(null));
     input.click();
   });
+}
+
+/**
+ * Save a beach file: the share sheet in the phone apps (a download can't
+ * leave their WebView), a download on the web.
+ */
+export async function saveText(name: string, text: string): Promise<void> {
+  if (Capacitor.isNativePlatform()) {
+    const [{ Filesystem, Directory, Encoding }, { Share }] = await Promise.all([import('@capacitor/filesystem'), import('@capacitor/share')]);
+    const { uri } = await Filesystem.writeFile({ path: name, data: text, directory: Directory.Cache, encoding: Encoding.UTF8 });
+    try {
+      await Share.share({ title: name, files: [uri] });
+    } catch {
+      /* the person closed the share sheet */
+    }
+    return;
+  }
+  downloadText(name, text);
 }
 
 /** Save text as a file (a download on the web). */
