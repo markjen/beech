@@ -31,7 +31,7 @@ function centre(sim: BeachSim, x: number): number {
 }
 
 /** Drive a stroke from x0 to x1 at `speed` m/s, one sim tick per move. */
-function drive(sim: BeachSim, x0: number, x1: number, speed: number, mode: 'dig' | 'pile' | 'flatten'): void {
+function drive(sim: BeachSim, x0: number, x1: number, speed: number, mode: 'dig' | 'pile' | 'flatten' | 'dozer'): void {
   sim.beginStroke(x0, y, 0.5, mode);
   const ticks = Math.ceil(Math.abs(x1 - x0) / speed / DT);
   for (let s = 0; s <= ticks; s++) {
@@ -52,6 +52,19 @@ describe('drag to flatten', () => {
       drive(sim, 8, 20, speed, 'flatten');
       expect(offPath(sim, 8, 20)).toBeLessThan(0.004);
     }
+  });
+
+  it('dozer over a rock sweeps it up and flattens the sand it was sitting on', () => {
+    const sim = new BeachSim(grid, 1, FLAGS);
+    sim.stamp('dig', 12, y, 0.6, 0.4);
+    expect(offPath(sim, 8, 16)).toBeGreaterThan(0.01);
+    // the rock sits in the hole (its floor partly fills it back in)
+    sim.placeObject({ kind: 'rock', item: 'rock', x: 12, y, angle: 0, size: 0.5, variant: 1 });
+    drive(sim, 8, 16, 2, 'dozer');
+    expect(sim.objects.count).toBe(0);
+    // the rock is back in the bag, and the hole it sat in is filled — the
+    // blade flattens the sand the rock's floor had been holding up
+    expect(offPath(sim, 8, 16)).toBeLessThan(0.004);
   });
 });
 

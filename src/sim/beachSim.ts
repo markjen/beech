@@ -130,6 +130,12 @@ export class BeachSim {
     j1: number;
     /** objects the stroke swept up (dozer blade or vacuum) */
     swept: PlacedObject[];
+    /**
+     * sand a swept rock lifted back (cell index, change in m), in the order
+     * the rocks were taken. Undo re-embeds the rocks and restores this sand
+     * itself, so it is taken out of the undo delta in endStroke.
+     */
+    lift: { k: number; d: number }[];
   } | null = null;
   /** 0..1 how hard the brush is working this tick (for audio/haptics) */
   digIntensity = 0;
@@ -614,6 +620,7 @@ export class BeachSim {
       i1: Math.ceil(ci),
       j1: Math.ceil(cj),
       swept: [],
+      lift: [],
     };
   }
 
@@ -633,7 +640,8 @@ export class BeachSim {
     const st = this.stroke;
     if (!st) return;
     this.stroke = null;
-    const entry = this.diffRegion(st.snapshot, st.i0, st.j0, st.i1, st.j1);
+    let entry = this.diffRegion(st.snapshot, st.i0, st.j0, st.i1, st.j1);
+    if (entry && st.lift.length) entry = this.withoutLift(entry, st.lift);
     if (entry) {
       if (st.swept.length) entry.removed = st.swept;
       this.undo.push(entry);
@@ -643,11 +651,36 @@ export class BeachSim {
     }
   }
 
+  /**
+   * Take the sand a swept rock lifted back out of a stroke's undo delta.
+   * The lift is the rock's own doing — undo re-embeds the rock, which
+   * raises that sand again — so leaving it in the delta would count it
+   * twice and leave a sand dome where the rock was. Returns null when
+   * the delta has nothing left (the stroke only swept rocks up).
+   */
+  private withoutLift(entry: UndoEntry, lift: { k: number; d: number }[]): UndoEntry | null {
+    for (const { k, d } of lift) {
+      const i = (k % this.nx) - entry.i0;
+      const j = Math.floor(k / this.nx) - entry.j0;
+      if (i < 0 || i >= entry.w || j < 0 || j >= entry.h) continue;
+      entry.delta[j * entry.w + i] -= d;
+    }
+    for (let n = 0; n < entry.delta.length; n++) {
+      if (entry.delta[n] > 1e-5 || entry.delta[n] < -1e-5) return entry;
+    }
+    return null;
+  }
+
   /** Abort the current stroke and put the sand back exactly as it was. */
   cancelStroke(): void {
     const st = this.stroke;
     if (!st) return;
     this.stroke = null;
+    // anything the blade or vacuum already swept up goes back on the beach
+    // first, while the sand is still as the stroke left it: a rock re-embeds
+    // against the sand it was lifted from, so it keeps the base it was
+    // placed at (and the sand it was sitting on) instead of the lifted sand
+    for (const o of st.swept) this.objects.add({ ...o });
     const { i0, j0, i1, j1 } = this.clipBox(st.i0, st.j0, st.i1, st.j1);
     for (let j = j0; j <= j1; j++) {
       for (let i = i0; i <= i1; i++) {
@@ -655,8 +688,6 @@ export class BeachSim {
         this.sand[k] = st.snapshot[k];
       }
     }
-    // and anything the blade or vacuum already swept up goes back on the beach
-    for (const o of st.swept) this.objects.add({ ...o });
   }
 
   private clipBox(i0: number, j0: number, i1: number, j1: number) {
@@ -737,14 +768,18 @@ export class BeachSim {
    * The dozer blade or the vacuum nozzle sweeps up whatever it passes over.
    * Taking it off the beach is the return to the bag: the inventory counts
    * what's placed, so the next save (which persists the objects list) puts
-   * it back in hand. Rocks stay — they're terrain. The sea's strays (wild)
-   * are swept away too, but they were never yours.
+   * it back in hand. Rocks are placed items like the rest — a rock in the
+   * path is swept up and its floor lifted back — so the blade and the
+   * vacuum can clear them. (The terrain rock — the non-erodible floor you
+   * can't dig below — is untouched: it is the heightmap, not an object.)
+   * The sea's strays (wild) are swept away too, but they were never yours.
    */
   private sweepAt(st: NonNullable<typeof this.stroke>, x: number, y: number, radius: number): void {
     for (const o of this.objects.within(x, y, radius)) {
-      if (o.kind === 'rock') continue;
-      const taken = this.objects.remove(o.id);
-      if (taken) st.swept.push(taken);
+      const taken = this.objects.removeWithLift(o.id);
+      if (!taken) continue;
+      st.swept.push(taken.data);
+      st.lift.push(...taken.lift);
     }
   }
 
