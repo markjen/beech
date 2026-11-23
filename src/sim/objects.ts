@@ -25,6 +25,7 @@ export type ObjectKind =
   | 'sanddollar'
   | 'starfish'
   | 'bottle'
+  | 'nautilus'
   | 'deckchair'
   // from the shop
   | 'parasol'
@@ -34,7 +35,7 @@ export type ObjectKind =
   | 'lighthouse'
   | 'tikitorch';
 export const OBJECT_KINDS: ObjectKind[] = [
-  'rock', 'driftwood', 'shell', 'seaglass', 'flag', 'conch', 'sanddollar', 'starfish', 'bottle', 'deckchair',
+  'rock', 'driftwood', 'shell', 'seaglass', 'flag', 'conch', 'sanddollar', 'starfish', 'bottle', 'nautilus', 'deckchair',
   'parasol', 'surfboard', 'sandcastle', 'beachhut', 'lighthouse', 'tikitorch',
 ];
 
@@ -50,6 +51,8 @@ const BEHAVIOUR: Record<ObjectKind, Behaviour> = {
   starfish: 'tumble',
   // a message in a bottle floats like driftwood
   bottle: 'float',
+  // a nautilus shell sits and tumbles like the other shells
+  nautilus: 'tumble',
   // a deckchair (and everything from the shop) is set up on the sand and stays there
   deckchair: 'fixed',
   parasol: 'fixed',

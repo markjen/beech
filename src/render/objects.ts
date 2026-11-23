@@ -244,6 +244,27 @@ function starfishMesh(scene: Scene, o: PlacedObject): Mesh {
   return finish(scene, `starfish${o.id}`, P, I);
 }
 
+/** A nautilus: a plump coiled shell, flattened into a disc, its chambers a wobble in the lathe. */
+function nautilusMesh(scene: Scene, o: PlacedObject): Mesh {
+  const r = rng(o.variant * 131 + 5);
+  const R = o.size;
+  const { P, I } = lathe(
+    [
+      [-R * 0.55, R * 0.05],
+      [-R * 0.42, R * 0.3],
+      [-R * 0.15, R * 0.42],
+      [R * 0.15, R * 0.4],
+      [R * 0.38, R * 0.26],
+      [R * 0.52, R * 0.06],
+    ],
+    9,
+    0.6,
+    () => 0.9 + r() * 0.2,
+  );
+  orient(P, I, (x) => [x, 0, 0]);
+  return finish(scene, `nautilus${o.id}`, P, I);
+}
+
 /** A message in a bottle: green glass, a cork (child mesh), its axis at the given height. */
 function bottleMesh(scene: Scene, o: PlacedObject): { body: Mesh; cork: Mesh } {
   const L = o.size;
@@ -428,12 +449,13 @@ export class ObjectView {
           : st.kind === 'conch' ? conchMesh(this.scene, st)
           : st.kind === 'sanddollar' ? sanddollarMesh(this.scene, st)
           : st.kind === 'starfish' ? starfishMesh(this.scene, st)
+          : st.kind === 'nautilus' ? nautilusMesh(this.scene, st)
           : glassMesh(this.scene, st);
         mesh.material = mat;
       }
-      // rare, legendary and shop things glow and sparkle; lamps shine
+      // rare, legendary, unique and shop things glow and sparkle; lamps shine
       const rarity = itemById(st.item)?.rarity;
-      const special = rarity === 'rare' || rarity === 'legendary' ? rarity : null;
+      const special = rarity === 'rare' || rarity === 'legendary' || rarity === 'unique' ? rarity : null;
       let glow: GlowHandle | undefined;
       if (special || lights.length) {
         const { reach, height } = extent(st);
