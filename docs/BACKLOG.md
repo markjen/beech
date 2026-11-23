@@ -37,6 +37,10 @@ _(nothing right now)_
 
 ## Up next (engineering)
 
+- [ ] **Reload stale tabs**: send the build id with saves (or poll a
+  `/version`), and when the server says the app is out of date (426) show
+  "a new version is ready · reload" instead of a silent save failure. A tab
+  left open across a world change corrupted Rose's beach (2026-11-23).
 - [ ] **More than one beach**: design in [MULTI_BEACH.md](MULTI_BEACH.md),
   four phases (data model and API → beaches list → connected beaches →
   shop). Owner decisions are listed at the end of that doc. People can
@@ -93,13 +97,14 @@ _(nothing right now)_
 
 ## Done (recent)
 
+- [x] **Objects floating off Rose's beach** (2026-11-23): server refuses
+  saves from the old 32 × 24 app; `fitWorld` repairs objects it shifted.
 - [x] **Share your beach by link, and gift items** (2026-11-22):
   `?visit=CODE` opens that beach once signed in; copy-link button next
   to your code; Open Graph previews for shared links; `POST /api/gifts`
   moves one owned item to the owner of the beach with that code — instant,
   atomic, 20 an hour. Design and decisions in
   [SHARING_GIFTING.md](SHARING_GIFTING.md). Commit `6d05a46`.
-
 - [x] **Claw starter gifts** (rare, shop item, extra beach after a day),
   the Deckchair, and the multi-beach design (2026-11-23).
 

@@ -68,7 +68,7 @@ describe('share page handler', () => {
       {
         method: 'PUT',
         body: new Uint8Array([1, 2, 3]),
-        headers: { Authorization: `Bearer ${ana.token}`, 'X-Beach-Location': 'bondi', 'X-Beach-Nx': '256', 'X-Beach-Ny': '192' },
+        headers: { Authorization: `Bearer ${ana.token}`, 'X-Beach-Location': 'bondi', 'X-Beach-Nx': '256', 'X-Beach-Ny': '256' },
       },
     );
   });

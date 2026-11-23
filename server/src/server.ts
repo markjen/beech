@@ -9,6 +9,12 @@
 //   PGLITE_DIR           no Postgres at all: embedded PGlite (dev only; "memory" for in-memory)
 //   GOOGLE_CLIENT_IDS    comma-separated OAuth client IDs (web, iOS, Android)
 //   APPLE_CLIENT_IDS     comma-separated (bundle id, Services ID)
+//   APPLE_BUNDLE_ID      iOS bundle id store purchases are for (default app.beech.beach)
+//   ANDROID_PACKAGE      Android package store purchases are for (default app.beech.beach)
+//   GOOGLE_PLAY_SERVICE_ACCOUNT  optional service-account JSON for the Play Developer API
+//                        (on Cloud Run the runtime service account is used instead)
+//   GOOGLE_RTDN_AUDIENCE, GOOGLE_RTDN_SERVICE_ACCOUNT  the Pub/Sub push subscription's
+//                        OIDC audience and service account, for Play refund notifications
 //   ALLOWED_ORIGINS      extra CORS origins, default the Capacitor app shells
 //   DEV_AUTH             "1" enables /api/auth/dev; refused when NODE_ENV=production
 
@@ -49,6 +55,9 @@ const api = createApp(db, {
   appleClientIds: list(env.APPLE_CLIENT_IDS),
   allowedOrigins: list(env.ALLOWED_ORIGINS ?? 'capacitor://localhost,https://localhost'),
   devAuth,
+  appleBundleId: env.APPLE_BUNDLE_ID || undefined,
+  androidPackage: env.ANDROID_PACKAGE || undefined,
+  googleRtdn: env.GOOGLE_RTDN_AUDIENCE && env.GOOGLE_RTDN_SERVICE_ACCOUNT ? { audience: env.GOOGLE_RTDN_AUDIENCE, email: env.GOOGLE_RTDN_SERVICE_ACCOUNT } : undefined,
 });
 
 const publicDir = path.resolve(env.PUBLIC_DIR ?? path.join(here, '..', '..', 'dist'));

@@ -59,6 +59,15 @@
   (ny/nx = 3/4) get sea rows added offshore and their objects moved up
   (`fitWorld`). The camera starts framed as before, and zooming out shows the
   whole sea.
+- **Stale tabs and the 32 × 32 world** (2026-11-23): a tab left open from
+  before the world grew loaded square saves, squeezed the sand into
+  32 × 24 and saved it back with the objects unmoved. Today's app then
+  padded the sea and moved the objects 8 m up the beach, so flags and rocks
+  floated off the land edge (seen on Rose's beach). Now the server refuses
+  non-square saves (426, "reload to save"), and `fitWorld` doesn't shift
+  objects that are already past the old world's edge, and folds any object
+  still off the beach back on in 8 m steps. Sand already squeezed by an old
+  tab can't be recovered, but it heals as the waves rework it.
 - **Water stability:** with 2 substeps per 30 Hz tick, a checkerboard mode
   grew in deep water. The fix is linear flux damping 0.5/s plus capping the
   depth used for wave speed at 0.9 m (wave speed ≤ 3 m/s). A unit test guards

@@ -178,8 +178,27 @@ const MIGRATIONS: string[] = [
   -- the old one-beach-per-user table stays one release, unused, then goes
   ALTER TABLE beaches RENAME TO beaches_v1;
   `,
+  // 8: purchases. One row per store transaction (unique, so a receipt can't be
+  // used twice); the items it granted point back at it, so a refund can take
+  // them away again.
+  `
+  CREATE TABLE purchases (
+    id BIGSERIAL PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    store TEXT NOT NULL CHECK (store IN ('apple', 'google', 'dev')),
+    transaction_id TEXT NOT NULL,
+    product_id TEXT NOT NULL,
+    environment TEXT NOT NULL,
+    purchased_at BIGINT NOT NULL,
+    granted_at BIGINT NOT NULL,
+    refunded_at BIGINT,
+    UNIQUE (store, transaction_id)
+  );
+  CREATE INDEX purchases_user ON purchases (user_id);
+  ALTER TABLE inventory ADD COLUMN purchase_id BIGINT REFERENCES purchases (id) ON DELETE SET NULL;
+  `,
 
-  // 8: gifts. Who gave what to whom (for the rate limit and for disputes);
+  // 9: gifts. Who gave what to whom (for the rate limit and for disputes);
   // the transfer itself lives in the inventory rows (source 'gift').
   `
   CREATE TABLE gifts (
@@ -190,7 +209,6 @@ const MIGRATIONS: string[] = [
     created_at BIGINT NOT NULL
   );
   CREATE INDEX gifts_from ON gifts (from_id, created_at);
-
   `,
 ];
 
