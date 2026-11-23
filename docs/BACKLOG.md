@@ -97,6 +97,13 @@ _(nothing right now)_
 
 ## Done (recent)
 
+- [x] **Vending machine: one free ball a day from a weekly set**
+  (2026-11-23, a6b20d1): server-side draws, common 60 / uncommon 25 /
+  rare 12 / unique 3, one ball a day (UTC midnight). Week 1 "First light":
+  Pink shell, Blue sea glass, Pebble / Spiral conch, Golden sand dollar /
+  Sunset starfish, Green bottle / Nautilus (new kind). Sets are data in
+  `server/src/vending.ts`; design and the weekly process in
+  `docs/VENDING_MACHINE.md`.
 - [x] **Objects floating off Rose's beach** (2026-11-23): server refuses
   saves from the old 32 × 24 app; `fitWorld` repairs objects it shifted.
 - [x] **Claw starter gifts** (rare, shop item, extra beach after a day),
