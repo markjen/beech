@@ -955,10 +955,13 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
                AND (expires_at IS NULL OR expires_at > $3)
              ORDER BY acquired_at ASC LIMIT 1
           ) AND quantity > 0
-         RETURNING item_id, expires_at
+         RETURNING item_id, expires_at, purchase_id
        ), given AS (
-         INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at, expires_at)
-         SELECT $4, item_id, 1, 'gift', $3, expires_at FROM giver
+         -- the gift keeps the purchase it came from, so a refund of that
+         -- purchase takes it back from the recipient too (otherwise: buy,
+         -- gift it to a second account, get a refund, keep the item)
+         INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at, expires_at, purchase_id)
+         SELECT $4, item_id, 1, 'gift', $3, expires_at, purchase_id FROM giver
          RETURNING item_id
        ), logged AS (
          INSERT INTO gifts (from_id, to_id, item_id, created_at)

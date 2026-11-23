@@ -118,6 +118,10 @@ received" list with a return/decline, not a second flow now.
   like any other, and the allowance (see MULTI_BEACH.md) moves with it.
 - **Time-limited items keep their expiry**: the recipient's row carries
   the giver's `expires_at`.
+- **Bought items stay tied to their purchase**: the recipient's row
+  carries the giver's `purchase_id`, so if the store refunds that
+  purchase, the gifted copy expires too. Without this, someone could buy
+  an item, gift it to a second account, get a refund and keep it.
 - **Unique items** (none in the catalog yet): gifting transfers the only
   copy. "One owner only" still holds — the owner is just someone else now.
 
@@ -157,7 +161,7 @@ Errors: `400` bad code, missing item, or that's your own code · `404` no beach 
   log. A soft guard against scripted giveaways, not a correctness
   invariant — a race can slip one past it.
 - **The log.** `gifts (from_id, to_id, item_id, created_at)` — migration
-  8, after multi-beach's migration 7 — exists so a dispute ("who gave
+  9, after the store purchases' migration 8 — exists so a dispute ("who gave
   what to whom") can be answered from the database.
   Nothing about gifts is shown to other players.
 

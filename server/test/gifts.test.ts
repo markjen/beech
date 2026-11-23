@@ -19,6 +19,8 @@ beforeAll(async () => {
     appleClientIds: [],
     allowedOrigins: ['capacitor://localhost'],
     devAuth: true,
+    // a pretend Apple refund notification: the payload is just { refund: txId }
+    stores: { appleRefund: async (p) => (JSON.parse(p) as { refund?: string }).refund ?? null },
   });
 });
 
@@ -54,6 +56,28 @@ async function owned(token: string, item: string): Promise<number> {
 const gift = (token: string, code: string, item: string) => req('/gifts', json('POST', { code, item }), token);
 
 describe('gifts', () => {
+  it('a refund of the purchase takes a gifted item back from the recipient too', async () => {
+    const a = await signIn('buyer-refund');
+    const b = await signIn('alt-refund');
+    // a bought parasol (like /store/purchase grants it: tied to its purchase)
+    const [p] = await db.query<{ id: string }>(
+      `INSERT INTO purchases (user_id, store, transaction_id, product_id, environment, purchased_at, granted_at)
+       VALUES ($1, 'apple', 'GIFT-REFUND-1', 'item_parasol', 'Sandbox', 1, 1) RETURNING id`,
+      [a.user.id],
+    );
+    await db.query(
+      `INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at, purchase_id)
+       VALUES ($1, 'parasol', 1, 'shop', $2, $3)`,
+      [a.user.id, Date.now(), p.id],
+    );
+    expect((await gift(a.token, await codeOf(b.token), 'parasol')).status).toBe(200);
+    expect(await owned(b.token, 'parasol')).toBe(1);
+    const r = await req('/store/apple/notifications', json('POST', { signedPayload: JSON.stringify({ refund: 'GIFT-REFUND-1' }) }));
+    expect(r.status).toBe(200);
+    expect(await owned(b.token, 'parasol')).toBe(0);
+    expect(await owned(a.token, 'parasol')).toBe(0);
+  });
+
   it('moves one item from the giver to the recipient, marked as a gift', async () => {
     const a = await signIn('giver-a');
     const b = await signIn('receiver-a');
