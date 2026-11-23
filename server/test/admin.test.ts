@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createHash, createHmac } from 'node:crypto';
 import { createApp } from '../src/app.js';
 import { createPgliteDb, type Db } from '../src/db.js';
+import { claimCreditPurchase } from '../src/giftCards.js';
 import { migrate } from '../src/migrations.js';
 
 let db: Db;
@@ -235,5 +236,140 @@ describe('promo codes and credit purchases', () => {
     expect(rows.map((r) => r.action)).toContain('promo.create');
     // no audit row holds a gift card code
     for (const r of rows) expect(r.detail).not.toContain(issuedCode);
+  });
+
+  it('a failed purchase burns no promo use: two concurrent buys, one credit', async () => {
+    // beach_1 is $2.99; LAUNCH20 takes 20% off, so the final price is $2.40.
+    // Give a fresh player exactly that, then fire two buys at once: the
+    // loser's credit is gone by the time its payment runs, so it must fail
+    // without burning a promo use or taking any more credit.
+    const racer = await signInDev('player-race-one');
+    const issue = await req('/admin/gift-cards', json('POST', { amountCents: 240 }), adminToken);
+    expect(issue.status).toBe(200);
+    const card = (await issue.json()) as { code: string };
+    expect((await req('/gift-cards/redeem', json('POST', { code: card.code }), racer)).status).toBe(200);
+    const promoList = async () =>
+      ((await (await req('/admin/promo-codes', {}, adminToken)).json()) as { promos: { code: string; uses: number }[] }).promos;
+    const before = (await promoList()).find((p) => p.code === 'LAUNCH20')?.uses;
+    const [r1, r2] = await Promise.all([
+      req('/store/credit-purchase', json('POST', { productId: 'beach_1', promoCode: 'LAUNCH20' }), racer),
+      req('/store/credit-purchase', json('POST', { productId: 'beach_1', promoCode: 'LAUNCH20' }), racer),
+    ]);
+    // Exactly one buy goes through; the loser is refused (402 if its
+    // pre-check runs after the winner's debit, 409 if it reaches the
+    // statement) — either way it burns no promo use and takes no credit.
+    const statuses = [r1.status, r2.status].sort();
+    expect(statuses[0]).toBe(200);
+    expect(statuses[1]).not.toBe(200);
+    expect((await promoList()).find((p) => p.code === 'LAUNCH20')?.uses).toBe(before! + 1);
+    expect(((await (await req('/credit', {}, racer)).json()) as { creditCents: number }).creditCents).toBe(0);
+    const items = ((await (await req('/inventory', {}, racer)).json()) as { items: { item: string; quantity: number }[] }).items;
+    expect(items.find((i) => i.item === 'beach')?.quantity).toBe(1);
+  });
+
+  it('a one-use promo is claimed by exactly one of two concurrent buyers', async () => {
+    // The reverse race: the promo runs out between the payment check and
+    // the claim. The loser must keep its credit and get nothing.
+    await req('/admin/promo-codes', json('POST', { code: 'ONCEONLY', kind: 'percent', value: 50, maxUses: 1 }), adminToken);
+    const fund = async (name: string) => {
+      const t = await signInDev(name);
+      const issue = await req('/admin/gift-cards', json('POST', { amountCents: 500 }), adminToken);
+      expect(issue.status).toBe(200);
+      const card = (await issue.json()) as { code: string };
+      expect((await req('/gift-cards/redeem', json('POST', { code: card.code }), t)).status).toBe(200);
+      return t;
+    };
+    const buyerA = await fund('player-race-two-a');
+    const buyerB = await fund('player-race-two-b');
+    const [r1, r2] = await Promise.all([
+      req('/store/credit-purchase', json('POST', { productId: 'beach_1', promoCode: 'ONCEONLY' }), buyerA),
+      req('/store/credit-purchase', json('POST', { productId: 'beach_1', promoCode: 'ONCEONLY' }), buyerB),
+    ]);
+    // Exactly one buy goes through; the loser is refused (400 if its
+    // pre-check sees the spent promo, 409 if it reaches the statement) —
+    // either way it keeps its credit and gets nothing.
+    const statuses = [r1.status, r2.status].sort();
+    expect(statuses[0]).toBe(200);
+    expect(statuses[1]).not.toBe(200);
+    const promos = ((await (await req('/admin/promo-codes', {}, adminToken)).json()) as { promos: { code: string; uses: number }[] }).promos;
+    expect(promos.find((p) => p.code === 'ONCEONLY')?.uses).toBe(1);
+    // beach_1 at 50% off is $1.50; the winner paid it, the loser paid nothing
+    const creditOf = async (t: string) => ((await (await req('/credit', {}, t)).json()) as { creditCents: number }).creditCents;
+    expect((await creditOf(buyerA)) + (await creditOf(buyerB))).toBe(500 + 500 - 150);
+    const beaches = async (t: string) =>
+      ((await (await req('/inventory', {}, t)).json()) as { items: { item: string; quantity: number }[] }).items.find((i) => i.item === 'beach')?.quantity ?? 0;
+    expect((await beaches(buyerA)) + (await beaches(buyerB))).toBe(1);
+    // exactly one promo_uses row was recorded
+    const uses = await db.query<{ n: string }>("SELECT COUNT(*) AS n FROM promo_uses WHERE code = 'ONCEONLY'");
+    expect(Number(uses[0].n)).toBe(1);
+  });
+});
+
+describe('credit purchase statement', () => {
+  // The endpoint tests above can refuse the loser at the pre-checks
+  // (402/400) before the statement ever runs. These call the statement
+  // directly, so both claims genuinely race — the loser reaches the
+  // statement and must still change nothing. Under the old promo-first
+  // statement the loser burned a promo use even though its payment failed.
+  const userIdOf = async (name: string) => (await db.query<{ id: string }>('SELECT id FROM users WHERE name = $1', [name]))[0].id;
+  const promoUses = async (code: string) =>
+    Number((await db.query<{ uses: number }>('SELECT uses FROM promo_codes WHERE code = $1', [code]))[0].uses);
+  const creditOfId = async (id: string) =>
+    Number((await db.query<{ credit_cents: number }>('SELECT credit_cents FROM users WHERE id = $1', [id]))[0].credit_cents);
+  const beachesOfId = async (id: string) =>
+    Number(
+      (await db.query<{ q: string }>("SELECT COALESCE(SUM(quantity), 0) AS q FROM inventory WHERE user_id = $1 AND item_id = 'beach'", [id]))[0]
+        .q,
+    );
+
+  it('two concurrent claims on one credit grant exactly once, burning one promo use', async () => {
+    await signInDev('player-race-stmt');
+    const id = await userIdOf('player-race-stmt');
+    await db.query('UPDATE users SET credit_cents = 240 WHERE id = $1', [id]);
+    const before = await promoUses('LAUNCH20');
+    const args = {
+      userId: id,
+      productId: 'beach_1',
+      promoCode: 'LAUNCH20',
+      finalCents: 240,
+      discountCents: 59,
+      items: ['beach'],
+      quantities: [1],
+      now: Date.now(),
+    };
+    const [a, b] = await Promise.all([claimCreditPurchase(db, args), claimCreditPurchase(db, args)]);
+    expect([a.length, b.length].sort()).toEqual([0, 1]);
+    expect(await promoUses('LAUNCH20')).toBe(before + 1);
+    expect(await creditOfId(id)).toBe(0);
+    expect(await beachesOfId(id)).toBe(1);
+  });
+
+  it('two concurrent claims on a one-use promo debit exactly once', async () => {
+    await db.query(
+      "INSERT INTO promo_codes (code, kind, value, max_uses, uses, active, created_at) VALUES ('ONCESTMT', 'percent', 50, 1, 0, true, $1)",
+      [Date.now()],
+    );
+    await signInDev('player-race-stmt-a');
+    await signInDev('player-race-stmt-b');
+    const aId = await userIdOf('player-race-stmt-a');
+    const bId = await userIdOf('player-race-stmt-b');
+    await db.query('UPDATE users SET credit_cents = 500 WHERE id IN ($1, $2)', [aId, bId]);
+    const argsFor = (userId: string) => ({
+      userId,
+      productId: 'beach_1',
+      promoCode: 'ONCESTMT',
+      finalCents: 150,
+      discountCents: 149,
+      items: ['beach'],
+      quantities: [1],
+      now: Date.now(),
+    });
+    const [a, b] = await Promise.all([claimCreditPurchase(db, argsFor(aId)), claimCreditPurchase(db, argsFor(bId))]);
+    expect([a.length, b.length].sort()).toEqual([0, 1]);
+    expect(await promoUses('ONCESTMT')).toBe(1);
+    expect((await creditOfId(aId)) + (await creditOfId(bId))).toBe(500 + 500 - 150);
+    expect((await beachesOfId(aId)) + (await beachesOfId(bId))).toBe(1);
+    const uses = await db.query<{ n: string }>("SELECT COUNT(*) AS n FROM promo_uses WHERE code = 'ONCESTMT'");
+    expect(Number(uses[0].n)).toBe(1);
   });
 });

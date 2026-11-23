@@ -28,6 +28,7 @@ import { HTTPException } from 'hono/http-exception';
 
 import { PRODUCTS, productById } from './products.js';
 import {
+  claimCreditPurchase,
   discountCents,
   formatCents,
   hashesEqual,
@@ -1597,33 +1598,19 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     if (credit < final) return c.json({ error: `not enough credit: ${formatCents(final)} needed, ${formatCents(credit)} available` }, 402);
     const items = product!.grants.map((g) => g.item);
     const qty = product!.grants.map((g) => g.quantity);
-    const rows = await db.query<{ item_id: string }>(
-      `WITH promo AS (
-         UPDATE promo_codes SET uses = uses + 1
-          WHERE code = $3 AND active AND (expires_at IS NULL OR expires_at > $4)
-            AND (max_uses IS NULL OR uses < max_uses)
-            AND (applies_to IS NULL OR applies_to = $2)
-          RETURNING code
-       ), paid AS (
-         UPDATE users SET credit_cents = credit_cents - $5
-          WHERE id = $1 AND credit_cents >= $5
-            AND ($3 IS NULL OR EXISTS (SELECT 1 FROM promo))
-          RETURNING credit_cents
-       ), used AS (
-         INSERT INTO promo_uses (code, user_id, product_id, discount_cents, created_at)
-         SELECT $3, $1, $2, $6, $4 FROM paid WHERE $3 IS NOT NULL
-         RETURNING 1
-       ), logged AS (
-         INSERT INTO credit_ledger (user_id, kind, amount_cents, ref, created_at)
-         SELECT $1, 'spend', -$5, $2, $4 FROM paid
-         RETURNING 1
-       )
-       INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at, purchase_id)
-       SELECT $1, g.item, g.qty, 'gift', $4, NULL FROM paid, unnest($7::text[], $8::int[]) AS g(item, qty)
-       RETURNING item_id`,
-      [me, product!.id, promo ? promo.code : null, now, final, discount, items, qty],
-    );
-    if (!rows.length) fail(409, 'that did not go through: try again');
+    // One statement, all or nothing (see claimCreditPurchase): if it grants
+    // nothing, the credit wasn't drained and the promo wasn't burned.
+    const granted = await claimCreditPurchase(db, {
+      userId: me,
+      productId: product!.id,
+      promoCode: promo ? promo.code : null,
+      finalCents: final,
+      discountCents: discount,
+      items,
+      quantities: qty,
+      now,
+    });
+    if (!granted.length) fail(409, 'that did not go through: try again');
     const after = Number((await db.query<{ credit_cents: number }>('SELECT credit_cents FROM users WHERE id = $1', [me]))[0]?.credit_cents ?? 0);
     return c.json({ product: product!.id, grants: product!.grants, paidCents: final, discountCents: discount, creditCents: after });
   });

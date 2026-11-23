@@ -18,6 +18,7 @@
 //   Their only protection is server-side validation and rate limiting.
 
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import type { Db } from './db.js';
 
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O or 1/I
 export const GIFT_CODE_LENGTH = 16;
@@ -108,4 +109,72 @@ export function isAdminEmail(email: string | null | undefined, allowlist: string
 /** USD cents -> "$9.99", for admin displays. */
 export function formatCents(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
+}
+
+/**
+ * The credit purchase itself, as one statement: debit the credit, claim the
+ * promo, log the use and the spend, grant the items — all or nothing. The
+ * payment is the anchor: it debits only if the credit covers the
+ * (discounted) price and — when a promo was given — the promo is claimable
+ * right now. The EXISTS locks that promo row (FOR UPDATE) until the
+ * statement ends, so a second purchase can't slip in and exhaust the promo
+ * between this check and the increment below. The promo is then incremented
+ * only because the payment went through, the use is logged only because the
+ * promo was claimed, and the items are granted only when the payment went
+ * through (and the promo, if any, was claimed). Returns the granted item
+ * ids, or [] when the payment didn't go through — credit drained, or the
+ * promo spent, after the handler's pre-checks. A [] return has changed
+ * nothing: no burned promo use, no credit debited without items.
+ *
+ * The $3::text casts are load-bearing: Postgres can't infer the promo-code
+ * parameter's type from inside ($3 IS NULL OR EXISTS (...)) alone (42P08).
+ */
+export async function claimCreditPurchase(
+  db: Db,
+  args: {
+    userId: string;
+    productId: string;
+    promoCode: string | null;
+    finalCents: number;
+    discountCents: number;
+    items: string[];
+    quantities: number[];
+    now: number;
+  },
+): Promise<string[]> {
+  const rows = await db.query<{ item_id: string }>(
+    `WITH paid AS (
+       UPDATE users SET credit_cents = credit_cents - $5
+        WHERE id = $1 AND credit_cents >= $5
+          AND ($3::text IS NULL OR EXISTS (
+            SELECT 1 FROM promo_codes
+             WHERE code = $3::text AND active AND (expires_at IS NULL OR expires_at > $4)
+               AND (max_uses IS NULL OR uses < max_uses)
+               AND (applies_to IS NULL OR applies_to = $2)
+             FOR UPDATE
+          ))
+        RETURNING credit_cents
+     ), promo AS (
+       UPDATE promo_codes SET uses = uses + 1
+        WHERE code = $3::text AND active AND (expires_at IS NULL OR expires_at > $4)
+          AND (max_uses IS NULL OR uses < max_uses)
+          AND (applies_to IS NULL OR applies_to = $2)
+          AND EXISTS (SELECT 1 FROM paid)
+        RETURNING code
+     ), used AS (
+       INSERT INTO promo_uses (code, user_id, product_id, discount_cents, created_at)
+       SELECT $3::text, $1, $2, $6, $4 FROM paid WHERE $3::text IS NOT NULL AND EXISTS (SELECT 1 FROM promo)
+       RETURNING 1
+     ), logged AS (
+       INSERT INTO credit_ledger (user_id, kind, amount_cents, ref, created_at)
+       SELECT $1, 'spend', -$5, $2, $4 FROM paid
+       RETURNING 1
+     )
+     INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at, purchase_id)
+     SELECT $1, g.item, g.qty, 'gift', $4, NULL FROM paid, unnest($7::text[], $8::int[]) AS g(item, qty)
+     WHERE $3::text IS NULL OR EXISTS (SELECT 1 FROM promo)
+     RETURNING item_id`,
+    [args.userId, args.productId, args.promoCode, args.now, args.finalCents, args.discountCents, args.items, args.quantities],
+  );
+  return rows.map((r) => r.item_id);
 }

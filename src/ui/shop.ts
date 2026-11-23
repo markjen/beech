@@ -59,6 +59,11 @@ export class Shop {
       e.preventDefault();
       void this.redeem();
     });
+    // Typing a promo code can bring a product within the player's credit, so
+    // re-price the list when the code changes (on blur/Enter, not per key).
+    this.promoInput.addEventListener('change', () => {
+      if (this.products.length) void this.render(this.products);
+    });
     const mode = shopMode();
     this.root.querySelector('.shop-small')!.textContent =
       mode === 'web'
@@ -123,11 +128,28 @@ export class Shop {
     this.root.classList.remove('open');
   }
 
-  private render(products: ShopProduct[]): void {
+  private async render(products: ShopProduct[]): Promise<void> {
     this.products = products;
     this.showCredit();
     this.list.innerHTML = '';
     const mode = shopMode();
+    // A promo code can bring a product within the player's credit, so quote
+    // each product with it and gate the credit button on the discounted
+    // price. A quote that fails (bad code, wrong product) leaves that
+    // product at full price.
+    const promo = this.promoCode();
+    const finals = new Map<string, number>();
+    if (promo) {
+      await Promise.all(
+        products.map(async (p) => {
+          try {
+            finals.set(p.id, (await this.api.quote(p.id, promo)).finalCents);
+          } catch {
+            // leave the product at full price
+          }
+        }),
+      );
+    }
     for (const p of [...products].sort((a, b) => Number(b.featured) - Number(a.featured))) {
       const row = document.createElement('div');
       row.className = `shop-item${p.featured ? ' featured' : ''}`;
@@ -154,8 +176,10 @@ export class Shop {
       }
       row.appendChild(btn);
       // credit from gift cards buys here too, in any mode: the server
-      // prices it and checks the balance, so the store isn't involved
-      const priceCents = Math.round(p.usd * 100);
+      // prices it and checks the balance, so the store isn't involved.
+      // The button shows when the credit covers the price after the promo,
+      // not the undiscounted price.
+      const priceCents = finals.get(p.id) ?? Math.round(p.usd * 100);
       if (this.creditCents >= priceCents) {
         const creditBtn = document.createElement('button');
         creditBtn.type = 'button';
