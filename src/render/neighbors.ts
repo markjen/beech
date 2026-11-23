@@ -137,7 +137,8 @@ export class NeighborView {
 
   /** Reload your neighbors and the shore (from you, or from the beach you're visiting). */
   refresh(): Promise<void> {
-    const p = this.doRefresh(++this.generation);
+    const gen = ++this.generation;
+    const p: Promise<void> = Promise.resolve().then(() => this.doRefresh(gen, p));
     this.latest = p;
     return p;
   }
@@ -145,12 +146,12 @@ export class NeighborView {
   /** the newest refresh: an older one that's overtaken waits for it, so callers see fresh data */
   private latest: Promise<void> = Promise.resolve();
 
-  private async doRefresh(gen: number): Promise<void> {
+  private async doRefresh(gen: number, mine: Promise<void>): Promise<void> {
     const [n, shore] = await Promise.all([
       this.api.get().catch(() => null),
       this.api.shore(this.visiting?.code ?? null, DEPTH).catch(() => null),
     ]);
-    if (gen !== this.generation) return this.latest;
+    if (gen !== this.generation) return this.latest === mine ? undefined : this.latest;
     this.state = n;
     const next = new Map<number, ShoreBeach>();
     if (shore) {
@@ -264,6 +265,8 @@ export class NeighborView {
 
   clear(): void {
     this.generation++;
+    // (no newer refresh to wait for: an overtaken one just stops)
+    this.latest = Promise.resolve();
     window.clearTimeout(this.pollTimer);
     this.clearEntries();
     this.visiting = null;

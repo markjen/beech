@@ -32,7 +32,7 @@ export class AccountPanel {
     /** go to anyone's beach by code */
     private readonly onVisit?: (code: string) => Promise<void>,
     /** your beaches: open one on this device, where a new one starts */
-    private readonly mine?: { open: (id: string) => Promise<void>; location: () => string; changed: () => void },
+    private readonly mine?: { open: (id: string) => Promise<void>; location: () => string; changed: () => void; shop?: () => void },
   ) {
     account.onBeach(() => this.render());
     account.onChange(() => this.render());
@@ -323,7 +323,16 @@ export class AccountPanel {
     } else {
       const more = document.createElement('div');
       more.className = 'status';
-      more.textContent = 'more beaches: win one from the claw machine, or get one in the shop';
+      more.textContent = 'more beaches: win one from the claw machine, or ';
+      if (mine.shop) {
+        const go = document.createElement('button');
+        go.type = 'button';
+        go.className = 'action';
+        go.dataset.act = 'shop-beaches';
+        go.textContent = 'get one in the shop';
+        go.addEventListener('click', () => mine.shop!());
+        more.appendChild(go);
+      } else more.textContent += 'get one in the shop';
       wrap.appendChild(more);
     }
     const tip = document.createElement('div');

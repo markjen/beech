@@ -69,6 +69,8 @@ export interface SettingsHandlers {
   smooth(): void;
   share(): void;
   fullscreen(): void;
+  /** one tap for the TV: ambient + seated view + fullscreen */
+  tv(): void;
 }
 
 const PALETTE_LABELS: [PaletteChoice, string][] = [
@@ -121,6 +123,7 @@ export class SettingsSheet {
           ([v, l]) => `<button type="button" data-v="${v}">${l}</button>`,
         ).join('')}</div></div>
         <div class="row actions">
+          <button type="button" class="action" data-act="tv">watch on TV</button>
           <button type="button" class="action" data-act="fullscreen">full screen</button>
           <button type="button" class="action" data-act="share">save a picture</button>
           <button type="button" class="action" data-act="smooth">smooth the beach</button>
@@ -141,6 +144,10 @@ export class SettingsSheet {
     this.el.querySelector<HTMLButtonElement>('button[data-act="fullscreen"]')!.addEventListener('click', () => {
       this.hide();
       this.h.fullscreen();
+    });
+    this.el.querySelector<HTMLButtonElement>('button[data-act="tv"]')!.addEventListener('click', () => {
+      this.hide();
+      this.h.tv();
     });
     for (const group of this.el.querySelectorAll<HTMLDivElement>('.chips')) {
       const key = group.dataset.key as 'palette' | 'quality' | 'beach';
@@ -195,6 +202,10 @@ export class SettingsSheet {
   /** Reflect a change made outside the sheet (e.g. "near me" or the default beach). */
   setSettings(s: Settings): void {
     this.settings = s;
+    // the switches are rendered from settings, so keep them in step too
+    for (const input of this.el.querySelectorAll<HTMLInputElement>('input[data-key]')) {
+      input.checked = !!s[input.dataset.key as keyof Settings];
+    }
     this.sync();
   }
 
