@@ -60,11 +60,11 @@ The single list of what's left to do, for the owner and for agents.
 - [ ] **Checkpoints**: save named copies of any of your beaches and restore
   one onto any of them, if your bag still holds its non-free things. Design
   in [CHECKPOINTS.md](CHECKPOINTS.md); owner decisions at its end.
-  - [ ] **C1** Server: migration 11 (`checkpoints`, `beach.epoch`),
+  - [x] **C1** (2026-11-23; migration 13) Server: migration 11 (`checkpoints`, `beach.epoch`),
     `inspectBlob` (counts items from the BCH2 bytes), list / create from a
     beach / import / get / rename / delete with limits; client `countItems`
     counts `wild` non-free items. No visible change.
-  - [ ] **C2** Server: fit check and restore (strict and drop-missing), the
+  - [x] **C2** (2026-11-23) Server: fit check and restore (strict and drop-missing), the
     automatic "before restore" checkpoint, a per-user lock, the epoch on
     beach GET/PUT. Server tests for the race and stale saves.
   - [ ] **C3** App: checkpoints in settings (save, list, rename, delete,

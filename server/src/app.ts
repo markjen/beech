@@ -47,6 +47,17 @@ import { currentSet, drawVending, nextUtcMidnight } from './vending.js';
 import { DIG_FIND_DAILY_CAP, DIG_FIND_ROLL_COOLDOWN_MS, digDraw, qualifiesForFind } from './digFinds.js';
 import { hashToken, newSessionToken, SESSION_DAYS, verifyAppleIdToken, verifyGoogleIdToken, type VerifiedIdentity } from './auth.js';
 import { toBytes, type Db } from './db.js';
+import {
+  BadBlob,
+  CHECKPOINT_BYTES_PER_USER,
+  CHECKPOINT_NAME_MAX,
+  CHECKPOINTS_PER_BEACH,
+  MAX_BEACH_BYTES,
+  MAX_CELLS,
+  dropMissing,
+  inspectBlob,
+  shortfall,
+} from './checkpoints.js';
 import { createRateLimiter, logEvent, parseClientEvent, routeLabel } from './observability.js';
 
 export interface AppConfig {
@@ -98,11 +109,11 @@ export interface User {
 
 type Env = { Variables: { user: User; tokenHash: string; adminActor: string; adminEmail: string | null } };
 
-const MAX_BEACH_BYTES = 768 * 1024;
-const MAX_CELLS = 400 * 300;
 /** most beaches one person can have */
 export const BEACH_CAP = 8;
-const BEACH_HEADERS = ['X-Beach-Location', 'X-Beach-Nx', 'X-Beach-Ny', 'X-Beach-Version', 'X-Beach-Updated'];
+const BEACH_HEADERS = ['X-Beach-Location', 'X-Beach-Nx', 'X-Beach-Ny', 'X-Beach-Version', 'X-Beach-Updated', 'X-Beach-Epoch'];
+/** request-only headers the app sends cross-origin (the phone apps) */
+const REQUEST_HEADERS = ['X-Beach-Items', 'X-Checkpoint-Name'];
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O or 1/I
 const SIDES = ['left', 'right'] as const;
 type Side = (typeof SIDES)[number];
@@ -402,8 +413,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   // A person owns one or more beaches (docs/MULTI_BEACH.md). Their home beach
   // has their user id as its id. /api/beach is the home beach, for older apps.
   const sendBeach = async (c: Context<Env>, beachId: string) => {
-    const rows = await db.query<{ location: string; nx: number; ny: number; version: number; updated_at: string; sand: unknown }>(
-      'SELECT location, nx, ny, version, updated_at, sand FROM beach WHERE id = $1 AND sand IS NOT NULL',
+    const rows = await db.query<{ location: string; nx: number; ny: number; version: number; updated_at: string; epoch: number; sand: unknown }>(
+      'SELECT location, nx, ny, version, updated_at, epoch, sand FROM beach WHERE id = $1 AND sand IS NOT NULL',
       [beachId],
     );
     const row = rows[0];
@@ -418,6 +429,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
         'X-Beach-Ny': String(row.ny),
         'X-Beach-Version': String(row.version),
         'X-Beach-Updated': String(row.updated_at),
+        'X-Beach-Epoch': String(row.epoch),
       },
     });
   };
@@ -446,13 +458,21 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const bytes = new Uint8Array(await c.req.arrayBuffer());
     if (bytes.byteLength === 0 || bytes.byteLength > MAX_BEACH_BYTES) fail(413, 'beach too large');
     const now = Date.now();
-    const rows = await db.query<{ version: number }>(
+    // a save made before a restore (another device still showing the old
+    // sand) mustn't overwrite it. An app too old to send the epoch is let through.
+    const epochHeader = c.req.header('X-Beach-Epoch');
+    const epoch = epochHeader === undefined || epochHeader === '' ? null : Number(epochHeader);
+    if (epoch !== null && !Number.isInteger(epoch)) fail(400, 'bad X-Beach-Epoch');
+    const rows = await db.query<{ version: number; epoch: number }>(
       `UPDATE beach SET location = $2, nx = $3, ny = $4, version = version + 1, updated_at = $5, sand = $6, items = $7
-        WHERE id = $1 RETURNING version`,
-      [beachId, location, nx, ny, now, bytes, JSON.stringify(parseItems(c.req.header('X-Beach-Items')))],
+        WHERE id = $1 AND ($8::int IS NULL OR epoch <= $8::int) RETURNING version, epoch`,
+      [beachId, location, nx, ny, now, bytes, JSON.stringify(parseItems(c.req.header('X-Beach-Items'))), epoch],
     );
-    if (!rows[0]) fail(404, 'no such beach');
-    return c.json({ version: rows[0].version, updatedAt: now });
+    if (!rows[0]) {
+      if ((await db.query('SELECT 1 FROM beach WHERE id = $1', [beachId])).length) fail(409, 'restored');
+      fail(404, 'no such beach');
+    }
+    return c.json({ version: rows[0].version, updatedAt: now, epoch: Number(rows[0].epoch) });
   };
 
   app.get('/beach', requireUser, async (c) => sendBeach(c, await homeOf(c.get('user').id)));
@@ -1177,6 +1197,279 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   app.get('/beaches/mine/:id/sand', requireUser, async (c) => sendBeach(c, await mine(c, c.req.param('id'))));
   app.put('/beaches/mine/:id/sand', requireUser, async (c) => saveBeach(c, await mine(c, c.req.param('id'))));
 
+  // ---------------------------------------------------------------- checkpoints
+  // Named copies of your beaches, restorable onto any of them if your bag
+  // covers the things on them (docs/CHECKPOINTS.md). The server counts the
+  // things itself (inspectBlob), never trusting the app's count.
+  interface CheckpointRow {
+    id: string;
+    name: string;
+    kind: 'named' | 'auto';
+    source: 'beach' | 'import';
+    from_beach: string | null;
+    from_name: string;
+    beach_name: string | null;
+    location: string | null;
+    nx: number;
+    ny: number;
+    bytes: number;
+    items: Record<string, number> | string;
+    objects: number;
+    created_at: string;
+  }
+  const jsonMap = (v: Record<string, number> | string | null | undefined): Record<string, number> =>
+    !v ? {} : typeof v === 'string' ? (JSON.parse(v) as Record<string, number>) : v;
+  const checkpointJson = (r: CheckpointRow) => ({
+    id: r.id,
+    name: r.name,
+    kind: r.kind,
+    source: r.source,
+    // the beach it came from: its name now if it's still there, else then
+    fromBeach: r.from_beach ? { id: r.from_beach, name: r.beach_name ?? r.from_name } : null,
+    fromName: r.from_name,
+    location: r.location,
+    nx: Number(r.nx),
+    ny: Number(r.ny),
+    items: jsonMap(r.items),
+    objects: Number(r.objects),
+    bytes: Number(r.bytes),
+    createdAt: Number(r.created_at),
+  });
+  const CHECKPOINT_COLS = `c.id, c.name, c.kind, c.source, c.from_beach, c.from_name, b.name AS beach_name, c.location, c.nx, c.ny, c.bytes, c.items, c.objects, c.created_at`;
+  const myCheckpoint = async (c: Context<Env>, id: string | undefined): Promise<CheckpointRow & { sand: unknown }> => {
+    if (!id || !/^[0-9a-f-]{36}$/.test(id)) fail(404, 'no such checkpoint');
+    const rows = await db.query<CheckpointRow & { sand: unknown }>(
+      `SELECT ${CHECKPOINT_COLS}, c.sand FROM checkpoints c LEFT JOIN beach b ON b.id = c.from_beach WHERE c.id = $1 AND c.owner_id = $2`,
+      [id, c.get('user').id],
+    );
+    if (!rows[0]) fail(404, 'no such checkpoint');
+    return rows[0];
+  };
+  const checkpointName = (raw: unknown): string => {
+    const name = String(raw ?? '').trim().slice(0, CHECKPOINT_NAME_MAX);
+    if (!name) fail(400, 'give the checkpoint a name');
+    return name;
+  };
+  /** named checkpoints you may keep: 5 for each beach of your allowance */
+  const checkpointLimit = async (user: string) => CHECKPOINTS_PER_BEACH * (await allowance(user));
+  const checkpointUse = async (user: string) => {
+    const rows = await db.query<{ named: string; bytes: string | null }>(
+      `SELECT COUNT(*) FILTER (WHERE kind = 'named') AS named, SUM(bytes) AS bytes FROM checkpoints WHERE owner_id = $1`,
+      [user],
+    );
+    return { named: Number(rows[0]?.named ?? 0), bytes: Number(rows[0]?.bytes ?? 0) };
+  };
+  const checkRoom = async (user: string, adding: number) => {
+    const [use, limit] = await Promise.all([checkpointUse(user), checkpointLimit(user)]);
+    if (use.named >= limit) fail(409, `you have ${limit} checkpoints, the most you can keep: delete one first`);
+    if (use.bytes + adding > CHECKPOINT_BYTES_PER_USER) fail(413, 'your checkpoints are full: delete some first');
+  };
+  const inspect = (bytes: Uint8Array) => {
+    try {
+      return inspectBlob(bytes);
+    } catch (e) {
+      if (e instanceof BadBlob) return fail(400, `not a saved beach (${e.message})`);
+      throw e;
+    }
+  };
+  const makeLimiter = createRateLimiter(60, 3600000);
+  const restoreLimiter = createRateLimiter(30, 3600000);
+
+  /** what you own of each non-free item (unexpired) */
+  const ownedItems = async (user: string): Promise<Record<string, number>> => {
+    const rows = await db.query<{ item_id: string; n: string }>(
+      `SELECT item_id, SUM(quantity) AS n FROM inventory WHERE user_id = $1 AND quantity > 0 AND (expires_at IS NULL OR expires_at > $2) GROUP BY item_id`,
+      [user, clock()],
+    );
+    return Object.fromEntries(rows.map((r) => [r.item_id, Number(r.n)]));
+  };
+  /** what's on your beaches other than `except` */
+  const itemsElsewhere = async (user: string, except: string): Promise<Record<string, number>> => {
+    const rows = await db.query<{ items: Record<string, number> | string }>('SELECT items FROM beach WHERE owner_id = $1 AND id <> $2', [user, except]);
+    const out: Record<string, number> = {};
+    for (const r of rows) for (const [k, v] of Object.entries(jsonMap(r.items))) out[k] = (out[k] ?? 0) + Number(v);
+    return out;
+  };
+  const fitOf = async (user: string, need: Record<string, number>, target: string) => {
+    const [owned, elsewhere] = await Promise.all([ownedItems(user), itemsElsewhere(user, target)]);
+    return { need, owned, elsewhere, short: shortfall(need, owned, elsewhere) };
+  };
+
+  // One restore at a time per person: in this process (PGlite interleaves
+  // on one connection) and across server instances (an advisory lock).
+  const restoring = new Map<string, Promise<unknown>>();
+  const userLockKey = (user: string) => (parseInt(user.replace(/-/g, '').slice(0, 7), 16) % 1_000_000_000) + 1_000_000;
+  const oneAtATime = async <T>(user: string, fn: () => Promise<T>): Promise<T> => {
+    while (restoring.has(user)) await restoring.get(user)!.catch(() => {});
+    const run = db.withLock(userLockKey(user), fn);
+    restoring.set(user, run);
+    try {
+      return await run;
+    } finally {
+      restoring.delete(user);
+    }
+  };
+
+  app.get('/checkpoints', requireUser, async (c) => {
+    const me = c.get('user').id;
+    const [rows, limit, use] = await Promise.all([
+      db.query<CheckpointRow>(
+        `SELECT ${CHECKPOINT_COLS} FROM checkpoints c LEFT JOIN beach b ON b.id = c.from_beach WHERE c.owner_id = $1 ORDER BY c.created_at DESC, c.name`,
+        [me],
+      ),
+      checkpointLimit(me),
+      checkpointUse(me),
+    ]);
+    return c.json({ limit, named: use.named, bytesUsed: use.bytes, bytesLimit: CHECKPOINT_BYTES_PER_USER, checkpoints: rows.map(checkpointJson) });
+  });
+
+  // a checkpoint of one of your beaches, copied here (no upload)
+  app.post('/beaches/mine/:id/checkpoints', requireUser, async (c) => {
+    const me = c.get('user').id;
+    const beachId = await mine(c, c.req.param('id'));
+    const { name } = await body<{ name?: string }>(c);
+    const label = checkpointName(name);
+    if (!makeLimiter(me)) fail(429, 'too many checkpoints at once: try again later');
+    const rows = await db.query<{ sand: unknown; location: string; nx: number; ny: number; name: string }>(
+      'SELECT sand, location, nx, ny, name FROM beach WHERE id = $1 AND sand IS NOT NULL',
+      [beachId],
+    );
+    if (!rows[0]) fail(404, 'that beach has nothing saved yet');
+    const bytes = toBytes(rows[0].sand);
+    const info = inspect(bytes);
+    await checkRoom(me, bytes.byteLength);
+    const id = crypto.randomUUID();
+    await db.query(
+      `INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at)
+       VALUES ($1, $2, $3, 'named', 'beach', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+      [id, me, label, beachId, rows[0].name, rows[0].location, rows[0].nx, rows[0].ny, bytes, bytes.byteLength, JSON.stringify(info.items), info.objects, clock()],
+    );
+    return c.json({ checkpoint: checkpointJson((await myCheckpoint(c, id)) as CheckpointRow) }, 201);
+  });
+
+  // import: a beach made elsewhere (a beach file, encoded by the app)
+  app.post('/checkpoints', requireUser, async (c) => {
+    const me = c.get('user').id;
+    let label: string;
+    try {
+      label = checkpointName(decodeURIComponent(c.req.header('X-Checkpoint-Name') ?? ''));
+    } catch (e) {
+      if (e instanceof HTTPException) throw e;
+      return fail(400, 'bad X-Checkpoint-Name');
+    }
+    const location = (c.req.header('X-Beach-Location') ?? '').slice(0, 40);
+    if (location && !/^[a-z0-9-]+$/.test(location)) fail(400, 'bad X-Beach-Location');
+    if (Number(c.req.header('Content-Length') ?? 0) > MAX_BEACH_BYTES) fail(413, 'beach too large');
+    const bytes = new Uint8Array(await c.req.arrayBuffer());
+    if (bytes.byteLength === 0 || bytes.byteLength > MAX_BEACH_BYTES) fail(413, 'beach too large');
+    const info = inspect(bytes);
+    if (info.nx !== info.ny) fail(400, 'not a saved beach (the grid must be square)');
+    if (!makeLimiter(me)) fail(429, 'too many checkpoints at once: try again later');
+    await checkRoom(me, bytes.byteLength);
+    const id = crypto.randomUUID();
+    await db.query(
+      `INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at)
+       VALUES ($1, $2, $3, 'named', 'import', NULL, '', NULLIF($4, ''), $5, $6, $7, $8, $9, $10, $11)`,
+      [id, me, label, location, info.nx, info.ny, bytes, bytes.byteLength, JSON.stringify(info.items), info.objects, clock()],
+    );
+    return c.json({ checkpoint: checkpointJson((await myCheckpoint(c, id)) as CheckpointRow) }, 201);
+  });
+
+  app.get('/checkpoints/:id/sand', requireUser, async (c) => {
+    const r = await myCheckpoint(c, c.req.param('id'));
+    return new Response(toBytes(r.sand) as BodyInit, {
+      headers: {
+        'Content-Type': 'application/octet-stream',
+        'Cache-Control': 'no-store',
+        'X-Beach-Location': r.location ?? '',
+        'X-Beach-Nx': String(r.nx),
+        'X-Beach-Ny': String(r.ny),
+      },
+    });
+  });
+
+  app.patch('/checkpoints/:id', requireUser, async (c) => {
+    const r = await myCheckpoint(c, c.req.param('id'));
+    const { name } = await body<{ name?: string }>(c);
+    await db.query('UPDATE checkpoints SET name = $1 WHERE id = $2', [checkpointName(name), r.id]);
+    return c.json({ checkpoint: checkpointJson((await myCheckpoint(c, r.id)) as CheckpointRow) });
+  });
+
+  app.delete('/checkpoints/:id', requireUser, async (c) => {
+    const r = await myCheckpoint(c, c.req.param('id'));
+    await db.query('DELETE FROM checkpoints WHERE id = $1', [r.id]);
+    return c.body(null, 204);
+  });
+
+  // would it fit onto that beach? (the bag's owned minus what's on your other beaches)
+  app.get('/checkpoints/:id/fit', requireUser, async (c) => {
+    const me = c.get('user').id;
+    const r = await myCheckpoint(c, c.req.param('id'));
+    const target = await mine(c, c.req.query('beach'));
+    const fit = await fitOf(me, jsonMap(r.items), target);
+    return c.json({ ok: fit.short.length === 0, ...fit });
+  });
+
+  // put a checkpoint on one of your beaches; what was there becomes its
+  // "before restoring" checkpoint, so it can be undone
+  app.post('/beaches/mine/:id/restore', requireUser, async (c) => {
+    const me = c.get('user').id;
+    const target = await mine(c, c.req.param('id'));
+    const { checkpoint, mode = 'strict' } = await body<{ checkpoint?: string; mode?: 'strict' | 'drop-missing' }>(c);
+    if (mode !== 'strict' && mode !== 'drop-missing') fail(400, 'mode must be strict or drop-missing');
+    const cp = await myCheckpoint(c, checkpoint);
+    if (!restoreLimiter(me)) fail(429, 'too many restores: try again later');
+    return oneAtATime(me, async () => {
+      let bytes = toBytes(cp.sand);
+      const info = inspect(bytes);
+      const fit = await fitOf(me, info.items, target);
+      let dropped = 0;
+      if (fit.short.length) {
+        if (mode === 'strict') return c.json({ error: 'short', short: fit.short }, 409);
+        ({ bytes, dropped } = dropMissing(bytes, fit.short));
+      }
+      const placed = dropped ? inspect(bytes) : info;
+      // what's there now becomes the beach's "before restoring" checkpoint
+      const current = (await db.query<{ sand: unknown }>('SELECT sand FROM beach WHERE id = $1 AND sand IS NOT NULL', [target]))[0];
+      let before: { items: Record<string, number>; objects: number } = { items: {}, objects: 0 };
+      if (current) {
+        try {
+          before = inspectBlob(toBytes(current.sand));
+        } catch {
+          /* an unreadable old save: keep it, uncounted */
+        }
+      }
+      const now = clock();
+      const rows = await db.query<{ version: number; epoch: number; undo: string | null }>(
+        `WITH snap AS (
+           INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at)
+           SELECT $1, owner_id, $2, 'auto', 'beach', id, name, location, nx, ny, sand, octet_length(sand), $3, $4, $5
+             FROM beach WHERE id = $6 AND sand IS NOT NULL
+           ON CONFLICT (from_beach) WHERE kind = 'auto' DO UPDATE SET
+             name = EXCLUDED.name, from_name = EXCLUDED.from_name, location = EXCLUDED.location, nx = EXCLUDED.nx, ny = EXCLUDED.ny,
+             sand = EXCLUDED.sand, bytes = EXCLUDED.bytes, items = EXCLUDED.items, objects = EXCLUDED.objects, created_at = EXCLUDED.created_at
+           RETURNING id
+         )
+         UPDATE beach SET sand = $7, nx = $8, ny = $9, items = $10, version = version + 1, updated_at = $5, epoch = epoch + 1
+          WHERE id = $6
+         RETURNING version, epoch, (SELECT id FROM snap) AS undo`,
+        [
+          crypto.randomUUID(),
+          `Before restoring “${cp.name}”`.slice(0, 80),
+          JSON.stringify(before.items),
+          before.objects,
+          now,
+          target,
+          bytes,
+          info.nx,
+          info.ny,
+          JSON.stringify(placed.items),
+        ],
+      );
+      return c.json({ version: rows[0].version, epoch: Number(rows[0].epoch), updatedAt: now, undo: rows[0].undo, dropped });
+    });
+  });
+
   // ---------------------------------------------------------------- the shop
   // The app buys through Apple / Google; we only check and grant (store.ts).
   const bundleId = cfg.appleBundleId ?? 'app.beech.beach';
@@ -1680,8 +1973,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
 
 function setCors(h: Headers, origin: string): void {
   h.set('Access-Control-Allow-Origin', origin);
-  h.set('Access-Control-Allow-Methods', 'GET, PUT, POST, DELETE, OPTIONS');
-  h.set('Access-Control-Allow-Headers', ['Authorization', 'Content-Type', ...BEACH_HEADERS].join(', '));
+  h.set('Access-Control-Allow-Methods', 'GET, PUT, POST, PATCH, DELETE, OPTIONS');
+  h.set('Access-Control-Allow-Headers', ['Authorization', 'Content-Type', ...BEACH_HEADERS, ...REQUEST_HEADERS].join(', '));
   h.set('Access-Control-Expose-Headers', BEACH_HEADERS.join(', '));
   h.set('Access-Control-Max-Age', '86400');
   h.append('Vary', 'Origin');

@@ -1,0 +1,13 @@
+{
+  "about": "Shared cases for the checkpoint restore check: short(i) = max(0, need(i) - (owned(i) - elsewhere(i))). Run by tests/checkpointFit.test.ts and server/test/checkpoints.test.ts.",
+  "cases": [
+    { "name": "nothing needed", "need": {}, "owned": {}, "elsewhere": {}, "short": [] },
+    { "name": "free items never short", "need": { "rock": 40, "driftwood": 3, "flag": 2 }, "owned": {}, "elsewhere": {}, "short": [] },
+    { "name": "owned covers it", "need": { "lighthouse": 1 }, "owned": { "lighthouse": 1 }, "elsewhere": {}, "short": [] },
+    { "name": "placed on another beach", "need": { "lighthouse": 1 }, "owned": { "lighthouse": 1 }, "elsewhere": { "lighthouse": 1 }, "short": [{ "item": "lighthouse", "need": 1, "have": 0 }] },
+    { "name": "partly short", "need": { "deckchair": 3, "starfish": 1 }, "owned": { "deckchair": 3, "starfish": 1 }, "elsewhere": { "deckchair": 1 }, "short": [{ "item": "deckchair", "need": 3, "have": 2 }] },
+    { "name": "unknown items need owning", "need": { "unicorn": 1 }, "owned": {}, "elsewhere": {}, "short": [{ "item": "unicorn", "need": 1, "have": 0 }] },
+    { "name": "more elsewhere than owned (after a refund)", "need": { "parasol": 1 }, "owned": { "parasol": 1 }, "elsewhere": { "parasol": 2 }, "short": [{ "item": "parasol", "need": 1, "have": 0 }] },
+    { "name": "sorted by item", "need": { "surfboard": 1, "beachhut": 1 }, "owned": {}, "elsewhere": {}, "short": [{ "item": "beachhut", "need": 1, "have": 0 }, { "item": "surfboard", "need": 1, "have": 0 }] }
+  ]
+}

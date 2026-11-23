@@ -306,6 +306,33 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX admin_audit_created ON admin_audit (created_at DESC);
   `,
+
+  // 13: checkpoints (docs/CHECKPOINTS.md): named copies of your beaches,
+  // restorable onto any of them if your bag covers the things on it. The
+  // epoch goes up on each restore, so a device still showing the old sand
+  // can't save it back over the restored beach.
+  `
+  CREATE TABLE checkpoints (
+    id UUID PRIMARY KEY,
+    owner_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('named', 'auto')),   -- auto: "before restoring"
+    source TEXT NOT NULL CHECK (source IN ('beach', 'import')),
+    from_beach UUID REFERENCES beach (id) ON DELETE SET NULL,
+    from_name TEXT NOT NULL DEFAULT '',
+    location TEXT,
+    nx INTEGER NOT NULL,
+    ny INTEGER NOT NULL,
+    sand BYTEA NOT NULL,                                    -- src/sim/sandCodec.ts format
+    bytes INTEGER NOT NULL,
+    items JSONB NOT NULL DEFAULT '{}',                      -- counted by the server
+    objects INTEGER NOT NULL,
+    created_at BIGINT NOT NULL
+  );
+  CREATE INDEX checkpoints_owner ON checkpoints (owner_id, created_at DESC);
+  CREATE UNIQUE INDEX checkpoints_one_auto ON checkpoints (from_beach) WHERE kind = 'auto';
+  ALTER TABLE beach ADD COLUMN epoch INTEGER NOT NULL DEFAULT 0;
+  `,
 ];
 
 /** Apply migrations up to `upTo` (default: all). Tests use `upTo` to check a migration on older data. */
