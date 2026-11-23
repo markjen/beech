@@ -16,8 +16,8 @@ type Phase = 'idle' | 'drop' | 'grab' | 'lift' | 'carry' | 'open' | 'done';
  * The claw machine: free goes, with a rest between them that starts at
  * 5 minutes and doubles each go, up to a day. The prize is drawn on the server
  * (with the odds printed under the machine); the claw is the fun part. Hold
- * the button to steer, let go to drop, and it always comes back with a
- * capsule.
+ * the button to steer, let go to drop — and sometimes the ball slips out of
+ * the claw on the way up, which spends the go all the same.
  */
 export class ClawMachine {
   private readonly root: HTMLDivElement;
@@ -35,6 +35,10 @@ export class ClawMachine {
   private clawY = 0.12;
   private dir = 1;
   private prize: { item: string; rarity: string } | null = null;
+  /** the last go missed: the claw came up empty (the go is still spent) */
+  private missed = false;
+  /** what slipped out of the claw on a miss, so the reveal can say so */
+  private dropped: { item: string; rarity: string } | null = null;
   private error = '';
   private raf = 0;
   private last = 0;
@@ -113,6 +117,8 @@ export class ClawMachine {
   private reset(): void {
     this.phase = 'idle';
     this.prize = null;
+    this.missed = false;
+    this.dropped = null;
     this.result = null;
     this.clawY = 0.12;
     this.reveal.hidden = true;
@@ -136,7 +142,8 @@ export class ClawMachine {
         return `<li><span class="dot" style="background:${CAPSULE[k]}"></span><b>${RARITY_NAME[k]} ${pct(this.pool!.odds[k])}</b> ${names}</li>`;
       })
       .join('');
-    this.oddsEl.innerHTML = `<p>What's inside, and the chance of each:</p><ul>${rows}</ul>`;
+    const g = this.pool.grab;
+    this.oddsEl.innerHTML = `<p>What's inside, and the chance of each:</p><ul>${rows}</ul><p>The claw doesn't always hold on: it keeps a common ball ${pct(g.common)} of the time, a rare one ${pct(g.rare)}, a legendary one ${pct(g.legendary)}.</p>`;
   }
 
   private drop(): void {
@@ -149,7 +156,9 @@ export class ClawMachine {
       (r) => {
         this.nextFree = r.nextFree;
         if (this.pool) this.pool.free = false;
-        return { item: r.item, rarity: r.rarity };
+        this.missed = r.missed;
+        this.dropped = r.dropped ?? null;
+        return r.missed ? null : { item: r.item!, rarity: r.rarity! };
       },
       (e: Error) => {
         this.error = e.message;
@@ -184,11 +193,12 @@ export class ClawMachine {
         break;
       case 'grab':
         if (this.t > 0.5 && this.result) {
-          // wait for the server before lifting (usually long done)
-          if (this.prize !== null || this.error) {
-            this.phase = this.prize ? 'lift' : 'done';
+          // wait for the server before lifting (usually long done); a miss
+          // lifts empty — the claw opens over the chute and nothing drops
+          if (this.prize !== null || this.missed || this.error) {
+            this.phase = this.error ? 'done' : 'lift';
             this.t = 0;
-            if (!this.prize) this.renderInfo();
+            if (this.error) this.renderInfo();
           }
         }
         break;
@@ -210,10 +220,24 @@ export class ClawMachine {
       case 'open':
         if (this.t > 0.6) {
           this.phase = 'done';
-          this.showPrize();
+          if (this.missed) this.showMiss();
+          else this.showPrize();
         }
         break;
     }
+  }
+
+  /** The claw came up empty: say what slipped out of it (the go is spent). */
+  private showMiss(): void {
+    const d = this.dropped;
+    this.reveal.hidden = false;
+    this.reveal.className = 'claw-reveal claw-miss';
+    this.reveal.innerHTML = `
+      <b>It slipped out of the claw!</b>
+      ${d ? `<span>So close — a ${RARITY_NAME[d.rarity as Rarity] ?? d.rarity} ${prizeName(d.item)} fell back into the pile.</span>` : ''}
+      <button type="button" class="claw-place">Close</button>`;
+    this.reveal.querySelector('.claw-place')!.addEventListener('click', () => this.close());
+    this.renderInfo();
   }
 
   private showPrize(): void {
