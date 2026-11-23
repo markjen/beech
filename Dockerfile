@@ -1,8 +1,11 @@
 # syntax=docker/dockerfile:1
-# Production image for Cloud Run: the web app (built with accounts on) and the
-# API server in one container. See docs/GCP.md.
-#   docker build -t beech --build-arg VITE_GOOGLE_CLIENT_ID=... .
-#   docker run -p 8080:8080 -e DATABASE_URL=postgres://... beech
+# Production images for Cloud Run. See docs/GCP.md.
+#   The game (default target): the web app (built with accounts on) and the API server.
+#     docker build -t beech --build-arg VITE_GOOGLE_CLIENT_ID=... .
+#     docker run -p 8080:8080 -e DATABASE_URL=postgres://... beech
+#   The admin console (target "admin"): its own service, no web app in it.
+#     docker build --target admin -t beech-admin .
+#     docker run -p 8080:8080 -e DATABASE_URL=... -e GOOGLE_CLIENT_ID=... -e ADMIN_EMAILS=... beech-admin
 
 # ---- web app
 FROM node:22-slim AS web
@@ -26,7 +29,18 @@ COPY server/tsconfig.json ./
 COPY server/src ./src
 RUN npm run build && npm prune --omit=dev
 
-# ---- runtime
+# ---- the admin console (docs/GIFT_CARDS_PROMOS.md): same server build, its own entry point
+FROM node:22-slim AS admin
+ENV NODE_ENV=production PORT=8080
+WORKDIR /srv
+COPY --from=server /srv/package.json ./
+COPY --from=server /srv/node_modules ./node_modules
+COPY --from=server /srv/build ./build
+USER node
+EXPOSE 8080
+CMD ["node", "build/adminServer.js"]
+
+# ---- runtime: the game (the default target, so it stays last)
 FROM node:22-slim
 ENV NODE_ENV=production PORT=8080 PUBLIC_DIR=/srv/public
 WORKDIR /srv

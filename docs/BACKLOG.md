@@ -131,6 +131,21 @@ The single list of what's left to do, for the owner and for agents.
 
 ## Done (recent)
 
+- [x] **Admin console is its own app, and manages beaches** (2026-11-23):
+  `/admin` and `/api/admin/*` are gone from the game server. The console
+  is a separate Cloud Run service, `beech-admin` (`server/src/adminServer.ts`,
+  `adminApp.ts`, `adminPage.ts`; Dockerfile target `admin`), on the same
+  database. Nothing loads until a Google sign-in by an `ADMIN_EMAILS`
+  account: an HttpOnly session cookie (`admin_sessions`, migration 14), the
+  allowlist re-checked on every request, a CSRF header, and a nonce CSP.
+  New Beaches tab: counts, search, a beach's details, and rename, hide from
+  the shore, new code, part neighbors, clear the sand (undoable via a
+  checkpoint) and delete a non-home beach. All actions are audited, and
+  there's a new Audit log tab. The CLI gained `beach …` and `audit` and now
+  takes `BEECH_ADMIN_URL`. Design in
+  [GIFT_CARDS_PROMOS.md](GIFT_CARDS_PROMOS.md#admin-console). **Owner:**
+  add the `beech-admin` URL (printed by the deploy's smoke test) to the web
+  OAuth client's Authorized JavaScript origins.
 - [x] **QA pass of main** (2026-11-23): neighbor name tags kept on screen
   and off the place card and tool column (`src/ui/tagPlace.ts`, tested);
   account panel rows no longer squeeze (visit box cut off, a beach's name
@@ -155,7 +170,7 @@ The single list of what's left to do, for the owner and for agents.
   credit (16-char bearer codes, HMAC-SHA-256 under a pepper, shown once at
   issue, never stored); promo codes discount a server-side credit purchase
   (percent/fixed, per-product, usage caps, expiry, claimed atomically with
-  the purchase). Admin console at `/admin` (Google sign-in + allowlist:
+  the purchase). Admin console (then at `/admin`; now its own service) (Google sign-in + allowlist:
   markjen@gmail.com only) and CLI `scripts/beech-admin.mjs` (admin API
   token from the environment, hashed server-side). Design and setup in
   [GIFT_CARDS_PROMOS.md](GIFT_CARDS_PROMOS.md). **Before merging: create

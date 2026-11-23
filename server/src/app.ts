@@ -31,12 +31,8 @@ import {
   claimCreditPurchase,
   discountCents,
   formatCents,
-  hashesEqual,
   hashGiftCode,
-  isAdminEmail,
   isGiftCodeShape,
-  isPromoCodeShape,
-  newGiftCardCode,
   normalizePromoCode,
   promoBlocked,
   type Promo,
@@ -78,19 +74,6 @@ export interface AppConfig {
   androidPackage?: string;
   /** Google Play notifications (Pub/Sub push): the push's OIDC audience and service account */
   googleRtdn?: { audience: string; email: string };
-  /**
-   * Admin access (docs/GIFT_CARDS_PROMOS.md): the Google accounts allowed
-   * into the admin console, by verified email (exact match, case-insensitive).
-   * Empty means nobody — the console stays closed. Set ADMIN_EMAILS to
-   * markjen@gmail.com in production.
-   */
-  adminEmails?: string[];
-  /**
-   * The CLI's credential: the SHA-256 hex of the ADMIN_API_TOKEN env var
-   * (hashed once at startup in server.ts, so the raw token is never held
-   * past boot). Unset means the CLI can't authenticate.
-   */
-  adminTokenHash?: string;
   /** pepper for gift card code hashes (GIFT_CODE_PEPPER, required in production) */
   codePepper?: string;
   /** injectable for tests: how purchases and refunds are checked */
@@ -107,7 +90,7 @@ export interface User {
   name: string;
 }
 
-type Env = { Variables: { user: User; tokenHash: string; adminActor: string; adminEmail: string | null } };
+type Env = { Variables: { user: User; tokenHash: string } };
 
 /** most beaches one person can have */
 export const BEACH_CAP = 8;
@@ -195,8 +178,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       await db.query('UPDATE users SET name = $1 WHERE id = $2', [who.name, user.id]);
       user.name = who.name;
     }
-    // a Google sign-in refreshes the verified email (the admin allowlist
-    // reads it); an unverified or absent address never overwrites a stored one
+    // a Google sign-in refreshes the verified email (the admin console
+    // searches by it); an unverified or absent address never overwrites a stored one
     if (email) await db.query('UPDATE users SET email = $1 WHERE id = $2 AND (email IS NULL OR email <> $1)', [email, user!.id]);
     // everyone has a home beach: its id is theirs, its code their neighbor code
     await db.query(
@@ -231,81 +214,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     await next();
   };
 
-  // ---------------------------------------------------------------- admin
-  // Two ways in, both checked server-side on every request; nothing here
-  // trusts the client, and DEV_AUTH never counts (a dev user has no verified
-  // Google email, so the allowlist rejects it):
-  //   - the web console: a normal session, whose user signed in with Google
-  //     and whose verified email is on ADMIN_EMAILS (markjen@gmail.com);
-  //   - the CLI: `Authorization: Bearer <ADMIN_API_TOKEN>`, compared by
-  //     hash in constant time against the hashed env value.
-  // Either way the actor is recorded for the audit log ('cli-token' for the
-  // CLI). A wrong credential gets the same flat denial as a non-admin, so
-  // nothing about the allowlist leaks.
-  const adminEmails = cfg.adminEmails ?? [];
-  const adminLimiter = createRateLimiter(60);
-  const requireAdmin = async (c: Context<Env>, next: () => Promise<void>) => {
-    const ip = (c.req.header('x-forwarded-for') ?? '').split(',')[0]?.trim() || 'unknown';
-    if (!adminLimiter(ip)) return c.json({ error: 'slow down' }, 429);
-    const m = /^Bearer\s+(\S+)$/.exec(c.req.header('Authorization') ?? '');
-    if (m && cfg.adminTokenHash) {
-      if (hashesEqual(await hashToken(m[1]), cfg.adminTokenHash)) {
-        c.set('adminActor', 'cli-token');
-        c.set('adminEmail', null);
-        await next();
-        return;
-      }
-      // a wrong CLI token: fall through to the session check, so a valid
-      // admin session still works; a wrong token alone never gets in
-    }
-    if (!m) fail(401, 'sign in first');
-    const tokenHash = await hashToken(m![1]);
-    const rows = await db.query<{ id: string; provider: string; email: string | null; expires_at: string }>(
-      'SELECT u.id, u.provider, u.email, s.expires_at FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = $1',
-      [tokenHash],
-    );
-    const row = rows[0];
-    if (!row || Number(row.expires_at) < Date.now()) fail(401, 'session expired, sign in again');
-    if (row.provider !== 'google' || !isAdminEmail(row.email, adminEmails)) fail(403, 'not allowed');
-    c.set('adminActor', row.id);
-    c.set('adminEmail', row.email);
-    await next();
-  };
-
-  /** an admin audit line. `detail` must never hold a code value. */
-  const audit = async (actor: string, action: string, targetType: string, targetId: string, detail: Record<string, unknown>) => {
-    await db.query('INSERT INTO admin_audit (actor, action, target_type, target_id, detail, created_at) VALUES ($1, $2, $3, $4, $5, $6)', [
-      actor,
-      action,
-      targetType,
-      targetId,
-      JSON.stringify(detail),
-      Date.now(),
-    ]);
-  };
-
   const pepper = cfg.codePepper ?? '';
-  const giftCardJson = (r: {
-    id: string;
-    amount_cents: number;
-    status: string;
-    issued_at: string;
-    expires_at: string | null;
-    redeemed_at: string | null;
-    note: string;
-    redeemed_name?: string | null;
-  }) => ({
-    id: r.id,
-    amountCents: Number(r.amount_cents),
-    amount: formatCents(Number(r.amount_cents)),
-    status: r.status,
-    issuedAt: Number(r.issued_at),
-    expiresAt: r.expires_at === null ? null : Number(r.expires_at),
-    redeemedAt: r.redeemed_at === null ? null : Number(r.redeemed_at),
-    redeemedBy: r.redeemed_name ?? undefined,
-    note: r.note,
-  });
-
   const body = async <T>(c: Context<Env>): Promise<T> => {
     try {
       return (await c.req.json()) as T;
@@ -316,11 +225,6 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
 
   // ---------------------------------------------------------------- auth
   app.get('/health', (c) => c.json({ ok: true }));
-
-  // Public: the web OAuth client id, for the admin console's sign-in button
-  // (the id is public — it is also in the built web app). Null until
-  // Google sign-in is configured.
-  app.get('/config', (c) => c.json({ googleClientId: cfg.googleClientIds[0] ?? null }));
 
   // ---------------------------------------------------------------- client events
   // The web app reports unhandled errors and one page-load timing sample per
@@ -1601,199 +1505,6 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       expiresAt: r.expires_at === null ? null : Number(r.expires_at),
     };
   };
-
-  // --- admin console + CLI (requireAdmin: Google allowlist or CLI token) ---
-  app.get('/admin/me', requireAdmin, (c) =>
-    c.json({ admin: true, via: c.get('adminActor') === 'cli-token' ? 'token' : 'session', email: c.get('adminEmail') }),
-  );
-
-  app.post('/admin/gift-cards', requireAdmin, async (c) => {
-    const { amountCents, expiresAt, note } = await body<{ amountCents?: number; expiresAt?: number | null; note?: string }>(c);
-    const amount = Math.floor(Number(amountCents ?? NaN));
-    if (!Number.isInteger(amount) || amount < 50 || amount > 100000) fail(400, 'amountCents must be 50 to 100000 ($0.50 to $1,000)');
-    const exp = expiresAt == null ? null : Math.floor(Number(expiresAt));
-    if (exp !== null && (!Number.isInteger(exp) || exp <= Date.now())) fail(400, 'expiresAt must be in the future');
-    const cleanNote = (note ?? '').trim().slice(0, 200);
-    const now = clock();
-    const actor = c.get('adminActor');
-    // the code is returned once, in this response, and never again: only
-    // its hash is stored, so a leaked database can't redeem the card
-    for (let attempt = 0; attempt < 5; attempt++) {
-      const code = newGiftCardCode();
-      try {
-        const id = crypto.randomUUID();
-        await db.query(
-          'INSERT INTO gift_cards (id, code_hash, amount_cents, status, issued_by, issued_at, expires_at, note) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
-          [id, hashGiftCode(code, pepper), amount, 'active', actor === 'cli-token' ? null : actor, now, exp, cleanNote],
-        );
-        await audit(actor, 'gift_card.issue', 'gift_card', id, { amountCents: amount, expiresAt: exp });
-        return c.json({
-          id,
-          code,
-          amountCents: amount,
-          amount: formatCents(amount),
-          status: 'active',
-          issuedAt: now,
-          expiresAt: exp,
-          note: cleanNote,
-        });
-      } catch (e) {
-        if ((e as { code?: string }).code === '23505' && attempt < 4) continue; // hash collision: try another code
-        throw e;
-      }
-    }
-    return fail(500, 'could not make a gift card');
-  });
-
-  app.get('/admin/gift-cards', requireAdmin, async (c) => {
-    const rows = await db.query<{
-      id: string;
-      amount_cents: number;
-      status: string;
-      issued_at: string;
-      expires_at: string | null;
-      redeemed_at: string | null;
-      note: string;
-      redeemed_name: string | null;
-    }>(
-      `SELECT g.id, g.amount_cents, g.status, g.issued_at, g.expires_at, g.redeemed_at, g.note, u.name AS redeemed_name
-         FROM gift_cards g LEFT JOIN users u ON u.id = g.redeemed_by ORDER BY g.issued_at DESC LIMIT 100`,
-    );
-    return c.json({ giftCards: rows.map(giftCardJson) });
-  });
-
-  app.post('/admin/gift-cards/:id/disable', requireAdmin, async (c) => {
-    const id = c.req.param('id') ?? '';
-    const rows = await db.query<{ id: string }>(
-      "UPDATE gift_cards SET status = 'disabled' WHERE id = $1 AND status = 'active' RETURNING id",
-      [id],
-    );
-    if (!rows[0]) fail(404, 'no active gift card with that id');
-    await audit(c.get('adminActor'), 'gift_card.disable', 'gift_card', id, {});
-    return c.json({ id, status: 'disabled' });
-  });
-
-  app.post('/admin/promo-codes', requireAdmin, async (c) => {
-    const { code, kind, value, appliesTo, maxUses, expiresAt } = await body<{
-      code?: string;
-      kind?: string;
-      value?: number;
-      appliesTo?: string | null;
-      maxUses?: number | null;
-      expiresAt?: number | null;
-    }>(c);
-    const clean = normalizePromoCode(code ?? '');
-    if (!isPromoCodeShape(code ?? '')) fail(400, 'codes are 3-32 letters and numbers');
-    if (kind !== 'percent' && kind !== 'fixed') fail(400, 'kind must be percent or fixed');
-    const v = Math.floor(Number(value ?? NaN));
-    if (!Number.isInteger(v) || v <= 0 || (kind === 'percent' && v > 100)) fail(400, 'percent is 1-100; fixed is USD cents');
-    const applies = appliesTo ? String(appliesTo) : null;
-    if (applies && !productById(applies)) fail(400, 'no such product');
-    const max = maxUses == null ? null : Math.floor(Number(maxUses));
-    if (max !== null && (!Number.isInteger(max) || max <= 0)) fail(400, 'maxUses must be a positive number');
-    const exp = expiresAt == null ? null : Math.floor(Number(expiresAt));
-    if (exp !== null && (!Number.isInteger(exp) || exp <= Date.now())) fail(400, 'expiresAt must be in the future');
-    const now = clock();
-    const actor = c.get('adminActor');
-    try {
-      await db.query(
-        'INSERT INTO promo_codes (code, kind, value, applies_to, max_uses, active, created_by, created_at, expires_at) VALUES ($1, $2, $3, $4, $5, true, $6, $7, $8)',
-        [clean, kind, v, applies, max, actor === 'cli-token' ? null : actor, now, exp],
-      );
-    } catch (e) {
-      if ((e as { code?: string }).code === '23505') fail(409, 'that code already exists');
-      throw e;
-    }
-    await audit(actor, 'promo.create', 'promo_code', clean, { kind, value: v, appliesTo: applies, maxUses: max, expiresAt: exp });
-    return c.json({
-      promo: { code: clean, kind, value: v, appliesTo: applies, maxUses: max, uses: 0, active: true, createdAt: now, expiresAt: exp },
-    });
-  });
-
-  app.get('/admin/promo-codes', requireAdmin, async (c) => {
-    const rows = await db.query<{
-      code: string;
-      kind: string;
-      value: number;
-      applies_to: string | null;
-      max_uses: number | null;
-      uses: number;
-      active: boolean;
-      created_at: string;
-      expires_at: string | null;
-    }>('SELECT code, kind, value, applies_to, max_uses, uses, active, created_at, expires_at FROM promo_codes ORDER BY created_at DESC LIMIT 100');
-    return c.json({
-      promos: rows.map((r) => ({
-        code: r.code,
-        kind: r.kind,
-        value: Number(r.value),
-        appliesTo: r.applies_to,
-        maxUses: r.max_uses === null ? null : Number(r.max_uses),
-        uses: Number(r.uses),
-        active: r.active,
-        createdAt: Number(r.created_at),
-        expiresAt: r.expires_at === null ? null : Number(r.expires_at),
-      })),
-    });
-  });
-
-  app.post('/admin/promo-codes/:code/disable', requireAdmin, async (c) => {
-    const code = normalizePromoCode(c.req.param('code') ?? '');
-    const rows = await db.query<{ code: string }>("UPDATE promo_codes SET active = false WHERE code = $1 AND active RETURNING code", [code]);
-    if (!rows[0]) fail(404, 'no active promo code with that code');
-    await audit(c.get('adminActor'), 'promo.disable', 'promo_code', code, {});
-    return c.json({ code, active: false });
-  });
-
-  app.get('/admin/redemptions', requireAdmin, async (c) => {
-    const cards = await db.query<{
-      id: string;
-      amount_cents: number;
-      redeemed_at: string;
-      note: string;
-      redeemed_name: string | null;
-    }>(
-      `SELECT g.id, g.amount_cents, g.redeemed_at, g.note, u.name AS redeemed_name
-         FROM gift_cards g JOIN users u ON u.id = g.redeemed_by WHERE g.status = 'redeemed' ORDER BY g.redeemed_at DESC LIMIT 50`,
-    );
-    const promos = await db.query<{
-      code: string;
-      product_id: string;
-      discount_cents: number;
-      created_at: string;
-      user_name: string | null;
-    }>(
-      `SELECT p.code, p.product_id, p.discount_cents, p.created_at, u.name AS user_name
-         FROM promo_uses p JOIN users u ON u.id = p.user_id ORDER BY p.created_at DESC LIMIT 50`,
-    );
-    const ledger = await db.query<{ kind: string; amount_cents: number; ref: string; created_at: string; user_name: string | null }>(
-      `SELECT l.kind, l.amount_cents, l.ref, l.created_at, u.name AS user_name
-         FROM credit_ledger l JOIN users u ON u.id = l.user_id ORDER BY l.created_at DESC LIMIT 50`,
-    );
-    return c.json({
-      giftCards: cards.map((r) => ({
-        id: r.id,
-        amountCents: Number(r.amount_cents),
-        redeemedAt: Number(r.redeemed_at),
-        redeemedBy: r.redeemed_name,
-        note: r.note,
-      })),
-      promoUses: promos.map((r) => ({
-        code: r.code,
-        productId: r.product_id,
-        discountCents: Number(r.discount_cents),
-        usedAt: Number(r.created_at),
-        user: r.user_name,
-      })),
-      credit: ledger.map((r) => ({
-        kind: r.kind,
-        amountCents: Number(r.amount_cents),
-        ref: r.ref,
-        createdAt: Number(r.created_at),
-        user: r.user_name,
-      })),
-    });
-  });
 
   // --- players: redeem a gift card, see credit, buy with credit ---
   app.post('/gift-cards/redeem', requireUser, async (c) => {
