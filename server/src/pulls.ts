@@ -49,6 +49,9 @@ export const POOLS: Record<string, Pool> = {
  *   go 1                          a rare find
  *   go 2                          something from the shop (normally paid)
  *   first go a day after go 1     a whole extra beach (once)
+ *
+ * The starter gifts always hold: they're gifts, not grabs. Every other go
+ * can miss — see GRAB_CHANCE.
  */
 export const STARTER = {
   rare: { item: 'starfish', rarity: 'rare' as Rarity },
@@ -84,6 +87,28 @@ export function draw(pool: Pool, rand: () => number = cryptoRandom): { item: str
   }
   const items = pool.items[rarity];
   return { item: items[Math.min(items.length - 1, Math.floor(rand() * items.length))], rarity };
+}
+
+/**
+ * The claw doesn't always hold on: after the draw, the ball can slip out,
+ * and the go is spent anyway. Rarer balls are harder to hold — the claw
+ * keeps a common ball 4 times in 5, a rare one about 2 times in 3, and a
+ * legendary one 2 times in 5. With the daily pool's odds that means about
+ * 1 go in 4 comes up empty overall (0.7×0.20 + 0.25×0.35 + 0.05×0.60).
+ * The chances are published to the app (GET /pulls) so the odds shown under
+ * the machine stay honest: they are the chances of what the claw grabs at,
+ * and these are the chances it holds on.
+ */
+export const GRAB_CHANCE: Record<'common' | 'rare' | 'legendary', number> = { common: 0.8, rare: 0.65, legendary: 0.4 };
+
+/**
+ * After the draw: does the claw hold on to a ball of this rarity? `rand`
+ * returns [0, 1). The claw never draws 'uncommon' or 'unique' (odds 0), so
+ * those have no grab chance and always hold.
+ */
+export function grab(rarity: Rarity, rand: () => number = cryptoRandom): boolean {
+  const chance = (GRAB_CHANCE as Partial<Record<Rarity, number>>)[rarity];
+  return chance === undefined || rand() < chance;
 }
 
 export function cryptoRandom(): number {

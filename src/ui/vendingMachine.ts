@@ -151,6 +151,12 @@ export class VendingMachine {
       (r) => {
         this.nextFree = r.nextFree;
         if (this.pool) this.pool.free = false;
+        // the server never drops a vending ball (only the claw misses), but
+        // the response shape allows it: say so rather than show nothing
+        if (r.missed || !r.item || !r.rarity) {
+          this.error = 'The ball got stuck. Try again tomorrow.';
+          return null;
+        }
         return { item: r.item, rarity: r.rarity };
       },
       (e: Error) => {

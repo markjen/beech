@@ -20,7 +20,9 @@ different pool.
 - **The draw.** Server-side, in `server/src/vending.ts`, from this week's
   set. The client never rolls. A draw claims the day in `pull_state` and
   grants the item to `inventory` in one SQL statement, so two taps at once
-  give exactly one ball (the second gets a 409).
+  give exactly one ball (the second gets a 409). Unlike the claw, a ball
+  never slips: the machine dispenses, it doesn't grab, so there is no
+  miss roll and `GET /pulls` publishes no `grab` chances for it.
 - **The odds.** Common 60%, uncommon 25%, rare 12%, unique 3%. Within a
   tier every item is equally likely. The machine prints the odds and the
   items in each tier before every ball.

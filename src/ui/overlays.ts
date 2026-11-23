@@ -44,11 +44,24 @@ export class StartScreen {
 
 /** A brief hint about the controls, shown once after the start screen. */
 export function showHint(parent: HTMLElement, isTouch: boolean): () => void {
-  const el = document.createElement('div');
-  el.className = 'hint';
+  const { el, hide } = showNote(parent, 9000);
   el.innerHTML = isTouch
     ? 'drag to look around · two fingers pinch, turn and tilt<br>pick the shovel to dig in the sand'
     : 'drag to look around · wheel zooms · right-drag turns and tilts<br>pick the shovel to dig in the sand';
+  return hide;
+}
+
+/** A short note over the beach ("no beach has that code"), gone after a few seconds. */
+export function showToast(parent: HTMLElement, text: string): () => void {
+  const { el, hide } = showNote(parent, 6000);
+  el.textContent = text;
+  return hide;
+}
+
+/** A `.hint` element that shows itself, then removes itself after `ms`. */
+function showNote(parent: HTMLElement, ms: number): { el: HTMLDivElement; hide: () => void } {
+  const el = document.createElement('div');
+  el.className = 'hint';
   parent.appendChild(el);
   requestAnimationFrame(() => el.classList.add('show'));
   let hidden = false;
@@ -58,8 +71,8 @@ export function showHint(parent: HTMLElement, isTouch: boolean): () => void {
     el.classList.remove('show');
     window.setTimeout(() => el.remove(), 800);
   };
-  window.setTimeout(hide, 9000);
-  return hide;
+  window.setTimeout(hide, ms);
+  return { el, hide };
 }
 
 export interface SettingsHandlers {
@@ -69,6 +82,8 @@ export interface SettingsHandlers {
   smooth(): void;
   share(): void;
   fullscreen(): void;
+  /** one tap for the TV: ambient + seated view + fullscreen */
+  tv(): void;
 }
 
 const PALETTE_LABELS: [PaletteChoice, string][] = [
@@ -121,6 +136,7 @@ export class SettingsSheet {
           ([v, l]) => `<button type="button" data-v="${v}">${l}</button>`,
         ).join('')}</div></div>
         <div class="row actions">
+          <button type="button" class="action" data-act="tv">watch on TV</button>
           <button type="button" class="action" data-act="fullscreen">full screen</button>
           <button type="button" class="action" data-act="share">save a picture</button>
           <button type="button" class="action" data-act="smooth">smooth the beach</button>
@@ -141,6 +157,10 @@ export class SettingsSheet {
     this.el.querySelector<HTMLButtonElement>('button[data-act="fullscreen"]')!.addEventListener('click', () => {
       this.hide();
       this.h.fullscreen();
+    });
+    this.el.querySelector<HTMLButtonElement>('button[data-act="tv"]')!.addEventListener('click', () => {
+      this.hide();
+      this.h.tv();
     });
     for (const group of this.el.querySelectorAll<HTMLDivElement>('.chips')) {
       const key = group.dataset.key as 'palette' | 'quality' | 'beach';
@@ -195,6 +215,10 @@ export class SettingsSheet {
   /** Reflect a change made outside the sheet (e.g. "near me" or the default beach). */
   setSettings(s: Settings): void {
     this.settings = s;
+    // the switches are rendered from settings, so keep them in step too
+    for (const input of this.el.querySelectorAll<HTMLInputElement>('input[data-key]')) {
+      input.checked = !!s[input.dataset.key as keyof Settings];
+    }
     this.sync();
   }
 

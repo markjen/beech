@@ -197,6 +197,19 @@ const MIGRATIONS: string[] = [
   CREATE INDEX purchases_user ON purchases (user_id);
   ALTER TABLE inventory ADD COLUMN purchase_id BIGINT REFERENCES purchases (id) ON DELETE SET NULL;
   `,
+
+  // 9: gifts. Who gave what to whom (for the rate limit and for disputes);
+  // the transfer itself lives in the inventory rows (source 'gift').
+  `
+  CREATE TABLE gifts (
+    id BIGSERIAL PRIMARY KEY,
+    from_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    to_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    item_id TEXT NOT NULL,
+    created_at BIGINT NOT NULL
+  );
+  CREATE INDEX gifts_from ON gifts (from_id, created_at);
+  `,
 ];
 
 /** Apply migrations up to `upTo` (default: all). Tests use `upTo` to check a migration on older data. */
