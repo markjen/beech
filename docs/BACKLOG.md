@@ -108,6 +108,10 @@ _(nothing right now)_
   beach (live on different devices at once), purchases checked with Apple
   and Google, a pricing plan (PRICING.md) (2026-11-23).
 
+- [x] **Settings beach map: your beaches on a world map, west to east**
+  (2026-11-23, 6b4f36d): `src/ui/beachMap.ts` plots each beach at its real lon/lat
+  on a self-contained stylized SVG world map (no tiles); the settings list
+  and favorites are ordered west to east; dots are tappable to open a beach.
 - [x] **Objects floating off Rose's beach** (2026-11-23): server refuses
   saves from the old 32 × 24 app; `fitWorld` repairs objects it shifted.
 - [x] **Chrome fullscreen + TV casting** (2026-11-22): the PWA manifest
