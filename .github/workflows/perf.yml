@@ -1,0 +1,65 @@
+name: Performance
+
+# Profiles the built app (scripts/perf.mjs, docs/PERFORMANCE.md) and fails
+# when a budget in perf/budget.json is exceeded. Runs on main, on pull
+# requests that touch the app, weekly (so drift shows up even without
+# changes), and by hand. Each run keeps its results as an artifact and
+# compares them with the last successful run on main.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'index.html'
+      - 'public/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'vite.config.ts'
+      - 'scripts/perf.mjs'
+      - 'perf/**'
+      - '.github/workflows/perf.yml'
+  schedule:
+    - cron: '17 4 * * 1' # Mondays, 04:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: perf-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  perf:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Headless Chromium (Playwright, pinned)
+        run: |
+          npm install --no-save playwright@1.63.0
+          npx playwright install --with-deps chromium
+      - name: Last results on main (to compare against)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          id=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow perf.yml --branch main --status success --limit 1 --json databaseId -q '.[0].databaseId' || true)
+          if [ -n "$id" ]; then gh run download "$id" --repo "$GITHUB_REPOSITORY" -n perf-results -D baseline || true; fi
+          ls baseline 2>/dev/null || echo "no earlier results yet"
+      - name: Profile and check budgets
+        run: node scripts/perf.mjs --out perf-results.json --baseline baseline/perf-results.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: perf-results
+          path: perf-results.json
+          retention-days: 90

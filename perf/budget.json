@@ -1,0 +1,18 @@
+{
+  "about": "Performance budgets checked by scripts/perf.mjs (npm run perf) and the Performance workflow. Counts are exact and fail CI when exceeded. Timings come from a shared CI machine with a software GPU, so they're loose and only catch big regressions. Raise a number only on purpose, in the same commit as the change that needs it, and say why (docs/PERFORMANCE.md). Measured 2026-11-23 at 80de318: 0 things 10 draws; 400 things 132 draws; 2000 things 315 draws, 149 for things, 95 touched a frame (the flags), 0.4 ms main thread, 6 ms worker tick; main bundle 309 KB gzip.",
+  "counts": {
+    "scenes.0.drawCallsPerFrame": 12,
+    "scenes.400.drawCallsPerFrame": 160,
+    "scenes.2000.drawCallsPerFrame": 380,
+    "scenes.2000.meshes": 380,
+    "scenes.2000.thingDrawCalls": 180,
+    "scenes.2000.touchedPerFrame": 120,
+    "bundle.mainJsGzipKB": 340,
+    "bundle.totalJsGzipKB": 440
+  },
+  "timings": {
+    "scenes.2000.mainThingsMsPerFrame": 3,
+    "scenes.0.workerTickMs": 25,
+    "scenes.2000.workerTickMs": 25
+  }
+}

@@ -119,6 +119,9 @@ _(nothing right now)_
 
 ## Done (recent)
 
+- [x] **Performance checks in CI** (2026-11-23): `npm run perf` and the
+  Performance workflow (main, pull requests, weekly) with budgets in
+  `perf/budget.json`. [PERFORMANCE.md](PERFORMANCE.md).
 - [x] **Checkpoints C1–C5 and beach files E1–E5** (2026-11-23): save named
   copies of any of your beaches and restore them onto any of them (strict, or
   without what the bag can't cover; undo; a restore elsewhere reloads other
@@ -127,7 +130,7 @@ _(nothing right now)_
   file as a checkpoint, "Before import" kept automatically.
   [CHECKPOINTS.md](CHECKPOINTS.md), [BEACH_FILE.md](BEACH_FILE.md).
 - [x] **2000 things a beach** (2026-11-23): profiled
-  (`scripts/perf-objects.mjs`), things drawn as GPU thin instances, the
+  (`scripts/perf.mjs`), things drawn as GPU thin instances, the
   worker sends positions as a packed buffer and the roster only on change,
   resting things skipped; then the limit went from 400 to 2000, with old
   apps refused (426) rather than allowed to drop things. STATUS.md, "How much

@@ -434,6 +434,17 @@ thumbnails and sandbox checkpoints, is optional and not built).
   drop-missing, full restore, undo, a restore under another device, beach
   removal, export, import, "Before import").
 
+## Performance checks (2026-11-23)
+
+`npm run perf` (`scripts/perf.mjs`) profiles the built app at 0, 400 and
+2000 things and checks [perf/budget.json](../perf/budget.json): exact counts
+(draw calls, meshes, draw calls for things, things touched per frame, bundle
+size) fail when over; timings (main-thread ms on things, the worker's tick)
+have loose limits. The Performance workflow runs it on every push to main, on
+pull requests that touch the app, and every Monday, keeps the results for 90
+days, and shows the change since the last run on main in the job summary.
+Details in [PERFORMANCE.md](PERFORMANCE.md).
+
 ## How much a beach holds (2026-11-23)
 
 - A saved beach holds **2000 things** (`MAX_OBJECTS` in `sandCodec.ts`; it
@@ -446,8 +457,9 @@ thumbnails and sandbox checkpoints, is optional and not built).
 - The server refuses a save over **768 KB** (413). The app now says the beach
   is too big to save, rather than retrying quietly. In practice only very
   noisy sand on the finest grid gets near it. 2000 things add roughly 50 KB.
-- **Performance work (2026-11-23)**, measured with `scripts/perf-objects.mjs`
-  (headless Chromium, a realistic mix, also with the CPU slowed 4x):
+- **Performance work (2026-11-23)**, measured with `scripts/perf.mjs`
+  (headless Chromium, a realistic mix, also with the CPU slowed 4x; now run
+  in CI against budgets, see [PERFORMANCE.md](PERFORMANCE.md)):
   - Things are drawn as **GPU thin instances** through a scene-wide prop
     bank (`src/render/objects.ts`): one hidden source mesh per look (kind,
     variant, and a size bucket for driftwood; the rest are built at size 1
