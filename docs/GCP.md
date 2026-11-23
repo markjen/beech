@@ -112,13 +112,44 @@ builds the image, pushes it to Artifact Registry, deploys `beech`, and
 smoke-tests the live URL. The server applies database migrations at startup,
 under a Postgres advisory lock.
 
-**Custom domain:**
-`gcloud beta run domain-mappings create --service beech --domain beech.markjen.com --region $REGION`,
-then add the DNS records it prints. Alternatively, put Firebase Hosting in
-front (it rewrites everything to the `beech` service), which adds a CDN and
-works in every region.
+**Custom domains:** the main site is **https://beech.games** (registered
+Nov 23, 2026 on Squarespace Domains, alongside `beechgame.com`,
+`beechgames.com` and `beechshore.com`). `beech.markjen.com` stays mapped
+and working. `beechgame.com` and `beechgames.com` 301-redirect to
+`https://beech.games` (Squarespace domain forwarding); `www.beech.games`
+redirects the same way — only the apex is mapped to Cloud Run.
+`beechshore.com` is a separate future product and is not pointed at this
+service.
+
+A new mapping needs the domain verified for the Google account first:
+`gcloud domains verify <domain>` opens a Search Console flow that shows
+a `google-site-verification` TXT record to add in Squarespace DNS, then:
+
+`gcloud beta run domain-mappings create --service beech --domain beech.games --region $REGION`
+
+then add the DNS records the mapping prints. For the apex those are A
+records (for apex domains Google prints its 216.239.32.21 / 34.21 /
+36.21 / 38.21 set — confirm against the mapping output); for a
+subdomain it is a CNAME to `ghs.googlehosted.com` (that is how the
+existing `beech.markjen.com` mapping is wired). The managed certificate
+takes a while to provision after DNS propagates. Alternatively, put
+Firebase Hosting in front (it rewrites everything to the `beech`
+service), which adds a CDN and works in every region.
+
+Google sign-in on the new domain needs one console change: the OAuth
+web client ("beech web") Authorized JavaScript origins must add
+`https://beech.games` (keep `https://beech.markjen.com`). The web app
+uses Google Identity Services in popup mode (`ux_mode: 'popup'`,
+`src/net/account.ts`), so no redirect URIs are involved. The web build
+itself needs no change: `VITE_API_URL` is empty in the Dockerfile, so
+the app calls the API same-origin, the server allows its own origin for
+CORS, share-link previews use the request URL, and the PWA manifest
+uses relative URLs.
 
 **Phone apps:** build with `VITE_ACCOUNTS=1 VITE_API_URL=https://beech.markjen.com`.
+(The apps keep calling the old host for now — it stays live. Moving the
+apps' API base to `https://beech.games` is a follow-up; it means editing
+the mobile workflows, which can't be pushed with the usual `gh` token.)
 
 ## Running it locally
 

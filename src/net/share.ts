@@ -5,7 +5,7 @@
 // on startup (see main.ts) and visits that beach once the person is
 // signed in. These helpers are pure so they can be tested without a DOM.
 
-/** `https://beech.markjen.com/?visit=K7F2QX` (works on any host/path). */
+/** `https://beech.games/?visit=K7F2QX` (works on any host/path). */
 export function shareUrl(origin: string, pathname: string, code: string): string {
   const path = pathname.endsWith('/') ? pathname : `${pathname}/`;
   return `${origin}${path}?visit=${code}`;

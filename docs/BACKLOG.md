@@ -21,8 +21,9 @@ The single list of what's left to do, for the owner and for agents.
 - [ ] **Google Cloud project**: run the one-time `gcloud` setup in
   [GCP.md](GCP.md), create the OAuth web client ID, set the GitHub variables,
   then set `GCP_ENABLED=1`.
-- [ ] **Production domain**: pick one (for example `beech.markjen.com`), then
-  map it to Cloud Run (see GCP.md).
+- [ ] **Production domain**: `beech.games` is the main site (registered
+  Nov 23, 2026); map it to Cloud Run (see GCP.md). `beech.markjen.com`
+  stays mapped; `beechgame.com`/`beechgames.com` 301 to `beech.games`.
 - [ ] **Privacy policy URL**: both stores and Google's OAuth consent screen
   need one.
 - [ ] **Final app ID**: replace `app.beech.beach` before the first store

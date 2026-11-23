@@ -22,7 +22,7 @@ Sources: [Google Chrome App (Wikipedia)](https://en.wikipedia.org/wiki/Google_Ch
 ## The recommended path (what Mark does)
 
 1. **Install beech.** In Chrome on the laptop, open
-   https://beech.markjen.com and click the install icon in the address bar
+   https://beech.games and click the install icon in the address bar
    (or menu → "Install beech…"). It installs as its own window and launches
    fullscreen — no browser chrome, no tabs. (This only started working with
    the fix below: the manifest used to name icon files that didn't exist, so
@@ -31,7 +31,7 @@ Sources: [Google Chrome App (Wikipedia)](https://en.wikipedia.org/wiki/Google_Ch
    **watch on TV**. One tap turns on ambient mode (controls fade away when
    idle, screen kept awake), sits you on the sand (chair view) and goes
    fullscreen. Anything else also works: the "ambient (for a TV)" toggle on
-   its own, or opening `https://beech.markjen.com/?tv=1` — same thing, no
+   its own, or opening `https://beech.games/?tv=1` — same thing, no
    fullscreen (fullscreen needs a tap, browsers won't let a page take it on
    load).
 3. **Cast the tab.** In Chrome: menu (⋮) → **Cast…** → pick the TV, with

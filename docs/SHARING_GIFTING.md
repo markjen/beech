@@ -11,7 +11,7 @@ person owns — instead of adding new identity or inbox systems.
 ### Format
 
 ```
-https://beech.markjen.com/?visit=K7F2QX
+https://beech.games/?visit=K7F2QX
 ```
 
 The beach id in the link is the beach's **code** (6 letters and
@@ -68,7 +68,7 @@ save (`server/src/shareMeta.ts`, wired in `server/src/server.ts`):
 ```html
 <meta property="og:title" content="Visit Ana's beach on beech">
 <meta property="og:description" content="Walk the shore, dig in the sand, and see what Ana built.">
-<meta property="og:url" content="https://beech.markjen.com/?visit=K7F2QX">
+<meta property="og:url" content="https://beech.games/?visit=K7F2QX">
 ```
 
 The owner's first name is HTML-escaped before it goes into the page. A
