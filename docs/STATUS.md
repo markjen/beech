@@ -260,6 +260,26 @@ branch, so the deploy job runs only there. Switch the default branch to
   `GET /api/inventory` for owned, unexpired non-free items. Nothing writes to
   it yet.
 
+## Shop (added after more than one beach)
+
+- **Items:** parasol, surfboard, tiki torches (rare); sandcastle, beach hut,
+  lighthouse (legendary); deckchair. Rare, legendary and shop things glow on
+  the sand and sparkle (`src/render/glow.ts`). Lamps and flames glow warm.
+- **Products and prices:** `server/src/products.ts`, with the plan in
+  docs/PRICING.md. All consumables. The founder's pack is featured.
+- **Buying:** the shop (bag → Shop, or "get one in the shop" under your
+  beaches). In the apps it uses `@capgo/native-purchases` (StoreKit 2 /
+  Play Billing). The proof goes to `POST /api/store/purchase`, the server
+  checks it (Apple: certificate chain to the pinned root plus signature,
+  offline; Google: the Play Developer API) and grants once. Unconfirmed
+  hand-overs are kept and retried (`beech.pendingPurchases.v1`). On the web
+  the shop says to buy in the app. Development builds use a pretend store
+  (`platform: dev`, DEV_AUTH only).
+- **Refunds:** App Store Server Notifications V2 and Play RTDN expire the
+  granted items (migration 8: `purchases`, `inventory.purchase_id`).
+- Not tried against the real stores yet: that needs the products set up
+  (owner task; MOBILE.md, "In-app purchases").
+
 ## More than one beach (added after the claw starter gifts)
 
 - See docs/MULTI_BEACH.md. Settings → "your beaches" lets you open one here,
@@ -334,7 +354,7 @@ branch, so the deploy job runs only there. Switch the default branch to
   Starfish (rare), go 2 is a Deckchair (a shop item, 250, fixed, faces the
   sea), and the first go a day or more after go 1 is an **extra beach**
   (`inventory` item `beach`, once). Every other go is a normal draw. The
-  machine shows the gifts above the odds. The extra beach shows in the bag as
+  gifts are a surprise: the machine doesn't announce them (#9). The extra beach shows in the bag as
   owned but can't be used yet (`EXTRAS` in `src/world/items.ts`; the plan
   is docs/MULTI_BEACH.md).
 - **The game is cosmetic:** the claw wanders, you drop it, and it always

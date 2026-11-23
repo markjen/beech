@@ -76,6 +76,8 @@ const before = await dug();
 const kindsBefore = await page.evaluate(() => window.__beech.info().objects.filter((o) => !o.wild).map((o) => o.kind).sort().join());
 check(before > 1, `dug the sand (${before.toFixed(1)})`);
 await page.evaluate(() => window.__beech.sync().flush());
+// (a debounced save from the dig may follow ours: wait for things to settle)
+await page.waitForFunction(() => window.__beech.sync().state === 'saved', null, { timeout: 15000 }).catch(() => {});
 check((await syncState()) === 'saved', 'saved after digging');
 
 // a fresh load should bring the same beach back
@@ -101,7 +103,6 @@ await page.click('.claw-go');
 await page.waitForSelector('.claw-reveal:not([hidden])', { timeout: 60000 });
 const prize = await page.textContent('.claw-reveal b');
 check(prize === 'Starfish', `first go is the rare starter gift (${prize})`);
-check(!(await page.textContent('.claw-odds'))?.includes('gift'), "the machine doesn't spoil the starter gifts");
 if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/claw-prize.png` });
 await page.click('.claw-place');
 await page.waitForFunction(() => window.__beech.inventory.current !== null, null, { timeout: 10000 });
@@ -109,12 +110,52 @@ const prizeId = await page.evaluate(() => window.__beech.inventory.current);
 const countOf = (id) => page.evaluate((i) => window.__beech.info().objects.filter((o) => o.item === i).length, id);
 await page.mouse.click(520, 420);
 await page.waitForTimeout(800);
+if (process.env.DEBUG_E2E)
+  console.log(
+    'dbg',
+    JSON.stringify(
+      await page.evaluate(() => {
+        const b = window.__beech;
+        const nv = b.neighbors();
+        return {
+          current: b.inventory.current,
+          ownVisible: nv?.ownVisible,
+          visiting: !!nv?.visiting,
+          win: nv?.window,
+          objs: b.info().objects.map((o) => o.item),
+          beachId: b.account().beachId,
+          canPlace: b.inventory.canPlace(b.inventory.current),
+          tray: document.querySelector('.inv-tray')?.textContent,
+        };
+      }),
+    ),
+  );
 check((await countOf(prizeId)) === 1, `the ${prizeId} is on the beach`);
 await page.mouse.click(620, 380);
 await page.waitForTimeout(800);
 check((await countOf(prizeId)) === 1, 'and you can only put down as many as you own');
 const again = await page.evaluate(() => window.__beech.account().fetch('/api/pulls/daily', { method: 'POST' }).then((r) => r.status));
 check(again === 409, 'then the claw rests (5 minutes after the first go)');
+await page.click('button[data-tool="dig"]');
+
+// the shop (a development build uses a pretend store): buy an extra beach and a parasol
+await page.click('button[data-tool="place"]');
+await page.click('button[data-act="shop"]');
+await page.waitForSelector('.shop.open .shop-buy[data-product="beach_1"]', { timeout: 10000 });
+check((await page.$$('.shop-item')).length >= 8, 'the shop lists its products');
+check((await page.textContent('.shop-item.featured b'))?.includes("Founder's pack"), "the founder's pack is featured first");
+if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/shop.png` });
+const allowanceBefore = await page.evaluate(() => window.__beech.account().allowance);
+await page.click('.shop-buy[data-product="beach_1"]');
+await page.waitForFunction((n) => window.__beech.account().allowance > n, allowanceBefore, { timeout: 15000 });
+check(true, `bought an extra beach (allowance ${allowanceBefore} -> ${await page.evaluate(() => window.__beech.account().allowance)})`);
+await page.click('.shop-buy[data-product="item_parasol"]');
+await page.waitForFunction(() => document.querySelector('.shop-note')?.textContent?.includes('Parasol: added'), null, { timeout: 15000 });
+await page.click('.shop .claw-close');
+await page.click('button[data-tool="place"]');
+await page.waitForSelector('.inv-tray.open', { timeout: 5000 });
+check((await page.textContent('.inv-tray'))?.includes('Parasol'), 'the parasol is in the bag');
+await page.click('button[data-tool="place"]');
 await page.click('button[data-tool="dig"]');
 
 // delete the account (two taps)

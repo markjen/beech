@@ -2,10 +2,7 @@ import { icon, type IconName } from './hud';
 import { EXTRAS, isAvailable, type Item } from '../world/items';
 
 /** What's planned but not here yet, shown greyed out so the tray reads as a beginning. */
-const COMING = [
-  { name: 'Shop', note: 'Special items, some only for a while' },
-  { name: 'Mystery box', note: 'Rare, legendary and one-of-a-kind finds' },
-];
+const COMING = [{ name: 'Mystery box', note: 'Rare, legendary and one-of-a-kind finds' }];
 
 /** How the claw machine tile behaves: play, ask to sign in, or not here (sandbox). */
 export type ClawState = 'play' | 'signin' | 'none';
@@ -27,6 +24,8 @@ export class InventoryTray {
   private claw: ClawState = 'none';
   /** opens the claw machine (or the sign-in sheet) */
   onClaw: () => void = () => {};
+  /** opens the shop (or the sign-in sheet) */
+  onShop: () => void = () => {};
 
   constructor(
     hudButton: (name: IconName, label: string, cls?: string) => HTMLButtonElement,
@@ -172,6 +171,23 @@ export class InventoryTray {
       const d = document.createElement('div');
       d.className = 'inv-item soon';
       d.innerHTML = `<b>Claw machine</b><span>Coming soon</span>`;
+      grid.appendChild(d);
+    }
+    if (this.claw !== 'none') {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'inv-item shop-tile';
+      b.dataset.act = 'shop';
+      b.innerHTML = `${icon('bag')}<b>Shop</b><span>${this.claw === 'play' ? 'Beaches and more' : 'Sign in to shop'}</span>`;
+      b.addEventListener('click', () => {
+        this.setOpen(false);
+        this.onShop();
+      });
+      grid.appendChild(b);
+    } else {
+      const d = document.createElement('div');
+      d.className = 'inv-item soon';
+      d.innerHTML = `<b>Shop</b><span>In the app</span>`;
       grid.appendChild(d);
     }
     for (const c of COMING) {

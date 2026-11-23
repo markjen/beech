@@ -30,6 +30,7 @@ import { appleRefund, googleVoided, verifyAppleTransaction, verifyGooglePurchase
 import { POOLS, cooldownAfter, draw, pullDay, starterPrize, STARTER } from './pulls.js';
 import { hashToken, newSessionToken, SESSION_DAYS, verifyAppleIdToken, verifyGoogleIdToken, type VerifiedIdentity } from './auth.js';
 import { toBytes, type Db } from './db.js';
+import { createRateLimiter, logEvent, parseClientEvent, routeLabel } from './observability.js';
 
 export interface AppConfig {
   googleClientIds: string[];
@@ -92,6 +93,10 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   const verifyApple = cfg.verifyApple ?? verifyAppleIdToken;
   const app = new Hono<Env>();
 
+  // Request logging (httpLogger) is mounted once, on the root app in
+  // server.ts, so it covers /api/* and the CORS preflight. Mounting it here
+  // too would log every API request twice and double the metrics.
+
   // ---------------------------------------------------------------- CORS
   app.use('*', async (c, next) => {
     const origin = c.req.header('Origin');
@@ -111,7 +116,13 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
 
   app.onError((err, c) => {
     if (err instanceof HTTPException) return c.json({ error: err.message }, err.status);
-    console.error(err);
+    // A real 500: log it structured (the request line already has the status).
+    // The stack stays in Cloud Logging; the client only ever sees the generic text.
+    logEvent(
+      'api_error',
+      { route: routeLabel(c), message: err.message, stack: String(err.stack ?? '').slice(0, 1000) },
+      'ERROR',
+    );
     return c.json({ error: 'something went wrong' }, 500);
   });
   app.notFound((c) => c.json({ error: 'not found' }, 404));
@@ -181,6 +192,35 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
 
   // ---------------------------------------------------------------- auth
   app.get('/health', (c) => c.json({ ok: true }));
+
+  // ---------------------------------------------------------------- client events
+  // The web app reports unhandled errors and one page-load timing sample per
+  // visit, so phones (where nobody watches the console) are visible too.
+  // Unauthenticated by design: it only writes a log line, never the database.
+  // Validated, size-capped (2 KB) and rate-limited per IP (30/min); anything
+  // else is dropped with a 4xx and never reaches the logs.
+  const clientEvents = createRateLimiter(30);
+  app.post('/client-events', async (c) => {
+    const ip = (c.req.header('x-forwarded-for') ?? '').split(',')[0]?.trim() || 'unknown';
+    if (!clientEvents(ip)) return c.json({ error: 'slow down' }, 429);
+    const text = await c.req.text();
+    if (text.length > 2048) return c.json({ error: 'event too large' }, 413);
+    let body: unknown;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      return c.json({ error: 'expected a JSON body' }, 400);
+    }
+    const parsed = parseClientEvent(body);
+    if (!parsed.ok) return c.json({ error: parsed.reason }, 400);
+    const e = parsed.event;
+    if (e.kind === 'error') {
+      logEvent('client_error', { message: e.message, source: e.source ?? null, path: e.path ?? null }, 'WARNING');
+    } else {
+      logEvent('client_perf', { load_ms: e.load_ms, dcl_ms: e.dcl_ms });
+    }
+    return c.body(null, 204);
+  });
 
   app.post('/auth/google', async (c) => {
     const { credential } = await body<{ credential?: string }>(c);

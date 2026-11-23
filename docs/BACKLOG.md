@@ -14,6 +14,10 @@ The single list of what's left to do, for the owner and for agents.
 
 ## Owner: things only you can do
 
+- [ ] **Store products and payouts**: the Paid Apps agreement and banking on
+  Apple, the payments profile on Google, then create the products and
+  notification URLs. Step by step in MOBILE.md, "In-app purchases".
+
 - [ ] **Google Cloud project**: run the one-time `gcloud` setup in
   [GCP.md](GCP.md), create the OAuth web client ID, set the GitHub variables,
   then set `GCP_ENABLED=1`.
@@ -70,7 +74,10 @@ _(nothing right now)_
 - [ ] **More prizes**: each pool item needs a catalog entry, a kind, a mesh
   and an icon; `tests/items.test.ts` keeps the pools and catalog in step.
 - [ ] **TV**: test on a real Android TV (D-pad focus on the settings sheet,
-  leanback banner). Add Chromecast / AirPlay casting for phones → TV.
+  leanback banner). Add Chromecast / AirPlay casting for phones → TV
+  (an in-app cast button needs a custom Cast receiver app — $5 console
+  registration; tab casting from Chrome works today, see
+  [CHROME_TV_CAST.md](CHROME_TV_CAST.md)).
 - [ ] **API rate limiting**: a per-IP limit in the server, or Cloud Armor in
   front.
 - [ ] **Keep my beach off the shore**: a setting to leave the global beachfront
@@ -97,8 +104,24 @@ _(nothing right now)_
 
 ## Done (recent)
 
+- [x] **Shop**: store items (glow and sparkle on the beach), more than one
+  beach (live on different devices at once), purchases checked with Apple
+  and Google, a pricing plan (PRICING.md) (2026-11-23).
+
 - [x] **Objects floating off Rose's beach** (2026-11-23): server refuses
   saves from the old 32 × 24 app; `fitWorld` repairs objects it shifted.
+- [x] **Chrome fullscreen + TV casting** (2026-11-22): the PWA manifest
+  named `.webp` icons that were never shipped, so Chrome never offered to
+  install — now the real 192/512/maskable PNGs, with `tests/pwa.test.ts`
+  guarding them; one-tap "watch on TV" in settings (ambient + chair view
+  + fullscreen). Packaged Chrome Apps are deprecated/removed, so the path
+  is install the PWA, fullscreen, cast the tab — see
+  [CHROME_TV_CAST.md](CHROME_TV_CAST.md).
+- [x] **Observability** (2026-11-22): structured JSON request logs +
+  log-based metrics, client error/perf reporting, a Monitoring dashboard,
+  uptime checks and 5 alerts to markjen@gmail.com (branch
+  `feat/observability`, commit f98ff9d, pushed; Terraform applied,
+  all 17 resources live — see docs/OBSERVABILITY.md).
 - [x] **Share your beach by link, and gift items** (2026-11-22):
   `?visit=CODE` opens that beach once signed in; copy-link button next
   to your code; Open Graph previews for shared links; `POST /api/gifts`

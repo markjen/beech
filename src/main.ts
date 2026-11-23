@@ -28,6 +28,8 @@ import { Hud } from './ui/hud';
 import { SettingsSheet, StartScreen, showHint, showToast } from './ui/overlays';
 import { InventoryTray, PlaceBar } from './ui/inventory';
 import { ClawMachine } from './ui/clawMachine';
+import { Shop } from './ui/shop';
+import { ShopApi } from './net/shop';
 import { DEFAULT_SIZE, ITEMS, rollPlacement, type Item } from './world/items';
 import { WOOD_RADIUS } from './sim/objects';
 import { ACCOUNTS_ENABLED, Account, GiftApi, PullApi } from './net/account';
@@ -36,6 +38,11 @@ import { BeachSync } from './net/beachSync';
 import { AccountPanel } from './ui/accountPanel';
 import { NEIGHBOR_OFFSET, NeighborView } from './render/neighbors';
 import { loadSettings, saveSettings, type Settings } from './ui/settingsStore';
+import { initTelemetry } from './net/telemetry';
+
+// Unhandled errors + one page-load timing sample go to /api/client-events,
+// so phones are visible in Cloud Logging too. First, so early errors count.
+initTelemetry();
 
 const params = new URLSearchParams(location.search);
 /** a share link (?visit=CODE) opens that person's beach once signed in */
@@ -131,6 +138,7 @@ async function boot() {
   // set up with the account layer (production builds)
   let neighbors: NeighborView | null = null;
   let clawMachine: ClawMachine | null = null;
+  let shopDialog: Shop | null = null;
   // your sand, else a neighbor's, else the untouched shore (the chair can walk along all of it)
   cam.groundHeight = (x, z) => {
     const h = picker.heightAt(x, z);
@@ -321,6 +329,16 @@ async function boot() {
     },
     share: () => void share(),
     fullscreen: () => void toggleFullscreen(),
+    tv: () => {
+      // one tap for the TV: idle controls + wake lock, seated on the sand,
+      // fullscreen. (Fullscreen needs the tap; that is why it is a button.)
+      settings = { ...settings, ambient: true };
+      saveSettings(settings);
+      ambient.setEnabled(true);
+      sheet.setSettings(settings);
+      cam.setMode('chair', false);
+      void toggleFullscreen();
+    },
   }, BEACHES);
   sheet.setSettings({ ...settings, beach: beach.id });
 
@@ -840,6 +858,10 @@ async function boot() {
         },
         // a new beach starts at the real beach you're looking at now
         location: () => beach.id,
+        shop: () => {
+          sheet.hide();
+          void shopDialog?.open();
+        },
         changed: () => updateElsewhere(),
       },
     );
@@ -872,6 +894,21 @@ async function boot() {
     });
     clawMachine = claw;
     inventory.onClaw = () => (acct.user ? void claw.open() : sheet.show());
+    // the shop: paid through Apple / Google in the apps (src/net/shop.ts)
+    const shopApi = new ShopApi(acct);
+    const shop = new Shop(uiRoot, shopApi, () => {
+      void loadOwned();
+      void acct.loadBeaches().catch(() => {});
+    });
+    shopDialog = shop;
+    inventory.onShop = () => (acct.user ? void shop.open() : sheet.show());
+    acct.onChange((u) => {
+      // anything paid for but not yet confirmed by the server: hand it over again
+      if (u)
+        void shopApi.retryPending().then((n) => {
+          if (n) void loadOwned();
+        });
+    });
     inventory.setClaw(acct.user ? 'play' : 'signin');
     acct.onChange((u) => {
       inventory.setClaw(u ? 'play' : 'signin');
@@ -903,6 +940,7 @@ async function boot() {
     sheet,
     inventory,
     claw: () => clawMachine,
+    shop: () => shopDialog,
     objectView,
     audio,
     pickTool,

@@ -99,7 +99,14 @@ await page.evaluate(() => {
   b.cam.camera.target.x = 17;
   b.cam.camera.target.z = 0;
 });
-await page.waitForTimeout(1500);
+// wait for Ana's beach to load and its tag to show (the shore loads several beaches)
+await page
+  .waitForFunction(
+    (n) => [...document.querySelectorAll('.neighbor-tag')].some((x) => x.textContent.includes(n) && getComputedStyle(x).display !== 'none'),
+    anaName,
+    { timeout: 20000 },
+  )
+  .catch(() => {});
 const tag = await page.evaluate((n) => {
   const t = [...document.querySelectorAll('.neighbor-tag')].find((x) => x.textContent.includes(n));
   return t && getComputedStyle(t).display !== 'none' ? t.textContent : null;
