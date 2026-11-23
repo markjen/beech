@@ -110,6 +110,17 @@ _(nothing right now)_
   good digs, at most 3 finds a day and one roll every 30 s, granted atomically
   to the bag and shown in a "You dug something up!" dialog (Keep it / Put it
   on the beach). Design in DIGGING_FINDS.md.
+
+- [x] **Bulldozer drag-flattens, dig/build/flatten faster**
+  (2026-11-22, 3ad5ed4): one pass of the blade now flattens at any drag speed
+  (flattenRate 120 → 300); dig/build rates up (rateStart 0.16 → 0.5,
+  rateHeld 0.6 → 1.0, holdRamp 1.2 → 0.6 s) — 0.4 m dug in 0.67 s
+  holding still (was 1.40 s), a 1 m/s drag digs 0.085 m (was 0.027 m).
+  Returning scooped-up items to the bag is the clearing tool's dozer mode
+  (PR #17), which carries the sweep mechanism — this PR keeps only the
+  rate tuning. New `tests/bulldozer.test.ts` (5 tests: one-pass flatten,
+  faster dig/build timings, tuned-rate assertions).
+
 - [x] **Shop**: store items (glow and sparkle on the beach), more than one
   beach (live on different devices at once), purchases checked with Apple
   and Google, a pricing plan (PRICING.md) (2026-11-23).

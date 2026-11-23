@@ -124,18 +124,23 @@ export const EROSION = {
 export const BRUSH = {
   /** brush radius on screen, CSS pixels (constant regardless of zoom) */
   screenRadiusPx: 24,
-  /** dig rate at the brush centre when first touching (m/s) */
-  rateStart: 0.16,
+  /** dig rate at the brush centre when first touching (m/s). Kept high on
+   * purpose: dragging should dig a real trench, not just scratch the sand —
+   * the old 0.16 barely moved anything while the finger was moving. */
+  rateStart: 0.5,
   /** dig rate after holding (m/s) */
-  rateHeld: 0.6,
+  rateHeld: 1.0,
   /** seconds of holding to reach the held rate */
-  holdRamp: 1.2,
+  holdRamp: 0.6,
   /** pointer speed (m/s) above which holding counts as moving */
   moveSpeed: 0.6,
   /** bulldozer: blade radius as a multiple of the brush, and how fast it
-   * pushes the sand back (fraction per metre of brush "depth") */
+   * pushes the sand back (fraction per metre of brush "depth"). 300 means one
+   * pass of the blade flattens the sand under it at any drag speed — the old
+   * 120 left a fast swipe half-flattened. Flattening converges on the rest
+   * beach, so a higher rate can't overshoot, it just gets there sooner. */
   flattenWidth: 1.5,
-  flattenRate: 120,
+  flattenRate: 300,
   /** rim ring extends from R to rimOuter * R */
   rimOuter: 1.9,
   /** fraction of dug sand placed on the rim (rest is "carried away") */
