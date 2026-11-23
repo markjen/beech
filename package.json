@@ -9,6 +9,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --port 4173 --strictPort",
     "typecheck": "tsc --noEmit",
+    "beach-file": "node scripts/beach-file.mjs",
     "test": "vitest run",
     "smoke": "node scripts/smoke.mjs",
     "icons": "node scripts/make-icons.mjs",

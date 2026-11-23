@@ -1,8 +1,8 @@
 # Beach files: export, import and design offline
 
-Status: **E1 to E3 done** (2026-11-23): the format, reader, writer, schema,
-examples, and export/import on the web and in the phone apps. Next: the
-offline tool and guide (E4). This page is the plan and the file
+Status: **built** (2026-11-23), E1 to E4: the format, reader, writer,
+schema, examples, export/import on the web and in the phone apps, and the
+offline tool and guide. E5 (checkpoints) waits for checkpoints. This page is the plan and the file
 specification. The spec is the contract: once version 1 ships, readers keep
 accepting every version 1 file.
 
@@ -216,7 +216,7 @@ bottles) start where the file puts them, and the sea may then move them.
 | `src/sim/*` | `BeachSim.importBeach` (worker message `importBeach`): one whole-beach undo entry (`UndoEntry.swap`). |
 | `docs/beach-file.schema.json` | JSON Schema (draft 2020-12) of version 1, for editors and validators. |
 | `docs/examples/*.beach.json` | Example files, checked by a test to parse with no warnings. |
-| `scripts/beach-file.mjs` | Offline tool (milestone E4): `validate`, `rows` / `compact` (switch encodings), and `heightmap in.png` (a grayscale PNG to a beach file, with `--min` and `--max` in metres). |
+| `scripts/beach-file.mjs` | Offline tool (`npm run beach-file -- …`): `validate`, `rows` / `compact` (switch encodings), and `heightmap in.png` (a greyscale PNG to a beach file, with `--min` and `--max` in metres). It bundles `beachFile.ts` with esbuild, so it always matches the app. The PNG reader is `scripts/lib/png.mjs`. |
 
 ## Milestones
 
@@ -228,8 +228,88 @@ Each one leaves the app playable and passes `npm test` and `npm run build`.
 | **E1** ✅ | Format, codec and spec complete | `beachFile.ts` parses and writes all three encodings and the four shapes with all modes, gives errors and warnings as specified, and round-trips with the app's save format. JSON Schema and examples are added. The rest-profile table is in this page. Unit tests cover the round trip, each shape and mode, clamping, bad files, the size limit, resampling and `reconcileItems`. No UI changes yet. |
 | **E2** ✅ | Export and import in the app (web) | Settings and account-panel buttons. Export downloads a file. Import uses a file picker, then the preview with inventory and warnings, then replaces the beach as one undo step, and it saves. Screenshots at desktop and phone sizes, and an e2e step in `scripts/account-e2e.mjs`. |
 | **E3** ✅ | Phone apps | Export through the share sheet (`@capacitor/filesystem` and `@capacitor/share`). Import through the system file picker in both WebViews. `npx cap sync`, and the Android debug build passes. |
-| **E4** | Offline tools and guide | `scripts/beach-file.mjs` (validate, rows/compact, heightmap PNG with its own small PNG decoder, no new dependencies). A short "Design a beach offline" guide at the end of this page, with a worked example and a 20-line generator script. |
+| **E4** ✅ | Offline tools and guide | `scripts/beach-file.mjs` (validate, rows/compact, heightmap PNG with its own small PNG decoder, no new dependencies). A short "Design a beach offline" guide at the end of this page, with a worked example and a 20-line generator script. |
 | **E5** | With checkpoints | "Save as checkpoint" in the import preview, "Export" on a checkpoint, and the automatic "Before import" checkpoint. Built once checkpoints land; see CHECKPOINTS.md. |
+
+## Design a beach offline
+
+You need a text editor, or anything that can write JSON. Nothing has to be
+installed to make a beach; the tool below just checks and converts files.
+
+### 1. Start from an example or an export
+
+The examples in [`docs/examples/`](examples/) are small and use shapes:
+`castle-cove` (a mound, a keep, a moat and a channel to the sea), `harbour`
+(two walls and a flat-bottomed basin) and `terrace` (a 16 × 16 grid by hand).
+Or export your own beach (Settings, **export beach**) and change it.
+
+### 2. Edit it
+
+- **Sand by shapes** is easiest by hand. Add a `shapes` entry, save, import,
+  look, undo, repeat. Remember that `y` grows away from the sea, and that the
+  waterline is near `y = 16.5`. A mound at `y = 12` needs to be more than
+  0.85 m high to stay dry at mid tide.
+- **Sand by numbers:** switch a file to an editable grid, one row per line:
+
+  ```bash
+  npm run beach-file -- rows my.beach.json --grid 64 -o my-rows.beach.json
+  ```
+
+  Row 0 is the sea edge. Values are millimetres above the untouched beach.
+  Any shapes in the file are baked into the grid.
+- **Sand from a picture:** paint a greyscale image (8 to 512 pixels each
+  way; the top of the image is the land, the bottom the sea), then:
+
+  ```bash
+  npm run beach-file -- heightmap island.png --min 0 --max 1.4 --name "Island" -o island.beach.json
+  ```
+
+  Black becomes `--min` metres and white `--max`, relative to the untouched
+  beach. So `--min 0` leaves the black parts as they are.
+- **Things:** add `objects` entries by item id (appendix). Leave out `size`
+  and `variant` to get sensible defaults.
+
+### 3. Check it, then import it
+
+```bash
+npm run beach-file -- validate my.beach.json
+```
+
+`validate` shows the same errors and warnings the app would show. Then, in
+the app: Settings, **import beach**. The preview shows a map of the beach.
+After importing, Undo brings your old beach back.
+
+`npm run beach-file -- compact my.beach.json -o small.beach.json` makes a
+large grid file small again.
+
+### A generated beach
+
+Any language can write the file. This Node script (`node spiral.mjs >
+spiral.beach.json`) makes a spiral of 40 rocks around a flagged mound with a
+moat:
+
+```js
+// spiral.mjs: a spiral of rocks around a sandcastle mound, with a moat
+const objects = [];
+for (let n = 0; n < 40; n++) {
+  const a = n * 0.5;                 // radians around the centre
+  const r = 1.5 + n * 0.18;          // metres from the centre
+  objects.push({ item: 'rock', x: 16 + r * Math.cos(a), y: 24 + r * Math.sin(a), size: 0.15 + n * 0.008, variant: n });
+}
+objects.push({ item: 'flag', x: 16, y: 24 });
+const beach = {
+  format: 'beech.beach',
+  version: 1,
+  name: 'Rock spiral',
+  createdWith: 'spiral.mjs',
+  shapes: [
+    { type: 'mound', x: 16, y: 24, radius: 1.4, height: 0.5 },
+    { type: 'ring', x: 16, y: 24, radius: 2.2, width: 0.5, height: -0.25 },
+  ],
+  objects,
+};
+console.log(JSON.stringify(beach, null, 2));
+```
 
 ## Open questions (decided for now)
 

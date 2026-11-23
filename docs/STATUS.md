@@ -424,6 +424,10 @@ offline. The spec and milestones are in [BEACH_FILE.md](BEACH_FILE.md).
   (`@capacitor/filesystem` and `@capacitor/share`), and import uses the
   system file picker. The Android debug build passes here; iOS builds in CI.
   Neither has been tried on a real device yet.
+- **E4 done:** `npm run beach-file -- validate | rows | compact | heightmap`
+  (`scripts/beach-file.mjs`, which uses the app's own reader), and a "Design
+  a beach offline" guide in BEACH_FILE.md, with a generator script that was
+  run and checked. E5 (checkpoints) is left.
 
 ## Checkpoints (designed, not built)
 
