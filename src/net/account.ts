@@ -498,6 +498,26 @@ export interface PullPool {
   starter?: { rare: string; paid: string; beach: string; beachAfterMs: number };
 }
 
+export interface GiftResult {
+  item: string;
+  to: { name: string; code: string };
+}
+
+/** Give one of your items to someone else, by their neighbor code. */
+export class GiftApi {
+  constructor(private readonly account: Account) {}
+
+  async gift(code: string, item: string): Promise<GiftResult> {
+    const res = await this.account.fetch('/api/gifts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, item }),
+    });
+    if (!res.ok) throw await errorOf(res, 'could not send that gift');
+    return (await res.json()) as GiftResult;
+  }
+}
+
 /** The claw machine (and later, mystery boxes): draws happen on the server. */
 export class PullApi {
   constructor(private readonly account: Account) {}

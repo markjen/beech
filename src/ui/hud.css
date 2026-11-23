@@ -518,6 +518,100 @@
   cursor: pointer;
 }
 
+/* gifting: the item in hand, sent to someone by their code */
+.place-bar .pb-gift {
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  flex: none;
+}
+
+.place-bar .pb-gift[hidden] {
+  display: none;
+}
+
+.place-bar .pb-gift svg {
+  display: block;
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.place-bar .pb-gift-row {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  flex: 1;
+}
+
+.place-bar.gifting .pb-gift-row {
+  display: flex;
+}
+
+/* while gifting, the item itself is obvious: make room for the code */
+.place-bar.gifting .pb-icon,
+.place-bar.gifting .pb-name {
+  display: none;
+}
+
+.place-bar .pb-gift-row input {
+  font: inherit;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  width: 8.5em;
+  min-width: 0;
+  padding: 6px 8px;
+  border-radius: 10px;
+  border: 1.5px solid currentColor;
+  background: transparent;
+  color: inherit;
+  opacity: 0.85;
+}
+
+.place-bar .pb-send {
+  font: inherit;
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1.5px solid currentColor;
+  background: var(--ui-fg);
+  color: var(--ui-bg);
+  cursor: pointer;
+  flex: none;
+}
+
+.place-bar .pb-cancel {
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  font-size: 20px;
+  cursor: pointer;
+  flex: none;
+}
+
+.place-bar .pb-status {
+  font-size: 12px;
+  opacity: 0.8;
+  white-space: nowrap;
+}
+
+.place-bar .pb-status:empty {
+  display: none;
+}
+
 /* above the walk buttons in the chair view, and above the bottom row on phones */
 .hud.chair .place-bar {
   bottom: calc(var(--pad) + 70px + env(safe-area-inset-bottom));

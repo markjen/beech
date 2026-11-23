@@ -122,6 +122,12 @@ _(nothing right now)_
   uptime checks and 5 alerts to markjen@gmail.com (branch
   `feat/observability`, commit f98ff9d, pushed; Terraform applied,
   all 17 resources live — see docs/OBSERVABILITY.md).
+- [x] **Share your beach by link, and gift items** (2026-11-22):
+  `?visit=CODE` opens that beach once signed in; copy-link button next
+  to your code; Open Graph previews for shared links; `POST /api/gifts`
+  moves one owned item to the owner of the beach with that code — instant,
+  atomic, 20 an hour. Design and decisions in
+  [SHARING_GIFTING.md](SHARING_GIFTING.md). Commit `6d05a46`.
 - [x] **Claw starter gifts** (rare, shop item, extra beach after a day),
   the Deckchair, and the multi-beach design (2026-11-23).
 

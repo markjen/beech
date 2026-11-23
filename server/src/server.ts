@@ -29,6 +29,7 @@ import { createApp } from './app.js';
 import { createPgDb, createPgliteDb, type Db } from './db.js';
 import { migrate } from './migrations.js';
 import { httpLogger, logEvent } from './observability.js';
+import { createSharePageHandler } from './shareMeta.js';
 
 const env = process.env;
 const list = (v?: string) => (v ?? '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -74,6 +75,10 @@ const root = new Hono();
 root.use('*', httpLogger);
 root.get('/healthz', (c) => c.text('ok'));
 root.route('/api', api);
+// a shared beach link (?visit=CODE) gets Open Graph tags for that beach, so
+// the link shows a preview where it's pasted; everything else passes through
+const indexHtml = path.join(publicDir, 'index.html');
+root.get('/', createSharePageHandler(db, indexHtml));
 root.use(
   '/*',
   serveStatic({
@@ -85,7 +90,6 @@ root.use(
   }),
 );
 // single-page app: anything else gets the page
-const indexHtml = path.join(publicDir, 'index.html');
 root.get('*', (c) => {
   if (!fs.existsSync(indexHtml)) return c.text('web app not built (npm run build in the repo root)', 404);
   c.header('Cache-Control', 'no-cache');
