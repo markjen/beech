@@ -67,3 +67,17 @@ output "admin_uptime_check" {
   description = "Admin console uptime check id. Empty when var.admin_custom_domain is unset."
   value       = var.admin_custom_domain != "" ? google_monitoring_uptime_check_config.admin[0].uptime_check_id : ""
 }
+
+output "shore_domain_mapping" {
+  description = "Shore site domain mapping names (the apex domain and www) and URL. Empty when var.shore_custom_domain is unset — the mappings are only created once the domain is set."
+  value = {
+    name     = var.shore_custom_domain != "" ? google_cloud_run_domain_mapping.shore[0].name : ""
+    www_name = var.shore_custom_domain != "" ? google_cloud_run_domain_mapping.shore_www[0].name : ""
+    url      = var.shore_custom_domain != "" ? "https://${var.shore_custom_domain}" : ""
+  }
+}
+
+output "shore_uptime_check" {
+  description = "Shore site uptime check id. Empty when var.shore_custom_domain is unset."
+  value       = var.shore_custom_domain != "" ? google_monitoring_uptime_check_config.shore[0].uptime_check_id : ""
+}

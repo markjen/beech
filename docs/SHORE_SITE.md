@@ -94,8 +94,9 @@ The beach shape, day palette and place tints are copies of the app's;
 2. Map the domain to the `beech` service:
    `terraform apply -var shore_custom_domain=beechshore.com` (or
    `gcloud beta run domain-mappings create --service beech --domain beechshore.com --region $REGION`),
-   and the same for `www.beechshore.com` by hand if you want www.
-3. Add the DNS records the mapping prints at the registrar.
+   which creates both the apex and the `www.beechshore.com` mappings
+   (`google_cloud_run_domain_mapping.shore` and `.shore_www`).
+3. Add the DNS records the mappings print at the registrar.
 
 Nothing else changes: the server already answers to those hosts.
 
