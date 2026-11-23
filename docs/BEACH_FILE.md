@@ -1,6 +1,7 @@
 # Beach files: export, import and design offline
 
-Status: **planned** (2026-11-23). This page is the plan and the file
+Status: **E1 done** (2026-11-23): the format, reader, writer, schema and
+examples. Export and import in the app come next (E2). This page is the plan and the file
 specification. The spec is the contract: once version 1 ships, readers keep
 accepting every version 1 file.
 
@@ -73,11 +74,18 @@ Everything is in **metres**, seen from above:
 - Heights are **relative to the untouched beach**. 0 means "as it comes",
   +0.5 is half a metre of sand piled up, −0.3 is a 30 cm hole.
 - The untouched beach slopes up from the sea. The still waterline is about
-  `y = 16.5`. The sea floor is deep near `y = 0`, and the dunes are near
-  `y = 32`. (The exact rest profile, with a table of heights by `y`, will be
-  added here in milestone E1 from `src/sim/profile.ts`.)
-- Below a fixed floor the sand can't go lower (it's bedrock). Heights below
-  it are clamped when the file loads.
+  `y = 16.5` (it wiggles alongshore a little, as beach cusps). The heights
+  of the untouched beach above still water (m), from `src/sim/profile.ts`:
+
+  | `y` | 0 | 4 | 8 | 12 | 14 | 16 | 18 | 20 | 22 | 24 | 28 | 32 |
+  |---|---|---|---|---|---|---|---|---|---|---|---|---|
+  | height | −2.37 | −1.92 | −1.42 | −0.85 | −0.52 | −0.14 | 0.11 | 0.28 | 0.45 | 0.61 | 0.71 | 0.81 |
+
+  So to make an island poke out of the sea at `y = 12`, raise it by more than
+  0.85 m. The tide moves the water up and down by up to a metre or so,
+  depending on the real beach and time.
+- The sand can't go lower than **−1.2 m** (bedrock) or higher than **+3 m**.
+  Heights outside that are clamped when the file loads, with a warning.
 
 Angles in the file are **degrees**, counter-clockwise seen from above, with
 0 pointing along +x.
@@ -123,8 +131,11 @@ by `height` metres (positive builds up, negative digs) with a smooth edge.
 | `"ring"` | `x`, `y`, `radius`, `width`, `height` | A circular wall, or a moat if `height` is negative. |
 
 Common optional fields: `mode` (above) and `edge`, the width in metres of the
-soft edge. The default is a quarter of the shape's width or radius; `0` gives
-the sharpest edge the grid allows. Limits: at most 500 shapes; sizes from
+soft edge, measured inward from the outline (a shape never reaches past its
+outline). The default is the whole radius for a `mound` (a smooth dome), and
+a quarter of the width for the others (the shorter side for a `rect`); `0`
+gives the sharpest edge the grid allows. An `edge` wider than half the shape
+gives a lower, rounder top. Limits: at most 500 shapes; sizes from
 0.05 m to 32 m; `|height|` up to 3 m.
 
 ### `objects`: things on the beach
@@ -135,7 +146,7 @@ the sharpest edge the grid allows. Limits: at most 500 shapes; sizes from
 | `x`, `y` | number | yes | Where it sits (metres). Kept 0.3 m inside the edges. |
 | `angle` | number | no | Degrees. Default 0. |
 | `size` | number | no | Metres: a rock's radius, a driftwood log's length, a shell's width. Clamped to the item's size range. Ignored for fixed-size items (flag, deckchair and the shop items). The default is the middle of the range. |
-| `variant` | integer | no | Picks one of the item's shapes and colours (0, 1, 2, …), wrapping around. Default 0. |
+| `variant` | integer | no | A seed, 0 to 1000000, for the object's exact shape and colour. The same number always looks the same; try a few. The default is worked out from the object's position, so it stays the same each time the file loads. |
 
 At most **400** objects. The order doesn't matter. Things the sea brought in
 by itself are not exported. Floating and tumbling things (driftwood, shells,
@@ -178,12 +189,13 @@ bottles) start where the file puts them, and the sea may then move them.
   beach** is the main button.
 - **Inventory:** you can only put down what you own. Free items (rock,
   driftwood, shell, sea glass, flag) are unlimited. For every other item, the
-  file may use at most *owned − placed on your other beaches*. The preview
+  file may use at most *owned − placed on your other beaches*. The first ones
+  the file lists are kept. The preview
   lists what's missing ("2 deckchairs: you have 1 free") and offers
   **Import without them** or **Get them in the shop**. The sandbox build has no
   inventory, so non-free items are always left out there, and the preview
-  says so. This is the same rule a checkpoint restore uses; the two share one
-  function, `reconcileItems(counts, owned, placedElsewhere)`.
+  says so. This is the same rule a checkpoint restore uses (`reconcileItems(objects,
+  owned, placedElsewhere)` in `beachFile.ts`).
 - **Safety:** an import replaces the whole beach, so it is **one undo
   step** (today, loading a beach clears the undo stack). Once checkpoints
   exist, an import also makes an automatic "Before import" checkpoint.
@@ -211,8 +223,8 @@ Each one leaves the app playable and passes `npm test` and `npm run build`.
 
 | | Milestone | Done when |
 |---|---|---|
-| **E0** | This plan and spec | Committed. |
-| **E1** | Format, codec and spec complete | `beachFile.ts` parses and writes all three encodings and the four shapes with all modes, gives errors and warnings as specified, and round-trips with the app's save format. JSON Schema and examples are added. The rest-profile table is in this page. Unit tests cover the round trip, each shape and mode, clamping, bad files, the size limit, resampling and `reconcileItems`. No UI changes yet. |
+| **E0** ✅ | This plan and spec | Committed. |
+| **E1** ✅ | Format, codec and spec complete | `beachFile.ts` parses and writes all three encodings and the four shapes with all modes, gives errors and warnings as specified, and round-trips with the app's save format. JSON Schema and examples are added. The rest-profile table is in this page. Unit tests cover the round trip, each shape and mode, clamping, bad files, the size limit, resampling and `reconcileItems`. No UI changes yet. |
 | **E2** | Export and import in the app (web) | Settings and account-panel buttons. Export downloads a file. Import uses a file picker, then the preview with inventory and warnings, then replaces the beach as one undo step, and it saves. Screenshots at desktop and phone sizes, and an e2e step in `scripts/account-e2e.mjs`. |
 | **E3** | Phone apps | Export through the share sheet (`@capacitor/filesystem` and `@capacitor/share`). Import through the system file picker in both WebViews. `npx cap sync`, and the Android debug build passes. |
 | **E4** | Offline tools and guide | `scripts/beach-file.mjs` (validate, rows/compact, heightmap PNG with its own small PNG decoder, no new dependencies). A short "Design a beach offline" guide at the end of this page, with a worked example and a 20-line generator script. |

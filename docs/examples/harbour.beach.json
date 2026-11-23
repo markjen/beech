@@ -1,0 +1,19 @@
+{
+  "format": "beech.beach",
+  "version": 1,
+  "name": "Little harbour",
+  "createdWith": "by hand",
+  "shapes": [
+    { "type": "line", "from": [6, 21], "to": [6, 11], "width": 1.2, "height": 0.9, "mode": "max", "edge": 0.3 },
+    { "type": "line", "from": [26, 21], "to": [26, 11], "width": 1.2, "height": 0.9, "mode": "max", "edge": 0.3 },
+    { "type": "line", "from": [6, 11], "to": [12, 9], "width": 1.2, "height": 0.9, "mode": "max", "edge": 0.3 },
+    { "type": "line", "from": [26, 11], "to": [20, 9], "width": 1.2, "height": 0.9, "mode": "max", "edge": 0.3 },
+    { "type": "rect", "x": 16, "y": 15, "width": 16, "length": 6, "height": -0.4, "mode": "min", "edge": 1.5 }
+  ],
+  "objects": [
+    { "item": "rock", "x": 12, "y": 9, "size": 0.9, "variant": 1 },
+    { "item": "rock", "x": 20, "y": 9, "size": 0.9, "variant": 4 },
+    { "item": "flag", "x": 6, "y": 21 },
+    { "item": "flag", "x": 26, "y": 21 }
+  ]
+}

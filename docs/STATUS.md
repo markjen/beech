@@ -406,7 +406,11 @@ branch, so the deploy job runs only there. Switch the default branch to
 
 Export and import of a documented `.beach.json` file, for designing beaches
 offline. The spec and milestones are in [BEACH_FILE.md](BEACH_FILE.md).
-Nothing is built yet.
+- **E1 done:** `src/world/beachFile.ts` reads and writes version 1 (three sand
+  encodings, four shapes with add/set/max/min, objects), with errors and
+  warnings by JSON path. Also `reconcileItems` for imports and checkpoint
+  restores, `docs/beach-file.schema.json`, and examples in `docs/examples/`
+  (a test parses each with no warnings). Not in the app yet.
 
 ## Checkpoints (designed, not built)
 

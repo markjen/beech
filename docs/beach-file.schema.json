@@ -1,0 +1,383 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/markjen/beech/docs/beach-file.schema.json",
+  "title": "Beech beach file, version 1",
+  "description": "A beach for Beech: sand heights, shapes and objects. Specification: docs/BEACH_FILE.md. Coordinates are metres on a 32 x 32 m beach; y = 0 is the offshore edge.",
+  "type": "object",
+  "required": [
+    "format",
+    "version"
+  ],
+  "properties": {
+    "format": {
+      "const": "beech.beach"
+    },
+    "version": {
+      "const": 1
+    },
+    "name": {
+      "type": "string",
+      "maxLength": 40
+    },
+    "location": {
+      "type": "string",
+      "description": "a location id from src/world/locations.ts"
+    },
+    "createdWith": {
+      "type": "string"
+    },
+    "sand": {
+      "type": "object",
+      "required": [
+        "nx",
+        "ny",
+        "unit",
+        "encoding",
+        "data"
+      ],
+      "properties": {
+        "nx": {
+          "type": "integer",
+          "minimum": 8,
+          "maximum": 512
+        },
+        "ny": {
+          "type": "integer",
+          "minimum": 8,
+          "maximum": 512
+        },
+        "unit": {
+          "const": "mm"
+        },
+        "encoding": {
+          "enum": [
+            "rows",
+            "int16le",
+            "deflate-int16le"
+          ]
+        },
+        "data": {
+          "oneOf": [
+            {
+              "type": "array",
+              "description": "rows: ny rows of nx integer millimetres; row 0 is the offshore edge",
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "minimum": -32767,
+                  "maximum": 32767
+                }
+              }
+            },
+            {
+              "type": "string",
+              "description": "base64 of little-endian int16 (deflated with zlib for deflate-int16le)",
+              "contentEncoding": "base64"
+            }
+          ]
+        }
+      }
+    },
+    "shapes": {
+      "type": "array",
+      "maxItems": 500,
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "x",
+              "y",
+              "radius",
+              "height"
+            ],
+            "properties": {
+              "type": {
+                "const": "mound"
+              },
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "radius": {
+                "type": "number",
+                "minimum": 0.05,
+                "maximum": 32
+              },
+              "height": {
+                "type": "number",
+                "minimum": -3,
+                "maximum": 3,
+                "description": "metres; negative digs"
+              },
+              "mode": {
+                "enum": [
+                  "add",
+                  "set",
+                  "max",
+                  "min"
+                ],
+                "default": "add"
+              },
+              "edge": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 32,
+                "description": "soft edge width (m), inward from the outline"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "from",
+              "to",
+              "width",
+              "height"
+            ],
+            "properties": {
+              "type": {
+                "const": "line"
+              },
+              "from": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "to": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "minItems": 2,
+                "maxItems": 2
+              },
+              "width": {
+                "type": "number",
+                "minimum": 0.05,
+                "maximum": 32
+              },
+              "height": {
+                "type": "number",
+                "minimum": -3,
+                "maximum": 3,
+                "description": "metres; negative digs"
+              },
+              "mode": {
+                "enum": [
+                  "add",
+                  "set",
+                  "max",
+                  "min"
+                ],
+                "default": "add"
+              },
+              "edge": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 32,
+                "description": "soft edge width (m), inward from the outline"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "x",
+              "y",
+              "width",
+              "length",
+              "height"
+            ],
+            "properties": {
+              "type": {
+                "const": "rect"
+              },
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "width": {
+                "type": "number",
+                "minimum": 0.05,
+                "maximum": 32
+              },
+              "length": {
+                "type": "number",
+                "minimum": 0.05,
+                "maximum": 32
+              },
+              "angle": {
+                "type": "number",
+                "default": 0,
+                "description": "degrees"
+              },
+              "height": {
+                "type": "number",
+                "minimum": -3,
+                "maximum": 3,
+                "description": "metres; negative digs"
+              },
+              "mode": {
+                "enum": [
+                  "add",
+                  "set",
+                  "max",
+                  "min"
+                ],
+                "default": "add"
+              },
+              "edge": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 32,
+                "description": "soft edge width (m), inward from the outline"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "x",
+              "y",
+              "radius",
+              "width",
+              "height"
+            ],
+            "properties": {
+              "type": {
+                "const": "ring"
+              },
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "radius": {
+                "type": "number",
+                "minimum": 0.05,
+                "maximum": 32
+              },
+              "width": {
+                "type": "number",
+                "minimum": 0.05,
+                "maximum": 32
+              },
+              "height": {
+                "type": "number",
+                "minimum": -3,
+                "maximum": 3,
+                "description": "metres; negative digs"
+              },
+              "mode": {
+                "enum": [
+                  "add",
+                  "set",
+                  "max",
+                  "min"
+                ],
+                "default": "add"
+              },
+              "edge": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 32,
+                "description": "soft edge width (m), inward from the outline"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "objects": {
+      "type": "array",
+      "maxItems": 400,
+      "items": {
+        "type": "object",
+        "required": [
+          "item",
+          "x",
+          "y"
+        ],
+        "properties": {
+          "item": {
+            "enum": [
+              "rock",
+              "driftwood",
+              "shell",
+              "seaglass",
+              "flag",
+              "conch",
+              "sanddollar",
+              "starfish",
+              "deckchair",
+              "parasol",
+              "surfboard",
+              "tikitorch",
+              "sandcastle",
+              "beachhut",
+              "lighthouse",
+              "bottle",
+              "pink-shell",
+              "blue-seaglass",
+              "pebble",
+              "spiral-conch",
+              "gold-sanddollar",
+              "sunset-starfish",
+              "green-bottle",
+              "nautilus"
+            ]
+          },
+          "x": {
+            "type": "number",
+            "minimum": 0.3,
+            "maximum": 31.7
+          },
+          "y": {
+            "type": "number",
+            "minimum": 0.3,
+            "maximum": 31.7
+          },
+          "angle": {
+            "type": "number",
+            "default": 0,
+            "description": "degrees, counter-clockwise from +x"
+          },
+          "size": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "description": "metres; clamped to the item's range"
+          },
+          "variant": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000
+          }
+        }
+      }
+    }
+  }
+}

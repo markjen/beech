@@ -52,6 +52,7 @@ simulated one.
 | `src/sim/sim.worker.ts`, `protocol.ts` | Worker loop and message types (including live `tune` and `bench`) |
 | `src/sim/objects.ts` | Things on the beach: rocks (raise the non-erodible floor), driftwood (floats, drifts, strands), shells and sea glass (rolled by fast water), flags (fixed), and what the sea washes in. Tested in `tests/objects.test.ts`. |
 | `src/sim/sandCodec.ts` | Saved-beach format: BCH1 (sand) and BCH2 (sand plus placed objects, validated on load) |
+| `src/world/beachFile.ts` | Beach files (`.beach.json`, spec in BEACH_FILE.md): read and write, shapes, `reconcileItems` (what of a beach your bag can build) |
 | `src/sim/profile.ts`, `waves.ts`, `undoStack.ts` | Rest beach shape, swell/tide functions, stroke-delta undo |
 | `src/render/beachRenderer.ts`, `shaders.ts` | All meshes and GLSL (sand, water, far ocean, skirts, rock, props) |
 | `src/render/sky.ts` | Gradient background |

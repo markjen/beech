@@ -1,0 +1,19 @@
+{
+  "format": "beech.beach",
+  "version": 1,
+  "name": "Castle cove",
+  "createdWith": "by hand",
+  "shapes": [
+    { "type": "mound", "x": 16, "y": 23, "radius": 3, "height": 0.7 },
+    { "type": "rect", "x": 16, "y": 23, "width": 2.4, "length": 2.4, "height": 0.9, "mode": "max", "edge": 0.1 },
+    { "type": "ring", "x": 16, "y": 23, "radius": 3.6, "width": 0.7, "height": -0.35 },
+    { "type": "line", "from": [16, 19.4], "to": [16, 16.5], "width": 0.5, "height": -0.25 }
+  ],
+  "objects": [
+    { "item": "flag", "x": 16, "y": 23 },
+    { "item": "rock", "x": 12.2, "y": 20.5, "size": 0.45, "angle": 20, "variant": 3 },
+    { "item": "rock", "x": 19.8, "y": 20.8, "size": 0.35, "angle": 75, "variant": 5 },
+    { "item": "shell", "x": 14.5, "y": 18.2, "size": 0.12, "angle": 40 },
+    { "item": "driftwood", "x": 23, "y": 25.5, "size": 2.2, "angle": 15, "variant": 2 }
+  ]
+}
