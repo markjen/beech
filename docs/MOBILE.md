@@ -99,7 +99,8 @@ cd android && ./gradlew bundleRelease          # app/build/outputs/bundle/releas
    delete their account in the app. With no accounts (sandbox builds),
    nothing is collected. "Near me" reads the coarse location once, on the
    device, to pick a beach. It is never stored or sent.
-6. Target audience: everyone. The app has no ads and no in-app purchases.
+6. Target audience: everyone. The app has no ads. It has in-app purchases
+   (consumables only; see "In-app purchases" below).
 
 ## iOS → App Store
 
