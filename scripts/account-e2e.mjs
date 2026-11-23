@@ -95,9 +95,8 @@ check((await page.evaluate(() => window.__beech.account().user?.name)) === 'test
 await page.click('button[data-tool="place"]');
 await page.click('button[data-act="claw"]');
 await page.waitForSelector('.claw.open .claw-go:not([disabled])', { timeout: 10000 });
-const odds = await page.textContent('.claw-odds');
-check(/Common 70%.*Rare 25%.*Legendary 5%/s.test(odds ?? ''), 'the machine shows its odds');
-check((await page.textContent('.claw-note'))?.includes('rests 5 min'), 'it says the claw rests 5 min after this go');
+check((await page.getAttribute('.claw .guide-link', 'href'))?.endsWith('/guide#claw'), 'the machine links to its odds in the guide');
+check(!(await page.textContent('.claw-note'))?.trim(), 'and shows no notes while a go is free');
 if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/claw.png` });
 await page.click('.claw-go');
 await page.waitForSelector('.claw-reveal:not([hidden])', { timeout: 60000 });
@@ -135,7 +134,7 @@ await page.mouse.click(620, 380);
 await page.waitForTimeout(800);
 check((await countOf(prizeId)) === 1, 'and you can only put down as many as you own');
 const again = await page.evaluate(() => window.__beech.account().fetch('/api/pulls/daily', { method: 'POST' }).then((r) => r.status));
-check(again === 409, 'then the claw rests (5 minutes after the first go)');
+check(again === 409, 'then the claw rests');
 await page.click('button[data-tool="dig"]');
 
 // the shop (a development build uses a pretend store): buy an extra beach and a parasol

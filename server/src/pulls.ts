@@ -1,12 +1,13 @@
 // Pulls: draws of a random item from a pool, decided here on the server
-// (never in the app), with odds that the app shows before every draw.
+// (never in the app), with odds published in the guide (server/src/guide.ts).
 //
 // The only pool so far is the free claw machine: nothing to pay. The wait
 // between goes is random, 5 minutes to 3 hours, shorter after a miss and
 // longer after a win (cooldownAfter). Paid pools will reuse the same draw once store
 // billing exists. Apple and Google require the odds of paid random items to
 // be shown, and some countries restrict paid random items; check before
-// adding a paid pool.
+// adding a paid pool. A paid pool must show its odds in the app before the
+// purchase: that is the one exception to "no notes in the game" (CLAUDE.md).
 //
 // The vending machine (server/src/vending.ts) is a second pool of the same
 // shape — one free ball a day from a weekly set — but it lives outside

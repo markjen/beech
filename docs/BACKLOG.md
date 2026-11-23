@@ -278,6 +278,9 @@ _(nothing right now)_
   moves one owned item to the owner of the beach with that code — instant,
   atomic, 20 an hour. Design and decisions in
   [SHARING_GIFTING.md](SHARING_GIFTING.md). Commit `6d05a46`.
+- [x] **No notes in the game; a user guide, help and release notes on the
+  website** (2026-11-23): `/guide` and `/guide/releases` on the production
+  server (beech.games), with live odds; settings → "guide & help".
 - [x] **Claw rest is random, 5 min to 3 h** (shorter after a miss, longer
   after a win), replacing the doubling-to-a-day wait (2026-11-23).
 - [x] **Claw starter gifts** (rare, shop item, extra beach after a day),

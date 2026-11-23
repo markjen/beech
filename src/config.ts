@@ -168,5 +168,12 @@ export const CAMERA = {
   radius: 80,
 };
 
+/**
+ * The user guide, help and release notes live on the website, not in the game
+ * (the game itself shows no explanatory notes). Served by the production
+ * server (server/src/guide.ts); absolute so the apps and the sandbox reach it.
+ */
+export const GUIDE_URL = 'https://beech.games/guide';
+
 export const SIM_HZ = 30;
 export const UNDO_DEPTH = 32;

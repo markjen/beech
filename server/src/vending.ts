@@ -9,7 +9,7 @@
 // docs/VENDING_MACHINE.md.
 //
 // The draw happens here on the server, like the claw machine (never in the
-// app), with the odds the app shows before every ball. Item ids must exist
+// app), with the odds published in the guide (server/src/guide.ts). Item ids must exist
 // in the app's catalog (src/world/items.ts); a test in tests/items.test.ts
 // keeps the two in step.
 

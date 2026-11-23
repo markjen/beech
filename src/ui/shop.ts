@@ -44,7 +44,6 @@ export class Shop {
           <button type="submit">Redeem gift card</button>
         </form>
         <label class="shop-promo">Promo code <input name="promo" type="text" autocomplete="off" aria-label="Promo code"></label>
-        <p class="shop-small"></p>
       </div>`;
     parent.appendChild(this.root);
     this.list = this.root.querySelector('.shop-list')!;
@@ -71,19 +70,6 @@ export class Shop {
     this.promoInput.addEventListener('change', () => {
       if (this.products.length) void this.render(this.products);
     });
-    this.setSmallPrint();
-  }
-
-  private setSmallPrint(): void {
-    const mode = shopMode();
-    this.root.querySelector('.shop-small')!.textContent =
-      mode === 'web'
-        ? this.api.webCheckout
-          ? 'Card payments are handled by Xsolla, our payment partner, on their secure page; prices are in US dollars and converted at checkout. Promo codes apply to Buy with credit. What you buy is yours on every device you sign in on.'
-          : 'Purchases are made in the beech app through the App Store or Google Play. What you buy is yours on every device you sign in on.'
-        : mode === 'native'
-          ? 'Paid through your App Store or Google Play account. What you buy is yours on every device you sign in on.'
-          : 'Development build: purchases use a pretend store.';
   }
 
   get isOpen(): boolean {
@@ -98,8 +84,7 @@ export class Shop {
     if (shopMode() === 'web') void this.api.checkWebOrders().then((n) => n && this.bought(''));
     try {
       const products = await this.api.products();
-      this.setSmallPrint();
-      this.note.textContent = shopMode() === 'web' && !this.api.webCheckout ? 'Get these in the beech app:' : '';
+        this.note.textContent = shopMode() === 'web' && !this.api.webCheckout ? 'Get these in the beech app:' : '';
       try {
         this.creditCents = this.codes ? await this.api.credit() : 0;
       } catch {

@@ -178,7 +178,6 @@ export class AccountPanel {
     fresh.type = 'button';
     fresh.className = 'action';
     fresh.textContent = 'new code';
-    fresh.title = 'Your old code stops working; current neighbors keep you';
     fresh.addEventListener('click', () => void this.guard(async () => {
       await nv.api.newCode();
       await nv.refresh();
@@ -385,7 +384,7 @@ export class AccountPanel {
     } else {
       const more = document.createElement('div');
       more.className = 'status';
-      more.textContent = 'more beaches: win one from the claw machine, or ';
+      more.textContent = 'more beaches: ';
       if (mine.shop) {
         const go = document.createElement('button');
         go.type = 'button';
@@ -397,10 +396,6 @@ export class AccountPanel {
       } else more.textContent += 'get one in the shop';
       wrap.appendChild(more);
     }
-    const tip = document.createElement('div');
-    tip.className = 'status';
-    tip.textContent = 'each device shows one of your beaches; open different ones on your phone and your TV. Connect two of yours by putting one\'s code next to the other (no asking needed).';
-    wrap.appendChild(tip);
     return wrap;
   }
 
@@ -431,7 +426,7 @@ export class AccountPanel {
     const favs = sortBeachesWestToEast([...nv.favorites.values()]);
     const h = document.createElement('div');
     h.className = 'status';
-    h.textContent = favs.length ? 'favorite beaches' : 'tap ☆ on a beach to keep it here';
+    h.textContent = favs.length ? 'favorite beaches' : 'no favorite beaches yet';
     wrap.appendChild(h);
     for (const f of favs) {
       const r = document.createElement('div');

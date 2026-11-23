@@ -9,6 +9,7 @@ import { Hono, type Context } from 'hono';
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { guideHtml, releaseNotesHtml } from './guide.js';
 import { httpLogger } from './observability.js';
 import { createSharePageHandler } from './shareMeta.js';
 import { createShoreSite } from './shoreSite.js';
@@ -61,6 +62,17 @@ export function createRootApp(db: Db, api: Hono<any, any, any>, publicDir: strin
     return next();
   });
   root.route('/api', api);
+  // the user guide, help and release notes (the game itself shows no notes);
+  // rendered per request so this week's vending set and the odds are current
+  const guide = (html: () => string) => (c: Context) => {
+    c.header('Cache-Control', 'no-cache');
+    return c.html(html());
+  };
+  root.get('/guide', guide(() => guideHtml(Date.now())));
+  root.get('/guide/', guide(() => guideHtml(Date.now())));
+  root.get('/guide/releases', guide(releaseNotesHtml));
+  root.get('/help', (c) => c.redirect('/guide', 301));
+  root.get('/releases', (c) => c.redirect('/guide/releases', 301));
   // a shared beach link (?visit=CODE) gets Open Graph tags for that beach, so
   // the link shows a preview where it's pasted; everything else passes through
   const indexHtml = path.join(publicDir, 'index.html');

@@ -1,5 +1,6 @@
 import type { PullApi, PullPool } from '../net/account';
 import { itemById, prizeName, type Rarity } from '../world/items';
+import { GUIDE_URL } from '../config';
 import { icon, type IconName } from './hud';
 
 /** Ball colours by rarity (UI only). */
@@ -10,15 +11,14 @@ const BALL: Record<string, string> = {
   unique: '#c06fd6',
 };
 const RARITY_NAME: Record<string, string> = { common: 'Common', uncommon: 'Uncommon', rare: 'Rare', legendary: 'Legendary', unique: 'One of a kind' };
-/** the tiers a vending set can draw, rarest first */
-const TIERS = ['common', 'uncommon', 'rare', 'unique'] as const;
 
 type Phase = 'idle' | 'dispense' | 'open' | 'done';
 
 /**
  * The vending machine: one free ball a day, from a set of items that
- * changes every week. The ball is drawn on the server (with the odds printed
- * under the machine); the machine is the fun part. Press the button, a ball
+ * changes every week. The ball is drawn on the server (this week's set and
+ * odds are in the guide on the website, GUIDE_URL#vending); the machine is
+ * the fun part. Press the button, a ball
  * drops into the tray, and it opens to show what's inside.
  */
 export class VendingMachine {
@@ -27,7 +27,6 @@ export class VendingMachine {
   private readonly ctx: CanvasRenderingContext2D;
   private readonly btn: HTMLButtonElement;
   private readonly note: HTMLParagraphElement;
-  private readonly oddsEl: HTMLDivElement;
   private readonly reveal: HTMLDivElement;
   private pool: PullPool | null = null;
   private nextFree = 0;
@@ -58,7 +57,7 @@ export class VendingMachine {
         <canvas width="300" height="300"></canvas>
         <button type="button" class="vending-go">Get a ball</button>
         <p class="vending-note"></p>
-        <div class="vending-odds"></div>
+        <a class="guide-link" href="${GUIDE_URL}#vending" target="_blank" rel="noopener">this week’s set and odds</a>
         <div class="vending-reveal" hidden></div>
       </div>`;
     parent.appendChild(this.root);
@@ -66,7 +65,6 @@ export class VendingMachine {
     this.ctx = this.canvas.getContext('2d')!;
     this.btn = this.root.querySelector('.vending-go')!;
     this.note = this.root.querySelector('.vending-note')!;
-    this.oddsEl = this.root.querySelector('.vending-odds')!;
     this.reveal = this.root.querySelector('.vending-reveal')!;
     this.root.querySelector('.vending-close')!.addEventListener('click', () => this.close());
     this.root.addEventListener('click', (e) => {
@@ -123,22 +121,8 @@ export class VendingMachine {
   private renderInfo(): void {
     const free = !!this.pool?.free;
     this.btn.disabled = !free || this.phase !== 'idle';
-    if (this.error) this.note.textContent = this.error;
-    else if (!this.pool) this.note.textContent = '';
-    else if (free) {
-      const set = this.pool.set ? ` This week's set: ${this.pool.set.name} (Week ${this.pool.set.week}).` : '';
-      this.note.textContent = `A free ball every day.${set}`;
-    } else this.note.textContent = `Your next ball is in ${until(this.nextFree)}.`;
-    if (!this.pool) {
-      this.oddsEl.innerHTML = '';
-      return;
-    }
-    const pct = (v: number) => `${Math.round(v * 1000) / 10}%`;
-    const rows = TIERS.map((k) => {
-      const names = this.pool!.items[k]?.map((id) => itemById(id)?.name ?? id).join(', ') ?? '';
-      return `<li><span class="dot" style="background:${BALL[k]}"></span><b>${RARITY_NAME[k]} ${pct(this.pool!.odds[k] ?? 0)}</b> ${names}</li>`;
-    }).join('');
-    this.oddsEl.innerHTML = `<p>What's inside the balls, and the chance of each:</p><ul>${rows}</ul>`;
+    // status only: an error, or when the next ball is ready
+    this.note.textContent = this.error || (this.pool && !free ? `Your next ball is in ${until(this.nextFree)}.` : '');
   }
 
   private dispense(): void {

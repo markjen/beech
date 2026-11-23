@@ -231,27 +231,20 @@ export class InventoryTray {
     for (const c of COMING) {
       const d = document.createElement('div');
       d.className = 'inv-item soon';
-      d.title = c.note;
       d.innerHTML = `<b>${c.name}</b><span>Coming soon</span>`;
       grid.appendChild(d);
     }
     this.tray.appendChild(grid);
-    const tip = document.createElement('p');
-    tip.className = 'inv-tip';
-    tip.textContent = 'Tap the sand to set it down. Tap it again to pick it up.';
-    // things you own that don't go on the sand (an extra beach): tap to read about it
+    // things you own that don't go on the sand (an extra beach)
     for (const x of EXTRAS) {
       const n = this.ownedOf(x.id);
       if (!n) continue;
-      const b = document.createElement('button');
-      b.type = 'button';
+      const b = document.createElement('div');
       b.className = `inv-item extra rarity-${x.rarity}`;
       b.dataset.extra = x.id;
       b.innerHTML = `${icon(x.id as IconName)}<b>${x.name}</b><span>${n > 1 ? `${n} owned` : 'yours'}</span>`;
-      b.addEventListener('click', () => (tip.textContent = x.note));
       grid.insertBefore(b, grid.querySelector('.claw-tile, .soon'));
     }
-    this.tray.appendChild(tip);
   }
 }
 

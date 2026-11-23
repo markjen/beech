@@ -28,7 +28,7 @@ import { MAX_OBJECTS, decodeSand, encodeSand, fitWorld } from './sim/sandCodec';
 import { restHeight } from './sim/profile';
 import { Ambient, toggleFullscreen } from './ui/ambient';
 import { Hud, type ToolDef } from './ui/hud';
-import { SettingsSheet, StartScreen, showActionToast, showHint, showToast } from './ui/overlays';
+import { SettingsSheet, StartScreen, showActionToast, showToast } from './ui/overlays';
 import { CheckpointsSection } from './ui/checkpoints';
 import { InventoryTray, PlaceBar } from './ui/inventory';
 import { ClawMachine } from './ui/clawMachine';
@@ -648,14 +648,8 @@ async function boot() {
     haptics.impact('light');
   });
 
-  let hideHint: (() => void) | null = null;
   const begin = () => {
     audio.start();
-    if (!settings.seenIntro || params.has('hint')) {
-      hideHint = showHint(uiRoot, isTouch);
-      settings = { ...settings, seenIntro: true };
-      saveSettings(settings);
-    }
   };
   const skipIntro = params.has('smoke') || params.has('nointro');
   const start = skipIntro ? null : new StartScreen(uiRoot, begin, isTouch);
@@ -672,7 +666,6 @@ async function boot() {
       }
       inventory.setOpen(false);
       if (placing) {
-        hideHint?.();
         putDown(sx, sy);
         return;
       }
@@ -681,7 +674,6 @@ async function boot() {
       digPathM = 0;
       digStrokeStart = performance.now();
       hover = null;
-      hideHint?.();
       strokeTo(sx, sy);
     },
     digMove: (sx, sy) => {

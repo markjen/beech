@@ -1,6 +1,6 @@
 import './overlays.css';
 
-import type { QualityTier } from '../config';
+import { GUIDE_URL, type QualityTier } from '../config';
 import type { Beach } from '../world/locations';
 import type { PaletteChoice, Settings } from './settingsStore';
 
@@ -40,15 +40,6 @@ export class StartScreen {
   get visible(): boolean {
     return !this.done;
   }
-}
-
-/** A brief hint about the controls, shown once after the start screen. */
-export function showHint(parent: HTMLElement, isTouch: boolean): () => void {
-  const { el, hide } = showNote(parent, 9000);
-  el.innerHTML = isTouch
-    ? 'drag to look around · two fingers pinch, turn and tilt<br>pick the shovel to dig in the sand'
-    : 'drag to look around · wheel zooms · right-drag turns and tilts<br>pick the shovel to dig in the sand';
-  return hide;
 }
 
 /** A short note over the beach ("no beach has that code"), gone after a few seconds. */
@@ -163,8 +154,8 @@ export class SettingsSheet {
           <button type="button" class="action" data-act="smooth">smooth the beach</button>
           <button type="button" class="action" data-act="export">export beach</button>
           <button type="button" class="action" data-act="import">import beach</button>
+          <a class="action" href="${GUIDE_URL}" target="_blank" rel="noopener">guide &amp; help</a>
         </div>
-        <p class="note">detail changes apply on next launch</p>
       </div>`;
     parent.appendChild(this.el);
     this.el.querySelector('.sheet-scrim')!.addEventListener('pointerdown', () => this.hide());

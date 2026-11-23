@@ -741,7 +741,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
         nextCooldown: COOLDOWN_MAX_MS,
         cooldown: { min: COOLDOWN_MIN_MS, max: COOLDOWN_MAX_MS },
         nextFree: st && st.at > now ? st.at : now,
-        // the fixed first prizes, shown before the odds
+        // the fixed first prizes (kept a surprise: the app doesn't show them)
         starter: { rare: STARTER.rare.item, paid: STARTER.paid.item, beach: STARTER.beach.item, beachAfterMs: STARTER.beachAfterMs },
       };
     });

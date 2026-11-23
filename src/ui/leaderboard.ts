@@ -16,10 +16,6 @@ export interface LeaderboardHost {
   shoreUrl?: string;
 }
 
-const BLURB: Record<Board, string> = {
-  all: 'The beaches with the most stars.',
-  rising: 'Stars from the past week. The newest count most.',
-};
 
 /**
  * The leaderboard: the most-starred beaches, everyone's. Two tabs: all time
@@ -30,7 +26,6 @@ export class Leaderboard {
   private readonly root: HTMLDivElement;
   private readonly list: HTMLOListElement;
   private readonly note: HTMLParagraphElement;
-  private readonly blurb: HTMLParagraphElement;
   private board: Board = 'all';
   private entries: BoardEntry[] = [];
   /** the last load (a slower earlier one can't overwrite it) */
@@ -53,7 +48,6 @@ export class Leaderboard {
           <button type="button" role="tab" data-board="all">All time</button>
           <button type="button" role="tab" data-board="rising">Rising</button>
         </div>
-        <p class="board-blurb"></p>
         <ol class="board-list"></ol>
         <p class="board-note"></p>
         <a class="board-shore" target="_blank" rel="noopener" hidden>Every beach on the shore, on beechshore ↗</a>
@@ -61,7 +55,6 @@ export class Leaderboard {
     parent.appendChild(this.root);
     this.list = this.root.querySelector('.board-list')!;
     this.note = this.root.querySelector('.board-note')!;
-    this.blurb = this.root.querySelector('.board-blurb')!;
     const shore = this.root.querySelector<HTMLAnchorElement>('.board-shore')!;
     if (host.shoreUrl) {
       shore.href = `${host.shoreUrl}/top`;
@@ -112,12 +105,11 @@ export class Leaderboard {
       t.classList.toggle('on', on);
       t.setAttribute('aria-selected', String(on));
     }
-    this.blurb.textContent = BLURB[board];
     if (!this.host.signedIn()) {
       this.entries = [];
       this.render();
       this.note.innerHTML = '';
-      this.note.append('Sign in to see everyone’s favorite beaches. ');
+      
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'action board-signin';
@@ -138,8 +130,8 @@ export class Leaderboard {
       this.note.textContent = entries.length
         ? ''
         : board === 'rising'
-          ? 'No new stars this week yet. Tap ☆ on a beach you like.'
-          : 'No stars yet. Tap ☆ on a beach you like and it shows up here.';
+          ? 'No new stars this week yet.'
+          : 'No stars yet.';
     } catch (e) {
       if (gen !== this.gen) return;
       this.note.textContent = (e as Error).message;

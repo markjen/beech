@@ -1,5 +1,6 @@
 import type { PullApi, PullPool } from '../net/account';
-import { extraById, itemById, prizeName, type Rarity } from '../world/items';
+import { itemById, prizeName, type Rarity } from '../world/items';
+import { GUIDE_URL } from '../config';
 import { icon, type IconName } from './hud';
 
 /** Capsule colours by rarity (UI only). */
@@ -13,11 +14,11 @@ const RARITY_NAME: Record<string, string> = { common: 'Common', uncommon: 'Uncom
 type Phase = 'idle' | 'drop' | 'grab' | 'lift' | 'carry' | 'open' | 'done';
 
 /**
- * The claw machine: free goes, with a rest between them that starts at
- * 5 minutes and doubles each go, up to a day. The prize is drawn on the server
- * (with the odds printed under the machine); the claw is the fun part. Hold
- * the button to steer, let go to drop — and sometimes the ball slips out of
- * the claw on the way up, which spends the go all the same.
+ * The claw machine: free goes, with a random rest between them. The prize is
+ * drawn on the server; the claw is the fun part. Hold the button to steer,
+ * let go to drop — and sometimes the ball slips out of the claw on the way
+ * up, which spends the go all the same. How it works and the odds are in the
+ * guide on the website (GUIDE_URL#claw), not here.
  */
 export class ClawMachine {
   private readonly root: HTMLDivElement;
@@ -25,7 +26,6 @@ export class ClawMachine {
   private readonly ctx: CanvasRenderingContext2D;
   private readonly btn: HTMLButtonElement;
   private readonly note: HTMLParagraphElement;
-  private readonly oddsEl: HTMLDivElement;
   private readonly reveal: HTMLDivElement;
   private pool: PullPool | null = null;
   private nextFree = 0;
@@ -63,7 +63,7 @@ export class ClawMachine {
         <canvas width="300" height="300"></canvas>
         <button type="button" class="claw-go">Drop the claw</button>
         <p class="claw-note"></p>
-        <div class="claw-odds"></div>
+        <a class="guide-link" href="${GUIDE_URL}#claw" target="_blank" rel="noopener">odds and how it works</a>
         <div class="claw-reveal" hidden></div>
       </div>`;
     parent.appendChild(this.root);
@@ -71,7 +71,6 @@ export class ClawMachine {
     this.ctx = this.canvas.getContext('2d')!;
     this.btn = this.root.querySelector('.claw-go')!;
     this.note = this.root.querySelector('.claw-note')!;
-    this.oddsEl = this.root.querySelector('.claw-odds')!;
     this.reveal = this.root.querySelector('.claw-reveal')!;
     this.root.querySelector('.claw-close')!.addEventListener('click', () => this.close());
     this.root.addEventListener('click', (e) => {
@@ -127,29 +126,8 @@ export class ClawMachine {
   private renderInfo(): void {
     const free = !!this.pool?.free;
     this.btn.disabled = !free || this.phase !== 'idle';
-    if (this.error) this.note.textContent = this.error;
-    else if (!this.pool) this.note.textContent = '';
-    else if (free)
-      this.note.textContent = this.pool.cooldown
-        ? `A free go! After it the claw rests ${duration(this.pool.cooldown.min)} to ${duration(this.pool.cooldown.max)}: less if it slips, more if you win.`
-        : `A free go! After it the claw rests ${duration(this.pool.nextCooldown)}.`;
-    else this.note.textContent = `Your next free go is in ${until(this.nextFree)}.`;
-    if (!this.pool) {
-      this.oddsEl.innerHTML = '';
-      return;
-    }
-    const pct = (v: number) => `${Math.round(v * 1000) / 10}%`;
-    const rows = (['common', 'rare', 'legendary'] as const)
-      .map((k) => {
-        const names = this.pool!.items[k].map((id) => itemById(id)?.name ?? id).join(', ');
-        return `<li><span class="dot" style="background:${CAPSULE[k]}"></span><b>${RARITY_NAME[k]} ${pct(this.pool!.odds[k])}</b> ${names}</li>`;
-      })
-      .join('');
-    const g = this.pool.grab;
-    const grabNote = g
-      ? `<p>The claw doesn't always hold on: it keeps a common ball ${pct(g.common)} of the time, a rare one ${pct(g.rare)}, a legendary one ${pct(g.legendary)}.</p>`
-      : '';
-    this.oddsEl.innerHTML = `<p>What's inside, and the chance of each:</p><ul>${rows}</ul>${grabNote}`;
+    // status only: an error, or when the next go is ready
+    this.note.textContent = this.error || (this.pool && !free ? `Your next free go is in ${until(this.nextFree)}.` : '');
   }
 
   private drop(): void {
@@ -249,16 +227,13 @@ export class ClawMachine {
   private showPrize(): void {
     const p = this.prize!;
     const placeable = !!itemById(p.item);
-    const extra = extraById(p.item);
     this.reveal.hidden = false;
     this.reveal.className = `claw-reveal rarity-${p.rarity}`;
     this.reveal.innerHTML = `
       <div class="claw-prize">${icon(p.item as IconName)}</div>
       <b>${prizeName(p.item)}</b>
       <span>${RARITY_NAME[p.rarity as Rarity] ?? p.rarity}</span>
-      ${extra ? `<p class="claw-extra"></p>` : ''}
       <button type="button" class="claw-place">${placeable ? 'Put it on the beach' : 'Keep it'}</button>`;
-    if (extra) this.reveal.querySelector('.claw-extra')!.textContent = extra.note;
     this.reveal.querySelector('.claw-place')!.addEventListener('click', () => {
       this.close();
       this.won(p.item, placeable);
@@ -341,12 +316,6 @@ function roundRect(c: CanvasRenderingContext2D, x: number, y: number, w: number,
 }
 
 /** 5 min, 1 h 20 min, 1 day */
-function duration(ms: number): string {
-  const m = Math.round(ms / 60000);
-  if (m >= 1440) return '1 day';
-  return m >= 60 ? `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ''}` : `${m} min`;
-}
-
 function until(t: number): string {
   const m = Math.max(1, Math.round((t - Date.now()) / 60000));
   return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} min`;

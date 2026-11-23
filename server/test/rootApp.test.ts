@@ -72,3 +72,37 @@ describe('root app: unknown /api paths are JSON 404s, the SPA still serves', () 
     expect((await root.request('/healthz')).status).toBe(200);
   });
 });
+
+describe('the guide and release notes', () => {
+  it('serves the guide with the live odds, the claw rest and this week’s set', async () => {
+    const r = await root.request('/guide');
+    expect(r.status).toBe(200);
+    expect(r.headers.get('cache-control')).toBe('no-cache');
+    const html = await r.text();
+    expect(html).not.toContain('beech-spa-marker');
+    for (const id of ['controls', 'claw', 'vending', 'checkpoints', 'shop', 'settings']) expect(html).toContain(`id="${id}"`);
+    expect(html).toContain('between 5 minutes and 3 hours');
+    expect(html).toMatch(/Common<\/td><td>70%<\/td><td>80%/);
+    expect(html).toContain('Message in a bottle');
+    expect(html).toContain('/guide/releases');
+  });
+
+  it('never gives away the starter gifts', async () => {
+    const html = (await (await root.request('/guide')).text()).toLowerCase();
+    expect(html).not.toMatch(/starter|first go|first goes/);
+  });
+
+  it('serves the release notes, newest first', async () => {
+    const r = await root.request('/guide/releases');
+    expect(r.status).toBe(200);
+    const html = await r.text();
+    const dates = [...html.matchAll(/<time datetime="([\d-]+)"/g)].map((m) => m[1]);
+    expect(dates.length).toBeGreaterThan(0);
+    expect([...dates].sort().reverse()).toEqual(dates);
+  });
+
+  it('/help and /releases point at the guide', async () => {
+    expect((await root.request('/help')).headers.get('location')).toBe('/guide');
+    expect((await root.request('/releases')).headers.get('location')).toBe('/guide/releases');
+  });
+});
