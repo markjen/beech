@@ -75,6 +75,15 @@ export interface PlacedObject {
   angle: number;
   /** rock: radius (m); driftwood: length (m) */
   size: number;
+  /**
+   * rock: sand height at the centre when the rock was placed (where it
+   * sits). A rock raises the floor under its footprint, so the sand under
+   * it is higher than this once it is embedded — re-embedding a rock
+   * (undo, cancel, reload) must use the placed height, not the lifted
+   * sand, or the rock would come back floating. Old saves omit it and
+   * fall back to the sand at the time.
+   */
+  base?: number;
   /** shape/colour variation seed */
   variant: number;
   /** brought in by the sea rather than put there by you */
@@ -184,6 +193,7 @@ export class BeachObjects {
   add(o: Omit<PlacedObject, 'id'> & { id?: number }): PlacedObject {
     const data: PlacedObject = { ...o, id: o.id ?? this.nextId++ };
     this.nextId = Math.max(this.nextId, data.id + 1);
+    if (data.kind === 'rock' && data.base === undefined) data.base = this.sandAt(data.x, data.y);
     const l: Live = { data, z: this.sandAt(data.x, data.y), floating: false, vx: 0, vy: 0, spin: 0 };
     if (data.kind === 'rock') l.rock = this.embedRock(data);
     this.live.set(data.id, l);
@@ -197,6 +207,33 @@ export class BeachObjects {
     this.live.delete(id);
     // report where it actually was (driftwood may have drifted)
     return { ...l.data };
+  }
+
+  /**
+   * Remove an object and report the sand the removal itself moved. Taking
+   * a rock off lifts the floor back under its footprint, so the sand there
+   * drops; every other kind moves no sand. The caller (a dozer/vacuum
+   * stroke) needs the lift to keep it out of the stroke's undo delta —
+   * undo re-embeds the rock and restores that sand itself.
+   */
+  removeWithLift(id: number): { data: PlacedObject; lift: { k: number; d: number }[] } | null {
+    const l = this.live.get(id);
+    if (!l) return null;
+    if (!l.rock) {
+      const data = this.remove(id);
+      return data ? { data, lift: [] } : null;
+    }
+    const { sand } = this.h;
+    const cells = l.rock.cells;
+    const before = new Float32Array(cells.length);
+    for (let n = 0; n < cells.length; n++) before[n] = sand[cells[n]];
+    const data = this.remove(id)!;
+    const lift: { k: number; d: number }[] = [];
+    for (let n = 0; n < cells.length; n++) {
+      const d = sand[cells[n]] - before[n];
+      if (d !== 0) lift.push({ k: cells[n], d });
+    }
+    return { data, lift };
   }
 
   clear(): void {
@@ -233,7 +270,9 @@ export class BeachObjects {
     // a little inside the drawn rock, so the rock always covers the sand it lifts
     const rx = o.size * 0.88;
     const ry = o.size * (0.7 + 0.3 * frac(o.variant * 0.618)) * 0.88;
-    const base = this.sandAt(o.x, o.y);
+    // where the rock sits: the height it was placed at, not the sand now
+    // (which may already be lifted by this or another rock)
+    const base = o.base ?? this.sandAt(o.x, o.y);
     const H = o.size * ROCK_HEIGHT * 0.75;
     const c = Math.cos(o.angle);
     const s = Math.sin(o.angle);
