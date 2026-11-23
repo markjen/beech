@@ -43,7 +43,7 @@ async function signIn(name: string) {
   return (await r.json()) as { token: string; user: { id: string; name: string } };
 }
 const putBeach = (token: string, bytes: Uint8Array, location = 'bondi') =>
-  req('/beach', { method: 'PUT', body: bytes, headers: { 'X-Beach-Location': location, 'X-Beach-Nx': '256', 'X-Beach-Ny': '192' } }, token);
+  req('/beach', { method: 'PUT', body: bytes, headers: { 'X-Beach-Location': location, 'X-Beach-Nx': '256', 'X-Beach-Ny': '256' } }, token);
 
 describe('accounts', () => {
   it('health and auth required', async () => {
@@ -74,6 +74,10 @@ describe('accounts', () => {
     expect(new Uint8Array(await g.arrayBuffer())).toEqual(bytes);
     expect((await putBeach(token, bytes, 'Bad!')).status).toBe(400);
     expect((await putBeach(token, new Uint8Array(900 * 1024))).status).toBe(413);
+    // an out-of-date app (the old 32 x 24 world) can't save over the beach
+    const old = await req('/beach', { method: 'PUT', body: bytes, headers: { 'X-Beach-Location': 'piha', 'X-Beach-Nx': '256', 'X-Beach-Ny': '192' } }, token);
+    expect(old.status).toBe(426);
+    expect((await req('/beach', {}, token)).headers.get('X-Beach-Version')).toBe('2');
   });
 
   it('logout ends the session; delete removes everything', async () => {

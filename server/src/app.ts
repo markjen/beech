@@ -56,7 +56,7 @@ const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O or 1/I
 const SIDES = ['left', 'right'] as const;
 type Side = (typeof SIDES)[number];
 
-const fail = (status: 400 | 401 | 403 | 404 | 409 | 413 | 500, message: string): never => {
+const fail = (status: 400 | 401 | 403 | 404 | 409 | 413 | 426 | 500, message: string): never => {
   throw new HTTPException(status, { message });
 };
 
@@ -264,6 +264,10 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const ny = Number(c.req.header('X-Beach-Ny'));
     if (!/^[a-z0-9-]+$/.test(location)) fail(400, 'bad X-Beach-Location');
     if (!Number.isInteger(nx) || !Number.isInteger(ny) || nx < 8 || ny < 8 || nx * ny > MAX_CELLS) fail(400, 'bad grid size');
+    // the world is square (32 m x 32 m). A non-square grid is an out-of-date app
+    // (the old 32 x 24 world): its save would squeeze the sand and shift the
+    // things on it, so refuse it until the app reloads.
+    if (nx !== ny) fail(426, 'this app is out of date: reload to save');
     if (Number(c.req.header('Content-Length') ?? 0) > MAX_BEACH_BYTES) fail(413, 'beach too large');
     const bytes = new Uint8Array(await c.req.arrayBuffer());
     if (bytes.byteLength === 0 || bytes.byteLength > MAX_BEACH_BYTES) fail(413, 'beach too large');
