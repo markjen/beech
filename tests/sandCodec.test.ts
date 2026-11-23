@@ -65,6 +65,21 @@ describe('saved beach codec', () => {
     expect(fitWorld(fresh)).toBe(fresh);
   });
 
+  it('puts back things an out-of-date app pushed off the beach', async () => {
+    const { fitWorld } = await import('../src/sim/sandCodec');
+    const flag = (id: number, y: number) => ({ id, kind: 'flag' as const, item: 'flag', x: 5, y, angle: 0, size: 0.4, variant: 0 });
+    const nx = 192;
+    // the old app squeezed a 32 x 32 beach into 32 x 24 but kept the objects
+    // where they were (some past its own land edge): don't move them again
+    const squeezed = { nx, ny: 144, delta: new Float32Array(nx * 144), objects: [flag(1, 10), flag(2, 30)] };
+    expect(fitWorld(squeezed).objects.map((o) => o.y)).toEqual([10, 30]);
+    // already shifted once or twice (saved again by today's app): fold them back on
+    const square = { nx, ny: 192, delta: new Float32Array(nx * 192), objects: [flag(1, 20), flag(2, 38), flag(3, 47), flag(4, 63)] };
+    const ys = fitWorld(square).objects.map((o) => o.y);
+    expect(ys).toEqual([20, 30, 31, 31]);
+    for (const y of ys) expect(y).toBeLessThanOrEqual(32 - 0.3);
+  });
+
   it('rejects garbage', async () => {
     await expect(decodeSand(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9]))).rejects.toThrow();
   });

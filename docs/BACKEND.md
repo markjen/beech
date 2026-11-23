@@ -39,6 +39,10 @@ Migrations live in `src/migrations.ts` and are applied at startup.
 | `POST /api/pulls/:pool` | a free go (`daily`): the server draws, logs it and adds the prize to `inventory`. The rest before the next go starts at 5 min and doubles each go, up to a day (`pull_state`). 409 while it's resting |
 | `GET /api/beaches/:code` | anyone's saved beach, by code |
 | `GET /api/favorites`, `PUT`/`DELETE /api/favorites/:code` | your starred beaches |
+| `GET /api/store/products` | the shop's products: `{ id, name, grants, usd, blurb, featured }` |
+| `POST /api/store/purchase { platform: ios, jws }` / `{ platform: android, token }` | check the purchase with Apple or Google (`server/src/store.ts`), record it once (`purchases`, unique per store transaction), grant its items. 402 if the store didn't confirm it, 403 if it's tied to another account, 409 if another account already used it; sending it again returns `already: true` |
+| `POST /api/store/apple/notifications` | App Store Server Notifications V2 (signed): REFUND / REVOKE expire what the purchase granted |
+| `POST /api/store/google/rtdn` | Google Play real-time developer notifications (Pub/Sub push, OIDC-checked): voided purchases expire what they granted |
 | `GET /api/inventory` | `{ items: [{ item, quantity, source, acquiredAt, expiresAt }] }`: what you own beyond the free items, unexpired. Empty until the shop and pulls exist; rows are only written by the server. |
 
 Sessions are 60-day random bearer tokens, and only their SHA-256 is stored.

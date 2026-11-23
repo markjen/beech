@@ -31,7 +31,10 @@ export class AccountPanel {
     private readonly neighbors?: NeighborView,
     /** go to anyone's beach by code */
     private readonly onVisit?: (code: string) => Promise<void>,
+    /** your beaches: open one on this device, where a new one starts */
+    private readonly mine?: { open: (id: string) => Promise<void>; location: () => string; changed: () => void },
   ) {
+    account.onBeach(() => this.render());
     account.onChange(() => this.render());
     neighbors?.onChange(() => this.render());
     neighbors?.onFavorites(() => this.render());
@@ -68,6 +71,7 @@ export class AccountPanel {
           <button type="button" class="action" data-act="delete">delete account</button>
         </div>`;
       if (u.name) box.querySelector('b')!.textContent = u.name;
+      if (this.mine) box.appendChild(this.beachesSection(this.mine));
       if (this.neighbors) box.appendChild(this.neighborSection(this.neighbors));
       if (this.neighbors && this.onVisit) box.appendChild(this.visitSection(this.neighbors, this.onVisit));
       box.querySelector('[data-act="signout"]')!.addEventListener('click', () => void this.account.signOut());
@@ -133,7 +137,7 @@ export class AccountPanel {
   /** Your code to share, and who lives either side of you. */
   private neighborSection(nv: NeighborView): HTMLElement {
     const wrap = document.createElement('div');
-    wrap.className = 'neighbors';
+    wrap.className = 'neighbors neighbor-section';
     const n = nv.state;
     if (!n) {
       wrap.innerHTML = `<div class="status">neighbors are loading…</div>`;
@@ -172,7 +176,8 @@ export class AccountPanel {
     wrap.appendChild(share);
     const help = document.createElement('div');
     help.className = 'status';
-    help.textContent = 'neighbors are mutual: share your code, ask for a side, and they accept';
+    const here = this.account.beach;
+    help.textContent = `${this.account.beaches.length > 1 && here ? `neighbors of ${here.name || (here.home ? 'home' : 'this beach')}. ` : ''}neighbors are mutual: share your code, ask for a side, and they accept`;
     wrap.appendChild(help);
 
     // people asking to move in next to you
@@ -250,6 +255,81 @@ export class AccountPanel {
       }
       wrap.appendChild(row);
     }
+    return wrap;
+  }
+
+  /** Your beaches: which one this device shows, and making, naming, linking, removing them. */
+  private beachesSection(mine: NonNullable<AccountPanel['mine']>): HTMLElement {
+    const a = this.account;
+    const wrap = document.createElement('div');
+    wrap.className = 'neighbors beaches';
+    const h = document.createElement('div');
+    h.className = 'status';
+    h.textContent = a.beaches.length > 1 ? `your beaches (${a.beaches.length} of ${a.allowance})` : 'your beach';
+    wrap.appendChild(h);
+    const act = (label: string, key: string, fn: () => Promise<void>, title = '') => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'action';
+      b.dataset.act = key;
+      b.textContent = label;
+      if (title) b.title = title;
+      b.addEventListener('click', () => void this.guard(async () => {
+        await fn();
+        mine.changed();
+      }));
+      return b;
+    };
+    for (const b of a.beaches) {
+      const row = document.createElement('div');
+      row.className = `slot beach-row${b.id === a.beachId ? ' here' : ''}`;
+      const place = b.location ? beachById(b.location) : undefined;
+      const label = document.createElement('span');
+      label.className = 'fav-name';
+      label.textContent = `${b.name || (b.home ? 'home' : 'a beach')}${place ? ` · ${place.name}` : ''}${b.id === a.beachId ? ' (here)' : ''}`;
+      label.title = `code ${b.code}${b.onShore ? '' : ' · off the shore'}`;
+      row.appendChild(label);
+      if (b.id !== a.beachId) row.appendChild(act('open here', `open-${b.id}`, () => mine.open(b.id), 'Show and play this beach on this device'));
+      if (a.beaches.length > 1) {
+        row.appendChild(
+          act('rename', `rename-${b.id}`, async () => {
+            const name = window.prompt('Name this beach', b.name);
+            if (name !== null) await a.updateBeach(b.id, { name });
+          }),
+        );
+        if (!b.home) row.appendChild(act('make home', `home-${b.id}`, () => a.updateBeach(b.id, { home: true })));
+      }
+      row.appendChild(
+        act(b.onShore ? 'on the shore' : 'off the shore', `shore-${b.id}`, () => a.updateBeach(b.id, { onShore: !b.onShore }), b.onShore ? 'Everyone can walk past it. Tap to keep it off the shore (only by code or as a neighbor)' : 'Only by code or as a neighbor. Tap to put it on the shore'),
+      );
+      if (!b.home)
+        row.appendChild(
+          act('remove', `remove-beach-${b.id}`, async () => {
+            if (!window.confirm(`Remove ${b.name || 'this beach'}? Its sand, things and neighbors go. You can make another in its place.`)) return;
+            if (b.id === a.beachId) await mine.open(a.beaches.find((x) => x.home)!.id);
+            await a.removeBeach(b.id);
+          }),
+        );
+      wrap.appendChild(row);
+    }
+    if (a.beaches.length < a.allowance) {
+      wrap.appendChild(
+        act('+ new beach', 'new-beach', async () => {
+          const name = window.prompt('Name your new beach', '') ?? '';
+          const b = await a.createBeach(name.trim(), mine.location());
+          await mine.open(b.id);
+        }),
+      );
+    } else {
+      const more = document.createElement('div');
+      more.className = 'status';
+      more.textContent = 'more beaches: win one from the claw machine, or get one in the shop';
+      wrap.appendChild(more);
+    }
+    const tip = document.createElement('div');
+    tip.className = 'status';
+    tip.textContent = 'each device shows one of your beaches; open different ones on your phone and your TV. Connect two of yours by putting one\'s code next to the other (no asking needed).';
+    wrap.appendChild(tip);
     return wrap;
   }
 

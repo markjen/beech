@@ -44,13 +44,13 @@ export const ITEMS: Item[] = [
   { id: 'sanddollar', name: 'Sand dollar', kind: 'sanddollar', rarity: 'common', source: 'pull', unlimited: false, size: [0.06, 0.16], variants: 2 },
   { id: 'starfish', name: 'Starfish', kind: 'starfish', rarity: 'rare', source: 'pull', unlimited: false, size: [0.08, 0.26], variants: 3 },
   // from the shop (the claw machine gives everyone one as a starter gift)
-  { id: 'deckchair', name: 'Deckchair', kind: 'deckchair', rarity: 'rare', source: 'shop', unlimited: false, size: [1, 1], variants: 3, fixedSize: true, product: 'item.deckchair' },
-  { id: 'parasol', name: 'Parasol', kind: 'parasol', rarity: 'rare', source: 'shop', unlimited: false, size: [1, 1], variants: 1, fixedSize: true, product: 'item.parasol' },
-  { id: 'surfboard', name: 'Surfboard', kind: 'surfboard', rarity: 'rare', source: 'shop', unlimited: false, size: [1, 1], variants: 1, fixedSize: true, product: 'item.surfboard' },
-  { id: 'tikitorch', name: 'Tiki torch', kind: 'tikitorch', rarity: 'rare', source: 'shop', unlimited: false, size: [1, 1], variants: 1, fixedSize: true, product: 'item.tikitorch' },
-  { id: 'sandcastle', name: 'Sandcastle', kind: 'sandcastle', rarity: 'legendary', source: 'shop', unlimited: false, size: [1, 1], variants: 1, fixedSize: true, product: 'item.sandcastle' },
-  { id: 'beachhut', name: 'Beach hut', kind: 'beachhut', rarity: 'legendary', source: 'shop', unlimited: false, size: [1, 1], variants: 1, fixedSize: true, product: 'item.beachhut' },
-  { id: 'lighthouse', name: 'Lighthouse', kind: 'lighthouse', rarity: 'legendary', source: 'shop', unlimited: false, size: [1, 1], variants: 1, fixedSize: true, product: 'item.lighthouse' },
+  { id: 'deckchair', name: 'Deckchair', kind: 'deckchair', rarity: 'rare', source: 'shop', unlimited: false, size: [1, 1], variants: 3, fixedSize: true, product: 'item_deckchair' },
+  { id: 'parasol', name: 'Parasol', kind: 'parasol', rarity: 'rare', source: 'shop', unlimited: false, size: [1, 1], variants: 1, fixedSize: true, product: 'item_parasol' },
+  { id: 'surfboard', name: 'Surfboard', kind: 'surfboard', rarity: 'rare', source: 'shop', unlimited: false, size: [1, 1], variants: 1, fixedSize: true, product: 'item_surfboard' },
+  { id: 'tikitorch', name: 'Tiki torch', kind: 'tikitorch', rarity: 'rare', source: 'shop', unlimited: false, size: [1, 1], variants: 1, fixedSize: true, product: 'item_tikitorch' },
+  { id: 'sandcastle', name: 'Sandcastle', kind: 'sandcastle', rarity: 'legendary', source: 'shop', unlimited: false, size: [1, 1], variants: 1, fixedSize: true, product: 'item_sandcastle' },
+  { id: 'beachhut', name: 'Beach hut', kind: 'beachhut', rarity: 'legendary', source: 'shop', unlimited: false, size: [1, 1], variants: 1, fixedSize: true, product: 'item_beachhut' },
+  { id: 'lighthouse', name: 'Lighthouse', kind: 'lighthouse', rarity: 'legendary', source: 'shop', unlimited: false, size: [1, 1], variants: 1, fixedSize: true, product: 'item_lighthouse' },
   { id: 'bottle', name: 'Message in a bottle', kind: 'bottle', rarity: 'legendary', source: 'pull', unlimited: false, size: [0.22, 0.45], variants: 2 },
 ];
 

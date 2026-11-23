@@ -147,6 +147,8 @@ export class Account {
     this.token = null;
     writeToken(null);
     this.user = null;
+    this.beaches = [];
+    this.beachId = null;
     this.emit();
   }
 
@@ -167,8 +169,88 @@ export class Account {
     return ((await res.json()) as { items: OwnedItem[] }).items;
   }
 
+  // ---------------------------------------------------------------- my beaches
+  /**
+   * The beach this device shows and simulates (one of yours). Each device
+   * remembers its own, so a phone and a TV can each run a different beach.
+   * null until your beaches have loaded: then it's your home beach.
+   */
+  beachId: string | null = null;
+  /** your beaches, as last loaded */
+  beaches: MyBeach[] = [];
+  allowance = 1;
+  private beachListeners: ((id: string | null) => void)[] = [];
+
+  onBeach(fn: (id: string | null) => void): void {
+    this.beachListeners.push(fn);
+  }
+
+  /** Load your beaches and pick this device's one (as remembered, else home). */
+  async loadBeaches(): Promise<MyBeach[]> {
+    const res = await this.call('/api/beaches/mine');
+    if (!res.ok) throw await errorOf(res, 'could not load your beaches');
+    const data = (await res.json()) as { allowance: number; beaches: MyBeach[] };
+    this.beaches = data.beaches;
+    this.allowance = data.allowance;
+    if (!this.beachId || !this.beaches.some((b) => b.id === this.beachId)) {
+      const remembered = readActive(this.user?.id);
+      const pick = this.beaches.find((b) => b.id === remembered) ?? this.beaches.find((b) => b.home) ?? this.beaches[0];
+      this.setBeach(pick?.id ?? null);
+    } else {
+      // same beach, fresh list (names, links, allowance): let the panels redraw
+      for (const fn of this.beachListeners) fn(this.beachId);
+    }
+    return this.beaches;
+  }
+
+  /** Show and simulate this beach on this device. */
+  setBeach(id: string | null): void {
+    if (id === this.beachId) return;
+    this.beachId = id;
+    if (this.user && id) writeActive(this.user.id, id);
+    for (const fn of this.beachListeners) fn(id);
+  }
+
+  get beach(): MyBeach | undefined {
+    return this.beaches.find((b) => b.id === this.beachId);
+  }
+
+  async createBeach(name: string, location: string): Promise<MyBeach> {
+    const res = await this.call('/api/beaches/mine', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, location }),
+    });
+    if (!res.ok) throw await errorOf(res, 'could not make a beach');
+    const b = ((await res.json()) as { beach: MyBeach }).beach;
+    await this.loadBeaches();
+    return b;
+  }
+
+  async updateBeach(id: string, patch: { name?: string; location?: string; onShore?: boolean; home?: boolean }): Promise<void> {
+    const res = await this.call(`/api/beaches/mine/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    });
+    if (!res.ok) throw await errorOf(res, 'could not change that beach');
+    await this.loadBeaches();
+  }
+
+  async removeBeach(id: string): Promise<void> {
+    const res = await this.call(`/api/beaches/mine/${id}`, { method: 'DELETE' });
+    if (!res.ok) throw await errorOf(res, 'could not remove that beach');
+    if (this.beachId === id) this.beachId = null;
+    await this.loadBeaches();
+  }
+
+  /** the sand endpoint for this device's beach (the home beach before they've loaded) */
+  private sandPath(): string {
+    return this.beachId ? `/api/beaches/mine/${this.beachId}/sand` : '/api/beach';
+  }
+
   async loadBeach(): Promise<SavedBeach | null> {
-    const res = await this.call('/api/beach');
+    const res = await this.call(this.sandPath());
     if (res.status === 404) return null;
     if (!res.ok) throw new ApiError(res.status, 'could not load your beach');
     return {
@@ -180,14 +262,18 @@ export class Account {
     };
   }
 
-  async saveBeach(bytes: Uint8Array, location: string, nx: number, ny: number, keepalive = false): Promise<number> {
-    const res = await this.call('/api/beach', {
+  /** `items`: how many of each non-free item are on this beach (counted across your beaches) */
+  async saveBeach(bytes: Uint8Array, location: string, nx: number, ny: number, keepalive = false, items: Record<string, number> = {}): Promise<number> {
+    const res = await this.call(this.sandPath(), {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/octet-stream',
         'X-Beach-Location': location,
         'X-Beach-Nx': String(nx),
         'X-Beach-Ny': String(ny),
+        'X-Beach-Items': Object.entries(items)
+          .map(([k, v]) => `${k}=${v}`)
+          .join(','),
       },
       body: bytes as BodyInit,
       // keepalive lets a save finish while the page is closing (64 KB limit)
@@ -199,6 +285,39 @@ export class Account {
 }
 
 export type Side = 'left' | 'right';
+
+/** One of your beaches (GET /api/beaches/mine). */
+export interface MyBeach {
+  id: string;
+  code: string;
+  name: string;
+  home: boolean;
+  onShore: boolean;
+  location: string | null;
+  updatedAt: number | null;
+  /** how many of each non-free item are on it, as of its last save */
+  items: Record<string, number>;
+  left: (Neighbor & { yours: boolean }) | null;
+  right: (Neighbor & { yours: boolean }) | null;
+}
+
+const ACTIVE_KEY = 'beech.activeBeach.v1';
+function readActive(user: string | undefined): string | null {
+  try {
+    return user ? ((JSON.parse(localStorage.getItem(ACTIVE_KEY) ?? '{}') as Record<string, string>)[user] ?? null) : null;
+  } catch {
+    return null;
+  }
+}
+function writeActive(user: string, beach: string): void {
+  try {
+    const all = JSON.parse(localStorage.getItem(ACTIVE_KEY) ?? '{}') as Record<string, string>;
+    all[user] = beach;
+    localStorage.setItem(ACTIVE_KEY, JSON.stringify(all));
+  } catch {
+    /* storage blocked: this device opens the home beach next time */
+  }
+}
 
 export interface Neighbor {
   code: string;
@@ -238,15 +357,20 @@ async function errorOf(res: Response, fallback: string): Promise<ApiError> {
 export class NeighborApi {
   constructor(private readonly account: Account) {}
 
+  /** `?beach=<id>` for this device's beach ('' before beaches load: the server uses home) */
+  private q(sep = '?'): string {
+    return this.account.beachId ? `${sep}beach=${encodeURIComponent(this.account.beachId)}` : '';
+  }
+
   async get(): Promise<Neighbors> {
-    const res = await this.account.fetch('/api/neighbors');
+    const res = await this.account.fetch(`/api/neighbors${this.q()}`);
     if (!res.ok) throw await errorOf(res, 'could not load your neighbors');
     return (await res.json()) as Neighbors;
   }
 
   /** Ask someone to be on your `side`. 'linked' if they had already asked for the same. */
   async set(side: Side, code: string): Promise<{ status: 'asked' | 'linked'; neighbor: Neighbor }> {
-    const res = await this.account.fetch(`/api/neighbors/${side}`, {
+    const res = await this.account.fetch(`/api/neighbors/${side}${this.q()}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code }),
@@ -257,17 +381,17 @@ export class NeighborApi {
 
   /** Move away from your `side` neighbor (both ends), or take back your request for that side. */
   async remove(side: Side): Promise<void> {
-    const res = await this.account.fetch(`/api/neighbors/${side}`, { method: 'DELETE' });
+    const res = await this.account.fetch(`/api/neighbors/${side}${this.q()}`, { method: 'DELETE' });
     if (!res.ok) throw await errorOf(res, 'could not remove that neighbor');
   }
 
   async accept(code: string): Promise<void> {
-    const res = await this.account.fetch(`/api/neighbors/requests/${encodeURIComponent(code)}/accept`, { method: 'POST' });
+    const res = await this.account.fetch(`/api/neighbors/requests/${encodeURIComponent(code)}/accept${this.q()}`, { method: 'POST' });
     if (!res.ok) throw await errorOf(res, 'could not accept');
   }
 
   async decline(code: string): Promise<void> {
-    const res = await this.account.fetch(`/api/neighbors/requests/${encodeURIComponent(code)}`, { method: 'DELETE' });
+    const res = await this.account.fetch(`/api/neighbors/requests/${encodeURIComponent(code)}${this.q()}`, { method: 'DELETE' });
     if (!res.ok) throw await errorOf(res, 'could not decline');
   }
 
@@ -293,7 +417,7 @@ export class NeighborApi {
   }
 
   async newCode(): Promise<string> {
-    const res = await this.account.fetch('/api/neighbors/code', { method: 'POST' });
+    const res = await this.account.fetch(`/api/neighbors/code${this.q()}`, { method: 'POST' });
     if (!res.ok) throw await errorOf(res, 'could not make a new code');
     return ((await res.json()) as { code: string }).code;
   }
@@ -302,6 +426,7 @@ export class NeighborApi {
   async shore(code: string | null, depth: number): Promise<Shore> {
     const q = new URLSearchParams({ depth: String(depth) });
     if (code) q.set('code', code);
+    else if (this.account.beachId) q.set('beach', this.account.beachId);
     const res = await this.account.fetch(`/api/shore?${q}`);
     if (!res.ok) throw await errorOf(res, 'could not find that beach');
     return (await res.json()) as Shore;

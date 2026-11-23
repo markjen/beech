@@ -59,6 +59,15 @@
   (ny/nx = 3/4) get sea rows added offshore and their objects moved up
   (`fitWorld`). The camera starts framed as before, and zooming out shows the
   whole sea.
+- **Stale tabs and the 32 × 32 world** (2026-11-23): a tab left open from
+  before the world grew loaded square saves, squeezed the sand into
+  32 × 24 and saved it back with the objects unmoved. Today's app then
+  padded the sea and moved the objects 8 m up the beach, so flags and rocks
+  floated off the land edge (seen on Rose's beach). Now the server refuses
+  non-square saves (426, "reload to save"), and `fitWorld` doesn't shift
+  objects that are already past the old world's edge, and folds any object
+  still off the beach back on in 8 m steps. Sand already squeezed by an old
+  tab can't be recovered, but it heals as the waves rework it.
 - **Water stability:** with 2 substeps per 30 Hz tick, a checkerboard mode
   grew in deep water. The fix is linear flux damping 0.5/s plus capping the
   depth used for wave speed at 0.9 m (wave speed ≤ 3 m/s). A unit test guards
@@ -250,6 +259,24 @@ branch, so the deploy job runs only there. Switch the default branch to
   `price`. The server has an `inventory` table (migration 2) and
   `GET /api/inventory` for owned, unexpired non-free items. Nothing writes to
   it yet.
+
+## More than one beach (added after the claw starter gifts)
+
+- See docs/MULTI_BEACH.md. Settings → "your beaches" lets you open one here,
+  rename it, set it on or off the shore, make it home, remove it, or make a
+  new one (allowance = 1 + extra beaches owned, cap 8).
+- **Each device shows one of your beaches** and runs its simulation. It's
+  remembered per device (`beech.activeBeach.v1`), so different devices run
+  different beaches at the same time, each saving its own. Opening another
+  beach saves this one and loads that one (an untouched beach if it's new).
+- Neighbors, requests, codes and the shore all follow the device's beach
+  (`?beach=`). Putting one of your own beach codes next to another links them
+  at once, with no request.
+- The bag counts non-free items across all your beaches. Each save sends
+  `X-Beach-Items`, and "N of M left" includes the other beaches' counts.
+- `npm run e2e:beaches`: two devices, two beaches, digging at once, linking
+  them, and remembering the choice per device. Needs DEV_AUTH for
+  `/api/dev/grant`.
 
 ## Mutual neighbors and the global beachfront (added after the bulldozer)
 

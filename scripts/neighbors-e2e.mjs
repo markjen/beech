@@ -64,7 +64,7 @@ await page.waitForSelector('#neighbor-left', { timeout: 8000 }).catch(async (e) 
 await page.fill('#neighbor-left', anaCode.toLowerCase());
 await page.click('button[data-act="add-left"]');
 await page.waitForFunction((n) => window.__beech.neighbors().state?.asked?.left?.name === n, anaName, { timeout: 15000 });
-check((await page.textContent('.account .neighbors'))?.includes(`waiting for ${anaName}`), 'Ben asked Ana; the sheet says it is waiting for her');
+check((await page.textContent('.account .neighbor-section'))?.includes(`waiting for ${anaName}`), 'Ben asked Ana; the sheet says it is waiting for her');
 check((await page.evaluate(() => window.__beech.neighbors().state.left)) === null, 'not neighbors until she accepts');
 const benCode = await page.evaluate(() => window.__beech.neighbors().state.code);
 await page.evaluate(() => window.__beech.sheet.hide());

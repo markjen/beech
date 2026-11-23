@@ -136,11 +136,7 @@ export class ClawMachine {
         return `<li><span class="dot" style="background:${CAPSULE[k]}"></span><b>${RARITY_NAME[k]} ${pct(this.pool!.odds[k])}</b> ${names}</li>`;
       })
       .join('');
-    const st = this.pool.starter;
-    const gifts = st
-      ? `<p class="claw-gifts">Your first goes are gifts: a ${prizeName(st.rare)}, then a ${prizeName(st.paid)} from the shop, and on your first go a day after that, a whole ${prizeName(st.beach).toLowerCase()}. After that:</p>`
-      : '';
-    this.oddsEl.innerHTML = `${gifts}<p>What's inside, and the chance of each:</p><ul>${rows}</ul>`;
+    this.oddsEl.innerHTML = `<p>What's inside, and the chance of each:</p><ul>${rows}</ul>`;
   }
 
   private drop(): void {

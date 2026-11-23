@@ -611,3 +611,11 @@ body.ambient-idle {
     right: auto;
   }
 }
+
+.beaches .beach-row.here .fav-name {
+  font-weight: 600;
+}
+
+.beaches .beach-row {
+  flex-wrap: wrap;
+}

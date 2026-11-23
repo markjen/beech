@@ -22,6 +22,8 @@ export class InventoryTray {
   /** how many of each non-free item you own, and how many are on the beach */
   private owned = new Map<string, number>();
   private placed = new Map<string, number>();
+  /** how many of each are on your other beaches (as of their last saves) */
+  private elsewhere = new Map<string, number>();
   private claw: ClawState = 'none';
   /** opens the claw machine (or the sign-in sheet) */
   onClaw: () => void = () => {};
@@ -62,6 +64,11 @@ export class InventoryTray {
     this.render();
   }
 
+  setElsewhere(m: Map<string, number>): void {
+    this.elsewhere = m;
+    this.render();
+  }
+
   setClaw(state: ClawState): void {
     if (state === this.claw) return;
     this.claw = state;
@@ -72,8 +79,9 @@ export class InventoryTray {
     return this.owned.get(id) ?? 0;
   }
 
+  /** on this beach, plus on your other beaches */
   private placedOf(id: string): number {
-    return this.placed.get(id) ?? 0;
+    return (this.placed.get(id) ?? 0) + (this.elsewhere.get(id) ?? 0);
   }
 
   /** Is there one left to put down? (free items: always) */
