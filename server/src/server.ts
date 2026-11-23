@@ -19,6 +19,11 @@
 //                        redeeming. Must match the admin service's (adminServer.ts).
 //                        Optional in development; set it in production (a
 //                        missing pepper logs a warning and still works).
+//   XSOLLA_PROJECT_ID, XSOLLA_API_KEY, XSOLLA_WEBHOOK_SECRET   web checkout (docs/WEB_PAYMENTS.md;
+//                        the key and webhook secret come from Secret Manager). All three
+//                        set: the web shop takes card payments. Any missing: it doesn't.
+//   XSOLLA_SANDBOX       "1": test payments only (Xsolla sandbox, test cards)
+//   WEB_CHECKOUT_RETURN_URL  where Pay Station returns to (default https://beech.markjen.com/)
 //   ALLOWED_ORIGINS      extra CORS origins, default the Capacitor app shells
 //   DEV_AUTH             "1" enables /api/auth/dev; refused when NODE_ENV=production
 //   ADMIN_DEV_PORT       local development only: also serve the admin console
@@ -43,6 +48,7 @@ import { openDbFromEnv } from './dbEnv.js';
 import { migrate } from './migrations.js';
 import { httpLogger, logEvent } from './observability.js';
 import { createSharePageHandler } from './shareMeta.js';
+import { xsollaFromEnv } from './xsolla.js';
 
 const env = process.env;
 const list = (v?: string) => (v ?? '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -57,6 +63,13 @@ if (devAuth && env.NODE_ENV === 'production') throw new Error('DEV_AUTH must nev
 const codePepper = env.GIFT_CODE_PEPPER ?? '';
 if (!codePepper && env.NODE_ENV === 'production')
   logEvent('admin_config', { warning: 'GIFT_CODE_PEPPER is not set: gift card codes are hashed without a pepper' }, 'WARNING');
+
+// Web checkout (docs/WEB_PAYMENTS.md): on only when fully configured, so the
+// server keeps starting after a merge before the Xsolla secrets exist.
+const xsolla = xsollaFromEnv(env);
+if (!xsolla.cfg && xsolla.missing.length < 3)
+  logEvent('web_checkout_config', { warning: `web checkout is off: ${xsolla.missing.join(', ')} not set` }, 'WARNING');
+logEvent('web_checkout_config', { enabled: !!xsolla.cfg, sandbox: !!xsolla.cfg?.sandbox });
 
 const adminDevPort = env.ADMIN_DEV_PORT ? Number(env.ADMIN_DEV_PORT) : null;
 if (adminDevPort && env.NODE_ENV === 'production') throw new Error('ADMIN_DEV_PORT is for local development only');
@@ -82,6 +95,7 @@ const api = createApp(db, {
   androidPackage: env.ANDROID_PACKAGE || undefined,
   googleRtdn: env.GOOGLE_RTDN_AUDIENCE && env.GOOGLE_RTDN_SERVICE_ACCOUNT ? { audience: env.GOOGLE_RTDN_AUDIENCE, email: env.GOOGLE_RTDN_SERVICE_ACCOUNT } : undefined,
   codePepper,
+  xsolla: xsolla.cfg ?? undefined,
 });
 
 const publicDir = path.resolve(env.PUBLIC_DIR ?? path.join(here, '..', '..', 'dist'));

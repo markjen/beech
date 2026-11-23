@@ -20,6 +20,9 @@
 //   POST   /api/gifts            { code, item }            -> { item, to: { name, code } }
 //   GET    /api/inventory                                  -> { items: [{ item, quantity, source, ... }] }
 //   POST   /api/dig-finds        { pathM, durationMs }     -> { found, item?, rarity?, findsToday, findsLeft, nextFindsAt }
+//   POST   /api/store/web-checkout { productId }           -> { order, url }  (web only; Xsolla Pay Station)
+//   GET    /api/store/web-orders/:id                       -> { order }
+//   POST   /api/store/xsolla/webhook                       Xsolla's signed webhooks (no session)
 //
 // Auth: `Authorization: Bearer <token>`; only the token's SHA-256 is stored.
 
@@ -55,6 +58,7 @@ import {
   shortfall,
 } from './checkpoints.js';
 import { createRateLimiter, logEvent, parseClientEvent, routeLabel } from './observability.js';
+import { createPaymentToken, payStationUrl, verifyWebhookSignature, xsollaError, type CreateToken, type XsollaConfig, type XsollaWebhook } from './xsolla.js';
 
 export interface AppConfig {
   googleClientIds: string[];
@@ -83,6 +87,13 @@ export interface AppConfig {
     appleRefund?: (signedPayload: string, bundleId: string) => Promise<string | null>;
     googleVoided?: typeof googleVoided;
   };
+  /**
+   * Web checkout through Xsolla (docs/WEB_PAYMENTS.md). Unset: the web shop
+   * keeps sending people to the apps.
+   */
+  xsolla?: XsollaConfig;
+  /** injectable for tests: how a Pay Station payment token is made */
+  xsollaToken?: CreateToken;
 }
 
 export interface User {
@@ -1386,7 +1397,11 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   };
 
   app.get('/store/products', (c) =>
-    c.json({ products: PRODUCTS.map((p) => ({ id: p.id, name: p.name, grants: p.grants, usd: p.usd, blurb: p.blurb, featured: !!p.featured })) }),
+    c.json({
+      products: PRODUCTS.map((p) => ({ id: p.id, name: p.name, grants: p.grants, usd: p.usd, blurb: p.blurb, featured: !!p.featured })),
+      // the web shop can take payment itself (Xsolla), instead of pointing at the apps
+      webCheckout: !!cfg.xsolla,
+    }),
   );
 
   /**
@@ -1437,7 +1452,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   });
 
   /** A refund: the purchase is marked, and what it granted expires now. */
-  const refund = async (store: 'apple' | 'google', transactionId: string) => {
+  const refund = async (store: 'apple' | 'google' | 'xsolla', transactionId: string) => {
     const now = clock();
     await db.query(
       `WITH p AS (UPDATE purchases SET refunded_at = $3 WHERE store = $1 AND transaction_id = $2 AND refunded_at IS NULL RETURNING id)
@@ -1470,6 +1485,214 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       return fail(401, 'not from Google');
     }
     if (order) await refund('google', order);
+    return c.body(null, 204);
+  });
+
+  // ---------------------------------------------------------------- web checkout (Xsolla)
+  // docs/WEB_PAYMENTS.md. The browser shop pays through Xsolla Pay Station
+  // (Xsolla is the merchant of record); the apps never use this — they sell
+  // through Apple and Google only. A paid order grants exactly what a store
+  // purchase grants, through the same purchases + inventory rows.
+  const WEB_ORDER_TTL_MS = 24 * 3600 * 1000; // Xsolla's payment tokens last 24 hours
+  const xsollaToken = cfg.xsollaToken ?? createPaymentToken;
+  const checkoutLimiter = createRateLimiter(10); // checkouts started, per user per minute
+
+  interface WebOrderRow {
+    id: string;
+    user_id: string;
+    product_id: string;
+    amount_cents: number;
+    provider_order_id: string | null;
+    sandbox: boolean;
+    status: string;
+    created_at: string | number;
+    paid_at: string | number | null;
+  }
+  /** an unpaid order past its token's life reads as expired (no sweeper needed) */
+  const orderView = (o: WebOrderRow) => {
+    const created = Number(o.created_at);
+    const status = o.status === 'created' && clock() - created > WEB_ORDER_TTL_MS ? 'expired' : o.status;
+    return {
+      id: o.id,
+      productId: o.product_id,
+      amountCents: Number(o.amount_cents),
+      status,
+      createdAt: created,
+      paidAt: o.paid_at === null ? null : Number(o.paid_at),
+      grants: productById(o.product_id)?.grants ?? [],
+    };
+  };
+  const isUuid = (s: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+
+  app.post('/store/web-checkout', requireUser, async (c) => {
+    if (!cfg.xsolla) fail(404, 'buying on the web is not open yet: buy in the beech app');
+    const me = c.get('user').id;
+    if (!checkoutLimiter(me)) return c.json({ error: 'slow down' }, 429);
+    const { productId, promoCode } = await body<{ productId?: string; promoCode?: string }>(c);
+    const product = productById(productId ?? '');
+    if (!product) fail(404, 'no such product');
+    // Xsolla charges its catalog price, so a promo from our own list can't
+    // discount a card payment yet (docs/WEB_PAYMENTS.md, "Promo codes").
+    if (promoCode) fail(400, 'promo codes work with credit only for now: clear the code to pay by card');
+    const id = crypto.randomUUID();
+    const now = clock();
+    const amount = Math.round(product!.usd * 100);
+    await db.query(
+      'INSERT INTO web_orders (id, user_id, product_id, amount_cents, sandbox, created_at) VALUES ($1, $2, $3, $4, $5, $6)',
+      [id, me, product!.id, amount, cfg.xsolla!.sandbox, now],
+    );
+    let t: { token: string; orderId: string };
+    try {
+      t = await xsollaToken(cfg.xsolla!, {
+        userId: me,
+        sku: product!.id,
+        webOrderId: id,
+        ip: (c.req.header('x-forwarded-for') ?? '').split(',')[0]?.trim() || undefined,
+      });
+    } catch (e) {
+      // the order never got a token: nothing can pay it, so drop it
+      await db.query('DELETE FROM web_orders WHERE id = $1', [id]);
+      logEvent('web_checkout_error', { product: product!.id, message: (e as Error).message }, 'ERROR');
+      return c.json({ error: 'the checkout could not be opened right now: try again in a minute' }, 502);
+    }
+    await db.query('UPDATE web_orders SET provider_order_id = $2 WHERE id = $1', [id, t!.orderId]);
+    logEvent('web_checkout', { product: product!.id, order: id, sandbox: cfg.xsolla!.sandbox });
+    return c.json({ order: id, url: payStationUrl(t!.token, cfg.xsolla!.sandbox) });
+  });
+
+  app.get('/store/web-orders/:id', requireUser, async (c) => {
+    const id = c.req.param('id') ?? '';
+    if (!isUuid(id)) fail(404, 'no such order');
+    const rows = await db.query<WebOrderRow>('SELECT * FROM web_orders WHERE id = $1 AND user_id = $2', [id, c.get('user').id]);
+    if (!rows[0]) fail(404, 'no such order');
+    return c.json({ order: orderView(rows[0]) });
+  });
+
+  /**
+   * Xsolla's webhooks. Not session-authenticated: the signature is the
+   * authentication, checked over the raw body before anything is parsed.
+   * Answers 204 to anything verified and handled (including a repeat, so
+   * Xsolla's retries are harmless), 400 with Xsolla's error body otherwise.
+   */
+  app.post('/store/xsolla/webhook', async (c) => {
+    if (!cfg.xsolla) fail(404, 'not set up');
+    const x = cfg.xsolla!;
+    const raw = new Uint8Array(await c.req.arrayBuffer());
+    if (!verifyWebhookSignature(raw, c.req.header('Authorization'), x.webhookSecret)) {
+      logEvent('xsolla_webhook', { outcome: 'bad_signature' }, 'WARNING');
+      return c.json(xsollaError('INVALID_SIGNATURE', 'Invalid signature'), 400);
+    }
+    let w: XsollaWebhook;
+    try {
+      w = JSON.parse(new TextDecoder().decode(raw)) as XsollaWebhook;
+    } catch {
+      return c.json(xsollaError('INVALID_PARAMETER', 'Invalid JSON'), 400);
+    }
+    const type = w.notification_type ?? '';
+    const log = (outcome: string, extra: Record<string, unknown> = {}, sev: 'INFO' | 'WARNING' | 'ERROR' = 'INFO') =>
+      logEvent('xsolla_webhook', { type, outcome, order: w.order?.id ?? null, ...extra }, sev);
+
+    const userExists = async (id: string | undefined) =>
+      !!id && isUuid(id) && (await db.query<{ id: string }>('SELECT id FROM users WHERE id = $1', [id])).length > 0;
+
+    if (type === 'user_validation') {
+      if (!(await userExists(w.user?.id ?? w.user?.external_id))) {
+        log('invalid_user', {}, 'WARNING');
+        return c.json(xsollaError('INVALID_USER', 'Invalid user'), 400);
+      }
+      return c.body(null, 204);
+    }
+
+    // find our order: by Xsolla's order id, else by the id we sent it
+    const ours = w.custom_parameters?.web_order ?? w.transaction?.external_id ?? w.billing?.transaction?.external_id;
+    const providerId = w.order?.id !== undefined ? String(w.order.id) : null;
+    const find = async () => {
+      if (providerId) {
+        const r = await db.query<WebOrderRow>('SELECT * FROM web_orders WHERE provider_order_id = $1', [providerId]);
+        if (r[0]) return r[0];
+      }
+      if (ours && isUuid(ours)) return (await db.query<WebOrderRow>('SELECT * FROM web_orders WHERE id = $1', [ours]))[0];
+      return undefined;
+    };
+
+    if (type === 'order_paid') {
+      const o = await find();
+      if (!o || !providerId || o.provider_order_id !== providerId) {
+        log('unknown_order', {}, 'ERROR');
+        return c.json(xsollaError('INCORRECT_INVOICE', 'Unknown order'), 400);
+      }
+      const buyer = w.user?.external_id ?? w.user?.id;
+      if (buyer !== o.user_id) {
+        log('wrong_user', {}, 'ERROR');
+        return c.json(xsollaError('INVALID_USER', 'Invalid user'), 400);
+      }
+      // a sandbox (test card) payment never grants in a live setup
+      const testPayment = w.order?.mode === 'sandbox' || w.billing?.transaction?.dry_run === 1 || w.transaction?.dry_run === 1;
+      if (testPayment && !x.sandbox) {
+        log('sandbox_payment_on_live', {}, 'ERROR');
+        return c.json(xsollaError('INVALID_PARAMETER', 'Sandbox payment'), 400);
+      }
+      // what was paid for must be exactly what we sold: the product, once,
+      // and (in US dollars) our price
+      const product = productById(o.product_id)!;
+      const items = w.items ?? [];
+      if (items.length !== 1 || items[0].sku !== product.id || Number(items[0].quantity ?? 1) !== 1) {
+        log('wrong_items', { items: items.map((i) => i.sku) }, 'ERROR');
+        return c.json(xsollaError('INCORRECT_INVOICE', 'Unexpected items'), 400);
+      }
+      const currency = (w.order?.currency ?? '').toUpperCase();
+      const paidCents = Math.round(Number(w.order?.amount ?? NaN) * 100);
+      if (currency === 'USD' && paidCents !== Number(o.amount_cents)) {
+        log('wrong_amount', { paid_cents: paidCents, want_cents: Number(o.amount_cents) }, 'ERROR');
+        return c.json(xsollaError('INCORRECT_AMOUNT', 'Incorrect amount'), 400);
+      }
+      if (currency && currency !== 'USD') log('local_currency', { currency });
+      const now = clock();
+      const grantItems = product.grants.map((g) => g.item);
+      const qty = product.grants.map((g) => g.quantity);
+      // One statement: record the payment once, mark the order paid, grant.
+      // A retried webhook hits the purchases unique key and changes nothing.
+      // An order Xsolla already canceled is not revived by a late payment.
+      const granted = await db.query<{ item_id: string }>(
+        `WITH p AS (
+           INSERT INTO purchases (user_id, store, transaction_id, product_id, environment, purchased_at, granted_at)
+           SELECT $1, 'xsolla', $2, $3, $4, $5, $5
+            WHERE EXISTS (SELECT 1 FROM web_orders WHERE id = $6 AND status IN ('created', 'paid'))
+           ON CONFLICT (store, transaction_id) DO NOTHING
+           RETURNING id, user_id
+         ), o AS (
+           UPDATE web_orders SET status = 'paid', paid_at = $5 WHERE id = $6 AND status = 'created' AND EXISTS (SELECT 1 FROM p)
+           RETURNING id
+         )
+         INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at, purchase_id)
+         SELECT p.user_id, g.item, g.qty, 'shop', $5, p.id FROM p, unnest($7::text[], $8::int[]) AS g(item, qty)
+         RETURNING item_id`,
+        [o.user_id, providerId, product.id, testPayment ? 'Sandbox' : 'Production', now, o.id, grantItems, qty],
+      );
+      log(granted.length ? 'granted' : 'already', { product: product.id });
+      return c.body(null, 204);
+    }
+
+    if (type === 'order_canceled' || type === 'refund') {
+      const o = await find();
+      if (!o) {
+        log('unknown_order', {}, 'WARNING');
+        // nothing of ours to take back; don't make Xsolla retry for days
+        return c.body(null, 204);
+      }
+      if (o.provider_order_id) await refund('xsolla', o.provider_order_id);
+      await db.query(
+        `UPDATE web_orders SET status = CASE WHEN status = 'paid' THEN 'refunded' ELSE 'canceled' END
+          WHERE id = $1 AND status IN ('created', 'paid')`,
+        [o.id],
+      );
+      log('revoked', { was: o.status });
+      return c.body(null, 204);
+    }
+
+    // payment, partial refunds, disputes and the rest: acknowledged, acted
+    // on elsewhere (order_paid / order_canceled carry what we need)
+    log('ignored');
     return c.body(null, 204);
   });
 
