@@ -253,7 +253,7 @@ export class BeachObjects {
     let bestD = radius;
     for (const l of this.live.values()) {
       const reach = l.data.kind === 'driftwood' ? l.data.size / 2 : l.data.size;
-      const d = Math.hypot(l.data.x - x, l.data.y - y) - reach * 0.6;
+      const d = Math.sqrt((l.data.x - x) * (l.data.x - x) + (l.data.y - y) * (l.data.y - y)) - reach * 0.6;
       if (d < bestD) {
         bestD = d;
         best = l.data;
@@ -267,7 +267,7 @@ export class BeachObjects {
     const out: PlacedObject[] = [];
     for (const l of this.live.values()) {
       const reach = l.data.kind === 'driftwood' ? l.data.size / 2 : l.data.size;
-      if (Math.hypot(l.data.x - x, l.data.y - y) - reach * 0.6 <= radius) out.push({ ...l.data });
+      if (Math.sqrt((l.data.x - x) * (l.data.x - x) + (l.data.y - y) * (l.data.y - y)) - reach * 0.6 <= radius) out.push({ ...l.data });
     }
     return out;
   }
@@ -366,7 +366,7 @@ export class BeachObjects {
       if (b === 'tumble') {
         const k = this.cellAt(o.x, o.y);
         const d = water[k];
-        const speed = Math.hypot(vx[k], vy[k]);
+        const speed = Math.sqrt(vx[k] * vx[k] + vy[k] * vy[k]);
         const rolling = d > o.size * 0.25 && speed > TUMBLE_SPEED;
         if (rolling) {
           // rolled along at a fraction of the flow, nudged landward by the waves

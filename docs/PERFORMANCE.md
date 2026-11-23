@@ -30,7 +30,8 @@ few seconds.
 | `thingDrawCalls` | count | draw calls the things and their glows take: one per distinct look, one per glow material (`ObjectView.drawCalls`) |
 | `touchedPerFrame` | count | things whose matrices were rewritten in the last frame (on a still beach: just the flags) |
 | `mainThingsMsPerFrame` | timing | main-thread ms per frame in `ObjectView.set/update/touch` |
-| `workerTickMs` | timing | the simulation's tick in the worker (median) |
+| `sim.<tier>.msPerTick` | timing | the simulation's tick per grid tier, measured in Node with the app's settings (`scripts/perf-sim.mjs`, also `npm run perf:sim` for the phase breakdown) |
+| `workerTickMs` | info | the tick as the page's worker reports it. Not budgeted: the software GPU keeps every core busy, so it mostly measures waiting for CPU time |
 | `fps`, `heapMB` | timing | for information (software GPU: fps is far below a real device) |
 | `bundle.*` | count | JavaScript size, raw and gzipped |
 
@@ -79,9 +80,20 @@ much a beach holds"):
   twinkling in the vertex shader, so there's no per-glow JavaScript each
   frame. 2000 things: 315 → 163 draw calls a frame.
 
+- **The simulation tick, −40 %** (`src/sim/beachSim.ts`), measured with
+  `npm run perf:sim` (by phase) and confirmed in Chromium: the water step
+  skips the dry rows above the swash (with flows and velocities zeroed as rows
+  drop out, so the result is identical); erosion skips its slope and speed
+  maths in water too deep to carry sand; `Math.hypot` (slow in V8) became
+  `Math.sqrt` everywhere in the sim. Medium grid: 10.5 → 6.1 ms a tick (in
+  Chromium 8.8 → 6.1 ms).
+
 ## Ideas, if a budget gets tight
 
 - Far neighbor beaches could skip their smallest things (shells, sea glass,
   pebbles).
-- The worker's tick is mostly the water: the grid tiers in `src/config.ts`
-  set its cost.
+- The tick is now water 45 %, slump 20 %, wet/foam 13 %, erosion 13 %.
+  Slump and wet/foam visit every cell every tick; tracking which tiles
+  changed (a dirty mask) would let them skip still, dry sand, but every
+  writer of `sand` would have to mark it.
+- The grid tiers in `src/config.ts` set the sim's cost overall.

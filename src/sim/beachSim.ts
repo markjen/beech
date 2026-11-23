@@ -107,6 +107,8 @@ export class BeachSim {
   private etaRow: Float32Array | null = null;
   readonly seed: number;
 
+  /** the highest row the water step covered last time (see flow) */
+  private flowTop = Number.MAX_SAFE_INTEGER;
   readonly undo = new UndoStack(UNDO_DEPTH);
   /** rocks, driftwood and future items on the sand */
   readonly objects: BeachObjects;
@@ -280,7 +282,33 @@ export class BeachSim {
     const sponge = WAVES.spongeRows;
     const area = dx * dx;
 
-    for (let j = 0; j < ny; j++) {
+    // Rows above the highest wet one can't change this step (water moves at
+    // most one cell per substep), so both passes stop one row above it. Rows
+    // that drop out of that range get their fluxes and velocities zeroed, so
+    // what's skipped is always exactly "dry and still".
+    let wetTop = -1;
+    for (let j = ny - 1; j >= 0 && wetTop < 0; j--) {
+      for (let k = j * nx, e = k + nx; k < e; k++) {
+        if (water[k] > 0) {
+          wetTop = j;
+          break;
+        }
+      }
+    }
+    const top = Math.min(ny - 1, wetTop + 1);
+    if (top < this.flowTop) {
+      const from = (top + 1) * nx;
+      const to = (this.flowTop + 1) * nx;
+      fL.fill(0, from, to);
+      fR.fill(0, from, to);
+      fD.fill(0, from, to);
+      fU.fill(0, from, to);
+      vx.fill(0, from, to);
+      vy.fill(0, from, to);
+    }
+    this.flowTop = top;
+
+    for (let j = 0; j <= top; j++) {
       for (let i = 0; i < nx; i++) {
         const k = j * nx + i;
         const d = water[k];
@@ -345,7 +373,7 @@ export class BeachSim {
       }
     }
 
-    for (let j = 0; j < ny; j++) {
+    for (let j = 0; j <= top; j++) {
       for (let i = 0; i < nx; i++) {
         const k = j * nx + i;
         const inL = i > 0 ? fR[k - 1] : 0;
@@ -365,10 +393,11 @@ export class BeachSim {
           const wy = 0.5 * (inD - fD[k] + fU[k] - inU);
           let ux = wx / (dx * dv);
           let uy = wy / (dx * dv);
-          const sp = Math.hypot(ux, uy);
-          if (sp > 4) {
-            ux *= 4 / sp;
-            uy *= 4 / sp;
+          const sp2 = ux * ux + uy * uy;
+          if (sp2 > 16) {
+            const f = 4 / Math.sqrt(sp2);
+            ux *= f;
+            uy *= f;
           }
           vx[k] = ux;
           vy[k] = uy;
@@ -423,13 +452,17 @@ export class BeachSim {
         // The rest profile is in equilibrium with the waves, so capacity is
         // driven by the slope of the *disturbance* (what the player made).
         // That keeps the natural beach stable while castles and pits erode.
-        const gx = (sand[k + 1] - rest[k + 1] - sand[k - 1] + rest[k - 1]) / (2 * dx);
-        const gy = (sand[k + nx] - rest[k + nx] - sand[k - nx] + rest[k - nx]) / (2 * dx);
-        const g2 = gx * gx + gy * gy;
-        const sinA = Math.max(minS, Math.sqrt(g2 / (1 + g2)));
-        const speed = Math.hypot(vx[k], vy[k]);
         const depthF = Math.min(1, d / 0.05) * Math.max(0, Math.min(1, 1 - (d - 0.35) / 0.6));
-        const C = Kc * sinA * speed * depthF;
+        let C = 0;
+        // deep water (depthF 0) carries nothing: skip the slope and speed
+        if (depthF > 0) {
+          const gx = (sand[k + 1] - rest[k + 1] - sand[k - 1] + rest[k - 1]) / (2 * dx);
+          const gy = (sand[k + nx] - rest[k + nx] - sand[k - nx] + rest[k - nx]) / (2 * dx);
+          const g2 = gx * gx + gy * gy;
+          const sinA = Math.max(minS, Math.sqrt(g2 / (1 + g2)));
+          const speed = Math.sqrt(vx[k] * vx[k] + vy[k] * vy[k]);
+          C = Kc * sinA * speed * depthF;
+        }
         if (C > s) {
           const amt = Math.min(Ks * (C - s) * dt, Math.max(0, sand[k] - bottom[k]));
           sand[k] -= amt;
@@ -576,11 +609,11 @@ export class BeachSim {
           // moving landward) and on steep incoming bores
           const up = vy[k];
           let f = smoothstep(0.25, 0.9, up) * (1 - smoothstep(0.03, 0.12, d));
-          f = Math.max(f, smoothstep(0.6, 1.8, Math.hypot(vx[k], up)) * (1 - smoothstep(0.02, 0.3, d)) * 0.6);
+          f = Math.max(f, smoothstep(0.6, 1.8, Math.sqrt(vx[k] * vx[k] + up * up)) * (1 - smoothstep(0.02, 0.3, d)) * 0.6);
           if (i > 0 && i < nx - 1 && j > 0 && j < ny - 1 && d > 0.015 && up > 0.05) {
             const ex = (sand[k + 1] + water[k + 1] - sand[k - 1] - water[k - 1]) / (2 * dx);
             const ey = (sand[k + nx] + water[k + nx] - sand[k - nx] - water[k - nx]) / (2 * dx);
-            f = Math.max(f, smoothstep(0.06, 0.2, Math.hypot(ex, ey)) * 0.85);
+            f = Math.max(f, smoothstep(0.06, 0.2, Math.sqrt(ex * ex + ey * ey)) * 0.85);
           }
           const fo = foam[k] * foamK;
           foam[k] = fo > f ? fo : f;
@@ -729,14 +762,14 @@ export class BeachSim {
     if (!st) return;
     const dxm = st.x - st.lastX;
     const dym = st.y - st.lastY;
-    const dist = Math.hypot(dxm, dym);
+    const dist = Math.sqrt(dxm * dxm + dym * dym);
     const speed = dist / dt;
     if (speed < BRUSH.moveSpeed) st.hold += dt;
     else st.hold = Math.max(0, st.hold - dt * 3);
     if (dist > 1e-6) {
       st.dirX = st.dirX * 0.5 + (dxm / dist) * 0.5;
       st.dirY = st.dirY * 0.5 + (dym / dist) * 0.5;
-      const dl = Math.hypot(st.dirX, st.dirY) || 1;
+      const dl = Math.sqrt(st.dirX * st.dirX + st.dirY * st.dirY) || 1;
       st.dirX /= dl;
       st.dirY /= dl;
     }
@@ -800,7 +833,7 @@ export class BeachSim {
     if (mode === 'smooth') {
       for (let j = Math.max(1, j0); j <= Math.min(ny - 2, j1); j++) {
         for (let i = Math.max(1, i0); i <= Math.min(nx - 2, i1); i++) {
-          const q = Math.hypot(i - ci, j - cj) / rc;
+          const q = Math.sqrt((i - ci) * (i - ci) + (j - cj) * (j - cj)) / rc;
           if (q >= 1) continue;
           const w = (1 - q * q) * (1 - q * q);
           const k = j * nx + i;
@@ -818,7 +851,7 @@ export class BeachSim {
       const rb = rc * BRUSH.flattenWidth;
       for (let j = Math.max(0, Math.floor(cj - rb)); j <= Math.min(ny - 1, Math.ceil(cj + rb)); j++) {
         for (let i = Math.max(0, Math.floor(ci - rb)); i <= Math.min(nx - 1, Math.ceil(ci + rb)); i++) {
-          const q = Math.hypot(i - ci, j - cj) / rb;
+          const q = Math.sqrt((i - ci) * (i - ci) + (j - cj) * (j - cj)) / rb;
           if (q >= 1) continue;
           const w = q < 0.6 ? 1 : 1 - smoothstep(0.6, 1, q);
           const k = j * nx + i;
@@ -832,7 +865,7 @@ export class BeachSim {
     if (mode === 'pile') {
       for (let j = j0; j <= j1; j++) {
         for (let i = i0; i <= i1; i++) {
-          const q = Math.hypot(i - ci, j - cj) / rc;
+          const q = Math.sqrt((i - ci) * (i - ci) + (j - cj) * (j - cj)) / rc;
           if (q >= 1) continue;
           const w = (1 - q * q) * (1 - q * q);
           sand[j * nx + i] += amount * w * 0.8;
@@ -845,7 +878,7 @@ export class BeachSim {
     let removed = 0;
     for (let j = j0; j <= j1; j++) {
       for (let i = i0; i <= i1; i++) {
-        const q = Math.hypot(i - ci, j - cj) / rc;
+        const q = Math.sqrt((i - ci) * (i - ci) + (j - cj) * (j - cj)) / rc;
         if (q >= 1) continue;
         const k = j * nx + i;
         const w = (1 - q * q) * (1 - q * q);
@@ -864,7 +897,7 @@ export class BeachSim {
       for (let i = i0; i <= i1; i++) {
         const di = i - ci;
         const dj = j - cj;
-        const dist = Math.hypot(di, dj);
+        const dist = Math.sqrt(di * di + dj * dj);
         const q = dist / rc;
         let w = 0;
         if (q > 0.85 && q < BRUSH.rimOuter) {

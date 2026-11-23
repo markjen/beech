@@ -83,6 +83,26 @@ function bundle() {
   return { mainJsKB: main.bytes / 1024, mainJsGzipKB: main.gz / 1024, totalJsKB: total / 1024, totalJsGzipKB: totalGz / 1024, jsFiles: js.length };
 }
 
+// ------------------------------------------------------------------ the simulation alone
+// The browser's own tick number is unreliable here: the software GPU keeps
+// every core busy, so the worker mostly measures waiting for a turn. The
+// sim's real cost is measured in Node, on its own (scripts/perf-sim.mjs).
+let sim = null;
+if (!opt['no-sim']) {
+  const tmp = path.join(root, `.perf-sim-${process.pid}.json`);
+  try {
+    execSync(`node ${JSON.stringify(path.join(root, 'scripts/perf-sim.mjs'))} --ticks ${Number(opt['sim-ticks'] ?? 200)} --json ${JSON.stringify(tmp)}`, { stdio: ['ignore', 'ignore', 'inherit'] });
+    sim = JSON.parse(readFileSync(tmp, 'utf8'));
+  } finally {
+    try {
+      execSync(`rm -f ${JSON.stringify(tmp)}`);
+    } catch {
+      /* gone already */
+    }
+  }
+  for (const [tier, r] of Object.entries(sim)) say(`perf: sim ${tier} (${r.grid}) ${r.msPerTick.toFixed(2)} ms a tick`);
+}
+
 // ------------------------------------------------------------------ the browser
 const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 });
@@ -228,13 +248,14 @@ const sha = (() => {
     return process.env.GITHUB_SHA?.slice(0, 7) ?? 'unknown';
   }
 })();
-const result = { sha, date: new Date().toISOString(), throttle: Number(opt.throttle ?? 1), seconds: SECONDS, bundle: bundle(), scenes, pageErrors };
+const result = { sha, date: new Date().toISOString(), throttle: Number(opt.throttle ?? 1), seconds: SECONDS, bundle: bundle(), sim, scenes, pageErrors };
 if (opt.out) writeFileSync(opt.out, `${JSON.stringify(result, null, 2)}\n`);
 
 // metric paths: "bundle.mainJsGzipKB", "scenes.2000.drawCallsPerFrame"
 const get = (res, p) => {
   const [a, b, c] = p.split('.');
   if (a === 'bundle') return res.bundle?.[b];
+  if (a === 'sim') return res.sim?.[b]?.[c];
   if (a === 'scenes') return res.scenes.find((s) => s.n === Number(b))?.[c];
   return undefined;
 };
@@ -282,6 +303,13 @@ for (const s of scenes) md += `| ${s.n} | ${metrics.map((m) => `${fmt(s[m])}${ba
 if (result.bundle) {
   const b = result.bundle;
   md += `\nBundle: main ${b.mainJsKB.toFixed(0)} KB (${b.mainJsGzipKB.toFixed(0)} KB gzip${base ? ` ${delta('bundle.mainJsGzipKB')}` : ''}), all JS ${b.totalJsKB.toFixed(0)} KB (${b.totalJsGzipKB.toFixed(0)} KB gzip) in ${b.jsFiles} files.\n`;
+}
+if (result.sim) {
+  md += `\nSimulation tick in Node (as the app runs it: waves, tide, erosion, healing, seepage):\n\n| tier | grid | ms a tick | top phases |\n|---|---|---|---|\n`;
+  for (const [tier, r] of Object.entries(result.sim)) {
+    const top = Object.entries(r.phases).sort((x, y) => y[1] - x[1]).slice(0, 4).map(([k, v]) => `${k} ${v.toFixed(2)}`).join(', ');
+    md += `| ${tier} | ${r.grid} | ${r.msPerTick.toFixed(2)}${base ? ` <sub>${delta(`sim.${tier}.msPerTick`)}</sub>` : ''} | ${top} |\n`;
+  }
 }
 if (rows.length) md += `\n| budget | value | max | |\n|---|---|---|---|\n${rows.map((r) => `| ${r.join(' | ')} |`).join('\n')}\n`;
 if (base) md += `\nChanges are against ${base.sha} (${base.date.slice(0, 10)}).\n`;

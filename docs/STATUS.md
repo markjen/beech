@@ -444,6 +444,12 @@ have loose limits. The Performance workflow runs it on every push to main, on
 pull requests that touch the app, and every Monday, keeps the results for 90
 days, and shows the change since the last run on main in the job summary.
 Details in [PERFORMANCE.md](PERFORMANCE.md).
+- Glows are instanced too (2000 things: 315 → 163 draw calls a frame), and
+  the simulation's tick is about 40 % faster (medium grid 10.5 → 6.1 ms in
+  Node, 8.8 → 6.1 ms in Chromium): the water step skips dry rows, erosion
+  skips deep water, and `Math.hypot` is gone from the sim. The sim's tick
+  is budgeted from a Node benchmark (`npm run perf:sim`); the in-page number
+  isn't, as the software GPU starves the worker of CPU.
 
 ## How much a beach holds (2026-11-23)
 

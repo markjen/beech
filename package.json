@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit",
     "beach-file": "node scripts/beach-file.mjs",
     "perf": "node scripts/perf.mjs",
+    "perf:sim": "node scripts/perf-sim.mjs",
     "test": "vitest run",
     "smoke": "node scripts/smoke.mjs",
     "icons": "node scripts/make-icons.mjs",

@@ -359,3 +359,26 @@ describe('importing a beach', () => {
     }
   });
 });
+
+describe('the water step skips dry rows above the swash', () => {
+  it('still moves water high up the beach (a seeped hole), conserves it, and leaves dried rows still', () => {
+    const sim = new BeachSim(grid, 2, { closed: true, waves: false, erosion: false, healing: false, seep: false });
+    // a pond well above the waterline, on a flat patch so it spreads
+    const j0 = Math.floor((PROFILE.shoreline + 9) / sim.dx);
+    const i0 = Math.floor(sim.nx / 2);
+    for (let j = j0 - 3; j <= j0 + 3; j++) for (let i = i0 - 3; i <= i0 + 3; i++) sim.water[j * sim.nx + i] = 0.2;
+    const before = waterSum(sim);
+    for (let s = 0; s < 120; s++) sim.step(DT);
+    // it ran downhill toward the sea, and none was made or lost
+    let lowest = sim.ny;
+    for (let j = 0; j < sim.ny; j++) for (let i = 0; i < sim.nx; i++) if (sim.water[j * sim.nx + i] > 1e-4 && j < lowest) lowest = j;
+    expect(lowest).toBeLessThan(j0 - 3);
+    expect(waterSum(sim)).toBeCloseTo(before, 3);
+    // take the water away: once it's gone, nothing up there is still moving
+    sim.water.fill(0);
+    for (let s = 0; s < 4; s++) sim.step(DT);
+    let moving = 0;
+    for (let k = 0; k < sim.n; k++) if (sim.vx[k] !== 0 || sim.vy[k] !== 0) moving++;
+    expect(moving).toBe(0);
+  });
+});
