@@ -35,6 +35,34 @@ export const POOLS: Record<string, Pool> = {
   },
 };
 
+/**
+ * Starter gifts: everyone's first goes on the claw machine give the same
+ * things, and the machine says so up front (the published odds apply to
+ * every other go):
+ *   go 1                          a rare find
+ *   go 2                          something from the shop (normally paid)
+ *   first go a day after go 1     a whole extra beach (once)
+ */
+export const STARTER = {
+  rare: { item: 'starfish', rarity: 'rare' as Rarity },
+  paid: { item: 'deckchair', rarity: 'rare' as Rarity },
+  beach: { item: 'beach', rarity: 'legendary' as Rarity },
+  beachAfterMs: 24 * 60 * 60 * 1000,
+};
+
+/** The prize a go gives if it's a starter gift, else null (a normal draw). */
+export function starterPrize(
+  go: number,
+  firstGoAt: number | null,
+  now: number,
+  hadBeach: boolean,
+): { item: string; rarity: Rarity } | null {
+  if (go === 1) return STARTER.rare;
+  if (go === 2) return STARTER.paid;
+  if (!hadBeach && firstGoAt !== null && now - firstGoAt >= STARTER.beachAfterMs) return STARTER.beach;
+  return null;
+}
+
 /** Draw from a pool. `rand` returns [0, 1); the server uses crypto randomness. */
 export function draw(pool: Pool, rand: () => number = cryptoRandom): { item: string; rarity: Rarity } {
   const order: Rarity[] = ['legendary', 'rare', 'common'];

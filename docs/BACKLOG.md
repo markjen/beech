@@ -37,6 +37,11 @@ _(nothing right now)_
 
 ## Up next (engineering)
 
+- [ ] **More than one beach**: design in [MULTI_BEACH.md](MULTI_BEACH.md),
+  four phases (data model and API → beaches list → connected beaches →
+  shop). Owner decisions are listed at the end of that doc. People can
+  already win an extra beach from the claw machine.
+
 - [ ] **Release setup for native sign-in** (DevOps): Android and iOS OAuth
   clients, build env vars, the Info.plist URL scheme, the Apple capability,
   and server client IDs. Steps are in BACKEND.md, "Phone apps". Then test on
@@ -87,6 +92,9 @@ _(nothing right now)_
   shower night.
 
 ## Done (recent)
+
+- [x] **Claw starter gifts** (rare, shop item, extra beach after a day),
+  the Deckchair, and the multi-beach design (2026-11-23).
 
 - [x] **Phone fixes (#4, #5, #6); claw cooldown 5 min doubling to a day;
   bigger shells** (2026-11-22).

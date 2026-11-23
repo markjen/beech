@@ -23,7 +23,7 @@
 import { Hono, type Context } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 
-import { POOLS, cooldownAfter, draw, pullDay } from './pulls.js';
+import { POOLS, cooldownAfter, draw, pullDay, starterPrize, STARTER } from './pulls.js';
 import { hashToken, newSessionToken, SESSION_DAYS, verifyAppleIdToken, verifyGoogleIdToken, type VerifiedIdentity } from './auth.js';
 import { toBytes, type Db } from './db.js';
 
@@ -582,6 +582,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
           free: !st || st.at <= now,
           // how long you'll wait after this go before the next
           nextCooldown: cooldownAfter((st?.count ?? 0) + 1),
+          // the fixed first prizes, shown before the odds
+          starter: { rare: STARTER.rare.item, paid: STARTER.paid.item, beach: STARTER.beach.item, beachAfterMs: STARTER.beachAfterMs },
         };
       }),
       nextFree: daily && daily.at > now ? daily.at : now,
@@ -597,9 +599,17 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     if (!pool) fail(404, 'no such machine');
     const me = c.get('user').id;
     const now = clock();
-    const got = draw(pool!);
     await db.query('INSERT INTO pull_state (user_id, pool, count, next_at) VALUES ($1, $2, 0, 0) ON CONFLICT DO NOTHING', [me, pool!.id]);
     const count = Number((await db.query<{ count: number }>('SELECT count FROM pull_state WHERE user_id = $1 AND pool = $2', [me, pool!.id]))[0].count);
+    // the first goes are fixed gifts (the machine says so); the rest are drawn
+    const hist = (
+      await db.query<{ first: string | null; beach: boolean | null }>(
+        'SELECT MIN(created_at) AS first, BOOL_OR(item_id = $3) AS beach FROM pulls WHERE user_id = $1 AND pool = $2',
+        [me, pool!.id, STARTER.beach.item],
+      )
+    )[0];
+    const got =
+      starterPrize(count + 1, hist?.first == null ? null : Number(hist.first), now, !!hist?.beach) ?? draw(pool!);
     const wait = cooldownAfter(count + 1);
     // one statement: claim the go (only if it's free and nobody claimed it
     // meanwhile), log it, and give the prize

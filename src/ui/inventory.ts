@@ -1,5 +1,5 @@
 import { icon, type IconName } from './hud';
-import { isAvailable, type Item } from '../world/items';
+import { EXTRAS, isAvailable, type Item } from '../world/items';
 
 /** What's planned but not here yet, shown greyed out so the tray reads as a beginning. */
 const COMING = [
@@ -172,6 +172,18 @@ export class InventoryTray {
     const tip = document.createElement('p');
     tip.className = 'inv-tip';
     tip.textContent = 'Tap the sand to set it down. Tap it again to pick it up.';
+    // things you own that don't go on the sand (an extra beach): tap to read about it
+    for (const x of EXTRAS) {
+      const n = this.ownedOf(x.id);
+      if (!n) continue;
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = `inv-item extra rarity-${x.rarity}`;
+      b.dataset.extra = x.id;
+      b.innerHTML = `${icon(x.id as IconName)}<b>${x.name}</b><span>${n > 1 ? `${n} owned` : 'yours'}</span>`;
+      b.addEventListener('click', () => (tip.textContent = x.note));
+      grid.insertBefore(b, grid.querySelector('.claw-tile, .soon'));
+    }
     this.tray.appendChild(tip);
   }
 }

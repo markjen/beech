@@ -43,10 +43,33 @@ export const ITEMS: Item[] = [
   { id: 'conch', name: 'Conch', kind: 'conch', rarity: 'common', source: 'pull', unlimited: false, size: [0.1, 0.35], variants: 3 },
   { id: 'sanddollar', name: 'Sand dollar', kind: 'sanddollar', rarity: 'common', source: 'pull', unlimited: false, size: [0.06, 0.16], variants: 2 },
   { id: 'starfish', name: 'Starfish', kind: 'starfish', rarity: 'rare', source: 'pull', unlimited: false, size: [0.08, 0.26], variants: 3 },
+  // from the shop (the claw machine gives everyone one as a starter gift)
+  { id: 'deckchair', name: 'Deckchair', kind: 'deckchair', rarity: 'rare', source: 'shop', unlimited: false, size: [1, 1], variants: 3, fixedSize: true, price: 250 },
   { id: 'bottle', name: 'Message in a bottle', kind: 'bottle', rarity: 'legendary', source: 'pull', unlimited: false, size: [0.22, 0.45], variants: 2 },
 ];
 
 export const itemById = (id: string): Item | undefined => ITEMS.find((i) => i.id === id);
+
+/**
+ * Things you can own that aren't placed on the sand. An extra beach is used
+ * from the beaches list (see docs/MULTI_BEACH.md, not built yet).
+ */
+export interface Extra {
+  id: string;
+  name: string;
+  rarity: Rarity;
+  /** what it's for, shown in the bag */
+  note: string;
+}
+
+export const EXTRAS: Extra[] = [
+  { id: 'beach', name: 'Extra beach', rarity: 'legendary', note: 'A second beach of your own. Coming soon: set it up next to yours, or anywhere on the shore.' },
+];
+
+export const extraById = (id: string): Extra | undefined => EXTRAS.find((e) => e.id === id);
+
+/** Display name of anything you can win or own. */
+export const prizeName = (id: string): string => itemById(id)?.name ?? extraById(id)?.name ?? id;
 
 /** Is the item obtainable at this moment (for time-limited items)? */
 export function isAvailable(item: Item, now: Date): boolean {
@@ -73,5 +96,7 @@ export function rollPlacement(
   // sizes feel even across the slider (a 2x step anywhere looks the same)
   const base = lo * Math.pow(hi / lo, t);
   const size = Math.min(hi, Math.max(lo, base * (0.92 + rand() * 0.16)));
-  return { size, variant: 1 + Math.floor(rand() * item.variants), angle: rand() * Math.PI * 2 };
+  // a deckchair faces the sea (more or less); everything else lands any way round
+  const angle = item.kind === 'deckchair' ? (rand() - 0.5) * 0.6 : rand() * Math.PI * 2;
+  return { size, variant: 1 + Math.floor(rand() * item.variants), angle };
 }

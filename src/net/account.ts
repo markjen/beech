@@ -361,6 +361,8 @@ export interface PullPool {
   free: boolean;
   /** how long the claw will rest after your next go (ms): 5 min, doubling, up to a day */
   nextCooldown: number;
+  /** the fixed gifts of the first goes (shown before the odds) */
+  starter?: { rare: string; paid: string; beach: string; beachAfterMs: number };
 }
 
 /** The claw machine (and later, mystery boxes): draws happen on the server. */

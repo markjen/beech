@@ -100,7 +100,8 @@ if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}
 await page.click('.claw-go');
 await page.waitForSelector('.claw-reveal:not([hidden])', { timeout: 60000 });
 const prize = await page.textContent('.claw-reveal b');
-check(!!prize, `won: ${prize}`);
+check(prize === 'Starfish', `first go is the rare starter gift (${prize})`);
+check((await page.textContent('.claw-odds'))?.includes('Your first goes are gifts'), 'the machine says the first goes are gifts');
 if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/claw-prize.png` });
 await page.click('.claw-place');
 await page.waitForFunction(() => window.__beech.inventory.current !== null, null, { timeout: 10000 });

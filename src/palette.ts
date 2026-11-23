@@ -194,6 +194,8 @@ export const PROP_COLORS = {
   sanddollar: [hex('#efe6d4'), hex('#e8dcc6')] as RGB[],
   starfish: [hex('#ef8a5f'), hex('#d9645a'), hex('#f2a65a')] as RGB[],
   bottle: [hex('#8fc9b3'), hex('#9cc3d9')] as RGB[],
+  /** deckchair canvas stripes (frame uses `pole`) */
+  deckchair: [hex('#4f86c6'), hex('#e46f5a'), hex('#3fa58f')] as RGB[],
   pole: hex('#d8c7ae'),
   /** the rolled-up message inside a bottle */
   paper: hex('#f7efd9'),

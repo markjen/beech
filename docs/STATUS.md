@@ -303,6 +303,13 @@ branch, so the deploy job runs only there. Switch the default branch to
   (starfish), legendary 5% (message in a bottle). The app shows the odds
   before every go. Migration 3 adds `pulls`, keyed on `(user, pool, day)`;
   claiming the day and adding the prize happen in one SQL statement.
+- **Starter gifts** (`STARTER` in `server/src/pulls.ts`): go 1 is a
+  Starfish (rare), go 2 is a Deckchair (a shop item, 250, fixed, faces the
+  sea), and the first go a day or more after go 1 is an **extra beach**
+  (`inventory` item `beach`, once). Every other go is a normal draw. The
+  machine shows the gifts above the odds. The extra beach shows in the bag as
+  owned but can't be used yet (`EXTRAS` in `src/world/items.ts`; the plan
+  is docs/MULTI_BEACH.md).
 - **The game is cosmetic:** the claw wanders, you drop it, and it always
   comes back with a capsule coloured by the server's result. The request
   goes out as the claw drops.

@@ -230,6 +230,32 @@ describe('pulls', () => {
     skew = 0;
   });
 
+  it('first goes are fixed gifts: a rare find, a shop item, and a beach once a day has passed', async () => {
+    const dora = await signIn('Dora');
+    const st = ((await (await req('/pulls', {}, dora.token)).json()) as { pools: { starter: { rare: string; paid: string; beach: string } }[] }).pools[0];
+    expect(st.starter).toMatchObject({ rare: 'starfish', paid: 'deckchair', beach: 'beach' });
+    const go = async () => {
+      const r = await req('/pulls/daily', { method: 'POST' }, dora.token);
+      expect(r.status).toBe(200);
+      const body = (await r.json()) as { item: string; rarity: string; nextFree: number };
+      skew += body.nextFree - (Date.now() + skew) + 1000; // wait out the rest
+      return body;
+    };
+    const start = Date.now() + skew;
+    expect(await go()).toMatchObject({ item: 'starfish', rarity: 'rare' });
+    expect(await go()).toMatchObject({ item: 'deckchair' });
+    const third = await go(); // ~15 minutes in: an ordinary draw
+    expect(third.item).not.toBe('beach');
+    // a day after the first go, the next go is the beach…
+    skew += Math.max(0, start + 24 * 3600 * 1000 - (Date.now() + skew));
+    expect(await go()).toMatchObject({ item: 'beach', rarity: 'legendary' });
+    // …once
+    for (let i = 0; i < 3; i++) expect((await go()).item).not.toBe('beach');
+    const inv = (await (await req('/inventory', {}, dora.token)).json()) as { items: { item: string }[] };
+    expect(inv.items.map((i) => i.item)).toEqual(expect.arrayContaining(['starfish', 'deckchair', 'beach']));
+    skew = 0;
+  });
+
   it('draws with the published odds', async () => {
     const { POOLS, draw } = await import('../src/pulls.js');
     const n = 20000;

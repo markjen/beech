@@ -1,5 +1,5 @@
 import type { PullApi, PullPool } from '../net/account';
-import { itemById, type Rarity } from '../world/items';
+import { extraById, itemById, prizeName, type Rarity } from '../world/items';
 import { icon, type IconName } from './hud';
 
 /** Capsule colours by rarity (UI only). */
@@ -136,7 +136,11 @@ export class ClawMachine {
         return `<li><span class="dot" style="background:${CAPSULE[k]}"></span><b>${RARITY_NAME[k]} ${pct(this.pool!.odds[k])}</b> ${names}</li>`;
       })
       .join('');
-    this.oddsEl.innerHTML = `<p>What's inside, and the chance of each:</p><ul>${rows}</ul>`;
+    const st = this.pool.starter;
+    const gifts = st
+      ? `<p class="claw-gifts">Your first goes are gifts: a ${prizeName(st.rare)}, then a ${prizeName(st.paid)} from the shop, and on your first go a day after that, a whole ${prizeName(st.beach).toLowerCase()}. After that:</p>`
+      : '';
+    this.oddsEl.innerHTML = `${gifts}<p>What's inside, and the chance of each:</p><ul>${rows}</ul>`;
   }
 
   private drop(): void {
@@ -218,17 +222,20 @@ export class ClawMachine {
 
   private showPrize(): void {
     const p = this.prize!;
-    const it = itemById(p.item);
+    const placeable = !!itemById(p.item);
+    const extra = extraById(p.item);
     this.reveal.hidden = false;
     this.reveal.className = `claw-reveal rarity-${p.rarity}`;
     this.reveal.innerHTML = `
-      <div class="claw-prize">${icon((it?.id ?? 'bag') as IconName)}</div>
-      <b>${it?.name ?? p.item}</b>
+      <div class="claw-prize">${icon(p.item as IconName)}</div>
+      <b>${prizeName(p.item)}</b>
       <span>${RARITY_NAME[p.rarity as Rarity] ?? p.rarity}</span>
-      <button type="button" class="claw-place">Put it on the beach</button>`;
+      ${extra ? `<p class="claw-extra"></p>` : ''}
+      <button type="button" class="claw-place">${placeable ? 'Put it on the beach' : 'Keep it'}</button>`;
+    if (extra) this.reveal.querySelector('.claw-extra')!.textContent = extra.note;
     this.reveal.querySelector('.claw-place')!.addEventListener('click', () => {
       this.close();
-      this.won(p.item, true);
+      this.won(p.item, placeable);
     });
     this.won(p.item, false);
     this.renderInfo();

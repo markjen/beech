@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { POOLS } from '../server/src/pulls';
-import { ITEMS, itemById, rollPlacement } from '../src/world/items';
+import { POOLS, STARTER } from '../server/src/pulls';
+import { ITEMS, extraById, itemById, rollPlacement } from '../src/world/items';
 import { OBJECT_KINDS } from '../src/sim/objects';
 
 describe('item catalog', () => {
@@ -16,6 +16,14 @@ describe('item catalog', () => {
       }
       expect(Object.values(pool.odds).reduce((a, b) => a + b, 0)).toBeCloseTo(1, 9);
     }
+  });
+
+  it('the starter gifts exist: a rare item, a shop item, and an extra beach', () => {
+    expect(itemById(STARTER.rare.item)?.rarity).toBe('rare');
+    expect(itemById(STARTER.paid.item)?.source).toBe('shop');
+    expect(itemById(STARTER.paid.item)?.price).toBeGreaterThan(0);
+    expect(extraById(STARTER.beach.item)).toBeTruthy();
+    expect(itemById(STARTER.beach.item)).toBeUndefined(); // not something you put on the sand
   });
 
   it('ids are unique, kinds exist, free items are unlimited', () => {

@@ -15,8 +15,8 @@
 // shells and sea glass at the waterline). Those are marked `wild`; only a few
 // stay at a time, and the oldest is taken back by the sea.
 
-export type ObjectKind = 'rock' | 'driftwood' | 'shell' | 'seaglass' | 'flag' | 'conch' | 'sanddollar' | 'starfish' | 'bottle';
-export const OBJECT_KINDS: ObjectKind[] = ['rock', 'driftwood', 'shell', 'seaglass', 'flag', 'conch', 'sanddollar', 'starfish', 'bottle'];
+export type ObjectKind = 'rock' | 'driftwood' | 'shell' | 'seaglass' | 'flag' | 'conch' | 'sanddollar' | 'starfish' | 'bottle' | 'deckchair';
+export const OBJECT_KINDS: ObjectKind[] = ['rock', 'driftwood', 'shell', 'seaglass', 'flag', 'conch', 'sanddollar', 'starfish', 'bottle', 'deckchair'];
 
 type Behaviour = 'rock' | 'float' | 'tumble' | 'fixed';
 const BEHAVIOUR: Record<ObjectKind, Behaviour> = {
@@ -30,6 +30,8 @@ const BEHAVIOUR: Record<ObjectKind, Behaviour> = {
   starfish: 'tumble',
   // a message in a bottle floats like driftwood
   bottle: 'float',
+  // a deckchair is set up on the sand and stays there
+  deckchair: 'fixed',
 };
 
 /** What is saved with a beach. Coordinates are sim metres (x alongshore, y from the offshore edge). */

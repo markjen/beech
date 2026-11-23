@@ -347,6 +347,68 @@ function bottleMesh(scene: Scene, o: PlacedObject): { body: Mesh; cork: Mesh } {
   return { body, cork };
 }
 
+/** Append an axis-aligned box (rotated by `tilt` about x) to P/I. */
+function box(P: number[], I: number[], cx: number, cy: number, cz: number, sx: number, sy: number, sz: number, tilt = 0): void {
+  const b = P.length / 3;
+  const c = Math.cos(tilt);
+  const s = Math.sin(tilt);
+  for (const [x, y, z] of [
+    [-1, -1, -1], [1, -1, -1], [1, 1, -1], [-1, 1, -1],
+    [-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1],
+  ]) {
+    const ly = (y * sy) / 2;
+    const lz = (z * sz) / 2;
+    P.push(cx + (x * sx) / 2, cy + ly * c - lz * s, cz + ly * s + lz * c);
+  }
+  for (const f of [[0, 1, 2, 0, 2, 3], [4, 6, 5, 4, 7, 6], [0, 4, 5, 0, 5, 1], [3, 2, 6, 3, 6, 7], [0, 3, 7, 0, 7, 4], [1, 5, 6, 1, 6, 2]])
+    for (const k of f) I.push(b + k);
+}
+
+/** A striped deckchair: a wooden frame and a canvas sling (child mesh), facing the sea. */
+function deckchairMesh(scene: Scene, o: PlacedObject): { frame: Mesh; canvas: Mesh } {
+  const P: number[] = [];
+  const I: number[] = [];
+  const w = 0.56; // width
+  const t = 0.035; // timber
+  // side rails run from the front bar (low, toward the sea, -z) up to the
+  // top bar (high, at the back, +z); front legs drop from the front bar, back
+  // legs prop up the top bar
+  const front = { y: 0.26, z: -0.45 };
+  const top = { y: 0.72, z: 0.48 };
+  const railLen = Math.hypot(top.z - front.z, top.y - front.y);
+  const railTilt = -Math.atan2(top.y - front.y, top.z - front.z);
+  const backFoot = 0.78;
+  const legLen = Math.hypot(backFoot - top.z, top.y);
+  const legTilt = -Math.atan2(backFoot - top.z, top.y);
+  for (const side of [-1, 1]) {
+    const x = (side * w) / 2;
+    box(P, I, x, (front.y + top.y) / 2, (front.z + top.z) / 2, t, t, railLen, railTilt);
+    box(P, I, x, front.y / 2, front.z, t, front.y, t);
+    box(P, I, x, top.y / 2, (top.z + backFoot) / 2, t, legLen, t, legTilt);
+  }
+  box(P, I, 0, front.y, front.z, w + t, t, t); // front bar
+  box(P, I, 0, top.y, top.z, w + t, t, t); // top bar
+  orient(P, I, (x, y, z) => [x * 0.98, y, z]);
+  const frame = finish(scene, `chair${o.id}`, P, I);
+  const C: number[] = [];
+  const CI: number[] = [];
+  // the sling sags between the front bar and the top bar
+  const n = 8;
+  for (let k = 0; k <= n; k++) {
+    const u = k / n;
+    const z = front.z + u * (top.z - front.z);
+    const y = front.y + u * (top.y - front.y) - Math.sin(u * Math.PI) * 0.13;
+    C.push(-w / 2 + t, y, z, w / 2 - t, y, z);
+  }
+  for (let k = 0; k < n; k++) {
+    const a = k * 2;
+    CI.push(a, a + 2, a + 1, a + 1, a + 2, a + 3);
+  }
+  const canvas = finish(scene, `sling${o.id}`, C, CI);
+  canvas.parent = frame;
+  return { frame, canvas };
+}
+
 interface Shown {
   mesh: Mesh;
   key: string;
@@ -410,6 +472,11 @@ export class ObjectView {
         cloth = f.cloth;
         mesh.material = this.poleMat;
         cloth.material = mat;
+      } else if (st.kind === 'deckchair') {
+        const d = deckchairMesh(this.scene, st);
+        mesh = d.frame;
+        mesh.material = this.poleMat;
+        d.canvas.material = mat;
       } else if (st.kind === 'bottle') {
         const bt = bottleMesh(this.scene, st);
         mesh = bt.body;
