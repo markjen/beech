@@ -112,22 +112,39 @@ builds the image, pushes it to Artifact Registry, deploys `beech`, and
 smoke-tests the live URL. The server applies database migrations at startup,
 under a Postgres advisory lock.
 
-**Custom domain:**
-`gcloud beta run domain-mappings create --service beech --domain beech.markjen.com --region $REGION`,
-then add the DNS records it prints. Alternatively, put Firebase Hosting in
-front (it rewrites everything to the `beech` service), which adds a CDN and
+**Custom domains:** the game is **https://play.beech.games** and the home
+page is **https://beech.games** (both mapped to the `beech` service; the
+server picks the site by the `Host` header — game on play.beech.games,
+landing page on beech.games + www.beech.games). `beech.markjen.com` stays
+mapped and working as a legacy host. `beechgame.com` and `beechgames.com`
+301-redirect to `https://beech.games` (Squarespace domain forwarding).
+`beechshore.com` is a separate product on the same service (see below);
+`admin.beech.games` is the admin console's own service.
+
+The mappings were created manually with
+`gcloud beta run domain-mappings create --service beech --domain <domain> --region $REGION`
+(see infra/README.md §6) — Terraform state may not yet include them, and
+this doc does not claim Terraform manages them. The Terraform equivalents
+are `var.custom_domain` (`infra/main.tf`,
+`google_cloud_run_domain_mapping.beech`; set it to `play.beech.games` if
+the game mapping is ever imported) and `var.landing_custom_domain`
+(`google_cloud_run_domain_mapping.landing_www` for `www.beech.games`).
+The server already answers `beech.games` with the landing page
+(docs/LANDING_PAGE.md); the domain itself still points at Squarespace
+until the DNS cutover there, using the records from the manual mapping
+(they are not in the repo). Alternatively, put Firebase Hosting in front
+(it rewrites everything to the `beech` service), which adds a CDN and
 works in every region.
 
-The game mapping for `beech.games` was created manually with
-`gcloud beta run domain-mappings create` (see infra/README.md §6) — the
-Terraform state may not yet include it, and this doc does not claim
-Terraform manages it. The Terraform equivalent is `var.custom_domain`
-(`infra/main.tf`, `google_cloud_run_domain_mapping.beech`). The server
-already answers `beech.games` with the landing page
-(docs/LANDING_PAGE.md); the domain itself still points at Squarespace
-until the DNS cutover there, using the records from that manual mapping
-(they are not in the repo). The `www.beech.games` mapping is
-`var.landing_custom_domain` (`google_cloud_run_domain_mapping.landing_www`).
+Google sign-in on the new domains needs the OAuth web client ("beech
+web") Authorized JavaScript origins to include `https://play.beech.games`
+and `https://beech.games` (keep `https://beech.markjen.com`). The web app
+uses Google Identity Services in popup mode (`ux_mode: 'popup'`,
+`src/net/account.ts`), so no redirect URIs are involved. The web build
+itself needs no change: `VITE_API_URL` is empty in the Dockerfile, so
+the app calls the API same-origin, the server allows its own origin for
+CORS, share-link previews use the request URL, and the PWA manifest
+uses relative URLs.
 
 **Shore domain (`beechshore.com`):** the public shore site is served by
 the same `beech` service, chosen by the Host header, so it only needs
@@ -158,6 +175,10 @@ gated on `var.admin_custom_domain`). Order of operations:
    the admin console will not work until this is done.
 
 **Phone apps:** build with `VITE_ACCOUNTS=1 VITE_API_URL=https://beech.markjen.com`.
+(The apps still call the legacy host for now — it stays live. Moving the
+apps' API base to `https://play.beech.games` is a follow-up: edit
+`VITE_API_URL` in `.github/workflows/mobile.yml` and `release-mobile.yml`,
+then rebuild.)
 
 ## Running it locally
 

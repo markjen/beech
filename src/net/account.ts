@@ -2,8 +2,8 @@ import { Capacitor } from '@capacitor/core';
 import { nativeSignOut } from './nativeAuth';
 import { MAX_OBJECTS } from '../sim/sandCodec';
 
-// Accounts are a build-time feature. The public GitHub Pages build is a
-// sandbox (no sign-in, nothing saved); the production build sets:
+// Accounts are a build-time feature. The sandbox build (default
+// `npm run build`) has no sign-in and saves nothing; the production build sets:
 //   VITE_ACCOUNTS=1
 //   VITE_API_URL=           (empty = same origin, e.g. https://beech.app/api)
 //   VITE_GOOGLE_CLIENT_ID=  (OAuth web client ID; public, not a secret)

@@ -9,7 +9,7 @@ flat-shaded diorama style.
 - **Design plan:** [PLAN.md](PLAN.md)
 - **How the code fits together:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - **Milestone status and decisions:** [docs/STATUS.md](docs/STATUS.md)
-- **Web deploy:** [docs/DEPLOY.md](docs/DEPLOY.md). Sandbox at https://markjen.com/beech/ (GitHub Pages)
+- **Web deploy:** [docs/DEPLOY.md](docs/DEPLOY.md). Play the game at https://play.beech.games; home page and guide at https://beech.games
 - **Accounts, saved beaches and neighbors:** [docs/BACKEND.md](docs/BACKEND.md)
 - **Production on Google Cloud (Cloud Run + Cloud SQL):** [docs/GCP.md](docs/GCP.md)
 - **App Store / Google Play:** [docs/MOBILE.md](docs/MOBILE.md)

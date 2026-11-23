@@ -94,6 +94,5 @@ Nothing else changes: the server already answers to those hosts.
   the landing domain is set needs a `dynamic` block (or a separate policy).
 - Import the existing manual `beech.games` apex mapping into Terraform
   state (optional; see above).
-- PR #28 ("Docs: beech.games is the main domain") is still open; it points
-  the game at beech.games, which is wrong — it is superseded by the
-  final-URLs docs PR (opened after this one).
+- PR #28 ("Docs: beech.games is the main domain") is superseded by this PR:
+  it pointed the game at beech.games.

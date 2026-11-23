@@ -27,25 +27,19 @@ The single list of what's left to do, for the owner and for agents.
 - [ ] **Google Cloud project**: run the one-time `gcloud` setup in
   [GCP.md](GCP.md), create the OAuth web client ID, set the GitHub variables,
   then set `GCP_ENABLED=1`.
-- [ ] **Production domain**: pick one (for example `beech.markjen.com`), then
-  map it to Cloud Run (see GCP.md).
 - [ ] **beechshore.com domain**: map it (and www) to the `beech` Cloud Run
   service and add the DNS records; the site already answers to it. Steps in
   [SHORE_SITE.md](SHORE_SITE.md), "Turning on the domain". Until then it is
-  at `/shore` on the game's domain, but shared links say beechshore.com.
-  Also update the privacy policy and store forms: first names and beaches
-  on the shore are now public on the web.
-- [ ] **Privacy policy URL**: both stores and Google's OAuth consent screen
-  need one.
-- [ ] **Final app ID**: replace `app.beech.beach` before the first store
-  upload; it can't change after publishing. The list of files is in
-  [MOBILE.md](MOBILE.md).
+  at `/shore` on https://play.beech.games, but shared links say
+  beechshore.com. Store forms still need the shore-visibility wording; the
+  privacy policy (https://beech.games/privacy.html) already covers it.
 - [ ] **Apple Developer account**: team ID and an App Store Connect API key.
   Add them to the repo secrets listed in MOBILE.md.
-- [ ] **Google Play account**: an upload keystore, a service account, and a
-  manual first upload. Add them to the repo secrets listed in MOBILE.md.
-- [ ] **Default branch to `main`**: Settings → General. Then allow `main`
-  under Settings → Environments → github-pages.
+- [ ] **Google Play listing**: the account, upload keystore, service account
+  and first upload are done (AAB 1.0.0 build 1 on the internal track as a
+  draft, via the release workflow — no manual upload was needed). Still
+  manual in Play Console: listing text, content rating, data safety,
+  target audience (13+), testers, promoting the draft. See MOBILE.md.
 
 ## In progress
 
@@ -128,6 +122,20 @@ _(nothing right now)_
 
 ## Done (recent)
 
+- [x] **Production domains** (2026-11-23): game at https://play.beech.games,
+  home page + guide + privacy at https://beech.games (landing), shore at
+  https://beechshore.com (mapping + DNS still to do), admin at
+  https://admin.beech.games. `beech.markjen.com` keeps working as a legacy
+  host; `beechgame.com`/`beechgames.com` redirect to https://beech.games.
+  See GCP.md.
+- [x] **Privacy policy URL** (2026-11-23): https://beech.games/privacy.html
+  (`public/privacy.html`, linked from the landing footer). Still to enter
+  by hand: the Play store listing and Google's OAuth consent screen.
+- [x] **Final app ID** (2026-11-23): `app.beech.beach` — the app is created
+  in Play Console with it and AAB 1.0.0 build 1 is uploaded to the
+  internal track as a draft; it can't change now.
+- [x] **Default branch to `main`** (2026-11-23): already the default; the
+  `github-pages` environment step is moot — Pages publishing was removed.
 - [x] **beechshore.com, the public shore** (2026-11-23): server-rendered
   pages for every beach on the shore, drawn pictures for link previews,
   share buttons, cross links with the game. [SHORE_SITE.md](SHORE_SITE.md).
