@@ -174,8 +174,10 @@ describe('promo codes and credit purchases', () => {
     expect(bought.creditCents).toBe(999 - 240);
     // the product was granted
     const inv = await req('/inventory', {}, playerToken);
-    const items = ((await inv.json()) as { items: { item: string; quantity: number }[] }).items;
+    const items = ((await inv.json()) as { items: { item: string; quantity: number; source: string }[] }).items;
     expect(items.find((i) => i.item === 'beach')?.quantity).toBe(1);
+    // bought in the shop (with credit), not a gift from someone
+    expect(items.find((i) => i.item === 'beach')?.source).toBe('shop');
   });
 
   it('refuses a purchase the credit does not cover', async () => {

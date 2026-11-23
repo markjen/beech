@@ -170,8 +170,9 @@ export async function claimCreditPurchase(
        SELECT $1, 'spend', -$5, $2, $4 FROM paid
        RETURNING 1
      )
+     -- bought in the shop (with credit, not a store purchase: no purchase_id)
      INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at, purchase_id)
-     SELECT $1, g.item, g.qty, 'gift', $4, NULL FROM paid, unnest($7::text[], $8::int[]) AS g(item, qty)
+     SELECT $1, g.item, g.qty, 'shop', $4, NULL FROM paid, unnest($7::text[], $8::int[]) AS g(item, qty)
      WHERE $3::text IS NULL OR EXISTS (SELECT 1 FROM promo)
      RETURNING item_id`,
     [args.userId, args.productId, args.promoCode, args.now, args.finalCents, args.discountCents, args.items, args.quantities],
