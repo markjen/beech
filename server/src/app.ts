@@ -1327,7 +1327,9 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   app.post('/beaches/mine/:id/checkpoints', requireUser, async (c) => {
     const me = c.get('user').id;
     const beachId = await mine(c, c.req.param('id'));
-    const { name } = await body<{ name?: string }>(c);
+    // auto: the beach's one automatic copy ("Before import"), replacing the
+    // last one and not counted against your named checkpoints
+    const { name, auto } = await body<{ name?: string; auto?: boolean }>(c);
     const label = checkpointName(name);
     if (!makeLimiter(me)) fail(429, 'too many checkpoints at once: try again later');
     const rows = await db.query<{ sand: unknown; location: string; nx: number; ny: number; name: string }>(
@@ -1337,14 +1339,35 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     if (!rows[0]) fail(404, 'that beach has nothing saved yet');
     const bytes = toBytes(rows[0].sand);
     const info = inspect(bytes);
-    await checkRoom(me, bytes.byteLength);
-    const id = crypto.randomUUID();
-    await db.query(
+    if (auto) {
+      const total = await checkpointUse(me);
+      if (total.bytes + bytes.byteLength > CHECKPOINT_BYTES_PER_USER) fail(413, 'your checkpoints are full: delete some first');
+    } else await checkRoom(me, bytes.byteLength);
+    const r = await db.query<{ id: string }>(
       `INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at)
-       VALUES ($1, $2, $3, 'named', 'beach', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
-      [id, me, label, beachId, rows[0].name, rows[0].location, rows[0].nx, rows[0].ny, bytes, bytes.byteLength, JSON.stringify(info.items), info.objects, clock()],
+       VALUES ($1, $2, $3, $14, 'beach', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+       ON CONFLICT (from_beach) WHERE kind = 'auto' DO UPDATE SET
+         name = EXCLUDED.name, from_name = EXCLUDED.from_name, location = EXCLUDED.location, nx = EXCLUDED.nx, ny = EXCLUDED.ny,
+         sand = EXCLUDED.sand, bytes = EXCLUDED.bytes, items = EXCLUDED.items, objects = EXCLUDED.objects, created_at = EXCLUDED.created_at
+       RETURNING id`,
+      [
+        crypto.randomUUID(),
+        me,
+        label,
+        beachId,
+        rows[0].name,
+        rows[0].location,
+        rows[0].nx,
+        rows[0].ny,
+        bytes,
+        bytes.byteLength,
+        JSON.stringify(info.items),
+        info.objects,
+        clock(),
+        auto ? 'auto' : 'named',
+      ],
     );
-    return c.json({ checkpoint: checkpointJson((await myCheckpoint(c, id)) as CheckpointRow) }, 201);
+    return c.json({ checkpoint: checkpointJson((await myCheckpoint(c, r[0].id)) as CheckpointRow) }, 201);
   });
 
   // import: a beach made elsewhere (a beach file, encoded by the app)

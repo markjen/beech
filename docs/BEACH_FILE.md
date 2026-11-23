@@ -1,8 +1,9 @@
 # Beach files: export, import and design offline
 
-Status: **built** (2026-11-23), E1 to E4: the format, reader, writer,
-schema, examples, export/import on the web and in the phone apps, and the
-offline tool and guide. E5 (checkpoints) waits for checkpoints. This page is the plan and the file
+Status: **built** (2026-11-23), E1 to E5: the format, reader, writer,
+schema, examples, export/import on the web and in the phone apps, the
+offline tool and guide, and checkpoints (export a checkpoint as a file,
+keep a file as a checkpoint, "Before import"). This page is the plan and the file
 specification. The spec is the contract: once version 1 ships, readers keep
 accepting every version 1 file.
 
@@ -198,8 +199,14 @@ bottles) start where the file puts them, and the sea may then move them.
   owned, placedElsewhere)` in `beachFile.ts`).
 - **Safety:** an import replaces the whole beach, so it is **one undo
   step**. Undo restores the old beach exactly (a snapshot, not a subtracted
-  change), and redo brings the import back. Once checkpoints exist, an import
-  also makes an automatic "Before import" checkpoint.
+  change), and redo brings the import back. Signed in, the beach is also
+  kept as its automatic "Before import" checkpoint first, so it can come back
+  later or on another device.
+- **Keep it as a checkpoint instead:** signed in, the preview can store the
+  file as a checkpoint without touching the beach. It keeps all of the
+  file's things; the bag is checked when it's restored. Settings →
+  checkpoints also has **import a beach file** (straight to a checkpoint) and
+  **export** on each checkpoint.
 - **Saving:** an import marks the beach dirty, and it saves like any other
   edit. Neighbors see it on their next refresh, as with any change.
 - **Server trust:** today the server stores what the app saves and records
@@ -229,7 +236,7 @@ Each one leaves the app playable and passes `npm test` and `npm run build`.
 | **E2** ✅ | Export and import in the app (web) | Settings and account-panel buttons. Export downloads a file. Import uses a file picker, then the preview with inventory and warnings, then replaces the beach as one undo step, and it saves. Screenshots at desktop and phone sizes, and an e2e step in `scripts/account-e2e.mjs`. |
 | **E3** ✅ | Phone apps | Export through the share sheet (`@capacitor/filesystem` and `@capacitor/share`). Import through the system file picker in both WebViews. `npx cap sync`, and the Android debug build passes. |
 | **E4** ✅ | Offline tools and guide | `scripts/beach-file.mjs` (validate, rows/compact, heightmap PNG with its own small PNG decoder, no new dependencies). A short "Design a beach offline" guide at the end of this page, with a worked example and a 20-line generator script. |
-| **E5** | With checkpoints | "Save as checkpoint" in the import preview, "Export" on a checkpoint, and the automatic "Before import" checkpoint. Built once checkpoints land; see CHECKPOINTS.md. |
+| **E5** ✅ | With checkpoints | "Save as checkpoint" in the import preview, "Export" on a checkpoint, and the automatic "Before import" checkpoint. Built once checkpoints land; see CHECKPOINTS.md. |
 
 ## Design a beach offline
 

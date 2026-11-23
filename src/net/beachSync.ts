@@ -43,6 +43,9 @@ export class BeachSync {
   /** loading another beach: hold saves until it's in (they'd save the old sand into it) */
   private switching = false;
   private listeners: ((s: SyncState) => void)[] = [];
+  /** the beach's epoch when it was loaded here (a restore elsewhere moves it on) */
+  private epoch: number | undefined;
+  private restoredListeners: (() => void)[] = [];
   /** your things the last save had to leave out (over MAX_OBJECTS) */
   dropped = 0;
   private droppedListeners: ((n: number) => void)[] = [];
@@ -71,6 +74,11 @@ export class BeachSync {
 
   onState(fn: (s: SyncState) => void): void {
     this.listeners.push(fn);
+  }
+
+  /** The beach was restored from a checkpoint (on another device) and has been reloaded here. */
+  onRestoredElsewhere(fn: () => void): void {
+    this.restoredListeners.push(fn);
   }
 
   /** A save had to leave some of your things out (or, with 0, everything fits again). */
@@ -118,7 +126,15 @@ export class BeachSync {
       const bytes = await encodeSand(delta, this.host.grid.nx, this.host.grid.ny, objects);
       // switched accounts or beaches mid-save: this sand isn't theirs
       if (this.account.user?.id !== forUser || this.account.beachId !== forBeach) return;
-      this.savedAt = await this.account.saveBeach(bytes, this.host.location(), this.host.grid.nx, this.host.grid.ny, keepalive, countItems(objects));
+      this.savedAt = await this.account.saveBeach(
+        bytes,
+        this.host.location(),
+        this.host.grid.nx,
+        this.host.grid.ny,
+        keepalive,
+        countItems(objects),
+        this.epoch,
+      );
       this.dirty = false;
       const dropped = objectsToSave(objects).dropped;
       if (dropped !== this.dropped) {
@@ -127,6 +143,14 @@ export class BeachSync {
       }
       this.set('saved');
     } catch (e) {
+      if (e instanceof ApiError && e.status === 409) {
+        // a checkpoint was restored onto this beach since it loaded here:
+        // don't save the old sand over it; load the restored beach instead
+        this.dirty = false;
+        this.set('idle');
+        window.setTimeout(() => void this.reloadRestored(), 0);
+        return;
+      }
       if (e instanceof ApiError && e.status === 413) {
         // retrying won't help; the next change tries again (it may be smaller)
         this.set('tooBig');
@@ -148,9 +172,11 @@ export class BeachSync {
       // a brand-new extra beach starts untouched; a first sign-in keeps the
       // beach you were already playing on
       if (fresh) this.host.setSand(new Float32Array(this.host.grid.nx * this.host.grid.ny), []);
+      this.epoch = 0;
       await this.flush();
       return 'created';
     }
+    this.epoch = saved.epoch;
     const { nx, ny, delta, objects } = fitWorld(await decodeSand(saved.bytes));
     if (saved.location) this.host.setLocation(saved.location);
     this.host.setSand(resampleField(delta, nx, ny, this.host.grid.nx, this.host.grid.ny), objects);
@@ -176,5 +202,36 @@ export class BeachSync {
     } finally {
       this.switching = false;
     }
+  }
+
+  /**
+   * Replace this device's beach on the server (a checkpoint restore): save
+   * what's here first, hold saves while `change` runs, then load the result.
+   */
+  async replaceHere(change: () => Promise<void>): Promise<void> {
+    window.clearTimeout(this.timer);
+    await this.flush();
+    this.switching = true;
+    try {
+      await change();
+      this.savedAt = 0;
+      this.dirty = false;
+      await this.restoreOrCreate();
+    } finally {
+      this.switching = false;
+    }
+  }
+
+  private async reloadRestored(): Promise<void> {
+    if (this.switching) return;
+    this.switching = true;
+    try {
+      await this.restoreOrCreate();
+    } catch {
+      /* offline: the next save tries again and lands here again */
+    } finally {
+      this.switching = false;
+    }
+    for (const fn of this.restoredListeners) fn();
   }
 }

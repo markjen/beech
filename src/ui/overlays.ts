@@ -58,6 +58,24 @@ export function showToast(parent: HTMLElement, text: string): () => void {
   return hide;
 }
 
+/** A note with one button ("Restored 'Moat' · Undo"), gone after `ms`. */
+export function showActionToast(parent: HTMLElement, text: string, label: string, onClick: () => void, ms = 10000): () => void {
+  const { el, hide } = showNote(parent, ms);
+  el.classList.add('with-action');
+  const span = document.createElement('span');
+  span.textContent = text;
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'hint-action';
+  b.textContent = label;
+  b.addEventListener('click', () => {
+    hide();
+    onClick();
+  });
+  el.append(span, b);
+  return hide;
+}
+
 /** A `.hint` element that shows itself, then removes itself after `ms`. */
 function showNote(parent: HTMLElement, ms: number): { el: HTMLDivElement; hide: () => void } {
   const el = document.createElement('div');

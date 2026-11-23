@@ -37,14 +37,7 @@ The single list of what's left to do, for the owner and for agents.
 
 ## In progress
 
-- [ ] **Beach files: export and import** (agent, 2026-11-23): a documented
-  `.beach.json` format, so people can design beaches offline. Plan, spec and
-  milestones E1 to E5 in [BEACH_FILE.md](BEACH_FILE.md).
-  - [x] E1 format, codec, JSON Schema, examples, tests (2026-11-23)
-  - [x] E2 export and import in the app, with preview and inventory check (2026-11-23)
-  - [x] E3 phone apps (share sheet, file picker) (2026-11-23; Android built here, iOS through CI, not tried on a device)
-  - [x] E4 offline tool (`scripts/beach-file.mjs`) and design guide (2026-11-23)
-  - [ ] E5 tie-in with checkpoints
+_(nothing right now)_
 
 ## Up next (engineering)
 
@@ -57,25 +50,10 @@ The single list of what's left to do, for the owner and for agents.
   shop). Owner decisions are listed at the end of that doc. People can
   already win an extra beach from the claw machine.
 
-- [ ] **Checkpoints**: save named copies of any of your beaches and restore
-  one onto any of them, if your bag still holds its non-free things. Design
-  in [CHECKPOINTS.md](CHECKPOINTS.md); owner decisions at its end.
-  - [x] **C1** (2026-11-23; migration 13) Server: migration 11 (`checkpoints`, `beach.epoch`),
-    `inspectBlob` (counts items from the BCH2 bytes), list / create from a
-    beach / import / get / rename / delete with limits; client `countItems`
-    counts `wild` non-free items. No visible change.
-  - [x] **C2** (2026-11-23) Server: fit check and restore (strict and drop-missing), the
-    automatic "before restore" checkpoint, a per-user lock, the epoch on
-    beach GET/PUT. Server tests for the race and stale saves.
-  - [ ] **C3** App: checkpoints in settings (save, list, rename, delete,
-    restore here with confirm, short and undo), `BeachSync` reloads on a
-    restore elsewhere. `scripts/checkpoints-e2e.mjs`, `npm run e2e:checkpoints`.
-  - [ ] **C4** Restore onto another of your beaches; per-beach "checkpoint"
-    action; red item chips when you'd be short.
-  - [ ] **C5** Export a checkpoint as a beach file and import one, once
-    `docs/BEACH_FILE.md` lands.
-  - [ ] **C6** (optional) Client-drawn thumbnails; local checkpoints in the
-    sandbox with "keep the sandbox beach on the device".
+- [ ] **Checkpoints C6** (optional): a small top-down thumbnail on each
+  checkpoint, drawn on the client from its sand; local checkpoints in the
+  sandbox, together with "keep the sandbox beach on the device". See
+  [CHECKPOINTS.md](CHECKPOINTS.md).
 
 - [ ] **Release setup for native sign-in** (DevOps): Android and iOS OAuth
   clients, build env vars, the Info.plist URL scheme, the Apple capability,
@@ -131,6 +109,16 @@ The single list of what's left to do, for the owner and for agents.
 
 ## Done (recent)
 
+- [x] **Checkpoints C1–C5 and beach files E1–E5** (2026-11-23): save named
+  copies of any of your beaches and restore them onto any of them (strict, or
+  without what the bag can't cover; undo; a restore elsewhere reloads other
+  devices). Export and import of `.beach.json` files on the web and in the
+  apps, the offline tool, and the two joined: export a checkpoint, import a
+  file as a checkpoint, "Before import" kept automatically.
+  [CHECKPOINTS.md](CHECKPOINTS.md), [BEACH_FILE.md](BEACH_FILE.md).
+- [x] **Say so when a beach is full** (2026-11-23): 400 things at most;
+  placing a 401st is refused with a message, and a save that can't hold
+  everything (or is too big for the server) says so.
 - [x] **QA pass of main** (2026-11-23): neighbor name tags kept on screen
   and off the place card and tool column (`src/ui/tagPlace.ts`, tested);
   account panel rows no longer squeeze (visit box cut off, a beach's name

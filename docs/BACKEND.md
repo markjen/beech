@@ -24,7 +24,7 @@ Migrations live in `src/migrations.ts` and are applied at startup.
 | `POST /api/auth/dev { name }` | local development only (`DEV_AUTH=1`; refused when `NODE_ENV=production`) |
 | `POST /api/auth/logout` | ends this session |
 | `GET /api/me` | `{ user }` |
-| `GET /api/beach` | your compressed sand, with `X-Beach-Location/Nx/Ny/Version/Updated` headers; 404 if none |
+| `GET /api/beach` | your compressed sand, with `X-Beach-Location/Nx/Ny/Version/Updated/Epoch` headers; 404 if none |
 | `PUT /api/beach` | save it (body = sand bytes, plus `X-Beach-Location/Nx/Ny`); last write wins |
 | `DELETE /api/account` | deletes you, your sessions and beach, and you from other people's neighbor slots |
 | `GET /api/neighbors` | `{ code, left, right, asked: { left, right }, requests: [{ code, name, location, side }] }` |
@@ -45,6 +45,12 @@ Migrations live in `src/migrations.ts` and are applied at startup.
 | `POST /api/store/google/rtdn` | Google Play real-time developer notifications (Pub/Sub push, OIDC-checked): voided purchases expire what they granted |
 | `GET /api/leaderboard?board=all\|rising&limit=50` | the most-starred beaches (see "Leaderboard" below): `{ board, window, halfLife, entries: [{ rank, code, name, beachName?, location, updatedAt, stars, recent, velocity, starred, yours }] }`; limit 1–100 |
 | `GET /api/inventory` | `{ items: [{ item, quantity, source, acquiredAt, expiresAt }] }`: what you own beyond the free items, unexpired. Empty until the shop and pulls exist; rows are only written by the server. |
+| `GET /api/checkpoints` | your checkpoints (docs/CHECKPOINTS.md): `{ limit, named, bytesUsed, bytesLimit, checkpoints: [{ id, name, kind, source, fromBeach, fromName, location, nx, ny, items, objects, bytes, createdAt }] }`, newest first. 5 named per beach of your allowance, 16 MB in all |
+| `POST /api/beaches/mine/:id/checkpoints { name, auto? }` | a checkpoint of that beach as last saved (`auto`: its one automatic copy, e.g. "Before import"). 404 if it has no save, 409 at the limit |
+| `POST /api/checkpoints` | import a beach as a checkpoint: body = saved-beach bytes, `X-Checkpoint-Name` (URL-encoded), optional `X-Beach-Location`. The server reads and counts it itself |
+| `GET /api/checkpoints/:id/sand`, `PATCH /api/checkpoints/:id { name }`, `DELETE /api/checkpoints/:id` | its bytes; rename; delete |
+| `GET /api/checkpoints/:id/fit?beach=` | would it fit there: `{ ok, need, owned, elsewhere, short }` |
+| `POST /api/beaches/mine/:id/restore { checkpoint, mode: strict \| drop-missing }` | put it on that beach (one at a time per person). The beach as it was becomes its "before restoring" checkpoint (`undo`). Strict and short: 409 `{ error: 'short', short }`. Bumps the beach's epoch: a save sending an older `X-Beach-Epoch` gets 409 `restored` |
 | `POST /api/gifts { code, item }` | give one of your items to someone else, by their neighbor code — instant, one atomic statement, 20 an hour (see [SHARING_GIFTING.md](SHARING_GIFTING.md)). |
 
 Sessions are 60-day random bearer tokens, and only their SHA-256 is stored.

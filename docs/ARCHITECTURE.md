@@ -54,6 +54,8 @@ simulated one.
 | `src/sim/sandCodec.ts` | Saved-beach format: BCH1 (sand) and BCH2 (sand plus placed objects, validated on load) |
 | `src/world/beachFile.ts` | Beach files (`.beach.json`, spec in BEACH_FILE.md): read and write, shapes, `reconcileItems` (what of a beach your bag can build) |
 | `scripts/beach-file.mjs` | Offline beach-file tool: validate, rows/compact, heightmap PNG (`scripts/lib/png.mjs`) |
+| `src/ui/checkpoints.ts` | Settings → checkpoints: save, list, restore here / onto another beach, undo, export, import (`CheckpointApi` in `src/net/account.ts`, the fit check in `src/world/checkpointFit.ts`) |
+| `server/src/checkpoints.ts` | Reads a saved beach on the server (`inspectBlob`), the restore fit check, dropping what's short |
 | `src/ui/beachFileDialog.ts` | The import preview (map, items, warnings, shortfalls) and the file pick / download helpers |
 | `src/sim/profile.ts`, `waves.ts`, `undoStack.ts` | Rest beach shape, swell/tide functions, stroke-delta undo |
 | `src/render/beachRenderer.ts`, `shaders.ts` | All meshes and GLSL (sand, water, far ocean, skirts, rock, props) |

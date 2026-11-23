@@ -24,11 +24,12 @@ import { DIG_FIND_ROLL_COOLDOWN_MS, qualifiesForFind } from './sim/digFinds';
 import type { PlacedObject } from './sim/objects';
 import type { FrameInfo, FromWorker, ToWorker } from './sim/protocol';
 import { makeSwell } from './sim/waves';
-import { MAX_OBJECTS } from './sim/sandCodec';
+import { MAX_OBJECTS, decodeSand, encodeSand, fitWorld } from './sim/sandCodec';
 import { restHeight } from './sim/profile';
 import { Ambient, toggleFullscreen } from './ui/ambient';
 import { Hud, type ToolDef } from './ui/hud';
-import { SettingsSheet, StartScreen, showHint, showToast } from './ui/overlays';
+import { SettingsSheet, StartScreen, showActionToast, showHint, showToast } from './ui/overlays';
+import { CheckpointsSection } from './ui/checkpoints';
 import { InventoryTray, PlaceBar } from './ui/inventory';
 import { ClawMachine } from './ui/clawMachine';
 import { DigFind } from './ui/digFind';
@@ -36,16 +37,16 @@ import { Shop } from './ui/shop';
 import { ShopApi } from './net/shop';
 import { VendingMachine } from './ui/vendingMachine';
 import { DEFAULT_SIZE, ITEMS, rollPlacement, type Item } from './world/items';
-import { ACCOUNTS_ENABLED, Account, DigFindApi, GiftApi, PullApi } from './net/account';
+import { ACCOUNTS_ENABLED, Account, CheckpointApi, DigFindApi, GiftApi, PullApi } from './net/account';
 import { visitCodeFromUrl, withoutVisitParam } from './net/share';
-import { BeachSync } from './net/beachSync';
+import { BeachSync, countItems } from './net/beachSync';
 import { AccountPanel } from './ui/accountPanel';
 import { Leaderboard } from './ui/leaderboard';
 import { NEIGHBOR_OFFSET, NeighborView } from './render/neighbors';
 import { loadSettings, saveSettings, type Settings } from './ui/settingsStore';
 import { initTelemetry } from './net/telemetry';
-import { BeachFileDialog, beachFileName, saveText } from './ui/beachFileDialog';
-import { writeBeachFile } from './world/beachFile';
+import { BeachFileDialog, beachFileName, pickFile, saveText, type BeachFileHost } from './ui/beachFileDialog';
+import { parseBeachFile, writeBeachFile } from './world/beachFile';
 import { version as APP_VERSION } from '../package.json';
 
 // Unhandled errors + one page-load timing sample go to /api/client-events,
@@ -476,7 +477,7 @@ async function boot() {
     );
     await saveText(beachFileName(name), text);
   };
-  const beachFiles = new BeachFileDialog(uiRoot, {
+  const beachFileHost: BeachFileHost = {
     grid: () => grid,
     owned: () => inventory.ownedItems(),
     placedElsewhere: () => inventory.elsewhereItems(),
@@ -491,7 +492,8 @@ async function boot() {
       audio.whoosh(false);
       showToast(uiRoot, b.name ? `${b.name} is here. Undo brings your beach back.` : 'Imported. Undo brings your beach back.');
     },
-  });
+  };
+  const beachFiles = new BeachFileDialog(uiRoot, beachFileHost);
   const sizeOf = (id: string) => settings.itemSizes?.[id] ?? DEFAULT_SIZE;
   const placeBar = new PlaceBar(
     hud.root,
@@ -943,7 +945,72 @@ async function boot() {
       menuBtn.classList.toggle('badge', asking > 0);
       menuBtn.setAttribute('aria-label', asking ? `Settings (${asking} neighbor request${asking > 1 ? 's' : ''})` : 'Settings');
     });
-    new AccountPanel(
+    // checkpoints (docs/CHECKPOINTS.md): saved copies of your beaches
+    let panel: AccountPanel | null = null;
+    const cpApi = new CheckpointApi(acct);
+    const keepAsCheckpoint = async (b: { nx: number; ny: number; delta: Float32Array; objects: PlacedObject[]; name?: string; location?: string }, fallback: string) => {
+      const bytes = await encodeSand(b.delta, b.nx, b.ny, b.objects);
+      const cp = await cpApi.import(bytes, (b.name || fallback || 'Imported beach').slice(0, 40), b.location);
+      showToast(uiRoot, `Kept “${cp.name}” as a checkpoint`);
+      await checkpoints.load();
+    };
+    // beach files and checkpoints (BEACH_FILE.md, E5)
+    beachFileHost.saveAsCheckpoint = (b, fallback) => {
+      if (!acct.user) throw new Error('sign in to keep checkpoints');
+      return keepAsCheckpoint(b, fallback);
+    };
+    beachFileHost.beforeApply = async () => {
+      const here = acct.beachId;
+      if (!acct.user || !here) return;
+      await s.flush();
+      if (!acct.beaches.find((b) => b.id === here)?.updatedAt && !s.savedAt) return; // nothing saved to keep
+      await cpApi.save(here, 'Before import', true);
+      void checkpoints.load();
+    };
+    const checkpoints = new CheckpointsSection(
+      cpApi,
+      acct,
+      {
+        exportCheckpoint: async (cp) => {
+          const { bytes, location } = await cpApi.sand(cp.id);
+          const b = fitWorld(await decodeSand(bytes));
+          const text = await writeBeachFile(b, { name: cp.name, location: location || undefined, createdWith: `beech ${APP_VERSION}` });
+          await saveText(beachFileName(cp.name), text);
+        },
+        importAsCheckpoint: async () => {
+          const f = await pickFile();
+          if (!f) return;
+          const r = await parseBeachFile(await f.text(), { nx: grid.nx, ny: grid.ny });
+          if (!r.ok) throw new Error(`${f.name} isn't a beach file (${r.errors[0].path || 'file'}: ${r.errors[0].message})`);
+          await keepAsCheckpoint(r.beach, f.name.replace(/(\.beach)?\.json$/i, ''));
+        },
+        owned: () => inventory.ownedItems(),
+        // the beach on this device: what's on it this moment; the others: as last saved
+        itemsOn: (id) => (id === acct.beachId ? countItems(info.objects) : (acct.beaches.find((b) => b.id === id)?.items ?? {})),
+        saveNow: () => s.flush(),
+        replaceHere: async (change) => {
+          await s.replaceHere(change);
+          cam.goTo(0, true);
+        },
+        changed: async () => {
+          await acct.loadBeaches().catch(() => {});
+          await loadOwned();
+          updateElsewhere();
+        },
+        toast: (text, undo) => (undo ? showActionToast(uiRoot, text, 'Undo', undo) : showToast(uiRoot, text)),
+        shop: () => {
+          sheet.hide();
+          void shopDialog?.open();
+        },
+      },
+      () => panel?.render(),
+    );
+    acct.onChange(() => void checkpoints.load());
+    s.onRestoredElsewhere(() => {
+      showToast(uiRoot, 'This beach was restored from a checkpoint on another device');
+      void checkpoints.load();
+    });
+    panel = new AccountPanel(
       sheet.accountSlot,
       account,
       s,
@@ -971,6 +1038,7 @@ async function boot() {
         },
         changed: () => updateElsewhere(),
       },
+      checkpoints,
     );
 
     // the leaderboard: the most-starred beaches, to visit and star

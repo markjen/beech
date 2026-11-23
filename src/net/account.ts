@@ -25,6 +25,8 @@ export interface SavedBeach {
   ny: number;
   bytes: Uint8Array;
   updatedAt: number;
+  /** your own beaches: goes up each time a checkpoint is restored onto it */
+  epoch?: number;
 }
 
 export class ApiError extends Error {
@@ -266,12 +268,22 @@ export class Account {
       nx: Number(res.headers.get('X-Beach-Nx')),
       ny: Number(res.headers.get('X-Beach-Ny')),
       updatedAt: Number(res.headers.get('X-Beach-Updated')),
+      epoch: Number(res.headers.get('X-Beach-Epoch') ?? 0) || 0,
       bytes: new Uint8Array(await res.arrayBuffer()),
     };
   }
 
   /** `items`: how many of each non-free item are on this beach (counted across your beaches) */
-  async saveBeach(bytes: Uint8Array, location: string, nx: number, ny: number, keepalive = false, items: Record<string, number> = {}): Promise<number> {
+  async saveBeach(
+    bytes: Uint8Array,
+    location: string,
+    nx: number,
+    ny: number,
+    keepalive = false,
+    items: Record<string, number> = {},
+    /** the epoch the sand was loaded at: a restore since then refuses the save (409) */
+    epoch?: number,
+  ): Promise<number> {
     const res = await this.call(this.sandPath(), {
       method: 'PUT',
       headers: {
@@ -282,6 +294,7 @@ export class Account {
         'X-Beach-Items': Object.entries(items)
           .map(([k, v]) => `${k}=${v}`)
           .join(','),
+        ...(epoch === undefined ? {} : { 'X-Beach-Epoch': String(epoch) }),
       },
       body: bytes as BodyInit,
       // keepalive lets a save finish while the page is closing (64 KB limit)
@@ -289,6 +302,124 @@ export class Account {
     });
     if (!res.ok) throw new ApiError(res.status, 'could not save your beach');
     return ((await res.json()) as { updatedAt: number }).updatedAt;
+  }
+}
+
+// ---------------------------------------------------------------- checkpoints
+/** A saved copy of one of your beaches (docs/CHECKPOINTS.md). */
+export interface Checkpoint {
+  id: string;
+  name: string;
+  /** auto: the beach as it was before a restore replaced it */
+  kind: 'named' | 'auto';
+  source: 'beach' | 'import';
+  fromBeach: { id: string; name: string } | null;
+  fromName: string;
+  location: string | null;
+  nx: number;
+  ny: number;
+  /** non-free things on it, counted by the server */
+  items: Record<string, number>;
+  objects: number;
+  bytes: number;
+  createdAt: number;
+}
+
+export interface CheckpointList {
+  limit: number;
+  named: number;
+  bytesUsed: number;
+  bytesLimit: number;
+  checkpoints: Checkpoint[];
+}
+
+export interface Short {
+  item: string;
+  need: number;
+  have: number;
+}
+
+/** A restore the bag can't cover (strict mode). */
+export class ShortError extends ApiError {
+  constructor(readonly short: Short[]) {
+    super(409, 'short');
+  }
+}
+
+export class CheckpointApi {
+  constructor(private readonly account: Account) {}
+
+  private async json<T>(path: string, init: RequestInit = {}, fallback = 'something went wrong'): Promise<T> {
+    const res = await this.account.fetch(path, init);
+    if (!res.ok) throw await errorOf(res, fallback);
+    return (await res.json()) as T;
+  }
+
+  list(): Promise<CheckpointList> {
+    return this.json('/api/checkpoints', {}, 'could not load your checkpoints');
+  }
+
+  /** a checkpoint of one of your beaches, as last saved (auto: its one automatic copy, e.g. "Before import") */
+  async save(beachId: string, name: string, auto = false): Promise<Checkpoint> {
+    const r = await this.json<{ checkpoint: Checkpoint }>(
+      `/api/beaches/mine/${beachId}/checkpoints`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, auto }) },
+      'could not save a checkpoint',
+    );
+    return r.checkpoint;
+  }
+
+  /** a beach made elsewhere (a beach file), encoded with encodeSand */
+  async import(bytes: Uint8Array, name: string, location?: string): Promise<Checkpoint> {
+    const r = await this.json<{ checkpoint: Checkpoint }>(
+      '/api/checkpoints',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'X-Checkpoint-Name': encodeURIComponent(name),
+          ...(location ? { 'X-Beach-Location': location } : {}),
+        },
+        body: bytes as BodyInit,
+      },
+      'could not save the checkpoint',
+    );
+    return r.checkpoint;
+  }
+
+  async sand(id: string): Promise<{ bytes: Uint8Array; location: string }> {
+    const res = await this.account.fetch(`/api/checkpoints/${id}/sand`);
+    if (!res.ok) throw await errorOf(res, 'could not load that checkpoint');
+    return { bytes: new Uint8Array(await res.arrayBuffer()), location: res.headers.get('X-Beach-Location') ?? '' };
+  }
+
+  async rename(id: string, name: string): Promise<void> {
+    await this.json(`/api/checkpoints/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) }, 'could not rename it');
+  }
+
+  async remove(id: string): Promise<void> {
+    const res = await this.account.fetch(`/api/checkpoints/${id}`, { method: 'DELETE' });
+    if (!res.ok) throw await errorOf(res, 'could not delete it');
+  }
+
+  /**
+   * Put a checkpoint on one of your beaches. Strict mode throws ShortError
+   * when the bag can't cover it; drop-missing leaves those things out.
+   * Returns the id of the "before restoring" checkpoint (for undo).
+   */
+  async restore(beachId: string, checkpoint: string, mode: 'strict' | 'drop-missing' = 'strict'): Promise<{ undo: string | null; dropped: number; epoch: number }> {
+    const res = await this.account.fetch(`/api/beaches/mine/${beachId}/restore`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ checkpoint, mode }),
+    });
+    if (res.status === 409) {
+      const data = (await res.json().catch(() => ({}))) as { error?: string; short?: Short[] };
+      if (data.short) throw new ShortError(data.short);
+      throw new ApiError(409, data.error ?? 'could not restore');
+    }
+    if (!res.ok) throw await errorOf(res, 'could not restore');
+    return (await res.json()) as { undo: string | null; dropped: number; epoch: number };
   }
 }
 

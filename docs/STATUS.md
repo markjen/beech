@@ -402,6 +402,34 @@ branch, so the deploy job runs only there. Switch the default branch to
 - Not verified on devices yet: that needs the OAuth clients and the Apple
   capability (DevOps; see BACKEND.md, "Phone apps").
 
+## Checkpoints (added after beach files, 2026-11-23)
+
+Built as designed in [CHECKPOINTS.md](CHECKPOINTS.md), C1 to C5 (C6,
+thumbnails and sandbox checkpoints, is optional and not built).
+- **Server:** migration 13 (`checkpoints`, `beach.epoch`); the server reads
+  and counts saved beaches itself (`server/src/checkpoints.ts`); list,
+  checkpoint a beach, import, rename, delete, fit, and restore (strict, or
+  without what's short) one at a time per person. The beach as it was
+  becomes its "before restoring" checkpoint. A save from a device that
+  loaded the beach before a restore is refused, and that device reloads.
+- **App:** settings → checkpoints: save, restore here, restore onto another
+  beach, rename, delete (two taps), export as a beach file, import a beach
+  file, and an Undo toast after a restore. Chips turn red when your bag
+  can't cover a checkpoint here. A **checkpoint** action on each saved beach.
+- **Beach files (E5):** the import preview can keep the file as a checkpoint
+  instead, and replacing a beach keeps it first as "Before import".
+- **Fixed on the way:** the phone apps' cross-origin requests were missing
+  the `X-Beach-Items` header (every save) and `PATCH` (beach rename / home /
+  shore) in the server's CORS rules.
+- **Owner decisions** were taken as the design suggested: 5 named
+  checkpoints per beach slot and 16 MB in all; the sandbox uses beach files,
+  not checkpoints; a beach keeps its stars when restored.
+- **Checked:** 13 server tests (PGlite and Postgres; the server suite now
+  runs its files one at a time against Postgres), the shared fit fixture in
+  both suites, and `npm run e2e:checkpoints` (save, short then
+  drop-missing, full restore, undo, a restore under another device, beach
+  removal, export, import, "Before import").
+
 ## How much a beach holds (2026-11-23)
 
 - A saved beach holds **400 things** (`MAX_OBJECTS` in `sandCodec.ts`). Your
@@ -435,6 +463,7 @@ offline. The spec and milestones are in [BEACH_FILE.md](BEACH_FILE.md).
   (`@capacitor/filesystem` and `@capacitor/share`), and import uses the
   system file picker. The Android debug build passes here; iOS builds in CI.
   Neither has been tried on a real device yet.
+- **E5 done** (with checkpoints, see below).
 - **E4 done:** `npm run beach-file -- validate | rows | compact | heightmap`
   (`scripts/beach-file.mjs`, which uses the app's own reader), and a "Design
   a beach offline" guide in BEACH_FILE.md, with a generator script that was

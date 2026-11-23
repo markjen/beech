@@ -9,6 +9,7 @@ const G_LOGO = `<svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335"
 import type { BeachSync, SyncState } from '../net/beachSync';
 import type { Side } from '../net/account';
 import type { NeighborView } from '../render/neighbors';
+import type { CheckpointsSection } from './checkpoints';
 
 function ago(ts: number): string {
   if (!ts) return '';
@@ -35,6 +36,7 @@ export class AccountPanel {
     private readonly onVisit?: (code: string) => Promise<void>,
     /** your beaches: open one on this device, where a new one starts */
     private readonly mine?: { open: (id: string) => Promise<void>; location: () => string; changed: () => void; shop?: () => void },
+    private readonly checkpoints?: CheckpointsSection,
   ) {
     account.onBeach(() => this.render());
     account.onChange(() => this.render());
@@ -78,6 +80,7 @@ export class AccountPanel {
         </div>`;
       if (u.name) box.querySelector('b')!.textContent = u.name;
       if (this.mine) box.appendChild(this.beachesSection(this.mine));
+      if (this.checkpoints) box.appendChild(this.checkpoints.element());
       if (this.neighbors) box.appendChild(this.neighborSection(this.neighbors));
       if (this.neighbors && this.onVisit) box.appendChild(this.visitSection(this.neighbors, this.onVisit));
       box.querySelector('[data-act="signout"]')!.addEventListener('click', () => void this.account.signOut());
@@ -334,6 +337,10 @@ export class AccountPanel {
           }),
         );
         if (!b.home) row.appendChild(act('make home', `home-${b.id}`, () => a.updateBeach(b.id, { home: true })));
+      }
+      if (this.checkpoints && b.updatedAt) {
+        const cps = this.checkpoints;
+        row.appendChild(act('checkpoint', `checkpoint-${b.id}`, () => cps.saveOf(b.id), 'Save a checkpoint of this beach'));
       }
       row.appendChild(
         act(b.onShore ? 'on the shore' : 'off the shore', `shore-${b.id}`, () => a.updateBeach(b.id, { onShore: !b.onShore }), b.onShore ? 'Everyone can walk past it. Tap to keep it off the shore (only by code or as a neighbor)' : 'Only by code or as a neighbor. Tap to put it on the shore'),

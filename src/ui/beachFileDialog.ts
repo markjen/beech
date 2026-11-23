@@ -20,6 +20,10 @@ export interface BeachFileHost {
   hasBag: boolean;
   /** put it on the beach */
   apply: (beach: ImportedBeach) => void;
+  /** before replacing the beach: keep it as its "Before import" checkpoint (signed in) */
+  beforeApply?: () => Promise<void>;
+  /** keep the file as a checkpoint instead (signed in; all of its things, checked when restored) */
+  saveAsCheckpoint?: (beach: ImportedBeach, fallbackName: string) => Promise<void>;
   /** open the shop (production builds) */
   shop?: () => void;
 }
@@ -166,15 +170,37 @@ export class BeachFileDialog {
       <div class="beachfile-chips">${chips || '<span class="shop-what">No things on it, just sand.</span>'}</div>
       ${missing.length ? `<p class="beachfile-short">${lead}<br>${shortText}</p>` : ''}
       ${warnings.length ? `<details class="beachfile-warn"><summary>${plural(warnings.length, 'thing')} fixed while reading</summary><ul class="beachfile-issues">${warnings.map((w) => `<li>${pathOf(w)}${esc(w.message)}</li>`).join('')}</ul></details>` : ''}
-      <p class="shop-small">This replaces the beach you're on. Undo brings it back.</p>
+      <p class="shop-small">${
+        this.host.beforeApply
+          ? 'This replaces the beach you’re on. It’s kept as “Before import” in your checkpoints, and Undo brings it back too.'
+          : 'This replaces the beach you’re on. Undo brings it back.'
+      }</p>
       <div class="beachfile-actions">
         <button type="button" class="claw-go" data-act="apply">${missing.length ? 'Import without them' : 'Replace this beach'}</button>
         ${missing.length && this.host.shop ? '<button type="button" class="shop-buy" data-act="shop">Shop</button>' : ''}
-      </div>`;
+      </div>
+      ${this.host.saveAsCheckpoint ? '<button type="button" class="action beachfile-keep" data-act="keep">keep it as a checkpoint instead</button>' : ''}`;
     drawMap(this.body.querySelector('canvas')!, beach, keep);
-    this.body.querySelector('[data-act="apply"]')!.addEventListener('click', () => {
+    this.body.querySelector('[data-act="apply"]')!.addEventListener('click', async () => {
       this.close();
+      try {
+        await this.host.beforeApply?.();
+      } catch (e) {
+        // no copy (offline, or checkpoints full): the sim's Undo still brings it back
+        console.warn('could not keep the beach before importing:', (e as Error).message);
+      }
       this.host.apply({ ...beach, objects: keep });
+    });
+    this.body.querySelector('[data-act="keep"]')?.addEventListener('click', async (e) => {
+      const b = e.currentTarget as HTMLButtonElement;
+      b.disabled = true;
+      try {
+        await this.host.saveAsCheckpoint!(beach, fileName.replace(/(\.beach)?\.json$/i, ''));
+        this.close();
+      } catch (err) {
+        b.disabled = false;
+        b.textContent = (err as Error).message;
+      }
     });
     this.body.querySelector('[data-act="shop"]')?.addEventListener('click', () => {
       this.close();

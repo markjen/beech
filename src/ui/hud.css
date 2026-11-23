@@ -1459,3 +1459,8 @@
   gap: 10px;
   margin-top: 4px;
 }
+
+.beachfile-keep {
+  display: block;
+  margin: 10px auto 0;
+}

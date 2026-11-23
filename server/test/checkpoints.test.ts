@@ -151,6 +151,20 @@ describe('checkpoints', () => {
     expect(((await (await req('/checkpoints', {}, a)).json()) as { named: number }).named).toBe(0);
   });
 
+  it('an automatic copy ("before import") replaces the last one and does not count', async () => {
+    const { token: t, user } = await signIn('cp-auto');
+    await save(t, user.id, blob([], 1));
+    const r1 = await req(`/beaches/mine/${user.id}/checkpoints`, json('POST', { name: 'Before import', auto: true }), t);
+    expect(r1.status).toBe(201);
+    await save(t, user.id, blob([], 2));
+    const r2 = (await (await req(`/beaches/mine/${user.id}/checkpoints`, json('POST', { name: 'Before import again', auto: true }), t)).json()) as { checkpoint: { id: string; kind: string } };
+    const list = (await (await req('/checkpoints', {}, t)).json()) as { named: number; checkpoints: { id: string; name: string }[] };
+    expect(list.named).toBe(0);
+    expect(list.checkpoints.map((c) => c.name)).toEqual(['Before import again']);
+    expect(r2.checkpoint).toMatchObject({ id: ((await r1.json()) as { checkpoint: { id: string } }).checkpoint.id, kind: 'auto' });
+    expect(fillOf(new Uint8Array(await (await req(`/checkpoints/${r2.checkpoint.id}/sand`, {}, t)).arrayBuffer()))).toBe(2);
+  });
+
   it('keeps 5 per beach you may have', async () => {
     const { token, user } = await signIn('cp-cap');
     await save(token, user.id, blob([]));

@@ -1,12 +1,25 @@
 # Checkpoints (design)
 
-Status: **server built (C1, C2)**, 2026-11-23. The app comes next (C3 on).
-Milestones are at the end and in BACKLOG.md ("Checkpoints").
+Status: **built (C1 to C5)**, 2026-11-23. C6 (thumbnails, sandbox
+checkpoints) is optional and not built; it's in BACKLOG.md.
 
 Built as designed, except: the migration is **13** (11 and 12 were taken by
 dig finds and gift cards), and the owner decisions at the end were taken as
 suggested (5 per beach slot and 16 MB; beach files only in the sandbox;
-stars kept).
+stars kept). Also added while building:
+
+- `POST /api/beaches/mine/:id/checkpoints { name, auto: true }` makes the
+  beach's one automatic copy instead of a named one (the import preview's
+  "Before import"); it replaces the last automatic copy and isn't counted.
+- In the app: **settings → checkpoints** (`src/ui/checkpoints.ts`), a
+  **checkpoint** action on each saved beach in "your beaches", **restore
+  onto…** on each checkpoint, an Undo toast, and **export** / **import a
+  beach file** (BEACH_FILE.md). The confirm and short dialogs use the
+  browser's own `confirm()`, like removing a beach.
+- CORS: the phone apps call the API cross-origin, and the allowed headers
+  were missing `X-Beach-Items` (every save) and the `PATCH` method (renaming
+  a beach). Both are allowed now, with `X-Beach-Epoch` and
+  `X-Checkpoint-Name`.
 
 A checkpoint is a named copy of one of your beaches: its sand and the things
 on it. You can save one from any of your beaches and later put it back on
