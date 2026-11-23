@@ -104,6 +104,11 @@ const root = new Hono();
 root.use('*', httpLogger);
 root.get('/healthz', (c) => c.text('ok'));
 root.route('/api', api);
+// Unknown /api paths are API 404s, not the app shell: the mounted app's
+// own notFound doesn't stop the root's SPA fallback below, so without this
+// every unknown /api path (e.g. /api/admin/me) served index.html with a 200
+// — which is what failed the deploy smoke test.
+root.all('/api/*', (c) => c.json({ error: 'not found' }, 404));
 // a shared beach link (?visit=CODE) gets Open Graph tags for that beach, so
 // the link shows a preview where it's pasted; everything else passes through
 const indexHtml = path.join(publicDir, 'index.html');
