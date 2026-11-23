@@ -135,6 +135,16 @@ The single list of what's left to do, for the owner and for agents.
   iOS and Android apps no longer show the redeem box, the promo field, the
   credit line or "Buy with credit" (App Store 3.1.1 / Play payments
   policy); `codesAllowed()` in `src/net/shop.ts`.
+- [x] **Bulldozer and vacuum can clear rocks** (2026-11-23): the dozer
+  blade and the vacuum used to skip placed rocks (`sweepAt` had an explicit
+  `kind === 'rock'` exclusion, "they're terrain") — now a rock in the path
+  is swept back into the bag like any other placed item, on tap and on
+  drag, and the dozer flattens the sand the rock was sitting on. Undo,
+  redo and second-finger cancel put the rock back exactly: the rock's
+  placed height is now stored on the object (`base`), the sand a swept
+  rock lifts back is kept out of the stroke's undo delta, and cancel
+  re-embeds swept objects before restoring the sand. The terrain rock —
+  the non-erodible floor you can't dig below — is untouched.
 - [x] **Gift cards and promo codes** (2026-11-23): gift cards are prepaid
   credit (16-char bearer codes, HMAC-SHA-256 under a pepper, shown once at
   issue, never stored); promo codes discount a server-side credit purchase

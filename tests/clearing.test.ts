@@ -20,6 +20,21 @@ function offPath(sim: BeachSim, x0: number, x1: number): number {
   return m / n;
 }
 
+/** max |sand - before| over a box around (x, y) */
+function sandDiff(sim: BeachSim, before: Float32Array, x: number, r: number): number {
+  let m = 0;
+  const i0 = Math.max(0, Math.floor((x - r) / sim.dx));
+  const i1 = Math.min(sim.nx - 1, Math.ceil((x + r) / sim.dx));
+  const j0 = Math.max(0, Math.floor((y - r) / sim.dx));
+  const j1 = Math.min(sim.ny - 1, Math.ceil((y + r) / sim.dx));
+  for (let j = j0; j <= j1; j++)
+    for (let i = i0; i <= i1; i++) {
+      const k = j * sim.nx + i;
+      m = Math.max(m, Math.abs(sim.sand[k] - before[k]));
+    }
+  return m;
+}
+
 /** Drive a stroke from x0 to x1 at `speed` m/s, one sim tick per move. */
 function drive(sim: BeachSim, x0: number, x1: number, speed: number, mode: BrushMode): void {
   sim.beginStroke(x0, y, 0.5, mode);
@@ -78,8 +93,8 @@ describe('clearing modes', () => {
     expect(offPath(sim, 8, 17)).toBeGreaterThan(0.02);
     drive(sim, 8, 22, 2, 'dozer');
     expect(offPath(sim, 8, 17)).toBeLessThan(0.004);
-    // everything in the path is gone except the rock; the far chair is untouched
-    expect(sim.objects.persisted().map((p) => p.id).sort()).toEqual([o.rock.id, o.far.id].sort());
+    // everything in the path is gone, rocks included; the far chair is untouched
+    expect(sim.objects.persisted().map((p) => p.id).sort()).toEqual([o.far.id].sort());
   });
 
   it('vacuum moves no sand at all', () => {
@@ -111,18 +126,18 @@ describe('vacuum pickup', () => {
     const o = setRow(sim);
     drive(sim, 8, 22, 2, 'vacuum');
     const left = sim.objects.persisted();
-    expect(left.map((p) => p.id).sort()).toEqual([o.rock.id, o.far.id].sort());
+    expect(left.map((p) => p.id).sort()).toEqual([o.far.id].sort());
     // the bag counts what's placed: nothing vacuumed is placed any more, so it's back in hand
     expect(left.some((p) => p.item === 'deckchair' && p.id === o.chair.id)).toBe(false);
     expect(left.some((p) => p.item === 'starfish')).toBe(false);
   });
 
-  it('rocks stay, and a wild stray is swept away but never credited', () => {
+  it('a swept rock goes back in the bag; a wild stray is swept away but never credited', () => {
     const sim = new BeachSim(grid, 1, FLAGS);
     const o = setRow(sim);
     drive(sim, 8, 22, 2, 'vacuum');
-    // the rock is still on the beach; the stray is gone (it was never in the bag)
-    expect(sim.objects.persisted().some((p) => p.id === o.rock.id)).toBe(true);
+    // the rock is gone — it was placed, so it is back in hand — and so is the stray (never in the bag)
+    expect(sim.objects.persisted().some((p) => p.id === o.rock.id)).toBe(false);
     expect(sim.objects.persisted().some((p) => p.id === o.stray.id)).toBe(false);
   });
 
@@ -130,13 +145,13 @@ describe('vacuum pickup', () => {
     const sim = new BeachSim(grid, 1, FLAGS);
     const o = setRow(sim);
     drive(sim, 8, 22, 2, 'vacuum');
-    expect(sim.objects.count).toBe(2);
+    expect(sim.objects.count).toBe(1);
     sim.undoStroke(false);
     expect(sim.objects.persisted().map((p) => p.id).sort()).toEqual(
       [o.chair.id, o.star.id, o.shell.id, o.wood.id, o.stray.id, o.rock.id, o.far.id].sort(),
     );
     sim.redoStroke(false);
-    expect(sim.objects.persisted().map((p) => p.id).sort()).toEqual([o.rock.id, o.far.id].sort());
+    expect(sim.objects.persisted().map((p) => p.id).sort()).toEqual([o.far.id].sort());
   });
 
   it('a stroke that only vacuums an object (no sand change) is still undoable', () => {
@@ -161,6 +176,80 @@ describe('vacuum pickup', () => {
     expect(sim.objects.count).toBe(0);
     sim.cancelStroke();
     expect(sim.objects.persisted().map((p) => p.id)).toEqual([chair.id]);
+  });
+});
+
+describe('rocks can be cleared', () => {
+  it('a vacuum tap picks up exactly the rock under it', () => {
+    const sim = new BeachSim(grid, 1, FLAGS);
+    const o = setRow(sim);
+    hold(sim, 20, 3, 'vacuum'); // over the rock
+    expect(sim.objects.persisted().map((p) => p.id).sort()).toEqual(
+      [o.chair.id, o.star.id, o.shell.id, o.wood.id, o.stray.id, o.far.id].sort(),
+    );
+  });
+
+  it('sweeping a rock gives the terrain floor back underneath it', () => {
+    const sim = new BeachSim(grid, 1, FLAGS);
+    const floorBefore = sim.bottom.slice();
+    sim.placeObject({ kind: 'rock', item: 'rock', x: 12, y, angle: 0, size: 0.5, variant: 1 });
+    // the rock raised the non-erodible floor under its footprint
+    expect(sim.bottom.some((b, k) => b > floorBefore[k])).toBe(true);
+    hold(sim, 12, 3, 'vacuum');
+    expect(sim.objects.count).toBe(0);
+    // ... and taking it off gives the floor back exactly; the dig floor itself is untouched
+    expect(sim.bottom).toEqual(floorBefore);
+  });
+
+  it('undo puts a vacuumed rock back with the sand exactly as it was; redo takes it off again', () => {
+    const sim = new BeachSim(grid, 1, FLAGS);
+    const rock = sim.placeObject({ kind: 'rock', item: 'rock', x: 12, y, angle: 0, size: 0.5, variant: 1 });
+    const before = sim.sand.slice();
+    hold(sim, 12, 3, 'vacuum');
+    expect(sim.objects.count).toBe(0);
+    const lifted = sim.sand.slice();
+    // the lift dropped the sand under the rock back to where it sat
+    expect(sandDiff(sim, before, 12, 1)).toBeGreaterThan(0.05);
+    sim.undoStroke(false);
+    expect(sim.objects.persisted().map((p) => p.id)).toEqual([rock.id]);
+    // no sand dome where the rock was lifted from: undo counts the lift once
+    expect(sandDiff(sim, before, 12, 1)).toBeLessThan(1e-4);
+    // and the rock sits at the height it was placed at, not floating on the lifted sand
+    expect(sim.objects.states()[0].z).toBeCloseTo(rock.base!, 6);
+    sim.redoStroke(false);
+    expect(sim.objects.count).toBe(0);
+    expect(sandDiff(sim, lifted, 12, 1)).toBeLessThan(1e-4);
+  });
+
+  it('cancelling a stroke (second finger) puts a swept rock back exactly', () => {
+    const sim = new BeachSim(grid, 1, FLAGS);
+    const rock = sim.placeObject({ kind: 'rock', item: 'rock', x: 12, y, angle: 0, size: 0.5, variant: 1 });
+    const before = sim.sand.slice();
+    sim.beginStroke(8, y, 0.5, 'vacuum');
+    for (let s = 0; s <= 20; s++) {
+      sim.moveStroke(8 + s * 0.2, y, 0.5);
+      sim.step(DT);
+    }
+    expect(sim.objects.count).toBe(0);
+    sim.cancelStroke();
+    expect(sim.objects.persisted().map((p) => p.id)).toEqual([rock.id]);
+    expect(sandDiff(sim, before, 12, 1)).toBeLessThan(1e-4);
+    expect(sim.objects.states()[0].z).toBeCloseTo(rock.base!, 6);
+  });
+
+  it('undo puts a dozer-swept rock back, and the sand under it is not doubled', () => {
+    const sim = new BeachSim(grid, 1, FLAGS);
+    const rock = sim.placeObject({ kind: 'rock', item: 'rock', x: 12, y, angle: 0, size: 0.5, variant: 1 });
+    sim.stamp('dig', 10, y, 0.6, 0.4);
+    sim.stamp('pile', 14, y, 0.6, 0.5);
+    const dug = sim.sand.slice();
+    drive(sim, 8, 16, 2, 'dozer');
+    expect(sim.objects.count).toBe(0);
+    sim.undoStroke(false);
+    expect(sim.objects.persisted().map((p) => p.id)).toEqual([rock.id]);
+    // the dug hole and the pile are back, and the rock sits in the sand as placed
+    expect(sandDiff(sim, dug, 12, 2)).toBeLessThan(1e-4);
+    expect(sim.objects.states()[0].z).toBeCloseTo(rock.base!, 6);
   });
 });
 
