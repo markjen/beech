@@ -26,6 +26,7 @@
 import { Hono, type Context } from 'hono';
 
 import { beachPng, placeById, PLACES } from './beachImage.js';
+import { DISCORD_INVITE_URL } from './community.js';
 import { toBytes, type Db } from './db.js';
 import { BEACH, NODE, isPublic, normalizeCode, shoreGraph, type NodeRow, type Step } from './shore.js';
 import { logEvent } from './observability.js';
@@ -282,7 +283,7 @@ ${main}
 </main>
 <footer>
   <p><b>beech</b> is a calm sand-and-waves toy: dig, build, and watch the sea rework it. Every beach here is someone’s, built in the game and set on the shore.</p>
-  <p><a href="${esc(game)}/">Play beech</a> · <a href="${href('/top')}">Most loved</a> · <a href="${href('/rising')}">Rising</a> · <a href="${href('/new')}">Just built</a>${
+  <p><a href="${esc(game)}/">Play beech</a> · <a href="${href('/top')}">Most loved</a> · <a href="${href('/rising')}">Rising</a> · <a href="${href('/new')}">Just built</a> · <a href="${esc(DISCORD_INVITE_URL)}">Discord</a>${
     opts.share ? ` · <button type="button" class="linkish" data-share data-url="${esc(opts.share.url)}" data-text="${esc(opts.share.text)}" data-title="${esc(opts.share.title)}">Share this page</button>` : ''
   }</p>
 </footer>

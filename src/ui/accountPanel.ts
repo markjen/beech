@@ -3,6 +3,7 @@ import { MAX_OBJECTS } from '../sim/sandCodec';
 import { renderBeachMap, sortBeachesWestToEast } from './beachMap';
 import { DEV_AUTH, googleSignInAvailable, renderGoogleButton, type Account } from '../net/account';
 import { beachShareText, shareUrl, shoreBeachUrl } from '../net/share';
+import { DISCORD_INVITE_URL } from '../../server/src/community';
 import { copyText, shareLink } from './shareSheet';
 import { nativeProviders, nativeSignIn, SignInCancelled, type NativeProvider } from '../net/nativeAuth';
 
@@ -141,6 +142,16 @@ export class AccountPanel {
       err.textContent = this.error;
       box.appendChild(err);
     }
+    // where feedback, bug reports and ideas live
+    const community = document.createElement('div');
+    community.className = 'status';
+    const discord = document.createElement('a');
+    discord.href = DISCORD_INVITE_URL;
+    discord.target = '_blank';
+    discord.rel = 'noopener';
+    discord.textContent = 'Join our Discord — feedback, bug reports and ideas ↗';
+    community.appendChild(discord);
+    box.appendChild(community);
     this.el.appendChild(box);
     this.renderStatus();
   }
