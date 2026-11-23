@@ -310,6 +310,7 @@ if (result.sim) {
     const top = Object.entries(r.phases).sort((x, y) => y[1] - x[1]).slice(0, 4).map(([k, v]) => `${k} ${v.toFixed(2)}`).join(', ');
     md += `| ${tier} | ${r.grid} | ${r.msPerTick.toFixed(2)}${base ? ` <sub>${delta(`sim.${tier}.msPerTick`)}</sub>` : ''} | ${top} |\n`;
   }
+  md += `\nServer catch-up, 14 days (docs/LIVE_SIM.md): ${Object.entries(result.sim).map(([tier, r]) => `${tier} ${r.catchup14dMs?.toFixed(1)} ms`).join(', ')}\n`;
 }
 if (rows.length) md += `\n| budget | value | max | |\n|---|---|---|---|\n${rows.map((r) => `| ${r.join(' | ')} |`).join('\n')}\n`;
 if (base) md += `\nChanges are against ${base.sha} (${base.date.slice(0, 10)}).\n`;

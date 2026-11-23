@@ -80,7 +80,7 @@ export const OBJECT_KINDS: ObjectKind[] = [
   'footprints',
 ];
 
-type Behaviour = 'rock' | 'float' | 'tumble' | 'fixed';
+export type Behaviour = 'rock' | 'float' | 'tumble' | 'fixed';
 export const BEHAVIOUR: Record<ObjectKind, Behaviour> = {
   rock: 'rock',
   driftwood: 'float',

@@ -1,6 +1,6 @@
 # Live beaches: the sea keeps working while you're away (design)
 
-Status: being built (L1 done 2026-11-23, see STATUS.md). The owner's decisions are settled (end of this
+Status: being built (L1 and L2 done 2026-11-23, see STATUS.md). The owner's decisions are settled (end of this
 page). Milestones L1–L5 are at the end and in [BACKLOG.md](BACKLOG.md).
 
 ## Today
@@ -158,26 +158,29 @@ maps each one's levels to the diorama with `diorama()`, exactly as the live
 app does. Work is scaled by each step's length and the water's reach, not by
 wall-clock time.
 
-**What each step does** (per half cycle, only on the **active band**: the
-rows between that step's lowest water and its highest water plus a swash
-band above it, usually a third of the grid or less):
+**What each step does** (per half cycle, as built). It copies the two
+things the live sim does to sand over minutes to hours:
 
-- **Slope relaxation:** wet sand relaxes toward its wet angle of repose,
-  moving sand downhill (mass-conserving), several Jacobi passes per step.
-  This is what slumps walls and fills moats.
-- **Toward the equilibrium profile:** submerged and swash cells move a
-  fraction toward the rest profile, `k · waves · Δt`, with the sand moved
-  offshore-ward and deposited in the surf zone, not deleted (mass is
-  conserved inside the grid; only the offshore edge may lose, as in the live
-  sim).
+- **Wet time per cell:** the time the level (a sine from that half cycle's
+  low to its high) plus the swash run-up (`CATCHUP.runup × waves`) is above
+  the cell, sampled at three points of the run-up so the swash band counts
+  part-time. Waves climb what's built in the swash, so a mound is wetted as
+  if it were `CATCHUP.overtop` (0.4) of its height.
+- **Healing and wet slumping, taking turns** (`rounds` × `slumpPasses`): wet
+  cells heal toward the rest profile with the live sim's own time constant
+  (`EROSION.healingTime`, 150 s), and sand slumps at the saturated angle of
+  repose where wet, dry angle elsewhere (the live sim's `slump`). Healing
+  isn't mass-conserving in the live sim either: the sea smooths things away.
+- **Only rows that differ from the rest beach** (plus a margin) are worked
+  on: sand at rest stays at rest, so the sea floor costs nothing.
 - **Dry sand** above the highest water of the gap is untouched, as in the
   live sim. A castle built high up the beach survives a week; one at the
   waterline doesn't.
-- The constants (`CATCHUP` in `src/config.ts`) are fitted to the live sim:
-  a test runs both on the same castle for one simulated hour at a fixed tide
-  and checks the catch-up lands near the full sim (height loss within ~25 %,
-  same cells changed). It doesn't need to match closely, only to look like
-  the same sea.
+- Checked against the live sim (`tests/catchup.test.ts`): two minutes at a
+  still tide on a castle at the waterline and one a metre below, the live
+  sim and the catch-up both knock the top off, the catch-up a little more
+  gently (peak within 0.15 m); a castle 3 m up the beach is untouched by
+  both.
 
 **Objects** follow simple rules per step:
 
@@ -189,8 +192,12 @@ band above it, usually a third of the grid or less):
   walk scaled by waves), then stranded at the step's waterline when the tide
   falls.
 - **Shells and other rollers:** rolled downslope a little in swash cells.
-- **Lost to the sea** (section 5): a floater that spent more than
-  `LOST_FLOAT` (2 h) in water, or a roller carried to the offshore edge.
+- **Lost to the sea** (section 5): an owned floater that spent more than
+  `CATCHUP.lostFloatH` (2 h) in the sea in all, or a roller more than
+  `lostRollH` (6 h).
+- **The sea brings things in:** after a gap with at least one high tide,
+  the old strays are gone and up to `MAX_WILD` fresh ones (driftwood,
+  shells, sea glass) lie along the last high-water line.
   (Burial isn't modelled: objects ride on the sand surface, live and in the
   catch-up.)
 
@@ -204,12 +211,10 @@ band above it, usually a third of the grid or less):
   moved up to `to − cap`, so the tides used are still the most recent ones.
   The perf budget is set at the default; raising the cap a lot means raising
   `catchup14d` too.
-- The grid is the saved one (192² to 320² cells). A 14-day gap is ~56 half
-  cycles; at ~10 relaxation passes each over a band of ~256 × 90 cells,
-  that's ~13 M cell updates, roughly 50–100 ms in JS. Target: a 14-day
-  catch-up under 150 ms on a Cloud Run CPU, checked by `npm run perf` (a new
-  `catchup14d` line in `perf/budget.json`). If it misses, run the band at
-  half resolution and add the upsampled change back.
+- Measured (`npm run perf`, budget `sim.<tier>.catchup14dMs` = 150): 14
+  days of Brighton's tides with four castles takes 30–45 ms on every grid;
+  a whole beach dug up everywhere is about 200 ms on the largest. Long gaps
+  run after the response anyway (section 3).
 - Deterministic for a given input (seeded from beach id and `from`), so a
   retry gives the same answer.
 
@@ -374,7 +379,7 @@ Endpoints:
 
 ## Testing
 
-- `tests/catchup.test.ts`: mass conservation inside the grid; stability (no
+- `tests/catchup.test.ts`: sand never rises above what was there; stability (no
   NaN, no growth) over 14 days; dry sand above the gap's high water
   untouched; same input → same output; two halves ≈ one whole (catch up a→b
   then b→c, compare with a→c, within tolerance); close to the live sim on
@@ -399,7 +404,7 @@ Endpoints:
 | | What | Done when |
 | --- | --- | --- |
 | **L1** ✅ | **Lost to the sea, live.** Owned floaters and rollers can leave by the offshore edge; the worker reports `lost`; toast; the save drops them so they're back in the bag | sim tests; a bottle pushed out to sea ends up back in the bag after a save |
-| **L2** | **The catch-up model.** `src/sim/catchup.ts`, `CATCHUP` constants, fitted against the live sim; perf line | `tests/catchup.test.ts` passes; `catchup14d` within budget |
+| **L2** ✅ | **The catch-up model.** `src/sim/catchup.ts`, `CATCHUP` constants, fitted against the live sim; perf line | `tests/catchup.test.ts` passes; `catchup14d` within budget |
 | **L3** | **Server catch-up on read.** Bundle into the server, migrations (`simulated_until`, `beach_events`, `owner_seen_at`, `tide` checkpoints), configurable cap, lock + CAS + epoch, "Before the tide" checkpoint, background queue for the shore, items recount | server tests; e2e: 2 days on the test clock erodes a waterline castle and leaves a "Before the tide" checkpoint |
 | **L4** | **While you were away.** The summary card, `/away` endpoints, "Put it back as it was" | e2e sees the card once, then not again; putting it back restores the castle |
 | **L5** | **Live viewers.** Lease, faster saves while watched, viewer polling with blend, then SSE with `LISTEN/NOTIFY` | e2e: a viewer sees the owner's dig within 6 s; two owner tabs never both save |

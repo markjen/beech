@@ -199,6 +199,36 @@ export const LOST_TO_SEA = {
   edge: 0.5,
 };
 
+/**
+ * The catch-up: what the sea did to a beach while nobody had it open
+ * (docs/LIVE_SIM.md, section 4). A coarse model of the live sim's healing
+ * and wet slumping, stepped by half tide cycles.
+ */
+export const CATCHUP = {
+  /** gaps shorter than this (min) aren't caught up */
+  minGapMin: 10,
+  /** most of a gap that's simulated (days); the server's CATCHUP_MAX_GAP_DAYS overrides it */
+  maxGapDays: 14,
+  /** a gap longer than this (h) first keeps the beach as its "Before the tide" checkpoint */
+  tideCheckpointGapH: 12,
+  /** tide sampling (min) used to find the half cycles */
+  sampleMin: 20,
+  /** how far above the still water the swash reaches (m), at waves = 1 */
+  runup: 0.3,
+  /** waves climb what's built in the swash: a mound is wetted as if it were this fraction of its height */
+  overtop: 0.4,
+  /** turns of healing then wet slumping per half cycle */
+  rounds: 4,
+  /** wet-slump passes per turn (at the saturated angle of repose) */
+  slumpPasses: 5,
+  /** an owned floater afloat this long (h) in all is taken by the sea */
+  lostFloatH: 2,
+  /** an owned roller (shells and the like) under water this long (h) is taken */
+  lostRollH: 6,
+  /** how far (m) a floater drifts along the shore per half cycle afloat, at waves = 1 */
+  drift: 3,
+};
+
 export const SIM_HZ = 30;
 export const UNDO_DEPTH = 32;
 

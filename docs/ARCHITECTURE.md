@@ -50,9 +50,10 @@ simulated one.
 | `src/palette.ts` | The four moods and the day-cycle blend |
 | `src/sim/beachSim.ts` | The simulation, no DOM. Unit tested in `tests/sim.test.ts`. |
 | `src/sim/sim.worker.ts`, `protocol.ts` | Worker loop and message types (including live `tune` and `bench`). Each frame carries the packed sand buffer and a packed positions buffer for the things on the beach; the roster of things only when it changes |
-| `scripts/perf-sim.mjs` | The simulation's tick by phase and grid tier, in Node with the app's settings (`npm run perf:sim`; `perf.mjs` budgets its totals) |
+| `scripts/perf-sim.mjs` | The simulation's tick by phase and grid tier, in Node with the app's settings, and the 14-day catch-up (`npm run perf:sim`; `perf.mjs` budgets its totals) |
+| `src/sim/catchup.ts` | The catch-up: what the sea did to a beach while nobody had it open, by half tide cycles (docs/LIVE_SIM.md). Tested in `tests/catchup.test.ts`. |
 | `scripts/perf.mjs`, `perf/budget.json` | Performance profile (draw calls, meshes, main-thread and worker ms, bundle size) checked against budgets; `npm run perf`, CI's Performance workflow. See PERFORMANCE.md |
-| `src/sim/objects.ts` | Things on the beach: rocks (raise the non-erodible floor), driftwood (floats, drifts, strands), shells and sea glass (rolled by fast water), flags (fixed), and what the sea washes in. Tested in `tests/objects.test.ts`. |
+| `src/sim/objects.ts` | Things on the beach: rocks (raise the non-erodible floor), driftwood (floats, drifts, strands), shells and sea glass (rolled by fast water), flags (fixed), what the sea washes in, and owned things the sea takes out (`takeLost`). Tested in `tests/objects.test.ts`. |
 | `src/sim/sandCodec.ts` | Saved-beach format: BCH1 (sand), BCH2 (sand plus placed objects, validated on load), and BCH3 (adds rock cover when any rock is buried) |
 | `src/world/beachFile.ts` | Beach files (`.beach.json`, spec in BEACH_FILE.md): read and write, shapes, `reconcileItems` (what of a beach your bag can build) |
 | `scripts/beach-file.mjs` | Offline beach-file tool: validate, rows/compact, heightmap PNG (`scripts/lib/png.mjs`) |

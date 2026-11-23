@@ -19,11 +19,15 @@ const entry = path.join(dir, 'entry.ts');
 writeFileSync(
   entry,
   `export { BeachSim } from ${JSON.stringify(path.join(root, 'src/sim/beachSim.ts'))};
-   export { GRID_TIERS, SIM_HZ } from ${JSON.stringify(path.join(root, 'src/config.ts'))};`,
+   export { GRID_TIERS, SIM_HZ, PROFILE } from ${JSON.stringify(path.join(root, 'src/config.ts'))};
+   export { catchUp } from ${JSON.stringify(path.join(root, 'src/sim/catchup.ts'))};
+   export { beachById } from ${JSON.stringify(path.join(root, 'src/world/locations.ts'))};
+   export { tideHeight } from ${JSON.stringify(path.join(root, 'src/world/tides.ts'))};
+   export { diorama } from ${JSON.stringify(path.join(root, 'src/world/live.ts'))};`,
 );
 const out = path.join(dir, 'sim.mjs');
-await build({ entryPoints: [entry], bundle: true, format: 'esm', platform: 'node', outfile: out, logLevel: 'error' });
-const { BeachSim, GRID_TIERS, SIM_HZ } = await import(pathToFileURL(out).href);
+await build({ entryPoints: [entry], bundle: true, format: 'esm', platform: 'node', outfile: out, logLevel: 'error', loader: { '.json': 'json' } });
+const { BeachSim, GRID_TIERS, SIM_HZ, PROFILE, catchUp, beachById, tideHeight, diorama } = await import(pathToFileURL(out).href);
 rmSync(dir, { recursive: true, force: true });
 
 const PHASES = ['applyBrush', 'applyUndoEasing', 'force', 'flow', 'seep', 'erode', 'slump', 'heal', 'updateWetFoam', 'measureSwash'];
@@ -62,7 +66,29 @@ for (const tier of args.tier ? [args.tier] : Object.keys(GRID_TIERS)) {
   }
   const total = performance.now() - t0;
   const per = Object.fromEntries(Object.entries(ms).map(([k, v]) => [k, v / TICKS]));
-  results[tier] = { grid: `${sim.nx}x${sim.ny}`, msPerTick: total / TICKS, phases: per };
+  // the server's catch-up (docs/LIVE_SIM.md): 14 days of Brighton's big tides
+  // on a beach with a few castles in the swash, at this tier's grid
+  const g = GRID_TIERS[tier];
+  const delta = new Float32Array(g.nx * g.ny);
+  for (const [cx, cy] of [[6, 1], [14, 0], [22, 2], [28, -1]]) {
+    const y0 = PROFILE.shoreline + cy;
+    for (let j = 0; j < g.ny; j++)
+      for (let i = 0; i < g.nx; i++) {
+        const d = Math.hypot((i + 0.5) * g.dx - cx, (j + 0.5) * g.dx - y0);
+        if (d < 1.5) delta[j * g.nx + i] = 0.6 * Math.min(1, (1.5 - d) / 0.4);
+      }
+  }
+  const place = beachById('brighton') ?? beachById('bondi');
+  const tide = (t) => diorama(tideHeight(place.tide, new Date(t)));
+  const to = Date.UTC(2026, 10, 15);
+  const run = () => catchUp({ nx: g.nx, ny: g.ny, delta, objects: [], tide, waves: place.waves, from: to - 14 * 86400000, to });
+  run();
+  const c0 = performance.now();
+  const REPS = 3;
+  for (let r = 0; r < REPS; r++) run();
+  const catchup14dMs = (performance.now() - c0) / REPS;
+  results[tier] = { grid: `${sim.nx}x${sim.ny}`, msPerTick: total / TICKS, phases: per, catchup14dMs };
+  console.log(`${tier}: 14-day catch-up ${catchup14dMs.toFixed(1)} ms`);
   const rows = Object.entries(per)
     .sort((a, b) => b[1] - a[1])
     .map(([k, v]) => `  ${k.padEnd(16)} ${v.toFixed(3)} ms  ${((v / (total / TICKS)) * 100).toFixed(0)}%`);

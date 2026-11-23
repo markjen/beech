@@ -807,8 +807,15 @@ here: it needs the service's URL on the web OAuth client.
   surf this is rare; the catch-up (L2) is where most losses will happen.
   Undo of a lost thing's placement does nothing; redo puts it back from the
   bag.
-- Not built yet: L2 catch-up model, L3 server catch-up, L4 "while you were
-  away", L5 live viewers.
+- **L2, the catch-up model (2026-11-23):** `src/sim/catchup.ts`. Cuts a gap
+  into half tide cycles and copies the live sim's healing and wet slumping
+  by how long each cell was wet; floaters strand at the high-water line,
+  owned things too long in the sea are taken, and fresh strays wash up.
+  Constants in `CATCHUP` (`src/config.ts`), including `maxGapDays: 14`.
+  14 days costs 30–45 ms (budgeted at 150 ms per tier in `npm run perf`).
+  Not used by anything yet; the server runs it in L3.
+- Not built yet: L3 server catch-up, L4 "while you were away", L5 live
+  viewers.
 
 ## beechshore.com (2026-11-23)
 

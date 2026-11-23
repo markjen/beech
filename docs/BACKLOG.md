@@ -74,7 +74,7 @@ The single list of what's left to do, for the owner and for agents.
 
 ## In progress
 
-- [ ] **Live beaches** (agent; L1 done 2026-11-23) (the sea works while you're away): design in
+- [ ] **Live beaches** (agent; L1, L2 done 2026-11-23) (the sea works while you're away): design in
   [LIVE_SIM.md](LIVE_SIM.md). L1 owned items lost to the sea go back to the
   bag; L2 coarse catch-up model in `src/sim/catchup.ts`; L3 server catch-up
   on read (lock, CAS, epoch bump); L4 "while you were away" card; L5 owner
