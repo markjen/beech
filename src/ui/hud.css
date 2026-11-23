@@ -613,3 +613,253 @@
   font-size: 13px;
   opacity: 0.85;
 }
+
+/* ---- leaderboard: the most-starred beaches ---- */
+.board {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  padding-top: max(16px, env(safe-area-inset-top));
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+  background: rgba(46, 40, 78, 0.25);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  z-index: 20;
+}
+
+.board.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.board-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(460px, 100%);
+  max-height: min(640px, calc(100dvh - 32px));
+  padding: 18px 16px 12px;
+  border-radius: 24px;
+  color: var(--ui-fg);
+  /* two layers of the translucent panel colour: the list must read over the sea */
+  background-color: var(--ui-bg);
+  background-image: linear-gradient(var(--ui-bg), var(--ui-bg));
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 14px 40px var(--ui-shadow);
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+}
+
+.board-card h2 {
+  margin: 0 40px 10px;
+  font-size: 17px;
+  text-align: center;
+}
+
+.board-close {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  width: 36px;
+  height: 36px;
+  border: none;
+  background: none;
+  color: inherit;
+  font-size: 24px;
+  cursor: pointer;
+}
+
+.board-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  margin: 0 auto;
+  border-radius: 999px;
+  border: 1.5px solid currentColor;
+}
+
+.board-tabs button {
+  min-width: 96px;
+  min-height: 34px;
+  padding: 6px 14px;
+  border: none;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.board-tabs button.on {
+  color: var(--ui-bg);
+  background: var(--ui-fg);
+}
+
+.board-blurb {
+  margin: 8px 0 6px;
+  font-size: 12px;
+  text-align: center;
+  opacity: 0.7;
+}
+
+.board-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+}
+
+.board-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 2px;
+  border-top: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+}
+
+.board-row:first-child {
+  border-top: none;
+}
+
+.board-row.yours {
+  border-radius: 12px;
+  background: color-mix(in srgb, currentColor 7%, transparent);
+}
+
+.board-rank {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.board-rank.top {
+  color: #5a4630;
+}
+
+.board-rank.r1 {
+  background: #f2c45a;
+}
+
+.board-rank.r2 {
+  background: #d8d4dc;
+}
+
+.board-rank.r3 {
+  background: #e3ac85;
+}
+
+.board-who {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.board-who b,
+.board-who small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.board-who b {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.board-who small,
+.board-count small {
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+.board-count {
+  flex: none;
+  min-width: 58px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-variant-numeric: tabular-nums;
+}
+
+.board-count span {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.board-count .up {
+  color: #3f8f6a;
+}
+
+.board-count small.up {
+  opacity: 1;
+}
+
+.board-star {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  font-size: 20px;
+  line-height: 1;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.board-star.on {
+  color: #e0a526;
+}
+
+.board-row .board-visit {
+  flex: none;
+  min-height: 32px;
+  padding: 5px 12px;
+}
+
+.board-note {
+  margin: 8px 0 2px;
+  font-size: 13px;
+  text-align: center;
+}
+
+.board-note:empty {
+  display: none;
+}
+
+.board-signin {
+  flex: none;
+  margin-left: 6px;
+}
+
+@media (max-width: 380px) {
+  .board-card {
+    padding: 16px 10px 10px;
+  }
+
+  .board-row {
+    gap: 6px;
+  }
+
+  .board-count {
+    min-width: 48px;
+  }
+}

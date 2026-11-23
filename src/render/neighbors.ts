@@ -227,7 +227,11 @@ export class NeighborView {
   }
 
   async toggleFavorite(b: ShoreBeach): Promise<void> {
-    const on = !this.favorites.has(b.code);
+    await this.setFavorite(b, !this.favorites.has(b.code));
+  }
+
+  /** Star (or un-star) a beach. Saying the same twice is fine. */
+  async setFavorite(b: ShoreBeach, on: boolean): Promise<void> {
     if (on) this.favorites.set(b.code, b);
     else this.favorites.delete(b.code);
     this.favChanged();

@@ -37,7 +37,7 @@ Read these first:
 - Server changes: `cd server && npm run typecheck && npm test` (PGlite; set
   `TEST_DATABASE_URL` to also run against real Postgres), then
   `npm run server:dev` with `npm run e2e:accounts`, `npm run e2e:neighbors`,
-  `npm run e2e:shore` and `npm run e2e:beaches`.
+  `npm run e2e:shore`, `npm run e2e:beaches` and `npm run e2e:leaderboard`.
   Schema changes are new entries appended to `server/src/migrations.ts`, never
   edits to applied ones. Never enable `DEV_AUTH` outside local development.
 - Android builds here need an SDK: install the command-line tools to a scratch

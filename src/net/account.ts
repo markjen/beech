@@ -456,6 +456,30 @@ export class NeighborApi {
     const res = await this.account.fetch(`/api/favorites/${encodeURIComponent(code)}`, { method: on ? 'PUT' : 'DELETE' });
     if (!res.ok) throw await errorOf(res, 'could not change your favorites');
   }
+
+  /** The most-starred beaches: all time, or rising (star velocity). */
+  async leaderboard(board: Board, limit = 50): Promise<BoardEntry[]> {
+    const res = await this.account.fetch(`/api/leaderboard?board=${board}&limit=${limit}`);
+    if (!res.ok) throw await errorOf(res, 'could not load the leaderboard');
+    return ((await res.json()) as { entries: BoardEntry[] }).entries;
+  }
+}
+
+export type Board = 'all' | 'rising';
+
+/** A row of the leaderboard. */
+export interface BoardEntry extends ShoreBeach {
+  rank: number;
+  /** stars it has now */
+  stars: number;
+  /** of those, made in the last week */
+  recent: number;
+  /** recent stars, each halved every 2 days of age (the rising board's order) */
+  velocity: number;
+  /** you've starred it */
+  starred: boolean;
+  /** it's one of your beaches */
+  yours: boolean;
 }
 
 /** A beach somewhere along the shore (found by code or by walking). */
@@ -465,6 +489,8 @@ export interface ShoreBeach {
   /** their real beach id, or null if they haven't saved yet */
   location: string | null;
   updatedAt: number | null;
+  /** the beach's own name, if its owner gave it one */
+  beachName?: string;
   /** a real (mutual) neighbor of the beach before it along the shore */
   linked?: boolean;
 }

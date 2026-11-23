@@ -33,6 +33,7 @@ const ICONS = {
   beachhut: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10l9-6 9 6" /><path d="M5 9v10h14V9" /><path d="M10 19v-6h4v6" /><path d="M5 21v-2M19 21v-2" opacity=".55"/></svg>`,
   lighthouse: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 21l1-12h3l1 12z" /><path d="M10 7h4v2h-4zM11 5l1-1.5L13 5" /><path d="M4 6l4 1.5M20 6l-4 1.5" opacity=".55"/><path d="M10.2 14h3.6" opacity=".55"/></svg>`,
   tikitorch: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22V10" /><path d="M9.5 10h5l-.8-2.5h-3.4z" /><path d="M12 7.5c-1.8-1.5-.6-3.5 0-5 .6 1.5 1.8 3.5 0 5z" /></svg>`,
+  trophy: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 4h9v5a4.5 4.5 0 0 1-9 0z" /><path d="M7.5 6H4.5c0 3 1.3 4.5 3.4 4.8M16.5 6h3c0 3-1.3 4.5-3.4 4.8" opacity=".55"/><path d="M12 13.5V17M8.5 20.5h7M9.5 20.5l.6-3.5h3.8l.6 3.5" /></svg>`,
   menu: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2" /><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1" /></svg>`,
 };
 

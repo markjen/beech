@@ -33,6 +33,7 @@ import { WOOD_RADIUS } from './sim/objects';
 import { ACCOUNTS_ENABLED, Account, PullApi } from './net/account';
 import { BeachSync } from './net/beachSync';
 import { AccountPanel } from './ui/accountPanel';
+import { Leaderboard } from './ui/leaderboard';
 import { NEIGHBOR_OFFSET, NeighborView } from './render/neighbors';
 import { loadSettings, saveSettings, type Settings } from './ui/settingsStore';
 
@@ -128,6 +129,7 @@ async function boot() {
   // set up with the account layer (production builds)
   let neighbors: NeighborView | null = null;
   let clawMachine: ClawMachine | null = null;
+  let leaderboard: Leaderboard | null = null;
   // your sand, else a neighbor's, else the untouched shore (the chair can walk along all of it)
   cam.groundHeight = (x, z) => {
     const h = picker.heightAt(x, z);
@@ -825,6 +827,32 @@ async function boot() {
       },
     );
 
+    // the leaderboard: the most-starred beaches, to visit and star
+    const boardBtn = hud.button('trophy', 'Most-starred beaches');
+    boardBtn.dataset.act = 'leaderboard';
+    hud.leftGroup.appendChild(boardBtn);
+    const board = new Leaderboard(uiRoot, {
+      signedIn: () => !!acct.user,
+      signIn: () => sheet.show(),
+      load: (which) => nv.api.leaderboard(which),
+      starred: (code) => nv.favorites.has(code),
+      star: (e, on) => nv.setFavorite({ code: e.code, name: e.name, beachName: e.beachName, location: e.location, updatedAt: e.updatedAt }, on),
+      visit: async (e) => {
+        const mineHere = e.yours ? acct.beaches.find((b) => b.code === e.code) : undefined;
+        if (mineHere && mineHere.id !== acct.beachId) {
+          // one of your other beaches: open it on this device
+          await s.switchTo(mineHere.id);
+          updateElsewhere();
+        }
+        await nv.visit(e.yours ? null : e.code);
+        cam.goTo(0, true);
+        haptics.impact('light');
+      },
+    });
+    leaderboard = board;
+    boardBtn.addEventListener('click', () => board.open());
+    nv.onFavorites(() => board.refreshStars());
+
     // what you've won (and later bought), and the claw machine
     const loadOwned = async () => {
       if (!acct.user) return inventory.setOwned(new Map());
@@ -874,6 +902,7 @@ async function boot() {
     sheet,
     inventory,
     claw: () => clawMachine,
+    leaderboard: () => leaderboard,
     objectView,
     audio,
     pickTool,

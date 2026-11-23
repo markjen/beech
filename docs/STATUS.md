@@ -308,6 +308,24 @@ branch, so the deploy job runs only there. Switch the default branch to
 - The neighbor tags poll every 30 s across the whole shore.
 - `npm run e2e:shore` covers walking, home, visiting by code, and favorites.
 
+## Leaderboard (added after more than one beach)
+
+- **A trophy button** (bottom left, production builds only) opens the
+  most-starred beaches, everyone's, in two tabs: **All time** (stars now)
+  and **Rising** (star velocity: each star from the past week, halved
+  every 2 days of age; see BACKEND.md, "Leaderboard"). Rows show rank
+  (gold, silver, bronze for the top three), the beach or owner's name and
+  the real beach, stars and "▲ N this week", a ☆/★ toggle and **visit**
+  (closes the panel and visits by code; "open" for your own beaches, which
+  opens that one on this device). Stars made elsewhere (name tags, the
+  shore bar) update the open board.
+- Off-shore and never-saved beaches aren't listed. Signed out, the panel
+  offers sign-in. The sandbox has no button.
+- Migration 8 adds `star_first` (when each person first starred each
+  beach), so re-starring can't make a star look new.
+- `npm run e2e:leaderboard` covers ordering, rising, starring from the
+  board and the shore bar, visiting from the board, and signed out.
+
 ## Claw machine (added after chair polish)
 
 - **Free claw machine** (production builds, signed in): the rest between

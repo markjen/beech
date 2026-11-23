@@ -93,6 +93,11 @@ _(nothing right now)_
 
 ## Done (recent)
 
+- [x] **Leaderboard of the most-starred beaches** (2026-11-23): a trophy
+  button opens "All time" (stars now) and "Rising" (star velocity: this
+  week's stars, halved every 2 days of age). Visit or star from each row.
+  `GET /api/leaderboard`, migration 8 (`star_first`), `npm run e2e:leaderboard`.
+
 - [x] **Claw starter gifts** (rare, shop item, extra beach after a day),
   the Deckchair, and the multi-beach design (2026-11-23).
 
