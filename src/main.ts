@@ -321,6 +321,16 @@ async function boot() {
     },
     share: () => void share(),
     fullscreen: () => void toggleFullscreen(),
+    tv: () => {
+      // one tap for the TV: idle controls + wake lock, seated on the sand,
+      // fullscreen. (Fullscreen needs the tap; that is why it is a button.)
+      settings = { ...settings, ambient: true };
+      saveSettings(settings);
+      ambient.setEnabled(true);
+      sheet.setSettings(settings);
+      cam.setMode('chair', false);
+      void toggleFullscreen();
+    },
   }, BEACHES);
   sheet.setSettings({ ...settings, beach: beach.id });
 

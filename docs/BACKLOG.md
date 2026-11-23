@@ -74,7 +74,10 @@ _(nothing right now)_
 - [ ] **More prizes**: each pool item needs a catalog entry, a kind, a mesh
   and an icon; `tests/items.test.ts` keeps the pools and catalog in step.
 - [ ] **TV**: test on a real Android TV (D-pad focus on the settings sheet,
-  leanback banner). Add Chromecast / AirPlay casting for phones → TV.
+  leanback banner). Add Chromecast / AirPlay casting for phones → TV
+  (an in-app cast button needs a custom Cast receiver app — $5 console
+  registration; tab casting from Chrome works today, see
+  [CHROME_TV_CAST.md](CHROME_TV_CAST.md)).
 - [ ] **API rate limiting**: a per-IP limit in the server, or Cloud Armor in
   front.
 - [ ] **Keep my beach off the shore**: a setting to leave the global beachfront
@@ -107,6 +110,13 @@ _(nothing right now)_
 
 - [x] **Objects floating off Rose's beach** (2026-11-23): server refuses
   saves from the old 32 × 24 app; `fitWorld` repairs objects it shifted.
+- [x] **Chrome fullscreen + TV casting** (2026-11-22): the PWA manifest
+  named `.webp` icons that were never shipped, so Chrome never offered to
+  install — now the real 192/512/maskable PNGs, with `tests/pwa.test.ts`
+  guarding them; one-tap "watch on TV" in settings (ambient + chair view
+  + fullscreen). Packaged Chrome Apps are deprecated/removed, so the path
+  is install the PWA, fullscreen, cast the tab — see
+  [CHROME_TV_CAST.md](CHROME_TV_CAST.md).
 - [x] **Claw starter gifts** (rare, shop item, extra beach after a day),
   the Deckchair, and the multi-beach design (2026-11-23).
 
