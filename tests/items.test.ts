@@ -1,8 +1,35 @@
 import { describe, expect, it } from 'vitest';
 import { POOLS, STARTER } from '../server/src/pulls';
+import { VENDING_SETS, currentSet } from '../server/src/vending';
 import { PRODUCTS } from '../server/src/products';
 import { ITEMS, extraById, itemById, rollPlacement } from '../src/world/items';
 import { OBJECT_KINDS } from '../src/sim/objects';
+
+describe('vending sets', () => {
+  it('every item in every set is a catalog item of the same rarity, won by pulling', () => {
+    for (const set of VENDING_SETS) {
+      expect(Object.values(set.odds).reduce((a, b) => a + b, 0)).toBeCloseTo(1, 9);
+      for (const [rarity, ids] of Object.entries(set.items)) {
+        for (const id of ids) {
+          const it = itemById(id);
+          expect(it, `${set.name} week ${set.week}: ${id}`).toBeTruthy();
+          expect(it!.rarity).toBe(rarity);
+          expect(it!.source).toBe('pull');
+        }
+      }
+    }
+  });
+
+  it('the set live right now is one of the shipped sets', () => {
+    const now = currentSet(Date.now());
+    expect(now).toBeTruthy();
+    expect(VENDING_SETS).toContain(now);
+  });
+
+  it('a set’s unique item is the only one of its kind in the set', () => {
+    for (const set of VENDING_SETS) expect(set.items.unique.length).toBe(1);
+  });
+});
 
 describe('item catalog', () => {
   it('every prize in a pull pool is a catalog item of the same rarity, won by pulling', () => {

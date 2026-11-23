@@ -118,6 +118,13 @@ _(nothing right now)_
   hold. A miss spends the go, wins nothing, and the claw lifts empty with an
   "It slipped out of the claw!" reveal naming what dropped. Grab chances are
   published (GET /pulls) and shown under the odds.
+- [x] **Vending machine: one free ball a day from a weekly set**
+  (2026-11-23, a6b20d1): server-side draws, common 60 / uncommon 25 /
+  rare 12 / unique 3, one ball a day (UTC midnight). Week 1 "First light":
+  Pink shell, Blue sea glass, Pebble / Spiral conch, Golden sand dollar /
+  Sunset starfish, Green bottle / Nautilus (new kind). Sets are data in
+  `server/src/vending.ts`; design and the weekly process in
+  `docs/VENDING_MACHINE.md`.
 - [x] **Objects floating off Rose's beach** (2026-11-23): server refuses
   saves from the old 32 × 24 app; `fitWorld` repairs objects it shifted.
 - [x] **Chrome fullscreen + TV casting** (2026-11-22): the PWA manifest

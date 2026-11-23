@@ -488,16 +488,20 @@ export interface PullPool {
   id: string;
   name: string;
   /** published chance of each rarity */
-  odds: Record<'common' | 'rare' | 'legendary', number>;
-  items: Record<'common' | 'rare' | 'legendary', string[]>;
-  /** how often the claw holds on to a ball of each rarity (a miss spends the go) */
-  grab: Record<'common' | 'rare' | 'legendary', number>;
+  odds: Record<'common' | 'uncommon' | 'rare' | 'legendary' | 'unique', number>;
+  items: Record<'common' | 'uncommon' | 'rare' | 'legendary' | 'unique', string[]>;
+  /** how often the claw holds on to a ball of each rarity (a miss spends the go); the claw only */
+  grab?: Record<'common' | 'rare' | 'legendary', number>;
   /** a free go is ready now */
   free: boolean;
-  /** how long the claw will rest after your next go (ms): 5 min, doubling, up to a day */
+  /** how long the machine will rest after your next go (ms): 5 min, doubling, up to a day */
   nextCooldown: number;
+  /** when your next free go is ready (ms since epoch) */
+  nextFree?: number;
   /** the fixed gifts of the first goes (shown before the odds) */
   starter?: { rare: string; paid: string; beach: string; beachAfterMs: number };
+  /** the vending machine's current weekly set */
+  set?: { week: number; name: string };
 }
 
 export interface GiftResult {
@@ -520,7 +524,7 @@ export class GiftApi {
   }
 }
 
-/** The claw machine (and later, mystery boxes): draws happen on the server. */
+/** The claw machine and the vending machine: draws happen on the server. */
 export class PullApi {
   constructor(private readonly account: Account) {}
 

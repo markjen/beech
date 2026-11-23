@@ -8,7 +8,7 @@ const CAPSULE: Record<string, string> = {
   rare: '#8ec5e8',
   legendary: '#f2c45a',
 };
-const RARITY_NAME: Record<string, string> = { common: 'Common', rare: 'Rare', legendary: 'Legendary', unique: 'One of a kind' };
+const RARITY_NAME: Record<string, string> = { common: 'Common', uncommon: 'Uncommon', rare: 'Rare', legendary: 'Legendary', unique: 'One of a kind' };
 
 type Phase = 'idle' | 'drop' | 'grab' | 'lift' | 'carry' | 'open' | 'done';
 
@@ -143,7 +143,10 @@ export class ClawMachine {
       })
       .join('');
     const g = this.pool.grab;
-    this.oddsEl.innerHTML = `<p>What's inside, and the chance of each:</p><ul>${rows}</ul><p>The claw doesn't always hold on: it keeps a common ball ${pct(g.common)} of the time, a rare one ${pct(g.rare)}, a legendary one ${pct(g.legendary)}.</p>`;
+    const grabNote = g
+      ? `<p>The claw doesn't always hold on: it keeps a common ball ${pct(g.common)} of the time, a rare one ${pct(g.rare)}, a legendary one ${pct(g.legendary)}.</p>`
+      : '';
+    this.oddsEl.innerHTML = `<p>What's inside, and the chance of each:</p><ul>${rows}</ul>${grabNote}`;
   }
 
   private drop(): void {

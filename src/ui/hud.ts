@@ -20,6 +20,17 @@ const ICONS = {
   left: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6" /></svg>`,
   right: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 6l6 6-6 6" /></svg>`,
   claw: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h16" /><path d="M12 3v6" /><path d="M12 9l-4 3.5 1 3M12 9l4 3.5-1 3" /><circle cx="12" cy="18.5" r="2.5" /></svg>`,
+  vending: `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="2.5" width="14" height="19" rx="2" /><path d="M8 6h8v6H8z" /><circle cx="10.2" cy="9" r="1.4" /><circle cx="13.8" cy="9" r="1.4" /><path d="M8 18.5h8" /></svg>`,
+  // Week 1 vending set: variants reuse their kind's drawing; the name and
+  // rarity ring are what set them apart in the bag.
+  'pink-shell': `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19.5L4 10a8.5 8.5 0 0 1 16 0z" /><path d="M12 19.5L8.2 6.3M12 19.5l3.8-13.2M12 19.5V5.2" opacity=".55"/><path d="M10 19.5h4" /></svg>`,
+  'blue-seaglass': `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 14.5l2.5-6 6.5-2 4 4.5-1.5 6-6.5 2.5z" /><path d="M8.5 8.5l3 4 5.5-2M11.5 12.5L11 19" opacity=".55"/></svg>`,
+  pebble: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 18.5l2.2-6.3 4.6-4.4 5.6 1.1 3.6 4.4 1 5.2z" /><path d="M10.3 7.8l1.4 5.2 4.2-3.9M11.7 13l-6-0.8" opacity=".55"/></svg>`,
+  'spiral-conch': `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 13.5c3-5 9-7.5 17-6.5-1.5 5.5-6 10-12.5 10.5-2.5.2-4.5-1.5-4.5-4z" /><path d="M8 11.5c2 .5 3 2.5 2.5 5M12.5 9.5c1.5 1 2 3 1.5 5.5" opacity=".55"/></svg>`,
+  'gold-sanddollar': `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M12 6.5v3.5M12 12l3.5-2M12 12l-3.5-2M12 12l2.2 3.6M12 12l-2.2 3.6" opacity=".6"/></svg>`,
+  'sunset-starfish': `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.4 6.2 6.6.4-5.1 4.2 1.7 6.4L12 16.4 6.4 20l1.7-6.4L3 9.4l6.6-.4z" /></svg>`,
+  'green-bottle': `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 15.5l9-9 2.5.5 2-2 2 2-2 2 .5 2.5-9 9a2 2 0 0 1-2.8 0l-2.2-2.2a2 2 0 0 1 0-2.8z" /><path d="M8 13l3 3" opacity=".55"/></svg>`,
+  nautilus: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M12 12m-5.5 0a5.5 5.5 0 1 1 5.5 5.5 3.5 3.5 0 1 1-3.5-3.5 2 2 0 1 1 2 2" opacity=".6"/></svg>`,
   conch: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 13.5c3-5 9-7.5 17-6.5-1.5 5.5-6 10-12.5 10.5-2.5.2-4.5-1.5-4.5-4z" /><path d="M8 11.5c2 .5 3 2.5 2.5 5M12.5 9.5c1.5 1 2 3 1.5 5.5" opacity=".55"/></svg>`,
   sanddollar: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M12 6.5v3.5M12 12l3.5-2M12 12l-3.5-2M12 12l2.2 3.6M12 12l-2.2 3.6" opacity=".6"/></svg>`,
   starfish: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.4 6.2 6.6.4-5.1 4.2 1.7 6.4L12 16.4 6.4 20l1.7-6.4L3 9.4l6.6-.4z" /></svg>`,

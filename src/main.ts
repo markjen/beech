@@ -30,6 +30,7 @@ import { InventoryTray, PlaceBar } from './ui/inventory';
 import { ClawMachine } from './ui/clawMachine';
 import { Shop } from './ui/shop';
 import { ShopApi } from './net/shop';
+import { VendingMachine } from './ui/vendingMachine';
 import { DEFAULT_SIZE, ITEMS, rollPlacement, type Item } from './world/items';
 import { WOOD_RADIUS } from './sim/objects';
 import { ACCOUNTS_ENABLED, Account, GiftApi, PullApi } from './net/account';
@@ -139,6 +140,7 @@ async function boot() {
   let neighbors: NeighborView | null = null;
   let clawMachine: ClawMachine | null = null;
   let shopDialog: Shop | null = null;
+  let vendingMachine: VendingMachine | null = null;
   // your sand, else a neighbor's, else the untouched shore (the chair can walk along all of it)
   cam.groundHeight = (x, z) => {
     const h = picker.heightAt(x, z);
@@ -910,8 +912,17 @@ async function boot() {
         });
     });
     inventory.setClaw(acct.user ? 'play' : 'signin');
+    const vending = new VendingMachine(uiRoot, new PullApi(acct), (item, place) => {
+      void loadOwned().then(() => {
+        if (place) inventory.select(item);
+      });
+    });
+    vendingMachine = vending;
+    inventory.onVending = () => (acct.user ? void vending.open() : sheet.show());
+    inventory.setVending(acct.user ? 'play' : 'signin');
     acct.onChange((u) => {
       inventory.setClaw(u ? 'play' : 'signin');
+      inventory.setVending(u ? 'play' : 'signin');
       void loadOwned();
     });
     void account.restore();
@@ -941,6 +952,7 @@ async function boot() {
     inventory,
     claw: () => clawMachine,
     shop: () => shopDialog,
+    vending: () => vendingMachine,
     objectView,
     audio,
     pickTool,

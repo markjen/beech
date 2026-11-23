@@ -226,6 +226,10 @@
   text-align: center;
 }
 
+.inv-item.rarity-uncommon {
+  box-shadow: inset 0 0 0 2px #7fb069;
+}
+
 .inv-item.rarity-rare {
   box-shadow: inset 0 0 0 2px #6fa8dc;
 }
@@ -284,6 +288,10 @@
 
 .inv-item.claw-tile {
   background: linear-gradient(160deg, rgba(242, 196, 90, 0.35), rgba(142, 197, 232, 0.35));
+}
+
+.inv-item.vending-tile {
+  background: linear-gradient(160deg, rgba(168, 216, 160, 0.35), rgba(192, 111, 214, 0.35));
 }
 
 /* ---- claw machine ---- */
@@ -442,6 +450,160 @@
     transform: scale(0.85);
     opacity: 0;
   }
+}
+
+/* ---- vending machine ---- */
+.vending {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(46, 40, 78, 0.25);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  z-index: 20;
+}
+
+.vending.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.vending-card {
+  position: relative;
+  width: min(340px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  padding: 18px 18px 14px;
+  border-radius: 24px;
+  color: var(--ui-fg);
+  background: var(--ui-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 14px 40px var(--ui-shadow);
+  text-align: center;
+}
+
+.vending-card h2 {
+  margin: 0 0 10px;
+  font-size: 17px;
+}
+
+.vending-card canvas {
+  width: 100%;
+  max-width: 300px;
+  aspect-ratio: 1;
+}
+
+.vending-close {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  width: 36px;
+  height: 36px;
+  border: none;
+  background: none;
+  color: inherit;
+  font-size: 24px;
+  cursor: pointer;
+}
+
+.vending-go,
+.vending-place {
+  margin-top: 8px;
+  padding: 12px 26px;
+  border: none;
+  border-radius: 999px;
+  color: var(--ui-bg);
+  background: var(--ui-fg);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.vending-go:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.vending-note {
+  margin: 8px 0 4px;
+  font-size: 13px;
+}
+
+.vending-odds {
+  font-size: 12px;
+  text-align: left;
+  opacity: 0.85;
+}
+
+.vending-odds p {
+  margin: 6px 0 4px;
+}
+
+.vending-odds ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vending-odds li {
+  margin: 3px 0;
+}
+
+.vending-odds .dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  border-radius: 50%;
+  vertical-align: -1px;
+}
+
+.vending-reveal {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border-radius: 24px;
+  background-color: var(--ui-bg);
+  background-image: linear-gradient(var(--ui-bg), var(--ui-bg)), linear-gradient(var(--ui-bg), var(--ui-bg));
+  animation: claw-pop 0.35s ease;
+}
+
+.vending-reveal[hidden] {
+  display: none;
+}
+
+.vending-reveal b {
+  font-size: 20px;
+}
+
+.vending-prize svg {
+  width: 96px;
+  height: 96px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.vending-reveal.rarity-uncommon .vending-prize {
+  filter: drop-shadow(0 0 12px #a8d8a0);
+}
+
+.vending-reveal.rarity-rare .vending-prize {
+  filter: drop-shadow(0 0 12px #8ec5e8);
+}
+
+.vending-reveal.rarity-unique .vending-prize {
+  filter: drop-shadow(0 0 16px #c06fd6);
 }
 
 /* ---- item in hand: size slider ---- */

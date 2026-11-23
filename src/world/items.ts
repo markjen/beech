@@ -8,7 +8,7 @@
 
 import type { ObjectKind } from '../sim/objects';
 
-export type Rarity = 'common' | 'rare' | 'legendary' | 'unique';
+export type Rarity = 'common' | 'uncommon' | 'rare' | 'legendary' | 'unique';
 /** how you get it */
 export type ItemSource = 'free' | 'shop' | 'event' | 'pull';
 
@@ -52,6 +52,18 @@ export const ITEMS: Item[] = [
   { id: 'beachhut', name: 'Beach hut', kind: 'beachhut', rarity: 'legendary', source: 'shop', unlimited: false, size: [1, 1], variants: 1, fixedSize: true, product: 'item_beachhut' },
   { id: 'lighthouse', name: 'Lighthouse', kind: 'lighthouse', rarity: 'legendary', source: 'shop', unlimited: false, size: [1, 1], variants: 1, fixedSize: true, product: 'item_lighthouse' },
   { id: 'bottle', name: 'Message in a bottle', kind: 'bottle', rarity: 'legendary', source: 'pull', unlimited: false, size: [0.22, 0.45], variants: 2 },
+  // Week 1 of the vending machine ("First light", server/src/vending.ts).
+  // New ids on familiar kinds: they render and behave like the kind, and
+  // the name + rarity ring are what set them apart. A set's items stay in
+  // the catalog after their week ends, so what someone won stays theirs.
+  { id: 'pink-shell', name: 'Pink shell', kind: 'shell', rarity: 'common', source: 'pull', unlimited: false, size: [0.05, 0.5], variants: 8 },
+  { id: 'blue-seaglass', name: 'Blue sea glass', kind: 'seaglass', rarity: 'common', source: 'pull', unlimited: false, size: [0.05, 0.16], variants: 4 },
+  { id: 'pebble', name: 'Pebble', kind: 'rock', rarity: 'common', source: 'pull', unlimited: false, size: [0.05, 0.25], variants: 8 },
+  { id: 'spiral-conch', name: 'Spiral conch', kind: 'conch', rarity: 'uncommon', source: 'pull', unlimited: false, size: [0.1, 0.35], variants: 3 },
+  { id: 'gold-sanddollar', name: 'Golden sand dollar', kind: 'sanddollar', rarity: 'uncommon', source: 'pull', unlimited: false, size: [0.06, 0.16], variants: 2 },
+  { id: 'sunset-starfish', name: 'Sunset starfish', kind: 'starfish', rarity: 'rare', source: 'pull', unlimited: false, size: [0.08, 0.26], variants: 3 },
+  { id: 'green-bottle', name: 'Green bottle', kind: 'bottle', rarity: 'rare', source: 'pull', unlimited: false, size: [0.22, 0.45], variants: 2 },
+  { id: 'nautilus', name: 'Nautilus', kind: 'nautilus', rarity: 'unique', source: 'pull', unlimited: false, size: [0.12, 0.3], variants: 3 },
 ];
 
 export const itemById = (id: string): Item | undefined => ITEMS.find((i) => i.id === id);
