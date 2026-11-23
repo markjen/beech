@@ -21,6 +21,16 @@ describe('ID token verification', async () => {
     await expect(verifyGoogleIdToken(await sign({ iss: 'accounts.google.com', aud: 'web', sub: '1' }, other.privateKey), ['web'], keys)).rejects.toThrow();
     await expect(verifyGoogleIdToken(good, [], keys)).rejects.toThrow();
   });
+  it('returns the email only when Google says it is verified', async () => {
+    const verified = await sign({ iss: 'https://accounts.google.com', aud: 'web', sub: '1', email: 'markjen@gmail.com', email_verified: true });
+    expect(await verifyGoogleIdToken(verified, ['web'], keys)).toEqual(
+      expect.objectContaining({ provider: 'google', sub: '1', email: 'markjen@gmail.com' }),
+    );
+    const unverified = await sign({ iss: 'https://accounts.google.com', aud: 'web', sub: '1', email: 'markjen@gmail.com', email_verified: false });
+    expect(await verifyGoogleIdToken(unverified, ['web'], keys)).not.toHaveProperty('email');
+    const noEmail = await sign({ iss: 'https://accounts.google.com', aud: 'web', sub: '1' });
+    expect(await verifyGoogleIdToken(noEmail, ['web'], keys)).not.toHaveProperty('email');
+  });
   it('verifies Apple tokens separately', async () => {
     const apple = await sign({ iss: 'https://appleid.apple.com', aud: 'app.beech.beach', sub: 'a1' });
     expect((await verifyAppleIdToken(apple, ['app.beech.beach'], 'Ada', keys)).provider).toBe('apple');
