@@ -105,7 +105,7 @@ _(nothing right now)_
 ## Done (recent)
 
 - [x] **Bulldozer drag-flattens, dig/build/flatten faster**
-  (2026-11-22): one pass of the blade now flattens at any drag speed
+  (2026-11-22, 3ad5ed4): one pass of the blade now flattens at any drag speed
   (flattenRate 120 → 300); dig/build rates up (rateStart 0.16 → 0.5,
   rateHeld 0.6 → 1.0, holdRamp 1.2 → 0.6 s) — 0.4 m dug in 0.67 s
   holding still (was 1.40 s), a 1 m/s drag digs 0.085 m (was 0.027 m).
