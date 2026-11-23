@@ -402,6 +402,15 @@ branch, so the deploy job runs only there. Switch the default branch to
 - Not verified on devices yet: that needs the OAuth clients and the Apple
   capability (DevOps; see BACKEND.md, "Phone apps").
 
+## Checkpoints (designed, not built)
+
+- Design in docs/CHECKPOINTS.md: named copies of a beach (the same BCH2
+  bytes), restored onto any of your beaches only if your bag still covers
+  their non-free things (counted by the server). Strict by default, with
+  "restore without them" as the fallback; an automatic checkpoint before
+  every restore; a beach epoch so other devices don't save over a restore.
+  Milestones C1–C6 are in BACKLOG.md.
+
 ## Deploy and build status
 
 - **iOS:** the Xcode project builds for the simulator on GitHub's macOS
