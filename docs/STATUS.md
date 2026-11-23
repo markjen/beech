@@ -402,6 +402,12 @@ branch, so the deploy job runs only there. Switch the default branch to
 - Not verified on devices yet: that needs the OAuth clients and the Apple
   capability (DevOps; see BACKEND.md, "Phone apps").
 
+## Beach files (planned 2026-11-23)
+
+Export and import of a documented `.beach.json` file, for designing beaches
+offline. The spec and milestones are in [BEACH_FILE.md](BEACH_FILE.md).
+Nothing is built yet.
+
 ## Deploy and build status
 
 - **iOS:** the Xcode project builds for the simulator on GitHub's macOS

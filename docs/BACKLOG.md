@@ -37,7 +37,15 @@ The single list of what's left to do, for the owner and for agents.
 
 ## In progress
 
-_(nothing right now)_
+- [ ] **Beach files: export and import** (agent, 2026-11-23): a documented
+  `.beach.json` format, so people can design beaches offline. Plan, spec and
+  milestones E1 to E5 in [BEACH_FILE.md](BEACH_FILE.md).
+  - [ ] E1 format, codec, JSON Schema, examples, tests
+  - [ ] E2 export and import in the app, with preview and inventory check
+  - [ ] E3 phone apps (share sheet, file picker)
+  - [ ] E4 offline tool (`scripts/beach-file.mjs`) and design guide
+  - [ ] E5 tie-in with checkpoints
+- [ ] **Checkpoints** (design in progress, agent): see CHECKPOINTS.md once it lands.
 
 ## Up next (engineering)
 

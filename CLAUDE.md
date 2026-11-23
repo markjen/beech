@@ -11,7 +11,8 @@ Read these first:
 4. [docs/BACKLOG.md](docs/BACKLOG.md): the to-do list (owner tasks,
    engineering queue, ideas). Take work from here, and update it in the same
    commit as the work.
-5. Feature designs not built yet, e.g. [docs/MULTI_BEACH.md](docs/MULTI_BEACH.md).
+5. Feature designs not built yet, e.g. [docs/MULTI_BEACH.md](docs/MULTI_BEACH.md) and
+   [docs/BEACH_FILE.md](docs/BEACH_FILE.md) (export/import file spec).
 
 ## Ground rules
 
