@@ -45,7 +45,7 @@ item as you own, across all your beaches. Buying another adds one.
 
 The shop also takes **gift cards and promo codes** (docs/GIFT_CARDS_PROMOS.md).
 A gift card is prepaid credit, issued by Mark from the admin console
-(`/admin`) or the CLI (`scripts/beech-admin.mjs`); redeeming it in the shop
+(the `beech-admin` service) or the CLI (`scripts/beech-admin.mjs`); redeeming it in the shop
 adds the credit to your account, and credit buys products in the shop with
 an optional promo code. Promo codes discount a credit purchase (percent or
 a fixed amount, optionally for one product, with usage limits and expiry).
