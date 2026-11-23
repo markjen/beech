@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { POOLS, STARTER } from '../server/src/pulls';
 import { VENDING_SETS, currentSet } from '../server/src/vending';
 import { PRODUCTS } from '../server/src/products';
-import { PRIZE_NAMES } from '../server/src/guide';
+import { PRIZE_NAMES } from '../server/src/prizeNames';
 import { RELEASE_NOTES } from '../server/src/releaseNotes';
 import { ITEMS, extraById, itemById, rollPlacement } from '../src/world/items';
 import { OBJECT_KINDS } from '../src/sim/objects';

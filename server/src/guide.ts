@@ -15,27 +15,9 @@ import { CHECKPOINTS_PER_BEACH } from './checkpoints.js';
 import { DIG_FIND_CHANCE, DIG_FIND_DAILY_CAP, DIG_FIND_ROLL_COOLDOWN_MS } from './digFinds.js';
 import { COOLDOWN_MAX_MS, COOLDOWN_MIN_MS, GRAB_CHANCE, POOLS, type Rarity } from './pulls.js';
 import { RELEASE_NOTES } from './releaseNotes.js';
+import { PRIZE_NAMES } from './prizeNames.js';
 import { escapeHtml as esc } from './shareMeta.js';
 import { currentSet, nextUtcMidnight, type VendingSet } from './vending.js';
-
-/**
- * Display names of everything the machines can give (the app's catalog,
- * src/world/items.ts, is the source; tests/items.test.ts keeps these equal).
- */
-export const PRIZE_NAMES: Record<string, string> = {
-  conch: 'Conch',
-  sanddollar: 'Sand dollar',
-  starfish: 'Starfish',
-  bottle: 'Message in a bottle',
-  'pink-shell': 'Pink shell',
-  'blue-seaglass': 'Blue sea glass',
-  pebble: 'Pebble',
-  'spiral-conch': 'Spiral conch',
-  'gold-sanddollar': 'Golden sand dollar',
-  'sunset-starfish': 'Sunset starfish',
-  'green-bottle': 'Green bottle',
-  nautilus: 'Nautilus',
-};
 
 const RARITY: Record<Rarity, string> = { common: 'Common', uncommon: 'Uncommon', rare: 'Rare', legendary: 'Legendary', unique: 'One of a kind' };
 const ORDER: Rarity[] = ['common', 'uncommon', 'rare', 'legendary', 'unique'];
