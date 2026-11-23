@@ -281,6 +281,15 @@ _(nothing right now)_
 - [x] **No notes in the game; a user guide, help and release notes on the
   website** (2026-11-23): `/guide` and `/guide/releases` on the production
   server (beech.games), with live odds; settings → "guide & help".
+- [x] **beech.games landing page** (2026-11-23): the full home page at
+  `beech.games` (server-rendered, `server/src/landingSite.ts`, Host-header
+  routing in `rootApp.ts`; www 301s to the apex; no game API on the landing
+  hosts; `/guide` still works there), previewable under `/landing` on every
+  other host. Hero, what you do (numbers from the server constants), what's
+  new (from the release notes), free in the browser now, phone apps coming —
+  no store claims, no screenshots. Design and the DNS cutover in
+  [LANDING_PAGE.md](LANDING_PAGE.md). The apex mapping exists manually; the
+  DNS cutover in Squarespace is still to do.
 - [x] **Claw rest is random, 5 min to 3 h** (shorter after a miss, longer
   after a win), replacing the doubling-to-a-day wait (2026-11-23).
 - [x] **Claw starter gifts** (rare, shop item, extra beach after a day),

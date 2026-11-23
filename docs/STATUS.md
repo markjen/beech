@@ -382,6 +382,13 @@ branch, so the deploy job runs only there. Switch the default branch to
   sandbox reach it too). The sandbox (GitHub Pages) has no guide of its own.
 - **Release notes** are backfilled from the backlog for 2026-11-22 and
   2026-11-23; CLAUDE.md now asks for a line with every player-visible change.
+- **The landing page** is on the website too: `beech.games` serves
+  `server/src/landingSite.ts` (Host-header routing in `rootApp.ts`; www
+  301s to the apex; the game API is not served there), previewable under
+  `/landing` on every other host. It says what beech is, what you do, what's
+  new (from the release notes), and where to play — free in the browser now,
+  phone apps coming. No screenshots, no store claims. The domain itself
+  still points at Squarespace until the DNS cutover (docs/LANDING_PAGE.md).
 
 ## Claw machine (added after chair polish)
 

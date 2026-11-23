@@ -122,7 +122,12 @@ The game mapping for `beech.games` was created manually with
 `gcloud beta run domain-mappings create` (see infra/README.md §6) — the
 Terraform state may not yet include it, and this doc does not claim
 Terraform manages it. The Terraform equivalent is `var.custom_domain`
-(`infra/main.tf`, `google_cloud_run_domain_mapping.beech`).
+(`infra/main.tf`, `google_cloud_run_domain_mapping.beech`). The server
+already answers `beech.games` with the landing page
+(docs/LANDING_PAGE.md); the domain itself still points at Squarespace
+until the DNS cutover there, using the records from that manual mapping
+(they are not in the repo). The `www.beech.games` mapping is
+`var.landing_custom_domain` (`google_cloud_run_domain_mapping.landing_www`).
 
 **Shore domain (`beechshore.com`):** the public shore site is served by
 the same `beech` service, chosen by the Host header, so it only needs

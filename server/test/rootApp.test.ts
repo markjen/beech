@@ -106,3 +106,75 @@ describe('the guide and release notes', () => {
     expect((await root.request('/releases')).headers.get('location')).toBe('/guide/releases');
   });
 });
+
+describe('the landing page and host routing', () => {
+  // Hono's test client sends no Host by default; pass one per request.
+  const on = (path: string, host: string) => root.request(path, { headers: { host } });
+  const hero = 'a quiet place by the sea';
+
+  it('the landing host serves the landing page at / (and any path), not the game', async () => {
+    for (const path of ['/', '/anything', '/guide/releases']) {
+      const r = await on(path, 'beech.games');
+      expect(r.status).toBe(200);
+      const html = await r.text();
+      if (path === '/guide/releases') {
+        expect(html).toContain('release notes');
+      } else {
+        expect(html).toContain(hero);
+        expect(html).toContain('Play in your browser');
+        expect(html).toContain('https://play.beech.games');
+        expect(html).toContain('/guide');
+      }
+      expect(html).not.toContain('beech-spa-marker');
+    }
+  });
+
+  it('www.beech.games 301s to the apex, keeping the path', async () => {
+    const r = await on('/guide', 'www.beech.games');
+    expect(r.status).toBe(301);
+    expect(r.headers.get('location')).toBe('https://beech.games/guide');
+    expect((await on('/', 'www.beech.games')).headers.get('location')).toBe('https://beech.games/');
+  });
+
+  it('the game API is not served on a landing host', async () => {
+    const r = await on('/api/health', 'beech.games');
+    expect(r.status).toBe(200);
+    const text = await r.text();
+    expect(text).toContain(hero);
+    expect(text).not.toContain('"ok":true');
+  });
+
+  it('/healthz still works on a landing host', async () => {
+    expect((await on('/healthz', 'beech.games')).status).toBe(200);
+  });
+
+  it('/guide still works on a landing host', async () => {
+    const r = await on('/guide', 'beech.games');
+    expect(r.status).toBe(200);
+    expect(await r.text()).toContain('id="claw"');
+  });
+
+  it('the landing page is previewable under /landing on the game host', async () => {
+    const r = await root.request('/landing');
+    expect(r.status).toBe(200);
+    const html = await r.text();
+    expect(html).toContain(hero);
+    expect(html).toContain('What’s new');
+    expect(html).toContain('/guide/releases');
+    expect(html).not.toContain('beech-spa-marker');
+    expect((await root.request('/landing/')).headers.get('location')).toBe('/landing');
+  });
+
+  it('the game host still serves the game at /', async () => {
+    const r = await on('/', 'play.beech.games');
+    expect(r.status).toBe(200);
+    expect(await r.text()).toContain('beech-spa-marker');
+  });
+
+  it('the landing page never gives away the starter gifts, and claims no store listing', async () => {
+    const html = (await (await root.request('/landing')).text()).toLowerCase();
+    expect(html).not.toMatch(/starter|first go|first goes/);
+    expect(html).not.toMatch(/app store|google play|download on|get it on/);
+    expect(html).toContain('iphone and android apps are coming');
+  });
+});

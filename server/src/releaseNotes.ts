@@ -19,6 +19,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     date: '2026-11-23',
     title: 'A quieter screen, and a guide',
     changes: [
+      'beech.games has a home page now: what beech is, how to play, and what’s new. The game itself lives at play.beech.games.',
       'The game no longer shows explanations, tips or small print. Everything is in this guide instead, with release notes like these. Settings → “guide & help” opens it.',
       'The claw machine rests for a random time between 5 minutes and 3 hours after each go: usually shorter when the ball slips out of the claw, usually longer when you win. It used to double each go, up to a day.',
       'Dig long enough and you may turn something up from this week’s vending set (up to 3 finds a day).',

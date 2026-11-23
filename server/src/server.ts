@@ -28,7 +28,11 @@
 //   SHORE_URL            the public shore site's origin (default https://beechshore.com)
 //   SHORE_HOSTS          hosts served as the shore site (default beechshore.com,www.beechshore.com);
 //                        every other host has it under /shore (docs/SHORE_SITE.md)
-//   GAME_URL             the game, for the shore's links (default https://play.beech.games)
+//   LANDING_URL          the landing page's origin (default https://beech.games)
+//   LANDING_HOSTS        hosts served as the landing site (default beech.games,www.beech.games);
+//                        every other host has it under /landing (docs/LANDING_PAGE.md)
+//   GAME_URL             the game, for the shore's and the landing page's links
+//                        (default https://play.beech.games)
 //   DEV_AUTH             "1" enables /api/auth/dev; refused when NODE_ENV=production
 //   ADMIN_DEV_PORT       local development only: also serve the admin console
 //                        (adminServer.ts) on this port, sharing this process's
@@ -48,7 +52,7 @@ import { startAdminServer } from './adminServer.js';
 import { openDbFromEnv } from './dbEnv.js';
 import { migrate } from './migrations.js';
 import { logEvent } from './observability.js';
-import { createRootApp, DEFAULT_SHORE } from './rootApp.js';
+import { createRootApp, DEFAULT_SHORE, DEFAULT_LANDING } from './rootApp.js';
 import { xsollaFromEnv } from './xsolla.js';
 
 const env = process.env;
@@ -101,9 +105,16 @@ const api = createApp(db, {
 
 const publicDir = path.resolve(env.PUBLIC_DIR ?? path.join(here, '..', '..', 'dist'));
 const root = createRootApp(db, api, publicDir, {
-  hosts: env.SHORE_HOSTS !== undefined ? list(env.SHORE_HOSTS) : DEFAULT_SHORE.hosts,
-  url: env.SHORE_URL || DEFAULT_SHORE.url,
-  gameUrl: env.GAME_URL || DEFAULT_SHORE.gameUrl,
+  shore: {
+    hosts: env.SHORE_HOSTS !== undefined ? list(env.SHORE_HOSTS) : DEFAULT_SHORE.hosts,
+    url: env.SHORE_URL || DEFAULT_SHORE.url,
+    gameUrl: env.GAME_URL || DEFAULT_SHORE.gameUrl,
+  },
+  landing: {
+    hosts: env.LANDING_HOSTS !== undefined ? list(env.LANDING_HOSTS) : DEFAULT_LANDING.hosts,
+    url: env.LANDING_URL || DEFAULT_LANDING.url,
+    gameUrl: env.GAME_URL || DEFAULT_LANDING.gameUrl,
+  },
 });
 
 const port = Number(env.PORT ?? 8080);

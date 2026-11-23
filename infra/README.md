@@ -156,6 +156,34 @@ Note: the `beech.games` game mapping was created manually with
 yet include it — this configuration does not claim to manage it. If it
 is imported later, `custom_domain` should be set to `beech.games`.
 
+### Landing page domain: `beech.games` + `www.beech.games`
+
+The server already serves the landing page for those hosts
+(docs/LANDING_PAGE.md). Order of operations:
+
+1. Deploy first (the code is in the `beech` service already; `/landing`
+   works now).
+2. `terraform apply -var landing_custom_domain=www.beech.games`
+   (or set `landing_custom_domain` in a `terraform.tfvars`). This creates
+   the `www.beech.games` domain mapping and an uptime check for the
+   landing page (gated on the same variable; it is not yet wired into
+   the uptime alert policy — see the follow-up in docs/LANDING_PAGE.md).
+   The apex mapping is **not** created here: it already exists, created
+   manually — do not import it as part of this step.
+3. Add the DNS records the mappings print, in Squarespace (the
+   `beech.games` zone): the apex records come from the existing manual
+   mapping (`gcloud beta run domain-mappings describe --service beech
+   --domain beech.games`), the www records from the new mapping.
+   Certificate provisioning waits on DNS.
+
+Follow-up: wire the landing uptime check into the `beech: site or API
+down` alert policy (`google_monitoring_alert_policy.uptime` in
+`infra/monitoring.tf`). It was left out of this change because the
+policy's conditions reference the checks by index, and a new condition
+that only exists when the landing domain is set needs a `dynamic` block
+(or a separate policy) — untested here, since `terraform plan` was not
+run (see below).
+
 Follow-up: wire the admin uptime check into the `beech: site or API
 down` alert policy (`google_monitoring_alert_policy.uptime` in
 `infra/monitoring.tf`). It was left out of this change because the

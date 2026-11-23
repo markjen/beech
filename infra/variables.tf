@@ -49,6 +49,12 @@ variable "shore_custom_domain" {
   default     = ""
 }
 
+variable "landing_custom_domain" {
+  description = "Optional www domain for the landing page (www.beech.games), mapped to the beech service, which serves the landing page for that Host (docs/LANDING_PAGE.md). Empty (the default) skips the mapping. The apex beech.games mapping was created manually and is not managed here (see infra/README.md §6)."
+  type        = string
+  default     = ""
+}
+
 variable "admin_custom_domain" {
   description = "Optional custom domain for the beech-admin Cloud Run service, e.g. admin.beech.games. Empty (the default) skips the domain mapping — set it only after a deploy has created the beech-admin service, then add the DNS records the mapping prints."
   type        = string
