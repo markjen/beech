@@ -158,6 +158,60 @@ check((await page.textContent('.inv-tray'))?.includes('Parasol'), 'the parasol i
 await page.click('button[data-tool="place"]');
 await page.click('button[data-tool="dig"]');
 
+// beach files: import a designed beach (more parasols than the bag holds), then export it
+{
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'beech-e2e-'));
+  const file = path.join(dir, 'e2e.beach.json');
+  fs.writeFileSync(
+    file,
+    JSON.stringify({
+      format: 'beech.beach',
+      version: 1,
+      name: 'E2E cove',
+      shapes: [{ type: 'mound', x: 16, y: 24, radius: 3, height: 0.6 }],
+      objects: [
+        { item: 'parasol', x: 14, y: 26 },
+        { item: 'parasol', x: 18, y: 26 },
+        { item: 'rock', x: 12, y: 21, size: 0.5 },
+      ],
+    }),
+  );
+  await page.evaluate(() => window.__beech.sheet.show());
+  await page.waitForTimeout(300);
+  const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.click('button[data-act="import"]')]);
+  await chooser.setFiles(file);
+  await page.waitForSelector('.beachfile.open [data-act="apply"]', { timeout: 10000 });
+  check((await page.textContent('.beachfile-short'))?.includes('2 parasols: you have 1 free'), 'the preview says only one parasol is free');
+  check((await page.textContent('.beachfile [data-act="apply"]')) === 'Import without them', 'and offers to import without the other');
+  if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/import.png` });
+  await page.click('.beachfile [data-act="apply"]');
+  await page.waitForFunction(() => window.__beech.info().objects.some((o) => o.item === 'parasol'), null, { timeout: 10000 });
+  const items = await page.evaluate(() => window.__beech.info().objects.filter((o) => !o.wild).map((o) => o.item).sort().join());
+  check(items === 'parasol,rock', `the imported beach replaced this one (${items})`);
+  // the import marks the beach changed; wait for that save to start and finish
+  await page.waitForFunction(() => window.__beech.sync().state !== 'saved', null, { timeout: 5000 }).catch(() => {});
+  await page.waitForFunction(() => window.__beech.sync().state === 'saved', null, { timeout: 15000 });
+  await open();
+  await page.waitForFunction(() => window.__beech.sync()?.state === 'saved', null, { timeout: 15000 });
+  await page.waitForTimeout(800);
+  const back = await page.evaluate(() => window.__beech.info().objects.filter((o) => !o.wild).map((o) => o.item).sort().join());
+  check(back === 'parasol,rock', `the import was saved and came back after a reload (${back})`);
+  await page.evaluate(() => window.__beech.sheet.show());
+  await page.waitForTimeout(300);
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.click('button[data-act="export"]')]);
+  const out = path.join(dir, 'out.beach.json');
+  await dl.saveAs(out);
+  const exported = JSON.parse(fs.readFileSync(out, 'utf8'));
+  check(
+    exported.format === 'beech.beach' && exported.objects.map((o) => o.item).sort().join() === 'parasol,rock' && /\.beach\.json$/.test(dl.suggestedFilename()),
+    `export wrote a beach file (${dl.suggestedFilename()})`,
+  );
+  fs.rmSync(dir, { recursive: true, force: true });
+}
+
 // delete the account (two taps)
 await page.evaluate(() => window.__beech.sheet.show());
 await page.waitForTimeout(300);

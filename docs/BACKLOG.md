@@ -41,7 +41,7 @@ The single list of what's left to do, for the owner and for agents.
   `.beach.json` format, so people can design beaches offline. Plan, spec and
   milestones E1 to E5 in [BEACH_FILE.md](BEACH_FILE.md).
   - [x] E1 format, codec, JSON Schema, examples, tests (2026-11-23)
-  - [ ] E2 export and import in the app, with preview and inventory check
+  - [x] E2 export and import in the app, with preview and inventory check (2026-11-23)
   - [ ] E3 phone apps (share sheet, file picker)
   - [ ] E4 offline tool (`scripts/beach-file.mjs`) and design guide
   - [ ] E5 tie-in with checkpoints

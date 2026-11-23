@@ -84,6 +84,9 @@ export interface SettingsHandlers {
   fullscreen(): void;
   /** one tap for the TV: ambient + seated view + fullscreen */
   tv(): void;
+  /** beach files (docs/BEACH_FILE.md) */
+  exportBeach(): void;
+  importBeach(): void;
 }
 
 const PALETTE_LABELS: [PaletteChoice, string][] = [
@@ -140,6 +143,8 @@ export class SettingsSheet {
           <button type="button" class="action" data-act="fullscreen">full screen</button>
           <button type="button" class="action" data-act="share">save a picture</button>
           <button type="button" class="action" data-act="smooth">smooth the beach</button>
+          <button type="button" class="action" data-act="export">export beach</button>
+          <button type="button" class="action" data-act="import">import beach</button>
         </div>
         <p class="note">detail changes apply on next launch</p>
       </div>`;
@@ -171,6 +176,13 @@ export class SettingsSheet {
           this.h.change(this.settings, key);
         });
       }
+    }
+    for (const act of ['export', 'import'] as const) {
+      this.el.querySelector<HTMLButtonElement>(`button[data-act="${act}"]`)!.addEventListener('click', () => {
+        this.hide();
+        if (act === 'export') this.h.exportBeach();
+        else this.h.importBeach();
+      });
     }
     let confirmSmooth = 0;
     for (const b of this.el.querySelectorAll<HTMLButtonElement>('button[data-act="share"], button[data-act="smooth"]')) {

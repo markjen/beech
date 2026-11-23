@@ -313,3 +313,49 @@ describe('bulldozer', () => {
     expect(off(14)).toBeGreaterThan(0.03);
   });
 });
+
+describe('importing a beach', () => {
+  it('replaces sand and objects as one undo step, undoes and redoes, and stays stable', () => {
+    const sim = new BeachSim(grid, 1, { waves: false, erosion: false, healing: false, seep: false });
+    const y = PROFILE.shoreline + 10;
+    sim.stamp('pile', 10, y, 0.6, 0.5);
+    sim.placeObject({ kind: 'rock', item: 'rock', x: 20, y, angle: 0, size: 0.5, variant: 1 });
+    const before = sim.sand.slice();
+    const undos = sim.undo.undoCount;
+    // the import: a flat 0.3 m terrace, and two new objects
+    const delta = new Float32Array(sim.n).fill(0.3);
+    sim.importBeach(delta, [
+      { id: 1, kind: 'flag', item: 'flag', x: 5, y, angle: 0, size: 0.4, variant: 1 },
+      { id: 2, kind: 'driftwood', item: 'driftwood', x: 25, y, angle: 0, size: 1, variant: 1 },
+    ]);
+    expect(sim.undo.undoCount).toBe(undos + 1);
+    const k = Math.floor(y / sim.dx) * sim.nx + Math.floor(10 / sim.dx);
+    expect(sim.sand[k] - sim.rest[k]).toBeCloseTo(0.3, 4);
+    expect(sim.objects.persisted().map((o) => o.item).sort()).toEqual(['driftwood', 'flag']);
+    // a steep edge slumps a little while you look at it
+    sim.importBeach(new Float32Array(sim.n).map((_, k) => (k % sim.nx > sim.nx / 2 ? 0.6 : 0)), []);
+    for (let s = 0; s < 60; s++) sim.step(DT);
+    sim.undoStroke(false);
+    // undo: the old beach, rock included, comes back exactly (no ghost of the edge)
+    sim.undoStroke(false);
+    let worst = 0;
+    for (let i = 0; i < sim.n; i++) worst = Math.max(worst, Math.abs(sim.sand[i] - before[i]));
+    expect(worst).toBeLessThan(1e-5);
+    expect(sim.objects.persisted().map((o) => o.item)).toEqual(['rock']);
+    // redo: the import again
+    sim.redoStroke(false);
+    expect(sim.objects.count).toBe(2);
+    sim.redoStroke(false);
+    sim.undoStroke(false);
+    expect(sim.sand[k] - sim.rest[k]).toBeCloseTo(0.3, 4);
+    expect(sim.objects.count).toBe(2);
+    // and the sea runs on it without blowing up
+    const sim2 = new BeachSim(grid, 1);
+    sim2.importBeach(delta, []);
+    for (let s = 0; s < 300; s++) sim2.step(DT);
+    for (let i = 0; i < sim2.n; i++) {
+      expect(Number.isFinite(sim2.sand[i])).toBe(true);
+      expect(Number.isFinite(sim2.water[i])).toBe(true);
+    }
+  });
+});

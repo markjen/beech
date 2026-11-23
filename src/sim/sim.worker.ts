@@ -94,6 +94,9 @@ self.onmessage = (ev: MessageEvent<ToWorker>) => {
     case 'setSand':
       if (sim && m.delta.length === sim.n) sim.loadDelta(m.delta, m.objects ?? []);
       break;
+    case 'importBeach':
+      if (sim && m.delta.length === sim.n) sim.importBeach(m.delta, m.objects);
+      break;
     case 'placeObject':
       sim?.placeObject(m.obj);
       break;

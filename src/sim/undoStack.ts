@@ -12,6 +12,12 @@ export interface UndoEntry {
   obj?: { op: 'add' | 'remove'; data: PlacedObject };
   /** objects a dozer or vacuum stroke swept up along its path (sand change too, or none) */
   removed?: PlacedObject[];
+  /**
+   * a whole beach replaced (an import): the objects before and after, and
+   * the whole sand before (after = before + delta). Undo and redo restore
+   * these exactly, rather than subtracting.
+   */
+  swap?: { before: PlacedObject[]; after: PlacedObject[]; sand: Float32Array };
 }
 
 /**

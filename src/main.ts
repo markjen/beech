@@ -43,6 +43,9 @@ import { Leaderboard } from './ui/leaderboard';
 import { NEIGHBOR_OFFSET, NeighborView } from './render/neighbors';
 import { loadSettings, saveSettings, type Settings } from './ui/settingsStore';
 import { initTelemetry } from './net/telemetry';
+import { BeachFileDialog, beachFileName, downloadText } from './ui/beachFileDialog';
+import { writeBeachFile } from './world/beachFile';
+import { version as APP_VERSION } from '../package.json';
 
 // Unhandled errors + one page-load timing sample go to /api/client-events,
 // so phones are visible in Cloud Logging too. First, so early errors count.
@@ -368,6 +371,8 @@ async function boot() {
       audio.whoosh(false);
     },
     share: () => void share(),
+    exportBeach: () => void exportBeach(),
+    importBeach: () => void beachFiles.pick(),
     fullscreen: () => void toggleFullscreen(),
     tv: () => {
       // one tap for the TV: idle controls + wake lock, seated on the sand,
@@ -454,6 +459,34 @@ async function boot() {
     syncToolUI();
     placeBar.show(item, DEFAULT_SIZE);
     haptics.impact('light');
+  });
+
+  // beach files (docs/BEACH_FILE.md): export what's here, import a designed beach
+  const myBeachName = () => account?.beaches.find((b) => b.id === account?.beachId)?.name || beach.name;
+  const exportBeach = async () => {
+    const { delta, objects } = await getSand();
+    const name = myBeachName();
+    const text = await writeBeachFile(
+      { nx: grid.nx, ny: grid.ny, delta, objects },
+      { name, location: beach.id, createdWith: `beech ${APP_VERSION}` },
+    );
+    downloadText(beachFileName(name), text);
+  };
+  const beachFiles = new BeachFileDialog(uiRoot, {
+    grid: () => grid,
+    owned: () => inventory.ownedItems(),
+    placedElsewhere: () => inventory.elsewhereItems(),
+    hasBag: ACCOUNTS_ENABLED,
+    shop: ACCOUNTS_ENABLED ? () => void shopDialog?.open() : undefined,
+    apply: (b) => {
+      send({ type: 'importBeach', delta: b.delta, objects: b.objects }, [b.delta.buffer]);
+      const loc = beachById(b.location);
+      if (loc && loc.id !== beach.id) setBeach(loc);
+      markDirty(1500);
+      haptics.impact('medium');
+      audio.whoosh(false);
+      showToast(uiRoot, b.name ? `${b.name} is here. Undo brings your beach back.` : 'Imported. Undo brings your beach back.');
+    },
   });
   const sizeOf = (id: string) => settings.itemSizes?.[id] ?? DEFAULT_SIZE;
   const placeBar = new PlaceBar(

@@ -22,6 +22,8 @@ export type ToWorker =
   | { type: 'getSand'; id: number }
   /** replace the sand with a saved beach (same grid size) */
   | { type: 'setSand'; delta: Float32Array; objects?: PlacedObject[] }
+  /** replace the whole beach with an imported one, as one undo step */
+  | { type: 'importBeach'; delta: Float32Array; objects: PlacedObject[] }
   /** put an inventory item on the beach (undoable) */
   | { type: 'placeObject'; obj: Omit<PlacedObject, 'id'> }
   /** take one off again (undoable) */

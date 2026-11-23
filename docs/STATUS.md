@@ -410,7 +410,16 @@ offline. The spec and milestones are in [BEACH_FILE.md](BEACH_FILE.md).
   encodings, four shapes with add/set/max/min, objects), with errors and
   warnings by JSON path. Also `reconcileItems` for imports and checkpoint
   restores, `docs/beach-file.schema.json`, and examples in `docs/examples/`
-  (a test parses each with no warnings). Not in the app yet.
+  (a test parses each with no warnings).
+- **E2 done:** Settings has **export beach** (downloads
+  `<beach-name>-<date>.beach.json`) and **import beach**. Import picks a
+  file, then shows a preview: a map, the things on it, what was fixed while
+  reading, and what your bag can't cover (left out with **Import without
+  them**, or the shop). Then it replaces the beach as one undo step that
+  restores the old beach exactly. The sandbox build imports free things
+  only. Checked in the browser (desktop and phone) and in
+  `npm run e2e:accounts` (import with a parasol short, the save survives a
+  reload, export).
 
 ## Checkpoints (designed, not built)
 

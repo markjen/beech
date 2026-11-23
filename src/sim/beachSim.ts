@@ -890,6 +890,7 @@ export class BeachSim {
     if (this.stroke) this.endStroke();
     const e = this.undo.popUndo();
     if (!e) return false;
+    if (e.swap) return this.applySwap(e, -1);
     if (e.obj) this.applyObject(e.obj, -1);
     if (e.removed) this.applyRemoved(e.removed, -1);
     if (e.w > 0 && e.h > 0) this.scheduleDelta(e, -1, ease);
@@ -900,6 +901,7 @@ export class BeachSim {
     if (this.stroke) this.endStroke();
     const e = this.undo.popRedo();
     if (!e) return false;
+    if (e.swap) return this.applySwap(e, 1);
     if (e.obj) this.applyObject(e.obj, 1);
     if (e.removed) this.applyRemoved(e.removed, 1);
     if (e.w > 0 && e.h > 0) this.scheduleDelta(e, 1, ease);
@@ -945,6 +947,44 @@ export class BeachSim {
     } else {
       for (const o of removed) this.objects.remove(o.id);
     }
+  }
+
+  /**
+   * Replace the whole beach (an imported beach file) as one undo step: the
+   * old objects come off, the sand takes the new shape, the new objects go
+   * on. Undo puts the old beach back exactly, and redo the imported one: a
+   * whole-beach swap restores a snapshot, since subtracting the change would
+   * leave ghosts of every edge that has slumped since.
+   */
+  importBeach(delta: Float32Array, objects: PlacedObject[]): void {
+    if (delta.length !== this.n) throw new Error('grid size mismatch');
+    if (this.stroke) this.cancelStroke();
+    const before = this.objects.persisted();
+    this.objects.clear();
+    const sand = this.sand.slice();
+    const change = new Float32Array(this.n);
+    for (let k = 0; k < this.n; k++) {
+      const v = this.rest[k] + delta[k];
+      this.sand[k] = v < this.bottom[k] ? this.bottom[k] : v;
+      change[k] = this.sand[k] - sand[k];
+    }
+    this.sediment.fill(0);
+    this.easing = [];
+    const after = objects.map((o) => this.objects.add({ ...o, id: undefined }));
+    this.undo.push({ i0: 0, j0: 0, w: this.nx, h: this.ny, delta: change, swap: { before, after, sand } });
+  }
+
+  private applySwap(e: UndoEntry, sign: number): boolean {
+    const { before, after, sand } = e.swap!;
+    for (const o of sign < 0 ? after : before) this.objects.remove(o.id);
+    for (let k = 0; k < this.n; k++) {
+      const v = sign < 0 ? sand[k] : sand[k] + e.delta[k];
+      this.sand[k] = v < this.bottom[k] ? this.bottom[k] : v;
+    }
+    this.sediment.fill(0);
+    this.easing = [];
+    for (const o of sign < 0 ? before : after) this.objects.add({ ...o });
+    return true;
   }
 
   /** Put the whole beach back to its rest shape (undoable). */
