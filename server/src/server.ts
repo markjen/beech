@@ -36,9 +36,6 @@
 // docs/GIFT_CARDS_PROMOS.md), deployed as its own service.
 
 import { serve } from '@hono/node-server';
-import { serveStatic } from '@hono/node-server/serve-static';
-import { Hono } from 'hono';
-import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -46,8 +43,8 @@ import { createApp } from './app.js';
 import { startAdminServer } from './adminServer.js';
 import { openDbFromEnv } from './dbEnv.js';
 import { migrate } from './migrations.js';
-import { httpLogger, logEvent } from './observability.js';
-import { createSharePageHandler } from './shareMeta.js';
+import { logEvent } from './observability.js';
+import { createRootApp } from './rootApp.js';
 import { xsollaFromEnv } from './xsolla.js';
 
 const env = process.env;
@@ -99,31 +96,7 @@ const api = createApp(db, {
 });
 
 const publicDir = path.resolve(env.PUBLIC_DIR ?? path.join(here, '..', '..', 'dist'));
-const root = new Hono();
-// One structured log line per request, including static files and /healthz.
-root.use('*', httpLogger);
-root.get('/healthz', (c) => c.text('ok'));
-root.route('/api', api);
-// a shared beach link (?visit=CODE) gets Open Graph tags for that beach, so
-// the link shows a preview where it's pasted; everything else passes through
-const indexHtml = path.join(publicDir, 'index.html');
-root.get('/', createSharePageHandler(db, indexHtml));
-root.use(
-  '/*',
-  serveStatic({
-    root: path.relative(process.cwd(), publicDir) || '.',
-    onFound: (p, c) => {
-      // hashed bundles never change; the page and service worker must revalidate
-      c.header('Cache-Control', p.includes('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache');
-    },
-  }),
-);
-// single-page app: anything else gets the page
-root.get('*', (c) => {
-  if (!fs.existsSync(indexHtml)) return c.text('web app not built (npm run build in the repo root)', 404);
-  c.header('Cache-Control', 'no-cache');
-  return c.html(fs.readFileSync(indexHtml, 'utf8'));
-});
+const root = createRootApp(db, api, publicDir);
 
 const port = Number(env.PORT ?? 8080);
 const server = serve({ fetch: root.fetch, port, hostname: env.HOST ?? '0.0.0.0' }, () =>
