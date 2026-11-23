@@ -97,6 +97,12 @@ _(nothing right now)_
 
 ## Done (recent)
 
+- [x] **Claw machine can miss** (2026-11-22): the server rolls a grab after
+  the draw — the claw keeps a common ball 80% of the time, a rare one 65%,
+  a legendary one 40% (about 1 go in 4 comes up empty). Starter gifts always
+  hold. A miss spends the go, wins nothing, and the claw lifts empty with an
+  "It slipped out of the claw!" reveal naming what dropped. Grab chances are
+  published (GET /pulls) and shown under the odds.
 - [x] **Objects floating off Rose's beach** (2026-11-23): server refuses
   saves from the old 32 × 24 app; `fitWorld` repairs objects it shifted.
 - [x] **Claw starter gifts** (rare, shop item, extra beach after a day),
