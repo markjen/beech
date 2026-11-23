@@ -28,7 +28,7 @@ import { appleRefund, googleVoided, verifyAppleTransaction, verifyGooglePurchase
 import { POOLS, cooldownAfter, draw, pullDay, starterPrize, STARTER } from './pulls.js';
 import { hashToken, newSessionToken, SESSION_DAYS, verifyAppleIdToken, verifyGoogleIdToken, type VerifiedIdentity } from './auth.js';
 import { toBytes, type Db } from './db.js';
-import { createRateLimiter, httpLogger, logEvent, parseClientEvent, routeLabel } from './observability.js';
+import { createRateLimiter, logEvent, parseClientEvent, routeLabel } from './observability.js';
 
 export interface AppConfig {
   googleClientIds: string[];
@@ -91,9 +91,9 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   const verifyApple = cfg.verifyApple ?? verifyAppleIdToken;
   const app = new Hono<Env>();
 
-  // One structured log line per request (see observability.ts). First, so it
-  // covers everything below, including the CORS preflight.
-  app.use('*', httpLogger);
+  // Request logging (httpLogger) is mounted once, on the root app in
+  // server.ts, so it covers /api/* and the CORS preflight. Mounting it here
+  // too would log every API request twice and double the metrics.
 
   // ---------------------------------------------------------------- CORS
   app.use('*', async (c, next) => {

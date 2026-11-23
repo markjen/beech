@@ -129,3 +129,24 @@ describe('createDbStats', () => {
     expect(s.pool_waiting).toBe(1);
   });
 });
+
+describe('request logging in the real app', () => {
+  it('logs an /api request exactly once, with the route template', async () => {
+    const { createApp } = await import('../src/app.js');
+    const { createPgliteDb } = await import('../src/db.js');
+    const { migrate } = await import('../src/migrations.js');
+    const db = await createPgliteDb();
+    await migrate(db);
+    const lines = captureLogs();
+    // wired like server.ts: the logger on the root app, the API under /api
+    const root = new Hono();
+    root.use('*', httpLogger);
+    root.route('/api', createApp(db, { googleClientIds: [], appleClientIds: [], allowedOrigins: [] }));
+    expect((await root.request('/api/health')).status).toBe(200);
+    const reqs = lines.filter((l) => l.event === 'http_request');
+    expect(reqs).toHaveLength(1);
+    expect(reqs[0].route).toBe('/api/health');
+    vi.restoreAllMocks();
+    await db.close();
+  });
+});

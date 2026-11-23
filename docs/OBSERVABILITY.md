@@ -22,12 +22,13 @@ tracing comes later.)
 
 ### Server (every request)
 
-`server/src/observability.ts` — `httpLogger` middleware, on the API app
-and on the root app, so it covers `/api/*`, `/healthz`, static files and
+`server/src/observability.ts` — `httpLogger` middleware, mounted once
+on the root app (not also on the API app, which would log every API
+request twice), so it covers `/api/*`, `/healthz`, static files and
 the SPA fallback. One line per request:
 
 ```json
-{"severity":"INFO","time":"...","service":"beech","revision":"beech-00002-abc","event":"http_request","method":"GET","route":"/beaches/:code","status":200,"duration_ms":42.3}
+{"severity":"INFO","time":"...","service":"beech","revision":"beech-00002-abc","event":"http_request","method":"GET","route":"/api/beaches/:code","status":200,"duration_ms":42.3}
 ```
 
 - `route` is the matched route template. Raw paths are never logged as
