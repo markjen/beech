@@ -112,9 +112,17 @@
 
 .hint.with-action {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   align-items: center;
-  gap: 12px;
+  gap: 8px 12px;
+  /* at left: 50% a shrink-to-fit box gets half the screen: size to the text instead */
+  width: max-content;
   pointer-events: auto;
+}
+
+.hint.with-action > span {
+  flex: 1 1 220px;
 }
 
 .hint-action {
@@ -971,4 +979,12 @@ body.ambient-idle .shore-info {
 
 .checkpoints .cp-thumb:not([src]) {
   visibility: visible;
+}
+
+/* the account panel's "invite friends" (docs/INVITES_GUIDE.md) */
+.neighbors .invite-open {
+  display: block;
+  width: 100%;
+  margin: 8px 0 4px;
+  opacity: 1;
 }

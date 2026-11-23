@@ -445,6 +445,39 @@ accepted the repo's default branch, so the deploy job ran only there.
   Play** store link (`app.beech.beach`), and an **iOS coming soon** badge
   (docs/LANDING_PAGE.md).
 
+## Invites and the beach guide (2026-11-23)
+
+Design and decisions in [INVITES_GUIDE.md](INVITES_GUIDE.md).
+
+- **The beach guide** (compass button, top of the tool column, with a
+  `3/9` badge): nine steps that each teach one mechanic (dig, build, undo,
+  put something down, sit on the beach, the claw machine, visit, star,
+  invite). A coach card above the bottom-left buttons shows the next step
+  and how to do it, cheers when one is done, and says how to get home when
+  you're visiting. It can be hidden ("hide the tips"). Each step gives a
+  common (conch, sand dollar) once per account; all eight give a starfish.
+  Claw, star and invite are checked on the server. The sandbox shows the
+  five local steps, without gifts, kept in `localStorage`; signed-out
+  progress in production is sent after sign-in and still earns its gifts.
+- **Invites**: `?invite=CODE` (your home beach code). The start screen says
+  who invited you; the link lands you on their beach; signing in gives the
+  welcome parasol and a one-tap "be their neighbor". The inviter gets the
+  next rung of a ladder (parasol, surfboard, **extra beach**, tiki torch,
+  sandcastle, then starfish; 10 at most) once the friend has done 3 guide
+  steps, and is told on their next sign-in. The invite panel (from the guide
+  and the account panel's "invite friends") has the link with share and
+  copy, the ladder and your friends. Open Graph previews say "Ana invited
+  you to beech".
+- **Items, not credit**: credit is web-only by store policy, so invite
+  rewards are inventory rows (`source = 'reward'`) that work everywhere.
+- Migration 23: `guide_steps`, `referrals` (unique rank per inviter), and
+  `'reward'` as an inventory source.
+- Tests: `server/test/referrals.test.ts`, `server/test/shareMeta.test.ts`,
+  `tests/guide.test.ts`, `tests/share.test.ts`; `npm run e2e:invites` drives
+  the whole loop in two browsers.
+- The action note ("Restored … · Undo", the welcome gift) now sizes to its
+  text instead of half the screen, so longer notes don't squeeze on phones.
+
 ## Claw machine (added after chair polish)
 
 - **Free claw machine** (production builds, signed in): the rest between

@@ -108,9 +108,14 @@ export class ClawMachine {
     this.btn.focus({ preventScroll: true });
   }
 
+  /** called whenever the machine closes (the beach guide checks for a go) */
+  onClosed?: () => void;
+
   close(): void {
+    const was = this.isOpen;
     this.root.classList.remove('open');
     cancelAnimationFrame(this.raf);
+    if (was) this.onClosed?.();
   }
 
   private reset(): void {

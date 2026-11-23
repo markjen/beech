@@ -166,6 +166,9 @@ Errors: `400` bad code, missing item, or that's your own code · `404` no beach 
 
 ### What this doesn't do (follow-ups)
 
+(Invite links with rewards for both sides are built on top of share links:
+see [INVITES_GUIDE.md](INVITES_GUIDE.md).)
+
 - A "gifts received" list, or a way to return/decline a gift.
 - Sharing a beach you're *visiting* (the copy-link button is on your own
   code; the shore bar has no share button yet).
