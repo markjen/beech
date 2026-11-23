@@ -23,7 +23,7 @@
 //                        the key and webhook secret come from Secret Manager). All three
 //                        set: the web shop takes card payments. Any missing: it doesn't.
 //   XSOLLA_SANDBOX       "1": test payments only (Xsolla sandbox, test cards)
-//   WEB_CHECKOUT_RETURN_URL  where Pay Station returns to (default https://beech.markjen.com/)
+//   WEB_CHECKOUT_RETURN_URL  where Pay Station returns to (default https://play.beech.games/)
 //   ALLOWED_ORIGINS      extra CORS origins, default the Capacitor app shells
 //   SHORE_URL            the public shore site's origin (default https://beechshore.com)
 //   SHORE_HOSTS          hosts served as the shore site (default beechshore.com,www.beechshore.com);

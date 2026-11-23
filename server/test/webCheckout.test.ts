@@ -113,7 +113,7 @@ describe('Xsolla helpers', () => {
     expect(xsollaFromEnv({ XSOLLA_PROJECT_ID: '1', XSOLLA_API_KEY: 'k' }).missing).toEqual(['XSOLLA_WEBHOOK_SECRET']);
     const on = xsollaFromEnv({ XSOLLA_PROJECT_ID: '1', XSOLLA_API_KEY: 'k', XSOLLA_WEBHOOK_SECRET: 's', XSOLLA_SANDBOX: '1' }).cfg!;
     expect(on.sandbox).toBe(true);
-    expect(on.returnUrl).toBe('https://beech.markjen.com/');
+    expect(on.returnUrl).toBe('https://play.beech.games/');
   });
 });
 

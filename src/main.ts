@@ -52,7 +52,7 @@ import { version as APP_VERSION } from '../package.json';
 
 // Unhandled errors + one page-load timing sample go to /api/client-events,
 // so phones are visible in Cloud Logging too. First, so early errors count.
-// Production only: the sandbox build (GitHub Pages) has no server to send to.
+// Production only: the sandbox build has no server to send to.
 if (ACCOUNTS_ENABLED) initTelemetry();
 
 const params = new URLSearchParams(location.search);

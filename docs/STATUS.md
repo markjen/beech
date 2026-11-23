@@ -191,9 +191,8 @@
   - mutual neighbor requests
   - live (rather than snapshot) neighbor sand
 
-GitHub Pages: the `github-pages` environment only accepts the repo's default
-branch, so the deploy job runs only there. Switch the default branch to
-`main` to deploy Pages from `main`.
+GitHub Pages (removed 2026-11-22): the `github-pages` environment only
+accepted the repo's default branch, so the deploy job ran only there.
 
 ## Views (added after neighbors)
 
@@ -379,7 +378,7 @@ branch, so the deploy job runs only there. Switch the default branch to
   has a "guide & help" link, and the claw and vending machines a small
   "odds and how it works" / "this week's set and odds" link to their
   sections (`GUIDE_URL` in `src/config.ts`, absolute, so the apps and the
-  sandbox reach it too). The sandbox (GitHub Pages) has no guide of its own.
+  sandbox reach it too). The sandbox build (no accounts) has no guide of its own.
 - **Release notes** are backfilled from the backlog for 2026-11-22 and
   2026-11-23; CLAUDE.md now asks for a line with every player-visible change.
 - **The landing page** is on the website too: `beech.games` serves
@@ -610,25 +609,25 @@ here: it needs the service's URL on the web OAuth client.
   feature graphic in `resources/play-store/`. Still manual in Play Console:
   listing text, content rating, data safety, target audience (13+),
   testers, promoting the draft.
-- **GitHub Pages:** live (the sandbox build). markjen.github.io/beech
-  redirects to markjen.com/beech/, the owner's custom domain. Deploys run
-  from the default branch (see "Accounts" above).
+- **GitHub Pages:** removed 2026-11-22 (workflow deleted, superseded by
+  Cloud Run). The sandbox build (`npm run build`, no accounts) is no
+  longer published anywhere.
 - **Web preview meanwhile:** the built game is published as a private
   claude.ai artifact (Beech Seaside Toy), made with
   `node scripts/artifact-page.mjs` after `npm run build`.
 
 ## Next steps owned by the repo owner (deferred by choice, 2026-11-22)
 
-- **GitHub Pages:** enabled by the owner. The sandbox is live.
-- **Store submission:** later. The owner will create the Apple Developer and
-  Google Play accounts, pick the final app ID, and add the secrets listed in
-  docs/MOBILE.md. Then run "Release to stores". Agents shouldn't attempt
-  uploads before those secrets exist.
+- **Store submission (Apple):** later. The owner still has to create the
+  Apple Developer account and add the secrets listed in docs/MOBILE.md.
+  Google Play is underway — see the Google Play bullet above. Agents
+  shouldn't attempt uploads before those secrets exist.
 
 ## Not verified here (needs real accounts or hardware)
 
-- The store upload workflow (`release-mobile.yml`): needs Play and App Store
-  Connect credentials. The first Play upload must be manual.
+- The store upload workflow (`release-mobile.yml`): the first Play upload
+  succeeded via the API (2026-11-23, AAB 1.0.0 build 1 to the internal
+  track). The iOS upload still needs App Store Connect credentials.
 - Feel on real phones: touch latency, haptics, audio mix, thermal behaviour.
   The tuning panel (`?debug=1`) is the place to adjust these.
 - The admin console's real Google sign-in and the `beech-admin` Cloud Run

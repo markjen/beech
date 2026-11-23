@@ -7,7 +7,7 @@ then the web shop behaves exactly as before and points people at the apps.
 
 The shop sells through Apple and Google in the apps. This adds real web
 checkout for the same products, through a merchant of record, so a player
-on beech.markjen.com can pay by card and get the item in their bag on
+on play.beech.games can pay by card and get the item in their bag on
 every device — no app install, and no card details ever reach us.
 
 **Provider: Xsolla Pay Station** (In-Game Store API). The comparison with
@@ -125,7 +125,7 @@ running our own tax operation.
    order is paid. The server checks the signature, finds the order, checks
    it, and grants in one statement (below).
 4. **Return**: Pay Station sends the player to
-   `https://beech.markjen.com/?web_order=<id>` (Xsolla adds `user_id`,
+   `https://play.beech.games/?web_order=<id>` (Xsolla adds `user_id`,
    `foreignInvoice`, `invoice_id`, `status`). `main.ts` strips those, and
    once signed in polls `GET /api/store/web-orders/:id` for up to a minute
    ("Checking your payment…" → "Paid: it's in your bag" and a bag refresh).
@@ -227,7 +227,9 @@ pass `promo_code` on the token call, and on `order_paid` accept
    `server/src/products.ts`, **SKU = product id**, USD price = `usd`
    (same 10 SKUs). Keep the two in step when products change.
 3. **Webhooks.** Project → Webhooks: URL
-   `https://beech.markjen.com/api/store/xsolla/webhook`; copy the secret key.
+   `https://play.beech.games/api/store/xsolla/webhook`; copy the secret key.
+   Set exactly this URL in the Xsolla dashboard — the webhook must match
+   the dashboard setting.
 4. **Secrets** (Secret Manager, never the repo):
    ```sh
    printf %s "$KEY"    | gcloud secrets create beech-xsolla-api-key --data-file=-

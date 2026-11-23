@@ -108,8 +108,9 @@ All five go to `markjen@gmail.com` (var `alert_email`):
 
 Uptime checks hit `https://beech.markjen.com/` and
 `https://beech.markjen.com/api/health` every minute from the USA region
-only (var `monitoring_host`). The API check also requires the body to
-contain `"ok":true`.
+only (var `monitoring_host` — still the legacy host; follow-up: repoint
+it to `https://play.beech.games`). The API check also requires the body
+to contain `"ok":true`.
 
 ## Cost
 

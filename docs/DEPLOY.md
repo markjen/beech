@@ -3,19 +3,14 @@
 The web build is a static site in `dist/` (relative paths, so it works under
 any sub-path). It is installable as a PWA and runs offline after the first visit.
 
-## GitHub Pages (set up in this repo)
+## GitHub Pages (removed)
 
-`.github/workflows/deploy.yml` builds and publishes on every push to `main`.
-
-One-time setup by a repo admin:
-
-1. **Settings → Pages → Build and deployment → Source: GitHub Actions.**
-2. Merge to `main` (or run the workflow from the Actions tab).
-3. The site appears at `https://<owner>.github.io/<repo>/`.
-
-If the run fails at `configure-pages` with "Resource not accessible by
-integration", step 1 hasn't been done: the workflow token can't turn Pages
-on by itself.
+GitHub Pages publishing was removed on 2026-11-22 (the `deploy.yml`
+workflow is deleted, superseded by Cloud Run). The live sites are
+https://play.beech.games (game) and https://beech.games (home page,
+guide, privacy policy) — see [GCP.md](GCP.md). The static `dist/`
+build below still works on any static host; it just isn't published
+to Pages anymore.
 
 ## claude.ai artifact preview
 

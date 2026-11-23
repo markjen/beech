@@ -124,10 +124,11 @@ Check it: `gcloud run services describe beech --region us-central1
 Two options (docs/GCP.md); pick one:
 
 - **Cloud Run domain mapping (default in this Terraform):** set
-  `custom_domain = "beech.markjen.com"` (in a `terraform.tfvars` or
+  `custom_domain = "play.beech.games"` (in a `terraform.tfvars` or
   `-var`), `terraform apply`, then add the DNS records the mapping
   prints. Only do this after the first successful deploy — the mapping
-  needs the service to exist.
+  needs the service to exist. (`beech.markjen.com` stays mapped as a
+  legacy host, but it was created manually and is not managed here.)
 - **Firebase Hosting in front:** rewrites everything to the `beech`
   service, adds a CDN, works in every region. Then leave
   `custom_domain` empty and set the rewrite in Firebase.
@@ -151,10 +152,12 @@ service (`beech-admin`, split out in PR #29). Order of operations:
    Credentials), next to `https://beech.games`. Google sign-in on the
    admin console will not work until this is done.
 
-Note: the `beech.games` game mapping was created manually with
+Note: the `play.beech.games` game mapping and the `beech.games` landing
+mapping were created manually with
 `gcloud beta run domain-mappings create` and Terraform state may not
-yet include it — this configuration does not claim to manage it. If it
-is imported later, `custom_domain` should be set to `beech.games`.
+yet include them — this configuration does not claim to manage them. If
+one of them is imported later, `custom_domain` should be set to that
+domain (the one resource manages one mapping).
 
 ### Landing page domain: `beech.games` + `www.beech.games`
 
@@ -223,9 +226,10 @@ only the mappings and DNS are missing:
    If the mappings are created with `gcloud beta run domain-mappings
    create` instead of `terraform apply`, import both mappings into
    Terraform state before any apply, or apply fails with "already
-   exists" (same situation as the `beech.games` game mapping above).
+   exists" (same situation as the manual `play.beech.games` and
+   `beech.games` mappings above).
 
-Until the domain is on, the shore is at `/shore` on the game's domain
+Until the domain is on, the shore is at `/shore` on https://play.beech.games
 (see [SHORE_SITE.md](../docs/SHORE_SITE.md)).
 
 ## Server runtime contract (for reference)

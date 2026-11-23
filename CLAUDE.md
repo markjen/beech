@@ -48,8 +48,8 @@ Read these first:
 - After web changes that should ship in the apps, run `npx cap sync`. Don't
   hand-edit `android/app/src/main/assets/public` or `ios/App/App/public`; they
   are generated and git-ignored.
-- Two builds: the sandbox (default `npm run build`, used by GitHub Pages; no
-  accounts) and production (`VITE_ACCOUNTS=1 …`, served by the Node server in
+- Two builds: the sandbox (default `npm run build`; no accounts — no longer
+  published anywhere since GitHub Pages was removed) and production (`VITE_ACCOUNTS=1 …`, served by the Node server in
   `server/`, which runs on Cloud Run, see docs/GCP.md). Keep anything that needs the network behind `ACCOUNTS_ENABLED`.
 - Server changes: `cd server && npm run typecheck && npm test` (PGlite; set
   `TEST_DATABASE_URL` to also run against real Postgres), then

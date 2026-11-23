@@ -11,7 +11,7 @@ person owns — instead of adding new identity or inbox systems.
 ### Format
 
 ```
-https://beech.markjen.com/?visit=K7F2QX
+https://play.beech.games/?visit=K7F2QX
 ```
 
 The beach id in the link is the beach's **code** (6 letters and
@@ -21,7 +21,7 @@ code the link carries. No new ids, no new table: the code is
 already the public way to name a beach (visit by code, favorites,
 neighbor asks). The link is built from the page the sharer is on, so the
 same build works on the production domain and on any other host
-(`https://markjen.com/beech/?visit=K7F2QX`).
+(`https://beech.markjen.com/?visit=K7F2QX` — the legacy host still works).
 
 ### Landing on the shared beach
 
@@ -34,8 +34,8 @@ same build works on the production domain and on any other host
   URL with `replaceState`), so going home and reloading doesn't drag you
   back. If the code doesn't name a beach, a short note says so.
 - If the link opens while signed out, the visit waits for the first
-  sign-in and then happens on its own. In the sandbox build (GitHub Pages,
-  no accounts) a visit link does nothing — there is nobody to visit as.
+  sign-in and then happens on its own. In the sandbox build (no accounts)
+  a visit link does nothing — there is nobody to visit as.
 
 ### Web and the phone apps
 
@@ -68,7 +68,7 @@ save (`server/src/shareMeta.ts`, wired in `server/src/server.ts`):
 ```html
 <meta property="og:title" content="Visit Ana's beach on beech">
 <meta property="og:description" content="Walk the shore, dig in the sand, and see what Ana built.">
-<meta property="og:url" content="https://beech.markjen.com/?visit=K7F2QX">
+<meta property="og:url" content="https://play.beech.games/?visit=K7F2QX">
 ```
 
 The owner's first name is HTML-escaped before it goes into the page. A
@@ -76,9 +76,9 @@ code that names nobody (or nobody with a saved beach) gets the plain page
 — the app then says "no beach has that code". For a beach on the shore, `og:image` is a
 1200×630 picture of it drawn by the server (`/shore/img/CODE.png`, see
 [SHORE_SITE.md](SHORE_SITE.md)). The app's share buttons now send the
-beechshore link (`beechshore.com/CODE`), which anyone can open signed out. The GitHub
-Pages sandbox serves a static `index.html` and can't inject anything, so
-previews only work for production links.
+beechshore link (`beechshore.com/CODE`), which anyone can open signed out. A
+static `index.html` (the sandbox build on a static host) can't inject
+anything, so previews only work for production links.
 
 ## Gifting items
 

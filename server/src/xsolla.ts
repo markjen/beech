@@ -21,7 +21,7 @@ export interface XsollaConfig {
   webhookSecret: string;
   /** test payments only (Xsolla's sandbox and test cards) */
   sandbox: boolean;
-  /** where Pay Station sends the player back to, e.g. https://beech.markjen.com/ */
+  /** where Pay Station sends the player back to, e.g. https://play.beech.games/ */
   returnUrl: string;
 }
 
@@ -134,7 +134,7 @@ export function xsollaFromEnv(env: Record<string, string | undefined>): { cfg: X
       apiKey: want.XSOLLA_API_KEY!,
       webhookSecret: want.XSOLLA_WEBHOOK_SECRET!,
       sandbox: env.XSOLLA_SANDBOX === '1',
-      returnUrl: env.WEB_CHECKOUT_RETURN_URL || 'https://beech.markjen.com/',
+      returnUrl: env.WEB_CHECKOUT_RETURN_URL || 'https://play.beech.games/',
     },
     missing: [],
   };

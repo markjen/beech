@@ -4,7 +4,7 @@ Two builds come from one codebase:
 
 | | Sandbox | Production |
 |---|---|---|
-| Where | GitHub Pages (`deploy.yml`), https://markjen.com/beech/ | Google Cloud Run (`deploy-gcp.yml`), see [GCP.md](GCP.md) |
+| Where | Local / any static host (`npm run build`; no longer published — see [DEPLOY.md](DEPLOY.md)) | Google Cloud Run (`deploy-gcp.yml`), https://play.beech.games, see [GCP.md](GCP.md) |
 | Sign-in | none | Google now; Apple next (required for iOS) |
 | Saved state | none (only per-device settings) | your beach, synced, plus neighbors |
 | Build flags | none | `VITE_ACCOUNTS=1`, `VITE_GOOGLE_CLIENT_ID=…`, `VITE_API_URL=` (empty means same origin) |
