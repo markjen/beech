@@ -197,6 +197,20 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     return startSession(c, { provider: 'dev', sub: n, name: n });
   });
 
+  // local development and e2e tests only (DEV_AUTH): give yourself an item
+  app.post('/dev/grant', requireUser, async (c) => {
+    if (!cfg.devAuth) fail(404, 'not found');
+    const { item, quantity } = await body<{ item?: string; quantity?: number }>(c);
+    if (!item || !/^[a-z0-9-]{1,32}$/.test(item)) fail(400, 'bad item');
+    await db.query("INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at) VALUES ($1, $2, $3, 'gift', $4)", [
+      c.get('user').id,
+      item,
+      Math.max(1, Math.min(10, Number(quantity) || 1)),
+      Date.now(),
+    ]);
+    return c.body(null, 204);
+  });
+
   app.post('/auth/logout', requireUser, async (c) => {
     await db.query('DELETE FROM sessions WHERE token_hash = $1', [c.get('tokenHash')]);
     return c.body(null, 204);

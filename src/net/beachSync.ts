@@ -1,6 +1,17 @@
 import { decodeSand, encodeSand, fitWorld, resampleField } from '../sim/sandCodec';
 import type { PlacedObject } from '../sim/objects';
 import type { Account } from './account';
+import { itemById } from '../world/items';
+
+/** How many of each non-free item are on a beach (so your bag can count across beaches). */
+export function countItems(objects: PlacedObject[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const o of objects) {
+    if (o.wild || itemById(o.item)?.unlimited !== false) continue;
+    out[o.item] = (out[o.item] ?? 0) + 1;
+  }
+  return out;
+}
 
 export type SyncState = 'idle' | 'saving' | 'saved' | 'offline';
 
@@ -24,6 +35,8 @@ export class BeachSync {
   private dirty = false;
   private timer = 0;
   private inflight: Promise<void> | null = null;
+  /** loading another beach: hold saves until it's in (they'd save the old sand into it) */
+  private switching = false;
   private listeners: ((s: SyncState) => void)[] = [];
 
   constructor(
@@ -59,7 +72,8 @@ export class BeachSync {
 
   /** Something changed; save a few seconds after the player pauses. */
   markDirty(delayMs = 6000): void {
-    if (!this.account.user) return;
+    // (while another beach is loading, a timed save could put the old sand into it)
+    if (!this.account.user || this.switching) return;
     this.dirty = true;
     window.clearTimeout(this.timer);
     this.timer = window.setTimeout(() => void this.flush(), delayMs);
@@ -86,10 +100,12 @@ export class BeachSync {
     window.clearTimeout(this.timer);
     this.set('saving');
     try {
+      const forBeach = this.account.beachId;
       const { delta, objects } = await this.host.getSand();
       const bytes = await encodeSand(delta, this.host.grid.nx, this.host.grid.ny, objects);
-      if (this.account.user?.id !== forUser) return; // switched accounts mid-save
-      this.savedAt = await this.account.saveBeach(bytes, this.host.location(), this.host.grid.nx, this.host.grid.ny, keepalive);
+      // switched accounts or beaches mid-save: this sand isn't theirs
+      if (this.account.user?.id !== forUser || this.account.beachId !== forBeach) return;
+      this.savedAt = await this.account.saveBeach(bytes, this.host.location(), this.host.grid.nx, this.host.grid.ny, keepalive, countItems(objects));
       this.dirty = false;
       this.set('saved');
     } catch {
@@ -103,9 +119,12 @@ export class BeachSync {
    * After signing in: bring back the saved beach, or (first time) save the
    * beach the player is on now.
    */
-  async restoreOrCreate(): Promise<'restored' | 'created'> {
+  async restoreOrCreate(fresh = false): Promise<'restored' | 'created'> {
     const saved = await this.account.loadBeach();
     if (!saved) {
+      // a brand-new extra beach starts untouched; a first sign-in keeps the
+      // beach you were already playing on
+      if (fresh) this.host.setSand(new Float32Array(this.host.grid.nx * this.host.grid.ny), []);
       await this.flush();
       return 'created';
     }
@@ -116,5 +135,23 @@ export class BeachSync {
     this.dirty = false;
     this.set('saved');
     return 'restored';
+  }
+
+  /**
+   * Open another of your beaches on this device: save this one, then load
+   * that one into the simulation (an untouched beach if it's new).
+   */
+  async switchTo(id: string): Promise<void> {
+    if (id === this.account.beachId) return;
+    window.clearTimeout(this.timer);
+    await this.flush();
+    this.switching = true;
+    try {
+      this.account.setBeach(id);
+      this.savedAt = 0;
+      await this.restoreOrCreate(true);
+    } finally {
+      this.switching = false;
+    }
   }
 }

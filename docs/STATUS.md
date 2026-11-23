@@ -251,6 +251,24 @@ branch, so the deploy job runs only there. Switch the default branch to
   `GET /api/inventory` for owned, unexpired non-free items. Nothing writes to
   it yet.
 
+## More than one beach (added after the claw starter gifts)
+
+- See docs/MULTI_BEACH.md. Settings → "your beaches" lets you open one here,
+  rename it, set it on or off the shore, make it home, remove it, or make a
+  new one (allowance = 1 + extra beaches owned, cap 8).
+- **Each device shows one of your beaches** and runs its simulation. It's
+  remembered per device (`beech.activeBeach.v1`), so different devices run
+  different beaches at the same time, each saving its own. Opening another
+  beach saves this one and loads that one (an untouched beach if it's new).
+- Neighbors, requests, codes and the shore all follow the device's beach
+  (`?beach=`). Putting one of your own beach codes next to another links them
+  at once, with no request.
+- The bag counts non-free items across all your beaches. Each save sends
+  `X-Beach-Items`, and "N of M left" includes the other beaches' counts.
+- `npm run e2e:beaches`: two devices, two beaches, digging at once, linking
+  them, and remembering the choice per device. Needs DEV_AUTH for
+  `/api/dev/grant`.
+
 ## Mutual neighbors and the global beachfront (added after the bulldozer)
 
 - **Asking and accepting:** in settings, put a code in "left" or "right" and

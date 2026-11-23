@@ -760,33 +760,72 @@ async function boot() {
     markDirty = (delayMs?: number) => s.markDirty(delayMs);
     neighbors = new NeighborView(scene, grid, ready.rest, swell, cam, uiRoot, account);
     const nv = neighbors;
+    const acct = account;
     // whenever someone new signs in (or a saved session comes back), bring
     // back their beach and their neighbors
     let signedInAs: string | null = null;
     account.onChange((u) => {
       if (u && u.id !== signedInAs) {
-        void s.restoreOrCreate().catch(() => {});
-        void nv.refresh();
+        // your beaches first (this device opens the one it had, else home),
+        // then its sand and its stretch of shore
+        void (async () => {
+          await acct.loadBeaches().catch(() => {});
+          await s.restoreOrCreate().catch(() => {});
+          await nv.refresh();
+        })();
         void nv.loadFavorites();
       } else if (!u) {
         nv.clear();
       }
       signedInAs = u?.id ?? null;
     });
+    // another of your beaches opened on this device: the shore moves to it
+    let shownBeach: string | null = null;
+    acct.onBeach((id) => {
+      if (shownBeach && id && id !== shownBeach) void nv.recentre();
+      shownBeach = id;
+      updateElsewhere();
+    });
+    // your bag counts what's on your other beaches too
+    const updateElsewhere = () => {
+      const other = new Map<string, number>();
+      for (const b of acct.beaches)
+        if (b.id !== acct.beachId) for (const [k, v] of Object.entries(b.items ?? {})) other.set(k, (other.get(k) ?? 0) + v);
+      inventory.setElsewhere(other);
+    };
     // a dot on the settings button when someone has asked to move in next to you
     nv.onChange((n) => {
       const asking = n?.requests.length ?? 0;
       menuBtn.classList.toggle('badge', asking > 0);
       menuBtn.setAttribute('aria-label', asking ? `Settings (${asking} neighbor request${asking > 1 ? 's' : ''})` : 'Settings');
     });
-    new AccountPanel(sheet.accountSlot, account, s, () => {}, nv, async (code) => {
-      await nv.visit(code);
-      cam.goTo(0, true);
-      sheet.hide();
-    });
+    new AccountPanel(
+      sheet.accountSlot,
+      account,
+      s,
+      () => {},
+      nv,
+      async (code) => {
+        await nv.visit(code);
+        cam.goTo(0, true);
+        sheet.hide();
+      },
+      {
+        // open one of your beaches on this device
+        open: async (id) => {
+          await s.switchTo(id);
+          if (nv.visiting) await nv.visit(null);
+          cam.goTo(0, true);
+          updateElsewhere();
+          sheet.hide();
+        },
+        // a new beach starts at the real beach you're looking at now
+        location: () => beach.id,
+        changed: () => updateElsewhere(),
+      },
+    );
 
     // what you've won (and later bought), and the claw machine
-    const acct = account;
     const loadOwned = async () => {
       if (!acct.user) return inventory.setOwned(new Map());
       try {

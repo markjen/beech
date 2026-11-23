@@ -19,7 +19,8 @@
     "build:accounts": "VITE_ACCOUNTS=1 VITE_DEV_AUTH=1 vite build",
     "e2e:accounts": "node scripts/account-e2e.mjs",
     "e2e:neighbors": "node scripts/neighbors-e2e.mjs",
-    "e2e:shore": "node scripts/shore-e2e.mjs"
+    "e2e:shore": "node scripts/shore-e2e.mjs",
+    "e2e:beaches": "node scripts/beaches-e2e.mjs"
   },
   "dependencies": {
     "@babylonjs/core": "8.56.2",

@@ -190,6 +190,13 @@ export class NeighborView {
     await this.fillWindow(true);
   }
 
+  /** Another of your beaches is now this device's: show its stretch of shore. */
+  async recentre(): Promise<void> {
+    this.visiting = null;
+    this.clearEntries();
+    await this.refresh();
+  }
+
   /** Visit anyone's beach by code (null: go home). Throws if there's no such beach. */
   async visit(code: string | null): Promise<void> {
     if (code) {
