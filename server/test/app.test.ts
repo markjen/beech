@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp, normalizeCode } from '../src/app.js';
+import type { VerifiedPurchase } from '../src/store.js';
 import { createPgDb, createPgliteDb, type Db } from '../src/db.js';
 import { migrate } from '../src/migrations.js';
 
@@ -25,6 +26,21 @@ beforeAll(async () => {
     allowedOrigins: ['capacitor://localhost'],
     devAuth: true,
     now: () => Date.now() + skew,
+    // pretend stores: a "jws"/"token" here is just the purchase as JSON (store.test.ts checks the real verification)
+    stores: {
+      apple: async (jws) => {
+        const p = JSON.parse(jws) as VerifiedPurchase & { bad?: boolean };
+        if (p.bad) throw new Error('signature does not check out');
+        return { ...p, store: 'apple' };
+      },
+      google: async (_pkg, productId, token) => ({ ...(JSON.parse(token) as VerifiedPurchase), store: 'google', productId }),
+      appleRefund: async (payload) => (JSON.parse(payload) as { refund?: string }).refund ?? null,
+      googleVoided: async (auth, body) => {
+        if (auth !== 'Bearer from-google') throw new Error('bad push');
+        return (body as { order?: string }).order ?? null;
+      },
+    },
+    googleRtdn: { audience: 'https://beech.test/api/store/google/rtdn', email: 'push@beech.test' },
     verifyGoogle: async (t) => {
       if (t !== 'good-google-token') throw new Error('bad token');
       return { provider: 'google', sub: 'g-1', name: 'Grace' };
@@ -292,6 +308,68 @@ describe('more than one beach', () => {
     // and the shore can be centred on either of them
     const fromSecond = (await (await req(`/shore?depth=1&beach=${second.id}`, {}, fay.token)).json()) as { center: { code: string; you: boolean } };
     expect(fromSecond.center).toMatchObject({ code: second.code, you: true });
+  });
+});
+
+describe('the shop', () => {
+  const buy = (t: string, b: Record<string, unknown>) => req('/store/purchase', json('POST', b), t);
+  const owned = async (t: string) => {
+    const inv = (await (await req('/inventory', {}, t)).json()) as { items: { item: string; quantity: number }[] };
+    const m: Record<string, number> = {};
+    for (const i of inv.items) m[i.item] = (m[i.item] ?? 0) + i.quantity;
+    return m;
+  };
+
+  it('lists the products', async () => {
+    const r = (await (await req('/store/products')).json()) as { products: { id: string; usd: number; grants: unknown[] }[] };
+    expect(r.products.map((p) => p.id)).toContain('beach_1');
+    for (const p of r.products) expect(p.usd).toBeGreaterThan(0);
+  });
+
+  it('grants a checked purchase once, ties it to its account, and takes it back on a refund', async () => {
+    const hal = await signIn('Hal');
+    const ivy = await signIn('Ivy');
+    const tx = (id: string, extra: Record<string, unknown> = {}) =>
+      JSON.stringify({ transactionId: id, productId: 'pack_founder', environment: 'Sandbox', purchasedAt: 1, account: hal.user.id, ...extra });
+    // a founder's pack on iOS: two beaches and four things
+    const r1 = await buy(hal.token, { platform: 'ios', productId: 'pack_founder', jws: tx('A-1') });
+    expect(r1.status).toBe(200);
+    expect(await r1.json()).toMatchObject({ already: false, product: 'pack_founder' });
+    expect(await owned(hal.token)).toMatchObject({ beach: 2, lighthouse: 1, beachhut: 1, parasol: 1, tikitorch: 2 });
+    expect(((await (await req('/beaches/mine', {}, hal.token)).json()) as { allowance: number }).allowance).toBe(3);
+    // the same purchase again (an app retry): fine, nothing extra
+    const r2 = await buy(hal.token, { platform: 'ios', productId: 'pack_founder', jws: tx('A-1') });
+    expect(await r2.json()).toMatchObject({ already: true });
+    expect((await owned(hal.token)).beach).toBe(2);
+    // someone else can't use Hal's receipt
+    expect((await buy(ivy.token, { platform: 'ios', productId: 'pack_founder', jws: tx('A-1', { account: undefined }) })).status).toBe(409);
+    expect((await buy(ivy.token, { platform: 'ios', productId: 'pack_founder', jws: tx('A-2') })).status).toBe(403); // tied to Hal
+    // the store didn't confirm it; wrong product; unknown product
+    expect((await buy(hal.token, { platform: 'ios', productId: 'pack_founder', jws: tx('A-3', { bad: true }) })).status).toBe(402);
+    expect((await buy(hal.token, { platform: 'ios', productId: 'beach_1', jws: tx('A-4') })).status).toBe(400);
+    expect((await buy(hal.token, { platform: 'ios', productId: 'nope', jws: tx('A-5') })).status).toBe(404);
+    expect((await buy(hal.token, { platform: 'ios', productId: 'beach_1' })).status).toBe(400);
+    expect((await req('/store/purchase', json('POST', { platform: 'ios', productId: 'beach_1', jws: tx('A-6') }))).status).toBe(401);
+
+    // Google: a single beach
+    const g = await buy(hal.token, { platform: 'android', productId: 'beach_1', token: JSON.stringify({ transactionId: 'GPA.1', environment: 'Test', purchasedAt: 2 }) });
+    expect(g.status).toBe(200);
+    expect((await owned(hal.token)).beach).toBe(3);
+
+    // refunds: Apple notification for the pack, Google push for the beach
+    expect((await req('/store/apple/notifications', json('POST', { signedPayload: JSON.stringify({ refund: 'A-1' }) }))).status).toBe(200);
+    expect(await owned(hal.token)).toEqual({ beach: 1 });
+    expect((await req('/store/google/rtdn', json('POST', { order: 'GPA.1' }))).status).toBe(401); // not from Google
+    expect((await req('/store/google/rtdn', { ...json('POST', { order: 'GPA.1' }), headers: { 'Content-Type': 'application/json', Authorization: 'Bearer from-google' } })).status).toBe(204);
+    expect(await owned(hal.token)).toEqual({});
+    expect(((await (await req('/beaches/mine', {}, hal.token)).json()) as { allowance: number }).allowance).toBe(1);
+  });
+
+  it('a pretend store only in development', async () => {
+    const jo = await signIn('Jo');
+    const r = await buy(jo.token, { platform: 'dev', productId: 'item_parasol', token: 'dev-1' });
+    expect(r.status).toBe(200);
+    expect((await owned(jo.token)).parasol).toBe(1);
   });
 });
 
