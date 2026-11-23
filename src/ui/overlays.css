@@ -619,3 +619,59 @@ body.ambient-idle {
 .beaches .beach-row {
   flex-wrap: wrap;
 }
+
+/* ---------------------------------------------------------- beach map */
+
+.beach-map svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 14px;
+}
+
+.beach-map .ocean {
+  fill: color-mix(in srgb, #3b8fa6 22%, transparent);
+}
+
+.beach-map .land {
+  fill: color-mix(in srgb, currentColor 16%, transparent);
+}
+
+.beach-map .marker {
+  cursor: pointer;
+  outline: none;
+}
+
+.beach-map .marker .dot {
+  fill: #e0a43a;
+  stroke: var(--ui-bg);
+  stroke-width: 1.5;
+}
+
+.beach-map .marker.here .dot {
+  stroke: var(--ui-fg);
+  stroke-width: 2;
+}
+
+.beach-map .marker .ring {
+  fill: none;
+  stroke: #e0a43a;
+  stroke-width: 1.5;
+  opacity: 0.7;
+}
+
+.beach-map .marker:focus-visible .dot {
+  stroke: var(--ui-fg);
+  stroke-width: 2.5;
+}
+
+.beach-map .marker text {
+  font: 600 11px/1 -apple-system, system-ui, sans-serif;
+  fill: currentColor;
+}
+
+.beach-map .status {
+  font-size: 12px;
+  opacity: 0.7;
+  padding-top: 4px;
+}
