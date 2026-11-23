@@ -8,6 +8,8 @@ export interface UndoEntry {
   h: number;
   /** sand height after - before, row-major w*h */
   delta: Float32Array;
+  /** the packed floor before and after, same patch (only when it changed) */
+  pack?: { before: Float32Array; after: Float32Array };
   /** an object placed on / taken off the beach (no sand change) */
   obj?: { op: 'add' | 'remove'; data: PlacedObject };
 }

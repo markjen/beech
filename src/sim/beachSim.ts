@@ -44,6 +44,10 @@ export interface SimStats {
 }
 
 const DEG = Math.PI / 180;
+/** `packed` value for sand that isn't packed */
+const NOT_PACKED = -1e6;
+/** on load, sand at least this far (m) above the untouched sea floor counts as packed */
+const PACK_ON_LOAD = 0.03;
 /** undo/redo ease in over this many ticks (~150 ms) */
 const UNDO_EASE_TICKS = 5;
 
@@ -69,6 +73,14 @@ export class BeachSim {
 
   readonly rest: Float32Array;
   readonly bottom: Float32Array;
+  /**
+   * Packed sand: a floor (m) that slumping, erosion and healing never take
+   * the sand below, like `bottom` but player-made. The build tool packs what
+   * it piles up in the sea (where the untouched beach is below mean sea
+   * level) when the stroke ends, so sand built out of the water stays up. Dig and smooth reshape
+   * it, the bulldozer and reset clear it. NOT_PACKED where there is none.
+   */
+  readonly packed: Float32Array;
   readonly sand: Float32Array;
   readonly water: Float32Array;
   readonly sediment: Float32Array;
@@ -114,6 +126,7 @@ export class BeachSim {
     dirX: number;
     dirY: number;
     snapshot: Float32Array;
+    packSnapshot: Float32Array;
     i0: number;
     j0: number;
     i1: number;
@@ -136,6 +149,7 @@ export class BeachSim {
     this.rest = buildRestProfile(g, seed);
     this.bottom = new Float32Array(n);
     for (let k = 0; k < n; k++) this.bottom[k] = this.rest[k] - PROFILE.digDepthLimit;
+    this.packed = new Float32Array(n).fill(NOT_PACKED);
     this.sand = this.rest.slice();
     this.water = new Float32Array(n);
     this.sediment = new Float32Array(n);
@@ -382,7 +396,7 @@ export class BeachSim {
 
   /** Sediment pick-up / drop and transport by the water. */
   private erode(dt: number): void {
-    const { nx, ny, dx, sand, water, sediment, vx, vy, bottom, tmp, rest } = this;
+    const { nx, ny, dx, sand, water, sediment, vx, vy, bottom, packed, tmp, rest } = this;
     // (tmp is reused below for the transport step)
     const Kc = EROSION.capacity;
     const Ks = EROSION.dissolve;
@@ -413,7 +427,8 @@ export class BeachSim {
         const depthF = Math.min(1, d / 0.05) * Math.max(0, Math.min(1, 1 - (d - 0.35) / 0.6));
         const C = Kc * sinA * speed * depthF;
         if (C > s) {
-          const amt = Math.min(Ks * (C - s) * dt, Math.max(0, sand[k] - bottom[k]));
+          const floor = bottom[k] > packed[k] ? bottom[k] : packed[k];
+          const amt = Math.min(Ks * (C - s) * dt, Math.max(0, sand[k] - floor));
           sand[k] -= amt;
           s += amt;
         } else {
@@ -457,7 +472,7 @@ export class BeachSim {
 
   /** Move sand down slopes steeper than the (wetness dependent) angle of repose. */
   private slump(): void {
-    const { nx, ny, dx, sand, water, wet, bottom, tanMax, tmp } = this;
+    const { nx, ny, dx, sand, water, wet, bottom, packed, tanMax, tmp } = this;
     const tDry = Math.tan(SAND.reposeDry * DEG) * dx;
     const tDamp = Math.tan(SAND.reposeDamp * DEG) * dx;
     const tSat = Math.tan(SAND.reposeSaturated * DEG) * dx;
@@ -491,11 +506,11 @@ export class BeachSim {
             const dh = hk - sand[kn];
             const t = Math.min(tanMax[k], tanMax[kn]);
             if (dh > t) {
-              const m = Math.min((dh - t) * rate, Math.max(0, hk - bottom[k]) * 0.25);
+              const m = Math.min((dh - t) * rate, Math.max(0, hk - Math.max(bottom[k], packed[k])) * 0.25);
               tmp[k] -= m;
               tmp[kn] += m;
             } else if (-dh > t) {
-              const m = Math.min((-dh - t) * rate, Math.max(0, sand[kn] - bottom[kn]) * 0.25);
+              const m = Math.min((-dh - t) * rate, Math.max(0, sand[kn] - Math.max(bottom[kn], packed[kn])) * 0.25);
               tmp[k] += m;
               tmp[kn] -= m;
             }
@@ -505,11 +520,11 @@ export class BeachSim {
             const dh = hk - sand[kn];
             const t = Math.min(tanMax[k], tanMax[kn]);
             if (dh > t) {
-              const m = Math.min((dh - t) * rate, Math.max(0, hk - bottom[k]) * 0.25);
+              const m = Math.min((dh - t) * rate, Math.max(0, hk - Math.max(bottom[k], packed[k])) * 0.25);
               tmp[k] -= m;
               tmp[kn] += m;
             } else if (-dh > t) {
-              const m = Math.min((-dh - t) * rate, Math.max(0, sand[kn] - bottom[kn]) * 0.25);
+              const m = Math.min((-dh - t) * rate, Math.max(0, sand[kn] - Math.max(bottom[kn], packed[kn])) * 0.25);
               tmp[k] += m;
               tmp[kn] -= m;
             }
@@ -522,13 +537,14 @@ export class BeachSim {
 
   /** Very slow pull back to the rest profile wherever the sea reaches. */
   private heal(dt: number): void {
-    const { sand, rest, water, wet, bottom } = this;
+    const { sand, rest, water, wet, bottom, packed } = this;
     const a = dt / EROSION.healingTime;
     const dry = WATER.dryDepth;
     for (let k = 0; k < this.n; k++) {
       if (water[k] > dry || wet[k] > 0.97) {
         const v = sand[k] + (rest[k] - sand[k]) * a;
-        sand[k] = v < bottom[k] ? bottom[k] : v; // never through a rock
+        const floor = bottom[k] > packed[k] ? bottom[k] : packed[k];
+        sand[k] = v < floor ? floor : v; // never through a rock or packed sand
       }
     }
   }
@@ -597,6 +613,7 @@ export class BeachSim {
       dirX: 0,
       dirY: 0,
       snapshot: this.sand.slice(),
+      packSnapshot: this.packed.slice(),
       i0: Math.floor(ci),
       j0: Math.floor(cj),
       i1: Math.ceil(ci),
@@ -620,8 +637,25 @@ export class BeachSim {
     const st = this.stroke;
     if (!st) return;
     this.stroke = null;
-    const entry = this.diffRegion(st.snapshot, st.i0, st.j0, st.i1, st.j1);
+    if (st.mode === 'pile') this.packBuilt(st.snapshot, st.i0, st.j0, st.i1, st.j1);
+    const entry = this.diffRegion(st.snapshot, st.packSnapshot, st.i0, st.j0, st.i1, st.j1);
     if (entry) this.undo.push(entry);
+  }
+
+  /**
+   * Sand a build stroke raised in the sea (where the untouched beach is below
+   * mean sea level) gets packed once the stroke ends: it has settled into its
+   * pile by then, and now stands up to the waves.
+   */
+  private packBuilt(before: Float32Array, bi0: number, bj0: number, bi1: number, bj1: number): void {
+    const { i0, j0, i1, j1 } = this.clipBox(bi0, bj0, bi1, bj1);
+    const { sand, rest, packed, nx } = this;
+    for (let j = j0; j <= j1; j++) {
+      for (let i = i0; i <= i1; i++) {
+        const k = j * nx + i;
+        if (rest[k] < 0 && sand[k] > before[k] + 0.005 && packed[k] < sand[k]) packed[k] = sand[k];
+      }
+    }
   }
 
   /** Abort the current stroke and put the sand back exactly as it was. */
@@ -634,6 +668,7 @@ export class BeachSim {
       for (let i = i0; i <= i1; i++) {
         const k = j * this.nx + i;
         this.sand[k] = st.snapshot[k];
+        this.packed[k] = st.packSnapshot[k];
       }
     }
   }
@@ -650,6 +685,7 @@ export class BeachSim {
 
   private diffRegion(
     before: Float32Array,
+    packBefore: Float32Array,
     bi0: number,
     bj0: number,
     bi1: number,
@@ -660,15 +696,31 @@ export class BeachSim {
     const h = j1 - j0 + 1;
     const delta = new Float32Array(w * h);
     let any = false;
+    let packChanged = false;
     for (let j = 0; j < h; j++) {
       for (let i = 0; i < w; i++) {
         const k = (j + j0) * this.nx + i + i0;
         const d = this.sand[k] - before[k];
         delta[j * w + i] = d;
         if (d > 1e-5 || d < -1e-5) any = true;
+        if (this.packed[k] !== packBefore[k]) packChanged = true;
       }
     }
-    return any ? { i0, j0, w, h, delta } : null;
+    if (!any && !packChanged) return null;
+    const entry: UndoEntry = { i0, j0, w, h, delta };
+    if (packChanged) {
+      const pb = new Float32Array(w * h);
+      const pa = new Float32Array(w * h);
+      for (let j = 0; j < h; j++) {
+        for (let i = 0; i < w; i++) {
+          const k = (j + j0) * this.nx + i + i0;
+          pb[j * w + i] = packBefore[k];
+          pa[j * w + i] = this.packed[k];
+        }
+      }
+      entry.pack = { before: pb, after: pa };
+    }
+    return entry;
   }
 
   private applyBrush(dt: number): void {
@@ -712,7 +764,7 @@ export class BeachSim {
 
   /** One brush dab. amount = depth (m) at the centre. */
   stamp(mode: BrushMode, x: number, y: number, r: number, amount: number, dirX = 0, dirY = 0): void {
-    const { nx, ny, dx, sand, bottom } = this;
+    const { nx, ny, dx, sand, bottom, packed, rest } = this;
     const [ci, cj] = this.toCell(x, y);
     const rc = r / dx;
     const outer = rc * BRUSH.rimOuter;
@@ -731,6 +783,7 @@ export class BeachSim {
           const k = j * nx + i;
           const avg = (sand[k - 1] + sand[k + 1] + sand[k - nx] + sand[k + nx]) * 0.25;
           sand[k] += (avg - sand[k]) * Math.min(1, w * amount * 25);
+          if (packed[k] > sand[k]) packed[k] = sand[k]; // smoothing reshapes packed sand
         }
       }
       return;
@@ -739,7 +792,6 @@ export class BeachSim {
     if (mode === 'flatten') {
       // the bulldozer: a wide blade with a flat middle that pushes the sand
       // back to the untouched beach (never through a rock: those raise `bottom`)
-      const { rest } = this;
       const rb = rc * BRUSH.flattenWidth;
       for (let j = Math.max(0, Math.floor(cj - rb)); j <= Math.min(ny - 1, Math.ceil(cj + rb)); j++) {
         for (let i = Math.max(0, Math.floor(ci - rb)); i <= Math.min(nx - 1, Math.ceil(ci + rb)); i++) {
@@ -747,6 +799,7 @@ export class BeachSim {
           if (q >= 1) continue;
           const w = q < 0.6 ? 1 : 1 - smoothstep(0.6, 1, q);
           const k = j * nx + i;
+          packed[k] = NOT_PACKED; // the blade breaks up packed sand
           const target = Math.max(rest[k], bottom[k]);
           sand[k] += (target - sand[k]) * Math.min(1, w * amount * BRUSH.flattenRate);
         }
@@ -776,6 +829,7 @@ export class BeachSim {
         const w = (1 - q * q) * (1 - q * q);
         const a = Math.min(amount * w, Math.max(0, sand[k] - bottom[k]));
         sand[k] -= a;
+        if (packed[k] > sand[k]) packed[k] = sand[k]; // digging cuts into packed sand
         removed += a;
       }
     }
@@ -827,20 +881,42 @@ export class BeachSim {
     for (const e of this.easing) {
       this.applyDelta(e.entry, e.sign / UNDO_EASE_TICKS);
       e.ticksLeft--;
+      if (e.ticksLeft <= 0) this.setPack(e.entry, e.sign, false);
     }
     this.easing = this.easing.filter((e) => e.ticksLeft > 0);
   }
 
   private applyDelta(entry: UndoEntry, scale: number): void {
     const { i0, j0, w, h, delta } = entry;
-    const { sand, bottom, nx } = this;
+    const { sand, bottom, packed, nx } = this;
     for (let j = 0; j < h; j++) {
       for (let i = 0; i < w; i++) {
         const d = delta[j * w + i];
         if (d === 0) continue;
         const k = (j + j0) * nx + i + i0;
         const v = sand[k] + d * scale;
-        sand[k] = v < bottom[k] ? bottom[k] : v;
+        const floor = bottom[k] > packed[k] ? bottom[k] : packed[k];
+        sand[k] = v < floor ? floor : v;
+      }
+    }
+  }
+
+  /**
+   * Put the packed floor of an undo entry to its before (sign < 0) or after
+   * (sign > 0) state. Called with `lowerOnly` before the sand moves (so the
+   * old floor doesn't hold the sand up) and again once it has moved (so a
+   * raised floor doesn't lift sand that is still on its way up).
+   */
+  private setPack(entry: UndoEntry, sign: number, lowerOnly: boolean): void {
+    if (!entry.pack) return;
+    const target = sign < 0 ? entry.pack.before : entry.pack.after;
+    const { i0, j0, w, h } = entry;
+    const { packed, nx } = this;
+    for (let j = 0; j < h; j++) {
+      for (let i = 0; i < w; i++) {
+        const k = (j + j0) * nx + i + i0;
+        const t = target[j * w + i];
+        if (!lowerOnly || t < packed[k]) packed[k] = t;
       }
     }
   }
@@ -865,8 +941,10 @@ export class BeachSim {
   }
 
   private scheduleDelta(e: UndoEntry, sign: number, ease: boolean): void {
+    this.setPack(e, sign, true);
     if (!ease) {
       this.applyDelta(e, sign);
+      this.setPack(e, sign, false);
       return;
     }
     this.easing.push({ entry: e, sign, ticksLeft: UNDO_EASE_TICKS });
@@ -900,10 +978,12 @@ export class BeachSim {
   resetBeach(): void {
     if (this.stroke) this.endStroke();
     const before = this.sand.slice();
+    const packBefore = this.packed.slice();
     // back to the rest shape, but rocks stay where they are
     for (let k = 0; k < this.n; k++) this.sand[k] = Math.max(this.rest[k], this.bottom[k]);
+    this.packed.fill(NOT_PACKED);
     this.sediment.fill(0);
-    const e = this.diffRegion(before, 0, 0, this.nx - 1, this.ny - 1);
+    const e = this.diffRegion(before, packBefore, 0, 0, this.nx - 1, this.ny - 1);
     if (e) this.undo.push(e);
   }
 
@@ -925,6 +1005,8 @@ export class BeachSim {
     for (let k = 0; k < this.n; k++) {
       const v = this.rest[k] + delta[k];
       this.sand[k] = v < this.bottom[k] ? this.bottom[k] : v;
+      // saves don't store packing: sand raised in the sea was built there, so pack it again
+      this.packed[k] = this.rest[k] < 0 && delta[k] > PACK_ON_LOAD ? this.sand[k] : NOT_PACKED;
     }
     this.sediment.fill(0);
     for (const o of objects) this.objects.add(o);

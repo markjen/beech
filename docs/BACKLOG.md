@@ -90,8 +90,13 @@ _(nothing right now)_
 - [ ] A WebGPU compute path for the simulation on high-end devices.
 - [ ] Seasonal sky (sun height already follows the date), and a meteor
   shower night.
+- [ ] Give packed sand (built in the sea) a slightly darker, smoother look so
+  it reads as packed.
 
 ## Done (recent)
+
+- [x] **Building in the sea packs the sand**, so piles built out of the
+  water stay up (2026-11-23).
 
 - [x] **Claw starter gifts** (rare, shop item, extra beach after a day),
   the Deckchair, and the multi-beach design (2026-11-23).

@@ -115,6 +115,21 @@
 - **Tools are a small column above the undo button** (dig / build / smooth,
   keys 1-3). Build adds sand from a "bucket" (it isn't taken from nearby), so
   the sand total goes up. Undo removes it like any other stroke.
+- **Building in the sea packs the sand** (2026-11-23). Without it a pile
+  built in the water was back under within 30-120 s, even with no waves:
+  underwater sand slumps at 17° and healing pulls it back to the sea floor.
+  Now, when a build stroke ends, the sand it raised where the untouched beach
+  is below mean sea level gets a packed floor (`BeachSim.packed`), which
+  slumping, erosion and healing never go below (like rocks' `bottom`). A pile
+  built out of 0.75 m of water stays up for 10+ minutes; sand on top of the
+  floor still washes off. It packs at the end of the stroke, so the pile
+  settles first (no spikes); more strokes add layers. Dig and smooth cut the
+  floor down to the new surface, the bulldozer and reset clear it, and undo /
+  redo restore it. Saves don't store it: on load, sand ≥ 3 cm above the
+  untouched sea floor is packed again. Packed sand looks the same as other
+  sand. Tried first and dropped: a 32° underwater angle in calm water (the
+  waves keep the water fast around a pile, so it didn't help) and no healing
+  for dry sand above the sea (the pile never stayed dry long enough).
 - **Shells** are decorative props on the main thread. One spawns at the top of
   the run-up after a wave recedes (every 14-36 s), follows the sand height,
   drifts with the swash and fades after 2.5-5 minutes. They are drawn

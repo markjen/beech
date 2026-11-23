@@ -311,3 +311,122 @@ describe('bulldozer', () => {
     expect(off(14)).toBeGreaterThan(0.03);
   });
 });
+
+describe('packed sand (building in the sea)', () => {
+  const NOT_PACKED = -1e5; // anything below this is unpacked
+  const X = 16;
+  const Y = PROFILE.shoreline - 3.5; // about 0.75 m of water
+
+  /** hold the build tool still at (X, Y) */
+  function build(sim: BeachSim, secs: number, x = X, y = Y) {
+    sim.beginStroke(x, y, 0.66, 'pile');
+    for (let s = 0; s < secs * 30; s++) sim.step(DT);
+    sim.endStroke();
+  }
+  /** highest sand within 0.5 m of (x, y), above mean sea level */
+  function top(sim: BeachSim, x = X, y = Y) {
+    let t = -99;
+    const ci = Math.floor(x / sim.dx);
+    const cj = Math.floor(y / sim.dx);
+    const r = Math.ceil(0.5 / sim.dx);
+    for (let j = cj - r; j <= cj + r; j++)
+      for (let i = ci - r; i <= ci + r; i++) t = Math.max(t, sim.sand[j * sim.nx + i]);
+    return t - sim.meanLevel();
+  }
+  function packedCells(sim: BeachSim) {
+    let c = 0;
+    for (let k = 0; k < sim.n; k++) if (sim.packed[k] > NOT_PACKED) c++;
+    return c;
+  }
+
+  it('a pile built out of the sea stays up; the same pile unpacked washes away', () => {
+    const sim = new BeachSim(grid, 1);
+    for (let s = 0; s < 60; s++) sim.step(DT);
+    build(sim, 30);
+    expect(top(sim)).toBeGreaterThan(0.4);
+    expect(packedCells(sim)).toBeGreaterThan(50);
+    // a twin with the packing taken away
+    const twin = new BeachSim(grid, 1);
+    for (let s = 0; s < 60; s++) twin.step(DT);
+    build(twin, 30);
+    twin.packed.fill(-1e6);
+    for (let s = 0; s < 75 * 30; s++) {
+      sim.step(DT);
+      twin.step(DT);
+    }
+    for (const a of [sim.sand, sim.water, twin.sand]) for (let k = 0; k < sim.n; k += 97) expect(Number.isFinite(a[k])).toBe(true);
+    expect(top(sim)).toBeGreaterThan(0.3); // still well out of the water
+    expect(top(twin)).toBeLessThan(0); // gone under
+    // and the sand never sinks below its packed floor
+    let below = 0;
+    for (let k = 0; k < sim.n; k++) below = Math.max(below, sim.packed[k] - sim.sand[k]);
+    expect(below).toBeLessThan(1e-4);
+  }, 60000);
+
+  it('conserves sand while the waves work on a packed pile', () => {
+    const sim = new BeachSim(grid, 2, { healing: false, seep: false });
+    build(sim, 20);
+    const s0 = sandPlusSediment(sim);
+    for (let s = 0; s < 300; s++) sim.step(DT);
+    expect(Math.abs(sandPlusSediment(sim) - s0)).toBeLessThan(1e-2 * Math.abs(s0) + 0.05);
+  });
+
+  it('only packs in the sea, not on the dry beach', () => {
+    const sim = new BeachSim(grid, 1, { waves: false, erosion: false, healing: false, seep: false });
+    build(sim, 3, X, PROFILE.shoreline + 6);
+    expect(packedCells(sim)).toBe(0);
+    build(sim, 3);
+    expect(packedCells(sim)).toBeGreaterThan(0);
+  });
+
+  it('undo takes the packing away with the sand, redo brings both back', () => {
+    const sim = new BeachSim(grid, 1, { waves: false, erosion: false, healing: false, seep: false, closed: true });
+    const before = sim.sand.slice();
+    build(sim, 4);
+    const after = sim.sand.slice();
+    const packedAfter = packedCells(sim);
+    expect(packedAfter).toBeGreaterThan(0);
+    sim.undoStroke(true);
+    for (let s = 0; s < 8; s++) sim.step(DT);
+    let maxErr = 0;
+    for (let k = 0; k < sim.n; k++) maxErr = Math.max(maxErr, Math.abs(sim.sand[k] - before[k]));
+    expect(maxErr).toBeLessThan(0.03);
+    expect(packedCells(sim)).toBe(0);
+    sim.redoStroke(true);
+    for (let s = 0; s < 8; s++) sim.step(DT);
+    maxErr = 0;
+    for (let k = 0; k < sim.n; k++) maxErr = Math.max(maxErr, Math.abs(sim.sand[k] - after[k]));
+    expect(maxErr).toBeLessThan(0.03);
+    expect(packedCells(sim)).toBe(packedAfter);
+  });
+
+  it('the bulldozer and reset clear packing; dig cuts into it; a reload packs again', () => {
+    const sim = new BeachSim(grid, 1, { waves: false, erosion: false, healing: false, seep: false, closed: true });
+    build(sim, 4);
+    const k = Math.floor(Y / sim.dx) * sim.nx + Math.floor(X / sim.dx);
+    const h = sim.sand[k];
+    // dig into the packed pile
+    sim.stamp('dig', X, Y, 0.4, 0.1);
+    expect(sim.sand[k]).toBeLessThan(h - 0.05);
+    expect(sim.packed[k]).toBeLessThanOrEqual(sim.sand[k]);
+    // a reload packs the raised sea floor again
+    const saved = sim.sandDelta();
+    const re = new BeachSim(grid, 1, { waves: false, erosion: false, healing: false, seep: false, closed: true });
+    re.loadDelta(saved);
+    expect(re.packed[k]).toBeCloseTo(re.sand[k], 4);
+    // bulldozer
+    sim.beginStroke(X - 1.5, Y, 0.6, 'flatten');
+    for (let s = 0; s <= 15; s++) {
+      sim.moveStroke(X - 1.5 + s * 0.2, Y, 0.6);
+      sim.step(DT);
+    }
+    sim.endStroke();
+    expect(sim.packed[k]).toBeLessThan(NOT_PACKED);
+    expect(Math.abs(sim.sand[k] - sim.rest[k])).toBeLessThan(0.05);
+    // reset
+    re.resetBeach();
+    expect(packedCells(re)).toBe(0);
+    re.undoStroke(false);
+    expect(re.packed[k]).toBeCloseTo(re.sand[k], 4);
+  });
+});
