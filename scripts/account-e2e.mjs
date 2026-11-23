@@ -22,13 +22,10 @@ const check = (cond, msg) => {
 
 const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: 1000, height: 700 } });
-// a dig can turn up a buried item (1 in 10, server-side): close that popup
-// whenever it shows, so it never lands on top of the next click
-void page.addLocatorHandler(page.locator('.digfind.open'), () => page.click('.digfind-close'));
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
 const open = async () => {
-  await page.goto(URL_ + '?nointro&fixedres&seed=1');
+  await page.goto(URL_ + '?nointro&fixedres&seed=1&nofinds');
   await page.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
   await page.waitForTimeout(800);
 };

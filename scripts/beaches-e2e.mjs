@@ -25,12 +25,9 @@ const name = `multi${Date.now() % 100000}`;
 async function device(label) {
   const ctx = await browser.newContext({ viewport: { width: 1000, height: 700 } });
   const page = await ctx.newPage();
-  // a dig can turn up a buried item (1 in 10, server-side): close that popup
-  // whenever it shows, so it never lands on top of the next click
-  void page.addLocatorHandler(page.locator('.digfind.open'), () => page.click('.digfind-close'));
   page.on('pageerror', (e) => errors.push(`${label}: ${e.message}`));
   page.on('dialog', (d) => void d.accept(d.type() === 'prompt' ? `${label} beach` : undefined));
-  await page.goto(URL_ + '?nointro&fixedres&seed=1');
+  await page.goto(URL_ + '?nointro&fixedres&seed=1&nofinds');
   await page.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
   await page.evaluate((n) => window.__beech.account().signInDev(n), name);
   await page.waitForFunction(() => window.__beech.account().beachId && window.__beech.sync().state === 'saved', null, { timeout: 20000 });
