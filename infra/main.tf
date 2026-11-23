@@ -259,6 +259,25 @@ resource "google_cloud_run_domain_mapping" "shore_www" {
   }
 }
 
+# beech.games landing page: the www host. Same beech service; the server
+# answers that Host with the landing page (server/src/rootApp.ts). The apex
+# mapping was created manually (see infra/README.md §6) and is not managed
+# here — do not import it as part of this change.
+resource "google_cloud_run_domain_mapping" "landing_www" {
+  count    = var.landing_custom_domain != "" ? 1 : 0
+  project  = var.project_id
+  location = var.region
+  name     = var.landing_custom_domain
+
+  metadata {
+    namespace = var.project_id
+  }
+
+  spec {
+    route_name = "beech"
+  }
+}
+
 # Admin console domain. Only create this AFTER a deploy has created the
 # beech-admin service (PR #29 split it out of the beech service) — the
 # mapping fails if the service does not exist yet. Set

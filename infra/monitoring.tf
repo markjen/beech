@@ -303,6 +303,46 @@ resource "google_monitoring_uptime_check_config" "shore" {
   depends_on = [google_project_service.monitoring]
 }
 
+# Landing page. Only created when var.landing_custom_domain is set, and
+# only after the domain mapping exists (the check fails until the DNS
+# records are in place and the certificate is provisioned). The host is the
+# www domain itself, so it can never drift from the mapping.
+# NOT wired into the uptime alert policy yet (see docs/LANDING_PAGE.md);
+# follow-up: add a condition for this check to google_monitoring_alert_policy.uptime.
+resource "google_monitoring_uptime_check_config" "landing" {
+  count            = var.landing_custom_domain != "" ? 1 : 0
+  project          = var.project_id
+  display_name     = "beech landing page"
+  timeout          = "10s"
+  period           = "60s"
+  selected_regions = ["USA"]
+
+  http_check {
+    path         = "/"
+    port         = 443
+    use_ssl      = true
+    validate_ssl = true
+  }
+
+  # The landing page's tagline (server/src/landingSite.ts; the deploy
+  # workflow greps for the same string under /landing). Anything else — a
+  # 404, the Squarespace parking page, the game — is a failure.
+  content_matchers {
+    content = "a quiet place by the sea"
+    matcher = "CONTAINS_STRING"
+  }
+
+  monitored_resource {
+    type = "uptime_url"
+    labels = {
+      host       = var.landing_custom_domain
+      project_id = var.project_id
+    }
+  }
+
+  depends_on = [google_project_service.monitoring]
+}
+
 # ---------------------------------------------------------------- alerts
 
 resource "google_monitoring_alert_policy" "uptime" {

@@ -44,9 +44,11 @@ beforeAll(async () => {
   publicDir = fs.mkdtempSync(path.join(process.cwd(), 'test', '.tmp-shore-'));
   fs.writeFileSync(path.join(publicDir, 'index.html'), '<!doctype html><html><head><title>beech</title></head><body>beech-spa-marker</body></html>');
   root = createRootApp(db, api, publicDir, {
-    hosts: ['beechshore.com', 'www.beechshore.com'],
-    url: 'https://beechshore.com',
-    gameUrl: 'https://play.example.test',
+    shore: {
+      hosts: ['beechshore.com', 'www.beechshore.com'],
+      url: 'https://beechshore.com',
+      gameUrl: 'https://play.example.test',
+    },
   });
   const call = (p: string, init: RequestInit = {}, token?: string) =>
     root.request(`/api${p}`, { ...init, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(init.headers ?? {}) } });

@@ -264,11 +264,6 @@
   box-shadow: inset 0 0 0 2px #c06fd6;
 }
 
-.inv-tip {
-  margin: 10px 2px 0;
-  font-size: 12px;
-  opacity: 0.75;
-}
 
 /* ---- chair view: walk along the beach ---- */
 .hud-walk {
@@ -397,34 +392,19 @@
   font-size: 13px;
 }
 
-.claw-odds {
-  font-size: 12px;
-  text-align: left;
-  opacity: 0.85;
-}
-
-.claw-odds p {
-  margin: 6px 0 4px;
-}
-
-.claw-odds ul {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.claw-odds li {
-  margin: 3px 0;
-}
-
-.claw-odds .dot {
+/* the one link in the claw and vending machines: odds and rules live in the
+   guide on the website, not in the game */
+.guide-link {
   display: inline-block;
-  width: 10px;
-  height: 10px;
-  margin-right: 6px;
-  border-radius: 50%;
-  vertical-align: -1px;
+  font-size: 12px;
+  color: inherit;
+  opacity: 0.7;
 }
+
+
+
+
+
 
 .claw-reveal {
   position: absolute;
@@ -555,34 +535,10 @@
   font-size: 13px;
 }
 
-.vending-odds {
-  font-size: 12px;
-  text-align: left;
-  opacity: 0.85;
-}
 
-.vending-odds p {
-  margin: 6px 0 4px;
-}
 
-.vending-odds ul {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
 
-.vending-odds li {
-  margin: 3px 0;
-}
 
-.vending-odds .dot {
-  display: inline-block;
-  width: 10px;
-  height: 10px;
-  margin-right: 6px;
-  border-radius: 50%;
-  vertical-align: -1px;
-}
 
 .vending-reveal {
   position: absolute;
@@ -991,12 +947,6 @@
   height: 32px;
 }
 
-.claw-extra {
-  max-width: 260px;
-  margin: 4px 16px;
-  font-size: 13px;
-  opacity: 0.85;
-}
 
 /* ---- shop ---- */
 .shop-card {
@@ -1083,12 +1033,6 @@
   opacity: 0.5;
 }
 
-.shop-small {
-  margin: 10px 4px 0;
-  font-size: 11px;
-  opacity: 0.7;
-  text-align: center;
-}
 
 .shop-credit {
   margin: 0 0 8px;
@@ -1232,12 +1176,6 @@
   background: var(--ui-fg);
 }
 
-.board-blurb {
-  margin: 8px 0 6px;
-  font-size: 12px;
-  text-align: center;
-  opacity: 0.7;
-}
 
 .board-list {
   flex: 1 1 auto;

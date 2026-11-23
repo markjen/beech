@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { POOLS, STARTER } from '../server/src/pulls';
 import { VENDING_SETS, currentSet } from '../server/src/vending';
 import { PRODUCTS } from '../server/src/products';
+import { PRIZE_NAMES } from '../server/src/prizeNames';
+import { RELEASE_NOTES } from '../server/src/releaseNotes';
 import { ITEMS, extraById, itemById, rollPlacement } from '../src/world/items';
 import { OBJECT_KINDS } from '../src/sim/objects';
 
@@ -87,5 +89,21 @@ describe('item catalog', () => {
     for (const it of ITEMS.filter((i) => i.source === 'shop')) {
       expect(PRODUCTS.find((p) => p.id === it.product), `${it.id} is sold by ${it.product}`).toBeTruthy();
     }
+  });
+});
+
+describe('the guide on the website', () => {
+  it('names every prize the machines can give as the catalog does', () => {
+    const ids = new Set<string>();
+    for (const p of Object.values(POOLS)) for (const list of Object.values(p.items)) list.forEach((id) => ids.add(id));
+    for (const set of VENDING_SETS) for (const list of Object.values(set.items)) list.forEach((id) => ids.add(id));
+    for (const id of ids) expect(PRIZE_NAMES[id], id).toBe(itemById(id)?.name);
+  });
+
+  it('release notes are dated, newest first', () => {
+    const dates = RELEASE_NOTES.map((r) => r.date);
+    for (const d of dates) expect(d).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect([...dates].sort().reverse()).toEqual(dates);
+    for (const r of RELEASE_NOTES) expect(r.changes.length).toBeGreaterThan(0);
   });
 });

@@ -41,7 +41,7 @@ import {
   type Promo,
 } from './giftCards.js';
 import { appleRefund, googleVoided, verifyAppleTransaction, verifyGooglePurchase, type VerifiedPurchase } from './store.js';
-import { POOLS, GRAB_CHANCE, cooldownAfter, cryptoRandom, draw, grab, pullDay, starterPrize, STARTER, type Rarity } from './pulls.js';
+import { POOLS, GRAB_CHANCE, COOLDOWN_MAX_MS, COOLDOWN_MIN_MS, cooldownAfter, cryptoRandom, draw, grab, pullDay, starterPrize, STARTER, type Rarity } from './pulls.js';
 import { currentSet, drawVending, nextUtcMidnight } from './vending.js';
 import { DIG_FIND_DAILY_CAP, DIG_FIND_ROLL_COOLDOWN_MS, digDraw, qualifiesForFind } from './digFinds.js';
 import { hashToken, newSessionToken, SESSION_DAYS, verifyAppleIdToken, verifyGoogleIdToken, type VerifiedIdentity } from './auth.js';
@@ -718,6 +718,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       items: Record<Rarity, string[]>;
       free: boolean;
       nextCooldown: number;
+      /** the range the rest is drawn from (claw only): short after a miss, long after a win */
+      cooldown?: { min: number; max: number };
       nextFree: number;
       starter?: { rare: string; paid: string; beach: string; beachAfterMs: number };
       /** how often the claw holds on to a ball of each rarity (a miss spends the go); claw only */
@@ -734,16 +736,18 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
         // how often the claw holds on to a ball of each rarity (a miss spends the go)
         grab: GRAB_CHANCE,
         free: !st || st.at <= now,
-        // how long you'll wait after this go before the next
-        nextCooldown: cooldownAfter((st?.count ?? 0) + 1),
+        // the rest after a go is random (5 min to 3 h); older apps show this
+        // one number, so it's the longest it can be
+        nextCooldown: COOLDOWN_MAX_MS,
+        cooldown: { min: COOLDOWN_MIN_MS, max: COOLDOWN_MAX_MS },
         nextFree: st && st.at > now ? st.at : now,
-        // the fixed first prizes, shown before the odds
+        // the fixed first prizes (kept a surprise: the app doesn't show them)
         starter: { rare: STARTER.rare.item, paid: STARTER.paid.item, beach: STARTER.beach.item, beachAfterMs: STARTER.beachAfterMs },
       };
     });
     // the vending machine: same shape, but its pool is this week's set and a
     // free ball comes once a day (next UTC midnight), not on the claw's
-    // doubling rest. No starter gifts here.
+    // random rest. No starter gifts here.
     const set = currentSet(now);
     if (set) {
       const st = state.get('vending');
@@ -769,8 +773,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
 
   // your free go: the server draws, records it and adds the prize to your bag —
   // unless the claw drops it, in which case the go is spent and nothing is won.
-  // The wait before the next go starts at 5 minutes and doubles each time, up
-  // to once a day. A ball from the vending machine is one a day instead
+  // The wait before the next go is random, 5 minutes to 3 hours: shorter
+  // after a miss, longer after a win. A ball from the vending machine is one a day instead
   // (next UTC midnight) and is always a draw from this week's set.
   app.post('/pulls/:pool', requireUser, async (c) => {
     const id = c.req.param('pool') ?? '';
@@ -804,7 +808,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       missed = !starter && !grab(drawn.rarity, rand);
       got = drawn;
     }
-    const wait = set ? nextUtcMidnight(now) - now : cooldownAfter(count + 1);
+    const wait = set ? nextUtcMidnight(now) - now : cooldownAfter(missed, rand);
     // one statement: claim the go (only if it's free and nobody claimed it
     // meanwhile); on a win, log it and give the prize. On a miss nothing is
     // won, so there is nothing to log or give — only the claim runs. (The

@@ -33,6 +33,16 @@ Read these first:
   npm run perf`. CI checks it on main and on pull requests; see
   [docs/PERFORMANCE.md](docs/PERFORMANCE.md). Raise a budget only on
   purpose, in the same commit, and say why.
+- **No notes in the game UI.** No tips, rules, explanations, odds or small
+  print in the game: only labels, status (timers, loading, errors) and
+  confirmations. All of that lives in the user guide at
+  https://beech.games/guide (`server/src/guide.ts`, linked from settings →
+  "guide & help"). When a feature changes how the game works, update the
+  guide in the same commit.
+- **Release notes:** every change a player can notice adds a plain-words line
+  to `server/src/releaseNotes.ts` (newest first; same day, same entry), shown
+  at https://beech.games/guide/releases. Never mention the claw's starter
+  gifts there or in the guide (they're a surprise, #9).
 - Never put secrets in the repo. Store-signing material for the native apps
   stays outside git (see docs/MOBILE.md).
 - After web changes that should ship in the apps, run `npx cap sync`. Don't

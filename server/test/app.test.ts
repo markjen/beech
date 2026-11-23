@@ -3,7 +3,7 @@ import { createApp, normalizeCode } from '../src/app.js';
 import type { VerifiedPurchase } from '../src/store.js';
 import { createPgDb, createPgliteDb, type Db } from '../src/db.js';
 import { migrate } from '../src/migrations.js';
-import { cryptoRandom } from '../src/pulls.js';
+import { COOLDOWN_MAX_MS, COOLDOWN_MIN_MS, cooldownAfter, cryptoRandom } from '../src/pulls.js';
 
 let db: Db;
 /** the server's clock in these tests: real time plus however far a test moved it on */
@@ -382,27 +382,27 @@ describe('the shop', () => {
 });
 
 describe('pulls', () => {
-  it('shows the odds; the wait between goes starts at 5 minutes and doubles up to a day', async () => {
+  it('shows the odds; the wait between goes is random, 5 minutes to 3 hours', async () => {
     const cleo = await signIn('Cleo');
-    type Pools = { pools: { id: string; odds: Record<string, number>; free: boolean; nextCooldown: number }[]; nextFree: number };
+    type Pools = { pools: { id: string; odds: Record<string, number>; free: boolean; nextCooldown: number; cooldown: { min: number; max: number } }[]; nextFree: number };
     const status = async () => ((await (await req('/pulls', {}, cleo.token)).json()) as Pools).pools.find((p) => p.id === 'daily')!;
     const first = await status();
     expect(Object.values(first.odds).reduce((a, b) => a + b, 0)).toBeCloseTo(1, 9);
     expect(first.free).toBe(true);
-    expect(first.nextCooldown).toBe(5 * 60000);
+    expect(first.cooldown).toEqual({ min: 5 * 60000, max: 3 * 3600000 });
+    expect(first.nextCooldown).toBe(3 * 3600000);
 
     // two at once: exactly one gets the go
     const [a, b] = await Promise.all([req('/pulls/daily', { method: 'POST' }, cleo.token), req('/pulls/daily', { method: 'POST' }, cleo.token)]);
     expect([a.status, b.status].sort()).toEqual([200, 409]);
     const won = (await (a.status === 200 ? a : b).json()) as { item: string; rarity: string; nextFree: number };
     expect(won.nextFree - (Date.now() + skew)).toBeGreaterThan(4.9 * 60000);
-    expect(won.nextFree - (Date.now() + skew)).toBeLessThanOrEqual(5 * 60000);
+    expect(won.nextFree - (Date.now() + skew)).toBeLessThanOrEqual(3 * 3600000);
     const inv = (await (await req('/inventory', {}, cleo.token)).json()) as { items: { item: string; source: string }[] };
     expect(inv.items).toEqual([expect.objectContaining({ item: won.item, source: 'pull' })]);
     expect((await status()).free).toBe(false);
 
-    // each go makes the next wait twice as long: 5, 10, 20, 40, … minutes, never more than a day
-    const waits: number[] = [];
+    // every wait stays within 5 minutes to 3 hours, and it doesn't grow
     let next = won.nextFree;
     for (let go = 2; go <= 12; go++) {
       skew += next - (Date.now() + skew) - 1000; // just before it's free: still resting
@@ -411,15 +411,32 @@ describe('pulls', () => {
       const r = await req('/pulls/daily', { method: 'POST' }, cleo.token);
       expect(r.status).toBe(200);
       const body = (await r.json()) as { nextFree: number };
-      waits.push(Math.round((body.nextFree - (Date.now() + skew)) / 60000));
+      const wait = body.nextFree - (Date.now() + skew);
+      expect(wait).toBeGreaterThan(4.9 * 60000);
+      expect(wait).toBeLessThanOrEqual(3 * 3600000);
       next = body.nextFree;
     }
-    expect(waits).toEqual([10, 20, 40, 80, 160, 320, 640, 1280, 1440, 1440, 1440]);
 
     expect((await req('/pulls/nope', { method: 'POST' }, cleo.token)).status).toBe(404);
     expect((await req('/pulls/__proto__', { method: 'POST' }, cleo.token)).status).toBe(404);
     expect((await req('/pulls/daily', { method: 'POST' })).status).toBe(401);
     skew = 0;
+  });
+
+  it('the rest is 5 minutes to 3 hours, skewed short after a miss and long after a win', () => {
+    for (const missed of [true, false]) {
+      expect(cooldownAfter(missed, () => 0)).toBe(COOLDOWN_MIN_MS);
+      expect(cooldownAfter(missed, () => 0.999999)).toBeLessThanOrEqual(COOLDOWN_MAX_MS);
+    }
+    const mean = (missed: boolean) => {
+      let sum = 0;
+      for (let i = 0; i < 2000; i++) sum += cooldownAfter(missed, () => (i + 0.5) / 2000);
+      return sum / 2000 / 60000;
+    };
+    // a miss averages about an hour (5 + 175/3), a win about two (5 + 350/3)
+    expect(mean(true)).toBeCloseTo(5 + 175 / 3, 0);
+    expect(mean(false)).toBeCloseTo(5 + 350 / 3, 0);
+    expect(mean(true)).toBeLessThan(mean(false));
   });
 
   it('first goes are fixed gifts: a rare find, a shop item, and a beach once a day has passed', async () => {
@@ -436,7 +453,7 @@ describe('pulls', () => {
     const start = Date.now() + skew;
     expect(await go()).toMatchObject({ item: 'starfish', rarity: 'rare' });
     expect(await go()).toMatchObject({ item: 'deckchair' });
-    const third = await go(); // ~15 minutes in: an ordinary draw
+    const third = await go(); // a few hours in at most: an ordinary draw
     expect(third.item).not.toBe('beach');
     // a day after the first go, the next go is the beach…
     skew += Math.max(0, start + 24 * 3600 * 1000 + 60000 - (Date.now() + skew));
@@ -473,23 +490,27 @@ describe('pulls', () => {
       expect(second).toMatchObject({ missed: false, item: 'deckchair' });
       waitOut(second.nextFree);
       // the third go is an ordinary draw: force the claw to drop a common ball
-      // (draw: rarity 0.5 -> common, pick 0.5 -> sanddollar; grab 0.9 >= 0.8 -> miss)
-      const drops = [0.5, 0.5, 0.9];
+      // (draw: rarity 0.5 -> common, pick 0.5 -> sanddollar; grab 0.9 >= 0.8 -> miss;
+      // rest 0.5 -> a miss skews short: 5 + 175 * 0.25 = 48.75 min)
+      const drops = [0.5, 0.5, 0.9, 0.5];
       forcedRand = () => drops.shift() ?? 0.5;
       const missed = await go();
       expect(missed).toMatchObject({ missed: true, dropped: { item: 'sanddollar', rarity: 'common' } });
       expect(missed.item).toBeNull();
-      // the go is spent: the next wait is 20 minutes, and it's resting now
-      expect(Math.round((missed.nextFree - (Date.now() + skew)) / 60000)).toBe(20);
+      // the go is spent: the claw rests (shorter than after a win), and it's resting now
+      expect(Math.round((missed.nextFree - (Date.now() + skew)) / 60000)).toBe(49);
       expect((await req('/pulls/daily', { method: 'POST' }, eve.token)).status).toBe(409);
       // and nothing was won: only the two starter gifts are in the bag
       const inv = (await (await req('/inventory', {}, eve.token)).json()) as { items: { item: string }[] };
       expect(inv.items.map((i) => i.item).sort()).toEqual(['deckchair', 'starfish']);
       // the next go, with a kind roll, can win again
       waitOut(missed.nextFree);
-      const holds = [0.5, 0.5, 0.1];
+      const holds = [0.5, 0.5, 0.1, 0.5];
       forcedRand = () => holds.shift() ?? 0.5;
-      expect(await go()).toMatchObject({ missed: false, item: 'sanddollar' });
+      const kept = await go();
+      expect(kept).toMatchObject({ missed: false, item: 'sanddollar' });
+      // the same rest roll after a win skews long: 5 + 175 * 0.75 = 136.25 min
+      expect(Math.round((kept.nextFree - (Date.now() + skew)) / 60000)).toBe(136);
     } finally {
       forcedRand = null;
       skew = 0;

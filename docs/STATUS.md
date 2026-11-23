@@ -359,18 +359,51 @@ branch, so the deploy job runs only there. Switch the default branch to
 - `npm run e2e:leaderboard` covers ordering, rising, starring from the
   board and the shore bar, visiting from the board, and signed out.
 
+## User guide, help and release notes (2026-11-23)
+
+- **No notes in the game.** The owner asked for the game UI to carry no
+  explanatory notes. Removed: the controls hint after the start screen, the
+  claw's rest note, odds and grab chances, the vending machine's set and odds,
+  the leaderboard blurbs and "tap ☆" hints, the multi-device tip and the
+  "win one from the claw machine" line in the account panel, the checkpoint
+  explanation and its button tooltip, the new-code tooltip, the bag's "tap the
+  sand" tip and the extra beach's description, "coming soon" tooltips, the
+  beach-file format pointer, the "no bag" and "this replaces the beach"
+  lines in the import preview, the shop's payment small print, and "detail
+  changes apply on next launch". Kept: labels, status (next go in…, loading,
+  errors, "N more buried today"), and confirmations (added to your bag).
+- **The guide** is on the website: `/guide` and `/guide/releases`
+  (`server/src/guide.ts`, `releaseNotes.ts`; `/help` and `/releases`
+  redirect), served by the production server, so at beech.games/guide. The
+  numbers come from the server's constants, so odds can't drift. Settings
+  has a "guide & help" link, and the claw and vending machines a small
+  "odds and how it works" / "this week's set and odds" link to their
+  sections (`GUIDE_URL` in `src/config.ts`, absolute, so the apps and the
+  sandbox reach it too). The sandbox (GitHub Pages) has no guide of its own.
+- **Release notes** are backfilled from the backlog for 2026-11-22 and
+  2026-11-23; CLAUDE.md now asks for a line with every player-visible change.
+- **The landing page** is on the website too: `beech.games` serves
+  `server/src/landingSite.ts` (Host-header routing in `rootApp.ts`; www
+  301s to the apex; the game API is not served there), previewable under
+  `/landing` on every other host. It says what beech is, what you do, what's
+  new (from the release notes), and where to play — free in the browser now,
+  phone apps coming. No screenshots, no store claims. The domain itself
+  still points at Squarespace until the DNS cutover (docs/LANDING_PAGE.md).
+
 ## Claw machine (added after chair polish)
 
 - **Free claw machine** (production builds, signed in): the rest between
-  goes starts at 5 minutes and doubles each go (10, 20, 40 min, …) up to once
-  a day, reached at the 10th go (`cooldownAfter`). Migration 6 adds
+  goes is random, 5 minutes to 3 hours (`cooldownAfter`), skewed short after
+  a miss (u², averages ~1 h) and long after a win (1 − (1−u)², ~2 h). The
+  range and odds are in the guide (beech.games/guide#claw), not the machine. (Before: 5 min doubling each go up to a
+  day; before that, one go per UTC day.) Migration 6 adds
   `pull_state` (goes so far, free again at). One SQL statement claims the
   go, but only if it's free and the count hasn't moved, so two taps at once
   give one go. `pulls` becomes a plain history. Players who had already
-  played keep their count. (Originally: one go per UTC day.) The server draws the prize (`server/src/pulls.ts`, crypto
+  played keep their count. The server draws the prize (`server/src/pulls.ts`, crypto
   randomness) with published odds: common 70% (conch, sand dollar), rare 25%
-  (starfish), legendary 5% (message in a bottle). The app shows the odds
-  before every go. Migration 3 adds `pulls`, keyed on `(user, pool, day)`;
+  (starfish), legendary 5% (message in a bottle). The guide publishes the
+  odds (the machine links to them). Migration 3 adds `pulls`, keyed on `(user, pool, day)`;
   claiming the day and adding the prize happen in one SQL statement.
 - **Starter gifts** (`STARTER` in `server/src/pulls.ts`): go 1 is a
   Starfish (rare), go 2 is a Deckchair (a shop item, 250, fixed, faces the

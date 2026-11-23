@@ -185,7 +185,7 @@ export class CheckpointsSection {
     const here = a.beachId;
     const buttons = document.createElement('div');
     buttons.className = 'slot';
-    if (here) buttons.appendChild(this.button('save a checkpoint', 'cp-save', () => this.saveOf(here), 'Keep a copy of the beach you’re on: its sand and its things'));
+    if (here) buttons.appendChild(this.button('save a checkpoint', 'cp-save', () => this.saveOf(here)));
     if (this.host.importAsCheckpoint) buttons.appendChild(this.button('import a beach file', 'cp-import', () => this.run(() => this.host.importAsCheckpoint!())));
     wrap.appendChild(buttons);
     if (!list) {
@@ -198,7 +198,7 @@ export class CheckpointsSection {
     if (!list.checkpoints.length) {
       const note = document.createElement('div');
       note.className = 'status';
-      note.textContent = 'none yet. A checkpoint keeps a beach as it is now, to come back to later or to put on another of your beaches.';
+      note.textContent = 'none yet';
       wrap.appendChild(note);
     }
     for (const cp of list.checkpoints) wrap.appendChild(this.row(cp));

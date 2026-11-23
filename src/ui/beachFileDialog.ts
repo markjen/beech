@@ -139,7 +139,6 @@ export class BeachFileDialog {
       this.body.innerHTML = `
         <p class="shop-note">${esc(fileName)} isn't a beach file this app can open:</p>
         <ul class="beachfile-issues bad">${r.errors.map((e) => `<li>${pathOf(e)}${esc(e.message)}</li>`).join('')}</ul>
-        <p class="shop-small">The format is described in the beech docs (BEACH_FILE.md).</p>
         <div class="beachfile-actions"><button type="button" class="claw-go" data-act="close">Close</button></div>`;
       this.body.querySelector('[data-act="close"]')!.addEventListener('click', () => this.close());
       return;
@@ -163,18 +162,13 @@ export class BeachFileDialog {
       .join('<br>');
     const lead = this.host.hasBag
       ? 'Some things on it aren’t in your bag:'
-      : 'This build has no bag, so only free things (rocks, driftwood, shells, sea glass, flags) come in. Left out:';
+      : 'Left out:';
     this.body.innerHTML = `
       <p class="shop-note"><b>${esc(beach.name ?? fileName)}</b></p>
       <canvas class="beachfile-map" width="160" height="160" aria-label="Map of the beach, sea at the bottom"></canvas>
       <div class="beachfile-chips">${chips || '<span class="shop-what">No things on it, just sand.</span>'}</div>
       ${missing.length ? `<p class="beachfile-short">${lead}<br>${shortText}</p>` : ''}
       ${warnings.length ? `<details class="beachfile-warn"><summary>${plural(warnings.length, 'thing')} fixed while reading</summary><ul class="beachfile-issues">${warnings.map((w) => `<li>${pathOf(w)}${esc(w.message)}</li>`).join('')}</ul></details>` : ''}
-      <p class="shop-small">${
-        this.host.beforeApply
-          ? 'This replaces the beach you’re on. It’s kept as “Before import” in your checkpoints, and Undo brings it back too.'
-          : 'This replaces the beach you’re on. Undo brings it back.'
-      }</p>
       <div class="beachfile-actions">
         <button type="button" class="claw-go" data-act="apply">${missing.length ? 'Import without them' : 'Replace this beach'}</button>
         ${missing.length && this.host.shop ? '<button type="button" class="shop-buy" data-act="shop">Shop</button>' : ''}

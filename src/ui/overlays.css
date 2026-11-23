@@ -245,12 +245,15 @@
   white-space: nowrap;
 }
 
-.note {
-  margin: 10px 0 0;
-  font-size: 11px;
-  opacity: 0.5;
-  text-align: center;
+/* a link styled as an action (guide & help) */
+a.action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  text-decoration: none;
 }
+
 
 .switch {
   position: relative;

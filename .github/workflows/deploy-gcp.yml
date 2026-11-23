@@ -103,6 +103,8 @@ jobs:
           URL=$(gcloud run services describe beech --region "$REGION" --format 'value(status.url)')
           curl -fsS "$URL/api/health"
           curl -fsS -o /dev/null "$URL/"
+          # the landing page, previewable under /landing on any host
+          curl -fsS "$URL/landing" | grep -q 'a quiet place by the sea'
           # the game no longer has an admin API
           test "$(curl -s -o /dev/null -w '%{http_code}' "$URL/api/admin/me")" = 404
           # the public shore site, served under /shore on the game's host
