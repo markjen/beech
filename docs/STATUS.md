@@ -603,6 +603,13 @@ here: it needs the service's URL on the web OAuth client.
 - **Android:** a debug APK, an unsigned release AAB, and a release AAB signed
   from the `BEECH_KEYSTORE_*` env vars (tested with a throwaway key) all built
   locally. CI builds the debug APK and the release AAB too.
+- **Google Play (2026-11-23):** the app is created (**beech**,
+  `app.beech.beach`, Jenerator Labs), identity verification passed, and AAB
+  1.0.0 build 1 is uploaded to the internal track as a draft. Privacy
+  policy at https://beech.games/privacy.html; listing screenshots and
+  feature graphic in `resources/play-store/`. Still manual in Play Console:
+  listing text, content rating, data safety, target audience (13+),
+  testers, promoting the draft.
 - **GitHub Pages:** live (the sandbox build). markjen.github.io/beech
   redirects to markjen.com/beech/, the owner's custom domain. Deploys run
   from the default branch (see "Accounts" above).

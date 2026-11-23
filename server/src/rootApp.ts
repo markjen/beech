@@ -104,13 +104,14 @@ export function createRootApp(db: Db, api: Hono<any, any, any>, publicDir: strin
       const u = new URL(c.req.url);
       return c.redirect(`${landing.url.replace(/\/$/, '')}${u.pathname}${u.search}`, 301);
     }
-    // the guide, and the landing page's own icon, still answer on this host;
-    // everything else here is the landing page (including /api — the game
-    // API is not served on the landing hosts)
+    // the guide and the privacy policy, and the landing page's own icon,
+    // still answer on this host; everything else here is the landing page
+    // (including /api — the game API is not served on the landing hosts)
     const p = c.req.path;
     if (
       p === '/guide' || p === '/guide/' || p.startsWith('/guide/') ||
       p === '/help' || p === '/releases' ||
+      p === '/privacy.html' || p === '/privacy' ||
       p.startsWith('/icons/') || p === '/favicon-32.png' || p === '/apple-touch-icon.png'
     ) return next();
     return landingPage(c);
@@ -131,6 +132,7 @@ export function createRootApp(db: Db, api: Hono<any, any, any>, publicDir: strin
   root.get('/guide/releases', guide(releaseNotesHtml));
   root.get('/help', (c) => c.redirect('/guide', 301));
   root.get('/releases', (c) => c.redirect('/guide/releases', 301));
+  root.get('/privacy', (c) => c.redirect('/privacy.html', 301));
   // a shared beach link (?visit=CODE) gets Open Graph tags for that beach, so
   // the link shows a preview where it's pasted; everything else passes through
   const indexHtml = path.join(publicDir, 'index.html');

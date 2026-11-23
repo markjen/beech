@@ -28,6 +28,10 @@ beforeAll(async () => {
     path.join(publicDir, 'index.html'),
     '<!doctype html><html><head><title>beech</title></head><body>beech-spa-marker</body></html>',
   );
+  fs.writeFileSync(
+    path.join(publicDir, 'privacy.html'),
+    '<!doctype html><html><head><title>Privacy Policy — beech</title></head><body>privacy-policy-marker</body></html>',
+  );
   root = createRootApp(db, api, publicDir);
 });
 
@@ -152,6 +156,19 @@ describe('the landing page and host routing', () => {
     const r = await on('/guide', 'beech.games');
     expect(r.status).toBe(200);
     expect(await r.text()).toContain('id="claw"');
+  });
+
+  it('the privacy policy answers on a landing host, and /privacy redirects to it', async () => {
+    const r = await on('/privacy.html', 'beech.games');
+    expect(r.status).toBe(200);
+    const html = await r.text();
+    expect(html).toContain('privacy-policy-marker');
+    expect(html).not.toContain(hero);
+    expect((await on('/privacy', 'beech.games')).headers.get('location')).toBe('/privacy.html');
+    // and on the game host too — it is a static file, not a landing-only route
+    expect(await (await root.request('/privacy.html')).text()).toContain('privacy-policy-marker');
+    // the landing page links it in the footer
+    expect(await (await root.request('/landing')).text()).toContain('href="/privacy.html"');
   });
 
   it('the landing page is previewable under /landing on the game host', async () => {
