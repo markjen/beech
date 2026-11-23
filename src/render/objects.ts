@@ -1,7 +1,6 @@
 import type { ShaderMaterial } from '@babylonjs/core/Materials/shaderMaterial';
 import { Matrix, Quaternion, Vector3 } from '@babylonjs/core/Maths/math.vector';
 import type { Mesh } from '@babylonjs/core/Meshes/mesh';
-import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
 import '@babylonjs/core/Meshes/thinInstanceMesh';
 import type { Scene } from '@babylonjs/core/scene';
 
@@ -617,7 +616,6 @@ interface Shown {
   sz: number;
   /** nothing moves it (resting, not afloat, not a flag): its matrices are already right */
   settled: boolean;
-  anchor?: TransformNode;
   glow?: GlowHandle;
 }
 
@@ -641,7 +639,7 @@ export class ObjectView {
   private hidden = false;
 
   constructor(
-    private readonly scene: Scene,
+    scene: Scene,
     renderer: BeachRenderer,
     private readonly offsetX = 0,
   ) {
@@ -659,9 +657,9 @@ export class ObjectView {
     return n;
   }
 
-  /** draw calls all things on all beaches take now (profiling) */
+  /** draw calls all things on all beaches take now, glows included (profiling) */
   get drawCalls(): number {
-    return this.bank.drawn;
+    return this.bank.drawn + this.bank.glow.drawn;
   }
 
   /**
@@ -701,8 +699,7 @@ export class ObjectView {
     const special = rarity === 'rare' || rarity === 'legendary' || rarity === 'unique' ? rarity : null;
     if (special || look.lights.length) {
       const { reach, height } = extent(st);
-      s.anchor = new TransformNode(`glow${st.id}`, this.scene);
-      s.glow = this.bank.glow.attach(s.anchor, special, reach, height, look.lights, st.id + st.variant * 7);
+      s.glow = this.bank.glow.attach(special, reach, height, look.lights, st.id + st.variant * 7);
       if (this.hidden) s.glow.setEnabled(false);
     }
     this.shown.set(st.id, s);
@@ -714,7 +711,6 @@ export class ObjectView {
     for (const i of s.insts) this.bank.hide(i);
     this.bank.release(s.look);
     s.glow?.dispose();
-    s.anchor?.dispose();
     this.shown.delete(s.st.id);
   }
 
@@ -736,7 +732,6 @@ export class ObjectView {
     const ease = 1 - Math.exp(-dt * 12);
     for (const s of this.shown.values()) {
       if (!s.settled) this.place(s, ease);
-      s.glow?.update(this.time);
     }
   }
 
@@ -779,10 +774,7 @@ export class ObjectView {
       } else part.local.multiplyToRef(tmpRoot, tmpPart);
       this.bank.write(s.insts[p], tmpPart);
     }
-    if (s.anchor) {
-      s.anchor.position.copyFrom(tmpT);
-      s.anchor.rotation.y = yaw;
-    }
+    s.glow?.setPose(tmpT, yaw);
     s.settled = still && !animated;
   }
 

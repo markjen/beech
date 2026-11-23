@@ -27,7 +27,7 @@ few seconds.
 |---|---|---|
 | `drawCallsPerFrame` | count | every draw call in a frame (sand, water, sky, things, glows) |
 | `meshes` | count | meshes in the scene |
-| `thingDrawCalls` | count | draw calls the things take: one per distinct look (`ObjectView.drawCalls`) |
+| `thingDrawCalls` | count | draw calls the things and their glows take: one per distinct look, one per glow material (`ObjectView.drawCalls`) |
 | `touchedPerFrame` | count | things whose matrices were rewritten in the last frame (on a still beach: just the flags) |
 | `mainThingsMsPerFrame` | timing | main-thread ms per frame in `ObjectView.set/update/touch` |
 | `workerTickMs` | timing | the simulation's tick in the worker (median) |
@@ -74,11 +74,13 @@ much a beach holds"):
   `Float32Array` of positions every frame (transferred).
 - Things at rest aren't touched: matrices are rewritten only for things that
   moved more than a millimetre, float or flutter.
+- **Glows instanced too** (`src/render/glow.ts`): halos, sparkles and lamps
+  are thin instances of one quad per material, facing the camera and
+  twinkling in the vertex shader, so there's no per-glow JavaScript each
+  frame. 2000 things: 315 → 163 draw calls a frame.
 
 ## Ideas, if a budget gets tight
 
-- Glows on special things are still separate meshes (a halo and 3–4 sparkle
-  quads each): instance them too if people own many.
 - Far neighbor beaches could skip their smallest things (shells, sea glass,
   pebbles).
 - The worker's tick is mostly the water: the grid tiers in `src/config.ts`
