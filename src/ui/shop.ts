@@ -1,4 +1,4 @@
-import { APP_LINKS, shopMode, type ShopApi, type ShopProduct } from '../net/shop';
+import { APP_LINKS, codesAllowed, shopMode, type ShopApi, type ShopProduct } from '../net/shop';
 import { prizeName } from '../world/items';
 import { icon, type IconName } from './hud';
 
@@ -15,6 +15,8 @@ export class Shop {
   private readonly promoInput: HTMLInputElement;
   private busy = false;
   private creditCents = 0;
+  /** gift cards, promo codes and credit: not in the native apps (see codesAllowed) */
+  private readonly codes = codesAllowed();
   private products: ShopProduct[] = [];
 
   constructor(
@@ -55,6 +57,9 @@ export class Shop {
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && this.isOpen) this.close();
     });
+    // the apps sell through the stores only: no code fields there
+    this.giftForm.hidden = !this.codes;
+    this.root.querySelector<HTMLElement>('.shop-promo')!.hidden = !this.codes;
     this.giftForm.addEventListener('submit', (e) => {
       e.preventDefault();
       void this.redeem();
@@ -86,7 +91,7 @@ export class Shop {
       const products = await this.api.products();
       this.note.textContent = shopMode() === 'web' ? 'Get these in the beech app:' : '';
       try {
-        this.creditCents = await this.api.credit();
+        this.creditCents = this.codes ? await this.api.credit() : 0;
       } catch {
         this.creditCents = 0;
       }
@@ -175,12 +180,12 @@ export class Shop {
         btn.addEventListener('click', () => void this.buy(p, btn));
       }
       row.appendChild(btn);
-      // credit from gift cards buys here too, in any mode: the server
-      // prices it and checks the balance, so the store isn't involved.
+      // credit from gift cards buys here too (on the web: the apps sell
+      // through the stores only); the server prices it and checks the balance.
       // The button shows when the credit covers the price after the promo,
       // not the undiscounted price.
       const priceCents = finals.get(p.id) ?? Math.round(p.usd * 100);
-      if (this.creditCents >= priceCents) {
+      if (this.codes && this.creditCents >= priceCents) {
         const creditBtn = document.createElement('button');
         creditBtn.type = 'button';
         creditBtn.className = 'shop-buy shop-credit-buy';

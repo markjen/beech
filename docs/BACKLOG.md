@@ -104,6 +104,10 @@ _(nothing right now)_
 
 ## Done (recent)
 
+- [x] **Gift cards, promos and credit on the web only** (2026-11-23): the
+  iOS and Android apps no longer show the redeem box, the promo field, the
+  credit line or "Buy with credit" (App Store 3.1.1 / Play payments
+  policy); `codesAllowed()` in `src/net/shop.ts`.
 - [x] **Gift cards and promo codes** (2026-11-23): gift cards are prepaid
   credit (16-char bearer codes, HMAC-SHA-256 under a pepper, shown once at
   issue, never stored); promo codes discount a server-side credit purchase
