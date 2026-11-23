@@ -13,9 +13,9 @@
 #     via Workload Identity Federation — no keys anywhere
 #
 # What this does NOT create:
-#   - the Cloud Run service itself. `.github/workflows/deploy-gcp.yml`
-#     creates/updates the "beech" service on every deploy. Terraform only
-#     provides everything the deploy needs to exist first.
+#   - the Cloud Run services themselves. `.github/workflows/deploy-gcp.yml`
+#     creates/updates the "beech" and "beech-admin" services on every deploy.
+#     Terraform only provides everything the deploy needs to exist first.
 #   - the Terraform state bucket (see versions.tf — bootstrap it first).
 #   - the Google OAuth client for sign-in (Console, see infra/README.md).
 
@@ -220,5 +220,25 @@ resource "google_cloud_run_domain_mapping" "beech" {
 
   spec {
     route_name = "beech"
+  }
+}
+
+# Admin console domain. Only create this AFTER a deploy has created the
+# beech-admin service (PR #29 split it out of the beech service) — the
+# mapping fails if the service does not exist yet. Set
+# var.admin_custom_domain, apply, then add the DNS records the mapping
+# prints (see infra/README.md).
+resource "google_cloud_run_domain_mapping" "admin" {
+  count    = var.admin_custom_domain != "" ? 1 : 0
+  project  = var.project_id
+  location = var.region
+  name     = var.admin_custom_domain
+
+  metadata {
+    namespace = var.project_id
+  }
+
+  spec {
+    route_name = "beech-admin"
   }
 }
