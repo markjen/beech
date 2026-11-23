@@ -230,7 +230,7 @@ export class Gestures {
         let da = now.angle - this.two.angle;
         if (da > Math.PI) da -= Math.PI * 2;
         if (da < -Math.PI) da += Math.PI * 2;
-        this.cam.rotate(-da);
+        this.cam.rotate(da);
       }
       this.two = now;
     }
