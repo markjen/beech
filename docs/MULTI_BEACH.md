@@ -1,6 +1,6 @@
 # More than one beach (design)
 
-Status: **design, not built.** The extra-beach prize from the claw machine
+Status: **server built (migration 7, `/api/beaches/mine…`); app next.** The extra-beach prize from the claw machine
 already exists (inventory item `beach`), so people will own beaches before
 they can lay them out. This doc is the plan for using them.
 
@@ -18,10 +18,14 @@ they can lay them out. This doc is the plan for using them.
     its own left and right neighbors (the usual ask and accept).
   - You can change your mind any time: "connect to my Bondi beach", "move
     this one away".
-- **One beach is live at a time.** The wave and sand simulation runs for
-  the beach you're on. Your other beaches show as snapshots of their last
-  save, like neighbors do, until you go to one. Then it comes alive and the
-  one you left saves.
+- **Any of your beaches can be live, at the same time, on different
+  devices.** Each device runs the simulation for the beach it's showing
+  (chosen per device), so a phone can watch Bondi while a tablet or TV
+  watches Brighton. Each beach saves on its own. On one device, your other
+  beaches show as snapshots like neighbors do, until you open one there.
+- **Several places on the beachfront.** Each beach has its own neighbors, so
+  you can be in more than one beachfront, or at more than one spot in the
+  same one (home - Gus - your second beach).
 - **The bag is shared.** Items belong to the person, not the beach. A
   prize you own once can be on one of your beaches at a time (see "Items
   across beaches").

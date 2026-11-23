@@ -120,8 +120,10 @@ if (shot) await page.screenshot({ path: shot });
   await ana.evaluate(() => window.__beech.send({ type: 'placeObject', obj: { kind: 'rock', item: 'rock', x: 12, y: 27, angle: 0, size: 0.5, variant: 2 } }));
   await ana.waitForTimeout(800);
   await ana.evaluate(() => window.__beech.sync().flush());
+  if (process.env.DEBUG_E2E) console.log('ana saved', await ana.evaluate(() => JSON.stringify({ state: window.__beech.sync().state, savedAt: window.__beech.sync().savedAt, objs: window.__beech.info().objects.filter((o) => !o.wild).length })));
   await ctx2.close();
   await page.evaluate(() => window.__beech.neighbors().poll());
+  if (process.env.DEBUG_E2E) console.log('ben sees', JSON.stringify(await page.evaluate(() => window.__beech.neighbors().snapshot('left'))), 'before', JSON.stringify(before));
   const after = await page.evaluate(() => window.__beech.neighbors().snapshot('left'));
   check(
     !!before && !!after && after.updatedAt > before.updatedAt && after.objects === before.objects + 1,

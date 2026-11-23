@@ -189,6 +189,112 @@ describe('the shore and favorites', () => {
   });
 });
 
+describe('more than one beach', () => {
+  type Mine = {
+    allowance: number;
+    cap: number;
+    beaches: { id: string; code: string; name: string; home: boolean; onShore: boolean; items: Record<string, number>; left: { code: string; yours: boolean } | null; right: { code: string; yours: boolean } | null }[];
+  };
+  const giveBeach = (userId: string) =>
+    db.query("INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at) VALUES ($1, 'beach', 1, 'shop', $2)", [userId, Date.now()]);
+
+  it('one home beach to start; an extra beach lets you make another, with its own code, sand and neighbors', async () => {
+    const eve = await signIn('Eve');
+    const mine = async () => (await (await req('/beaches/mine', {}, eve.token)).json()) as Mine;
+    let m = await mine();
+    expect(m.allowance).toBe(1);
+    expect(m.beaches).toHaveLength(1);
+    expect(m.beaches[0]).toMatchObject({ home: true, id: eve.user.id });
+    const homeCode = m.beaches[0].code;
+    // no room yet
+    expect((await req('/beaches/mine', json('POST', { name: 'Bondi', location: 'bondi' }), eve.token)).status).toBe(409);
+    await giveBeach(eve.user.id);
+    const made = await req('/beaches/mine', json('POST', { name: 'Bondi', location: 'bondi' }), eve.token);
+    expect(made.status).toBe(200);
+    const second = ((await made.json()) as { beach: Mine['beaches'][0] }).beach;
+    expect(second).toMatchObject({ name: 'Bondi', home: false });
+    expect(second.code).not.toBe(homeCode);
+    expect((await req('/beaches/mine', json('POST', { name: 'Third' }), eve.token)).status).toBe(409); // allowance 2
+
+    // its own sand (and item counts), separate from home
+    const save = await req(
+      `/beaches/mine/${second.id}/sand`,
+      { method: 'PUT', body: new Uint8Array([7, 7]), headers: { 'X-Beach-Location': 'bondi', 'X-Beach-Nx': '256', 'X-Beach-Ny': '256', 'X-Beach-Items': 'starfish=1,deckchair=2,bad item=3' } },
+      eve.token,
+    );
+    expect(save.status).toBe(200);
+    await putBeach(eve.token, new Uint8Array([1]), 'brighton');
+    expect([...new Uint8Array(await (await req(`/beaches/mine/${second.id}/sand`, {}, eve.token)).arrayBuffer())]).toEqual([7, 7]);
+    expect([...new Uint8Array(await (await req('/beach', {}, eve.token)).arrayBuffer())]).toEqual([1]);
+    m = await mine();
+    expect(m.beaches.find((b) => b.id === second.id)!.items).toEqual({ starfish: 1, deckchair: 2 });
+    // nobody else can touch it
+    const mal = await signIn('Mal');
+    expect((await req(`/beaches/mine/${second.id}/sand`, {}, mal.token)).status).toBe(404);
+    expect((await req(`/neighbors?beach=${second.id}`, {}, mal.token)).status).toBe(404);
+    // but anyone can visit it by code
+    expect((await req(`/beaches/${second.code}`, {}, mal.token)).status).toBe(200);
+
+    // each beach has its own neighbors: Mal asks to be next to the second beach only
+    const malCode = ((await (await req('/neighbors', {}, mal.token)).json()) as { code: string }).code;
+    expect((await req('/neighbors/left', json('PUT', { code: second.code }), mal.token)).status).toBe(200);
+    const onSecond = (await (await req(`/neighbors?beach=${second.id}`, {}, eve.token)).json()) as { requests: { code: string }[] };
+    expect(onSecond.requests.map((r) => r.code)).toEqual([malCode]);
+    const onHome = (await (await req('/neighbors', {}, eve.token)).json()) as { requests: unknown[] };
+    expect(onHome.requests).toEqual([]);
+    expect((await req(`/neighbors/requests/${malCode}/accept?beach=${second.id}`, { method: 'POST' }, eve.token)).status).toBe(200);
+    m = await mine();
+    expect(m.beaches.find((b) => b.id === second.id)!.right).toMatchObject({ code: malCode, yours: false });
+
+    // two of your own beaches link at once, no request
+    // (Mal is on the second beach's right, so the home beach goes on its left)
+    const link = await req(`/neighbors/right?beach=${eve.user.id}`, json('PUT', { code: second.code }), eve.token);
+    expect(((await link.json()) as { status: string }).status).toBe('linked');
+    m = await mine();
+    expect(m.beaches.find((b) => b.home)!.right).toMatchObject({ code: second.code, yours: true });
+    // the stretch runs home - second - Mal, going right
+    const shore = (await (await req('/shore?depth=2', {}, eve.token)).json()) as { right: { code: string }[] };
+    expect(shore.right.slice(0, 2).map((b) => b.code)).toEqual([second.code, malCode]);
+
+    // rename, take it off the shore, make it home
+    expect((await req(`/beaches/mine/${second.id}`, json('PATCH', { name: 'Bondi Bay', onShore: false }), eve.token)).status).toBe(200);
+    m = await mine();
+    expect(m.beaches.find((b) => b.id === second.id)).toMatchObject({ name: 'Bondi Bay', onShore: false });
+    expect((await req(`/beaches/mine/${second.id}`, json('PATCH', { location: 'NOT OK' }), eve.token)).status).toBe(400);
+    expect((await req(`/beaches/mine/${second.id}`, json('PATCH', { home: true }), eve.token)).status).toBe(200);
+    m = await mine();
+    expect(m.beaches.filter((b) => b.home).map((b) => b.id)).toEqual([second.id]);
+    expect((await req(`/beaches/mine/${second.id}`, { method: 'DELETE' }, eve.token)).status).toBe(400); // it's home now
+    expect((await req(`/beaches/mine/${second.id}`, json('PATCH', { home: false }), eve.token)).status).toBe(200);
+    expect((await req(`/beaches/mine/${eve.user.id}`, json('PATCH', { home: true }), eve.token)).status).toBe(200);
+    // removing it takes its links with it
+    expect((await req(`/beaches/mine/${second.id}`, { method: 'DELETE' }, eve.token)).status).toBe(204);
+    m = await mine();
+    expect(m.beaches).toHaveLength(1);
+    expect(m.beaches[0].right).toBeNull();
+    expect(((await (await req('/neighbors', {}, mal.token)).json()) as { left: unknown }).left).toBeNull();
+  });
+
+  it('two of your beaches can sit in different places on one beachfront', async () => {
+    const fay = await signIn('Fay');
+    const gus = await signIn('Gus');
+    await giveBeach(fay.user.id);
+    const second = ((await (await req('/beaches/mine', json('POST', { name: 'Two' }), fay.token)).json()) as { beach: { id: string; code: string } }).beach;
+    const gusCode = ((await (await req('/neighbors', {}, gus.token)).json()) as { code: string }).code;
+    const fayCode = ((await (await req('/neighbors', {}, fay.token)).json()) as { code: string }).code;
+    // Fay's home - Gus - Fay's second: Gus between them
+    await req('/neighbors/left', json('PUT', { code: gusCode }), fay.token);
+    await req(`/neighbors/requests/${fayCode}/accept`, { method: 'POST' }, gus.token);
+    await req('/neighbors/left', json('PUT', { code: second.code }), gus.token);
+    expect((await req(`/neighbors/requests/${gusCode}/accept?beach=${second.id}`, { method: 'POST' }, fay.token)).status).toBe(200);
+    const shore = (await (await req('/shore?depth=2', {}, fay.token)).json()) as { left: { code: string; name: string }[] };
+    expect(shore.left.slice(0, 2).map((b) => b.code)).toEqual([gusCode, second.code]);
+    // and the shore can be centred on either of them
+    const fromSecond = (await (await req(`/shore?depth=1&beach=${second.id}`, {}, fay.token)).json()) as { center: { code: string; you: boolean } };
+    expect(fromSecond.center).toMatchObject({ code: second.code, you: true });
+  });
+});
+
 describe('pulls', () => {
   it('shows the odds; the wait between goes starts at 5 minutes and doubles up to a day', async () => {
     const cleo = await signIn('Cleo');
@@ -247,7 +353,7 @@ describe('pulls', () => {
     const third = await go(); // ~15 minutes in: an ordinary draw
     expect(third.item).not.toBe('beach');
     // a day after the first go, the next go is the beach…
-    skew += Math.max(0, start + 24 * 3600 * 1000 - (Date.now() + skew));
+    skew += Math.max(0, start + 24 * 3600 * 1000 + 60000 - (Date.now() + skew));
     expect(await go()).toMatchObject({ item: 'beach', rarity: 'legendary' });
     // …once
     for (let i = 0; i < 3; i++) expect((await go()).item).not.toBe('beach');

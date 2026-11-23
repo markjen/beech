@@ -49,6 +49,8 @@ type Env = { Variables: { user: User; tokenHash: string } };
 
 const MAX_BEACH_BYTES = 768 * 1024;
 const MAX_CELLS = 400 * 300;
+/** most beaches one person can have */
+export const BEACH_CAP = 8;
 const BEACH_HEADERS = ['X-Beach-Location', 'X-Beach-Nx', 'X-Beach-Ny', 'X-Beach-Version', 'X-Beach-Updated'];
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O or 1/I
 const SIDES = ['left', 'right'] as const;
@@ -120,6 +122,13 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       await db.query('UPDATE users SET name = $1 WHERE id = $2', [who.name, user.id]);
       user.name = who.name;
     }
+    // everyone has a home beach: its id is theirs, its code their neighbor code
+    await db.query(
+      `INSERT INTO beach (id, owner_id, code, home, created_at)
+       SELECT id, id, neighbor_code, true, created_at FROM users WHERE id = $1
+       ON CONFLICT DO NOTHING`,
+      [user!.id],
+    );
     const token = newSessionToken();
     await db.query('INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES ($1, $2, $3, $4)', [
       await hashToken(token),
@@ -201,11 +210,13 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     return c.body(null, 204);
   });
 
-  // ---------------------------------------------------------------- beach
-  const sendBeach = async (c: Context<Env>, userId: string) => {
+  // ---------------------------------------------------------------- beaches
+  // A person owns one or more beaches (docs/MULTI_BEACH.md). Their home beach
+  // has their user id as its id. /api/beach is the home beach, for older apps.
+  const sendBeach = async (c: Context<Env>, beachId: string) => {
     const rows = await db.query<{ location: string; nx: number; ny: number; version: number; updated_at: string; sand: unknown }>(
-      'SELECT location, nx, ny, version, updated_at, sand FROM beaches WHERE user_id = $1',
-      [userId],
+      'SELECT location, nx, ny, version, updated_at, sand FROM beach WHERE id = $1 AND sand IS NOT NULL',
+      [beachId],
     );
     const row = rows[0];
     if (!row) return c.json({ error: 'no saved beach yet' }, 404);
@@ -223,9 +234,17 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     });
   };
 
-  app.get('/beach', requireUser, (c) => sendBeach(c, c.get('user').id));
+  /** `X-Beach-Items: starfish=1,deckchair=2` -> { starfish: 1, deckchair: 2 } (bad parts ignored) */
+  const parseItems = (raw: string | undefined): Record<string, number> => {
+    const out: Record<string, number> = {};
+    for (const part of (raw ?? '').split(',').slice(0, 64)) {
+      const m = /^([a-z0-9-]{1,32})=(\d{1,4})$/.exec(part.trim());
+      if (m) out[m[1]] = Number(m[2]);
+    }
+    return out;
+  };
 
-  app.put('/beach', requireUser, async (c) => {
+  const saveBeach = async (c: Context<Env>, beachId: string) => {
     const location = (c.req.header('X-Beach-Location') ?? '').slice(0, 40);
     const nx = Number(c.req.header('X-Beach-Nx'));
     const ny = Number(c.req.header('X-Beach-Ny'));
@@ -236,14 +255,38 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     if (bytes.byteLength === 0 || bytes.byteLength > MAX_BEACH_BYTES) fail(413, 'beach too large');
     const now = Date.now();
     const rows = await db.query<{ version: number }>(
-      `INSERT INTO beaches (user_id, location, nx, ny, version, updated_at, sand) VALUES ($1, $2, $3, $4, 1, $5, $6)
-       ON CONFLICT (user_id) DO UPDATE SET location = EXCLUDED.location, nx = EXCLUDED.nx, ny = EXCLUDED.ny,
-         version = beaches.version + 1, updated_at = EXCLUDED.updated_at, sand = EXCLUDED.sand
-       RETURNING version`,
-      [c.get('user').id, location, nx, ny, now, bytes],
+      `UPDATE beach SET location = $2, nx = $3, ny = $4, version = version + 1, updated_at = $5, sand = $6, items = $7
+        WHERE id = $1 RETURNING version`,
+      [beachId, location, nx, ny, now, bytes, JSON.stringify(parseItems(c.req.header('X-Beach-Items')))],
     );
+    if (!rows[0]) fail(404, 'no such beach');
     return c.json({ version: rows[0].version, updatedAt: now });
-  });
+  };
+
+  app.get('/beach', requireUser, async (c) => sendBeach(c, await homeOf(c.get('user').id)));
+  app.put('/beach', requireUser, async (c) => saveBeach(c, await homeOf(c.get('user').id)));
+
+  /** how many beaches you may have: one, plus each extra beach you own */
+  const allowance = async (user: string): Promise<number> => {
+    const rows = await db.query<{ n: string | null }>(
+      `SELECT SUM(quantity) AS n FROM inventory WHERE user_id = $1 AND item_id = 'beach' AND (expires_at IS NULL OR expires_at > $2)`,
+      [user, Date.now()],
+    );
+    return Math.min(BEACH_CAP, 1 + Number(rows[0]?.n ?? 0));
+  };
+  /** my home beach (its id is mine unless I've made another beach home) */
+  const homeOf = async (user: string): Promise<string> =>
+    (await db.query<{ id: string }>('SELECT id FROM beach WHERE owner_id = $1 ORDER BY home DESC, created_at LIMIT 1', [user]))[0]?.id ?? user;
+  /** one of my beaches (404 if it isn't mine); none named: my home beach */
+  const mine = async (c: Context<Env>, id: string | undefined): Promise<string> => {
+    const me = c.get('user').id;
+    if (!id) return homeOf(me);
+    if (id === me) return me;
+    if (!/^[0-9a-f-]{36}$/.test(id)) fail(404, 'no such beach');
+    const rows = await db.query('SELECT 1 FROM beach WHERE id = $1 AND owner_id = $2', [id, me]);
+    if (!rows.length) fail(404, 'no such beach');
+    return id;
+  };
 
   // ---------------------------------------------------------------- neighbors
   // Mutual: you ask someone to be on your left (or right); when they accept,
@@ -258,31 +301,36 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   interface NodeRow {
     id: string;
     name: string;
+    beach_name: string;
+    owner_id: string;
     code: string;
     created_at: string;
     location: string | null;
     updated_at: string | null;
   }
-  const NODE = `u.id, u.name, u.neighbor_code AS code, u.created_at, b.location, b.updated_at`;
+  // a beach and its owner's first name
+  const NODE = `b.id, u.name, b.name AS beach_name, b.owner_id, b.code, b.created_at, b.location, b.updated_at`;
+  const BEACH = `beach b JOIN users u ON u.id = b.owner_id`;
   const beachJson = (r: NodeRow) => ({
     code: r.code,
     name: r.name,
+    /** the beach's own name, if its owner gave it one ("Bondi") */
+    beachName: r.beach_name || undefined,
     location: r.location,
     updatedAt: r.updated_at === null ? null : Number(r.updated_at),
   });
   const nodeById = async (id: string): Promise<NodeRow | null> =>
-    (await db.query<NodeRow>(`SELECT ${NODE} FROM users u LEFT JOIN beaches b ON b.user_id = u.id WHERE u.id = $1`, [id]))[0] ?? null;
+    (await db.query<NodeRow>(`SELECT ${NODE} FROM ${BEACH} WHERE b.id = $1`, [id]))[0] ?? null;
   const nodeByCode = async (raw: string): Promise<NodeRow | null> => {
     const code = normalizeCode(raw ?? '');
     if (code.length !== 6) return null;
-    return (await db.query<NodeRow>(`SELECT ${NODE} FROM users u LEFT JOIN beaches b ON b.user_id = u.id WHERE u.neighbor_code = $1`, [code]))[0] ?? null;
+    return (await db.query<NodeRow>(`SELECT ${NODE} FROM ${BEACH} WHERE b.code = $1`, [code]))[0] ?? null;
   };
-  /** who's on `id`'s `side`, if anyone */
+  /** which beach is on beach `id`'s `side`, if any */
   const linked = async (id: string, side: Side): Promise<NodeRow | null> =>
     (
       await db.query<NodeRow>(
-        `SELECT ${NODE} FROM neighbors n JOIN users u ON u.id = n.neighbor_id LEFT JOIN beaches b ON b.user_id = u.id
-          WHERE n.user_id = $1 AND n.side = $2`,
+        `SELECT ${NODE} FROM neighbors n JOIN ${BEACH} ON b.id = n.neighbor_beach_id WHERE n.beach_id = $1 AND n.side = $2`,
         [id, side],
       )
     )[0] ?? null;
@@ -292,8 +340,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const now = Date.now();
     try {
       await db.query(
-        `WITH l1 AS (INSERT INTO neighbors (user_id, side, neighbor_id, created_at) VALUES ($1, $2, $3, $5) RETURNING 1),
-              l2 AS (INSERT INTO neighbors (user_id, side, neighbor_id, created_at) VALUES ($3, $4, $1, $5) RETURNING 1)
+        `WITH l1 AS (INSERT INTO neighbors (beach_id, side, neighbor_beach_id, created_at) VALUES ($1, $2, $3, $5) RETURNING 1),
+              l2 AS (INSERT INTO neighbors (beach_id, side, neighbor_beach_id, created_at) VALUES ($3, $4, $1, $5) RETURNING 1)
          SELECT (SELECT COUNT(*) FROM l1) + (SELECT COUNT(*) FROM l2) AS n`,
         [a, side, b, opposite(side), now],
       );
@@ -304,26 +352,25 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     // requests that can't happen any more: these two, and anyone else asking for the sides now taken
     await db.query(
       `DELETE FROM neighbor_requests
-        WHERE (from_id = $1 AND (side = $2 OR to_id = $3)) OR (from_id = $3 AND (side = $4 OR to_id = $1))
-           OR (to_id = $1 AND side = $4) OR (to_id = $3 AND side = $2)`,
+        WHERE (from_beach = $1 AND (side = $2 OR to_beach = $3)) OR (from_beach = $3 AND (side = $4 OR to_beach = $1))
+           OR (to_beach = $1 AND side = $4) OR (to_beach = $3 AND side = $2)`,
       [a, side, b, opposite(side)],
     );
   };
 
   app.get('/neighbors', requireUser, async (c) => {
-    const me = c.get('user').id;
+    const me = await mine(c, c.req.query('beach'));
     const [self, left, right, outgoing, incoming] = await Promise.all([
       nodeById(me),
       linked(me, 'left'),
       linked(me, 'right'),
       db.query<NodeRow & { side: Side }>(
-        `SELECT r.side, ${NODE} FROM neighbor_requests r JOIN users u ON u.id = r.to_id LEFT JOIN beaches b ON b.user_id = u.id
-          WHERE r.from_id = $1`,
+        `SELECT r.side, ${NODE} FROM neighbor_requests r JOIN ${BEACH} ON b.id = r.to_beach WHERE r.from_beach = $1`,
         [me],
       ),
       db.query<NodeRow & { side: Side }>(
-        `SELECT r.side, ${NODE} FROM neighbor_requests r JOIN users u ON u.id = r.from_id LEFT JOIN beaches b ON b.user_id = u.id
-          WHERE r.to_id = $1 ORDER BY r.created_at DESC LIMIT 50`,
+        `SELECT r.side, ${NODE} FROM neighbor_requests r JOIN ${BEACH} ON b.id = r.from_beach
+          WHERE r.to_beach = $1 ORDER BY r.created_at DESC LIMIT 50`,
         [me],
       ),
     ]);
@@ -332,6 +379,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       return r ? beachJson(r) : null;
     };
     return c.json({
+      beach: me,
       code: self?.code,
       left: left ? beachJson(left) : null,
       right: right ? beachJson(right) : null,
@@ -342,30 +390,31 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     });
   });
 
-  // ask someone to be on your `side` (if they already asked for the same, you're linked now)
+  // ask someone to be on your `side` (if they already asked for the same, or
+  // it's another of your own beaches, you're linked now)
   app.put('/neighbors/:side', requireUser, async (c) => {
     const side = parseSide(c);
-    const me = c.get('user').id;
+    const me = await mine(c, c.req.query('beach'));
     const { code } = await body<{ code?: string }>(c);
     if (normalizeCode(code ?? '').length !== 6) fail(400, 'neighbor codes are 6 letters and numbers');
     const them = await nodeByCode(code!);
     if (!them) fail(404, 'no beach has that code');
-    if (them!.id === me) fail(400, "that's your own code");
+    if (them!.id === me) fail(400, "that's this beach's own code");
     if (await linked(me, side)) fail(409, `you already have a ${side} neighbor: move them away first`);
     if ((await linked(me, opposite(side)))?.id === them!.id) fail(409, `they're already your ${opposite(side)} neighbor`);
     if (await linked(them!.id, opposite(side))) fail(409, `their ${opposite(side)} side is taken`);
-    const theirs = await db.query('SELECT 1 FROM neighbor_requests WHERE from_id = $1 AND to_id = $2 AND side = $3', [
+    const theirs = await db.query('SELECT 1 FROM neighbor_requests WHERE from_beach = $1 AND to_beach = $2 AND side = $3', [
       them!.id,
       me,
       opposite(side),
     ]);
-    if (theirs.length) {
+    if (theirs.length || them!.owner_id === c.get('user').id) {
       await link(me, side, them!.id);
       return c.json({ status: 'linked', neighbor: beachJson(them!) });
     }
     await db.query(
-      `INSERT INTO neighbor_requests (from_id, to_id, side, created_at) VALUES ($1, $2, $3, $4)
-       ON CONFLICT (from_id, side) DO UPDATE SET to_id = EXCLUDED.to_id, created_at = EXCLUDED.created_at`,
+      `INSERT INTO neighbor_requests (from_beach, to_beach, side, created_at) VALUES ($1, $2, $3, $4)
+       ON CONFLICT (from_beach, side) DO UPDATE SET to_beach = EXCLUDED.to_beach, created_at = EXCLUDED.created_at`,
       [me, them!.id, side, Date.now()],
     );
     return c.json({ status: 'asked', neighbor: beachJson(them!) });
@@ -373,11 +422,11 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
 
   // accept someone's request: they go on the side they asked for
   app.post('/neighbors/requests/:code/accept', requireUser, async (c) => {
-    const me = c.get('user').id;
+    const me = await mine(c, c.req.query('beach'));
     const them = await nodeByCode(c.req.param('code') ?? '');
     if (!them) fail(404, 'no beach has that code');
     const req = (
-      await db.query<{ side: Side }>('SELECT side FROM neighbor_requests WHERE from_id = $1 AND to_id = $2', [them!.id, me])
+      await db.query<{ side: Side }>('SELECT side FROM neighbor_requests WHERE from_beach = $1 AND to_beach = $2', [them!.id, me])
     )[0];
     if (!req) fail(404, 'that request is gone');
     // they asked for me on their req.side, so they go on my other side
@@ -387,23 +436,28 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   });
 
   app.delete('/neighbors/requests/:code', requireUser, async (c) => {
+    const me = await mine(c, c.req.query('beach'));
     const them = await nodeByCode(c.req.param('code') ?? '');
-    if (them) await db.query('DELETE FROM neighbor_requests WHERE from_id = $1 AND to_id = $2', [them.id, c.get('user').id]);
+    if (them) await db.query('DELETE FROM neighbor_requests WHERE from_beach = $1 AND to_beach = $2', [them.id, me]);
     return c.body(null, 204);
   });
 
   // move away from your `side` neighbor (both ends of the link go), or take back your request
   app.delete('/neighbors/:side', requireUser, async (c) => {
     const side = parseSide(c);
-    const me = c.get('user').id;
-    await db.query('DELETE FROM neighbors WHERE (user_id = $1 AND side = $2) OR (neighbor_id = $1 AND side = $3)', [me, side, opposite(side)]);
-    await db.query('DELETE FROM neighbor_requests WHERE from_id = $1 AND side = $2', [me, side]);
+    const me = await mine(c, c.req.query('beach'));
+    await db.query('DELETE FROM neighbors WHERE (beach_id = $1 AND side = $2) OR (neighbor_beach_id = $1 AND side = $3)', [
+      me,
+      side,
+      opposite(side),
+    ]);
+    await db.query('DELETE FROM neighbor_requests WHERE from_beach = $1 AND side = $2', [me, side]);
     return c.body(null, 204);
   });
 
   app.get('/neighbors/:side/beach', requireUser, async (c) => {
     const side = parseSide(c);
-    const n = await linked(c.get('user').id, side);
+    const n = await linked(await mine(c, c.req.query('beach')), side);
     if (!n) return c.json({ error: 'no neighbor on that side' }, 404);
     return sendBeach(c, n.id);
   });
@@ -445,25 +499,28 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     return at;
   };
   // the right-hand ends of stretches worth visiting (someone with a beach, or linked to someone)
-  const ENDS = `FROM users u LEFT JOIN beaches b ON b.user_id = u.id
-     WHERE NOT EXISTS (SELECT 1 FROM neighbors n WHERE n.user_id = u.id AND n.side = 'right')
-       AND (b.user_id IS NOT NULL OR EXISTS (SELECT 1 FROM neighbors n WHERE n.user_id = u.id))`;
+  const ENDS = `FROM ${BEACH}
+     WHERE b.on_shore
+       AND NOT EXISTS (SELECT 1 FROM neighbors n WHERE n.beach_id = b.id AND n.side = 'right')
+       AND (b.sand IS NOT NULL OR EXISTS (SELECT 1 FROM neighbors n WHERE n.beach_id = b.id))`;
   /** From the end of a stretch, the first beach of the next stretch going `dir`. */
   const nextStretch = async (at: NodeRow, dir: Side): Promise<NodeRow | null> => {
     const r = await endOf(at, 'right');
     const key = [r.created_at, r.id];
+    // came all the way round to the stretch we started in: that's everyone
+    const same = (n: NodeRow | undefined) => !!n && n.id === r.id;
     if (dir === 'left') {
       const rows =
-        (await db.query<NodeRow>(`SELECT ${NODE} ${ENDS} AND (u.created_at, u.id) > ($1::bigint, $2::uuid) ORDER BY u.created_at, u.id LIMIT 1`, key)).concat(
-          await db.query<NodeRow>(`SELECT ${NODE} ${ENDS} ORDER BY u.created_at, u.id LIMIT 1`),
+        (await db.query<NodeRow>(`SELECT ${NODE} ${ENDS} AND (b.created_at, b.id) > ($1::bigint, $2::uuid) ORDER BY b.created_at, b.id LIMIT 1`, key)).concat(
+          await db.query<NodeRow>(`SELECT ${NODE} ${ENDS} ORDER BY b.created_at, b.id LIMIT 1`),
         );
-      return rows[0] ?? null; // enter it at its right-hand end, walking left
+      return rows[0] && !same(rows[0]) ? rows[0] : null; // enter it at its right-hand end, walking left
     }
     const rows =
-      (await db.query<NodeRow>(`SELECT ${NODE} ${ENDS} AND (u.created_at, u.id) < ($1::bigint, $2::uuid) ORDER BY u.created_at DESC, u.id DESC LIMIT 1`, key)).concat(
-        await db.query<NodeRow>(`SELECT ${NODE} ${ENDS} ORDER BY u.created_at DESC, u.id DESC LIMIT 1`),
+      (await db.query<NodeRow>(`SELECT ${NODE} ${ENDS} AND (b.created_at, b.id) < ($1::bigint, $2::uuid) ORDER BY b.created_at DESC, b.id DESC LIMIT 1`, key)).concat(
+        await db.query<NodeRow>(`SELECT ${NODE} ${ENDS} ORDER BY b.created_at DESC, b.id DESC LIMIT 1`),
       );
-    return rows[0] ? endOf(rows[0], 'left') : null; // enter it at its left-hand end, walking right
+    return rows[0] && !same(rows[0]) ? endOf(rows[0], 'left') : null; // enter it at its left-hand end, walking right
   };
   type Step = ReturnType<typeof beachJson> & { linked: boolean };
   /**
@@ -501,10 +558,10 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   app.get('/shore', requireUser, async (c) => {
     const depth = Math.min(12, Math.max(0, Number(c.req.query('depth') ?? 6) | 0));
     const code = c.req.query('code');
-    const center = code ? await nodeByCode(code) : await nodeById(c.get('user').id);
+    const center = code ? await nodeByCode(code) : await nodeById(await mine(c, c.req.query('beach')));
     if (!center) return c.json({ error: 'no beach with that code' }, 404);
     const { left, right } = await walk(center, ['left', 'right'], depth, new Set([center.id]));
-    return c.json({ center: { ...beachJson(center), you: center.id === c.get('user').id }, left, right });
+    return c.json({ center: { ...beachJson(center), you: center.owner_id === c.get('user').id }, left, right });
   });
 
   // GET /shore/more?from=K7F2QX&dir=left&count=6: keep walking (infinite scroll)
@@ -520,17 +577,12 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   const byCode = nodeByCode;
   const shoreJson = beachJson;
 
-  app.get('/beaches/:code', requireUser, async (c) => {
-    const who = await byCode(c.req.param('code') ?? '');
-    if (!who) return c.json({ error: 'no beach with that code' }, 404);
-    return sendBeach(c, who.id);
-  });
 
   // ---------------------------------------------------------------- favorites
   app.get('/favorites', requireUser, async (c) => {
     const rows = await db.query<NodeRow>(
       `SELECT ${NODE}
-         FROM favorites f JOIN users u ON u.id = f.fav_id LEFT JOIN beaches b ON b.user_id = u.id
+         FROM favorites f JOIN ${BEACH} ON b.id = f.beach_id
         WHERE f.user_id = $1 ORDER BY f.created_at DESC LIMIT 200`,
       [c.get('user').id],
     );
@@ -540,8 +592,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   app.put('/favorites/:code', requireUser, async (c) => {
     const who = await byCode(c.req.param('code') ?? '');
     if (!who) return c.json({ error: 'no beach with that code' }, 404);
-    if (who.id === c.get('user').id) fail(400, "that's your own beach");
-    await db.query('INSERT INTO favorites (user_id, fav_id, created_at) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING', [
+    if (who.owner_id === c.get('user').id) fail(400, "that's your own beach");
+    await db.query('INSERT INTO favorites (user_id, beach_id, created_at) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING', [
       c.get('user').id,
       who.id,
       Date.now(),
@@ -551,7 +603,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
 
   app.delete('/favorites/:code', requireUser, async (c) => {
     const who = await byCode(c.req.param('code') ?? '');
-    if (who) await db.query('DELETE FROM favorites WHERE user_id = $1 AND fav_id = $2', [c.get('user').id, who.id]);
+    if (who) await db.query('DELETE FROM favorites WHERE user_id = $1 AND beach_id = $2', [c.get('user').id, who.id]);
     return c.body(null, 204);
   });
 
@@ -632,16 +684,109 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   });
 
   app.post('/neighbors/code', requireUser, async (c) => {
+    const me = await mine(c, c.req.query('beach'));
     for (let attempt = 0; attempt < 5; attempt++) {
       const code = newNeighborCode();
       try {
-        await db.query('UPDATE users SET neighbor_code = $1 WHERE id = $2', [code, c.get('user').id]);
+        await db.query('UPDATE beach SET code = $1 WHERE id = $2', [code, me]);
+        if (me === c.get('user').id) await db.query('UPDATE users SET neighbor_code = $1 WHERE id = $2', [code, me]).catch(() => {});
         return c.json({ code });
       } catch {
         /* collision: try another */
       }
     }
     return fail(500, 'could not make a new code');
+  });
+
+  // ---------------------------------------------------------------- my beaches
+  const myBeaches = async (user: string) => {
+    const rows = await db.query<NodeRow & { home: boolean; on_shore: boolean; items: Record<string, number> | string }>(
+      `SELECT ${NODE}, b.home, b.on_shore, b.items FROM ${BEACH} WHERE b.owner_id = $1 ORDER BY b.home DESC, b.created_at`,
+      [user],
+    );
+    return Promise.all(
+      rows.map(async (r) => {
+        const [left, right] = await Promise.all([linked(r.id, 'left'), linked(r.id, 'right')]);
+        return {
+          id: r.id,
+          code: r.code,
+          name: r.beach_name,
+          home: r.home,
+          onShore: r.on_shore,
+          location: r.location,
+          updatedAt: r.updated_at === null ? null : Number(r.updated_at),
+          items: typeof r.items === 'string' ? (JSON.parse(r.items) as Record<string, number>) : r.items,
+          left: left ? { ...beachJson(left), yours: left.owner_id === user } : null,
+          right: right ? { ...beachJson(right), yours: right.owner_id === user } : null,
+        };
+      }),
+    );
+  };
+
+  app.get('/beaches/mine', requireUser, async (c) => {
+    const me = c.get('user').id;
+    const [beaches, allowed] = await Promise.all([myBeaches(me), allowance(me)]);
+    return c.json({ allowance: allowed, cap: BEACH_CAP, beaches });
+  });
+
+  // make another beach (if your allowance has room)
+  app.post('/beaches/mine', requireUser, async (c) => {
+    const me = c.get('user').id;
+    const { name, location } = await body<{ name?: string; location?: string }>(c);
+    const loc = (location ?? '').slice(0, 40);
+    if (loc && !/^[a-z0-9-]+$/.test(loc)) fail(400, 'bad location');
+    const now = Date.now();
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try {
+        // one statement: only if you're under your allowance
+        const rows = await db.query<{ id: string }>(
+          `INSERT INTO beach (id, owner_id, code, name, home, location, created_at)
+           SELECT $1, $2, $3, $4, false, NULLIF($5, ''), $6
+            WHERE (SELECT COUNT(*) FROM beach WHERE owner_id = $2) < $7
+           RETURNING id`,
+          [crypto.randomUUID(), me, newNeighborCode(), (name ?? '').trim().slice(0, 30), loc, now, await allowance(me)],
+        );
+        if (!rows[0]) fail(409, 'no room for another beach: get an extra beach first');
+        return c.json({ beach: (await myBeaches(me)).find((b) => b.id === rows[0].id) });
+      } catch (e) {
+        if (e instanceof HTTPException) throw e;
+        if (attempt === 4) throw e; // (a code collision: try another)
+      }
+    }
+    return fail(500, 'could not make a beach');
+  });
+
+  app.patch('/beaches/mine/:id', requireUser, async (c) => {
+    const me = c.get('user').id;
+    const id = await mine(c, c.req.param('id'));
+    const p = await body<{ name?: string; location?: string; onShore?: boolean; home?: boolean }>(c);
+    if (p.location !== undefined && !/^[a-z0-9-]{1,40}$/.test(p.location)) fail(400, 'bad location');
+    if (p.name !== undefined) await db.query('UPDATE beach SET name = $1 WHERE id = $2', [String(p.name).trim().slice(0, 30), id]);
+    if (p.location !== undefined) await db.query('UPDATE beach SET location = $1 WHERE id = $2', [p.location, id]);
+    if (p.onShore !== undefined) await db.query('UPDATE beach SET on_shore = $1 WHERE id = $2', [!!p.onShore, id]);
+    if (p.home === true) {
+      // one statement, so there's always exactly one home
+      await db.query('UPDATE beach SET home = (id = $1) WHERE owner_id = $2', [id, me]);
+    }
+    return c.json({ beach: (await myBeaches(me)).find((b) => b.id === id) });
+  });
+
+  app.delete('/beaches/mine/:id', requireUser, async (c) => {
+    const id = await mine(c, c.req.param('id'));
+    // links, requests and favorites go with it (ON DELETE CASCADE)
+    const rows = await db.query('DELETE FROM beach WHERE id = $1 AND NOT home RETURNING id', [id]);
+    if (!rows.length) fail(400, "your home beach can't be removed (make another one home first)");
+    return c.body(null, 204);
+  });
+
+  app.get('/beaches/mine/:id/sand', requireUser, async (c) => sendBeach(c, await mine(c, c.req.param('id'))));
+  app.put('/beaches/mine/:id/sand', requireUser, async (c) => saveBeach(c, await mine(c, c.req.param('id'))));
+
+  // (after /beaches/mine…, so 'mine' isn't taken for a code)
+  app.get('/beaches/:code', requireUser, async (c) => {
+    const who = await byCode(c.req.param('code') ?? '');
+    if (!who) return c.json({ error: 'no beach with that code' }, 404);
+    return sendBeach(c, who.id);
   });
 
   return app;

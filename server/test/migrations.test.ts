@@ -22,7 +22,7 @@ describe('migration 5: mutual neighbors', () => {
     await pick(a, 'left', b); // mutual: a's left is b, b's right is a
     await pick(b, 'right', a);
     await pick(c, 'left', d); // one-way: c picked d
-    await migrate(db);
+    await migrate(db, 5);
     const links = await db.query<{ user_id: string; side: string }>('SELECT user_id, side FROM neighbors ORDER BY user_id');
     expect(links.map((l) => [l.user_id, l.side])).toEqual([
       [a, 'left'],
@@ -48,6 +48,38 @@ describe('migration 6: growing claw cooldown', () => {
     expect(Number(st[0].next_at)).toBe(3000 + 20 * 60000); // after the 3rd go: 20 minutes
     // and pulls is now a history (several a day are fine)
     await db.query("INSERT INTO pulls (user_id, pool, day, item_id, rarity, created_at) VALUES ($1, 'daily', '2026-11-22', 'conch', 'common', 4000)", [id]);
+    await db.close();
+  });
+});
+
+describe('migration 7: beaches of their own', () => {
+  it('gives everyone a home beach with their code, sand and links', async () => {
+    const db = await createPgliteDb();
+    await migrate(db, 6);
+    const a = '00000000-0000-4000-8000-0000000000a1';
+    const b = '00000000-0000-4000-8000-0000000000b2';
+    for (const [id, code, at] of [[a, 'AAAAAA', 1], [b, 'BBBBBB', 2]] as const)
+      await db.query("INSERT INTO users (id, provider, provider_sub, name, neighbor_code, created_at) VALUES ($1, 'dev', $2, $2, $2, $3)", [id, code, at]);
+    await db.query("INSERT INTO beaches (user_id, location, nx, ny, version, updated_at, sand) VALUES ($1, 'piha', 8, 8, 3, 10, $2)", [a, new Uint8Array([5])]);
+    await db.query("INSERT INTO neighbors (user_id, side, neighbor_id, created_at) VALUES ($1, 'left', $2, 1), ($2, 'right', $1, 1)", [a, b]);
+    await db.query('INSERT INTO favorites (user_id, fav_id, created_at) VALUES ($1, $2, 1)', [b, a]);
+    await migrate(db);
+    const beaches = await db.query<{ id: string; owner_id: string; code: string; home: boolean; location: string | null; version: number }>(
+      'SELECT id, owner_id, code, home, location, version FROM beach ORDER BY code',
+    );
+    expect(beaches).toEqual([
+      { id: a, owner_id: a, code: 'AAAAAA', home: true, location: 'piha', version: 3 },
+      { id: b, owner_id: b, code: 'BBBBBB', home: true, location: null, version: 0 },
+    ]);
+    const links = await db.query<{ beach_id: string; side: string; neighbor_beach_id: string }>('SELECT beach_id, side, neighbor_beach_id FROM neighbors ORDER BY side');
+    expect(links).toEqual([
+      { beach_id: a, side: 'left', neighbor_beach_id: b },
+      { beach_id: b, side: 'right', neighbor_beach_id: a },
+    ]);
+    expect(await db.query('SELECT beach_id FROM favorites')).toEqual([{ beach_id: a }]);
+    // deleting a user takes their beaches and links with them
+    await db.query('DELETE FROM users WHERE id = $1', [a]);
+    expect(await db.query('SELECT * FROM neighbors')).toEqual([]);
     await db.close();
   });
 });

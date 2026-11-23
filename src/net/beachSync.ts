@@ -23,7 +23,7 @@ export class BeachSync {
   savedAt = 0;
   private dirty = false;
   private timer = 0;
-  private busy = false;
+  private inflight: Promise<void> | null = null;
   private listeners: ((s: SyncState) => void)[] = [];
 
   constructor(
@@ -65,10 +65,24 @@ export class BeachSync {
     this.timer = window.setTimeout(() => void this.flush(), delayMs);
   }
 
+  /**
+   * Save now. If a save is already running, wait for it and then save again:
+   * it may have started before the latest change.
+   */
   async flush(keepalive = false): Promise<void> {
-    if (!this.account.user || this.busy) return;
+    if (!this.account.user) return;
+    while (this.inflight) await this.inflight;
+    this.inflight = this.save(keepalive);
+    try {
+      await this.inflight;
+    } finally {
+      this.inflight = null;
+    }
+  }
+
+  private async save(keepalive: boolean): Promise<void> {
+    if (!this.account.user) return;
     const forUser = this.account.user.id;
-    this.busy = true;
     window.clearTimeout(this.timer);
     this.set('saving');
     try {
@@ -82,8 +96,6 @@ export class BeachSync {
       this.set('offline');
       // try again later
       this.timer = window.setTimeout(() => void this.flush(), 30000);
-    } finally {
-      this.busy = false;
     }
   }
 

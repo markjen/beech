@@ -128,6 +128,56 @@ const MIGRATIONS: string[] = [
            MAX(created_at) + LEAST(86400000, 300000 * POWER(2, COUNT(*) - 1))::bigint
       FROM pulls GROUP BY user_id, pool;
   `,
+  // 7: more than one beach (docs/MULTI_BEACH.md). The beach becomes the unit:
+  // it has the code, the sand and the neighbor links; the user owns beaches.
+  // A person's home beach takes their user id as its id, so every existing
+  // link, request and favorite (which held user ids) now names their home
+  // beach without moving any data.
+  `
+  CREATE TABLE beach (
+    id UUID PRIMARY KEY,
+    owner_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    code TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL DEFAULT '',
+    home BOOLEAN NOT NULL DEFAULT false,
+    on_shore BOOLEAN NOT NULL DEFAULT true,
+    location TEXT,
+    nx INTEGER,
+    ny INTEGER,
+    version INTEGER NOT NULL DEFAULT 0,
+    updated_at BIGINT,
+    sand BYTEA,
+    items JSONB NOT NULL DEFAULT '{}',  -- how many of each non-free item are on it
+    created_at BIGINT NOT NULL
+  );
+  -- (one home per owner is kept by the app: moving home is a single UPDATE)
+  CREATE INDEX beach_owner ON beach (owner_id);
+  CREATE INDEX beach_created ON beach (created_at, id);
+  INSERT INTO beach (id, owner_id, code, home, location, nx, ny, version, updated_at, sand, created_at)
+    SELECT u.id, u.id, u.neighbor_code, true, b.location, b.nx, b.ny, COALESCE(b.version, 0), b.updated_at, b.sand, u.created_at
+      FROM users u LEFT JOIN beaches b ON b.user_id = u.id;
+
+  ALTER TABLE neighbors DROP CONSTRAINT neighbors_user_id_fkey;
+  ALTER TABLE neighbors DROP CONSTRAINT neighbors_neighbor_id_fkey;
+  ALTER TABLE neighbors RENAME COLUMN user_id TO beach_id;
+  ALTER TABLE neighbors RENAME COLUMN neighbor_id TO neighbor_beach_id;
+  ALTER TABLE neighbors ADD FOREIGN KEY (beach_id) REFERENCES beach (id) ON DELETE CASCADE;
+  ALTER TABLE neighbors ADD FOREIGN KEY (neighbor_beach_id) REFERENCES beach (id) ON DELETE CASCADE;
+
+  ALTER TABLE neighbor_requests DROP CONSTRAINT neighbor_requests_from_id_fkey;
+  ALTER TABLE neighbor_requests DROP CONSTRAINT neighbor_requests_to_id_fkey;
+  ALTER TABLE neighbor_requests RENAME COLUMN from_id TO from_beach;
+  ALTER TABLE neighbor_requests RENAME COLUMN to_id TO to_beach;
+  ALTER TABLE neighbor_requests ADD FOREIGN KEY (from_beach) REFERENCES beach (id) ON DELETE CASCADE;
+  ALTER TABLE neighbor_requests ADD FOREIGN KEY (to_beach) REFERENCES beach (id) ON DELETE CASCADE;
+
+  ALTER TABLE favorites DROP CONSTRAINT favorites_fav_id_fkey;
+  ALTER TABLE favorites RENAME COLUMN fav_id TO beach_id;
+  ALTER TABLE favorites ADD FOREIGN KEY (beach_id) REFERENCES beach (id) ON DELETE CASCADE;
+
+  -- the old one-beach-per-user table stays one release, unused, then goes
+  ALTER TABLE beaches RENAME TO beaches_v1;
+  `,
 ];
 
 /** Apply migrations up to `upTo` (default: all). Tests use `upTo` to check a migration on older data. */
