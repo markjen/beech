@@ -36,3 +36,21 @@ output "db_password_secret" {
   description = "Secret Manager secret holding the generated database password. The Cloud Run service reads it as the DB_PASSWORD env var; the value itself is never output."
   value       = google_secret_manager_secret.db_password.secret_id
 }
+
+output "monitoring_dashboard" {
+  description = "Monitoring dashboard id. Open it at https://console.cloud.google.com/monitoring/dashboards/custom/<id>?project=beech-prod."
+  value       = google_monitoring_dashboard.beech.id
+}
+
+output "monitoring_alert_email" {
+  description = "Email address monitoring alert notifications go to."
+  value       = var.alert_email
+}
+
+output "monitoring_uptime_checks" {
+  description = "Uptime check ids for the website and the API health endpoint."
+  value = {
+    web = google_monitoring_uptime_check_config.web.uptime_check_id
+    api = google_monitoring_uptime_check_config.api.uptime_check_id
+  }
+}

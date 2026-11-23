@@ -175,6 +175,76 @@ Google and Apple sign-in use the native sheets (`src/net/nativeAuth.ts`). The
 setup steps (OAuth clients, Info.plist URL scheme, Apple capability, server
 client IDs) are in [BACKEND.md](BACKEND.md), "Phone apps".
 
+## In-app purchases (the shop)
+
+The shop sells through Apple and Google only (`@capgo/native-purchases`:
+StoreKit 2 and Google Play Billing). We never handle payment details. The
+products, prices and reasoning are in [PRICING.md](PRICING.md), and the list
+lives in `server/src/products.ts`. Every product is a **consumable** with the
+**same product id in both stores**.
+
+**How a purchase flows:** the app buys, then hands the store's proof to
+`POST /api/store/purchase` (iOS: the signed transaction, `jwsRepresentation`;
+Android: the purchase token). The server checks it with the store and grants
+what it buys, once. If the hand-over fails (offline), the app keeps it and
+retries on the next sign-in or shop visit. Refunds come back as store
+notifications and take the items away.
+
+### App Store Connect
+
+1. Agreements, Tax and Banking: accept the Paid Apps agreement and add bank
+   and tax details. Without it, no products load.
+2. App → Monetization → In-App Purchases: create one **Consumable** per
+   product in `server/src/products.ts`. Use the same Product ID (e.g.
+   `beach_1`), the price tier from PRICING.md, a display name and
+   description, and a review screenshot of the shop.
+3. App → Capabilities: In-App Purchase is on by default for the App ID.
+4. App Information → **App Store Server Notifications**: Version 2, Production
+   and Sandbox URLs both `https://<production domain>/api/store/apple/notifications`.
+5. Server env: `APPLE_BUNDLE_ID` if the bundle id isn't `app.beech.beach`.
+   Signed transactions are checked offline against the pinned Apple Root CA
+   (`server/src/appleRoot.ts`), so no API key is needed.
+6. Test with a Sandbox account (Users and Access → Sandbox). Sandbox purchases
+   are accepted and recorded with `environment = 'Sandbox'` (App Review buys
+   in sandbox against production).
+
+### Google Play Console
+
+1. Set up a payments profile (Play Console → Setup → Payments profile).
+2. Monetize → Products → **In-app products**: create one per product, same
+   Product ID and the price from PRICING.md, then activate. (Play needs an
+   uploaded build that includes the billing library before products can be
+   created. Any build after this one includes it.)
+3. **Let the server read purchases:** Users and permissions → invite the
+   Cloud Run service account (from GCP.md) with "View financial data" and
+   "Manage orders and subscriptions". On Cloud Run the server uses that
+   account automatically. Elsewhere, set `GOOGLE_PLAY_SERVICE_ACCOUNT` to a
+   service-account JSON key, kept in Secret Manager and never in git.
+4. **Refunds (real-time developer notifications):** in GCP, create a Pub/Sub
+   topic, grant `google-play-developer-notifications@system.gserviceaccount.com`
+   the Publisher role on it, and set it under Monetization setup → Real-time
+   developer notifications. Add a **push** subscription to
+   `https://<production domain>/api/store/google/rtdn` with authentication
+   enabled (a service account of your choice). Set the server env
+   `GOOGLE_RTDN_AUDIENCE` (the push audience, by default that URL) and
+   `GOOGLE_RTDN_SERVICE_ACCOUNT` (that service account's email).
+5. Server env: `ANDROID_PACKAGE` if the package isn't `app.beech.beach`.
+6. Test with license testers (Setup → License testing). Their purchases are
+   free and recorded as `environment = 'Test'`.
+
+### The web build
+
+`VITE_APP_STORE_URL` and `VITE_PLAY_STORE_URL` (at build time) are where the
+web shop's buttons send people once the apps are listed. Until then the shop
+says the apps are coming.
+
+### Store forms
+
+The apps now have in-app purchases. Declare them in the listings, and add
+"Purchase history" (App Privacy: linked to the user, for app functionality)
+and "Purchase history" (Play Data safety: collected, not shared) to the
+privacy forms.
+
 ## Platform notes
 
 - **Audio** starts on the first touch (the title card), which WebView

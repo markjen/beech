@@ -76,9 +76,12 @@ export class Account {
 
   private async call(path: string, init: RequestInit = {}): Promise<Response> {
     const headers = new Headers(init.headers);
-    if (this.token) headers.set('Authorization', `Bearer ${this.token}`);
+    const sent = this.token;
+    if (sent) headers.set('Authorization', `Bearer ${sent}`);
     const res = await fetch(`${API}${path}`, { ...init, headers });
-    if (res.status === 401 && this.token) {
+    // (only if it's still the session we asked with: a slow answer to an old
+    // session must not sign out whoever has signed in since)
+    if (res.status === 401 && sent && this.token === sent) {
       // the session ended (expired, signed out elsewhere, account deleted)
       this.token = null;
       writeToken(null);
@@ -156,6 +159,8 @@ export class Account {
     const res = await this.call('/api/account', { method: 'DELETE' });
     if (!res.ok && res.status !== 401) throw new ApiError(res.status, 'could not delete the account');
     void nativeSignOut();
+    this.beaches = [];
+    this.beachId = null;
     this.token = null;
     writeToken(null);
     this.user = null;
@@ -187,9 +192,12 @@ export class Account {
 
   /** Load your beaches and pick this device's one (as remembered, else home). */
   async loadBeaches(): Promise<MyBeach[]> {
+    const who = this.user?.id;
     const res = await this.call('/api/beaches/mine');
     if (!res.ok) throw await errorOf(res, 'could not load your beaches');
     const data = (await res.json()) as { allowance: number; beaches: MyBeach[] };
+    // someone else signed in meanwhile: this list isn't theirs
+    if (this.user?.id !== who) return this.beaches;
     this.beaches = data.beaches;
     this.allowance = data.allowance;
     if (!this.beachId || !this.beaches.some((b) => b.id === this.beachId)) {
@@ -490,6 +498,26 @@ export interface PullPool {
   nextCooldown: number;
   /** the fixed gifts of the first goes (shown before the odds) */
   starter?: { rare: string; paid: string; beach: string; beachAfterMs: number };
+}
+
+export interface GiftResult {
+  item: string;
+  to: { name: string; code: string };
+}
+
+/** Give one of your items to someone else, by their neighbor code. */
+export class GiftApi {
+  constructor(private readonly account: Account) {}
+
+  async gift(code: string, item: string): Promise<GiftResult> {
+    const res = await this.account.fetch('/api/gifts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, item }),
+    });
+    if (!res.ok) throw await errorOf(res, 'could not send that gift');
+    return (await res.json()) as GiftResult;
+  }
 }
 
 /** The claw machine (and later, mystery boxes): draws happen on the server. */

@@ -1,5 +1,7 @@
 import pg from 'pg';
 
+import { createDbStats, logEvent, type DbStats, type DbStatsSnapshot } from './observability.js';
+
 /**
  * The little database surface the app needs. Production uses Postgres (Cloud
  * SQL) through `pg`; local development and tests use PGlite, a real Postgres
@@ -12,6 +14,8 @@ export interface Db {
   /** run fn holding a session-level advisory lock (one migrator at a time) */
   withLock<T>(key: number, fn: () => Promise<T>): Promise<T>;
   close(): Promise<void>;
+  /** query counters + latency percentiles (null pool fields for PGlite) */
+  stats?: () => DbStatsSnapshot;
 }
 
 export interface PgConfig {
@@ -30,9 +34,22 @@ export function createPgDb(cfg: PgConfig): Db {
       ? { connectionString: cfg.url, max: 5 }
       : { host: cfg.socket, user: cfg.user, password: cfg.password, database: cfg.database, max: 5 },
   );
+  const stats = createDbStats(() => ({ total: pool.totalCount, idle: pool.idleCount, waiting: pool.waitingCount }));
   return {
     async query(sql, params = []) {
-      return (await pool.query(sql, params)).rows;
+      // Timed for the db_summary log and the slow-query / error lines.
+      // The SQL text and params are never logged: they can hold user data.
+      const start = performance.now();
+      try {
+        const rows = (await pool.query(sql, params)).rows;
+        stats.record(performance.now() - start, true);
+        return rows;
+      } catch (e) {
+        const ms = performance.now() - start;
+        stats.record(ms, false);
+        logEvent('db_error', { duration_ms: Math.round(ms), code: String((e as { code?: unknown })?.code ?? 'unknown') }, 'ERROR');
+        throw e;
+      }
     },
     async exec(sql) {
       await pool.query(sql);
@@ -48,6 +65,7 @@ export function createPgDb(cfg: PgConfig): Db {
       }
     },
     close: () => pool.end(),
+    stats: () => stats.snapshot(),
   };
 }
 
@@ -56,15 +74,27 @@ export async function createPgliteDb(dataDir?: string): Promise<Db> {
   const { PGlite } = await import('@electric-sql/pglite');
   const db = new PGlite(dataDir);
   await db.waitReady;
+  const stats: DbStats = createDbStats();
   return {
     async query(sql, params = []) {
-      return (await db.query(sql, params)).rows as never[];
+      const start = performance.now();
+      try {
+        const rows = (await db.query(sql, params)).rows as never[];
+        stats.record(performance.now() - start, true);
+        return rows;
+      } catch (e) {
+        const ms = performance.now() - start;
+        stats.record(ms, false);
+        logEvent('db_error', { duration_ms: Math.round(ms), code: String((e as { code?: unknown })?.code ?? 'unknown') }, 'ERROR');
+        throw e;
+      }
     },
     async exec(sql) {
       await db.exec(sql);
     },
     withLock: (_key, fn) => fn(), // single connection: nothing to race with
     close: () => db.close(),
+    stats: () => stats.snapshot(),
   };
 }
 

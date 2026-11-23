@@ -42,3 +42,15 @@ variable "custom_domain" {
   type        = string
   default     = ""
 }
+
+variable "alert_email" {
+  description = "Email address monitoring alert notifications go to."
+  type        = string
+  default     = "markjen@gmail.com"
+}
+
+variable "monitoring_host" {
+  description = "Public hostname the uptime checks hit (the live domain, not the run.app URL)."
+  type        = string
+  default     = "beech.markjen.com"
+}

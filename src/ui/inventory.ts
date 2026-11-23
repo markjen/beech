@@ -2,10 +2,7 @@ import { icon, type IconName } from './hud';
 import { EXTRAS, isAvailable, type Item } from '../world/items';
 
 /** What's planned but not here yet, shown greyed out so the tray reads as a beginning. */
-const COMING = [
-  { name: 'Shop', note: 'Special items, some only for a while' },
-  { name: 'Mystery box', note: 'Rare, legendary and one-of-a-kind finds' },
-];
+const COMING = [{ name: 'Mystery box', note: 'Rare, legendary and one-of-a-kind finds' }];
 
 /** How the claw machine tile behaves: play, ask to sign in, or not here (sandbox). */
 export type ClawState = 'play' | 'signin' | 'none';
@@ -27,6 +24,8 @@ export class InventoryTray {
   private claw: ClawState = 'none';
   /** opens the claw machine (or the sign-in sheet) */
   onClaw: () => void = () => {};
+  /** opens the shop (or the sign-in sheet) */
+  onShop: () => void = () => {};
 
   constructor(
     hudButton: (name: IconName, label: string, cls?: string) => HTMLButtonElement,
@@ -77,6 +76,11 @@ export class InventoryTray {
 
   private ownedOf(id: string): number {
     return this.owned.get(id) ?? 0;
+  }
+
+  /** How many of this item you own (for the gift button in the place bar). */
+  ownedCount(id: string): number {
+    return this.ownedOf(id);
   }
 
   /** on this beach, plus on your other beaches */
@@ -169,6 +173,23 @@ export class InventoryTray {
       d.innerHTML = `<b>Claw machine</b><span>Coming soon</span>`;
       grid.appendChild(d);
     }
+    if (this.claw !== 'none') {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'inv-item shop-tile';
+      b.dataset.act = 'shop';
+      b.innerHTML = `${icon('bag')}<b>Shop</b><span>${this.claw === 'play' ? 'Beaches and more' : 'Sign in to shop'}</span>`;
+      b.addEventListener('click', () => {
+        this.setOpen(false);
+        this.onShop();
+      });
+      grid.appendChild(b);
+    } else {
+      const d = document.createElement('div');
+      d.className = 'inv-item soon';
+      d.innerHTML = `<b>Shop</b><span>In the app</span>`;
+      grid.appendChild(d);
+    }
     for (const c of COMING) {
       const d = document.createElement('div');
       d.className = 'inv-item soon';
@@ -198,21 +219,35 @@ export class InventoryTray {
 
 /**
  * Shown while an item is in hand: what it is, a size slider (remembered per
- * item), and a button to put it away.
+ * item), a button to gift it (owned, non-free items only), and a button to
+ * put it away. Gifting asks for their neighbor code right here in the bar.
  */
+export interface PlaceBarGift {
+  /** Is this item one you can give away? (owned, and not a free item) */
+  giftable: (item: Item) => boolean;
+  /** Send it. Resolves with who it went to; throws with the reason it didn't. */
+  sendGift: (item: Item, code: string) => Promise<{ name: string }>;
+}
+
 export class PlaceBar {
   private readonly root: HTMLDivElement;
   private readonly name: HTMLElement;
   private readonly ico: HTMLElement;
   private readonly slider: HTMLInputElement;
   private readonly sizeRow: HTMLElement;
+  private readonly giftBtn: HTMLButtonElement;
+  private readonly giftRow: HTMLElement;
+  private readonly giftInput: HTMLInputElement;
+  private readonly giftStatus: HTMLElement;
   private item: Item | null = null;
+  private gifting = false;
 
   constructor(
     parent: HTMLElement,
     private readonly sizes: () => Record<string, number>,
     private readonly setSize: (id: string, v: number) => void,
     private readonly putAway: () => void,
+    private gift?: PlaceBarGift,
   ) {
     this.root = document.createElement('div');
     this.root.className = 'place-bar';
@@ -220,27 +255,79 @@ export class PlaceBar {
       <span class="pb-icon"></span>
       <b class="pb-name"></b>
       <label class="pb-size"><span>small</span><input type="range" min="0" max="1" step="0.01" aria-label="Size"><span>big</span></label>
+      <button type="button" class="pb-gift" aria-label="Gift this to someone">${icon('gift')}</button>
+      <label class="pb-gift-row"><span>gift to</span><input placeholder="their code" maxlength="8" autocomplete="off" aria-label="Neighbor code to gift to"><button type="button" class="pb-send">send</button><button type="button" class="pb-cancel" aria-label="Cancel gifting">×</button></label>
+      <span class="pb-status" role="status"></span>
       <button type="button" class="pb-close" aria-label="Put it away">×</button>`;
     parent.appendChild(this.root);
     this.ico = this.root.querySelector('.pb-icon')!;
     this.name = this.root.querySelector('.pb-name')!;
-    this.slider = this.root.querySelector('input')!;
+    this.slider = this.root.querySelector('.pb-size input')!;
     this.sizeRow = this.root.querySelector('.pb-size')!;
+    this.giftBtn = this.root.querySelector('.pb-gift')!;
+    this.giftRow = this.root.querySelector('.pb-gift-row')!;
+    this.giftInput = this.giftRow.querySelector('input')!;
+    this.giftStatus = this.root.querySelector('.pb-status')!;
     this.slider.addEventListener('input', () => {
       if (this.item) this.setSize(this.item.id, Number(this.slider.value));
     });
     dragSlider(this.slider);
     this.root.querySelector('.pb-close')!.addEventListener('click', () => this.putAway());
+    this.giftBtn.addEventListener('click', () => this.setGifting(true));
+    this.giftRow.querySelector('.pb-cancel')!.addEventListener('click', () => this.setGifting(false));
+    const send = () => void this.sendGift();
+    this.giftRow.querySelector('.pb-send')!.addEventListener('click', send);
+    this.giftInput.addEventListener('keydown', (e) => e.key === 'Enter' && send());
   }
 
   show(item: Item | null, size01: number): void {
     this.item = item;
+    this.setGifting(false);
     this.root.classList.toggle('shown', !!item);
     if (!item) return;
     this.ico.innerHTML = icon(item.id as IconName);
     this.name.textContent = item.name;
     this.sizeRow.hidden = !!item.fixedSize;
     this.slider.value = String(this.sizes()[item.id] ?? size01);
+    this.giftBtn.hidden = !this.gift || !this.gift.giftable(item);
+  }
+
+  /** Add (or replace) the gifting flow after construction (once signed in). */
+  setGift(gift: PlaceBarGift): void {
+    this.gift = gift;
+    if (this.item) this.giftBtn.hidden = !this.gift.giftable(this.item);
+  }
+
+  /** Show (or hide) the code input for gifting the item in hand. */
+  private setGifting(on: boolean): void {
+    this.gifting = on && !!this.item;
+    this.root.classList.toggle('gifting', this.gifting);
+    this.sizeRow.hidden = this.gifting || !!this.item?.fixedSize;
+    this.giftBtn.hidden = this.gifting || !this.gift || !this.item || !this.gift.giftable(this.item);
+    this.giftInput.value = '';
+    this.giftStatus.textContent = '';
+    if (this.gifting) this.giftInput.focus({ preventScroll: true });
+  }
+
+  private async sendGift(): Promise<void> {
+    if (!this.item || !this.gift) return;
+    const code = this.giftInput.value.trim();
+    if (!code) {
+      this.giftStatus.textContent = 'type their code first';
+      return;
+    }
+    const item = this.item;
+    this.giftInput.disabled = true;
+    this.giftStatus.textContent = 'sending…';
+    try {
+      const { name } = await this.gift.sendGift(item, code);
+      this.giftStatus.textContent = `Sent to ${name}`;
+      window.setTimeout(() => this.putAway(), 1500);
+    } catch (e) {
+      this.giftStatus.textContent = (e as Error).message;
+      this.giftInput.disabled = false;
+      this.giftInput.focus({ preventScroll: true });
+    }
   }
 }
 
