@@ -126,6 +126,18 @@ _(nothing right now)_
 
 ## Done (recent)
 
+- [x] **Spire spike on Riley's beach** (2026-11-23): a wall of overlapping
+  rocks stacked its sand lifts without bound (each new rock's base was
+  sampled from sand already lifted by earlier rocks) and taking the rocks
+  off left the floor raised, so the leftover column — about 3.6 m on
+  Riley's beach (GJPUDD) — was permanent and survived save/load. Fixed in
+  `src/sim/objects.ts` (rock bases and `under` now come from the terrain
+  with lifts stripped; removal rebuilds the floor from the untouched floor
+  plus the rocks still there; `withoutRocks` peels exactly) and
+  `src/sim/beachSim.ts` (loading an old save re-bases its rocks to the sand
+  around them and replaces stacked lift with the terrain estimate, so
+  Riley's spire heals the next time her beach is opened). Regression tests
+  in `tests/spike.test.ts`.
 - [x] **Discord links** (2026-11-23, PR #40 draft): the Discord server is
   the feedback channel — "Talk to us" section + footer link on the
   landing page, footer link on the shore site, "Join our Discord" at the
