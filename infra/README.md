@@ -171,19 +171,31 @@ served by the `beech` service itself (Host-header routing in
 `server/src/rootApp.ts`), so the server already answers to both hosts;
 only the mappings and DNS are missing:
 
-1. Merge and deploy first, so the `beech` service exists. The mappings
+1. Verify the domain for the GCP account first. As of Nov 23, 2026
+   `beechshore.com` is **not** in the verified-domains list (`beech.games`
+   is), and mapping creation fails with "the provided domain does not
+   appear to be verified" until it is. Run `gcloud domains verify
+   beechshore.com`, which opens the Search Console flow in a browser;
+   add the TXT record it gives in the Squarespace DNS zone
+   (`beechshore.com`), then complete verification there.
+2. Merge and deploy first, so the `beech` service exists. The mappings
    fail if the service does not exist yet.
-2. `terraform apply -var shore_custom_domain=beechshore.com`
+3. `terraform apply -var shore_custom_domain=beechshore.com`
    (or set `shore_custom_domain` in a `terraform.tfvars`). This creates
    the `beechshore.com` and `www.beechshore.com` domain mappings
    (`google_cloud_run_domain_mapping.shore` and `.shore_www`, both gated
    on the same variable) and an uptime check for the shore home page
    (gated on the same variable; it is not yet wired into the uptime
    alert policy — same follow-up as the admin check above).
-3. Add the DNS records both mappings print, at the registrar (the
+4. Add the DNS records both mappings print, in Squarespace (the
    `beechshore.com` zone). Certificate provisioning waits on DNS.
-4. No OAuth or app change: the shore site has no sign-in, and the game
+5. No OAuth or app change: the shore site has no sign-in, and the game
    links to it with `VITE_SHORE_URL` (default `https://beechshore.com`).
+
+   If the mappings are created with `gcloud beta run domain-mappings
+   create` instead of `terraform apply`, import both mappings into
+   Terraform state before any apply, or apply fails with "already
+   exists" (same situation as the `beech.games` game mapping above).
 
 Until the domain is on, the shore is at `/shore` on the game's domain
 (see [SHORE_SITE.md](../docs/SHORE_SITE.md)).
