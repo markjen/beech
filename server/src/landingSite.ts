@@ -13,6 +13,7 @@
 
 import { BEACH_CAP } from './app.js';
 import { CHECKPOINTS_PER_BEACH } from './checkpoints.js';
+import { DISCORD_INVITE_URL } from './community.js';
 import { DIG_FIND_DAILY_CAP } from './digFinds.js';
 import { COOLDOWN_MAX_MS, COOLDOWN_MIN_MS } from './pulls.js';
 import { RELEASE_NOTES } from './releaseNotes.js';
@@ -121,12 +122,17 @@ ${whatsNew}
 <h2>Where to play</h2>
 <p><b>Free in your browser now</b> — no download, no install: <a href="${esc(gameUrl)}">play.beech.games</a>. Sign in to keep your beach, have neighbors, and play the machines.</p>
 <p>iPhone and Android apps are coming.</p>
+
+<h2>Talk to us</h2>
+<p>Feedback, bug reports and ideas live on our Discord — come and tell us what you think of your beach.</p>
+<p><a href="${esc(DISCORD_INVITE_URL)}">Join our Discord →</a></p>
 </main>
 <footer>
 <nav>
   <a href="/guide">Guide</a>
   <a href="/guide/releases">Release notes</a>
   <a href="/privacy.html">Privacy</a>
+  <a href="${esc(DISCORD_INVITE_URL)}">Discord</a>
   <a href="${esc(gameUrl)}">Play</a>
   <a href="mailto:hello@beech.games">hello@beech.games</a>
 </nav>

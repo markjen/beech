@@ -90,6 +90,10 @@ describe('the shore site', () => {
       expect(html).not.toContain(people.Cy.code); // never saved
       expect(html).toContain('Most loved');
       expect(html).toContain('https://play.example.test/');
+      // the footer links the Discord invite (server/src/community.ts —
+      // the server's permanent invite)
+      expect(html).toContain('href="https://discord.gg/y7EGw2yg2d"');
+      expect(html).toContain('>Discord</a>');
     }
     const own = await (await root.request('/', shoreHost)).text();
     expect(own).toContain('<link rel="canonical" href="https://beechshore.com/">');

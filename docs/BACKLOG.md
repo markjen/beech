@@ -40,6 +40,10 @@ The single list of what's left to do, for the owner and for agents.
   draft, via the release workflow — no manual upload was needed). Still
   manual in Play Console: listing text, content rating, data safety,
   target audience (13+), testers, promoting the draft. See MOBILE.md.
+- [ ] **Create the Discord server**: the feedback channel for players.
+  Server created 2026-11-23; its permanent invite
+  (`https://discord.gg/y7EGw2yg2d`) is in PR #40 (draft) — tick this once
+  that merges.
 
 ## In progress
 
@@ -122,6 +126,14 @@ _(nothing right now)_
 
 ## Done (recent)
 
+- [x] **Discord links** (2026-11-23, PR #40 draft): the Discord server is
+  the feedback channel — "Talk to us" section + footer link on the
+  landing page, footer link on the shore site, "Join our Discord" at the
+  bottom of the in-game account panel. All three read the invite from one
+  constant, `DISCORD_INVITE_URL` in `server/src/community.ts`. The URL
+  there is now the server's permanent invite
+  (`https://discord.gg/y7EGw2yg2d`); the PR stays a draft until the invite
+  is confirmed.
 - [x] **Production domains** (2026-11-23): game at https://play.beech.games,
   home page + guide + privacy at https://beech.games (landing), shore at
   https://beechshore.com (mapping + DNS still to do), admin at

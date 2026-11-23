@@ -85,6 +85,9 @@ The beach shape, day palette and place tints are copies of the app's;
   offers "see it now" on beechshore.
 - **Shore → game:** "Visit in beech" on every beach, "Build a beach" in the
   header, "Make one of your own" under each beach, "Play beech" in the footer.
+  The footer also links the Discord server for feedback, bug reports and
+  ideas (invite URL in `server/src/community.ts` — the server's permanent
+  invite).
 - **Game links preview too:** `?visit=` pages now carry the beach's card as
   `og:image` when it's on the shore (`server/src/shareMeta.ts`).
 
@@ -102,6 +105,9 @@ Nothing else changes: the server already answers to those hosts.
 
 ## Not done yet
 
+- PR #40 (Discord links) is a draft until the invite is confirmed: it now
+  carries the server's permanent invite
+  (`https://discord.gg/y7EGw2yg2d`) in `server/src/community.ts`.
 - An index on `beach (updated_at) WHERE on_shore AND sand IS NOT NULL` once
   there are many thousands of beaches; the lists scan today.
 - Stars on the site itself (it has no accounts; starring stays in the game).

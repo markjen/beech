@@ -10,7 +10,7 @@ and it sends them on into the game.
 
 | URL | What |
 |---|---|
-| `/` (on `beech.games`) | The landing page: hero ("beech — a quiet place by the sea"), Play in your browser → `https://play.beech.games`, How to play → `/guide`, "What you do", "What's new", where to play, footer. |
+| `/` (on `beech.games`) | The landing page: hero ("beech — a quiet place by the sea"), Play in your browser → `https://play.beech.games`, How to play → `/guide`, "What you do", "What's new", where to play, "Talk to us" (Discord), footer. |
 | `/landing` (every other host) | The same page, for preview before the domain flips — e.g. `https://play.beech.games/landing`, or `http://localhost:8787/landing` in development. |
 | `/guide`, `/guide/releases` | The user guide and release notes; they keep working on the landing hosts too, and the landing page links to them. |
 | `/privacy.html` (`/privacy` → 301) | The privacy policy (`public/privacy.html`); it answers on the landing hosts too, and on every other host as a static file. The footer links it. |
@@ -20,6 +20,13 @@ come from the same server constants the game and the guide use
 (`server/src/landingSite.ts`), so the page can't drift from the game.
 "What's new" renders the newest two entries from
 `server/src/releaseNotes.ts` — the same data as `/guide/releases`.
+
+Community: the page links the Discord server for feedback, bug reports and
+ideas — a "Talk to us" section and a link in the footer nav, plus the same
+link in the shore footer and at the bottom of the in-game account panel. The
+invite URL lives in one place, `server/src/community.ts`
+(`DISCORD_INVITE_URL`); it is the server's permanent invite
+(`https://discord.gg/y7EGw2yg2d`).
 
 What the page does **not** claim:
 
@@ -87,6 +94,10 @@ Nothing else changes: the server already answers to those hosts.
 
 ## Not done yet
 
+- PR #40 (Discord links) is a draft until the invite is confirmed: it now
+  carries the server's permanent invite
+  (`https://discord.gg/y7EGw2yg2d`) in `server/src/community.ts`, read by
+  every surface (landing, shore, in-game) from that one place.
 - Wire the landing uptime check into the `beech: site or API down` alert
   policy (`google_monitoring_alert_policy.uptime` in
   `infra/monitoring.tf`). It was left out because the policy's conditions

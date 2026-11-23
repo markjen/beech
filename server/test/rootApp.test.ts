@@ -178,6 +178,10 @@ describe('the landing page and host routing', () => {
     expect(html).toContain(hero);
     expect(html).toContain('What’s new');
     expect(html).toContain('/guide/releases');
+    // the community section and the footer both link the Discord invite
+    // (server/src/community.ts — the server's permanent invite)
+    expect(html).toContain('Join our Discord');
+    expect(html).toContain('href="https://discord.gg/y7EGw2yg2d"');
     expect(html).not.toContain('beech-spa-marker');
     expect((await root.request('/landing/')).headers.get('location')).toBe('/landing');
   });

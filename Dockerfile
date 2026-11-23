@@ -16,6 +16,12 @@ RUN --mount=type=secret,id=ca,required=false NODE_EXTRA_CA_CERTS=/run/secrets/ca
 COPY index.html vite.config.ts tsconfig.json ./
 COPY public ./public
 COPY src ./src
+# The web client imports this one server file (server/src/community.ts holds
+# the Discord invite both the client and the server read); the web stage
+# otherwise has no server/ files, so copy it in explicitly. If that file
+# moves, this line must move with it — otherwise the build fails exactly
+# like a local build with the file deleted.
+COPY server/src/community.ts ./server/src/community.ts
 ARG VITE_GOOGLE_CLIENT_ID=""
 ENV VITE_ACCOUNTS=1 VITE_API_URL="" VITE_GOOGLE_CLIENT_ID=${VITE_GOOGLE_CLIENT_ID}
 RUN npx tsc --noEmit && npx vite build
