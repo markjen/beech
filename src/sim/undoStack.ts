@@ -10,6 +10,8 @@ export interface UndoEntry {
   delta: Float32Array;
   /** an object placed on / taken off the beach (no sand change) */
   obj?: { op: 'add' | 'remove'; data: PlacedObject };
+  /** objects a dozer or vacuum stroke swept up along its path (sand change too, or none) */
+  removed?: PlacedObject[];
 }
 
 /**

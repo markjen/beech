@@ -112,6 +112,37 @@ The single list of what's left to do, for the owner and for agents.
 
 ## Done (recent)
 
+- [x] **Gift cards, promos and credit on the web only** (2026-11-23): the
+  iOS and Android apps no longer show the redeem box, the promo field, the
+  credit line or "Buy with credit" (App Store 3.1.1 / Play payments
+  policy); `codesAllowed()` in `src/net/shop.ts`.
+- [x] **Gift cards and promo codes** (2026-11-23): gift cards are prepaid
+  credit (16-char bearer codes, HMAC-SHA-256 under a pepper, shown once at
+  issue, never stored); promo codes discount a server-side credit purchase
+  (percent/fixed, per-product, usage caps, expiry, claimed atomically with
+  the purchase). Admin console at `/admin` (Google sign-in + allowlist:
+  markjen@gmail.com only) and CLI `scripts/beech-admin.mjs` (admin API
+  token from the environment, hashed server-side). Design and setup in
+  [GIFT_CARDS_PROMOS.md](GIFT_CARDS_PROMOS.md). **Before merging: create
+  Secret Manager secrets `beech-admin-token` and `beech-gift-code-pepper`
+  and set the `ADMIN_EMAILS` Actions variable, or the deploy fails.**
+
+- [x] **Digging finds** (2026-11-23, 18ef11a): digging can turn up a buried item from
+  this week's vending set at the vending odds (60/25/12/3) — server-side roll
+  at the end of a real dig stroke (2 m travelled, or 1 s in place), 1 in 10
+  good digs, at most 3 finds a day and one roll every 30 s, granted atomically
+  to the bag and shown in a "You dug something up!" dialog (Keep it / Put it
+  on the beach). Design in DIGGING_FINDS.md.
+
+- [x] **Bulldozer drag-flattens, dig/build/flatten faster**
+  (2026-11-22, 3ad5ed4): one pass of the blade now flattens at any drag speed
+  (flattenRate 120 → 300); dig/build rates up (rateStart 0.16 → 0.5,
+  rateHeld 0.6 → 1.0, holdRamp 1.2 → 0.6 s) — 0.4 m dug in 0.67 s
+  holding still (was 1.40 s), a 1 m/s drag digs 0.085 m (was 0.027 m).
+  Returning scooped-up items to the bag is the clearing tool's dozer mode
+  (PR #17), which carries the sweep mechanism — this PR keeps only the
+  rate tuning. New `tests/bulldozer.test.ts` (5 tests: one-pass flatten,
+  faster dig/build timings, tuned-rate assertions).
 - [x] **Shop**: store items (glow and sparkle on the beach), more than one
   beach (live on different devices at once), purchases checked with Apple
   and Google, a pricing plan (PRICING.md) (2026-11-23).
@@ -120,6 +151,15 @@ The single list of what's left to do, for the owner and for agents.
   (2026-11-23, 6b4f36d): `src/ui/beachMap.ts` plots each beach at its real lon/lat
   on a self-contained stylized SVG world map (no tiles); the settings list
   and favorites are ordered west to east; dots are tappable to open a beach.
+
+- [x] **Clearing tool: dozer, flatten, and vacuum in one top-level tool**
+  (2026-11-23, d07a043): the item tool only places now (its tap-to-pick-up is gone);
+  a vacuum cleaner tool picks items up on a tap and vacuums the drag path on
+  hold-and-drag; dozer, flatten, and vacuum live under one "Clearing" tool
+  with a mode strip. Dozer and vacuum sweep through the same worker-side
+  mechanism as the bulldozer PR (#16): objects are removed from the beach and
+  the bag counts owned minus placed, so the return is automatic; rocks stay,
+  wild strays are swept away but never credited; strokes are undoable.
 - [x] **Claw machine can miss** (2026-11-22): the server rolls a grab after
   the draw — the claw keeps a common ball 80% of the time, a rare one 65%,
   a legendary one 40% (about 1 go in 4 comes up empty). Starter gifts always

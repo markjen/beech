@@ -197,7 +197,6 @@ const MIGRATIONS: string[] = [
   CREATE INDEX purchases_user ON purchases (user_id);
   ALTER TABLE inventory ADD COLUMN purchase_id BIGINT REFERENCES purchases (id) ON DELETE SET NULL;
   `,
-
   // 9: gifts. Who gave what to whom (for the rate limit and for disputes);
   // the transfer itself lives in the inventory rows (source 'gift').
   `
@@ -223,6 +222,89 @@ const MIGRATIONS: string[] = [
   );
   INSERT INTO star_first (user_id, beach_id, at) SELECT user_id, beach_id, created_at FROM favorites;
   CREATE INDEX favorites_beach ON favorites (beach_id);
+  `,
+  // 11: digging finds (docs/DIGGING_FINDS.md). One row per person: how many
+  // buried items they dug up today (UTC), and when they last rolled, so a
+  // fast client can't spin the roll. The finds themselves are logged in
+  // `pulls` (pool 'dig') and granted in `inventory` (source 'pull').
+  `
+  CREATE TABLE dig_state (
+    user_id UUID PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,
+    day TEXT NOT NULL,                 -- UTC date of the last roll, YYYY-MM-DD
+    finds INTEGER NOT NULL DEFAULT 0 CHECK (finds >= 0),
+    last_roll_at BIGINT NOT NULL DEFAULT 0
+  );
+  `,
+
+  // 12: gift cards, promo codes and account credit (docs/GIFT_CARDS_PROMOS.md).
+  // A gift card is prepaid credit: redeeming it moves its whole value into
+  // the player's account credit, which buys products server-side. The card
+  // code is a bearer credential, so only its HMAC (under GIFT_CODE_PEPPER)
+  // is stored — never the code itself. Promo codes are public marketing
+  // codes, so they are stored as typed (normalized upper case).
+  `
+  ALTER TABLE users ADD COLUMN email TEXT;
+  ALTER TABLE users ADD COLUMN credit_cents INTEGER NOT NULL DEFAULT 0 CHECK (credit_cents >= 0);
+
+  CREATE TABLE gift_cards (
+    id UUID PRIMARY KEY,
+    code_hash TEXT NOT NULL UNIQUE,      -- HMAC-SHA-256 of the code; the code itself is never stored
+    amount_cents INTEGER NOT NULL CHECK (amount_cents > 0),
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'redeemed', 'disabled')),
+    issued_by UUID REFERENCES users (id) ON DELETE SET NULL,  -- NULL: issued by the CLI token
+    issued_at BIGINT NOT NULL,
+    expires_at BIGINT,                   -- NULL: never expires
+    redeemed_by UUID REFERENCES users (id) ON DELETE SET NULL,
+    redeemed_at BIGINT,
+    note TEXT NOT NULL DEFAULT ''
+  );
+  CREATE INDEX gift_cards_status ON gift_cards (status, issued_at DESC);
+
+  CREATE TABLE promo_codes (
+    code TEXT PRIMARY KEY,               -- normalized upper case, e.g. LAUNCH20
+    kind TEXT NOT NULL CHECK (kind IN ('percent', 'fixed')),
+    value INTEGER NOT NULL CHECK (value > 0),  -- percent 1-100, or USD cents off
+    applies_to TEXT,                     -- NULL: any product; otherwise one product id
+    max_uses INTEGER CHECK (max_uses IS NULL OR max_uses > 0),
+    uses INTEGER NOT NULL DEFAULT 0 CHECK (uses >= 0),
+    active BOOLEAN NOT NULL DEFAULT true,
+    created_by UUID REFERENCES users (id) ON DELETE SET NULL,  -- NULL: created by the CLI token
+    created_at BIGINT NOT NULL,
+    expires_at BIGINT                    -- NULL: never expires
+  );
+
+  CREATE TABLE promo_uses (
+    id BIGSERIAL PRIMARY KEY,
+    code TEXT NOT NULL REFERENCES promo_codes (code),
+    user_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    product_id TEXT NOT NULL,
+    discount_cents INTEGER NOT NULL CHECK (discount_cents >= 0),
+    created_at BIGINT NOT NULL
+  );
+  CREATE INDEX promo_uses_code ON promo_uses (code, created_at DESC);
+
+  -- every movement of account credit, so a balance can always be explained
+  CREATE TABLE credit_ledger (
+    id BIGSERIAL PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    kind TEXT NOT NULL CHECK (kind IN ('gift_card', 'spend')),
+    amount_cents INTEGER NOT NULL,       -- signed: +credit in, -credit out
+    ref TEXT NOT NULL,                   -- gift card id, or product id
+    created_at BIGINT NOT NULL
+  );
+  CREATE INDEX credit_ledger_user ON credit_ledger (user_id, created_at DESC);
+
+  -- who did what in the admin console / CLI (never holds a code value)
+  CREATE TABLE admin_audit (
+    id BIGSERIAL PRIMARY KEY,
+    actor TEXT NOT NULL,                 -- admin user id, or 'cli-token'
+    action TEXT NOT NULL,
+    target_type TEXT NOT NULL,
+    target_id TEXT NOT NULL,
+    detail JSONB NOT NULL DEFAULT '{}',
+    created_at BIGINT NOT NULL
+  );
+  CREATE INDEX admin_audit_created ON admin_audit (created_at DESC);
   `,
 ];
 

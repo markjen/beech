@@ -81,6 +81,7 @@ are **no secrets** to add — these are all public identifiers.
 | `GOOGLE_CLIENT_ID` | OAuth web client ID (below) |
 | `GOOGLE_CLIENT_IDS` | web client ID, plus iOS/Android client IDs when they exist, comma-separated |
 | `APPLE_CLIENT_IDS` | later, for Sign in with Apple |
+| `ADMIN_EMAILS` | the Google account(s) allowed into the admin console, comma-separated — production: `markjen@gmail.com` |
 
 ## 4. Google sign-in (Console, once)
 
@@ -143,11 +144,34 @@ From `server/src/server.ts` — what the container needs at runtime:
 | `GOOGLE_CLIENT_IDS` | comma-separated client IDs (web, iOS, Android) |
 | `APPLE_CLIENT_IDS` | comma-separated (bundle id, Services ID); empty until Apple sign-in ships |
 | `ALLOWED_ORIGINS` | unset — defaults to `capacitor://localhost,https://localhost` |
+| `ADMIN_EMAILS` | comma-separated verified Google emails allowed into the admin console — production: `markjen@gmail.com`; empty: no admin |
+| `ADMIN_API_TOKEN` | the CLI's credential, from Secret Manager secret `beech-admin-token`; unset: the CLI can't authenticate |
+| `GIFT_CODE_PEPPER` | pepper for gift card code hashes, from Secret Manager secret `beech-gift-code-pepper`; unset: works, but logs a warning |
 | `DEV_AUTH` | **never set in production** (enables a dev-only sign-in; the server refuses to start with it when `NODE_ENV=production`) |
 
 `DATABASE_URL` is an alternative to the socket vars (used locally and
 in CI's image boot test); production uses the socket. The DB pool is
 capped at 5 connections per instance (`server/src/db.ts`).
+
+### Gift cards / admin secrets (docs/GIFT_CARDS_PROMOS.md)
+
+The two admin secrets are **not** in Terraform: create them by hand, then
+add them to the deploy workflow's `--set-secrets` next to `DB_PASSWORD`.
+Neither value ever goes in the repo.
+
+```bash
+# one random value each (keep them somewhere safe — the CLI token is the only copy)
+openssl rand -hex 32  # -> ADMIN_API_TOKEN, secret beech-admin-token
+openssl rand -hex 32  # -> GIFT_CODE_PEPPER, secret beech-gift-code-pepper
+gcloud secrets create beech-admin-token --data-file=- --project beech-prod <<<"<token>"
+gcloud secrets create beech-gift-code-pepper --data-file=- --project beech-prod <<<"<pepper>"
+# grant the runtime service account read access, then redeploy
+gcloud secrets add-iam-policy-binding beech-admin-token --member="serviceAccount:beech-run@beech-prod.iam.gserviceaccount.com" --role="roles/secretmanager.secretAccessor" --project beech-prod
+gcloud secrets add-iam-policy-binding beech-gift-code-pepper --member="serviceAccount:beech-run@beech-prod.iam.gserviceaccount.com" --role="roles/secretmanager.secretAccessor" --project beech-prod
+```
+
+Rotating `GIFT_CODE_PEPPER` orphans unredeemed gift cards issued under
+the old pepper — issue replacements instead of rotating casually.
 
 ## Destroying
 

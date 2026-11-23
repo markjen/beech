@@ -8,6 +8,12 @@ export interface VerifiedIdentity {
   provider: 'google' | 'apple';
   sub: string;
   name: string;
+  /**
+   * Google only, and only when Google says the address is verified
+   * (payload.email_verified). The admin allowlist checks this, so an
+   * unverified address must never arrive here.
+   */
+  email?: string;
 }
 
 /**
@@ -29,7 +35,9 @@ export async function verifyGoogleIdToken(
   if (typeof payload.sub !== 'string' || !payload.sub) throw new Error('token has no subject');
   const given = typeof payload.given_name === 'string' ? payload.given_name : '';
   const full = typeof payload.name === 'string' ? payload.name : '';
-  return { provider: 'google', sub: payload.sub, name: (given || full).slice(0, 60) };
+  // the email is only trusted when Google has verified it
+  const email = payload.email_verified === true && typeof payload.email === 'string' ? payload.email : undefined;
+  return { provider: 'google', sub: payload.sub, name: (given || full).slice(0, 60), ...(email ? { email } : {}) };
 }
 
 const APPLE_JWKS = createRemoteJWKSet(new URL('https://appleid.apple.com/auth/keys'));

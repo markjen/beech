@@ -37,6 +37,8 @@ const ICONS = {
   bottle: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 15.5l9-9 2.5.5 2-2 2 2-2 2 .5 2.5-9 9a2 2 0 0 1-2.8 0l-2.2-2.2a2 2 0 0 1 0-2.8z" /><path d="M8 13l3 3" opacity=".55"/></svg>`,
   hand: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 12.5V5.8a1.4 1.4 0 0 1 2.8 0V11" /><path d="M10.8 10.5V4.4a1.4 1.4 0 0 1 2.8 0v6.1" /><path d="M13.6 10.6V5.6a1.4 1.4 0 0 1 2.8 0v6.4" /><path d="M16.4 9.4a1.4 1.4 0 0 1 2.8 0V14a7 7 0 0 1-7 7h-.6a6 6 0 0 1-4.7-2.3L4 15.4a1.5 1.5 0 0 1 2.2-2l1.8 1.8" /></svg>`,
   dozer: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17.5h11" /><circle cx="5.5" cy="17.5" r="2" /><circle cx="11.5" cy="17.5" r="2" /><path d="M4 15.5v-4h6l2 4" /><path d="M6.5 11.5V8.5h3" /><path d="M14 15.5l4-1.5M18 10v8l3 1" /></svg>`,
+  blade: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 14h18" /><path d="M12 14V6" /><path d="M9 9l3-3 3 3" /></svg>`,
+  vacuum: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="7" cy="17" r="3.5" /><path d="M10 14.5c3-.8 5-2.8 6.2-5.5" /><path d="M16.2 9L20 6.5 19 10z" /></svg>`,
   deckchair: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 20l4.5-9.5L17 5" /><path d="M8.5 15h8l2.5 5" /><path d="M10.5 10.5c2 1 4 3 6 4.5" opacity=".55"/></svg>`,
   beach: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 16.5c3.5-3 15.5-3 19 0" /><path d="M2.5 19.5c3-1.4 6-1.4 9.5 0s6.5 1.4 9.5 0" opacity=".55"/><path d="M12 13V6" /><path d="M12 6c-2.8 0-5 1.5-6 3.5h12C17 7.5 14.8 6 12 6z" /></svg>`,
   parasol: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11a9 7 0 0 1 18 0z" /><path d="M12 11v10M12 4v1" /><path d="M9 11c0-3 1.2-5.5 3-6.5 1.8 1 3 3.5 3 6.5" opacity=".55"/></svg>`,
@@ -58,6 +60,14 @@ export function icon(name: IconName): string {
 export interface HudHandlers {
   undo(): void;
   redo(): void;
+}
+
+export interface ToolDef {
+  id: string;
+  icon: IconName;
+  label: string;
+  /** modes of a grouped tool (e.g. the clearing tool): shown while it is current */
+  modes?: { id: string; icon: IconName; label: string }[];
 }
 
 /** The few round buttons over the canvas. */
@@ -143,7 +153,7 @@ export class Hud {
   }
 
   /** Small column of tool buttons above the undo button. */
-  setTools(tools: { id: string; icon: IconName; label: string }[], current: string, pick: (id: string) => void): void {
+  setTools(tools: ToolDef[], current: string, pick: (id: string) => void): void {
     this.toolGroup.innerHTML = '';
     for (const t of tools) {
       const b = this.button(t.icon, t.label, 'hud-btn hud-tool');
@@ -151,15 +161,38 @@ export class Hud {
       b.dataset.tool = t.id;
       b.addEventListener('click', () => pick(t.id));
       this.toolGroup.appendChild(b);
+      if (t.modes) {
+        const strip = document.createElement('div');
+        strip.className = 'hud-modes';
+        strip.dataset.forTool = t.id;
+        strip.setAttribute('role', 'radiogroup');
+        strip.setAttribute('aria-label', `${t.label} mode`);
+        for (const m of t.modes) {
+          const mb = this.button(m.icon, m.label, 'hud-btn hud-mode');
+          mb.setAttribute('role', 'radio');
+          mb.dataset.mode = m.id;
+          mb.addEventListener('click', () => pick(m.id));
+          strip.appendChild(mb);
+        }
+        this.toolGroup.appendChild(strip);
+      }
     }
     this.setTool(current);
   }
 
-  setTool(id: string): void {
+  setTool(id: string, mode?: string): void {
     for (const b of this.toolGroup.querySelectorAll<HTMLButtonElement>('button')) {
       const on = b.dataset.tool === id;
       b.classList.toggle('active', on);
       b.setAttribute('aria-checked', String(on));
+      if (b.dataset.mode !== undefined) {
+        const mon = b.dataset.mode === mode;
+        b.classList.toggle('active', mon);
+        b.setAttribute('aria-checked', String(mon));
+      }
+    }
+    for (const s of this.toolGroup.querySelectorAll<HTMLElement>('.hud-modes')) {
+      s.classList.toggle('open', s.dataset.forTool === id);
     }
   }
 

@@ -71,8 +71,8 @@ jobs:
             --allow-unauthenticated \
             --service-account "${{ vars.GCP_RUNTIME_SA }}" \
             --add-cloudsql-instances "${{ vars.GCP_SQL_INSTANCE }}" \
-            --set-env-vars "^@^DB_SOCKET=/cloudsql/${{ vars.GCP_SQL_INSTANCE }}@DB_NAME=beech@DB_USER=beech@GOOGLE_CLIENT_IDS=${{ vars.GOOGLE_CLIENT_IDS }}@APPLE_CLIENT_IDS=${{ vars.APPLE_CLIENT_IDS }}" \
-            --set-secrets "DB_PASSWORD=beech-db-password:latest" \
+            --set-env-vars "^;^DB_SOCKET=/cloudsql/${{ vars.GCP_SQL_INSTANCE }};DB_NAME=beech;DB_USER=beech;GOOGLE_CLIENT_IDS=${{ vars.GOOGLE_CLIENT_IDS }};APPLE_CLIENT_IDS=${{ vars.APPLE_CLIENT_IDS }};ADMIN_EMAILS=${{ vars.ADMIN_EMAILS }}" \
+            --set-secrets "DB_PASSWORD=beech-db-password:latest,ADMIN_API_TOKEN=beech-admin-token:latest,GIFT_CODE_PEPPER=beech-gift-code-pepper:latest" \
             --cpu 1 --memory 512Mi --concurrency 80 \
             --min-instances 0 --max-instances 10
       - name: Smoke test
