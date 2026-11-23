@@ -8,10 +8,15 @@
 // be shown, and some countries restrict paid random items; check before
 // adding a paid pool.
 //
+// The vending machine (server/src/vending.ts) is a second pool of the same
+// shape — one free ball a day from a weekly set — but it lives outside
+// POOLS because its items change every week. Its tiers are the same five
+// rarities; the claw just never draws 'uncommon' or 'unique' (odds 0).
+//
 // Item ids must exist in the app's catalog (src/world/items.ts); a test in
 // tests/items.test.ts keeps the two in step.
 
-export type Rarity = 'common' | 'rare' | 'legendary';
+export type Rarity = 'common' | 'uncommon' | 'rare' | 'legendary' | 'unique';
 
 export interface Pool {
   id: string;
@@ -26,11 +31,13 @@ export const POOLS: Record<string, Pool> = {
   daily: {
     id: 'daily',
     name: 'Claw machine',
-    odds: { common: 0.7, rare: 0.25, legendary: 0.05 },
+    odds: { common: 0.7, uncommon: 0, rare: 0.25, legendary: 0.05, unique: 0 },
     items: {
       common: ['conch', 'sanddollar'],
+      uncommon: [],
       rare: ['starfish'],
       legendary: ['bottle'],
+      unique: [],
     },
   },
 };
@@ -65,7 +72,7 @@ export function starterPrize(
 
 /** Draw from a pool. `rand` returns [0, 1); the server uses crypto randomness. */
 export function draw(pool: Pool, rand: () => number = cryptoRandom): { item: string; rarity: Rarity } {
-  const order: Rarity[] = ['legendary', 'rare', 'common'];
+  const order: Rarity[] = ['unique', 'legendary', 'rare', 'uncommon', 'common'];
   let r = rand();
   let rarity: Rarity = 'common';
   for (const k of order) {

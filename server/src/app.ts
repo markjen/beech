@@ -25,7 +25,8 @@ import { HTTPException } from 'hono/http-exception';
 
 import { PRODUCTS, productById } from './products.js';
 import { appleRefund, googleVoided, verifyAppleTransaction, verifyGooglePurchase, type VerifiedPurchase } from './store.js';
-import { POOLS, cooldownAfter, draw, pullDay, starterPrize, STARTER } from './pulls.js';
+import { POOLS, cooldownAfter, draw, pullDay, starterPrize, STARTER, type Rarity } from './pulls.js';
+import { currentSet, drawVending, nextUtcMidnight } from './vending.js';
 import { hashToken, newSessionToken, SESSION_DAYS, verifyAppleIdToken, verifyGoogleIdToken, type VerifiedIdentity } from './auth.js';
 import { toBytes, type Db } from './db.js';
 
@@ -655,46 +656,88 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const now = clock();
     const state = await freeAt(c.get('user').id);
     const daily = state.get('daily');
+    type PoolStatus = {
+      id: string;
+      name: string;
+      odds: Record<Rarity, number>;
+      items: Record<Rarity, string[]>;
+      free: boolean;
+      nextCooldown: number;
+      nextFree: number;
+      starter?: { rare: string; paid: string; beach: string; beachAfterMs: number };
+      set?: { week: number; name: string };
+    };
+    const pools: PoolStatus[] = Object.values(POOLS).map((p) => {
+      const st = state.get(p.id);
+      return {
+        id: p.id,
+        name: p.name,
+        odds: p.odds,
+        items: p.items,
+        free: !st || st.at <= now,
+        // how long you'll wait after this go before the next
+        nextCooldown: cooldownAfter((st?.count ?? 0) + 1),
+        nextFree: st && st.at > now ? st.at : now,
+        // the fixed first prizes, shown before the odds
+        starter: { rare: STARTER.rare.item, paid: STARTER.paid.item, beach: STARTER.beach.item, beachAfterMs: STARTER.beachAfterMs },
+      };
+    });
+    // the vending machine: same shape, but its pool is this week's set and a
+    // free ball comes once a day (next UTC midnight), not on the claw's
+    // doubling rest. No starter gifts here.
+    const set = currentSet(now);
+    if (set) {
+      const st = state.get('vending');
+      pools.push({
+        id: 'vending',
+        name: 'Vending machine',
+        // the vending machine has no legendary tier (its tiers are common,
+        // uncommon, rare, unique); the shape stays the claw's so the app
+        // renders it the same way
+        odds: { ...set.odds, legendary: 0 },
+        items: { ...set.items, legendary: [] },
+        free: !st || st.at <= now,
+        nextCooldown: nextUtcMidnight(now) - now,
+        nextFree: st && st.at > now ? st.at : now,
+        set: { week: set.week, name: set.name },
+      });
+    }
     return c.json({
-      pools: Object.values(POOLS).map((p) => {
-        const st = state.get(p.id);
-        return {
-          id: p.id,
-          name: p.name,
-          odds: p.odds,
-          items: p.items,
-          free: !st || st.at <= now,
-          // how long you'll wait after this go before the next
-          nextCooldown: cooldownAfter((st?.count ?? 0) + 1),
-          // the fixed first prizes, shown before the odds
-          starter: { rare: STARTER.rare.item, paid: STARTER.paid.item, beach: STARTER.beach.item, beachAfterMs: STARTER.beachAfterMs },
-        };
-      }),
+      pools,
       nextFree: daily && daily.at > now ? daily.at : now,
     });
   });
 
   // your free go: the server draws, records it and adds the prize to your bag.
   // The wait before the next go starts at 5 minutes and doubles each time, up
-  // to once a day.
+  // to once a day. A ball from the vending machine is one a day instead
+  // (next UTC midnight) and is always a draw from this week's set.
   app.post('/pulls/:pool', requireUser, async (c) => {
     const id = c.req.param('pool') ?? '';
     const pool = Object.hasOwn(POOLS, id) ? POOLS[id] : undefined;
-    if (!pool) fail(404, 'no such machine');
+    // the vending machine isn't in POOLS: its items are this week's set
+    const set = id === 'vending' ? currentSet(clock()) : null;
+    if (!pool && !set) fail(404, 'no such machine');
+    const poolId = pool?.id ?? 'vending';
     const me = c.get('user').id;
     const now = clock();
-    await db.query('INSERT INTO pull_state (user_id, pool, count, next_at) VALUES ($1, $2, 0, 0) ON CONFLICT DO NOTHING', [me, pool!.id]);
-    const count = Number((await db.query<{ count: number }>('SELECT count FROM pull_state WHERE user_id = $1 AND pool = $2', [me, pool!.id]))[0].count);
-    // the first goes are fixed gifts (the machine says so); the rest are drawn
-    const hist = (
-      await db.query<{ first: string | null; beach: boolean | null }>(
-        'SELECT MIN(created_at) AS first, BOOL_OR(item_id = $3) AS beach FROM pulls WHERE user_id = $1 AND pool = $2',
-        [me, pool!.id, STARTER.beach.item],
-      )
-    )[0];
-    const got =
-      starterPrize(count + 1, hist?.first == null ? null : Number(hist.first), now, !!hist?.beach) ?? draw(pool!);
-    const wait = cooldownAfter(count + 1);
+    await db.query('INSERT INTO pull_state (user_id, pool, count, next_at) VALUES ($1, $2, 0, 0) ON CONFLICT DO NOTHING', [me, poolId]);
+    const count = Number((await db.query<{ count: number }>('SELECT count FROM pull_state WHERE user_id = $1 AND pool = $2', [me, poolId]))[0].count);
+    // the first goes on the claw are fixed gifts (the machine says so); the
+    // vending machine is always a draw from this week's set
+    let got: { item: string; rarity: string };
+    if (set) {
+      got = drawVending(set);
+    } else {
+      const hist = (
+        await db.query<{ first: string | null; beach: boolean | null }>(
+          'SELECT MIN(created_at) AS first, BOOL_OR(item_id = $3) AS beach FROM pulls WHERE user_id = $1 AND pool = $2',
+          [me, poolId, STARTER.beach.item],
+        )
+      )[0];
+      got = starterPrize(count + 1, hist?.first == null ? null : Number(hist.first), now, !!hist?.beach) ?? draw(pool!);
+    }
+    const wait = set ? nextUtcMidnight(now) - now : cooldownAfter(count + 1);
     // one statement: claim the go (only if it's free and nobody claimed it
     // meanwhile), log it, and give the prize
     const rows = await db.query<{ item_id: string }>(
@@ -708,10 +751,11 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
        )
        INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at, expires_at)
        SELECT user_id, $4, 1, 'pull', $6, NULL FROM logged RETURNING item_id`,
-      [me, pool!.id, pullDay(now), got.item, got.rarity, now, wait, count],
+      [me, poolId, pullDay(now), got.item, got.rarity, now, wait, count],
     );
-    const st = (await freeAt(me)).get(pool!.id);
-    if (!rows[0]) return c.json({ error: 'not yet: the claw is resting', nextFree: st?.at ?? now }, 409);
+    const st = (await freeAt(me)).get(poolId);
+    if (!rows[0])
+      return c.json({ error: set ? 'not yet: your next ball is tomorrow' : 'not yet: the claw is resting', nextFree: st?.at ?? now }, 409);
     return c.json({ item: got.item, rarity: got.rarity, nextFree: st?.at ?? now + wait });
   });
 

@@ -194,6 +194,7 @@ export const PROP_COLORS = {
   sanddollar: [hex('#efe6d4'), hex('#e8dcc6')] as RGB[],
   starfish: [hex('#ef8a5f'), hex('#d9645a'), hex('#f2a65a')] as RGB[],
   bottle: [hex('#8fc9b3'), hex('#9cc3d9')] as RGB[],
+  nautilus: [hex('#e8d5c4'), hex('#d9a06b'), hex('#c97e5a')] as RGB[],
   /** deckchair canvas stripes (frame uses `pole`) */
   deckchair: [hex('#4f86c6'), hex('#e46f5a'), hex('#3fa58f')] as RGB[],
   // the shop: [main, accent, trim, lamp]
@@ -209,7 +210,8 @@ export const PROP_COLORS = {
 };
 
 /** Glow and sparkle colours for special things on the beach (src/render/glow.ts). */
-export const RARITY_GLOW: Record<'rare' | 'legendary', RGB> = {
+export const RARITY_GLOW: Record<'rare' | 'legendary' | 'unique', RGB> = {
   rare: hex('#7cc4ff'),
   legendary: hex('#ffcf5a'),
+  unique: hex('#c06fd6'),
 };

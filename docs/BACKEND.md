@@ -35,8 +35,8 @@ Migrations live in `src/migrations.ts` and are applied at startup.
 | `GET /api/shore/more?from=&dir=&count=` | keep walking from a beach (infinite scroll) |
 | `GET /api/neighbors/:side/beach` | that neighbor's sand (only your own neighbors' beaches are readable) |
 | `POST /api/neighbors/code` | new code; the old one stops working, and current neighbors keep you |
-| `GET /api/pulls` | `{ pools: [{ id, name, odds, items, free, nextCooldown }], nextFree }`: the machines, their published odds, and whether a free go is ready |
-| `POST /api/pulls/:pool` | a free go (`daily`): the server draws, logs it and adds the prize to `inventory`. The rest before the next go starts at 5 min and doubles each go, up to a day (`pull_state`). 409 while it's resting |
+| `GET /api/pulls` | `{ pools: [{ id, name, odds, items, free, nextCooldown, nextFree, set? }], nextFree }`: the machines, their published odds, and whether a free go is ready. The claw machine (`daily`) and the vending machine (`vending`, this week's set — see [VENDING_MACHINE.md](VENDING_MACHINE.md)) |
+| `POST /api/pulls/:pool` | a free go (`daily` or `vending`): the server draws, logs it and adds the prize to `inventory`. The claw's rest before the next go starts at 5 min and doubles each go, up to a day; a vending ball is one a day, next UTC midnight (`pull_state`). 409 while it's resting |
 | `GET /api/beaches/:code` | anyone's saved beach, by code |
 | `GET /api/favorites`, `PUT`/`DELETE /api/favorites/:code` | your starred beaches |
 | `GET /api/store/products` | the shop's products: `{ id, name, grants, usd, blurb, featured }` |

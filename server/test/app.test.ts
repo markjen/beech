@@ -455,6 +455,59 @@ describe('pulls', () => {
   });
 });
 
+describe('vending machine', () => {
+  type Pools = { pools: { id: string; name: string; odds: Record<string, number>; items: Record<string, string[]>; free: boolean; nextFree: number; set?: { week: number; name: string } }[] };
+  const status = async (token: string) =>
+    ((await (await req('/pulls', {}, token)).json()) as Pools).pools.find((p) => p.id === 'vending')!;
+
+  it('shows this week’s set and its odds; one free ball a day', async () => {
+    const vera = await signIn('Vera');
+    const first = await status(vera.token);
+    expect(first.name).toBe('Vending machine');
+    expect(first.set).toMatchObject({ week: 1, name: 'First light' });
+    expect(Object.values(first.odds).reduce((a, b) => a + b, 0)).toBeCloseTo(1, 9);
+    expect(first.odds).toMatchObject({ common: 0.6, uncommon: 0.25, rare: 0.12, unique: 0.03 });
+    expect(first.free).toBe(true);
+
+    // a ball: always an item from this week's set, never a claw starter gift
+    const r = await req('/pulls/vending', { method: 'POST' }, vera.token);
+    expect(r.status).toBe(200);
+    const won = (await r.json()) as { item: string; rarity: string; nextFree: number };
+    const all = Object.values(first.items).flat();
+    expect(all).toContain(won.item);
+    expect(first.items[won.rarity]).toContain(won.item);
+    const inv = (await (await req('/inventory', {}, vera.token)).json()) as { items: { item: string; source: string }[] };
+    expect(inv.items).toEqual([expect.objectContaining({ item: won.item, source: 'pull' })]);
+    // the next ball is the next UTC midnight, not five minutes
+    const midnight = new Date(won.nextFree);
+    expect(midnight.getUTCHours()).toBe(0);
+    expect(midnight.getUTCMinutes()).toBe(0);
+    expect((await status(vera.token)).free).toBe(false);
+
+    // a second ball the same day is refused…
+    expect((await req('/pulls/vending', { method: 'POST' }, vera.token)).status).toBe(409);
+    // …and tomorrow's ball is free again
+    skew += won.nextFree - (Date.now() + skew) + 1000;
+    expect((await req('/pulls/vending', { method: 'POST' }, vera.token)).status).toBe(200);
+    skew = 0;
+  });
+
+  it('two at once: exactly one gets the ball', async () => {
+    const walt = await signIn('Walt');
+    const [a, b] = await Promise.all([req('/pulls/vending', { method: 'POST' }, walt.token), req('/pulls/vending', { method: 'POST' }, walt.token)]);
+    expect([a.status, b.status].sort()).toEqual([200, 409]);
+    const third = (await (await req('/pulls/vending', { method: 'POST' }, walt.token)).json()) as { error?: string };
+    expect(third.error).toMatch(/tomorrow/);
+  });
+
+  it('a ball from the vending machine does not spend the claw’s free go', async () => {
+    const uma = await signIn('Uma');
+    expect((await req('/pulls/vending', { method: 'POST' }, uma.token)).status).toBe(200);
+    const daily = ((await (await req('/pulls', {}, uma.token)).json()) as Pools).pools.find((p) => p.id === 'daily')!;
+    expect(daily.free).toBe(true);
+  });
+});
+
 describe('neighbors', () => {
   it('normalizes codes people type', () => {
     expect(normalizeCode(' k7f-2qx ')).toBe('K7F2QX');

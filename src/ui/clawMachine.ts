@@ -8,7 +8,7 @@ const CAPSULE: Record<string, string> = {
   rare: '#8ec5e8',
   legendary: '#f2c45a',
 };
-const RARITY_NAME: Record<string, string> = { common: 'Common', rare: 'Rare', legendary: 'Legendary', unique: 'One of a kind' };
+const RARITY_NAME: Record<string, string> = { common: 'Common', uncommon: 'Uncommon', rare: 'Rare', legendary: 'Legendary', unique: 'One of a kind' };
 
 type Phase = 'idle' | 'drop' | 'grab' | 'lift' | 'carry' | 'open' | 'done';
 

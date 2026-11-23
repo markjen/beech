@@ -113,7 +113,7 @@ export class Glow {
    * from its centre, `height` how tall it is; `lights` are lamp positions in
    * the root's space.
    */
-  attach(root: Mesh, rarity: 'rare' | 'legendary' | null, reach: number, height: number, lights: Vector3[], seed: number): GlowHandle {
+  attach(root: Mesh, rarity: 'rare' | 'legendary' | 'unique' | null, reach: number, height: number, lights: Vector3[], seed: number): GlowHandle {
     const parts: Mesh[] = [];
     const sparkles: { m: Mesh; phase: number; speed: number; size: number }[] = [];
     if (rarity) {
