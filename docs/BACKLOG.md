@@ -94,6 +94,12 @@ _(nothing right now)_
   assets, 1080p screenshots/trailer, Coming Soon page (≥14 days), and Valve
   Build Review (`public/privacy.html` already updated). See
   [STEAM.md](STEAM.md).
+- [ ] **Live beaches** (the sea works while you're away): design in
+  [LIVE_SIM.md](LIVE_SIM.md). L1 owned items lost to the sea go back to the
+  bag; L2 coarse catch-up model in `src/sim/catchup.ts`; L3 server catch-up
+  on read (lock, CAS, epoch bump); L4 "while you were away" card; L5 owner
+  lease and live viewers (poll, then SSE). Owner decisions at the end of
+  the doc.
 - [ ] **Release setup for native sign-in** (DevOps): Android and iOS OAuth
   clients, build env vars, the Info.plist URL scheme, the Apple capability,
   and server client IDs. Steps are in BACKEND.md, "Phone apps". Then test on

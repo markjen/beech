@@ -12,7 +12,9 @@ Read these first:
    engineering queue, ideas). Take work from here, and update it in the same
    commit as the work.
 5. Feature designs not built yet, e.g. [docs/MULTI_BEACH.md](docs/MULTI_BEACH.md),
-   [docs/INBOX_NOTIFICATIONS.md](docs/INBOX_NOTIFICATIONS.md) (push not built yet) and
+   [docs/INBOX_NOTIFICATIONS.md](docs/INBOX_NOTIFICATIONS.md) (push not built yet),
+   [docs/LIVE_SIM.md](docs/LIVE_SIM.md) (the sea works while you're away,
+   live viewers), and
    [docs/BEACH_FILE.md](docs/BEACH_FILE.md) (export/import file spec).
    The public shore site (beechshore.com) is in [docs/SHORE_SITE.md](docs/SHORE_SITE.md).
 

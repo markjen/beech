@@ -192,7 +192,8 @@
   - native sign-in in the Capacitor apps (Google blocks WebView OAuth)
   - Sign in with Apple on iOS (required once Google sign-in ships there)
   - mutual neighbor requests
-  - live (rather than snapshot) neighbor sand
+  - live (rather than snapshot) neighbor sand: designed in
+    [LIVE_SIM.md](LIVE_SIM.md), with server catch-up while the owner is away
 
 GitHub Pages (removed 2026-11-22): the `github-pages` environment only
 accepted the repo's default branch, so the deploy job ran only there.
