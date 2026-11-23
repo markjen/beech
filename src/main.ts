@@ -37,6 +37,11 @@ import { BeachSync } from './net/beachSync';
 import { AccountPanel } from './ui/accountPanel';
 import { NEIGHBOR_OFFSET, NeighborView } from './render/neighbors';
 import { loadSettings, saveSettings, type Settings } from './ui/settingsStore';
+import { initTelemetry } from './net/telemetry';
+
+// Unhandled errors + one page-load timing sample go to /api/client-events,
+// so phones are visible in Cloud Logging too. First, so early errors count.
+initTelemetry();
 
 const params = new URLSearchParams(location.search);
 /**
