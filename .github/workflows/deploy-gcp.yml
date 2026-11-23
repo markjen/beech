@@ -81,7 +81,7 @@ jobs:
             --allow-unauthenticated \
             --service-account "${{ vars.GCP_RUNTIME_SA }}" \
             --add-cloudsql-instances "${{ vars.GCP_SQL_INSTANCE }}" \
-            --set-env-vars "^;^DB_SOCKET=/cloudsql/${{ vars.GCP_SQL_INSTANCE }};DB_NAME=beech;DB_USER=beech;GOOGLE_CLIENT_IDS=${{ vars.GOOGLE_CLIENT_IDS }};APPLE_CLIENT_IDS=${{ vars.APPLE_CLIENT_IDS }}" \
+            --set-env-vars "^;^DB_SOCKET=/cloudsql/${{ vars.GCP_SQL_INSTANCE }};DB_NAME=beech;DB_USER=beech;GOOGLE_CLIENT_IDS=${{ vars.GOOGLE_CLIENT_IDS }};APPLE_CLIENT_IDS=${{ vars.APPLE_CLIENT_IDS }};ALLOWED_ORIGINS=https://play.beech.games" \
             --set-secrets "DB_PASSWORD=beech-db-password:latest,GIFT_CODE_PEPPER=beech-gift-code-pepper:latest" \
             --cpu 1 --memory 512Mi --concurrency 80 \
             --min-instances 0 --max-instances 10
