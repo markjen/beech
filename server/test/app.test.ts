@@ -459,3 +459,75 @@ describe('neighbors', () => {
     expect((await get(me.token)).left).toBeNull();
   });
 });
+
+describe('leaderboard', () => {
+  type Entry = { rank: number; code: string; name: string; location: string; stars: number; recent: number; velocity: number; starred: boolean; yours: boolean };
+  const DAY = 86400000;
+  const board = async (token: string, which = 'all', limit = 100) => {
+    const r = await req(`/leaderboard?board=${which}&limit=${limit}`, {}, token);
+    expect(r.status).toBe(200);
+    return ((await r.json()) as { entries: Entry[] }).entries;
+  };
+  const codeOf = async (token: string) => ((await (await req('/neighbors', {}, token)).json()) as { code: string }).code;
+  const star = (token: string, code: string) => req(`/favorites/${code}`, { method: 'PUT' }, token);
+
+  it('ranks all-time stars and rising star velocity, leaving off-shore and unsaved beaches out', async () => {
+    const owners = await Promise.all(['Old', 'New', 'Mid', 'Hid', 'Bare'].map((n) => signIn(`lb${n}`)));
+    const [old, nu, mid, hid] = owners;
+    for (const o of [old, nu, mid, hid]) await putBeach(o.token, new Uint8Array([1, 2, 3]), 'piha');
+    await db.query('UPDATE beach SET on_shore = false WHERE owner_id = $1', [hid.user.id]);
+    const codes = await Promise.all(owners.map((o) => codeOf(o.token)));
+    const [cOld, cNew, cMid, cHid, cBare] = codes;
+    const fans = await Promise.all(['f1', 'f2', 'f3', 'f4'].map((n) => signIn(`lbfan-${n}`)));
+    const ours = (es: Entry[]) => es.filter((e) => codes.includes(e.code));
+    try {
+      // ten days ago three fans starred Old
+      skew = -10 * DAY;
+      for (const f of fans.slice(0, 3)) expect((await star(f.token, cOld)).status).toBe(200);
+      // four days ago all four starred Mid
+      skew = -4 * DAY;
+      for (const f of fans) await star(f.token, cMid);
+      // today two starred New, and everyone stars the off-shore and the never-saved beach
+      skew = 0;
+      for (const f of fans.slice(0, 2)) await star(f.token, cNew);
+      for (const f of fans) {
+        await star(f.token, cHid);
+        await star(f.token, cBare);
+      }
+      // un-starring Old and starring it again doesn't make that star new
+      expect((await req(`/favorites/${cOld}`, { method: 'DELETE' }, fans[0].token)).status).toBe(204);
+      await star(fans[0].token, cOld);
+      // a fan who un-stars for good stops counting
+      await req(`/favorites/${cMid}`, { method: 'DELETE' }, fans[3].token);
+
+      const all = ours(await board(fans[0].token));
+      expect(all.map((e) => [e.name, e.stars, e.recent])).toEqual([
+        ['lbMid', 3, 3], // a tie on stars goes to the one rising faster
+        ['lbOld', 3, 0],
+        ['lbNew', 2, 2],
+      ]);
+      expect(all[0].rank).toBeLessThan(all[1].rank);
+      expect(all[1].rank).toBeLessThan(all[2].rank);
+      expect(all[1]).toMatchObject({ code: cOld, location: 'piha', starred: true, yours: false });
+
+      const rising = ours(await board(fans[0].token, 'rising'));
+      expect(rising.map((e) => e.name)).toEqual(['lbNew', 'lbMid']); // Old's stars are all older than a week
+      expect(rising[0].velocity).toBeCloseTo(2, 1); // two stars today
+      expect(rising[1].velocity).toBeCloseTo(0.75, 1); // three stars four days old: 3 × ½²
+      // fan 4 never starred New
+      expect(ours(await board(fans[3].token, 'rising'))[0]).toMatchObject({ name: 'lbNew', starred: false });
+      // the owner sees their own beach marked
+      expect(ours(await board(nu.token, 'rising'))[0]).toMatchObject({ name: 'lbNew', yours: true, starred: false });
+
+      // more than a week on, nothing is rising any more; the all-time board stands
+      skew = 8 * DAY;
+      expect(ours(await board(fans[0].token, 'rising'))).toEqual([]);
+      expect(ours(await board(fans[0].token)).map((e) => e.stars)).toEqual([3, 3, 2]);
+    } finally {
+      skew = 0;
+    }
+    expect((await board(fans[0].token, 'all', 1)).length).toBe(1);
+    expect((await req('/leaderboard?board=weekly', {}, fans[0].token)).status).toBe(400);
+    expect((await req('/leaderboard')).status).toBe(401);
+  });
+});

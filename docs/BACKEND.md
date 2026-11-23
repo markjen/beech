@@ -39,6 +39,7 @@ Migrations live in `src/migrations.ts` and are applied at startup.
 | `POST /api/pulls/:pool` | a free go (`daily`): the server draws, logs it and adds the prize to `inventory`. The rest before the next go starts at 5 min and doubles each go, up to a day (`pull_state`). 409 while it's resting |
 | `GET /api/beaches/:code` | anyone's saved beach, by code |
 | `GET /api/favorites`, `PUT`/`DELETE /api/favorites/:code` | your starred beaches |
+| `GET /api/leaderboard?board=all\|rising&limit=50` | the most-starred beaches (see "Leaderboard" below): `{ board, window, halfLife, entries: [{ rank, code, name, beachName?, location, updatedAt, stars, recent, velocity, starred, yours }] }`; limit 1–100 |
 | `GET /api/inventory` | `{ items: [{ item, quantity, source, acquiredAt, expiresAt }] }`: what you own beyond the free items, unexpired. Empty until the shop and pulls exist; rows are only written by the server. |
 
 Sessions are 60-day random bearer tokens, and only their SHA-256 is stored.
@@ -76,6 +77,36 @@ The store privacy forms must say that the first name and the beach are
 public to other users. A "keep my beach off the shore" setting is on the
 backlog.
 
+### Leaderboard
+
+A star is a row in `favorites` (one per person per beach; you can't star
+your own). The leaderboard counts only stars that still stand, and lists
+only beaches that are on the shore (`on_shore`) and have been saved
+(`sand IS NOT NULL`). Beaches kept off the shore stay off the board too.
+
+- **All time:** stars now. Ties go to the one rising faster, then the older
+  beach.
+- **Rising (star velocity):** every star made in the last 7 days counts
+  `0.5 ^ (age / 2 days)`: a star today is worth 1, two days ago 0.5, six
+  days ago 0.125, and none after a week. The board is ordered by that sum
+  (`velocity`); `recent` is the plain count for the week, which is what the
+  app shows ("▲ 3"). Why this metric: a sliding 7-day count jumps when a
+  star falls off the end, and a Hacker-News score (`stars / age^1.8`)
+  divides by the beach's age, so old beaches that are suddenly loved never
+  rise. Exponential decay over the stars themselves is smooth, needs no
+  per-beach age, ranks "5 stars today" above "5 stars last week", and is
+  one `SUM` in SQL.
+- **Hard to game:** a star's age comes from `star_first` (migration 8), the
+  first time that person starred that beach, which survives un-starring. So
+  un-starring and starring again doesn't make a star look new. One person
+  adds at most 1 to any beach, and the owner's own stars are blocked (and
+  also filtered in the query). Many fake accounts could still push a beach
+  up; signing in needs a Google or Apple account, and API rate limiting
+  (backlog) would help further.
+- **Cost:** one grouped query over `favorites` per request (index
+  `favorites_beach`). Fine for now; if stars grow to millions, cache the
+  board for a minute and look up the caller's `starred` flags separately.
+
 While the shore is shown, the app polls `GET /api/neighbors` and the shore
 every 30 s, and refetches a beach only when its `updatedAt` changed.
 
@@ -89,6 +120,8 @@ every 30 s, and refetches a beach only when its `updatedAt` changed.
   person.
 - `src/render/neighbors.ts`: the neighbor slabs and tags. A refresh
   "generation" makes sure a slow older load can't overwrite a newer one.
+- `src/ui/leaderboard.ts`: the leaderboard panel (trophy button, bottom
+  left; production builds only).
 - `src/ui/accountPanel.ts`: the top of the settings sheet. It has sign in or
   out, save status, delete account (second tap to confirm), your code
   (copy / new code), and left/right slots ("move in" / "move away").
@@ -102,6 +135,7 @@ npm run server:dev                      # then, in another terminal:
 npm run e2e:accounts                    # sign in, dig, save, reload, restored, delete
 npm run e2e:neighbors                   # Ana saves; Ben adds her code on his left and sees her beach
 npm run e2e:shore                       # walk down a 3-beach shore, head home, visit by code, favorites
+npm run e2e:leaderboard                 # fans star beaches; the board orders them; star and visit from it
 ```
 
 CI runs the server tests on PGlite and on a Postgres 16 service, builds the

@@ -77,9 +77,13 @@ describe('migration 7: beaches of their own', () => {
       { beach_id: b, side: 'right', neighbor_beach_id: a },
     ]);
     expect(await db.query('SELECT beach_id FROM favorites')).toEqual([{ beach_id: a }]);
+    // migration 8: existing stars count on the leaderboard from when they were made
+    const first = await db.query<{ user_id: string; beach_id: string; at: string }>('SELECT user_id, beach_id, at FROM star_first');
+    expect(first.map((r) => [r.user_id, r.beach_id, Number(r.at)])).toEqual([[b, a, 1]]);
     // deleting a user takes their beaches and links with them
     await db.query('DELETE FROM users WHERE id = $1', [a]);
     expect(await db.query('SELECT * FROM neighbors')).toEqual([]);
+    expect(await db.query('SELECT * FROM star_first')).toEqual([]);
     await db.close();
   });
 });

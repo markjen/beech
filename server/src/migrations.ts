@@ -178,6 +178,20 @@ const MIGRATIONS: string[] = [
   -- the old one-beach-per-user table stays one release, unused, then goes
   ALTER TABLE beaches RENAME TO beaches_v1;
   `,
+  // 8: the leaderboard (BACKEND.md, "Leaderboard"). star_first keeps when
+  // each person first starred each beach, and survives un-starring, so
+  // un-starring and starring again can't make a star look new on "rising".
+  // Existing stars count from when they were made.
+  `
+  CREATE TABLE star_first (
+    user_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    beach_id UUID NOT NULL REFERENCES beach (id) ON DELETE CASCADE,
+    at BIGINT NOT NULL,
+    PRIMARY KEY (user_id, beach_id)
+  );
+  INSERT INTO star_first (user_id, beach_id, at) SELECT user_id, beach_id, created_at FROM favorites;
+  CREATE INDEX favorites_beach ON favorites (beach_id);
+  `,
 ];
 
 /** Apply migrations up to `upTo` (default: all). Tests use `upTo` to check a migration on older data. */
