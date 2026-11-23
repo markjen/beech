@@ -66,6 +66,11 @@ _(nothing right now)_
   their own in-app purchase for digital goods) and Stripe on the web.
   Purchases are verified on the server, which writes `inventory` rows.
   Limited items use `available.until` and `expires_at`.
+- [ ] **Web payments (Xsolla)**: plan in [WEB_PAYMENTS.md](WEB_PAYMENTS.md) —
+  Pay Station checkout for store items on the web, direct item grants,
+  promo support; recommends Xsolla over FastSpring (and over the Stripe
+  mention in "Shop (paid items)" above — Stripe would make us the
+  merchant of record). Owner decisions are listed at the end of that doc.
 - [ ] **Mystery boxes (paid pulls)**: reuse `draw()` and the pulls table
   once billing exists. Before shipping, check the odds-disclosure rules and
   country restrictions for paid random items.
