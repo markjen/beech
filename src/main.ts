@@ -28,6 +28,8 @@ import { Hud } from './ui/hud';
 import { SettingsSheet, StartScreen, showHint } from './ui/overlays';
 import { InventoryTray, PlaceBar } from './ui/inventory';
 import { ClawMachine } from './ui/clawMachine';
+import { Shop } from './ui/shop';
+import { ShopApi } from './net/shop';
 import { DEFAULT_SIZE, ITEMS, rollPlacement, type Item } from './world/items';
 import { WOOD_RADIUS } from './sim/objects';
 import { ACCOUNTS_ENABLED, Account, PullApi } from './net/account';
@@ -128,6 +130,7 @@ async function boot() {
   // set up with the account layer (production builds)
   let neighbors: NeighborView | null = null;
   let clawMachine: ClawMachine | null = null;
+  let shopDialog: Shop | null = null;
   // your sand, else a neighbor's, else the untouched shore (the chair can walk along all of it)
   cam.groundHeight = (x, z) => {
     const h = picker.heightAt(x, z);
@@ -821,6 +824,10 @@ async function boot() {
         },
         // a new beach starts at the real beach you're looking at now
         location: () => beach.id,
+        shop: () => {
+          sheet.hide();
+          void shopDialog?.open();
+        },
         changed: () => updateElsewhere(),
       },
     );
@@ -843,6 +850,21 @@ async function boot() {
     });
     clawMachine = claw;
     inventory.onClaw = () => (acct.user ? void claw.open() : sheet.show());
+    // the shop: paid through Apple / Google in the apps (src/net/shop.ts)
+    const shopApi = new ShopApi(acct);
+    const shop = new Shop(uiRoot, shopApi, () => {
+      void loadOwned();
+      void acct.loadBeaches().catch(() => {});
+    });
+    shopDialog = shop;
+    inventory.onShop = () => (acct.user ? void shop.open() : sheet.show());
+    acct.onChange((u) => {
+      // anything paid for but not yet confirmed by the server: hand it over again
+      if (u)
+        void shopApi.retryPending().then((n) => {
+          if (n) void loadOwned();
+        });
+    });
     inventory.setClaw(acct.user ? 'play' : 'signin');
     acct.onChange((u) => {
       inventory.setClaw(u ? 'play' : 'signin');
@@ -874,6 +896,7 @@ async function boot() {
     sheet,
     inventory,
     claw: () => clawMachine,
+    shop: () => shopDialog,
     objectView,
     audio,
     pickTool,

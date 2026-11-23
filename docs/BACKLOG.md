@@ -14,6 +14,10 @@ The single list of what's left to do, for the owner and for agents.
 
 ## Owner: things only you can do
 
+- [ ] **Store products and payouts**: the Paid Apps agreement and banking on
+  Apple, the payments profile on Google, then create the products and
+  notification URLs. Step by step in MOBILE.md, "In-app purchases".
+
 - [ ] **Google Cloud project**: run the one-time `gcloud` setup in
   [GCP.md](GCP.md), create the OAuth web client ID, set the GitHub variables,
   then set `GCP_ENABLED=1`.
@@ -92,6 +96,10 @@ _(nothing right now)_
   shower night.
 
 ## Done (recent)
+
+- [x] **Shop**: store items (glow and sparkle on the beach), more than one
+  beach (live on different devices at once), purchases checked with Apple
+  and Google, a pricing plan (PRICING.md) (2026-11-23).
 
 - [x] **Claw starter gifts** (rare, shop item, extra beach after a day),
   the Deckchair, and the multi-beach design (2026-11-23).
