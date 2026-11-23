@@ -314,7 +314,7 @@
     },
     "objects": {
       "type": "array",
-      "maxItems": 400,
+      "maxItems": 2000,
       "items": {
         "type": "object",
         "required": [

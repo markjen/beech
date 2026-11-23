@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { WORLD_SIZE_X } from '../src/config';
 import type { PlacedObject } from '../src/sim/objects';
-import { decodeSand, encodeSand } from '../src/sim/sandCodec';
+import { MAX_OBJECTS, decodeSand, encodeSand } from '../src/sim/sandCodec';
 import {
   MAX_FILE_CHARS,
   MAX_RAISE,
@@ -193,7 +193,7 @@ describe('the JSON Schema', () => {
     const { ITEMS } = await import('../src/world/items');
     const schema = JSON.parse(readFileSync(new URL('../docs/beach-file.schema.json', import.meta.url), 'utf8'));
     expect([...schema.properties.objects.items.properties.item.enum].sort()).toEqual(ITEMS.map((i) => i.id).sort());
-    expect(schema.properties.objects.maxItems).toBe(400);
+    expect(schema.properties.objects.maxItems).toBe(MAX_OBJECTS);
     expect(schema.properties.shapes.maxItems).toBe(500);
   });
 });

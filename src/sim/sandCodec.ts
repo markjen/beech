@@ -25,8 +25,14 @@ import { OBJECT_KINDS, type PlacedObject } from './objects';
 const MAGIC = [0x42, 0x43, 0x48, 0x31]; // "BCH1"
 const MAGIC2 = [0x42, 0x43, 0x48, 0x32]; // "BCH2"
 const KINDS = new Set<string>(OBJECT_KINDS);
-/** a saved beach never holds more than this many objects */
-export const MAX_OBJECTS = 400;
+/**
+ * A saved beach never holds more than this many objects. (It was 400 until
+ * things were drawn as GPU instances; see docs/STATUS.md, "How much a beach
+ * holds". The server has the same number, server/src/checkpoints.ts.)
+ */
+export const MAX_OBJECTS = 2000;
+/** what apps before the raise kept: saving from one of those would lose the rest */
+export const OLD_MAX_OBJECTS = 400;
 
 /**
  * What a save keeps: things you put down first (oldest first), then what the

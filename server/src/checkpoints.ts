@@ -5,8 +5,12 @@ import { deflateSync, inflateSync } from 'node:zlib';
 /** a saved beach (and so a checkpoint) is never bigger than this */
 export const MAX_BEACH_BYTES = 768 * 1024;
 export const MAX_CELLS = 400 * 300;
-const MAX_OBJECTS = 400;
-const MAX_OBJECTS_JSON = 128 * 1024;
+/** the most things a saved beach holds (src/sim/sandCodec.ts MAX_OBJECTS) */
+export const MAX_OBJECTS = 2000;
+/** what apps before the raise kept (they send no X-Beach-Max) */
+export const OLD_MAX_OBJECTS = 400;
+/** the things part, inflated: ~120 bytes a thing, with room to spare */
+const MAX_OBJECTS_JSON = 512 * 1024;
 
 /**
  * Items anyone can place as many of as they like. Everything else, unknown
@@ -78,6 +82,15 @@ function readObjects(objs: Uint8Array | null): RawObject[] {
       throw new BadBlob('bad thing on the beach');
   }
   return list as RawObject[];
+}
+
+/** How many things a saved beach holds (0 if it can't be read). */
+export function countObjects(bytes: Uint8Array): number {
+  try {
+    return readObjects(parts(bytes).objs).length;
+  } catch {
+    return 0;
+  }
 }
 
 /** Count what's on a saved beach. Throws BadBlob if it isn't one. */

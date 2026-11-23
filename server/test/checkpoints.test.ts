@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { deflateSync, inflateSync } from 'node:zlib';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
-import { dropMissing, inspectBlob, shortfall } from '../src/checkpoints.js';
+import { MAX_OBJECTS, OLD_MAX_OBJECTS, dropMissing, inspectBlob, shortfall } from '../src/checkpoints.js';
 import { createPgDb, createPgliteDb, type Db } from '../src/db.js';
 import { migrate } from '../src/migrations.js';
 
@@ -110,7 +110,9 @@ describe('reading a saved beach', () => {
     withBomb.set(bomb.subarray(0, 12 + len));
     withBomb.set(big, 12 + len);
     expect(() => inspectBlob(withBomb)).toThrow(/corrupt/);
-    expect(() => inspectBlob(blob(Array.from({ length: 401 }, (_, i) => ({ id: i + 1, item: 'rock' }))))).toThrow(/too many/);
+    const many = (n: number) => blob(Array.from({ length: n }, (_, i) => ({ id: i + 1, item: 'rock' })));
+    expect(inspectBlob(many(MAX_OBJECTS)).objects).toBe(MAX_OBJECTS);
+    expect(() => inspectBlob(many(MAX_OBJECTS + 1))).toThrow(/too many/);
   });
   it('drops the newest of what is short, keeping the sand', () => {
     const b = blob([{ id: 1, item: 'deckchair' }, { id: 5, item: 'deckchair' }, { id: 3, item: 'deckchair' }, { id: 2, item: 'rock' }], 120);
@@ -273,10 +275,29 @@ describe('checkpoints', () => {
     expect((await db.query('SELECT 1 FROM checkpoints WHERE owner_id = $1', [user.id])).length).toBe(0);
   });
 
+  it('an app from before the raise can not save over a beach holding more than it can', async () => {
+    const { token: t, user } = await signIn('cp-old');
+    const many = blob(Array.from({ length: OLD_MAX_OBJECTS + 50 }, (_, i) => ({ id: i + 1, item: 'rock' })));
+    const put = (bytes: Uint8Array, max?: string) =>
+      req(
+        `/beaches/mine/${user.id}/sand`,
+        { method: 'PUT', body: bytes, headers: { 'X-Beach-Location': 'bondi', 'X-Beach-Nx': '16', 'X-Beach-Ny': '16', ...(max ? { 'X-Beach-Max': max } : {}) } },
+        t,
+      );
+    expect((await put(many, String(MAX_OBJECTS))).status).toBe(200);
+    // an old app (no X-Beach-Max) would have kept only the first 400: refused, so nothing is lost
+    const old = await put(blob([{ id: 1, item: 'rock' }]));
+    expect(old.status).toBe(426);
+    expect((await sandOf(t, user.id)).bytes.length).toBe(many.length);
+    // a beach within the old limit: old apps still save as before
+    expect((await put(blob([]), String(MAX_OBJECTS))).status).toBe(200);
+    expect((await put(blob([{ id: 1, item: 'rock' }]))).status).toBe(200);
+  });
+
   it('lets the phone apps send its headers and PATCH', async () => {
     const r = await req('/checkpoints', { method: 'OPTIONS', headers: { Origin: 'capacitor://localhost' } });
     const allow = r.headers.get('Access-Control-Allow-Headers') ?? '';
-    for (const h of ['X-Beach-Items', 'X-Beach-Epoch', 'X-Checkpoint-Name']) expect(allow).toContain(h);
+    for (const h of ['X-Beach-Items', 'X-Beach-Epoch', 'X-Beach-Max', 'X-Checkpoint-Name']) expect(allow).toContain(h);
     expect(r.headers.get('Access-Control-Allow-Methods')).toContain('PATCH');
     expect(r.headers.get('Access-Control-Expose-Headers')).toContain('X-Beach-Epoch');
   });

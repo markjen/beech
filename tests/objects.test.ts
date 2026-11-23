@@ -146,3 +146,28 @@ describe('shells, sea glass and flags', () => {
     expect(sim.objects.count).toBe(0);
   });
 });
+
+describe('the roster and packed positions (what the worker sends each frame)', () => {
+  it('bumps the version only on add/remove, and packs positions in roster order', async () => {
+    const { POS_STRIDE } = await import('../src/sim/objects');
+    const sim = new BeachSim(GRID_TIERS.low, 1);
+    const objs = sim.objects;
+    const v0 = objs.version;
+    const a = sim.placeObject({ kind: 'rock', item: 'rock', x: 10, y: 24, angle: 0.5, size: 0.4, variant: 1 });
+    const b = sim.placeObject({ kind: 'flag', item: 'flag', x: 12, y: 25, angle: 0, size: 0.4, variant: 2 });
+    expect(objs.version).toBe(v0 + 2);
+    for (let i = 0; i < 10; i++) sim.step(1 / 30);
+    expect(objs.version).toBe(v0 + 2); // moving things doesn't change the roster
+    const roster = objs.persisted();
+    const pos = objs.packPositions();
+    expect(pos.length).toBe(roster.length * POS_STRIDE);
+    expect(roster.map((o) => o.id)).toEqual([a.id, b.id]);
+    expect(pos[0]).toBeCloseTo(10, 5);
+    expect(pos[1]).toBeCloseTo(24, 5);
+    expect(pos[3]).toBeCloseTo(0.5, 5);
+    expect(pos[POS_STRIDE]).toBeCloseTo(12, 5);
+    sim.removeObject(a.id);
+    expect(objs.version).toBe(v0 + 3);
+    expect(objs.packPositions().length).toBe(POS_STRIDE);
+  });
+});

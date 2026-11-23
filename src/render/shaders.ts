@@ -362,18 +362,22 @@ void main() {
 
 // ------------------------------------------------------------------ flat blocks (rock base)
 
+// Props are drawn as thin instances (src/render/objects.ts): Babylon defines
+// INSTANCES and THIN_INSTANCES and supplies world0..3; other meshes on this
+// shader (the horizon's) use the plain world matrix.
 export const flatVertex = /* glsl */ `
 precision highp float;
 attribute vec3 position;
 attribute vec3 normal;
-uniform mat4 world;
+#include<instancesDeclaration>
 uniform mat4 viewProjection;
 varying vec3 vNormal;
 varying vec3 vWorld;
 void main() {
-  vec4 wp = world * vec4(position, 1.0);
+  #include<instancesVertex>
+  vec4 wp = finalWorld * vec4(position, 1.0);
   vWorld = wp.xyz;
-  vNormal = normalize(mat3(world) * normal);
+  vNormal = normalize(mat3(finalWorld) * normal);
   gl_Position = viewProjection * wp;
 }
 `;

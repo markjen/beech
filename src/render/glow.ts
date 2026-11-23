@@ -5,6 +5,7 @@ import { Color3 } from '@babylonjs/core/Maths/math.color';
 import type { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { Mesh } from '@babylonjs/core/Meshes/mesh';
 import { VertexData } from '@babylonjs/core/Meshes/mesh.vertexData';
+import type { TransformNode } from '@babylonjs/core/Meshes/transformNode';
 import type { Scene } from '@babylonjs/core/scene';
 
 import { RARITY_GLOW, type RGB } from '../palette';
@@ -113,7 +114,7 @@ export class Glow {
    * from its centre, `height` how tall it is; `lights` are lamp positions in
    * the root's space.
    */
-  attach(root: Mesh, rarity: 'rare' | 'legendary' | 'unique' | null, reach: number, height: number, lights: Vector3[], seed: number): GlowHandle {
+  attach(root: TransformNode, rarity: 'rare' | 'legendary' | 'unique' | null, reach: number, height: number, lights: Vector3[], seed: number): GlowHandle {
     const parts: Mesh[] = [];
     const sparkles: { m: Mesh; phase: number; speed: number; size: number }[] = [];
     if (rarity) {

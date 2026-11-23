@@ -21,7 +21,7 @@ import { BEACHES, beachById, defaultBeach, nearestBeach, type Beach } from './wo
 import type { BrushMode, ClearingMode } from './sim/beachSim';
 import { isClearingMode } from './sim/beachSim';
 import { DIG_FIND_ROLL_COOLDOWN_MS, qualifiesForFind } from './sim/digFinds';
-import type { PlacedObject } from './sim/objects';
+import { POS_STRIDE, type ObjectState, type PlacedObject } from './sim/objects';
 import type { FrameInfo, FromWorker, ToWorker } from './sim/protocol';
 import { makeSwell } from './sim/waves';
 import { MAX_OBJECTS, decodeSand, encodeSand, fitWorld } from './sim/sandCodec';
@@ -187,6 +187,8 @@ async function boot() {
   let swashRate = 0;
 
   type SandReply = { delta: Float32Array; objects: PlacedObject[] };
+  /** what's on the beach now (the worker sends the roster when it changes, positions every frame) */
+  let objectStates: ObjectState[] = [];
   const sandWaiters = new Map<number, (d: SandReply) => void>();
   let sandReq = 0;
   const getSand = () =>
@@ -205,17 +207,32 @@ async function boot() {
     }
     if (m.type !== 'frame') return;
     renderer.uploadFrame(m.buf);
-    objectView.set(m.objects);
-    // how many of each item you've put down (prizes can only go down as often as you own them)
-    const placed = new Map<string, number>();
-    for (const o of m.objects) if (!o.wild) placed.set(o.item, (placed.get(o.item) ?? 0) + 1);
-    inventory.setPlaced(placed);
+    if (m.roster) {
+      // something was added or removed: a new roster (positions follow below)
+      objectStates = m.roster.map((o) => ({ ...o, z: 0, floating: false }));
+      objectView.set(objectStates);
+      // how many of each item you've put down (prizes can only go down as often as you own them)
+      const placed = new Map<string, number>();
+      for (const o of objectStates) if (!o.wild) placed.set(o.item, (placed.get(o.item) ?? 0) + 1);
+      inventory.setPlaced(placed);
+    }
+    // everything's position this frame, in roster order (no objects made per frame)
+    const pos = m.objPos;
+    for (let i = 0, o = 0; i < objectStates.length && o < pos.length; i++, o += POS_STRIDE) {
+      const s = objectStates[i];
+      s.x = pos[o];
+      s.y = pos[o + 1];
+      s.z = pos[o + 2];
+      s.angle = pos[o + 3];
+      s.floating = pos[o + 4] > 0;
+    }
+    objectView.touch();
     picker.updateFromFrame(m.buf);
     send({ type: 'return', buf: m.buf }, [m.buf.buffer]);
     const dtSim = m.t - info.t;
     if (frames > 0 && dtSim > 0) swashRate += ((m.swash - info.swash) / dtSim - swashRate) * 0.3;
     prevT = frames === 0 ? m.t : info.t;
-    info = m;
+    info = { ...m, objects: objectStates };
     frameAt = performance.now();
     frames++;
   };

@@ -150,7 +150,7 @@ gives a lower, rounder top. Limits: at most 500 shapes; sizes from
 | `size` | number | no | Metres: a rock's radius, a driftwood log's length, a shell's width. Clamped to the item's size range. Ignored for fixed-size items (flag, deckchair and the shop items). The default is the middle of the range. |
 | `variant` | integer | no | A seed, 0 to 1000000, for the object's exact shape and colour. The same number always looks the same; try a few. The default is worked out from the object's position, so it stays the same each time the file loads. |
 
-At most **400** objects. The order doesn't matter. Things the sea brought in
+At most **2000** objects (400 before 2026-11-23: an app from before then keeps the first 400 and warns). The order doesn't matter. Things the sea brought in
 by itself are not exported. Floating and tumbling things (driftwood, shells,
 bottles) start where the file puts them, and the sea may then move them.
 
@@ -162,7 +162,7 @@ bottles) start where the file puts them, and the sea may then move them.
    `objects[3].x: must be a number`.
 2. Anything else that is out of range is **fixed and reported as a warning**:
    values are clamped, an unknown `item` or shape `type` is skipped, extra
-   objects past 400 are dropped.
+   objects past 2000 are dropped.
 3. Build the heights: start from the grid (or zeros), apply the shapes, clamp
    to the bedrock floor, then resample to the device's grid.
 4. Objects: give each a fresh id. Its `kind` comes from the catalog item.

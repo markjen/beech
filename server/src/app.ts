@@ -53,6 +53,8 @@ import {
   CHECKPOINTS_PER_BEACH,
   MAX_BEACH_BYTES,
   MAX_CELLS,
+  OLD_MAX_OBJECTS,
+  countObjects,
   dropMissing,
   inspectBlob,
   shortfall,
@@ -107,7 +109,7 @@ type Env = { Variables: { user: User; tokenHash: string } };
 export const BEACH_CAP = 8;
 const BEACH_HEADERS = ['X-Beach-Location', 'X-Beach-Nx', 'X-Beach-Ny', 'X-Beach-Version', 'X-Beach-Updated', 'X-Beach-Epoch'];
 /** request-only headers the app sends cross-origin (the phone apps) */
-const REQUEST_HEADERS = ['X-Beach-Items', 'X-Checkpoint-Name'];
+const REQUEST_HEADERS = ['X-Beach-Items', 'X-Beach-Max', 'X-Checkpoint-Name'];
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O or 1/I
 const SIDES = ['left', 'right'] as const;
 type Side = (typeof SIDES)[number];
@@ -375,6 +377,13 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const now = Date.now();
     // a save made before a restore (another device still showing the old
     // sand) mustn't overwrite it. An app too old to send the epoch is let through.
+    // Apps from before the object limit went up (OLD_MAX_OBJECTS) send no
+    // X-Beach-Max. Loading a beach that holds more, they kept only the first
+    // 400, so their save would drop the rest for good: refuse it ("reload").
+    if (!c.req.header('X-Beach-Max')) {
+      const cur = (await db.query<{ sand: unknown }>('SELECT sand FROM beach WHERE id = $1 AND sand IS NOT NULL', [beachId]))[0];
+      if (cur && countObjects(toBytes(cur.sand)) > OLD_MAX_OBJECTS) fail(426, 'this app is out of date: reload to save');
+    }
     const epochHeader = c.req.header('X-Beach-Epoch');
     const epoch = epochHeader === undefined || epochHeader === '' ? null : Number(epochHeader);
     if (epoch !== null && !Number.isInteger(epoch)) fail(400, 'bad X-Beach-Epoch');

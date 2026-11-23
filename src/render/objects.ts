@@ -1,6 +1,8 @@
 import type { ShaderMaterial } from '@babylonjs/core/Materials/shaderMaterial';
-import type { Vector3 } from '@babylonjs/core/Maths/math.vector';
+import { Matrix, Quaternion, Vector3 } from '@babylonjs/core/Maths/math.vector';
 import type { Mesh } from '@babylonjs/core/Meshes/mesh';
+import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
+import '@babylonjs/core/Meshes/thinInstanceMesh';
 import type { Scene } from '@babylonjs/core/scene';
 
 import { PROP_COLORS } from '../palette';
@@ -339,19 +341,6 @@ function deckchairMesh(scene: Scene, o: PlacedObject): { frame: Mesh; canvas: Me
   return { frame, canvas };
 }
 
-interface Shown {
-  mesh: Mesh;
-  key: string;
-  x: number;
-  y: number;
-  z: number;
-  angle: number;
-  bob: number;
-  cloth?: Mesh;
-  glow?: GlowHandle;
-}
-
-/** How far a thing spreads from its centre, and how tall it is (for its glow). */
 function extent(o: PlacedObject): { reach: number; height: number } {
   if (isStoreKind(o.kind)) return { reach: STORE_REACH[o.kind], height: o.kind === 'lighthouse' ? 2.9 : o.kind === 'parasol' || o.kind === 'surfboard' ? 2 : 1.4 };
   switch (o.kind) {
@@ -374,97 +363,359 @@ function extent(o: PlacedObject): { reach: number; height: number } {
  * simulation at 30 Hz; the meshes ease toward them every rendered frame so
  * floating wood moves smoothly, and bob a little while afloat.
  */
+// ---------------------------------------------------------------- the prop bank
+//
+// Every thing on every beach (yours and the neighbors') is drawn with GPU
+// thin instances: one hidden source mesh per distinct look and part, and a
+// buffer of matrices, one per thing that looks like it. A thousand rocks of
+// eight shapes are eight draw calls, not a thousand.
+//
+// A "look" is a kind, a variant and (for driftwood only) a size bucket.
+// The other kinds are built at size 1 and scaled, or are a fixed size.
+
+/** kinds whose every dimension is proportional to `size` */
+const LINEAR = new Set<ObjectKind>(['rock', 'shell', 'seaglass', 'conch', 'sanddollar', 'starfish', 'nautilus', 'bottle']);
+/**
+ * Driftwood's thickness isn't proportional to its length: it's built in
+ * sizes 25 % apart and stretched to the exact length along the log and to
+ * the matching thickness across it (at most ~12 % either way).
+ */
+const WOOD_STEP = Math.log(1.25);
+
+interface Source {
+  mesh: Mesh;
+  buf: Float32Array;
+  count: number;
+  slots: Inst[];
+  dirty: boolean;
+  resized: boolean;
+}
+
+interface Inst {
+  src: Source;
+  /** index in src.slots, or -1 when not drawn */
+  slot: number;
+}
+
+interface Part {
+  src: Source;
+  /** this part relative to the thing's root */
+  local: Matrix;
+  /** the flag's pennant flutters on its own */
+  cloth: boolean;
+}
+
+interface Look {
+  key: string;
+  parts: Part[];
+  /** the size it was built at: things are scaled by size / base (1 for fixed-size kinds) */
+  base: number;
+  /** lamp positions (store items), relative to the root */
+  lights: Vector3[];
+  users: number;
+}
+
+function lookKey(o: PlacedObject): { key: string; base: number } {
+  if (LINEAR.has(o.kind)) return { key: `${o.kind}:${o.variant}`, base: 1 };
+  if (o.kind === 'driftwood') {
+    const b = Math.round(Math.log(Math.max(0.05, o.size)) / WOOD_STEP);
+    return { key: `driftwood:${o.variant}:${b}`, base: Math.exp(b * WOOD_STEP) };
+  }
+  // flags, deckchairs and the shop's things are one size
+  return { key: `${o.kind}:${o.variant}`, base: 1 };
+}
+
+class PropBank {
+  private readonly looks = new Map<string, Look>();
+  private readonly sources = new Set<Source>();
+  readonly mats: Record<ObjectKind, ShaderMaterial[]>;
+  readonly poleMat: ShaderMaterial;
+  readonly glow: Glow;
+  private n = 0;
+
+  constructor(
+    private readonly scene: Scene,
+    renderer: BeachRenderer,
+  ) {
+    this.mats = Object.fromEntries(OBJECT_KINDS.map((k) => [k, PROP_COLORS[k].map((c) => renderer.createPropMaterial(c))])) as Record<ObjectKind, ShaderMaterial[]>;
+    this.poleMat = renderer.createPropMaterial(PROP_COLORS.pole);
+    this.glow = new Glow(scene);
+    // one upload per changed source per frame, whatever moved
+    scene.onBeforeRenderObservable.add(() => this.flush());
+  }
+
+  /** The look for this thing (built the first time it's needed). */
+  look(o: PlacedObject): Look {
+    const { key, base } = lookKey(o);
+    let l = this.looks.get(key);
+    if (!l) {
+      l = this.build(key, { ...o, id: 0, x: 0, y: 0, angle: 0, size: base }, base);
+      this.looks.set(key, l);
+    }
+    l.users++;
+    return l;
+  }
+
+  release(l: Look): void {
+    if (--l.users > 0) return;
+    this.looks.delete(l.key);
+    for (const p of l.parts) {
+      this.sources.delete(p.src);
+      p.src.mesh.dispose();
+    }
+  }
+
+  private build(key: string, o: PlacedObject, base: number): Look {
+    const set = this.mats[o.kind];
+    const mat = set[o.variant % set.length];
+    let root: Mesh;
+    let lights: Vector3[] = [];
+    if (isStoreKind(o.kind)) {
+      const b = STORE_BUILDERS[o.kind](this.scene, o);
+      for (const p of b.parts) p.mesh.material = p.mat === 'pole' ? this.poleMat : set[p.mat % set.length];
+      root = b.root;
+      lights = b.lights;
+    } else if (o.kind === 'flag') {
+      const f = flagMesh(this.scene, o);
+      root = f.pole;
+      root.material = this.poleMat;
+      f.cloth.material = mat;
+    } else if (o.kind === 'deckchair') {
+      const d = deckchairMesh(this.scene, o);
+      root = d.frame;
+      root.material = this.poleMat;
+      d.canvas.material = mat;
+    } else if (o.kind === 'bottle') {
+      const bt = bottleMesh(this.scene, o);
+      root = bt.body;
+      root.material = mat;
+      bt.cork.material = this.poleMat;
+    } else {
+      root =
+        o.kind === 'rock' ? rockMesh(this.scene, o)
+        : o.kind === 'driftwood' ? woodMesh(this.scene, o)
+        : o.kind === 'shell' ? shellMesh(this.scene, o)
+        : o.kind === 'conch' ? conchMesh(this.scene, o)
+        : o.kind === 'sanddollar' ? sanddollarMesh(this.scene, o)
+        : o.kind === 'starfish' ? starfishMesh(this.scene, o)
+        : o.kind === 'nautilus' ? nautilusMesh(this.scene, o)
+        : glassMesh(this.scene, o);
+      root.material = mat;
+    }
+    // flatten the little hierarchy into parts, each with its matrix relative to the root
+    root.position.setAll(0);
+    root.rotation.setAll(0);
+    root.scaling.setAll(1);
+    const meshes = [root, ...(root.getChildMeshes(false) as Mesh[])];
+    for (const m of meshes) m.computeWorldMatrix(true);
+    const parts: Part[] = [];
+    for (const m of meshes) {
+      const local = m.getWorldMatrix().clone();
+      if (m !== root) m.parent = null;
+      if (!m.getTotalVertices()) {
+        if (m !== root) m.dispose();
+        continue;
+      }
+      m.position.setAll(0);
+      m.rotationQuaternion = null;
+      m.rotation.setAll(0);
+      m.scaling.setAll(1);
+      m.isPickable = false;
+      m.alwaysSelectAsActiveMesh = true;
+      m.doNotSyncBoundingInfo = true;
+      m.name = `${key}#${this.n++}`;
+      m.freezeWorldMatrix();
+      const src: Source = { mesh: m, buf: new Float32Array(16 * 4), count: 0, slots: [], dirty: true, resized: true };
+      m.thinInstanceSetBuffer('matrix', src.buf, 16, false);
+      m.thinInstanceCount = 0;
+      m.setEnabled(false);
+      this.sources.add(src);
+      parts.push({ src, local, cloth: o.kind === 'flag' && m !== root });
+    }
+    if (!root.getTotalVertices()) root.dispose();
+    return { key, parts, base, lights, users: 0 };
+  }
+
+  /** Start drawing one more of this part. */
+  show(inst: Inst): void {
+    if (inst.slot >= 0) return;
+    const s = inst.src;
+    if ((s.count + 1) * 16 > s.buf.length) {
+      const bigger = new Float32Array(s.buf.length * 2);
+      bigger.set(s.buf);
+      s.buf = bigger;
+      s.resized = true;
+    }
+    inst.slot = s.count;
+    s.slots[s.count++] = inst;
+    s.dirty = true;
+  }
+
+  /** Stop drawing it (the last one moves into its slot). */
+  hide(inst: Inst): void {
+    if (inst.slot < 0) return;
+    const s = inst.src;
+    const last = --s.count;
+    if (inst.slot !== last) {
+      const moved = s.slots[last];
+      s.buf.copyWithin(inst.slot * 16, last * 16, last * 16 + 16);
+      moved.slot = inst.slot;
+      s.slots[inst.slot] = moved;
+    }
+    s.slots.length = s.count;
+    inst.slot = -1;
+    s.dirty = true;
+  }
+
+  write(inst: Inst, m: Matrix): void {
+    if (inst.slot < 0) return;
+    m.copyToArray(inst.src.buf, inst.slot * 16);
+    inst.src.dirty = true;
+  }
+
+  private flush(): void {
+    for (const s of this.sources) {
+      if (!s.dirty) continue;
+      s.dirty = false;
+      if (s.resized) {
+        s.resized = false;
+        s.mesh.thinInstanceSetBuffer('matrix', s.buf, 16, false);
+      } else s.mesh.thinInstanceBufferUpdated('matrix');
+      s.mesh.thinInstanceCount = s.count;
+      s.mesh.setEnabled(s.count > 0);
+    }
+  }
+
+  /** how many draw calls things take (for profiling) */
+  get drawn(): number {
+    let n = 0;
+    for (const s of this.sources) if (s.count) n++;
+    return n;
+  }
+}
+
+const banks = new WeakMap<Scene, PropBank>();
+function bankFor(scene: Scene, renderer: BeachRenderer): PropBank {
+  let b = banks.get(scene);
+  if (!b) banks.set(scene, (b = new PropBank(scene, renderer)));
+  return b;
+}
+
+interface Shown {
+  /** the simulation's state for it (the same object, updated in place each frame) */
+  st: ObjectState;
+  look: Look;
+  insts: Inst[];
+  x: number;
+  y: number;
+  z: number;
+  angle: number;
+  bob: number;
+  /** scale along the thing's own x, y, z */
+  sx: number;
+  sy: number;
+  sz: number;
+  /** nothing moves it (resting, not afloat, not a flag): its matrices are already right */
+  settled: boolean;
+  anchor?: TransformNode;
+  glow?: GlowHandle;
+}
+
+/** closer than this (m, radians, summed) counts as where it should be */
+const SETTLED = 1e-3;
+const tmpRoot = new Matrix();
+const tmpPart = new Matrix();
+const tmpCloth = new Matrix();
+const tmpQ = new Quaternion();
+const tmpS = new Vector3();
+const tmpT = new Vector3();
+
+/**
+ * The things on one beach (yours, or a neighbor's at `offsetX`), drawn
+ * through the shared prop bank.
+ */
 export class ObjectView {
   private readonly shown = new Map<number, Shown>();
-  private readonly mats: Record<ObjectKind, ShaderMaterial[]>;
-  private readonly poleMat: ShaderMaterial;
-  private target = new Map<number, ObjectState>();
+  private readonly bank: PropBank;
   private time = 0;
   private hidden = false;
-  private readonly glow: Glow;
 
   constructor(
     private readonly scene: Scene,
     renderer: BeachRenderer,
     private readonly offsetX = 0,
   ) {
-    this.mats = Object.fromEntries(
-      OBJECT_KINDS.map((k) => [k, PROP_COLORS[k].map((c) => renderer.createPropMaterial(c))]),
-    ) as Record<ObjectKind, ShaderMaterial[]>;
-    this.poleMat = renderer.createPropMaterial(PROP_COLORS.pole);
-    this.glow = new Glow(scene);
+    this.bank = bankFor(scene, renderer);
   }
 
   get count(): number {
     return this.shown.size;
   }
 
-  /** The latest positions from the simulation. */
+  /** things on this beach that moved or animated in the last update (profiling) */
+  get moving(): number {
+    let n = 0;
+    for (const s of this.shown.values()) if (!s.settled) n++;
+    return n;
+  }
+
+  /** draw calls all things on all beaches take now (profiling) */
+  get drawCalls(): number {
+    return this.bank.drawn;
+  }
+
+  /**
+   * What's on the beach. Call when things are added or removed; the states
+   * are kept and read again each update (the caller updates them in place).
+   */
   set(states: ObjectState[]): void {
-    this.target = new Map(states.map((s) => [s.id, s]));
-    for (const [id, s] of this.shown) {
-      if (!this.target.has(id)) {
-        s.glow?.dispose();
-        s.mesh.dispose();
-        this.shown.delete(id);
-      }
-    }
+    const seen = new Set<number>();
     for (const st of states) {
-      const key = `${st.kind}:${st.variant}:${st.size}`;
+      seen.add(st.id);
       const cur = this.shown.get(st.id);
-      if (cur && cur.key === key) continue;
-      cur?.glow?.dispose();
-      cur?.mesh.dispose();
-      const set = this.mats[st.kind];
-      const mat = set[st.variant % set.length];
-      let mesh: Mesh;
-      let cloth: Mesh | undefined;
-      let lights: Vector3[] = [];
-      if (isStoreKind(st.kind)) {
-        const b = STORE_BUILDERS[st.kind](this.scene, st);
-        for (const p of b.parts) p.mesh.material = p.mat === 'pole' ? this.poleMat : set[p.mat % set.length];
-        mesh = b.root;
-        lights = b.lights;
-      } else if (st.kind === 'flag') {
-        const f = flagMesh(this.scene, st);
-        mesh = f.pole;
-        cloth = f.cloth;
-        mesh.material = this.poleMat;
-        cloth.material = mat;
-      } else if (st.kind === 'deckchair') {
-        const d = deckchairMesh(this.scene, st);
-        mesh = d.frame;
-        mesh.material = this.poleMat;
-        d.canvas.material = mat;
-      } else if (st.kind === 'bottle') {
-        const bt = bottleMesh(this.scene, st);
-        mesh = bt.body;
-        mesh.material = mat;
-        bt.cork.material = this.poleMat;
-      } else {
-        mesh =
-          st.kind === 'rock' ? rockMesh(this.scene, st)
-          : st.kind === 'driftwood' ? woodMesh(this.scene, st)
-          : st.kind === 'shell' ? shellMesh(this.scene, st)
-          : st.kind === 'conch' ? conchMesh(this.scene, st)
-          : st.kind === 'sanddollar' ? sanddollarMesh(this.scene, st)
-          : st.kind === 'starfish' ? starfishMesh(this.scene, st)
-          : st.kind === 'nautilus' ? nautilusMesh(this.scene, st)
-          : glassMesh(this.scene, st);
-        mesh.material = mat;
+      if (cur && cur.st.kind === st.kind && cur.st.variant === st.variant && cur.st.size === st.size) {
+        cur.st = st;
+        cur.settled = false;
+        continue;
       }
-      // rare, legendary, unique and shop things glow and sparkle; lamps shine
-      const rarity = itemById(st.item)?.rarity;
-      const special = rarity === 'rare' || rarity === 'legendary' || rarity === 'unique' ? rarity : null;
-      let glow: GlowHandle | undefined;
-      if (special || lights.length) {
-        const { reach, height } = extent(st);
-        glow = this.glow.attach(mesh, special, reach, height, lights, st.id + st.variant * 7);
-      }
-      this.shown.set(st.id, { mesh, key, x: st.x, y: st.y, z: st.z, angle: st.angle, bob: Math.random() * 6, cloth, glow });
-      if (this.hidden) mesh.setEnabled(false);
-      this.place(this.shown.get(st.id)!, st, 0);
+      if (cur) this.drop(cur);
+      this.add(st);
     }
+    for (const [id, s] of this.shown) if (!seen.has(id)) this.drop(s);
+  }
+
+  private add(st: ObjectState): void {
+    const look = this.bank.look(st);
+    const insts: Inst[] = look.parts.map((p) => ({ src: p.src, slot: -1 }));
+    let sx = 1;
+    let sy = 1;
+    let sz = 1;
+    if (LINEAR.has(st.kind)) sx = sy = sz = st.size / look.base;
+    else if (st.kind === 'driftwood') {
+      sx = st.size / look.base;
+      sy = sz = WOOD_RADIUS(st.size) / WOOD_RADIUS(look.base);
+    }
+    const s: Shown = { st, look, insts, x: st.x, y: st.y, z: st.z, angle: st.angle, bob: Math.random() * 6, sx, sy, sz, settled: false };
+    // rare, legendary, unique and shop things glow and sparkle; lamps shine
+    const rarity = itemById(st.item)?.rarity;
+    const special = rarity === 'rare' || rarity === 'legendary' || rarity === 'unique' ? rarity : null;
+    if (special || look.lights.length) {
+      const { reach, height } = extent(st);
+      s.anchor = new TransformNode(`glow${st.id}`, this.scene);
+      s.glow = this.bank.glow.attach(s.anchor, special, reach, height, look.lights, st.id + st.variant * 7);
+      if (this.hidden) s.glow.setEnabled(false);
+    }
+    this.shown.set(st.id, s);
+    if (!this.hidden) for (const i of insts) this.bank.show(i);
+    this.place(s, 0);
+  }
+
+  private drop(s: Shown): void {
+    for (const i of s.insts) this.bank.hide(i);
+    this.bank.release(s.look);
+    s.glow?.dispose();
+    s.anchor?.dispose();
+    this.shown.delete(s.st.id);
   }
 
   /** Static objects (a neighbor's beach): heights from their sand. */
@@ -480,57 +731,93 @@ export class ObjectView {
 
   update(dt: number): void {
     this.time += dt;
-    this.glow.tick(dt);
+    this.bank.glow.tick(dt);
+    if (this.hidden) return;
     const ease = 1 - Math.exp(-dt * 12);
-    for (const [id, s] of this.shown) {
-      const t = this.target.get(id);
-      if (t) this.place(s, t, ease);
+    for (const s of this.shown.values()) {
+      if (!s.settled) this.place(s, ease);
       s.glow?.update(this.time);
     }
   }
 
-  private place(s: Shown, t: ObjectState, ease: number): void {
+  private place(s: Shown, ease: number): void {
+    const t = s.st;
     const k = ease === 0 ? 1 : ease;
-    s.x += (t.x - s.x) * k;
-    s.y += (t.y - s.y) * k;
-    s.z += (t.z - s.z) * k;
+    const dx = t.x - s.x;
+    const dy = t.y - s.y;
+    const dz = t.z - s.z;
     let da = t.angle - s.angle;
     da -= Math.round(da / (Math.PI * 2)) * Math.PI * 2;
+    s.x += dx * k;
+    s.y += dy * k;
+    s.z += dz * k;
     s.angle += da * k;
-    const m = s.mesh;
+    const flag = t.kind === 'flag';
+    const afloat = t.floating && (t.kind === 'driftwood' || t.kind === 'bottle');
+    // nothing left to ease and nothing animating: stop touching it until the sim moves it
+    const still = Math.abs(dx) + Math.abs(dy) + Math.abs(dz) + Math.abs(da) < SETTLED;
+    const animated = flag || t.floating;
     const bob = t.floating ? Math.sin(this.time * 1.7 + s.bob) * 0.015 : 0;
     // a conch lies on its side: lift its axis off the sand
     const lift = t.kind === 'conch' ? t.size * 0.24 : 0;
-    m.position.set(s.x + ORIGIN_X + this.offsetX, s.z + bob + lift, s.y + ORIGIN_Z);
-    // sim angles turn x toward y (world z); Babylon's yaw turns x away from z
-    m.rotation.y = -s.angle;
-    m.rotation.x = t.floating && (t.kind === 'driftwood' || t.kind === 'bottle') ? Math.sin(this.time * 1.3 + s.bob) * 0.06 : 0;
-    // the flag always points downwind (the sea breeze blows inland), fluttering
-    if (s.cloth) {
-      m.rotation.y = -Math.PI / 2;
-      s.cloth.rotation.y = Math.sin(this.time * 3.1 + s.bob) * 0.35 + Math.sin(this.time * 7.3 + s.bob) * 0.1;
+    // sim angles turn x toward y (world z); Babylon's yaw turns x away from z.
+    // The flag always points downwind (the sea breeze blows inland).
+    const yaw = flag ? -Math.PI / 2 : -s.angle;
+    const pitch = afloat ? Math.sin(this.time * 1.3 + s.bob) * 0.06 : 0;
+    tmpT.set(s.x + ORIGIN_X + this.offsetX, s.z + bob + lift, s.y + ORIGIN_Z);
+    Quaternion.RotationYawPitchRollToRef(yaw, pitch, 0, tmpQ);
+    tmpS.set(s.sx, s.sy, s.sz);
+    Matrix.ComposeToRef(tmpS, tmpQ, tmpT, tmpRoot);
+    const parts = s.look.parts;
+    for (let p = 0; p < parts.length; p++) {
+      const part = parts[p];
+      if (part.cloth) {
+        const flutter = Math.sin(this.time * 3.1 + s.bob) * 0.35 + Math.sin(this.time * 7.3 + s.bob) * 0.1;
+        Matrix.RotationYToRef(flutter, tmpCloth);
+        tmpCloth.multiplyToRef(part.local, tmpPart);
+        tmpPart.multiplyToRef(tmpRoot, tmpPart);
+      } else part.local.multiplyToRef(tmpRoot, tmpPart);
+      this.bank.write(s.insts[p], tmpPart);
+    }
+    if (s.anchor) {
+      s.anchor.position.copyFrom(tmpT);
+      s.anchor.rotation.y = yaw;
+    }
+    s.settled = still && !animated;
+  }
+
+  /**
+   * The simulation moved things (a new frame): wake the ones that moved more
+   * than a millimetre. (The sand under everything shifts by tiny amounts all
+   * the time, which isn't worth redrawing.)
+   */
+  touch(): void {
+    for (const s of this.shown.values()) {
+      if (!s.settled) continue;
+      const t = s.st;
+      if (t.floating || Math.abs(t.x - s.x) + Math.abs(t.y - s.y) + Math.abs(t.z - s.z) + Math.abs(t.angle - s.angle) > SETTLED) s.settled = false;
     }
   }
 
   setVisible(on: boolean): void {
-    for (const s of this.shown.values()) s.mesh.setEnabled(on);
+    if (on === !this.hidden) return;
     this.hidden = !on;
+    for (const s of this.shown.values()) {
+      for (const i of s.insts) {
+        if (on) this.bank.show(i);
+        else this.bank.hide(i);
+      }
+      s.glow?.setEnabled(on);
+      if (on) this.place(s, 0);
+    }
   }
 
   clear(): void {
-    for (const s of this.shown.values()) {
-      s.glow?.dispose();
-      s.mesh.dispose();
-    }
-    this.shown.clear();
-    this.target.clear();
+    for (const s of [...this.shown.values()]) this.drop(s);
   }
 
   dispose(): void {
     this.clear();
-    for (const set of Object.values(this.mats)) for (const m of set) m.dispose();
-    this.poleMat.dispose();
-    this.glow.dispose();
   }
 }
 

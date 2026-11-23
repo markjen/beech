@@ -126,6 +126,12 @@ _(nothing right now)_
   apps, the offline tool, and the two joined: export a checkpoint, import a
   file as a checkpoint, "Before import" kept automatically.
   [CHECKPOINTS.md](CHECKPOINTS.md), [BEACH_FILE.md](BEACH_FILE.md).
+- [x] **2000 things a beach** (2026-11-23): profiled
+  (`scripts/perf-objects.mjs`), things drawn as GPU thin instances, the
+  worker sends positions as a packed buffer and the roster only on change,
+  resting things skipped; then the limit went from 400 to 2000, with old
+  apps refused (426) rather than allowed to drop things. STATUS.md, "How much
+  a beach holds".
 - [x] **Say so when a beach is full** (2026-11-23): 400 things at most;
   placing a 401st is refused with a message, and a save that can't hold
   everything (or is too big for the server) says so.

@@ -253,7 +253,7 @@ branch, so the deploy job runs only there. Switch the default branch to
 - **Objects live in the worker** (`BeachObjects`). Their states go out with
   every frame, and the renderer eases toward them. Save format **BCH2** adds a
   deflated JSON list of objects. BCH1 saves still load. Loaded objects are
-  validated (`sanitizeObjects`, 400 max).
+  validated (`sanitizeObjects`, 2000 max; 400 before 2026-11-23).
 - **Catalog** (`src/world/items.ts`): rarity common/rare/legendary/unique;
   source free/shop/event/pull; `unlimited`, `available {from, until}`,
   `price`. The server has an `inventory` table (migration 2) and
@@ -436,14 +436,40 @@ thumbnails and sandbox checkpoints, is optional and not built).
 
 ## How much a beach holds (2026-11-23)
 
-- A saved beach holds **400 things** (`MAX_OBJECTS` in `sandCodec.ts`). Your
+- A saved beach holds **2000 things** (`MAX_OBJECTS` in `sandCodec.ts`; it
+  was 400 until the performance work below). Digging and building sand don't
+  count: sand is a height per grid cell, whatever you do to it. Your
   own things are saved first (oldest first), then what the sea brought in.
-  Putting down a 401st is refused with a message to use the vacuum. If a save
+  Putting down one more than that is refused with a message to use the vacuum. If a save
   still has to leave some out (an undo can go past the limit), a message says
   how many, and the account panel's status line says so too.
 - The server refuses a save over **768 KB** (413). The app now says the beach
   is too big to save, rather than retrying quietly. In practice only very
-  noisy sand on the finest grid gets near it.
+  noisy sand on the finest grid gets near it. 2000 things add roughly 50 KB.
+- **Performance work (2026-11-23)**, measured with `scripts/perf-objects.mjs`
+  (headless Chromium, a realistic mix, also with the CPU slowed 4x):
+  - Things are drawn as **GPU thin instances** through a scene-wide prop
+    bank (`src/render/objects.ts`): one hidden source mesh per look (kind,
+    variant, and a size bucket for driftwood; the rest are built at size 1
+    and scaled) and a matrix buffer per source. Draw calls for things went
+    from one per mesh (about 4,300 at 2000 things) to about one per look
+    (about 135 at 2000, 156 at 4000). Neighbor beaches share the same
+    sources, so a full shore adds instances, not draw calls. Glows on
+    special things are still per thing (few of them).
+  - The worker sends the **roster** (what's on the beach) only when
+    something is added or removed, and every frame just a packed
+    Float32Array of positions (transferred, not copied). The main thread
+    updates its object states in place; nothing is allocated per thing per
+    frame.
+  - Things at rest aren't touched: matrices are only rewritten for things
+    that moved more than a millimetre, float, or flutter (a flag).
+  - Results: main-thread time for things at 2000 went from 2.5 ms to 1.2 ms
+    a frame (1.4 ms with the CPU slowed 4x); the worker's tick didn't change
+    with the count (about 5–7 ms with or without 4000 things).
+- **Older apps:** an app from before the raise keeps only 400 things when it
+  loads a beach, so its save would drop the rest. The app now sends
+  `X-Beach-Max` with every save; a save without it onto a beach holding more
+  than 400 is refused (426, "out of date: reload") and nothing is lost.
 
 ## Beach files (planned 2026-11-23)
 

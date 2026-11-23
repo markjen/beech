@@ -1,3 +1,5 @@
+import '@babylonjs/core/Shaders/ShadersInclude/instancesDeclaration';
+import '@babylonjs/core/Shaders/ShadersInclude/instancesVertex';
 import { Constants } from '@babylonjs/core/Engines/constants';
 import { Effect } from '@babylonjs/core/Materials/effect';
 import { ShaderMaterial } from '@babylonjs/core/Materials/shaderMaterial';

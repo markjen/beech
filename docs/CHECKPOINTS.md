@@ -105,7 +105,7 @@ ALTER TABLE beach ADD COLUMN epoch INTEGER NOT NULL DEFAULT 0;
 - the sand part inflates to exactly `nx·ny·2` bytes (`maxOutputLength`
   guards against a zip bomb);
 - the objects part inflates to at most 128 KB, is a JSON array of at most
-  400 entries, each with a string `item` of at most 64 chars. Shape checks
+  2000 entries (`MAX_OBJECTS`), each with a string `item` of at most 64 chars. Shape checks
   beyond that are the client's `sanitizeObjects` on load.
 
 Beach rows saved by an old app (32 × 24) may still be non-square. A

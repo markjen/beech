@@ -44,7 +44,7 @@ export interface FrameInfo {
   digIntensity: number;
   /** water volume on the beach face (m^3) */
   swash: number;
-  /** things on the beach, where they are now */
+  /** things on the beach, where they are now (kept up to date on the main thread from roster + objPos) */
   objects: ObjectState[];
   stats?: SimStats;
   tickMs: number;
@@ -55,4 +55,13 @@ export type FromWorker =
   | { type: 'ready'; grid: GridSpec; rest: Float32Array; seed: number }
   | { type: 'bench'; msPerTickLow: number }
   | { type: 'sand'; id: number; delta: Float32Array; objects: PlacedObject[] }
-  | ({ type: 'frame'; buf: Float32Array } & FrameInfo);
+  | ({
+      type: 'frame';
+      buf: Float32Array;
+      /** positions of everything on the beach, in roster order (POS_STRIDE floats each) */
+      objPos: Float32Array;
+      /** bumped when things are added or removed */
+      rosterVersion: number;
+      /** what's on the beach: only sent when rosterVersion changes */
+      roster?: PlacedObject[];
+    } & Omit<FrameInfo, 'objects'>);

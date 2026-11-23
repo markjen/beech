@@ -145,8 +145,13 @@ export const WOOD_RADIUS = (length: number) => 0.05 + length * 0.028;
 /** radius of something afloat (its draft is about this) */
 export const floatRadius = (o: { kind: ObjectKind; size: number }) => (o.kind === 'bottle' ? o.size * 0.2 : WOOD_RADIUS(o.size));
 
+/** Floats per object in a packed positions buffer: x, y, z, angle, floating. */
+export const POS_STRIDE = 5;
+
 export class BeachObjects {
   private live = new Map<number, Live>();
+  /** goes up whenever something is added or removed (the roster changes) */
+  version = 0;
   private nextId = 1;
   private washClock: number;
   private rand: () => number;
@@ -197,6 +202,7 @@ export class BeachObjects {
     const l: Live = { data, z: this.sandAt(data.x, data.y), floating: false, vx: 0, vy: 0, spin: 0 };
     if (data.kind === 'rock') l.rock = this.embedRock(data);
     this.live.set(data.id, l);
+    this.version++;
     return data;
   }
 
@@ -205,6 +211,7 @@ export class BeachObjects {
     if (!l) return null;
     if (l.rock) this.liftRock(l.rock);
     this.live.delete(id);
+    this.version++;
     // report where it actually was (driftwood may have drifted)
     return { ...l.data };
   }
@@ -459,6 +466,25 @@ export class BeachObjects {
   /** Saved form (positions as they are now). */
   persisted(): PlacedObject[] {
     return [...this.live.values()].map((l) => ({ ...l.data }));
+  }
+
+  /**
+   * Where everything is now, packed in roster order (persisted() order):
+   * POS_STRIDE floats each. Sent every frame instead of the objects
+   * themselves, which only go across when the roster changes.
+   */
+  packPositions(): Float32Array {
+    const out = new Float32Array(this.live.size * POS_STRIDE);
+    let o = 0;
+    for (const l of this.live.values()) {
+      out[o] = l.data.x;
+      out[o + 1] = l.data.y;
+      out[o + 2] = l.z;
+      out[o + 3] = l.data.angle;
+      out[o + 4] = l.floating ? 1 : 0;
+      o += POS_STRIDE;
+    }
+    return out;
   }
 
   states(): ObjectState[] {

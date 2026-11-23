@@ -1,5 +1,6 @@
 import { Capacitor } from '@capacitor/core';
 import { nativeSignOut } from './nativeAuth';
+import { MAX_OBJECTS } from '../sim/sandCodec';
 
 // Accounts are a build-time feature. The public GitHub Pages build is a
 // sandbox (no sign-in, nothing saved); the production build sets:
@@ -295,6 +296,8 @@ export class Account {
           .map(([k, v]) => `${k}=${v}`)
           .join(','),
         ...(epoch === undefined ? {} : { 'X-Beach-Epoch': String(epoch) }),
+        // how many things this app keeps (the server refuses saves from apps that keep fewer than a beach holds)
+        'X-Beach-Max': String(MAX_OBJECTS),
       },
       body: bytes as BodyInit,
       // keepalive lets a save finish while the page is closing (64 KB limit)

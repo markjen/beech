@@ -49,7 +49,8 @@ simulated one.
 | `src/config.ts` | All tuning constants (grid tiers, waves, water, sand, erosion, brush, camera) |
 | `src/palette.ts` | The four moods and the day-cycle blend |
 | `src/sim/beachSim.ts` | The simulation, no DOM. Unit tested in `tests/sim.test.ts`. |
-| `src/sim/sim.worker.ts`, `protocol.ts` | Worker loop and message types (including live `tune` and `bench`) |
+| `src/sim/sim.worker.ts`, `protocol.ts` | Worker loop and message types (including live `tune` and `bench`). Each frame carries the packed sand buffer and a packed positions buffer for the things on the beach; the roster of things only when it changes |
+| `scripts/perf-objects.mjs` | Profiles what things cost at several counts (draw calls, main-thread ms, worker tick, a CPU profile); `PERF_THROTTLE=4` slows the CPU like a phone |
 | `src/sim/objects.ts` | Things on the beach: rocks (raise the non-erodible floor), driftwood (floats, drifts, strands), shells and sea glass (rolled by fast water), flags (fixed), and what the sea washes in. Tested in `tests/objects.test.ts`. |
 | `src/sim/sandCodec.ts` | Saved-beach format: BCH1 (sand) and BCH2 (sand plus placed objects, validated on load) |
 | `src/world/beachFile.ts` | Beach files (`.beach.json`, spec in BEACH_FILE.md): read and write, shapes, `reconcileItems` (what of a beach your bag can build) |
@@ -61,7 +62,7 @@ simulated one.
 | `src/render/beachRenderer.ts`, `shaders.ts` | All meshes and GLSL (sand, water, far ocean, skirts, rock, props) |
 | `src/render/sky.ts` | Gradient background |
 | `src/render/storeMeshes.ts`, `glow.ts`, `meshKit.ts` | The shop's pieces (parasol, surfboard, sandcastle, beach hut, lighthouse, tiki torch); the glow and sparkles on rare, legendary and shop things; shared mesh helpers |
-| `src/render/objects.ts` | Faceted rock, driftwood, shell, sea glass and flag meshes (shape from the object's variant), eased to the sim's positions |
+| `src/render/objects.ts` | The props (rocks, driftwood, shells, flags, shop items…): shapes from each thing's variant, drawn as GPU thin instances through a scene-wide prop bank (one source mesh per look, shared by your beach and the neighbors'), eased to the sim's positions; things at rest aren't touched |
 | `src/world/items.ts`, `src/ui/inventory.ts` | Item catalog (rarity, source, availability, price) and the bag tray |
 | `src/input/*` | Ortho camera, gestures (dig vs camera), heightfield picking, brush math |
 | `src/world/*` | Items (`items.ts`, above) and real beaches: `locations.ts` (catalogue), `astro.ts` (sun and moon), `tides.ts` (harmonic tide engine), `tideStations.json` (TICON-3 constants), `live.ts` (turns a beach and the current time into a palette, light, sky and tide) |

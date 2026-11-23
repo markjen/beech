@@ -16,6 +16,8 @@ let paused = false;
 let lastTime = 0;
 let acc = 0;
 let statsEvery = 0;
+/** the roster version the main thread has (-1: none yet) */
+let rosterSent = -1;
 const DT = 1 / SIM_HZ;
 
 function post(msg: FromWorker, transfer: Transferable[] = []) {
@@ -48,6 +50,10 @@ function loop() {
     if (buf) {
       sim.pack(buf);
       const withStats = ++statsEvery % 15 === 0;
+      const objs = sim.objects;
+      const roster = objs.version !== rosterSent ? objs.persisted() : undefined;
+      rosterSent = objs.version;
+      const objPos = objs.packPositions();
       post(
         {
           type: 'frame',
@@ -60,11 +66,13 @@ function loop() {
           redoCount: sim.undo.redoCount,
           digIntensity: sim.digIntensity,
           swash: sim.swashVolume,
-          objects: sim.objects.states(),
+          objPos,
+          rosterVersion: objs.version,
+          roster,
           stats: withStats ? sim.stats() : undefined,
           tickMs,
         },
-        [buf.buffer],
+        [buf.buffer, objPos.buffer],
       );
     }
   }
@@ -77,6 +85,7 @@ self.onmessage = (ev: MessageEvent<ToWorker>) => {
   switch (m.type) {
     case 'init': {
       sim = new BeachSim(m.grid, m.seed, m.flags);
+      rosterSent = -1;
       pool.length = 0;
       for (let i = 0; i < 3; i++) pool.push(new Float32Array(sim.n * 4));
       const rest = sim.rest.slice();
