@@ -27,6 +27,17 @@ const MAGIC2 = [0x42, 0x43, 0x48, 0x32]; // "BCH2"
 const KINDS = new Set<string>(OBJECT_KINDS);
 /** a saved beach never holds more than this many objects */
 export const MAX_OBJECTS = 400;
+
+/**
+ * What a save keeps: things you put down first (oldest first), then what the
+ * sea brought in, up to MAX_OBJECTS. `dropped` counts your own things that
+ * didn't fit (the app warns about those; the wild ones don't matter).
+ */
+export function objectsToSave(objects: PlacedObject[]): { keep: PlacedObject[]; dropped: number } {
+  const mine = objects.filter((o) => !o.wild);
+  const keep = [...mine, ...objects.filter((o) => o.wild)].slice(0, MAX_OBJECTS);
+  return { keep, dropped: Math.max(0, mine.length - MAX_OBJECTS) };
+}
 const MM = 1000;
 
 async function pipe(data: Uint8Array, stream: CompressionStream | DecompressionStream): Promise<Uint8Array> {
@@ -53,7 +64,7 @@ export async function encodeSand(
   const q = quantize(delta);
   if (objects.length) {
     const sand = await pipe(new Uint8Array(q.buffer), new CompressionStream('deflate'));
-    const json = new TextEncoder().encode(JSON.stringify(objects.slice(0, MAX_OBJECTS).map(round)));
+    const json = new TextEncoder().encode(JSON.stringify(objectsToSave(objects).keep.map(round)));
     const objs = await pipe(json, new CompressionStream('deflate'));
     const out = new Uint8Array(12 + sand.length + objs.length);
     out.set(MAGIC2, 0);

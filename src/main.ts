@@ -24,6 +24,7 @@ import { DIG_FIND_ROLL_COOLDOWN_MS, qualifiesForFind } from './sim/digFinds';
 import type { PlacedObject } from './sim/objects';
 import type { FrameInfo, FromWorker, ToWorker } from './sim/protocol';
 import { makeSwell } from './sim/waves';
+import { MAX_OBJECTS } from './sim/sandCodec';
 import { restHeight } from './sim/profile';
 import { Ambient, toggleFullscreen } from './ui/ambient';
 import { Hud, type ToolDef } from './ui/hud';
@@ -507,6 +508,7 @@ async function boot() {
 
   /** Tap with an item in hand: set the item down. Picking things back up is
    * the vacuum's job now — the item tool only places. */
+  let fullToastAt = 0;
   const putDown = (sx: number, sy: number) => {
     if (!placing) return;
     const hit = pickAt(sx, sy);
@@ -515,6 +517,15 @@ async function boot() {
     if (!inventory.canPlace(placing.id)) {
       // all of them are already on the beach
       haptics.impact('light');
+      return;
+    }
+    if (info.objects.filter((o) => !o.wild).length >= MAX_OBJECTS) {
+      // a beach saves this many things at most: more would be lost on the next save
+      haptics.impact('light');
+      if (performance.now() - fullToastAt > 4000) {
+        fullToastAt = performance.now();
+        showToast(uiRoot, `This beach is full: it holds ${MAX_OBJECTS} things. Take some away with the vacuum to put more down.`);
+      }
       return;
     }
     const r = rollPlacement(placing, sizeOf(placing.id));
@@ -865,6 +876,16 @@ async function boot() {
     });
     const s = sync;
     markDirty = (delayMs?: number) => s.markDirty(delayMs);
+    // say so when a save can't hold everything (an undo can bring a full
+    // beach past the limit), and when the server refuses one as too big
+    s.onDropped((n) => {
+      if (n) showToast(uiRoot, `Only ${MAX_OBJECTS} things are saved on a beach: the ${n} you put down last won't be kept. Take some away with the vacuum.`);
+    });
+    let toldTooBig = false;
+    s.onState((st) => {
+      if (st === 'tooBig' && !toldTooBig) showToast(uiRoot, 'This beach is too big to save. Smooth some of the sand and it will save again.');
+      toldTooBig = st === 'tooBig';
+    });
     neighbors = new NeighborView(scene, grid, ready.rest, swell, cam, uiRoot, account);
     const nv = neighbors;
     const acct = account;

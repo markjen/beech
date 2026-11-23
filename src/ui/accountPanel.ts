@@ -54,7 +54,11 @@ export class AccountPanel {
         ? 'saving your beach…'
         : s === 'offline'
           ? 'offline: your beach will save when you reconnect'
-          : this.sync.savedAt
+          : s === 'tooBig'
+            ? 'too big to save: smooth some of the sand to save again'
+          : this.sync.dropped
+            ? `saved, but ${this.sync.dropped} of your things didn't fit (400 at most)`
+            : this.sync.savedAt
             ? `beach saved ${ago(this.sync.savedAt)}`
             : 'your beach saves as you play';
   }

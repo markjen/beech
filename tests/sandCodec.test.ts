@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { decodeSand, encodeSand, resampleField } from '../src/sim/sandCodec';
+import { MAX_OBJECTS, decodeSand, encodeSand, objectsToSave, resampleField } from '../src/sim/sandCodec';
+import type { PlacedObject } from '../src/sim/objects';
 import { BeachSim } from '../src/sim/beachSim';
 import { GRID_TIERS } from '../src/config';
 
@@ -100,5 +101,24 @@ describe('saved beach codec', () => {
     const centre = out[Math.floor(b.ny / 2) * b.nx + Math.floor(b.nx / 2)];
     expect(centre).toBeGreaterThan(0.9);
     expect(out[0]).toBe(0);
+  });
+});
+
+describe('the object limit', () => {
+  const obj = (id: number, wild = false): PlacedObject => ({ id, kind: 'rock', item: 'rock', x: 5, y: 20, angle: 0, size: 0.3, variant: 1, ...(wild ? { wild } : {}) });
+  it('saves your things before the wild ones, and counts what did not fit', () => {
+    const wild = [obj(1, true), obj(2, true)];
+    const mine = Array.from({ length: MAX_OBJECTS + 3 }, (_, i) => obj(10 + i));
+    const { keep, dropped } = objectsToSave([...wild, ...mine]);
+    expect(keep.length).toBe(MAX_OBJECTS);
+    expect(keep.every((o) => !o.wild)).toBe(true);
+    expect(keep[0].id).toBe(10); // the oldest of yours stay
+    expect(dropped).toBe(3);
+  });
+  it('keeps everything when it fits', async () => {
+    const all = [obj(1, true), obj(2), obj(3)];
+    expect(objectsToSave(all)).toEqual({ keep: [obj(2), obj(3), obj(1, true)], dropped: 0 });
+    const back = await decodeSand(await encodeSand(new Float32Array(64), 8, 8, all));
+    expect(back.objects.map((o) => o.id)).toEqual([2, 3, 1]);
   });
 });

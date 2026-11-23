@@ -1,6 +1,6 @@
-import { decodeSand, encodeSand, fitWorld, resampleField } from '../sim/sandCodec';
+import { decodeSand, encodeSand, fitWorld, objectsToSave, resampleField } from '../sim/sandCodec';
 import type { PlacedObject } from '../sim/objects';
-import type { Account } from './account';
+import { ApiError, type Account } from './account';
 import { itemById } from '../world/items';
 
 /** How many of each non-free item are on a beach (so your bag can count across beaches). */
@@ -13,7 +13,8 @@ export function countItems(objects: PlacedObject[]): Record<string, number> {
   return out;
 }
 
-export type SyncState = 'idle' | 'saving' | 'saved' | 'offline';
+/** `tooBig`: the server refused the save as too large (it keeps the last one that fit) */
+export type SyncState = 'idle' | 'saving' | 'saved' | 'offline' | 'tooBig';
 
 export interface SyncHost {
   /** current sand minus the rest beach, at the live grid size, plus what's on it */
@@ -38,6 +39,9 @@ export class BeachSync {
   /** loading another beach: hold saves until it's in (they'd save the old sand into it) */
   private switching = false;
   private listeners: ((s: SyncState) => void)[] = [];
+  /** your things the last save had to leave out (over MAX_OBJECTS) */
+  dropped = 0;
+  private droppedListeners: ((n: number) => void)[] = [];
 
   constructor(
     private readonly account: Account,
@@ -63,6 +67,11 @@ export class BeachSync {
 
   onState(fn: (s: SyncState) => void): void {
     this.listeners.push(fn);
+  }
+
+  /** A save had to leave some of your things out (or, with 0, everything fits again). */
+  onDropped(fn: (n: number) => void): void {
+    this.droppedListeners.push(fn);
   }
 
   private set(s: SyncState): void {
@@ -107,8 +116,18 @@ export class BeachSync {
       if (this.account.user?.id !== forUser || this.account.beachId !== forBeach) return;
       this.savedAt = await this.account.saveBeach(bytes, this.host.location(), this.host.grid.nx, this.host.grid.ny, keepalive, countItems(objects));
       this.dirty = false;
+      const dropped = objectsToSave(objects).dropped;
+      if (dropped !== this.dropped) {
+        this.dropped = dropped;
+        for (const fn of this.droppedListeners) fn(dropped);
+      }
       this.set('saved');
-    } catch {
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 413) {
+        // retrying won't help; the next change tries again (it may be smaller)
+        this.set('tooBig');
+        return;
+      }
       this.set('offline');
       // try again later
       this.timer = window.setTimeout(() => void this.flush(), 30000);

@@ -402,6 +402,17 @@ branch, so the deploy job runs only there. Switch the default branch to
 - Not verified on devices yet: that needs the OAuth clients and the Apple
   capability (DevOps; see BACKEND.md, "Phone apps").
 
+## How much a beach holds (2026-11-23)
+
+- A saved beach holds **400 things** (`MAX_OBJECTS` in `sandCodec.ts`). Your
+  own things are saved first (oldest first), then what the sea brought in.
+  Putting down a 401st is refused with a message to use the vacuum. If a save
+  still has to leave some out (an undo can go past the limit), a message says
+  how many, and the account panel's status line says so too.
+- The server refuses a save over **768 KB** (413). The app now says the beach
+  is too big to save, rather than retrying quietly. In practice only very
+  noisy sand on the finest grid gets near it.
+
 ## Beach files (planned 2026-11-23)
 
 Export and import of a documented `.beach.json` file, for designing beaches
