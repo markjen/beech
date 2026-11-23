@@ -1,7 +1,7 @@
 # Live beaches: the sea keeps working while you're away (design)
 
-Status: design, not built. Milestones L1–L5 are at the end and in
-[BACKLOG.md](BACKLOG.md).
+Status: design, not built. The owner's decisions are settled (end of this
+page). Milestones L1–L5 are at the end and in [BACKLOG.md](BACKLOG.md).
 
 ## Today
 
@@ -90,19 +90,23 @@ snapshots avoids the whole problem.
 
 ### 3. Owner offline: catch up on read, on the server
 
-When anyone (owner included) reads a beach and
+When anyone reads a beach (the owner, a neighbor, a visitor, the shore;
+owner's decision 3) and
 `now − simulated_until > CATCHUP_MIN_GAP` (10 min), and no lease is live,
 the server catches it up before or while serving it:
 
 1. Take a per-beach lock (`pg_try_advisory_xact_lock(beach_id)`). If another
    request holds it, serve the stored beach now; the caught-up one follows
    (see "Serving" below).
-2. Run `catchUp(beach, from = simulated_until, to = now)` (section 4).
-3. Write sand, objects, `items` (recounted), `simulated_until = to`,
+2. If the gap is over `CATCHUP.tideCheckpointGapH` (12 h), keep the beach as
+   it is now as its **"Before the tide"** checkpoint (section 6), in the
+   same transaction.
+3. Run `catchUp(beach, from = simulated_until, to = now)` (section 4).
+4. Write sand, objects, `items` (recounted), `simulated_until = to`,
    `version + 1`, `epoch + 1`, **only if** `version` is still the one read
    (compare-and-set). A lost race just means someone else already caught it
    up; use theirs.
-4. Record what happened in `beach_events` (section 6) and return the lost
+5. Record what happened in `beach_events` (section 6) and return the lost
    items to the bag (section 5).
 
 **Serving.** The first viewer shouldn't wait for the catch-up:
@@ -191,8 +195,14 @@ band above it, usually a third of the grid or less):
 
 **Bounds.**
 
-- Gap capped at **14 days**. Past that, the beach is already "flattened by
-  the sea" for anything the water reaches; more time changes nothing visible.
+- Gap capped at **14 days** by default, configurable (owner's decision 1):
+  `CATCHUP.maxGapDays` in `src/config.ts`, overridable on the server with the
+  `CATCHUP_MAX_GAP_DAYS` env var (Cloud Run) so it can change without a
+  release. Past the cap the beach is already "flattened by the sea" for
+  anything the water reaches; more time changes little. The gap's start is
+  moved up to `to − cap`, so the tides used are still the most recent ones.
+  The perf budget is set at the default; raising the cap a lot means raising
+  `catchup14d` too.
 - The grid is the saved one (192² to 320² cells). A 14-day gap is ~56 half
   cycles; at ~10 relaxation passes each over a band of ~256 × 90 cells,
   that's ~13 M cell updates, roughly 50–100 ms in JS. Target: a 14-day
@@ -225,8 +235,9 @@ sim and the catch-up alike:
   beaches", and the server recounts `beach.items` from the objects on every
   save and catch-up. A free item (rock, driftwood, shell) just goes; it's
   free anyway.
-- The live app shows a toast: "The sea took your nautilus. It's back in your
-  bag."
+- The live app shows a summary toast, counting rather than naming (owner's
+  decision 4): "The sea took 2 things. They're back in your bag." Losses
+  within a few seconds share one toast.
 - Catch-up losses go into `beach_events` and show in "while you were away".
 - Undo doesn't bring a lost item back (it isn't a stroke); the bag does.
 
@@ -245,7 +256,8 @@ CREATE TABLE beach_events (
   to_at BIGINT NOT NULL,
   tides INT NOT NULL,              -- high tides in the gap
   sand_moved REAL NOT NULL,        -- m³
-  lost JSONB NOT NULL DEFAULT '[]',-- [{ item, kind }] back in the bag
+  lost INT NOT NULL DEFAULT 0,      -- owned things back in the bag
+  checkpoint UUID REFERENCES checkpoints(id) ON DELETE SET NULL, -- "Before the tide"
   created_at BIGINT NOT NULL
 );
 CREATE INDEX beach_events_beach ON beach_events (beach_id, created_at);
@@ -255,17 +267,44 @@ Kept for 30 days (pruned on write). When the owner opens a beach whose
 events they haven't seen, the app shows a small card:
 
 > **While you were away** (2 days)
-> 4 high tides · your castle took the worst of it ·
-> the sea took your nautilus and 2 shells (back in your bag)
-> [Restore a checkpoint]
+> 8 high tides · the sea took 3 things (back in your bag)
+> [Put it back as it was]  [Keep]
 
-"Restore a checkpoint" opens settings → checkpoints. "Last seen" is a
-per-beach `owner_seen_at` column, set when the owner opens it.
+A summary, not a list of items (owner's decision 4). Unseen events of the
+same beach are merged into one card. "Last seen" is a per-beach
+`owner_seen_at` column, set when the owner opens it.
 
-A later idea: before the catch-up, keep the old sand as the beach's automatic
-checkpoint ("Before the tide"), so one tap undoes a week of sea. It's the
-same mechanism as "before restoring" and costs nothing new, but it would
-replace the existing auto slot, so it's left as an owner decision below.
+**"Before the tide" checkpoint** (owner's decision 2). Before a catch-up of a
+gap over `CATCHUP.tideCheckpointGapH` (12 h, configurable like the cap), the
+server keeps the beach as it was as a checkpoint, in the same transaction:
+
+- A new checkpoint kind, `tide`, named "Before the tide", one per beach
+  (a new one replaces the old), with its own unique index like `auto`'s.
+  "Before restoring" and "Before import" keep the `auto` slot; the two don't
+  replace each other.
+- It doesn't count toward the named-checkpoint limit, and, like `auto`, it
+  is left out of the byte allowance, so it can never block a catch-up or
+  make someone delete a checkpoint.
+- **[Put it back as it was]** restores it (the usual restore, `drop-missing`
+  mode). Things the sea took are back in the bag, so the restore puts them
+  back on the beach if they're still free, and drops any that have since been
+  placed elsewhere, saying so (the restore's existing fit rule). The restore
+  makes its own "before restoring" copy, so even that can be undone.
+- It also shows in settings → checkpoints like any other, and can be
+  exported.
+- Only gaps over 12 h make one: shorter ones change little, and a beach
+  visited all day would otherwise churn it.
+
+Schema (appended migration):
+
+```sql
+ALTER TABLE checkpoints DROP CONSTRAINT checkpoints_kind_check;
+ALTER TABLE checkpoints ADD CONSTRAINT checkpoints_kind_check
+  CHECK (kind IN ('named', 'auto', 'tide'));
+CREATE UNIQUE INDEX checkpoints_one_tide ON checkpoints (from_beach) WHERE kind = 'tide';
+```
+
+(Check the actual constraint name in the migration before writing this.)
 
 ### 7. Viewers see it live
 
@@ -308,7 +347,7 @@ Schema (appended migrations, never edits):
 - `sim_lease (beach_id BIGINT PRIMARY KEY REFERENCES beach(id) ON DELETE
   CASCADE, holder TEXT NOT NULL, expires_at BIGINT NOT NULL)`. `holder` is a
   random per-tab id the app makes at start.
-- `beach_events` (section 6).
+- `beach_events` and the `tide` checkpoint kind (section 6).
 
 Endpoints:
 
@@ -347,10 +386,13 @@ Endpoints:
   for `wild` and along-shore.
 - Server: lease take/renew/force/expiry; catch-up CAS race (two reads at
   once, one write); epoch bump makes a stale save 409; `items` recount after
-  a loss; `simulated_until` reset on restore.
+  a loss; `simulated_until` reset on restore; a "Before the tide"
+  checkpoint only for gaps over the threshold, one per beach, not counted;
+  the cap read from `CATCHUP_MAX_GAP_DAYS`.
 - E2e `npm run e2e:live`: Ana builds a castle at the waterline and leaves;
   the test clock moves 2 days; Ben visits and sees it eroded; Ana opens her
   beach, sees "while you were away", and her nautilus is back in her bag.
+  She taps "Put it back as it was" and the castle (and nautilus) return.
   A second part: Ana online, Ben watching, Ana digs, Ben sees it within 6 s.
 
 ## Milestones
@@ -359,24 +401,19 @@ Endpoints:
 | --- | --- | --- |
 | **L1** | **Lost to the sea, live.** Owned floaters can leave by the offshore edge; deep-buried items are lost; the worker reports `lost`; toast; the save drops them so they're back in the bag | sim tests; a bottle pushed out to sea ends up back in the bag after a save |
 | **L2** | **The catch-up model.** `src/sim/catchup.ts`, `CATCHUP` constants, fitted against the live sim; perf line | `tests/catchup.test.ts` passes; `catchup14d` within budget |
-| **L3** | **Server catch-up on read.** Bundle into the server, migrations (`simulated_until`, `beach_events`, `owner_seen_at`), lock + CAS + epoch, background queue for the shore, items recount | server tests; e2e: 2 days on the test clock erodes a waterline castle |
-| **L4** | **While you were away.** The card, `/away` endpoints, "Restore a checkpoint" link | e2e sees the card once, then not again |
+| **L3** | **Server catch-up on read.** Bundle into the server, migrations (`simulated_until`, `beach_events`, `owner_seen_at`, `tide` checkpoints), configurable cap, lock + CAS + epoch, "Before the tide" checkpoint, background queue for the shore, items recount | server tests; e2e: 2 days on the test clock erodes a waterline castle and leaves a "Before the tide" checkpoint |
+| **L4** | **While you were away.** The summary card, `/away` endpoints, "Put it back as it was" | e2e sees the card once, then not again; putting it back restores the castle |
 | **L5** | **Live viewers.** Lease, faster saves while watched, viewer polling with blend, then SSE with `LISTEN/NOTIFY` | e2e: a viewer sees the owner's dig within 6 s; two owner tabs never both save |
 
 L1–L4 are useful on their own (the sea works while you're away) and don't
 need L5. L5 is what makes visits live.
 
-## Owner decisions
+## Owner decisions (settled 2026-11-23)
 
-1. **Gap cap:** 14 days suggested. Longer changes nothing visible, but a
-   shorter one (e.g. 3 days) would be gentler for people who come back after
-   a holiday.
-2. **"Before the tide" auto checkpoint** before each big catch-up (say, gaps
-   over 12 h): one-tap undo of the sea, but it takes the beach's one auto
-   slot (today used by "before restoring" and "before import"). Suggested:
-   yes, as a second auto kind, not counted toward the limit.
-3. **Do neighbors' visits catch up your beach?** Suggested yes (that's the
-   point: they see the same beach you will). The alternative is to catch up
-   only when you open it, and show visitors the beach as you left it.
-4. **Lost item toast wording and whether the card names each item** or just
-   counts them.
+1. **Gap cap:** 14 days, configurable (`CATCHUP.maxGapDays`, server env
+   `CATCHUP_MAX_GAP_DAYS`).
+2. **"Before the tide" checkpoint:** yes, before catch-ups of gaps over
+   12 h, as its own kind, not counted toward the limits.
+3. **Visitors trigger the catch-up:** yes. Everyone sees the same beach the
+   owner will.
+4. **Wording:** a summary that counts what the sea took; no per-item list.

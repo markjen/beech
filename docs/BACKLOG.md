@@ -98,8 +98,9 @@ _(nothing right now)_
   [LIVE_SIM.md](LIVE_SIM.md). L1 owned items lost to the sea go back to the
   bag; L2 coarse catch-up model in `src/sim/catchup.ts`; L3 server catch-up
   on read (lock, CAS, epoch bump); L4 "while you were away" card; L5 owner
-  lease and live viewers (poll, then SSE). Owner decisions at the end of
-  the doc.
+  lease and live viewers (poll, then SSE). Owner decisions settled
+  2026-11-23: 14-day cap (configurable), "Before the tide" checkpoint,
+  visitors trigger catch-up, summary wording.
 - [ ] **Release setup for native sign-in** (DevOps): Android and iOS OAuth
   clients, build env vars, the Info.plist URL scheme, the Apple capability,
   and server client IDs. Steps are in BACKEND.md, "Phone apps". Then test on
