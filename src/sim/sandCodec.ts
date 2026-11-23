@@ -139,23 +139,51 @@ export function sanitizeObjects(raw: unknown): PlacedObject[] {
   return out;
 }
 
+/** the world was 32 m x 24 m before the sea was extended */
+const OLD_WORLD_Z = 24;
+/** how far objects stay from the beach's edges */
+const EDGE = 0.3;
+
 /**
  * Bring a saved beach into today's world. Beaches saved before the sea was
  * extended (a 32 m x 24 m world, so ny/nx = 3/4) get the missing sea rows
  * added on the offshore side (untouched: zero delta), and their objects move
  * up by the same distance, so everything stays where it was on the sand.
+ *
+ * An out-of-date app (a tab left open from before the change) could load a
+ * new beach, squeeze its sand into 32 x 24 and save it back with the objects
+ * still placed for 32 x 32. Each such save pushed the objects another 8 m
+ * up the beach on today's app, until they floated off its land edge. So:
+ * objects already past the old world's land edge are taken as placed for
+ * today's world (not moved), and anything still off the beach is folded back
+ * on in 8 m steps, then kept inside the edges.
  */
 export function fitWorld(b: SavedBeach): SavedBeach {
   const dx = WORLD_SIZE_X / b.nx;
   const savedZ = b.ny * dx;
   const extra = WORLD_SIZE_Z - savedZ;
-  if (Math.abs(extra) < dx * 0.5) return b;
+  let out = b;
   const pad = Math.round(extra / dx);
-  if (pad <= 0) return b; // a larger world than ours: leave it to resampleField
-  const ny = b.ny + pad;
-  const delta = new Float32Array(b.nx * ny);
-  delta.set(b.delta, pad * b.nx);
-  return { nx: b.nx, ny, delta, objects: b.objects.map((o) => ({ ...o, y: o.y + pad * dx })) };
+  if (Math.abs(extra) >= dx * 0.5 && pad > 0) {
+    // (a larger world than ours is left to resampleField)
+    const ny = b.ny + pad;
+    const delta = new Float32Array(b.nx * ny);
+    delta.set(b.delta, pad * b.nx);
+    const inNewWorld = b.objects.some((o) => o.y > savedZ + EDGE);
+    const shift = inNewWorld ? 0 : pad * dx;
+    out = { nx: b.nx, ny, delta, objects: b.objects.map((o) => ({ ...o, y: o.y + shift })) };
+  }
+  const stray = (o: PlacedObject) => o.y > WORLD_SIZE_Z - EDGE || o.x > WORLD_SIZE_X - EDGE || o.x < EDGE || o.y < EDGE;
+  if (!out.objects.some(stray)) return out;
+  const step = WORLD_SIZE_Z - OLD_WORLD_Z;
+  const clamp = (v: number, hi: number) => Math.min(hi - EDGE, Math.max(EDGE, v));
+  const objects = out.objects.map((o) => {
+    if (!stray(o)) return o;
+    let y = o.y;
+    while (y > WORLD_SIZE_Z - EDGE) y -= step;
+    return { ...o, x: clamp(o.x, WORLD_SIZE_X), y: clamp(y, WORLD_SIZE_Z) };
+  });
+  return { ...out, objects };
 }
 
 /**

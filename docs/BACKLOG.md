@@ -41,6 +41,10 @@ _(nothing right now)_
 
 ## Up next (engineering)
 
+- [ ] **Reload stale tabs**: send the build id with saves (or poll a
+  `/version`), and when the server says the app is out of date (426) show
+  "a new version is ready · reload" instead of a silent save failure. A tab
+  left open across a world change corrupted Rose's beach (2026-11-23).
 - [ ] **More than one beach**: design in [MULTI_BEACH.md](MULTI_BEACH.md),
   four phases (data model and API → beaches list → connected beaches →
   shop). Owner decisions are listed at the end of that doc. People can
@@ -101,6 +105,8 @@ _(nothing right now)_
   beach (live on different devices at once), purchases checked with Apple
   and Google, a pricing plan (PRICING.md) (2026-11-23).
 
+- [x] **Objects floating off Rose's beach** (2026-11-23): server refuses
+  saves from the old 32 × 24 app; `fitWorld` repairs objects it shifted.
 - [x] **Claw starter gifts** (rare, shop item, extra beach after a day),
   the Deckchair, and the multi-beach design (2026-11-23).
 
