@@ -21,7 +21,7 @@ describe('item catalog', () => {
   it('the starter gifts exist: a rare item, a shop item, and an extra beach', () => {
     expect(itemById(STARTER.rare.item)?.rarity).toBe('rare');
     expect(itemById(STARTER.paid.item)?.source).toBe('shop');
-    expect(itemById(STARTER.paid.item)?.price).toBeGreaterThan(0);
+    expect(itemById(STARTER.paid.item)?.product).toBeTruthy();
     expect(extraById(STARTER.beach.item)).toBeTruthy();
     expect(itemById(STARTER.beach.item)).toBeUndefined(); // not something you put on the sand
   });

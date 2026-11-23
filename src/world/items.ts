@@ -29,8 +29,8 @@ export interface Item {
   variants: number;
   /** only obtainable between these dates (ISO), for time-limited items */
   available?: { from?: string; until?: string };
-  /** price in the future shop's currency; unset for free items */
-  price?: number;
+  /** store product that sells it (src/world/products.ts); unset for free and prize items */
+  product?: string;
 }
 
 export const ITEMS: Item[] = [
@@ -44,7 +44,13 @@ export const ITEMS: Item[] = [
   { id: 'sanddollar', name: 'Sand dollar', kind: 'sanddollar', rarity: 'common', source: 'pull', unlimited: false, size: [0.06, 0.16], variants: 2 },
   { id: 'starfish', name: 'Starfish', kind: 'starfish', rarity: 'rare', source: 'pull', unlimited: false, size: [0.08, 0.26], variants: 3 },
   // from the shop (the claw machine gives everyone one as a starter gift)
-  { id: 'deckchair', name: 'Deckchair', kind: 'deckchair', rarity: 'rare', source: 'shop', unlimited: false, size: [1, 1], variants: 3, fixedSize: true, price: 250 },
+  { id: 'deckchair', name: 'Deckchair', kind: 'deckchair', rarity: 'rare', source: 'shop', unlimited: false, size: [1, 1], variants: 3, fixedSize: true, product: 'item.deckchair' },
+  { id: 'parasol', name: 'Parasol', kind: 'parasol', rarity: 'rare', source: 'shop', unlimited: false, size: [1, 1], variants: 1, fixedSize: true, product: 'item.parasol' },
+  { id: 'surfboard', name: 'Surfboard', kind: 'surfboard', rarity: 'rare', source: 'shop', unlimited: false, size: [1, 1], variants: 1, fixedSize: true, product: 'item.surfboard' },
+  { id: 'tikitorch', name: 'Tiki torch', kind: 'tikitorch', rarity: 'rare', source: 'shop', unlimited: false, size: [1, 1], variants: 1, fixedSize: true, product: 'item.tikitorch' },
+  { id: 'sandcastle', name: 'Sandcastle', kind: 'sandcastle', rarity: 'legendary', source: 'shop', unlimited: false, size: [1, 1], variants: 1, fixedSize: true, product: 'item.sandcastle' },
+  { id: 'beachhut', name: 'Beach hut', kind: 'beachhut', rarity: 'legendary', source: 'shop', unlimited: false, size: [1, 1], variants: 1, fixedSize: true, product: 'item.beachhut' },
+  { id: 'lighthouse', name: 'Lighthouse', kind: 'lighthouse', rarity: 'legendary', source: 'shop', unlimited: false, size: [1, 1], variants: 1, fixedSize: true, product: 'item.lighthouse' },
   { id: 'bottle', name: 'Message in a bottle', kind: 'bottle', rarity: 'legendary', source: 'pull', unlimited: false, size: [0.22, 0.45], variants: 2 },
 ];
 
@@ -96,7 +102,7 @@ export function rollPlacement(
   // sizes feel even across the slider (a 2x step anywhere looks the same)
   const base = lo * Math.pow(hi / lo, t);
   const size = Math.min(hi, Math.max(lo, base * (0.92 + rand() * 0.16)));
-  // a deckchair faces the sea (more or less); everything else lands any way round
-  const angle = item.kind === 'deckchair' ? (rand() - 0.5) * 0.6 : rand() * Math.PI * 2;
+  // built things face the sea (more or less); everything else lands any way round
+  const angle = item.source === 'shop' ? (rand() - 0.5) * 0.6 : rand() * Math.PI * 2;
   return { size, variant: 1 + Math.floor(rand() * item.variants), angle };
 }

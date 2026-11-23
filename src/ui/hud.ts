@@ -27,6 +27,12 @@ const ICONS = {
   dozer: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17.5h11" /><circle cx="5.5" cy="17.5" r="2" /><circle cx="11.5" cy="17.5" r="2" /><path d="M4 15.5v-4h6l2 4" /><path d="M6.5 11.5V8.5h3" /><path d="M14 15.5l4-1.5M18 10v8l3 1" /></svg>`,
   deckchair: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 20l4.5-9.5L17 5" /><path d="M8.5 15h8l2.5 5" /><path d="M10.5 10.5c2 1 4 3 6 4.5" opacity=".55"/></svg>`,
   beach: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 16.5c3.5-3 15.5-3 19 0" /><path d="M2.5 19.5c3-1.4 6-1.4 9.5 0s6.5 1.4 9.5 0" opacity=".55"/><path d="M12 13V6" /><path d="M12 6c-2.8 0-5 1.5-6 3.5h12C17 7.5 14.8 6 12 6z" /></svg>`,
+  parasol: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11a9 7 0 0 1 18 0z" /><path d="M12 11v10M12 4v1" /><path d="M9 11c0-3 1.2-5.5 3-6.5 1.8 1 3 3.5 3 6.5" opacity=".55"/></svg>`,
+  surfboard: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5c3 3 3.6 9.5 2.2 15.5L12 21.5 9.8 18C8.4 12 9 5.5 12 2.5z" /><path d="M10 12h4" opacity=".55"/><path d="M4 21.5h16" /></svg>`,
+  sandcastle: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20h18" /><path d="M5 20v-8h3v-2h2v2h4v-2h2v2h3v8" /><path d="M9 20v-4h6v4" /><path d="M12 10V4l3 1.2L12 6.4" /></svg>`,
+  beachhut: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10l9-6 9 6" /><path d="M5 9v10h14V9" /><path d="M10 19v-6h4v6" /><path d="M5 21v-2M19 21v-2" opacity=".55"/></svg>`,
+  lighthouse: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 21l1-12h3l1 12z" /><path d="M10 7h4v2h-4zM11 5l1-1.5L13 5" /><path d="M4 6l4 1.5M20 6l-4 1.5" opacity=".55"/><path d="M10.2 14h3.6" opacity=".55"/></svg>`,
+  tikitorch: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22V10" /><path d="M9.5 10h5l-.8-2.5h-3.4z" /><path d="M12 7.5c-1.8-1.5-.6-3.5 0-5 .6 1.5 1.8 3.5 0 5z" /></svg>`,
   menu: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2" /><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1" /></svg>`,
 };
 

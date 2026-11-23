@@ -196,7 +196,20 @@ export const PROP_COLORS = {
   bottle: [hex('#8fc9b3'), hex('#9cc3d9')] as RGB[],
   /** deckchair canvas stripes (frame uses `pole`) */
   deckchair: [hex('#4f86c6'), hex('#e46f5a'), hex('#3fa58f')] as RGB[],
+  // the shop: [main, accent, trim, lamp]
+  parasol: [hex('#f06b5a'), hex('#fbf3e4')] as RGB[],
+  surfboard: [hex('#f2efe3'), hex('#2f8fd0')] as RGB[],
+  sandcastle: [hex('#e9cf9c'), hex('#e0533f')] as RGB[],
+  beachhut: [hex('#6cc3d5'), hex('#f2f0e8'), hex('#e46f5a')] as RGB[],
+  lighthouse: [hex('#f4f1ea'), hex('#d8473b'), hex('#3c4652'), hex('#ffe6a8')] as RGB[],
+  tikitorch: [hex('#8a5a33'), hex('#ffb347')] as RGB[],
   pole: hex('#d8c7ae'),
   /** the rolled-up message inside a bottle */
   paper: hex('#f7efd9'),
+};
+
+/** Glow and sparkle colours for special things on the beach (src/render/glow.ts). */
+export const RARITY_GLOW: Record<'rare' | 'legendary', RGB> = {
+  rare: hex('#7cc4ff'),
+  legendary: hex('#ffcf5a'),
 };

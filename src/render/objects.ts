@@ -1,59 +1,15 @@
 import type { ShaderMaterial } from '@babylonjs/core/Materials/shaderMaterial';
-import { Mesh } from '@babylonjs/core/Meshes/mesh';
-import { VertexData } from '@babylonjs/core/Meshes/mesh.vertexData';
+import type { Vector3 } from '@babylonjs/core/Maths/math.vector';
+import type { Mesh } from '@babylonjs/core/Meshes/mesh';
 import type { Scene } from '@babylonjs/core/scene';
 
 import { PROP_COLORS } from '../palette';
 import { OBJECT_KINDS, ROCK_HEIGHT, WOOD_RADIUS, floatRadius, type ObjectKind, type ObjectState, type PlacedObject } from '../sim/objects';
 import { ORIGIN_X, ORIGIN_Z, type BeachRenderer } from './beachRenderer';
-
-/** Small deterministic random numbers from an object's variant, so a rock looks the same everywhere. */
-function rng(seed: number): () => number {
-  let s = (Math.imul(seed | 0, 2654435761) ^ 0x9e3779b9) >>> 0;
-  return () => {
-    s = (Math.imul(s ^ (s >>> 15), 2246822507) + 0x6d2b79f5) >>> 0;
-    s ^= s >>> 13;
-    return (s >>> 0) / 4294967296;
-  };
-}
-
-/**
- * Turn every triangle to face away from the shape's core (a point on its
- * axis), so the lighting is right whichever way the triangles were listed.
- */
-function orient(P: number[], I: number[], core: (x: number, y: number, z: number) => [number, number, number]): void {
-  for (let t = 0; t < I.length; t += 3) {
-    const [a, b, c] = [I[t] * 3, I[t + 1] * 3, I[t + 2] * 3];
-    const e1 = [P[b] - P[a], P[b + 1] - P[a + 1], P[b + 2] - P[a + 2]];
-    const e2 = [P[c] - P[a], P[c + 1] - P[a + 1], P[c + 2] - P[a + 2]];
-    const n = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
-    const cx = (P[a] + P[b] + P[c]) / 3;
-    const cy = (P[a + 1] + P[b + 1] + P[c + 1]) / 3;
-    const cz = (P[a + 2] + P[b + 2] + P[c + 2]) / 3;
-    const k = core(cx, cy, cz);
-    // Babylon (left-handed, clockwise front faces) wants this cross product pointing inward
-    if (n[0] * (cx - k[0]) + n[1] * (cy - k[1]) + n[2] * (cz - k[2]) > 0) {
-      const tmp = I[t + 1];
-      I[t + 1] = I[t + 2];
-      I[t + 2] = tmp;
-    }
-  }
-}
-
-function finish(scene: Scene, name: string, P: number[], I: number[]): Mesh {
-  const vd = new VertexData();
-  vd.positions = P;
-  vd.indices = I;
-  const normals: number[] = [];
-  VertexData.ComputeNormals(P, I, normals);
-  vd.normals = normals;
-  const m = new Mesh(name, scene);
-  vd.applyToMesh(m, false);
-  m.convertToFlatShadedMesh();
-  m.isPickable = false;
-  m.alwaysSelectAsActiveMesh = true;
-  return m;
-}
+import { box, finish, lathe, orient, rng } from './meshKit';
+import { Glow, type GlowHandle } from './glow';
+import { STORE_BUILDERS, STORE_REACH, isStoreKind } from './storeMeshes';
+import { itemById } from '../world/items';
 
 /**
  * A faceted boulder: a squashed, jittered dome over the same ellipse the
@@ -218,36 +174,6 @@ function flagMesh(scene: Scene, o: PlacedObject): { pole: Mesh; cloth: Mesh } {
   return { pole, cloth };
 }
 
-/** A lathe: rings of (x, radius) along the x axis, `seg` sides, capped at both ends. */
-function lathe(profile: [number, number][], seg: number, squash = 1, wobble?: () => number): { P: number[]; I: number[] } {
-  const P: number[] = [];
-  const I: number[] = [];
-  for (const [x, rad] of profile) {
-    for (let s = 0; s < seg; s++) {
-      const a = (s / seg) * Math.PI * 2;
-      const w = rad * (wobble ? wobble() : 1);
-      P.push(x, Math.sin(a) * w * squash, Math.cos(a) * w);
-    }
-  }
-  for (let k = 0; k < profile.length - 1; k++) {
-    for (let s = 0; s < seg; s++) {
-      const a = k * seg + s;
-      const b = k * seg + ((s + 1) % seg);
-      I.push(a, b, a + seg, b, b + seg, a + seg);
-    }
-  }
-  const c0 = P.length / 3;
-  P.push(profile[0][0], 0, 0);
-  const last = profile.length - 1;
-  const c1 = P.length / 3;
-  P.push(profile[last][0], 0, 0);
-  for (let s = 0; s < seg; s++) {
-    I.push(c0, (s + 1) % seg, s);
-    I.push(c1, last * seg + s, last * seg + ((s + 1) % seg));
-  }
-  return { P, I };
-}
-
 /** A conch: a knobbly spiral cone lying on its side, its axis at the given height. */
 function conchMesh(scene: Scene, o: PlacedObject): Mesh {
   const r = rng(o.variant * 53 + 11);
@@ -347,23 +273,6 @@ function bottleMesh(scene: Scene, o: PlacedObject): { body: Mesh; cork: Mesh } {
   return { body, cork };
 }
 
-/** Append an axis-aligned box (rotated by `tilt` about x) to P/I. */
-function box(P: number[], I: number[], cx: number, cy: number, cz: number, sx: number, sy: number, sz: number, tilt = 0): void {
-  const b = P.length / 3;
-  const c = Math.cos(tilt);
-  const s = Math.sin(tilt);
-  for (const [x, y, z] of [
-    [-1, -1, -1], [1, -1, -1], [1, 1, -1], [-1, 1, -1],
-    [-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1],
-  ]) {
-    const ly = (y * sy) / 2;
-    const lz = (z * sz) / 2;
-    P.push(cx + (x * sx) / 2, cy + ly * c - lz * s, cz + ly * s + lz * c);
-  }
-  for (const f of [[0, 1, 2, 0, 2, 3], [4, 6, 5, 4, 7, 6], [0, 4, 5, 0, 5, 1], [3, 2, 6, 3, 6, 7], [0, 3, 7, 0, 7, 4], [1, 5, 6, 1, 6, 2]])
-    for (const k of f) I.push(b + k);
-}
-
 /** A striped deckchair: a wooden frame and a canvas sling (child mesh), facing the sea. */
 function deckchairMesh(scene: Scene, o: PlacedObject): { frame: Mesh; canvas: Mesh } {
   const P: number[] = [];
@@ -418,6 +327,25 @@ interface Shown {
   angle: number;
   bob: number;
   cloth?: Mesh;
+  glow?: GlowHandle;
+}
+
+/** How far a thing spreads from its centre, and how tall it is (for its glow). */
+function extent(o: PlacedObject): { reach: number; height: number } {
+  if (isStoreKind(o.kind)) return { reach: STORE_REACH[o.kind], height: o.kind === 'lighthouse' ? 2.9 : o.kind === 'parasol' || o.kind === 'surfboard' ? 2 : 1.4 };
+  switch (o.kind) {
+    case 'deckchair':
+      return { reach: 0.6, height: 0.8 };
+    case 'driftwood':
+      return { reach: o.size / 2, height: 0.3 };
+    case 'bottle':
+    case 'conch':
+      return { reach: o.size * 0.6, height: 0.3 };
+    case 'flag':
+      return { reach: 0.3, height: 1.1 };
+    default:
+      return { reach: Math.max(0.15, o.size), height: Math.max(0.25, o.size * 1.2) };
+  }
 }
 
 /**
@@ -432,6 +360,7 @@ export class ObjectView {
   private target = new Map<number, ObjectState>();
   private time = 0;
   private hidden = false;
+  private readonly glow: Glow;
 
   constructor(
     private readonly scene: Scene,
@@ -442,6 +371,7 @@ export class ObjectView {
       OBJECT_KINDS.map((k) => [k, PROP_COLORS[k].map((c) => renderer.createPropMaterial(c))]),
     ) as Record<ObjectKind, ShaderMaterial[]>;
     this.poleMat = renderer.createPropMaterial(PROP_COLORS.pole);
+    this.glow = new Glow(scene);
   }
 
   get count(): number {
@@ -453,6 +383,7 @@ export class ObjectView {
     this.target = new Map(states.map((s) => [s.id, s]));
     for (const [id, s] of this.shown) {
       if (!this.target.has(id)) {
+        s.glow?.dispose();
         s.mesh.dispose();
         this.shown.delete(id);
       }
@@ -461,12 +392,19 @@ export class ObjectView {
       const key = `${st.kind}:${st.variant}:${st.size}`;
       const cur = this.shown.get(st.id);
       if (cur && cur.key === key) continue;
+      cur?.glow?.dispose();
       cur?.mesh.dispose();
       const set = this.mats[st.kind];
       const mat = set[st.variant % set.length];
       let mesh: Mesh;
       let cloth: Mesh | undefined;
-      if (st.kind === 'flag') {
+      let lights: Vector3[] = [];
+      if (isStoreKind(st.kind)) {
+        const b = STORE_BUILDERS[st.kind](this.scene, st);
+        for (const p of b.parts) p.mesh.material = p.mat === 'pole' ? this.poleMat : set[p.mat % set.length];
+        mesh = b.root;
+        lights = b.lights;
+      } else if (st.kind === 'flag') {
         const f = flagMesh(this.scene, st);
         mesh = f.pole;
         cloth = f.cloth;
@@ -493,7 +431,15 @@ export class ObjectView {
           : glassMesh(this.scene, st);
         mesh.material = mat;
       }
-      this.shown.set(st.id, { mesh, key, x: st.x, y: st.y, z: st.z, angle: st.angle, bob: Math.random() * 6, cloth });
+      // rare, legendary and shop things glow and sparkle; lamps shine
+      const rarity = itemById(st.item)?.rarity;
+      const special = rarity === 'rare' || rarity === 'legendary' ? rarity : null;
+      let glow: GlowHandle | undefined;
+      if (special || lights.length) {
+        const { reach, height } = extent(st);
+        glow = this.glow.attach(mesh, special, reach, height, lights, st.id + st.variant * 7);
+      }
+      this.shown.set(st.id, { mesh, key, x: st.x, y: st.y, z: st.z, angle: st.angle, bob: Math.random() * 6, cloth, glow });
       if (this.hidden) mesh.setEnabled(false);
       this.place(this.shown.get(st.id)!, st, 0);
     }
@@ -512,10 +458,12 @@ export class ObjectView {
 
   update(dt: number): void {
     this.time += dt;
+    this.glow.tick(dt);
     const ease = 1 - Math.exp(-dt * 12);
     for (const [id, s] of this.shown) {
       const t = this.target.get(id);
       if (t) this.place(s, t, ease);
+      s.glow?.update(this.time);
     }
   }
 
@@ -548,7 +496,10 @@ export class ObjectView {
   }
 
   clear(): void {
-    for (const s of this.shown.values()) s.mesh.dispose();
+    for (const s of this.shown.values()) {
+      s.glow?.dispose();
+      s.mesh.dispose();
+    }
     this.shown.clear();
     this.target.clear();
   }
@@ -557,6 +508,7 @@ export class ObjectView {
     this.clear();
     for (const set of Object.values(this.mats)) for (const m of set) m.dispose();
     this.poleMat.dispose();
+    this.glow.dispose();
   }
 }
 

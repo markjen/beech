@@ -55,6 +55,7 @@ simulated one.
 | `src/sim/profile.ts`, `waves.ts`, `undoStack.ts` | Rest beach shape, swell/tide functions, stroke-delta undo |
 | `src/render/beachRenderer.ts`, `shaders.ts` | All meshes and GLSL (sand, water, far ocean, skirts, rock, props) |
 | `src/render/sky.ts` | Gradient background |
+| `src/render/storeMeshes.ts`, `glow.ts`, `meshKit.ts` | The shop's pieces (parasol, surfboard, sandcastle, beach hut, lighthouse, tiki torch); the glow and sparkles on rare, legendary and shop things; shared mesh helpers |
 | `src/render/objects.ts` | Faceted rock, driftwood, shell, sea glass and flag meshes (shape from the object's variant), eased to the sim's positions |
 | `src/world/items.ts`, `src/ui/inventory.ts` | Item catalog (rarity, source, availability, price) and the bag tray |
 | `src/input/*` | Ortho camera, gestures (dig vs camera), heightfield picking, brush math |
