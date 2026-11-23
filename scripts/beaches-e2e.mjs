@@ -27,7 +27,7 @@ async function device(label) {
   const page = await ctx.newPage();
   page.on('pageerror', (e) => errors.push(`${label}: ${e.message}`));
   page.on('dialog', (d) => void d.accept(d.type() === 'prompt' ? `${label} beach` : undefined));
-  await page.goto(URL_ + '?nointro&fixedres&seed=1');
+  await page.goto(URL_ + '?nointro&fixedres&seed=1&nofinds');
   await page.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
   await page.evaluate((n) => window.__beech.account().signInDev(n), name);
   await page.waitForFunction(() => window.__beech.account().beachId && window.__beech.sync().state === 'saved', null, { timeout: 20000 });

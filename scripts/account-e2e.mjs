@@ -25,7 +25,7 @@ const page = await browser.newPage({ viewport: { width: 1000, height: 700 } });
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
 const open = async () => {
-  await page.goto(URL_ + '?nointro&fixedres&seed=1');
+  await page.goto(URL_ + '?nointro&fixedres&seed=1&nofinds');
   await page.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
   await page.waitForTimeout(800);
 };

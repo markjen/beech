@@ -26,7 +26,7 @@ if (process.env.DEBUG_E2E)
   page.on('requestfinished', async (r) => {
     if (r.url().includes('/api/')) console.log('req', r.method(), new URL(r.url()).pathname, (await r.response())?.status(), r.method() === 'GET' && r.url().endsWith('/neighbors') ? (await (await r.response()).text()).slice(0, 90) : '');
   });
-await page.goto(URL_ + '?nointro&fixedres&seed=1');
+await page.goto(URL_ + '?nointro&fixedres&seed=1&nofinds');
 await page.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
 await page.waitForTimeout(600);
 
@@ -120,7 +120,7 @@ if (shot) await page.screenshot({ path: shot });
   const before = await page.evaluate(() => window.__beech.neighbors().snapshot('left'));
   const ctx2 = await browser.newContext({ viewport: { width: 800, height: 600 } });
   const ana = await ctx2.newPage();
-  await ana.goto(URL_ + '?nointro&fixedres&seed=1');
+  await ana.goto(URL_ + '?nointro&fixedres&seed=1&nofinds');
   await ana.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
   await ana.evaluate((n) => window.__beech.account().signInDev(n), anaName);
   await ana.waitForFunction(() => window.__beech.sync().state === 'saved', null, { timeout: 15000 });

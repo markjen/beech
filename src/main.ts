@@ -260,6 +260,9 @@ async function boot() {
   /** At the end of a good dig, ask the server whether something was buried there. */
   const tryDigFind = async (pathM: number, durationMs: number) => {
     if (!digFindApi || !digFindApi.signedIn || !digFind) return; // signed out, or the sandbox build
+    // for tests (the e2e scripts): ?nofinds never rolls, so a 1-in-10 find
+    // can't pop up over whatever the test does next
+    if (params.has('nofinds')) return;
     if (!qualifiesForFind(pathM, durationMs)) return;
     const now = performance.now();
     if (now - lastDigFindAttempt < DIG_FIND_ROLL_COOLDOWN_MS) return;

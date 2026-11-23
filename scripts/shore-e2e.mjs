@@ -23,7 +23,7 @@ const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--ena
 const page = await browser.newPage({ viewport: { width: 1100, height: 700 } });
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
-await page.goto(URL_ + '?nointro&fixedres&seed=1');
+await page.goto(URL_ + '?nointro&fixedres&seed=1&nofinds');
 await page.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
 
 const tag = Date.now() % 100000;

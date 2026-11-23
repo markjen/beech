@@ -131,6 +131,12 @@ The single list of what's left to do, for the owner and for agents.
 
 ## Done (recent)
 
+- [x] **QA pass of main** (2026-11-23): neighbor name tags kept on screen
+  and off the place card and tool column (`src/ui/tagPlace.ts`, tested);
+  account panel rows no longer squeeze (visit box cut off, a beach's name
+  forced into 3.2em, button labels on two or three lines); the settings
+  actions wrap instead of squeezing; one × in the place bar while gifting;
+  credit purchases are `shop` items, not `gift`.
 - [x] **Gift cards, promos and credit on the web only** (2026-11-23): the
   iOS and Android apps no longer show the redeem box, the promo field, the
   credit line or "Buy with credit" (App Store 3.1.1 / Play payments

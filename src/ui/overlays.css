@@ -219,6 +219,13 @@
   opacity: 0.85;
 }
 
+/* the settings sheet's row of actions: each label stays on one line, and
+   the row wraps instead of squeezing "smooth the beach" onto three */
+.actions .action {
+  flex: 1 1 auto;
+  white-space: nowrap;
+}
+
 .note {
   margin: 10px 0 0;
   font-size: 11px;
@@ -482,6 +489,29 @@
   opacity: 0.85;
 }
 
+/* the visit row: the code box takes the room, "go" stays a button's size
+   (it used to grow and squeeze the box until its placeholder was cut off) */
+.neighbors.visit input {
+  flex: 1 1 8.5em;
+  min-width: 0;
+}
+
+.neighbors.visit .action {
+  flex: none;
+}
+
+/* buttons in the account rows (copy, copy link, new code, ask, open here…)
+   keep their label on one line; the row wraps instead */
+.neighbors .slot .action {
+  white-space: nowrap;
+}
+
+/* the hint reads as words, not a code */
+.neighbors input::placeholder {
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
 /* ---------------------------------------------------------- ambient (TV) */
 
 .hud,
@@ -618,6 +648,15 @@ body.ambient-idle {
 
 .beaches .beach-row {
   flex-wrap: wrap;
+}
+
+/* a beach's name is a name, not the 3.2em "visit" label the slot rule sizes:
+   it takes the room it needs, and the buttons wrap below when it's long */
+.beaches .beach-row > .fav-name {
+  width: auto;
+  flex: 1 1 auto;
+  min-width: 6em;
+  opacity: 1;
 }
 
 /* ---------------------------------------------------------- beach map */

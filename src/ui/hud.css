@@ -845,9 +845,12 @@
   display: flex;
 }
 
-/* while gifting, the item itself is obvious: make room for the code */
+/* while gifting, the item itself is obvious: make room for the code. The
+   gift row has its own × (cancel), so the put-away × would be a second,
+   different × right beside it */
 .place-bar.gifting .pb-icon,
-.place-bar.gifting .pb-name {
+.place-bar.gifting .pb-name,
+.place-bar.gifting .pb-close {
   display: none;
 }
 
