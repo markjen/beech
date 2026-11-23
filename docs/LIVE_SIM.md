@@ -1,6 +1,6 @@
 # Live beaches: the sea keeps working while you're away (design)
 
-Status: design, not built. The owner's decisions are settled (end of this
+Status: being built (L1 done 2026-11-23, see STATUS.md). The owner's decisions are settled (end of this
 page). Milestones L1–L5 are at the end and in [BACKLOG.md](BACKLOG.md).
 
 ## Today
@@ -190,8 +190,9 @@ band above it, usually a third of the grid or less):
   falls.
 - **Shells and other rollers:** rolled downslope a little in swash cells.
 - **Lost to the sea** (section 5): a floater that spent more than
-  `LOST_FLOAT` (2 h) in water, or any item under more than `LOST_BURY`
-  (0.3 m) of sand at the end of the gap.
+  `LOST_FLOAT` (2 h) in water, or a roller carried to the offshore edge.
+  (Burial isn't modelled: objects ride on the sand surface, live and in the
+  catch-up.)
 
 **Bounds.**
 
@@ -222,11 +223,9 @@ Today nothing you own can leave a beach. This adds one rule, used by the live
 sim and the catch-up alike:
 
 - An **owned** (not `wild`) item is **lost to the sea** when:
-  - it floats past the offshore edge (the live sim stops clamping owned
-    floaters at the offshore side; along the shore and landward they stay
-    clamped), or
-  - it ends up buried deeper than `LOST_BURY` (the live sim checks this when
-    the water leaves it), or
+  - it's carried (afloat or rolled) to within `LOST_TO_SEA.edge` of the
+    offshore edge while moving offshore (along the shore and landward
+    everything stays clamped, and wild strays stay clamped everywhere), or
   - it's a floater that's been afloat for `LOST_FLOAT` (catch-up only; the
     live sim lets it drift out instead).
 - Rocks, flags and other fixed things are never lost: they don't move.
@@ -380,7 +379,7 @@ Endpoints:
   untouched; same input → same output; two halves ≈ one whole (catch up a→b
   then b→c, compare with a→c, within tolerance); close to the live sim on
   the castle fixture (section 4); items: floaters lost after `LOST_FLOAT`,
-  fixed items kept, deep-buried items lost.
+  fixed items kept.
 - `tests/sim.test.ts`: the live "lost to the sea" rule (an owned bottle
   pushed offshore leaves and reports `lost`), and that clamping still holds
   for `wild` and along-shore.
@@ -399,7 +398,7 @@ Endpoints:
 
 | | What | Done when |
 | --- | --- | --- |
-| **L1** | **Lost to the sea, live.** Owned floaters can leave by the offshore edge; deep-buried items are lost; the worker reports `lost`; toast; the save drops them so they're back in the bag | sim tests; a bottle pushed out to sea ends up back in the bag after a save |
+| **L1** ✅ | **Lost to the sea, live.** Owned floaters and rollers can leave by the offshore edge; the worker reports `lost`; toast; the save drops them so they're back in the bag | sim tests; a bottle pushed out to sea ends up back in the bag after a save |
 | **L2** | **The catch-up model.** `src/sim/catchup.ts`, `CATCHUP` constants, fitted against the live sim; perf line | `tests/catchup.test.ts` passes; `catchup14d` within budget |
 | **L3** | **Server catch-up on read.** Bundle into the server, migrations (`simulated_until`, `beach_events`, `owner_seen_at`, `tide` checkpoints), configurable cap, lock + CAS + epoch, "Before the tide" checkpoint, background queue for the shore, items recount | server tests; e2e: 2 days on the test clock erodes a waterline castle and leaves a "Before the tide" checkpoint |
 | **L4** | **While you were away.** The summary card, `/away` endpoints, "Put it back as it was" | e2e sees the card once, then not again; putting it back restores the castle |

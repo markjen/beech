@@ -360,6 +360,7 @@ async function boot() {
       }
       pendingTouch = true;
     }
+    if (m.lost) seaTook(m.lost.length);
     // a held thing follows the finger; one just put down waits for the worker
     if (settling) {
       const s = objectStates.find((o) => o.id === settling!.id);
@@ -573,6 +574,24 @@ async function boot() {
    */
   let fenced = false;
   let showFencedBanner: () => void = () => {};
+
+  /**
+   * The sea took some of your things (docs/LIVE_SIM.md, section 5): they're
+   * already off the roster, so back in the bag. Losses close together share
+   * one summary toast, and the beach saves soon so the server agrees.
+   */
+  let seaTookCount = 0;
+  let seaTookTimer = 0;
+  const seaTook = (n: number) => {
+    seaTookCount += n;
+    markDirty(1500);
+    window.clearTimeout(seaTookTimer);
+    seaTookTimer = window.setTimeout(() => {
+      const k = seaTookCount;
+      seaTookCount = 0;
+      showToast(uiRoot, k === 1 ? 'The sea took 1 thing. It’s back in your bag.' : `The sea took ${k} things. They’re back in your bag.`);
+    }, 2500);
+  };
 
   /** At the end of a good dig, ask the server whether something was buried there. */
   const tryDigFind = async (pathM: number, durationMs: number) => {

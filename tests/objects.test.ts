@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BeachSim } from '../src/sim/beachSim';
 import { GRID_TIERS } from '../src/config';
+import { BeachObjects } from '../src/sim/objects';
 
 const g = GRID_TIERS.low;
 const DT = 1 / 30;
@@ -277,3 +278,73 @@ describe('keeping what the sea brings', () => {
     expect(sim.objects.persisted()[0]).toMatchObject({ wild: true });
   });
 });
+
+describe('lost to the sea (docs/LIVE_SIM.md)', () => {
+  /** a flat, flooded strip with a steady current (m/s) */
+  function host(vxv: number, vyv: number, depth = 1) {
+    const nx = 32;
+    const ny = 32;
+    const n = nx * ny;
+    return {
+      nx,
+      ny,
+      dx: 1,
+      sand: new Float32Array(n),
+      bottom: new Float32Array(n).fill(-5),
+      water: new Float32Array(n).fill(depth),
+      vx: new Float32Array(n).fill(vxv),
+      vy: new Float32Array(n).fill(vyv),
+    };
+  }
+  const run = (o: BeachObjects, s: number) => {
+    for (let i = 0; i < s; i++) o.step(DT);
+  };
+
+  it('takes an owned bottle carried out past the offshore edge, once', () => {
+    const objs = new BeachObjects(host(0, -1.5));
+    const b = objs.add({ kind: 'bottle', item: 'bottle', x: 10, y: 4, angle: 0, size: 0.3, variant: 1 });
+    const w = objs.add({ kind: 'driftwood', item: 'driftwood', x: 20, y: 4, angle: 0, size: 1, variant: 1, wild: true });
+    run(objs, 30 * 20);
+    const lost = objs.takeLost();
+    expect(lost.map((o) => o.id)).toEqual([b.id]);
+    expect(objs.takeLost()).toEqual([]);
+    // the wild stray is clamped at the edge as before, and stays
+    const left = objs.persisted();
+    expect(left.map((o) => o.id)).toEqual([w.id]);
+    expect(left[0].y).toBeGreaterThanOrEqual(0.3);
+  });
+
+  it('takes rolled shells too, but never fixed things or rocks', () => {
+    const objs = new BeachObjects(host(0, -2));
+    const shell = objs.add({ kind: 'conch', item: 'conch', x: 8, y: 3, angle: 0, size: 0.2, variant: 1 });
+    objs.add({ kind: 'flag', item: 'flag', x: 12, y: 1, angle: 0, size: 0.3, variant: 1 });
+    objs.add({ kind: 'rock', item: 'rock', x: 16, y: 1.5, angle: 0, size: 0.4, variant: 1 });
+    run(objs, 30 * 20);
+    expect(objs.takeLost().map((o) => o.id)).toEqual([shell.id]);
+    expect(objs.count).toBe(2);
+  });
+
+  it('keeps things carried landward or along the shore', () => {
+    const objs = new BeachObjects(host(1.5, 0.5));
+    objs.add({ kind: 'bottle', item: 'bottle', x: 10, y: 4, angle: 0, size: 0.3, variant: 1 });
+    run(objs, 30 * 20);
+    expect(objs.takeLost()).toEqual([]);
+    expect(objs.count).toBe(1);
+  });
+
+  it('a beach with waves keeps things in the surf (Stokes drift brings them in)', async () => {
+    const sim = new BeachSim(g, 1);
+    sim.placeObject({ kind: 'bottle', item: 'bottle', x: 16, y: 12, angle: 0, size: 0.3, variant: 1 });
+    await run2(sim, 30 * 60);
+    expect(sim.objects.takeLost()).toEqual([]);
+    expect(sim.objects.count).toBeGreaterThanOrEqual(1);
+    for (const o of sim.objects.persisted()) expect(Number.isFinite(o.x) && Number.isFinite(o.y)).toBe(true);
+  });
+});
+
+async function run2(sim: BeachSim, steps: number): Promise<void> {
+  for (let s = 0; s < steps; s++) {
+    if (s % 150 === 0) await tick();
+    sim.step(DT);
+  }
+}

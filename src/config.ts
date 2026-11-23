@@ -193,6 +193,12 @@ export const GUIDE_URL = 'https://beech.games/guide';
 /** longest note a visitor can leave (the server's NOTE_MAX, server/src/inbox.ts) */
 export const NOTE_MAX_CHARS = 280;
 
+/** Things you own that the sea can take (docs/LIVE_SIM.md, section 5). */
+export const LOST_TO_SEA = {
+  /** an owned floater or roller carried within this far (m) of the offshore edge is gone (back in the bag) */
+  edge: 0.5,
+};
+
 export const SIM_HZ = 30;
 export const UNDO_DEPTH = 32;
 

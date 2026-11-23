@@ -17,6 +17,12 @@
 // Now and then the sea also brings things in by itself (driftwood far out,
 // shells and sea glass at the waterline). Those are marked `wild`; only a few
 // stay at a time, and the oldest is taken back by the sea.
+//
+// Things you own that the sea carries out past the offshore edge are lost to
+// it: they leave the beach and so are back in your bag (the bag counts what's
+// placed). Fixed things and rocks never move, so they're never lost.
+
+import { LOST_TO_SEA } from '../config';
 
 //  beachball  Light and round: it floats like driftwood, bobbing on
 //             the water, and the swash rolls it up the beach.
@@ -220,6 +226,8 @@ export class BeachObjects {
   private rand: () => number;
   /** the untouched floor, before any rock raised it */
   private readonly floor0: Float32Array;
+  /** owned things the sea took since the last `takeLost()` */
+  private lost: PlacedObject[] = [];
 
   constructor(
     private readonly h: ObjectHost,
@@ -660,6 +668,14 @@ export class BeachObjects {
     this.washClock = 0;
   }
 
+  /** The owned things the sea has taken since the last call (each once). */
+  takeLost(): PlacedObject[] {
+    if (!this.lost.length) return this.lost;
+    const out = this.lost;
+    this.lost = [];
+    return out;
+  }
+
   /** `sea`: waves are running, so the sea may bring things in. */
   step(dt: number, sea = false): void {
     const { nx, ny, dx, water, vx, vy } = this.h;
@@ -676,6 +692,7 @@ export class BeachObjects {
     const tumbleSp2 = TUMBLE_SPEED * TUMBLE_SPEED;
     const wMax = W - 0.3;
     const hMax = Hh - 0.3;
+    let gone: number[] | null = null;
     for (const l of this.live.values()) {
       const o = l.data;
       const b = BEHAVIOUR[o.kind];
@@ -698,6 +715,7 @@ export class BeachObjects {
           l.spin += (this.rand() - 0.5) * dt * 6;
           l.spin *= tumbleSpinDamp;
           l.floating = true;
+          if (this.takenOut(o, l.vy, dt)) (gone ??= []).push(o.id);
           o.x = Math.min(wMax, Math.max(0.3, o.x + l.vx * dt));
           o.y = Math.min(hMax, Math.max(0.3, o.y + l.vy * dt));
           o.angle += l.spin * dt;
@@ -742,6 +760,7 @@ export class BeachObjects {
         l.spin += (across / (o.size > 0.5 ? o.size : 0.5)) * dt * 1.5;
         l.spin *= floatSpinDamp;
         l.z = this.sandAt(o.x, o.y) + d - r * (bottomOrigin ? 1 : 0.6);
+        if (this.takenOut(o, l.vy, dt)) (gone ??= []).push(o.id);
         o.x = Math.min(wMax, Math.max(0.3, o.x + l.vx * dt));
         o.y = Math.min(hMax, Math.max(0.3, o.y + l.vy * dt));
         o.angle += l.spin * dt;
@@ -762,6 +781,17 @@ export class BeachObjects {
         l.z = this.sandAt(o.x, o.y) + (bottomOrigin ? 0 : r * 0.7);
       }
     }
+    if (gone) {
+      for (const id of gone) {
+        const data = this.remove(id);
+        if (data) this.lost.push(data);
+      }
+    }
+  }
+
+  /** An owned thing, moving offshore, about to cross the offshore edge: the sea takes it. */
+  private takenOut(o: PlacedObject, vy: number, dt: number): boolean {
+    return !o.wild && vy < 0 && o.y + vy * dt < LOST_TO_SEA.edge;
   }
 
   /** The sea brings in driftwood, shells, sea glass — and now trash, seaweed and cowries too. */

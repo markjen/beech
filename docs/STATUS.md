@@ -795,6 +795,21 @@ non-home beach. Every action is audited, and there's an Audit log tab.
 The Google sign-in round trip on the deployed service is not verified
 here: it needs the service's URL on the web OAuth client.
 
+## Live beaches (in progress, docs/LIVE_SIM.md)
+
+- **L1, lost to the sea (2026-11-23):** an owned floater or roller (bottle,
+  driftwood, shells and other prizes) that the backwash carries to within
+  `LOST_TO_SEA.edge` (0.5 m) of the offshore edge leaves the beach
+  (`BeachObjects.takeLost`). The bag counts what's placed, so it's back in
+  the bag at once; the frame carries `lost`, the app shows one summary toast
+  ("The sea took 2 things…") and saves soon. Wild strays, rocks and fixed
+  things are never taken. Stokes drift still brings floaters in, so in normal
+  surf this is rare; the catch-up (L2) is where most losses will happen.
+  Undo of a lost thing's placement does nothing; redo puts it back from the
+  bag.
+- Not built yet: L2 catch-up model, L3 server catch-up, L4 "while you were
+  away", L5 live viewers.
+
 ## beechshore.com (2026-11-23)
 
 - A public website of every beach on the shore (docs/SHORE_SITE.md):

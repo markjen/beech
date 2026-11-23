@@ -68,4 +68,6 @@ export type FromWorker =
       loadId: number;
       /** what's on the beach: only sent when rosterVersion changes */
       roster?: PlacedObject[];
+      /** owned things the sea took since the last frame (they're gone from the roster: back in the bag) */
+      lost?: PlacedObject[];
     } & Omit<FrameInfo, 'objects'>);
