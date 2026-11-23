@@ -20,6 +20,9 @@ const check = (cond, msg) => {
 
 const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: 1100, height: 700 } });
+// a dig can turn up a buried item (1 in 10, server-side): close that popup
+// whenever it shows, so it never lands on top of the next click
+void page.addLocatorHandler(page.locator('.digfind.open'), () => page.click('.digfind-close'));
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
 if (process.env.DEBUG_E2E)
@@ -120,6 +123,9 @@ if (shot) await page.screenshot({ path: shot });
   const before = await page.evaluate(() => window.__beech.neighbors().snapshot('left'));
   const ctx2 = await browser.newContext({ viewport: { width: 800, height: 600 } });
   const ana = await ctx2.newPage();
+  // a dig can turn up a buried item (1 in 10, server-side): close that popup
+  // whenever it shows, so it never lands on top of the next click
+  void ana.addLocatorHandler(ana.locator('.digfind.open'), () => ana.click('.digfind-close'));
   await ana.goto(URL_ + '?nointro&fixedres&seed=1');
   await ana.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
   await ana.evaluate((n) => window.__beech.account().signInDev(n), anaName);

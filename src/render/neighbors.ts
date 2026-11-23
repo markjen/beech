@@ -12,6 +12,7 @@ import type { Swell } from '../sim/waves';
 import { beachById } from '../world/locations';
 import { BeachRenderer, ORIGIN_Z } from './beachRenderer';
 import { ObjectView } from './objects';
+import { placeTag } from '../ui/tagPlace';
 
 /** gap between dioramas, so each beach reads as its own little island */
 const GAP = 1.6;
@@ -506,6 +507,11 @@ export class NeighborView {
     const cam = this.scene.activeCamera!;
     const vp = cam.viewport.toGlobal(engine.getRenderWidth(), engine.getRenderHeight());
     const scale = engine.getHardwareScalingLevel();
+    // the HUD the name tags must not cover: the place card (top left) and
+    // the tool column (right)
+    const keepOut = [...this.uiRoot.querySelectorAll<HTMLElement>('.place, .hud-right')]
+      .map((el) => el.getBoundingClientRect())
+      .filter((r) => r.width > 0);
     for (const e of slots) {
       const s = e.slot!;
       s.renderer.update(p, camForward, time, simTime, tide, amp);
@@ -514,7 +520,10 @@ export class NeighborView {
       const y = at.y * scale;
       const visible = at.z > 0 && at.z < 1 && x > -100 && x < window.innerWidth + 100;
       s.label.style.display = visible ? 'flex' : 'none';
-      if (visible) s.label.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px) translate(-50%, -100%)`;
+      if (!visible) continue;
+      const at2 = placeTag(x, y, s.label.offsetWidth, s.label.offsetHeight, window.innerWidth, window.innerHeight, keepOut);
+      s.label.style.transform = `translate(${Math.round(at2.left)}px, ${Math.round(at2.top)}px)`;
     }
   }
 }
+

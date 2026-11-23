@@ -25,6 +25,9 @@ const name = `multi${Date.now() % 100000}`;
 async function device(label) {
   const ctx = await browser.newContext({ viewport: { width: 1000, height: 700 } });
   const page = await ctx.newPage();
+  // a dig can turn up a buried item (1 in 10, server-side): close that popup
+  // whenever it shows, so it never lands on top of the next click
+  void page.addLocatorHandler(page.locator('.digfind.open'), () => page.click('.digfind-close'));
   page.on('pageerror', (e) => errors.push(`${label}: ${e.message}`));
   page.on('dialog', (d) => void d.accept(d.type() === 'prompt' ? `${label} beach` : undefined));
   await page.goto(URL_ + '?nointro&fixedres&seed=1');
