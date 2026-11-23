@@ -93,6 +93,12 @@ _(nothing right now)_
 
 ## Done (recent)
 
+- [x] **Observability** (2026-11-22): structured JSON request logs +
+  log-based metrics, client error/perf reporting, a Monitoring dashboard,
+  uptime checks and 5 alerts to markjen@gmail.com (branch
+  `feat/observability`, uncommitted pending approval — see
+  docs/OBSERVABILITY.md).
+
 - [x] **Claw starter gifts** (rare, shop item, extra beach after a day),
   the Deckchair, and the multi-beach design (2026-11-23).
 
