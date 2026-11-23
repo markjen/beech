@@ -19,6 +19,7 @@
 //   POST   /api/neighbors/code                             -> { code } (new code; old one stops working)
 //   POST   /api/gifts            { code, item }            -> { item, to: { name, code } }
 //   GET    /api/inventory                                  -> { items: [{ item, quantity, source, ... }] }
+//   POST   /api/dig-finds        { pathM, durationMs }     -> { found, item?, rarity?, findsToday, findsLeft, nextFindsAt }
 //
 // Auth: `Authorization: Bearer <token>`; only the token's SHA-256 is stored.
 
@@ -29,6 +30,7 @@ import { PRODUCTS, productById } from './products.js';
 import { appleRefund, googleVoided, verifyAppleTransaction, verifyGooglePurchase, type VerifiedPurchase } from './store.js';
 import { POOLS, GRAB_CHANCE, cooldownAfter, cryptoRandom, draw, grab, pullDay, starterPrize, STARTER, type Rarity } from './pulls.js';
 import { currentSet, drawVending, nextUtcMidnight } from './vending.js';
+import { DIG_FIND_DAILY_CAP, DIG_FIND_ROLL_COOLDOWN_MS, digDraw, qualifiesForFind } from './digFinds.js';
 import { hashToken, newSessionToken, SESSION_DAYS, verifyAppleIdToken, verifyGoogleIdToken, type VerifiedIdentity } from './auth.js';
 import { toBytes, type Db } from './db.js';
 import { createRateLimiter, logEvent, parseClientEvent, routeLabel } from './observability.js';
@@ -883,6 +885,84 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       return c.json({ error: set ? 'not yet: your next ball is tomorrow' : 'not yet: the claw is resting', nextFree: st?.at ?? now }, 409);
     if (missed) return c.json({ missed: true, item: null, rarity: null, dropped: { item: got.item, rarity: got.rarity }, nextFree: st?.at ?? now + wait });
     return c.json({ missed: false, item: got.item, rarity: got.rarity, nextFree: st?.at ?? now + wait });
+  });
+
+  // ---------------------------------------------------------------- digging finds
+  // A good dig can turn up something buried: the server rolls (never the
+  // app), from this week's vending set at the vending odds (server/src/digFinds.ts).
+  // The app reports the stroke (brush travel in metres, duration in ms);
+  // the roll needs a real dig, at most one roll every 30 s, and at most 3
+  // finds a day (UTC). A miss still records the roll, so the next one waits.
+  app.post('/dig-finds', requireUser, async (c) => {
+    const me = c.get('user').id;
+    const now = clock();
+    const { pathM, durationMs } = await body<{ pathM?: number; durationMs?: number }>(c);
+    if (!Number.isFinite(pathM) || !Number.isFinite(durationMs) || pathM! < 0 || durationMs! < 0)
+      fail(400, 'expected { pathM, durationMs }');
+    if (!qualifiesForFind(pathM!, durationMs!)) fail(409, 'dig a little more first');
+    const set = currentSet(now) ?? fail(409, 'nothing buried here yet');
+    const today = pullDay(now);
+    // the cap and the cooldown, before the roll (the claim below re-checks,
+    // so two rolls at once still can't both win)
+    const st = (
+      await db.query<{ day: string; finds: number; last_roll_at: string }>(
+        'SELECT day, finds, last_roll_at FROM dig_state WHERE user_id = $1',
+        [me],
+      )
+    )[0];
+    const findsToday = st && st.day === today ? Number(st.finds) : 0;
+    if (findsToday >= DIG_FIND_DAILY_CAP)
+      return c.json({ error: 'that is all the buried treasure for today', nextFindsAt: nextUtcMidnight(now) }, 409);
+    if (st && now - Number(st.last_roll_at) < DIG_FIND_ROLL_COOLDOWN_MS)
+      return c.json({ error: 'slow down', nextRollAt: Number(st.last_roll_at) + DIG_FIND_ROLL_COOLDOWN_MS }, 409);
+    const drawn = digDraw(set, rand);
+    if (!drawn.found) {
+      // the roll happened: record when, so the next one waits
+      const rows = await db.query(
+        `INSERT INTO dig_state (user_id, day, finds, last_roll_at) VALUES ($1, $2, 0, $3)
+         ON CONFLICT (user_id) DO UPDATE SET
+           day = EXCLUDED.day,
+           finds = CASE WHEN dig_state.day = EXCLUDED.day THEN dig_state.finds ELSE 0 END,
+           last_roll_at = EXCLUDED.last_roll_at
+         WHERE $3 - dig_state.last_roll_at >= $4
+         RETURNING user_id`,
+        [me, today, now, DIG_FIND_ROLL_COOLDOWN_MS],
+      );
+      if (!rows[0]) return c.json({ error: 'slow down', nextRollAt: now + DIG_FIND_ROLL_COOLDOWN_MS }, 409);
+      return c.json({ found: false });
+    }
+    // one statement: claim the find (only if still under the cap and the
+    // cooldown has passed) and grant it — a racing second roll claims nothing
+    const rows = await db.query<{ item_id: string }>(
+      `WITH s AS (
+         INSERT INTO dig_state (user_id, day, finds, last_roll_at) VALUES ($1, $2, 1, $5)
+         ON CONFLICT (user_id) DO UPDATE SET
+           day = EXCLUDED.day,
+           finds = CASE WHEN dig_state.day = EXCLUDED.day THEN dig_state.finds + 1 ELSE 1 END,
+           last_roll_at = EXCLUDED.last_roll_at
+         WHERE (dig_state.day <> EXCLUDED.day OR dig_state.finds < $3)
+           AND $5 - dig_state.last_roll_at >= $4
+         RETURNING user_id, finds
+       ), logged AS (
+         INSERT INTO pulls (user_id, pool, day, item_id, rarity, created_at)
+         SELECT user_id, 'dig', $2, $6, $7, $5 FROM s RETURNING user_id
+       )
+       INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at, expires_at)
+       SELECT user_id, $6, 1, 'pull', $5, NULL FROM logged RETURNING item_id`,
+      [me, today, DIG_FIND_DAILY_CAP, DIG_FIND_ROLL_COOLDOWN_MS, now, drawn.item, drawn.rarity],
+    );
+    if (!rows[0]) return c.json({ error: 'slow down', nextRollAt: now + DIG_FIND_ROLL_COOLDOWN_MS }, 409);
+    const after = Number(
+      (await db.query<{ finds: number }>('SELECT finds FROM dig_state WHERE user_id = $1', [me]))[0]?.finds ?? 1,
+    );
+    return c.json({
+      found: true,
+      item: drawn.item,
+      rarity: drawn.rarity,
+      findsToday: after,
+      findsLeft: DIG_FIND_DAILY_CAP - after,
+      nextFindsAt: after >= DIG_FIND_DAILY_CAP ? nextUtcMidnight(now) : null,
+    });
   });
 
   app.post('/neighbors/code', requireUser, async (c) => {

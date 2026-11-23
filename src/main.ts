@@ -20,6 +20,7 @@ import { LiveConditions } from './world/live';
 import { BEACHES, beachById, defaultBeach, nearestBeach, type Beach } from './world/locations';
 import type { BrushMode, ClearingMode } from './sim/beachSim';
 import { isClearingMode } from './sim/beachSim';
+import { DIG_FIND_ROLL_COOLDOWN_MS, qualifiesForFind } from './sim/digFinds';
 import type { PlacedObject } from './sim/objects';
 import type { FrameInfo, FromWorker, ToWorker } from './sim/protocol';
 import { makeSwell } from './sim/waves';
@@ -29,11 +30,12 @@ import { Hud, type ToolDef } from './ui/hud';
 import { SettingsSheet, StartScreen, showHint, showToast } from './ui/overlays';
 import { InventoryTray, PlaceBar } from './ui/inventory';
 import { ClawMachine } from './ui/clawMachine';
+import { DigFind } from './ui/digFind';
 import { Shop } from './ui/shop';
 import { ShopApi } from './net/shop';
 import { VendingMachine } from './ui/vendingMachine';
 import { DEFAULT_SIZE, ITEMS, rollPlacement, type Item } from './world/items';
-import { ACCOUNTS_ENABLED, Account, GiftApi, PullApi } from './net/account';
+import { ACCOUNTS_ENABLED, Account, DigFindApi, GiftApi, PullApi } from './net/account';
 import { visitCodeFromUrl, withoutVisitParam } from './net/share';
 import { BeachSync } from './net/beachSync';
 import { AccountPanel } from './ui/accountPanel';
@@ -141,6 +143,8 @@ async function boot() {
   // set up with the account layer (production builds)
   let neighbors: NeighborView | null = null;
   let clawMachine: ClawMachine | null = null;
+  let digFind: DigFind | null = null;
+  let digFindApi: DigFindApi | null = null;
   let shopDialog: Shop | null = null;
   let leaderboard: Leaderboard | null = null;
   let vendingMachine: VendingMachine | null = null;
@@ -217,6 +221,11 @@ async function boot() {
   let placing: Item | null = null;
   let digging = false;
   let strokeOpen = false;
+  /** a dig stroke's effort, for buried finds: brush travel (m) and when it started */
+  let digPathM = 0;
+  let digStrokeStart = 0;
+  /** last time the app asked the server for a digging roll (the server enforces the same gap) */
+  let lastDigFindAttempt = 0;
   type Hit = { x: number; y: number; z: number };
   let lastHit: Hit | null = null;
   let hover: Hit | null = null;
@@ -229,6 +238,10 @@ async function boot() {
   const strokeTo = (sx: number, sy: number) => {
     const hit = pickAt(sx, sy);
     if (!hit) return;
+    // a dig stroke's effort, for buried finds: how far the brush travelled
+    if (digging && brushMode === 'dig' && lastHit) {
+      digPathM += Math.hypot(hit.x - lastHit.x, hit.z - lastHit.z);
+    }
     lastHit = hit;
     const r = cam.brushRadius(hit);
     const s = toSim(hit);
@@ -238,6 +251,28 @@ async function boot() {
 
   // set up below once the account layer exists (sandbox builds never save)
   let markDirty: (delayMs?: number) => void = () => {};
+  /** refresh the bag from the server (set up with the account layer) */
+  let refreshOwned: () => void = () => {};
+
+  /** At the end of a good dig, ask the server whether something was buried there. */
+  const tryDigFind = async (pathM: number, durationMs: number) => {
+    if (!digFindApi || !digFindApi.signedIn || !digFind) return; // signed out, or the sandbox build
+    if (!qualifiesForFind(pathM, durationMs)) return;
+    const now = performance.now();
+    if (now - lastDigFindAttempt < DIG_FIND_ROLL_COOLDOWN_MS) return;
+    lastDigFindAttempt = now;
+    let res;
+    try {
+      res = await digFindApi.find(pathM, durationMs);
+    } catch {
+      return; // offline, or the server said not yet: nothing is lost, the roll is server-side
+    }
+    if (!res.found || !res.item || !res.rarity) return;
+    refreshOwned();
+    digFind.show({ item: res.item, rarity: res.rarity }, res.findsLeft ?? 0);
+    audio.whoosh(true);
+    haptics.impact('medium');
+  };
 
   const undo = () => {
     markDirty();
@@ -576,6 +611,8 @@ async function boot() {
       }
       digging = true;
       strokeOpen = false;
+      digPathM = 0;
+      digStrokeStart = performance.now();
       hover = null;
       hideHint?.();
       strokeTo(sx, sy);
@@ -584,12 +621,16 @@ async function boot() {
       if (digging) strokeTo(sx, sy);
     },
     digEnd: () => {
+      const wasDig = strokeOpen && brushMode === 'dig';
+      const pathM = digPathM;
+      const durationMs = performance.now() - digStrokeStart;
       if (strokeOpen) {
         send({ type: 'brush', phase: 'end' });
         markDirty();
       }
       digging = false;
       strokeOpen = false;
+      if (wasDig) void tryDigFind(pathM, durationMs);
     },
     digCancel: () => {
       if (strokeOpen) send({ type: 'brush', phase: 'cancel' });
@@ -952,6 +993,17 @@ async function boot() {
     });
     vendingMachine = vending;
     inventory.onVending = () => (acct.user ? void vending.open() : sheet.show());
+    // digging finds: a good dig can turn up something buried (the server
+    // rolls); the dialog offers to put it on the beach or keep it in the bag
+    digFindApi = new DigFindApi(acct);
+    digFind = new DigFind(uiRoot, (item, place) => {
+      void loadOwned().then(() => {
+        if (place) inventory.select(item);
+      });
+    });
+    refreshOwned = () => {
+      void loadOwned();
+    };
     inventory.setVending(acct.user ? 'play' : 'signin');
     acct.onChange((u) => {
       inventory.setClaw(u ? 'play' : 'signin');

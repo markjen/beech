@@ -104,6 +104,13 @@ _(nothing right now)_
 
 ## Done (recent)
 
+- [x] **Digging finds** (2026-11-23, 18ef11a): digging can turn up a buried item from
+  this week's vending set at the vending odds (60/25/12/3) — server-side roll
+  at the end of a real dig stroke (2 m travelled, or 1 s in place), 1 in 10
+  good digs, at most 3 finds a day and one roll every 30 s, granted atomically
+  to the bag and shown in a "You dug something up!" dialog (Keep it / Put it
+  on the beach). Design in DIGGING_FINDS.md.
+
 - [x] **Bulldozer drag-flattens, dig/build/flatten faster**
   (2026-11-22, 3ad5ed4): one pass of the blade now flattens at any drag speed
   (flattenRate 120 → 300); dig/build rates up (rateStart 0.16 → 0.5,

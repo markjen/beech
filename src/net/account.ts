@@ -575,6 +575,36 @@ export class PullApi {
   }
 }
 
+/** Digging finds: the server rolls when a good dig ends (never the app). */
+export interface DigFindResult {
+  found: boolean;
+  item?: string;
+  rarity?: string;
+  findsToday?: number;
+  findsLeft?: number;
+  nextFindsAt?: number | null;
+}
+
+export class DigFindApi {
+  constructor(private readonly account: Account) {}
+
+  /** false while signed out: a dig then never asks the server */
+  get signedIn(): boolean {
+    return !!this.account.user;
+  }
+
+  /** One roll for a finished dig stroke: `found` false is a normal miss. */
+  async find(pathM: number, durationMs: number): Promise<DigFindResult> {
+    const res = await this.account.fetch('/api/dig-finds', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pathM, durationMs }),
+    });
+    if (!res.ok) throw await errorOf(res, 'nothing buried here');
+    return (await res.json()) as DigFindResult;
+  }
+}
+
 // ------------------------------------------------------------------ Google
 
 interface GoogleId {

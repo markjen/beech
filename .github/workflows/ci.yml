@@ -43,7 +43,12 @@ jobs:
         working-directory: server
         env:
           TEST_DATABASE_URL: postgres://beech:beech@localhost:5432/beech_test
-        run: npm test
+        # Sequential on purpose: the test files share this one database and
+        # each drops/recreates the schema in beforeAll, so parallel files
+        # race — a DROP SCHEMA from one file lands mid-run of another and its
+        # queries fail with "relation does not exist". PGlite is per-file
+        # in-memory, so the step above is unaffected.
+        run: npm test -- --fileParallelism=false
       - name: Production image builds and boots
         run: |
           docker build -t beech:ci --build-arg VITE_GOOGLE_CLIENT_ID=ci-client .
