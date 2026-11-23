@@ -541,6 +541,27 @@ non-home beach. Every action is audited, and there's an Audit log tab.
 The Google sign-in round trip on the deployed service is not verified
 here: it needs the service's URL on the web OAuth client.
 
+## beechshore.com (2026-11-23)
+
+- A public website of every beach on the shore (docs/SHORE_SITE.md):
+  `server/src/shoreSite.ts`, served by the game's server on the shore's own
+  hosts and under `/shore` everywhere else. Lists, places, a page per beach
+  (`beechshore.com/CODE`) with its picture, its stretch of shore and share
+  buttons, a sitemap. Only beaches on the shore and saved appear.
+- Pictures are drawn on the server (`server/src/beachImage.ts`, PNG with no
+  dependencies) and used as `og:image`, also for the game's `?visit=` links.
+- The shore walk moved to `server/src/shore.ts`, shared by the API and the
+  site; the site skips non-public beaches without changing the order.
+- In the game: a share button (bottom left) and "share" in settings send the
+  beechshore link; the leaderboard links to the site; a `?visit=` link
+  opened signed out offers the beechshore page.
+- **Decision:** shared links point at beechshore, not the game, because
+  they work for anyone, signed in or not, and preview with a picture. The
+  game link is still one tap away ("game link" in settings).
+- **Decision:** a shore link for a beach that is off the shore redirects to
+  the game's visit link rather than 404, so a link the owner sent still works.
+- Needs the domain mapped (owner task in BACKLOG.md).
+
 ## Deploy and build status
 
 - **iOS:** the Xcode project builds for the simulator on GitHub's macOS

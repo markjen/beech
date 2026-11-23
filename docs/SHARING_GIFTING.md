@@ -73,9 +73,10 @@ save (`server/src/shareMeta.ts`, wired in `server/src/server.ts`):
 
 The owner's first name is HTML-escaped before it goes into the page. A
 code that names nobody (or nobody with a saved beach) gets the plain page
-— the app then says "no beach has that code". There is no `og:image` yet:
-the only art on hand is the app icon and splash screens, which don't crop
-well to a preview card; a 1200×630 beach shot is a follow-up. The GitHub
+— the app then says "no beach has that code". For a beach on the shore, `og:image` is a
+1200×630 picture of it drawn by the server (`/shore/img/CODE.png`, see
+[SHORE_SITE.md](SHORE_SITE.md)). The app's share buttons now send the
+beechshore link (`beechshore.com/CODE`), which anyone can open signed out. The GitHub
 Pages sandbox serves a static `index.html` and can't inject anything, so
 previews only work for production links.
 

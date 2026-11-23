@@ -12,6 +12,8 @@ export interface LeaderboardHost {
   star(entry: BoardEntry, on: boolean): Promise<void>;
   /** go and look at it (the panel closes first) */
   visit(entry: BoardEntry): Promise<void>;
+  /** beechshore.com: every beach, public (a link at the foot of the panel) */
+  shoreUrl?: string;
 }
 
 const BLURB: Record<Board, string> = {
@@ -54,11 +56,17 @@ export class Leaderboard {
         <p class="board-blurb"></p>
         <ol class="board-list"></ol>
         <p class="board-note"></p>
+        <a class="board-shore" target="_blank" rel="noopener" hidden>Every beach on the shore, on beechshore ↗</a>
       </div>`;
     parent.appendChild(this.root);
     this.list = this.root.querySelector('.board-list')!;
     this.note = this.root.querySelector('.board-note')!;
     this.blurb = this.root.querySelector('.board-blurb')!;
+    const shore = this.root.querySelector<HTMLAnchorElement>('.board-shore')!;
+    if (host.shoreUrl) {
+      shore.href = `${host.shoreUrl}/top`;
+      shore.hidden = false;
+    }
     this.root.querySelector('.board-close')!.addEventListener('click', () => this.close());
     this.root.addEventListener('click', (e) => {
       if (e.target === this.root) this.close();

@@ -38,7 +38,8 @@ import { ShopApi, webOrderFromUrl, withoutWebOrderParams } from './net/shop';
 import { VendingMachine } from './ui/vendingMachine';
 import { DEFAULT_SIZE, ITEMS, rollPlacement, type Item } from './world/items';
 import { ACCOUNTS_ENABLED, Account, CheckpointApi, DigFindApi, GiftApi, PullApi } from './net/account';
-import { visitCodeFromUrl, withoutVisitParam } from './net/share';
+import { beachShareText, shoreBeachUrl, SHORE_URL, visitCodeFromUrl, withoutVisitParam } from './net/share';
+import { shareLink } from './ui/shareSheet';
 import { BeachSync, countItems } from './net/beachSync';
 import { AccountPanel } from './ui/accountPanel';
 import { Leaderboard } from './ui/leaderboard';
@@ -1065,6 +1066,7 @@ async function boot() {
     const board = new Leaderboard(uiRoot, {
       signedIn: () => !!acct.user,
       signIn: () => sheet.show(),
+      shoreUrl: SHORE_URL,
       load: (which) => nv.api.leaderboard(which),
       starred: (code) => nv.favorites.has(code),
       star: (e, on) => nv.setFavorite({ code: e.code, name: e.name, beachName: e.beachName, location: e.location, updatedAt: e.updatedAt }, on),
@@ -1082,6 +1084,30 @@ async function boot() {
     });
     leaderboard = board;
     boardBtn.addEventListener('click', () => board.open());
+
+    // share: the beach under the view (yours at home) as a beechshore link,
+    // which previews with a picture and opens for anyone, signed in or not
+    const shareBtn = hud.button('share', 'Share this beach');
+    shareBtn.dataset.act = 'share';
+    hud.leftGroup.appendChild(shareBtn);
+    shareBtn.addEventListener('click', () => void (async () => {
+      if (!acct.user) {
+        sheet.show();
+        return;
+      }
+      const other = beachHere();
+      const mine = acct.beach;
+      const code = other?.code ?? mine?.code ?? nv.state?.code;
+      if (!code) return;
+      haptics.impact('light');
+      const r = await shareLink({
+        url: shoreBeachUrl(code),
+        title: other ? other.beachName || `${other.name || 'Someone'}’s beach` : mine?.name || 'My beach',
+        text: other ? beachShareText(other.name, other.beachName) : beachShareText(acct.user.name, mine?.name, true),
+      });
+      if (r === 'copied') showToast(uiRoot, 'Link copied: paste it anywhere');
+      else if (r === 'failed') showToast(uiRoot, `Couldn’t share. The link is ${shoreBeachUrl(code)}`);
+    })());
     nv.onFavorites(() => board.refreshStars());
 
     // what you've won (and later bought), and the claw machine
@@ -1174,7 +1200,15 @@ async function boot() {
       inventory.setVending(u ? 'play' : 'signin');
       void loadOwned();
     });
-    void account.restore();
+    // a share link opened signed out: the visit waits for sign-in, so say
+    // so, and offer the picture on beechshore, which needs no account
+    void account.restore().then((u) => {
+      if (u || !visitCode) return;
+      const code = visitCode;
+      showActionToast(uiRoot, 'Sign in (settings) to visit this beach and walk the shore', 'see it now', () => {
+        window.open(shoreBeachUrl(code), '_blank', 'noopener');
+      }, 14000);
+    });
   }
 
   document.addEventListener('visibilitychange', () => {

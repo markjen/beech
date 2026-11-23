@@ -81,6 +81,17 @@ describe('share page handler', () => {
     const html = await res.text();
     expect(html).toContain('Visit ana-share&#39;s beach');
     expect(html).toContain(`og:url" content="http://localhost/?visit=${anaCode}"`);
+    // on the shore: a picture of it, drawn by the shore site
+    expect(html).toContain(`og:image" content="http://localhost/shore/img/${anaCode}.png?v=`);
+    expect(html).toContain('summary_large_image');
+  });
+
+  it('gives no picture of a beach kept off the shore', async () => {
+    await db.query('UPDATE beach SET on_shore = false WHERE code = $1', [anaCode]);
+    const html = await (await app.request(`/?visit=${anaCode}`)).text();
+    await db.query('UPDATE beach SET on_shore = true WHERE code = $1', [anaCode]);
+    expect(html).toContain('og:title');
+    expect(html).not.toContain('og:image');
   });
 
   it('serves the plain page for an unknown code, and with no code at all', async () => {

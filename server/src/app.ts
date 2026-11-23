@@ -46,6 +46,7 @@ import { currentSet, drawVending, nextUtcMidnight } from './vending.js';
 import { DIG_FIND_DAILY_CAP, DIG_FIND_ROLL_COOLDOWN_MS, digDraw, qualifiesForFind } from './digFinds.js';
 import { hashToken, newSessionToken, SESSION_DAYS, verifyAppleIdToken, verifyGoogleIdToken, type VerifiedIdentity } from './auth.js';
 import { toBytes, type Db } from './db.js';
+import { BEACH, NODE, SIDES, beachJson, normalizeCode, shoreGraph, type NodeRow, type Side } from './shore.js';
 import {
   BadBlob,
   CHECKPOINT_BYTES_PER_USER,
@@ -111,8 +112,6 @@ const BEACH_HEADERS = ['X-Beach-Location', 'X-Beach-Nx', 'X-Beach-Ny', 'X-Beach-
 /** request-only headers the app sends cross-origin (the phone apps) */
 const REQUEST_HEADERS = ['X-Beach-Items', 'X-Beach-Max', 'X-Checkpoint-Name'];
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O or 1/I
-const SIDES = ['left', 'right'] as const;
-type Side = (typeof SIDES)[number];
 
 const fail = (status: 400 | 401 | 403 | 404 | 409 | 413 | 426 | 429 | 500, message: string): never => {
   throw new HTTPException(status, { message });
@@ -124,10 +123,7 @@ export function newNeighborCode(): string {
   return [...bytes].map((b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join('');
 }
 
-/** "k7f 2qx", "K7F-2QX" -> "K7F2QX" */
-export function normalizeCode(raw: string): string {
-  return raw.toUpperCase().replace(/[^A-Z0-9]/g, '');
-}
+export { normalizeCode };
 
 export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   const verifyGoogle = cfg.verifyGoogle ?? verifyGoogleIdToken;
@@ -434,42 +430,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   };
   const opposite = (s: Side): Side => (s === 'left' ? 'right' : 'left');
 
-  interface NodeRow {
-    id: string;
-    name: string;
-    beach_name: string;
-    owner_id: string;
-    code: string;
-    created_at: string;
-    location: string | null;
-    updated_at: string | null;
-  }
-  // a beach and its owner's first name
-  const NODE = `b.id, u.name, b.name AS beach_name, b.owner_id, b.code, b.created_at, b.location, b.updated_at`;
-  const BEACH = `beach b JOIN users u ON u.id = b.owner_id`;
-  const beachJson = (r: NodeRow) => ({
-    code: r.code,
-    name: r.name,
-    /** the beach's own name, if its owner gave it one ("Bondi") */
-    beachName: r.beach_name || undefined,
-    location: r.location,
-    updatedAt: r.updated_at === null ? null : Number(r.updated_at),
-  });
-  const nodeById = async (id: string): Promise<NodeRow | null> =>
-    (await db.query<NodeRow>(`SELECT ${NODE} FROM ${BEACH} WHERE b.id = $1`, [id]))[0] ?? null;
-  const nodeByCode = async (raw: string): Promise<NodeRow | null> => {
-    const code = normalizeCode(raw ?? '');
-    if (code.length !== 6) return null;
-    return (await db.query<NodeRow>(`SELECT ${NODE} FROM ${BEACH} WHERE b.code = $1`, [code]))[0] ?? null;
-  };
-  /** which beach is on beach `id`'s `side`, if any */
-  const linked = async (id: string, side: Side): Promise<NodeRow | null> =>
-    (
-      await db.query<NodeRow>(
-        `SELECT ${NODE} FROM neighbors n JOIN ${BEACH} ON b.id = n.neighbor_beach_id WHERE n.beach_id = $1 AND n.side = $2`,
-        [id, side],
-      )
-    )[0] ?? null;
+  const { nodeById, nodeByCode, linked, walk } = shoreGraph(db);
 
   /** Join a and b: b on a's `side`, a on b's other side. One statement, so it's all or nothing. */
   const link = async (a: string, side: Side, b: string) => {
@@ -622,74 +583,6 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   // end of a stretch the shore carries on into the next stretch, in a fixed
   // order (by when each stretch's right-hand end joined), round and round. So
   // you can keep walking either way and meet everyone.
-  /** the far end of a's stretch, going `side` */
-  const endOf = async (a: NodeRow, side: Side): Promise<NodeRow> => {
-    let at = a;
-    const seen = new Set([a.id]);
-    for (let i = 0; i < 2000; i++) {
-      const next = await linked(at.id, side);
-      if (!next || seen.has(next.id)) break;
-      seen.add(next.id);
-      at = next;
-    }
-    return at;
-  };
-  // the right-hand ends of stretches worth visiting (someone with a beach, or linked to someone)
-  const ENDS = `FROM ${BEACH}
-     WHERE b.on_shore
-       AND NOT EXISTS (SELECT 1 FROM neighbors n WHERE n.beach_id = b.id AND n.side = 'right')
-       AND (b.sand IS NOT NULL OR EXISTS (SELECT 1 FROM neighbors n WHERE n.beach_id = b.id))`;
-  /** From the end of a stretch, the first beach of the next stretch going `dir`. */
-  const nextStretch = async (at: NodeRow, dir: Side): Promise<NodeRow | null> => {
-    const r = await endOf(at, 'right');
-    const key = [r.created_at, r.id];
-    // came all the way round to the stretch we started in: that's everyone
-    const same = (n: NodeRow | undefined) => !!n && n.id === r.id;
-    if (dir === 'left') {
-      const rows =
-        (await db.query<NodeRow>(`SELECT ${NODE} ${ENDS} AND (b.created_at, b.id) > ($1::bigint, $2::uuid) ORDER BY b.created_at, b.id LIMIT 1`, key)).concat(
-          await db.query<NodeRow>(`SELECT ${NODE} ${ENDS} ORDER BY b.created_at, b.id LIMIT 1`),
-        );
-      return rows[0] && !same(rows[0]) ? rows[0] : null; // enter it at its right-hand end, walking left
-    }
-    const rows =
-      (await db.query<NodeRow>(`SELECT ${NODE} ${ENDS} AND (b.created_at, b.id) < ($1::bigint, $2::uuid) ORDER BY b.created_at DESC, b.id DESC LIMIT 1`, key)).concat(
-        await db.query<NodeRow>(`SELECT ${NODE} ${ENDS} ORDER BY b.created_at DESC, b.id DESC LIMIT 1`),
-      );
-    return rows[0] && !same(rows[0]) ? endOf(rows[0], 'left') : null; // enter it at its left-hand end, walking right
-  };
-  type Step = ReturnType<typeof beachJson> & { linked: boolean };
-  /**
-   * Walk up to `count` beaches each way from `from` (one step left, one step
-   * right, and so on, so the nearest come first and a small world isn't all
-   * used up on one side). `linked` says if a beach is a real neighbor of the
-   * one before it. Stops in a direction once it comes round to someone seen.
-   */
-  const walk = async (from: NodeRow, dirs: Side[], count: number, seen: Set<string>) => {
-    const out: Record<Side, Step[]> = { left: [], right: [] };
-    const at: Record<Side, NodeRow> = { left: from, right: from };
-    const done = new Set<Side>(SIDES.filter((d) => !dirs.includes(d)));
-    for (let i = 0; i < count && done.size < 2; i++) {
-      for (const dir of dirs) {
-        if (done.has(dir)) continue;
-        let next = await linked(at[dir].id, dir);
-        let isLink = true;
-        if (!next) {
-          next = await nextStretch(at[dir], dir);
-          isLink = false;
-        }
-        if (!next || seen.has(next.id)) {
-          done.add(dir); // been all the way round
-          continue;
-        }
-        seen.add(next.id);
-        out[dir].push({ ...beachJson(next), linked: isLink });
-        at[dir] = next;
-      }
-    }
-    return out;
-  };
-
   // GET /shore?code=K7F2QX&depth=6: a beach (default: yours) and the shore each way, nearest first
   app.get('/shore', requireUser, async (c) => {
     const depth = Math.min(12, Math.max(0, Number(c.req.query('depth') ?? 6) | 0));

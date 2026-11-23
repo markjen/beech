@@ -124,6 +124,12 @@ Terraform state may not yet include it, and this doc does not claim
 Terraform manages it. The Terraform equivalent is `var.custom_domain`
 (`infra/main.tf`, `google_cloud_run_domain_mapping.beech`).
 
+**Shore domain (`beechshore.com`):** the public shore site is served by
+the same `beech` service, chosen by the Host header, so it only needs a
+domain mapping: `terraform apply -var shore_custom_domain=beechshore.com`
+(`google_cloud_run_domain_mapping.shore`), then the DNS records it prints.
+See [SHORE_SITE.md](SHORE_SITE.md).
+
 **Admin console domain (`admin.beech.games`):** the admin console is its
 own Cloud Run service, `beech-admin` (PR #29). Terraform manages its
 domain mapping (`infra/main.tf`, `google_cloud_run_domain_mapping.admin`,

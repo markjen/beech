@@ -29,6 +29,12 @@ The single list of what's left to do, for the owner and for agents.
   then set `GCP_ENABLED=1`.
 - [ ] **Production domain**: pick one (for example `beech.markjen.com`), then
   map it to Cloud Run (see GCP.md).
+- [ ] **beechshore.com domain**: map it (and www) to the `beech` Cloud Run
+  service and add the DNS records; the site already answers to it. Steps in
+  [SHORE_SITE.md](SHORE_SITE.md), "Turning on the domain". Until then it is
+  at `/shore` on the game's domain, but shared links say beechshore.com.
+  Also update the privacy policy and store forms: first names and beaches
+  on the shore are now public on the web.
 - [ ] **Privacy policy URL**: both stores and Google's OAuth consent screen
   need one.
 - [ ] **Final app ID**: replace `app.beech.beach` before the first store
@@ -97,6 +103,9 @@ _(nothing right now)_
   front.
 - [ ] **Keep my beach off the shore**: a setting to leave the global beachfront
   (and only be visited by code or as someone's neighbor).
+- [ ] **beechshore follow-ups**: a read-only 3D visit for signed-out
+  people, an index for the lists at scale, rate limits on image drawing
+  (SHORE_SITE.md, "Not done yet").
 - [ ] **Ask from the shore**: when walking past a beach at the end of a
   stretch, offer "ask to be neighbors" right on its name tag.
 - [ ] **Push for neighbor requests**: today you see them the next time the
@@ -118,6 +127,10 @@ _(nothing right now)_
   shower night.
 
 ## Done (recent)
+
+- [x] **beechshore.com, the public shore** (2026-11-23): server-rendered
+  pages for every beach on the shore, drawn pictures for link previews,
+  share buttons, cross links with the game. [SHORE_SITE.md](SHORE_SITE.md).
 
 - [x] **Performance checks in CI** (2026-11-23): `npm run perf` and the
   Performance workflow (main, pull requests, weekly) with budgets in

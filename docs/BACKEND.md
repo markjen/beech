@@ -82,7 +82,8 @@ beaches come first, and never shows anyone twice. The app pages more with
 direction once it comes round to a beach it already has.
 
 **Privacy.** On the global shore, **every saved beach is visible to every
-signed-in person**: first name, real beach location, sand and things. Codes
+signed-in person**, and beaches on the shore are also public on the web at
+beechshore.com ([SHORE_SITE.md](SHORE_SITE.md)): first name, real beach location, sand and things. Codes
 are still how you ask someone to be a neighbor or jump straight to a beach.
 The store privacy forms must say that the first name and the beach are
 public to other users. A "keep my beach off the shore" setting is on the
@@ -121,7 +122,9 @@ only beaches that are on the shore (`on_shore`) and have been saved
 URL (`src/net/share.ts`); opening it visits that beach once you're signed
 in. The Cloud Run server injects Open Graph tags for the beach into
 `index.html` for such requests (`server/src/shareMeta.ts`), so the link
-shows a preview where it's pasted. Gifting (`POST /api/gifts`) moves one
+shows a preview where it's pasted, with a picture of the beach when it's on
+the shore. The app's share buttons send the beechshore link instead
+([SHORE_SITE.md](SHORE_SITE.md)). Gifting (`POST /api/gifts`) moves one
 inventory row to someone else by code, instantly and atomically; see
 [SHARING_GIFTING.md](SHARING_GIFTING.md) for the design and the decisions
 that are still the owner's to make.
