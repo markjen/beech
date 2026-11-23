@@ -112,6 +112,15 @@ _(nothing right now)_
   (2026-11-23, 6b4f36d): `src/ui/beachMap.ts` plots each beach at its real lon/lat
   on a self-contained stylized SVG world map (no tiles); the settings list
   and favorites are ordered west to east; dots are tappable to open a beach.
+
+- [x] **Clearing tool: dozer, flatten, and vacuum in one top-level tool**
+  (2026-11-23, d07a043): the item tool only places now (its tap-to-pick-up is gone);
+  a vacuum cleaner tool picks items up on a tap and vacuums the drag path on
+  hold-and-drag; dozer, flatten, and vacuum live under one "Clearing" tool
+  with a mode strip. Dozer and vacuum sweep through the same worker-side
+  mechanism as the bulldozer PR (#16): objects are removed from the beach and
+  the bag counts owned minus placed, so the return is automatic; rocks stay,
+  wild strays are swept away but never credited; strokes are undoable.
 - [x] **Claw machine can miss** (2026-11-22): the server rolls a grab after
   the draw — the claw keeps a common ball 80% of the time, a rare one 65%,
   a legendary one 40% (about 1 go in 4 comes up empty). Starter gifts always
