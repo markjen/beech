@@ -2,7 +2,8 @@ import { beachById } from '../world/locations';
 import { MAX_OBJECTS } from '../sim/sandCodec';
 import { renderBeachMap, sortBeachesWestToEast } from './beachMap';
 import { DEV_AUTH, googleSignInAvailable, renderGoogleButton, type Account } from '../net/account';
-import { shareUrl } from '../net/share';
+import { beachShareText, shareUrl, shoreBeachUrl } from '../net/share';
+import { copyText, shareLink } from './shareSheet';
 import { nativeProviders, nativeSignIn, SignInCancelled, type NativeProvider } from '../net/nativeAuth';
 
 const APPLE_LOGO = `<svg viewBox="0 0 814 1000" aria-hidden="true"><path fill="currentColor" d="M788 341c-6 4-108 62-108 190 0 148 130 200 134 202-1 3-21 72-69 142-43 62-88 124-156 124s-86-40-165-40c-77 0-104 41-166 41s-106-57-156-127C44 791 0 667 0 549c0-191 124-292 246-292 65 0 119 43 160 43 39 0 100-45 174-45 28 0 129 2 196 86zM554 159c31-37 53-88 53-139 0-7-1-14-2-20-50 2-110 34-146 76-28 32-55 83-55 135 0 8 1 16 2 18 3 1 9 1 14 1 45 0 102-30 134-71z"/></svg>`;
@@ -182,33 +183,50 @@ export class AccountPanel {
       await nv.api.newCode();
       await nv.refresh();
     }));
-    // the link that opens your beach: send it to anyone, they land on your sand
+    // send your beach: the beechshore link (a picture of it, for anyone,
+    // signed in or not, with "Visit in beech" on it); "game link" copies the
+    // link that opens it straight in the game
+    const here = this.account.beach;
     const link = document.createElement('button');
     link.type = 'button';
     link.className = 'action';
-    link.textContent = 'copy link';
+    link.textContent = 'share';
+    link.title = 'Send a link to your beach';
     link.addEventListener('click', async () => {
-      const url = shareUrl(location.origin, location.pathname, n.code);
-      try {
-        await navigator.clipboard.writeText(url);
-      } catch {
-        // older browsers: select it from a scratch field and copy that way
-        const field = document.createElement('input');
-        field.value = url;
-        field.readOnly = true;
-        document.body.appendChild(field);
-        field.select();
-        document.execCommand('copy');
-        field.remove();
+      const r = await shareLink({
+        url: shoreBeachUrl(n.code),
+        title: here?.name || `${this.account.user?.name ?? 'My'} beach`,
+        text: beachShareText(this.account.user?.name, here?.name, true),
+      });
+      if (r === 'copied' || r === 'failed') {
+        link.textContent = r === 'copied' ? 'link copied' : 'try again';
+        window.setTimeout(() => (link.textContent = 'share'), 2500);
       }
-      link.textContent = 'link copied';
-      window.setTimeout(() => (link.textContent = 'copy link'), 2500);
     });
-    share.append(copy, link, fresh);
+    const gameLink = document.createElement('button');
+    gameLink.type = 'button';
+    gameLink.className = 'action';
+    gameLink.textContent = 'game link';
+    gameLink.title = 'Copy the link that opens your beach in the game';
+    gameLink.addEventListener('click', async () => {
+      const ok = await copyText(shareUrl(location.origin, location.pathname, n.code));
+      gameLink.textContent = ok ? 'copied' : 'try again';
+      window.setTimeout(() => (gameLink.textContent = 'game link'), 2500);
+    });
+    share.append(copy, link, gameLink, fresh);
     wrap.appendChild(share);
+    // see it the way everyone else does
+    if (here?.onShore !== false) {
+      const view = document.createElement('a');
+      view.className = 'shore-link';
+      view.href = shoreBeachUrl(n.code);
+      view.target = '_blank';
+      view.rel = 'noopener';
+      view.textContent = 'see it on beechshore ↗';
+      wrap.appendChild(view);
+    }
     const help = document.createElement('div');
     help.className = 'status';
-    const here = this.account.beach;
     help.textContent = `${this.account.beaches.length > 1 && here ? `neighbors of ${here.name || (here.home ? 'home' : 'this beach')}. ` : ''}neighbors are mutual: share your code, ask for a side, and they accept`;
     wrap.appendChild(help);
 

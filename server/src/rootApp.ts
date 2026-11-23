@@ -11,14 +11,55 @@ import path from 'node:path';
 
 import { httpLogger } from './observability.js';
 import { createSharePageHandler } from './shareMeta.js';
+import { createShoreSite } from './shoreSite.js';
 import type { Db } from './db.js';
 
-/** Build the root app. `api` is the game API (createApp), mounted under /api. */
-export function createRootApp(db: Db, api: Hono<any, any, any>, publicDir: string): Hono {
+export interface ShoreOptions {
+  /** hosts that are the shore site itself (beechshore.com, www.beechshore.com) */
+  hosts: string[];
+  /** the shore's public origin, https://beechshore.com */
+  url: string;
+  /** the game, for the shore's "visit" and "build" links */
+  gameUrl: string;
+}
+
+export const DEFAULT_SHORE: ShoreOptions = {
+  hosts: ['beechshore.com', 'www.beechshore.com'],
+  url: 'https://beechshore.com',
+  gameUrl: 'https://play.beech.games',
+};
+
+/**
+ * Build the root app. `api` is the game API (createApp), mounted under /api.
+ * The public shore site (shoreSite.ts) answers every path on its own hosts,
+ * and lives under /shore on every other host.
+ */
+export function createRootApp(db: Db, api: Hono<any, any, any>, publicDir: string, shore: ShoreOptions = DEFAULT_SHORE): Hono {
   const root = new Hono();
   // One structured log line per request, including static files and /healthz.
   root.use('*', httpLogger);
   root.get('/healthz', (c) => c.text('ok'));
+  const shoreHosts = new Set(shore.hosts.map((h) => h.toLowerCase()));
+  const apex = new URL(shore.url).host.toLowerCase();
+  const shoreHere = createShoreSite(db, { base: '', gameUrl: shore.gameUrl, publicUrl: shore.url });
+  const shoreUnder = createShoreSite(db, { base: '/shore', gameUrl: shore.gameUrl });
+  root.use('*', async (c, next) => {
+    const host = (c.req.header('host') ?? '').toLowerCase().replace(/:\d+$/, '');
+    if (!shoreHosts.has(host)) return next();
+    // www (and any other alias) → the one canonical host, so shared links agree
+    if (host !== apex.replace(/:\d+$/, '')) {
+      const u = new URL(c.req.url);
+      return c.redirect(`${shore.url.replace(/\/$/, '')}${u.pathname}${u.search}`, 301);
+    }
+    return shoreHere.fetch(c.req.raw);
+  });
+  // the shore under /shore on the game's own host (and in development)
+  root.use('*', async (c, next) => {
+    const p = c.req.path;
+    if (p === '/shore/') return c.redirect('/shore', 301);
+    if (p === '/shore' || p.startsWith('/shore/')) return shoreUnder.fetch(c.req.raw);
+    return next();
+  });
   root.route('/api', api);
   // a shared beach link (?visit=CODE) gets Open Graph tags for that beach, so
   // the link shows a preview where it's pasted; everything else passes through

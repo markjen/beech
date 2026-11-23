@@ -164,6 +164,30 @@ that only exists when the admin domain is set needs a `dynamic` block
 (or a separate policy) — untested here, since `terraform plan` was not
 run (see below).
 
+### Shore site domain: `beechshore.com`
+
+Same shape as the admin domain, one more mapping — the shore site is
+served by the `beech` service itself (Host-header routing in
+`server/src/rootApp.ts`), so the server already answers to both hosts;
+only the mappings and DNS are missing:
+
+1. Merge and deploy first, so the `beech` service exists. The mappings
+   fail if the service does not exist yet.
+2. `terraform apply -var shore_custom_domain=beechshore.com`
+   (or set `shore_custom_domain` in a `terraform.tfvars`). This creates
+   the `beechshore.com` and `www.beechshore.com` domain mappings
+   (`google_cloud_run_domain_mapping.shore` and `.shore_www`, both gated
+   on the same variable) and an uptime check for the shore home page
+   (gated on the same variable; it is not yet wired into the uptime
+   alert policy — same follow-up as the admin check above).
+3. Add the DNS records both mappings print, at the registrar (the
+   `beechshore.com` zone). Certificate provisioning waits on DNS.
+4. No OAuth or app change: the shore site has no sign-in, and the game
+   links to it with `VITE_SHORE_URL` (default `https://beechshore.com`).
+
+Until the domain is on, the shore is at `/shore` on the game's domain
+(see [SHORE_SITE.md](../docs/SHORE_SITE.md)).
+
 ## Server runtime contract (for reference)
 
 From `server/src/server.ts` — what the container needs at runtime:

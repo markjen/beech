@@ -13,6 +13,7 @@ Read these first:
    commit as the work.
 5. Feature designs not built yet, e.g. [docs/MULTI_BEACH.md](docs/MULTI_BEACH.md) and
    [docs/BEACH_FILE.md](docs/BEACH_FILE.md) (export/import file spec).
+   The public shore site (beechshore.com) is in [docs/SHORE_SITE.md](docs/SHORE_SITE.md).
 
 ## Ground rules
 

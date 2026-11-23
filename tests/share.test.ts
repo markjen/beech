@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { shareUrl, visitCodeFromUrl, withoutVisitParam } from '../src/net/share';
+import { SHORE_URL, beachShareText, shareUrl, shoreBeachUrl, visitCodeFromUrl, withoutVisitParam } from '../src/net/share';
 
 describe('share links', () => {
   it('builds a link with the beach code on any host and path', () => {
@@ -23,5 +23,21 @@ describe('share links', () => {
     expect(withoutVisitParam('?visit=K7F2QX&seed=1')).toBe('?seed=1');
     expect(withoutVisitParam('?seed=1')).toBe('?seed=1');
     expect(withoutVisitParam('')).toBe('');
+  });
+});
+
+describe('beechshore links', () => {
+  it('are short enough to text', () => {
+    expect(SHORE_URL).toBe('https://beechshore.com');
+    expect(shoreBeachUrl('K7F2QX')).toBe('https://beechshore.com/K7F2QX');
+    expect(shoreBeachUrl('K7F2QX', 'http://localhost:8787/shore/')).toBe('http://localhost:8787/shore/K7F2QX');
+  });
+
+  it('come with a line of text', () => {
+    expect(beachShareText('Ana')).toBe('Look at Ana’s beach on the shore 🏖️');
+    expect(beachShareText('Ana', 'Moat Town')).toContain('“Moat Town”, Ana’s beach');
+    expect(beachShareText('', undefined)).toContain('Someone’s beach');
+    expect(beachShareText('Ana', undefined, true)).toBe('Come and see my beach on the shore 🏖️');
+    expect(beachShareText('Ana', 'Moat Town', true)).toContain('“Moat Town”, my beach');
   });
 });

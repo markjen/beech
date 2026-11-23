@@ -799,3 +799,12 @@ body.ambient-idle {
   flex: 0 1 auto;
   white-space: nowrap;
 }
+
+/* your beach on beechshore.com, under your code */
+.neighbors .shore-link {
+  display: inline-block;
+  margin: 2px 0 4px;
+  font-size: 13px;
+  color: inherit;
+  opacity: 0.8;
+}

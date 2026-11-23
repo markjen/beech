@@ -25,6 +25,10 @@
 //   XSOLLA_SANDBOX       "1": test payments only (Xsolla sandbox, test cards)
 //   WEB_CHECKOUT_RETURN_URL  where Pay Station returns to (default https://beech.markjen.com/)
 //   ALLOWED_ORIGINS      extra CORS origins, default the Capacitor app shells
+//   SHORE_URL            the public shore site's origin (default https://beechshore.com)
+//   SHORE_HOSTS          hosts served as the shore site (default beechshore.com,www.beechshore.com);
+//                        every other host has it under /shore (docs/SHORE_SITE.md)
+//   GAME_URL             the game, for the shore's links (default https://play.beech.games)
 //   DEV_AUTH             "1" enables /api/auth/dev; refused when NODE_ENV=production
 //   ADMIN_DEV_PORT       local development only: also serve the admin console
 //                        (adminServer.ts) on this port, sharing this process's
@@ -44,7 +48,7 @@ import { startAdminServer } from './adminServer.js';
 import { openDbFromEnv } from './dbEnv.js';
 import { migrate } from './migrations.js';
 import { logEvent } from './observability.js';
-import { createRootApp } from './rootApp.js';
+import { createRootApp, DEFAULT_SHORE } from './rootApp.js';
 import { xsollaFromEnv } from './xsolla.js';
 
 const env = process.env;
@@ -96,7 +100,11 @@ const api = createApp(db, {
 });
 
 const publicDir = path.resolve(env.PUBLIC_DIR ?? path.join(here, '..', '..', 'dist'));
-const root = createRootApp(db, api, publicDir);
+const root = createRootApp(db, api, publicDir, {
+  hosts: env.SHORE_HOSTS !== undefined ? list(env.SHORE_HOSTS) : DEFAULT_SHORE.hosts,
+  url: env.SHORE_URL || DEFAULT_SHORE.url,
+  gameUrl: env.GAME_URL || DEFAULT_SHORE.gameUrl,
+});
 
 const port = Number(env.PORT ?? 8080);
 const server = serve({ fetch: root.fetch, port, hostname: env.HOST ?? '0.0.0.0' }, () =>

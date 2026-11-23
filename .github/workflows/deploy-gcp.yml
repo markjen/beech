@@ -105,6 +105,9 @@ jobs:
           curl -fsS -o /dev/null "$URL/"
           # the game no longer has an admin API
           test "$(curl -s -o /dev/null -w '%{http_code}' "$URL/api/admin/me")" = 404
+          # the public shore site, served under /shore on the game's host
+          # (its own hosts, beechshore.com, answer the same pages at /)
+          curl -fsS "$URL/shore" | grep -q 'Every beach on the shore'
           ADMIN_URL=$(gcloud run services describe beech-admin --region "$REGION" --format 'value(status.url)')
           curl -fsS "$ADMIN_URL/health"
           # signed out: the sign-in page only, and the API refuses

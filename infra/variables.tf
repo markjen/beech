@@ -43,6 +43,12 @@ variable "custom_domain" {
   default     = ""
 }
 
+variable "shore_custom_domain" {
+  description = "Optional public shore domain (beechshore.com), mapped to the beech service, which serves the shore site for that Host (docs/SHORE_SITE.md). Empty (the default) skips the mapping."
+  type        = string
+  default     = ""
+}
+
 variable "admin_custom_domain" {
   description = "Optional custom domain for the beech-admin Cloud Run service, e.g. admin.beech.games. Empty (the default) skips the domain mapping — set it only after a deploy has created the beech-admin service, then add the DNS records the mapping prints."
   type        = string

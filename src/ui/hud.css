@@ -1464,3 +1464,17 @@
   display: block;
   margin: 10px auto 0;
 }
+
+/* beechshore.com, at the foot of the leaderboard */
+.board-shore {
+  display: block;
+  margin: 10px 0 2px;
+  font-size: 13px;
+  text-align: center;
+  color: inherit;
+  opacity: 0.8;
+}
+
+.board-shore[hidden] {
+  display: none;
+}
