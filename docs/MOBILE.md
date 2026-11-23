@@ -84,14 +84,27 @@ cd android && ./gradlew bundleRelease          # app/build/outputs/bundle/releas
 
 ### Play Console checklist
 
-1. Create the app in Play Console (free/paid, category **Casual** or **Simulation**).
+Status (2026-11-23): the app is created in Play Console (**beech**, free,
+package `app.beech.beach`, developer account Jenerator Labs), identity
+verification passed, and AAB **1.0.0 build 1** is uploaded to the *Internal
+testing* track as a draft (release workflow run 45192537104). What is still
+manual, in the console: the listing text, content rating, data safety,
+target audience, the internal-testers list, and promoting the draft. The
+screenshots and feature graphic below are committed in
+`resources/play-store/` (they show a test account and a test beach code;
+the feature graphic has a faint brush-cursor ring — retake before the
+production listing if it shows).
+
+1. Create the app in Play Console (free/paid, category **Games →
+   Simulation**).
 2. Turn on **Play App Signing** (default) and upload `app-release.aab` to the
    *Internal testing* track first.
 3. Store listing: short and full description, a 512×512 icon
-   (`public/icons/icon-512.png`), a 1024×500 feature graphic, and at least 2
-   phone screenshots. Capture them with `node scripts/shot.mjs` at
-   1080×1920, or straight from a device.
-4. Content rating questionnaire: no violence, no user content, no ads.
+   (`public/icons/icon-512.png`), a 1024×500 feature graphic, at least 2
+   phone screenshots, and the privacy policy URL
+   `https://beech.games/privacy.html`. Capture screenshots with
+   `node scripts/shot.mjs` at 1080×1920, or straight from a device.
+4. Content rating questionnaire: no violence, no ads. The app **does** have user-generated content — saved beaches, first names, and user-chosen beach names are visible to all signed-in users on the global shore, leaderboard, neighbour tags, and share-link previews — and users **can** interact and share (visits by code or link, neighbour links, starring, item gifting). There is no chat, messaging, or DM anywhere in the app.
 5. Data safety: with accounts on (production builds), declare **User IDs**
    and **app activity/content** (the saved beach), plus the **name** shown to
    neighbors you choose. All of it is collected, linked to the user, used for
@@ -99,7 +112,7 @@ cd android && ./gradlew bundleRelease          # app/build/outputs/bundle/releas
    delete their account in the app. With no accounts (sandbox builds),
    nothing is collected. "Near me" reads the coarse location once, on the
    device, to pick a beach. It is never stored or sent.
-6. Target audience: everyone. The app has no ads. It has in-app purchases
+6. Target audience: 13+. The app has no ads. It has in-app purchases
    (consumables only; see "In-app purchases" below).
 
 ## iOS → App Store
@@ -127,9 +140,10 @@ Already set in `Info.plist`:
 1. Create the app record with the same bundle ID as `appId`.
 2. Upload a build (Xcode Organizer or the CI workflow below), then add it to
    TestFlight.
-3. Listing: subtitle, description, keywords, support URL (the GitHub Pages URL
-   works), a privacy policy URL, and screenshots for 6.9" and 6.5" iPhones
-   (and 13" iPad, since the app supports iPad).
+3. Listing: subtitle, description, keywords, support URL
+   (`https://beech.games`), a privacy policy URL
+   (`https://beech.games/privacy.html`), and screenshots for 6.9" and 6.5"
+   iPhones (and 13" iPad, since the app supports iPad).
 4. App Privacy (production builds with accounts): **User ID**, **Other
    User Content** (the beach) and **Name** (first name, shown to chosen
    neighbors). All are linked to the user, for App Functionality, and not
@@ -156,10 +170,11 @@ Repository secrets used (Settings → Secrets and variables → Actions):
 | `APPSTORE_API_KEY_P8_BASE64` | `base64 -i AuthKey_XXXX.p8` |
 | `APPLE_TEAM_ID` | the 10-character team ID |
 
-The release workflow hasn't been run against real store accounts yet. Expect
-to adjust it on the first run. The first upload of a new app to Google Play
-must also be done by hand in the Play Console before the API will accept
-uploads.
+The release workflow's first run against the real Play account succeeded
+(2026-11-23, run 45192537104): the signed AAB uploaded to the internal
+track as a draft through the Play API, so no manual first upload was
+needed. The draft still has to be reviewed and rolled out in Play
+Console, and testers added to the internal track.
 
 ## Android TV
 

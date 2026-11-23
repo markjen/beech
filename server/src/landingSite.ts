@@ -126,6 +126,7 @@ ${whatsNew}
 <nav>
   <a href="/guide">Guide</a>
   <a href="/guide/releases">Release notes</a>
+  <a href="/privacy.html">Privacy</a>
   <a href="${esc(gameUrl)}">Play</a>
   <a href="mailto:hello@beech.games">hello@beech.games</a>
 </nav>
