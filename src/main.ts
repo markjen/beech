@@ -35,7 +35,6 @@ import { Shop } from './ui/shop';
 import { ShopApi } from './net/shop';
 import { VendingMachine } from './ui/vendingMachine';
 import { DEFAULT_SIZE, ITEMS, rollPlacement, type Item } from './world/items';
-import { WOOD_RADIUS } from './sim/objects';
 import { ACCOUNTS_ENABLED, Account, DigFindApi, GiftApi, PullApi } from './net/account';
 import { visitCodeFromUrl, withoutVisitParam } from './net/share';
 import { BeachSync } from './net/beachSync';

@@ -104,7 +104,7 @@ _(nothing right now)_
 
 ## Done (recent)
 
-- [x] **Digging finds** (2026-11-23, 8fce840): digging can turn up a buried item from
+- [x] **Digging finds** (2026-11-23, 18ef11a): digging can turn up a buried item from
   this week's vending set at the vending odds (60/25/12/3) — server-side roll
   at the end of a real dig stroke (2 m travelled, or 1 s in place), 1 in 10
   good digs, at most 3 finds a day and one roll every 30 s, granted atomically
