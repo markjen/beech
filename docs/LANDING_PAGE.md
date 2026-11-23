@@ -25,8 +25,8 @@ Community: the page links the Discord server for feedback, bug reports and
 ideas — a "Talk to us" section and a link in the footer nav, plus the same
 link in the shore footer and at the bottom of the in-game account panel. The
 invite URL lives in one place, `server/src/community.ts`
-(`DISCORD_INVITE_URL`); it is a placeholder (`https://discord.gg/beech`)
-until the server exists — see "Not done yet".
+(`DISCORD_INVITE_URL`); it is the server's permanent invite
+(`https://discord.gg/y7EGw2yg2d`).
 
 What the page does **not** claim:
 
@@ -94,11 +94,10 @@ Nothing else changes: the server already answers to those hosts.
 
 ## Not done yet
 
-- Swap the placeholder Discord invite (`https://discord.gg/beech`) in
-  `server/src/community.ts` for the real invite URL once the server is
-  created (owner: create the server — see BACKLOG.md). Every surface
-  (landing, shore, in-game) reads it from there, so it is a one-line
-  change.
+- PR #40 (Discord links) is a draft until the invite is confirmed: it now
+  carries the server's permanent invite
+  (`https://discord.gg/y7EGw2yg2d`) in `server/src/community.ts`, read by
+  every surface (landing, shore, in-game) from that one place.
 - Wire the landing uptime check into the `beech: site or API down` alert
   policy (`google_monitoring_alert_policy.uptime` in
   `infra/monitoring.tf`). It was left out because the policy's conditions

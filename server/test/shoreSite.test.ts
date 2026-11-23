@@ -91,8 +91,8 @@ describe('the shore site', () => {
       expect(html).toContain('Most loved');
       expect(html).toContain('https://play.example.test/');
       // the footer links the Discord invite (server/src/community.ts —
-      // a placeholder until the server exists)
-      expect(html).toContain('href="https://discord.gg/beech"');
+      // the server's permanent invite)
+      expect(html).toContain('href="https://discord.gg/y7EGw2yg2d"');
       expect(html).toContain('>Discord</a>');
     }
     const own = await (await root.request('/', shoreHost)).text();
