@@ -70,6 +70,16 @@ logged — they can hold user data):
 
 `beech` in Cloud Monitoring (open it from `terraform output
 monitoring_dashboard`, or Monitoring → Dashboards in the console):
+https://console.cloud.google.com/monitoring/dashboards/custom/cff8ef97-235d-450c-95e5-1e669664f7a9?project=beech-prod
+
+Live resources (created 2026-11-22, Terraform state in
+gs://beech-prod-tfstate): notification channel
+`projects/beech-prod/notificationChannels/6345623296210914124` (email
+markjen@gmail.com); uptime checks `beech-web-3XEbuoHRxM8` (site) and
+`beech-api-health-0qryacN_Yxg` (/api/health); alert policies
+`8637602992531410946` (uptime), `13080807935210246527` (5xx),
+`14340817494471347325` (latency), `8637602992531414226` (SQL CPU),
+`13790160179533155208` (SQL connections).
 
 | Panel | Source |
 |---|---|
