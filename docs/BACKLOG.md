@@ -45,7 +45,6 @@ The single list of what's left to do, for the owner and for agents.
   - [ ] E3 phone apps (share sheet, file picker)
   - [ ] E4 offline tool (`scripts/beach-file.mjs`) and design guide
   - [ ] E5 tie-in with checkpoints
-- [ ] **Checkpoints** (design in progress, agent): see CHECKPOINTS.md once it lands.
 
 ## Up next (engineering)
 
@@ -57,6 +56,26 @@ The single list of what's left to do, for the owner and for agents.
   four phases (data model and API → beaches list → connected beaches →
   shop). Owner decisions are listed at the end of that doc. People can
   already win an extra beach from the claw machine.
+
+- [ ] **Checkpoints**: save named copies of any of your beaches and restore
+  one onto any of them, if your bag still holds its non-free things. Design
+  in [CHECKPOINTS.md](CHECKPOINTS.md); owner decisions at its end.
+  - [ ] **C1** Server: migration 11 (`checkpoints`, `beach.epoch`),
+    `inspectBlob` (counts items from the BCH2 bytes), list / create from a
+    beach / import / get / rename / delete with limits; client `countItems`
+    counts `wild` non-free items. No visible change.
+  - [ ] **C2** Server: fit check and restore (strict and drop-missing), the
+    automatic "before restore" checkpoint, a per-user lock, the epoch on
+    beach GET/PUT. Server tests for the race and stale saves.
+  - [ ] **C3** App: checkpoints in settings (save, list, rename, delete,
+    restore here with confirm, short and undo), `BeachSync` reloads on a
+    restore elsewhere. `scripts/checkpoints-e2e.mjs`, `npm run e2e:checkpoints`.
+  - [ ] **C4** Restore onto another of your beaches; per-beach "checkpoint"
+    action; red item chips when you'd be short.
+  - [ ] **C5** Export a checkpoint as a beach file and import one, once
+    `docs/BEACH_FILE.md` lands.
+  - [ ] **C6** (optional) Client-drawn thumbnails; local checkpoints in the
+    sandbox with "keep the sandbox beach on the device".
 
 - [ ] **Release setup for native sign-in** (DevOps): Android and iOS OAuth
   clients, build env vars, the Info.plist URL scheme, the Apple capability,
