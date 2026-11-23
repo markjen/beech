@@ -369,8 +369,8 @@ branch, so the deploy job runs only there. Switch the default branch to
   give one go. `pulls` becomes a plain history. Players who had already
   played keep their count. (Originally: one go per UTC day.) The server draws the prize (`server/src/pulls.ts`, crypto
   randomness) with published odds: common 70% (conch, sand dollar), rare 25%
-  (starfish), legendary 5% (message in a bottle). The app shows the odds
-  before every go. Migration 3 adds `pulls`, keyed on `(user, pool, day)`;
+  (starfish), legendary 5% (message in a bottle). The app lists what's
+  inside by rarity (it showed the percentages until 2026-11-23). Migration 3 adds `pulls`, keyed on `(user, pool, day)`;
   claiming the day and adding the prize happen in one SQL statement.
 - **Starter gifts** (`STARTER` in `server/src/pulls.ts`): go 1 is a
   Starfish (rare), go 2 is a Deckchair (a shop item, 250, fixed, faces the

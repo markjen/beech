@@ -17,7 +17,7 @@ type Phase = 'idle' | 'dispense' | 'open' | 'done';
 
 /**
  * The vending machine: one free ball a day, from a set of items that
- * changes every week. The ball is drawn on the server (with the odds printed
+ * changes every week. The ball is drawn on the server (what's inside is listed
  * under the machine); the machine is the fun part. Press the button, a ball
  * drops into the tray, and it opens to show what's inside.
  */
@@ -76,7 +76,7 @@ export class VendingMachine {
       if (e.key === 'Escape' && this.isOpen) this.close();
     });
     this.btn.addEventListener('click', () => this.dispense());
-    // the balls behind the glass: colours weighted by the published odds
+    // the balls behind the glass: colours weighted by the draw odds
     const r = mulberry(11);
     const odds = { common: 0.6, uncommon: 0.25, rare: 0.12, unique: 0.03 };
     for (let row = 0; row < 3; row++) {
@@ -133,12 +133,11 @@ export class VendingMachine {
       this.oddsEl.innerHTML = '';
       return;
     }
-    const pct = (v: number) => `${Math.round(v * 1000) / 10}%`;
     const rows = TIERS.map((k) => {
       const names = this.pool!.items[k]?.map((id) => itemById(id)?.name ?? id).join(', ') ?? '';
-      return `<li><span class="dot" style="background:${BALL[k]}"></span><b>${RARITY_NAME[k]} ${pct(this.pool!.odds[k] ?? 0)}</b> ${names}</li>`;
+      return `<li><span class="dot" style="background:${BALL[k]}"></span><b>${RARITY_NAME[k]}</b> ${names}</li>`;
     }).join('');
-    this.oddsEl.innerHTML = `<p>What's inside the balls, and the chance of each:</p><ul>${rows}</ul>`;
+    this.oddsEl.innerHTML = `<p>What's inside the balls:</p><ul>${rows}</ul>`;
   }
 
   private dispense(): void {

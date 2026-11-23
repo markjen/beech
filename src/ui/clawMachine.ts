@@ -15,7 +15,7 @@ type Phase = 'idle' | 'drop' | 'grab' | 'lift' | 'carry' | 'open' | 'done';
 /**
  * The claw machine: free goes, with a rest between them that starts at
  * 5 minutes and doubles each go, up to a day. The prize is drawn on the server
- * (with the odds printed under the machine); the claw is the fun part. Hold
+ * (what's inside is listed under the machine); the claw is the fun part. Hold
  * the button to steer, let go to drop — and sometimes the ball slips out of
  * the claw on the way up, which spends the go all the same.
  */
@@ -135,18 +135,13 @@ export class ClawMachine {
       this.oddsEl.innerHTML = '';
       return;
     }
-    const pct = (v: number) => `${Math.round(v * 1000) / 10}%`;
     const rows = (['common', 'rare', 'legendary'] as const)
       .map((k) => {
         const names = this.pool!.items[k].map((id) => itemById(id)?.name ?? id).join(', ');
-        return `<li><span class="dot" style="background:${CAPSULE[k]}"></span><b>${RARITY_NAME[k]} ${pct(this.pool!.odds[k])}</b> ${names}</li>`;
+        return `<li><span class="dot" style="background:${CAPSULE[k]}"></span><b>${RARITY_NAME[k]}</b> ${names}</li>`;
       })
       .join('');
-    const g = this.pool.grab;
-    const grabNote = g
-      ? `<p>The claw doesn't always hold on: it keeps a common ball ${pct(g.common)} of the time, a rare one ${pct(g.rare)}, a legendary one ${pct(g.legendary)}.</p>`
-      : '';
-    this.oddsEl.innerHTML = `<p>What's inside, and the chance of each:</p><ul>${rows}</ul>${grabNote}`;
+    this.oddsEl.innerHTML = `<p>What's inside:</p><ul>${rows}</ul>`;
   }
 
   private drop(): void {

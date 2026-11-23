@@ -1,15 +1,15 @@
 # Vending machine
 
 One free ball a day, from a set of items that changes every week. The ball
-is drawn on the server, with the odds shown under the machine before every
-ball — the same shape as the claw machine, a different cadence and a
+is drawn on the server, with the items in this week's set listed under the
+machine — the same shape as the claw machine, a different cadence and a
 different pool.
 
 ## How it works
 
 - **The machine.** A tile in the bag tray (next to the claw machine) opens
   the dialog: the machine, its balls behind the glass, a "Get a ball"
-  button, and the odds for this week's set. Press the button and a ball
+  button, and the items in this week's set by rarity. Press the button and a ball
   drops into the tray, then opens to show what's inside. "Put it on the
   beach" picks the item up in hand; "Keep it" just adds it to the bag.
 - **The ball.** One free ball a day, resetting at UTC midnight. No currency,
@@ -24,8 +24,8 @@ different pool.
   never slips: the machine dispenses, it doesn't grab, so there is no
   miss roll and `GET /pulls` publishes no `grab` chances for it.
 - **The odds.** Common 60%, uncommon 25%, rare 12%, unique 3%. Within a
-  tier every item is equally likely. The machine prints the odds and the
-  items in each tier before every ball.
+  tier every item is equally likely. The machine lists the items in each
+  tier (not the percentages; the UI stopped showing odds on 2026-11-23).
 
 ## Rarities
 
@@ -88,7 +88,7 @@ in `src/palette.ts`, a mesh in `src/render/objects.ts`, and an icon in
 
 - **Paid balls.** Needs a consumable store product and the purchase check
   in `server/src/store.ts`. Paid random items carry extra store rules: the
-  odds are already shown, but check the paid-random-item policies (and
+  UI no longer shows odds, and paid random items usually must, so check the paid-random-item policies (and
   country restrictions) before adding one — see the note in
   `server/src/pulls.ts`.
 - **A ball a day is the only cadence.** More balls (a streak, a second ball

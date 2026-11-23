@@ -119,6 +119,10 @@ _(nothing right now)_
 
 ## Done (recent)
 
+- [x] **No odds text in the machines** (2026-11-23): the claw and vending
+  dialogs list what's inside by rarity but no longer print percentages or
+  the claw's grab chances. The server still publishes them in `GET /pulls`.
+  Revisit before any paid random item (see PRICING.md).
 - [x] **Checkpoints C1–C5 and beach files E1–E5** (2026-11-23): save named
   copies of any of your beaches and restore them onto any of them (strict, or
   without what the bag can't cover; undo; a restore elsewhere reloads other
