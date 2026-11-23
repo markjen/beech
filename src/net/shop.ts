@@ -159,4 +159,63 @@ export class ShopApi {
     }
     return done;
   }
+
+  // --- gift cards, promo codes, credit (docs/GIFT_CARDS_PROMOS.md) ---
+  // Credit comes only from gift cards (redeemed server-side) and is spent
+  // server-side too: the price always comes from the server's product list,
+  // and a promo code is validated there, so nothing here can set a price.
+  /** Account credit from gift cards, in USD cents. */
+  async credit(): Promise<number> {
+    const res = await this.account.fetch('/api/credit');
+    if (!res.ok) throw new Error('could not read your credit');
+    return ((await res.json()) as { creditCents: number }).creditCents;
+  }
+
+  /** Redeem a gift card code into account credit. */
+  async redeemGiftCard(code: string): Promise<{ creditedCents: number; creditCents: number }> {
+    const res = await this.account.fetch('/api/gift-cards/redeem', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
+    });
+    if (!res.ok) {
+      const msg = ((await res.json().catch(() => ({}))) as { error?: string }).error;
+      throw new Error(msg ?? 'that code did not work');
+    }
+    return (await res.json()) as { creditedCents: number; creditCents: number };
+  }
+
+  /** What a product costs with a promo code, before buying. */
+  async quote(
+    productId: string,
+    promoCode?: string,
+  ): Promise<{ priceCents: number; discountCents: number; finalCents: number; promo?: string }> {
+    const res = await this.account.fetch('/api/store/quote', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ productId, ...(promoCode ? { promoCode } : {}) }),
+    });
+    if (!res.ok) {
+      const msg = ((await res.json().catch(() => ({}))) as { error?: string }).error;
+      throw new Error(msg ?? 'could not price that');
+    }
+    return (await res.json()) as { priceCents: number; discountCents: number; finalCents: number; promo?: string };
+  }
+
+  /** Buy a product with account credit, with an optional promo code. */
+  async buyWithCredit(
+    productId: string,
+    promoCode?: string,
+  ): Promise<{ paidCents: number; discountCents: number; creditCents: number }> {
+    const res = await this.account.fetch('/api/store/credit-purchase', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ productId, ...(promoCode ? { promoCode } : {}) }),
+    });
+    if (!res.ok) {
+      const msg = ((await res.json().catch(() => ({}))) as { error?: string }).error;
+      throw new Error(msg ?? 'the credit purchase did not go through');
+    }
+    return (await res.json()) as { paidCents: number; discountCents: number; creditCents: number };
+  }
 }

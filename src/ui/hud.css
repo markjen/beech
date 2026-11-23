@@ -1087,6 +1087,51 @@
   text-align: center;
 }
 
+.shop-credit {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.shop-gift,
+.shop-promo {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 10px 0 0;
+  font-size: 13px;
+}
+
+.shop-gift input,
+.shop-promo input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.5);
+  font: inherit;
+}
+
+.shop-gift button {
+  padding: 8px 12px;
+  border: none;
+  border-radius: 999px;
+  color: var(--ui-bg);
+  background: var(--ui-fg);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.shop-credit-buy {
+  background: transparent;
+  color: var(--ui-fg);
+  box-shadow: inset 0 0 0 2px var(--ui-fg);
+}
+
 .inv-item.shop-tile {
   background: linear-gradient(160deg, rgba(255, 207, 90, 0.4), rgba(255, 150, 120, 0.25));
 }

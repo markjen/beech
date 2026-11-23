@@ -104,6 +104,17 @@ _(nothing right now)_
 
 ## Done (recent)
 
+- [x] **Gift cards and promo codes** (2026-11-23): gift cards are prepaid
+  credit (16-char bearer codes, HMAC-SHA-256 under a pepper, shown once at
+  issue, never stored); promo codes discount a server-side credit purchase
+  (percent/fixed, per-product, usage caps, expiry, claimed atomically with
+  the purchase). Admin console at `/admin` (Google sign-in + allowlist:
+  markjen@gmail.com only) and CLI `scripts/beech-admin.mjs` (admin API
+  token from the environment, hashed server-side). Design and setup in
+  [GIFT_CARDS_PROMOS.md](GIFT_CARDS_PROMOS.md). **Before merging: create
+  Secret Manager secrets `beech-admin-token` and `beech-gift-code-pepper`
+  and set the `ADMIN_EMAILS` Actions variable, or the deploy fails.**
+
 - [x] **Digging finds** (2026-11-23, 18ef11a): digging can turn up a buried item from
   this week's vending set at the vending odds (60/25/12/3) — server-side roll
   at the end of a real dig stroke (2 m travelled, or 1 s in place), 1 in 10
@@ -120,7 +131,6 @@ _(nothing right now)_
   (PR #17), which carries the sweep mechanism — this PR keeps only the
   rate tuning. New `tests/bulldozer.test.ts` (5 tests: one-pass flatten,
   faster dig/build timings, tuned-rate assertions).
-
 - [x] **Shop**: store items (glow and sparkle on the beach), more than one
   beach (live on different devices at once), purchases checked with Apple
   and Google, a pricing plan (PRICING.md) (2026-11-23).
