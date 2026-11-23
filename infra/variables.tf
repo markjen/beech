@@ -43,6 +43,12 @@ variable "custom_domain" {
   default     = ""
 }
 
+variable "admin_custom_domain" {
+  description = "Optional custom domain for the beech-admin Cloud Run service, e.g. admin.beech.games. Empty (the default) skips the domain mapping — set it only after a deploy has created the beech-admin service, then add the DNS records the mapping prints."
+  type        = string
+  default     = ""
+}
+
 variable "alert_email" {
   description = "Email address monitoring alert notifications go to."
   type        = string

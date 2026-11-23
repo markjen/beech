@@ -54,3 +54,16 @@ output "monitoring_uptime_checks" {
     api = google_monitoring_uptime_check_config.api.uptime_check_id
   }
 }
+
+output "admin_domain_mapping" {
+  description = "Admin console domain mapping name (the domain) and URL. Empty when var.admin_custom_domain is unset — the mapping is only created once the domain is set."
+  value = {
+    name = var.admin_custom_domain != "" ? google_cloud_run_domain_mapping.admin[0].name : ""
+    url  = var.admin_custom_domain != "" ? "https://${var.admin_custom_domain}" : ""
+  }
+}
+
+output "admin_uptime_check" {
+  description = "Admin console uptime check id. Empty when var.admin_custom_domain is unset."
+  value       = var.admin_custom_domain != "" ? google_monitoring_uptime_check_config.admin[0].uptime_check_id : ""
+}

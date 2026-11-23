@@ -132,6 +132,38 @@ Two options (docs/GCP.md); pick one:
   service, adds a CDN, works in every region. Then leave
   `custom_domain` empty and set the rewrite in Firebase.
 
+### Admin console domain: `admin.beech.games`
+
+Same shape, separate variable — the admin console is its own Cloud Run
+service (`beech-admin`, split out in PR #29). Order of operations:
+
+1. Merge and deploy first, so the `beech-admin` service exists. The
+   mapping fails if the service does not exist yet.
+2. `terraform apply -var admin_custom_domain=admin.beech.games`
+   (or set `admin_custom_domain` in a `terraform.tfvars`). This creates
+   the `beech-admin` domain mapping and an uptime check for the admin
+   sign-in page (gated on the same variable; it is not yet wired into
+   the uptime alert policy — see the follow-up below).
+3. Add the DNS records the mapping prints, in Squarespace (the
+   `beech.games` zone). Certificate provisioning waits on DNS.
+4. Add `https://admin.beech.games` to the web OAuth client's
+   Authorized JavaScript origins (Console → APIs & Services →
+   Credentials), next to `https://beech.games`. Google sign-in on the
+   admin console will not work until this is done.
+
+Note: the `beech.games` game mapping was created manually with
+`gcloud beta run domain-mappings create` and Terraform state may not
+yet include it — this configuration does not claim to manage it. If it
+is imported later, `custom_domain` should be set to `beech.games`.
+
+Follow-up: wire the admin uptime check into the `beech: site or API
+down` alert policy (`google_monitoring_alert_policy.uptime` in
+`infra/monitoring.tf`). It was left out of this change because the
+policy's conditions reference the checks by index, and a new condition
+that only exists when the admin domain is set needs a `dynamic` block
+(or a separate policy) — untested here, since `terraform plan` was not
+run (see below).
+
 ## Server runtime contract (for reference)
 
 From `server/src/server.ts` — what the container needs at runtime:
