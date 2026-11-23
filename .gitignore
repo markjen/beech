@@ -5,6 +5,8 @@ coverage/
 .DS_Store
 .vite/
 screenshots/
+# Play Store listing screenshots are committed deliberately
+!resources/play-store/screenshots/
 # native build outputs (projects themselves are committed)
 android/app/build/
 android/.gradle/

@@ -91,7 +91,7 @@ cd android && ./gradlew bundleRelease          # app/build/outputs/bundle/releas
    (`public/icons/icon-512.png`), a 1024×500 feature graphic, and at least 2
    phone screenshots. Capture them with `node scripts/shot.mjs` at
    1080×1920, or straight from a device.
-4. Content rating questionnaire: no violence, no user content, no ads.
+4. Content rating questionnaire: no violence, no ads. The app **does** have user-generated content — saved beaches, first names, and user-chosen beach names are visible to all signed-in users on the global shore, leaderboard, neighbour tags, and share-link previews — and users **can** interact and share (visits by code or link, neighbour links, starring, item gifting). There is no chat, messaging, or DM anywhere in the app.
 5. Data safety: with accounts on (production builds), declare **User IDs**
    and **app activity/content** (the saved beach), plus the **name** shown to
    neighbors you choose. All of it is collected, linked to the user, used for
