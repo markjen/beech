@@ -60,7 +60,7 @@ const CANCEL_WINDOW_MS = 220;
  *   keys:  WASD pan, Q/E rotate 45deg, +/- zoom, Ctrl/Cmd+Z undo, +Shift redo
  */
 /** UI that needs the browser's own touch handling: scrolling panels and form controls. */
-export const TOUCH_UI = '.sheet, .inv-tray, .claw-card, input, textarea, select';
+export const TOUCH_UI = '.sheet, .inv-tray, .claw-card, .board-card, input, textarea, select';
 
 export function letTouchThrough(target: EventTarget | null): boolean {
   return !!(target as Element | null)?.closest?.(TOUCH_UI);

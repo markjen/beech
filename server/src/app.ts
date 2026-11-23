@@ -611,6 +611,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
 
 
   // ---------------------------------------------------------------- favorites
+  const clock = () => cfg.now?.() ?? Date.now();
   app.get('/favorites', requireUser, async (c) => {
     const rows = await db.query<NodeRow>(
       `SELECT ${NODE}
@@ -625,11 +626,14 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const who = await byCode(c.req.param('code') ?? '');
     if (!who) return c.json({ error: 'no beach with that code' }, 404);
     if (who.owner_id === c.get('user').id) fail(400, "that's your own beach");
-    await db.query('INSERT INTO favorites (user_id, beach_id, created_at) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING', [
-      c.get('user').id,
-      who.id,
-      Date.now(),
-    ]);
+    const at = clock();
+    // star_first remembers the first time, so un-starring and starring again
+    // doesn't count as a new star on the rising board
+    await db.query(
+      `WITH f AS (INSERT INTO favorites (user_id, beach_id, created_at) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING)
+       INSERT INTO star_first (user_id, beach_id, at) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+      [c.get('user').id, who.id, at],
+    );
     return c.json({ favorite: shoreJson(who) });
   });
 
@@ -639,9 +643,63 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     return c.body(null, 204);
   });
 
+  // ---------------------------------------------------------------- leaderboard
+  // GET /leaderboard?board=all|rising&limit=50: the most-starred beaches.
+  // all: stars right now. rising: star velocity, each star made in the last
+  // RISING_WINDOW weighing 1/2 per RISING_HALF_LIFE of age (a star today
+  // counts 1, two days ago 0.5, six days ago 0.125), counted from when that
+  // person first starred the beach (star_first), so re-starring isn't new.
+  // Only stars that still stand count, one per person per beach, never the
+  // owner's own. Beaches off the shore, or never saved, aren't listed.
+  const RISING_WINDOW = 7 * 86400000;
+  const RISING_HALF_LIFE = 2 * 86400000;
+  interface BoardRow extends NodeRow {
+    stars: string;
+    recent: string;
+    velocity: string | number | null;
+    starred: boolean;
+  }
+  app.get('/leaderboard', requireUser, async (c) => {
+    const board = c.req.query('board') ?? 'all';
+    if (board !== 'all' && board !== 'rising') fail(400, 'board must be all or rising');
+    const limit = Math.min(100, Math.max(1, Number(c.req.query('limit') ?? 50) | 0 || 50));
+    const me = c.get('user').id;
+    const now = clock();
+    const since = now - RISING_WINDOW;
+    const rows = await db.query<BoardRow>(
+      `SELECT ${NODE},
+              COUNT(*) AS stars,
+              COUNT(*) FILTER (WHERE s.at > $2) AS recent,
+              COALESCE(SUM(POWER(0.5, GREATEST(0, $3::bigint - s.at)::float8 / $4)) FILTER (WHERE s.at > $2), 0) AS velocity,
+              BOOL_OR(f.user_id = $1) AS starred
+         FROM favorites f
+         JOIN ${BEACH} ON b.id = f.beach_id
+         JOIN star_first s ON s.user_id = f.user_id AND s.beach_id = f.beach_id
+        WHERE b.on_shore AND b.sand IS NOT NULL AND f.user_id <> b.owner_id
+        GROUP BY b.id, u.name
+       ${board === 'rising' ? 'HAVING COUNT(*) FILTER (WHERE s.at > $2) > 0' : ''}
+        ORDER BY ${board === 'rising' ? 'velocity DESC, stars DESC' : 'stars DESC, velocity DESC'}, b.created_at, b.id
+        LIMIT $5`,
+      [me, since, now, RISING_HALF_LIFE, limit],
+    );
+    return c.json({
+      board,
+      window: RISING_WINDOW,
+      halfLife: RISING_HALF_LIFE,
+      entries: rows.map((r, i) => ({
+        rank: i + 1,
+        ...beachJson(r),
+        stars: Number(r.stars),
+        recent: Number(r.recent),
+        velocity: Math.round(Number(r.velocity) * 100) / 100,
+        starred: !!r.starred,
+        yours: r.owner_id === me,
+      })),
+    });
+  });
+
   // ---------------------------------------------------------------- pulls
   // the pools, their published odds, and whether your free go is ready
-  const clock = () => cfg.now?.() ?? Date.now();
   // when each of your machines is free again (no row: right now)
   const freeAt = async (user: string) => {
     const rows = await db.query<{ pool: string; next_at: string; count: number }>(
