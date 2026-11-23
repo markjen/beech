@@ -118,6 +118,26 @@ then add the DNS records it prints. Alternatively, put Firebase Hosting in
 front (it rewrites everything to the `beech` service), which adds a CDN and
 works in every region.
 
+The game mapping for `beech.games` was created manually with
+`gcloud beta run domain-mappings create` (see infra/README.md §6) — the
+Terraform state may not yet include it, and this doc does not claim
+Terraform manages it. The Terraform equivalent is `var.custom_domain`
+(`infra/main.tf`, `google_cloud_run_domain_mapping.beech`).
+
+**Admin console domain (`admin.beech.games`):** the admin console is its
+own Cloud Run service, `beech-admin` (PR #29). Terraform manages its
+domain mapping (`infra/main.tf`, `google_cloud_run_domain_mapping.admin`,
+gated on `var.admin_custom_domain`). Order of operations:
+
+1. Deploy first, so the `beech-admin` service exists — the mapping fails
+   if the service does not exist yet.
+2. `terraform apply -var admin_custom_domain=admin.beech.games`
+3. Add the DNS records the mapping prints, in Squarespace (the
+   `beech.games` zone). Certificate provisioning waits on DNS.
+4. Add `https://admin.beech.games` to the web OAuth client's Authorized
+   JavaScript origins, next to `https://beech.games` — Google sign-in on
+   the admin console will not work until this is done.
+
 **Phone apps:** build with `VITE_ACCOUNTS=1 VITE_API_URL=https://beech.markjen.com`.
 
 ## Running it locally

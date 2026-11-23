@@ -4,7 +4,9 @@ import { icon, type IconName } from './hud';
 
 /**
  * The shop: extra beaches, packs and things for your beach. In the apps each
- * "buy" goes through Apple or Google; on the web it points you to the app.
+ * "buy" goes through Apple or Google. On the web it goes to Xsolla's Pay
+ * Station when the server has web checkout on, and points you to the app
+ * when it doesn't.
  */
 export class Shop {
   private readonly root: HTMLDivElement;
@@ -69,10 +71,16 @@ export class Shop {
     this.promoInput.addEventListener('change', () => {
       if (this.products.length) void this.render(this.products);
     });
+    this.setSmallPrint();
+  }
+
+  private setSmallPrint(): void {
     const mode = shopMode();
     this.root.querySelector('.shop-small')!.textContent =
       mode === 'web'
-        ? 'Purchases are made in the beech app through the App Store or Google Play. What you buy is yours on every device you sign in on.'
+        ? this.api.webCheckout
+          ? 'Card payments are handled by Xsolla, our payment partner, on their secure page; prices are in US dollars and converted at checkout. Promo codes apply to Buy with credit. What you buy is yours on every device you sign in on.'
+          : 'Purchases are made in the beech app through the App Store or Google Play. What you buy is yours on every device you sign in on.'
         : mode === 'native'
           ? 'Paid through your App Store or Google Play account. What you buy is yours on every device you sign in on.'
           : 'Development build: purchases use a pretend store.';
@@ -87,9 +95,11 @@ export class Shop {
     this.note.textContent = 'Opening the shop…';
     this.list.innerHTML = '';
     void this.api.retryPending().then((n) => n && this.bought(''));
+    if (shopMode() === 'web') void this.api.checkWebOrders().then((n) => n && this.bought(''));
     try {
       const products = await this.api.products();
-      this.note.textContent = shopMode() === 'web' ? 'Get these in the beech app:' : '';
+      this.setSmallPrint();
+      this.note.textContent = shopMode() === 'web' && !this.api.webCheckout ? 'Get these in the beech app:' : '';
       try {
         this.creditCents = this.codes ? await this.api.credit() : 0;
       } catch {
@@ -171,7 +181,11 @@ export class Shop {
       btn.className = 'shop-buy';
       btn.dataset.product = p.id;
       const price = p.price ?? `$${p.usd.toFixed(2)}`;
-      if (mode === 'web') {
+      if (mode === 'web' && this.api.webCheckout) {
+        btn.textContent = price;
+        btn.title = 'Pay by card';
+        btn.addEventListener('click', () => void this.payOnWeb(p, btn));
+      } else if (mode === 'web') {
         btn.textContent = price;
         btn.title = 'Buy in the beech app';
         btn.addEventListener('click', () => this.getTheApp());
@@ -202,6 +216,25 @@ export class Shop {
     const link = /iPhone|iPad|Mac/.test(ua) ? APP_LINKS.ios || APP_LINKS.android : APP_LINKS.android || APP_LINKS.ios;
     if (link) window.open(link, '_blank', 'noopener');
     else this.note.textContent = 'Purchases are made in the beech app on iPhone and Android (coming to the stores soon).';
+  }
+
+  /** Web checkout: off to Xsolla's Pay Station; the return lands back on the beach (main.ts). */
+  private async payOnWeb(p: ShopProduct, btn: HTMLButtonElement): Promise<void> {
+    if (this.busy) return;
+    this.busy = true;
+    const label = btn.textContent;
+    btn.textContent = '…';
+    btn.disabled = true;
+    try {
+      const url = await this.api.startWebCheckout(p.id);
+      this.note.textContent = 'Opening the secure checkout…';
+      location.assign(url);
+    } catch (e) {
+      this.note.textContent = (e as Error).message;
+      this.busy = false;
+      btn.textContent = label;
+      btn.disabled = false;
+    }
   }
 
   private async buy(p: ShopProduct, btn: HTMLButtonElement): Promise<void> {

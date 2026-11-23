@@ -81,7 +81,7 @@ are **no secrets** to add — these are all public identifiers.
 | `GOOGLE_CLIENT_ID` | OAuth web client ID (below) |
 | `GOOGLE_CLIENT_IDS` | web client ID, plus iOS/Android client IDs when they exist, comma-separated |
 | `APPLE_CLIENT_IDS` | later, for Sign in with Apple |
-| `ADMIN_EMAILS` | the Google account(s) allowed into the admin console, comma-separated — production: `markjen@gmail.com` |
+| `ADMIN_EMAILS` | the Google account(s) allowed into the admin console (the `beech-admin` service), comma-separated — production: `markjen@gmail.com` |
 
 ## 4. Google sign-in (Console, once)
 
@@ -132,6 +132,38 @@ Two options (docs/GCP.md); pick one:
   service, adds a CDN, works in every region. Then leave
   `custom_domain` empty and set the rewrite in Firebase.
 
+### Admin console domain: `admin.beech.games`
+
+Same shape, separate variable — the admin console is its own Cloud Run
+service (`beech-admin`, split out in PR #29). Order of operations:
+
+1. Merge and deploy first, so the `beech-admin` service exists. The
+   mapping fails if the service does not exist yet.
+2. `terraform apply -var admin_custom_domain=admin.beech.games`
+   (or set `admin_custom_domain` in a `terraform.tfvars`). This creates
+   the `beech-admin` domain mapping and an uptime check for the admin
+   sign-in page (gated on the same variable; it is not yet wired into
+   the uptime alert policy — see the follow-up below).
+3. Add the DNS records the mapping prints, in Squarespace (the
+   `beech.games` zone). Certificate provisioning waits on DNS.
+4. Add `https://admin.beech.games` to the web OAuth client's
+   Authorized JavaScript origins (Console → APIs & Services →
+   Credentials), next to `https://beech.games`. Google sign-in on the
+   admin console will not work until this is done.
+
+Note: the `beech.games` game mapping was created manually with
+`gcloud beta run domain-mappings create` and Terraform state may not
+yet include it — this configuration does not claim to manage it. If it
+is imported later, `custom_domain` should be set to `beech.games`.
+
+Follow-up: wire the admin uptime check into the `beech: site or API
+down` alert policy (`google_monitoring_alert_policy.uptime` in
+`infra/monitoring.tf`). It was left out of this change because the
+policy's conditions reference the checks by index, and a new condition
+that only exists when the admin domain is set needs a `dynamic` block
+(or a separate policy) — untested here, since `terraform plan` was not
+run (see below).
+
 ## Server runtime contract (for reference)
 
 From `server/src/server.ts` — what the container needs at runtime:
@@ -144,16 +176,29 @@ From `server/src/server.ts` — what the container needs at runtime:
 | `GOOGLE_CLIENT_IDS` | comma-separated client IDs (web, iOS, Android) |
 | `APPLE_CLIENT_IDS` | comma-separated (bundle id, Services ID); empty until Apple sign-in ships |
 | `ALLOWED_ORIGINS` | unset — defaults to `capacitor://localhost,https://localhost` |
-| `ADMIN_EMAILS` | comma-separated verified Google emails allowed into the admin console — production: `markjen@gmail.com`; empty: no admin |
-| `ADMIN_API_TOKEN` | the CLI's credential, from Secret Manager secret `beech-admin-token`; unset: the CLI can't authenticate |
-| `GIFT_CODE_PEPPER` | pepper for gift card code hashes, from Secret Manager secret `beech-gift-code-pepper`; unset: works, but logs a warning |
+| `GIFT_CODE_PEPPER` | pepper for gift card code hashes, from Secret Manager secret `beech-gift-code-pepper`; unset: works, but logs a warning. Must match `beech-admin`'s |
 | `DEV_AUTH` | **never set in production** (enables a dev-only sign-in; the server refuses to start with it when `NODE_ENV=production`) |
 
 `DATABASE_URL` is an alternative to the socket vars (used locally and
 in CI's image boot test); production uses the socket. The DB pool is
 capped at 5 connections per instance (`server/src/db.ts`).
 
-### Gift cards / admin secrets (docs/GIFT_CARDS_PROMOS.md)
+### The admin console service, `beech-admin` (docs/GIFT_CARDS_PROMOS.md)
+
+The deploy workflow deploys a second service, `beech-admin`, from the
+Dockerfile's `admin` target. It uses the same runtime service account and
+Cloud SQL connection, with `--max-instances 1`. Its environment:
+
+| Variable | Value |
+|---|---|
+| `DB_SOCKET` / `DB_USER` / `DB_PASSWORD` / `DB_NAME` | same as `beech` |
+| `GOOGLE_CLIENT_ID` | the web OAuth client; **add this service's URL to the client's Authorized JavaScript origins** |
+| `ADMIN_EMAILS` | comma-separated verified Google emails allowed in — production: `markjen@gmail.com`; empty: nobody |
+| `ADMIN_API_TOKEN` | the CLI's credential, from secret `beech-admin-token`; unset: the CLI can't authenticate |
+| `GIFT_CODE_PEPPER` | from secret `beech-gift-code-pepper` (same value as `beech`) |
+| `BEECH_APP_URL` | the `beech` service URL, for "open in the game" links (set by the workflow) |
+
+### Gift cards / admin secrets
 
 The two admin secrets are **not** in Terraform: create them by hand, then
 add them to the deploy workflow's `--set-secrets` next to `DB_PASSWORD`.

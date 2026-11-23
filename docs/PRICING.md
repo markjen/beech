@@ -45,7 +45,7 @@ item as you own, across all your beaches. Buying another adds one.
 
 The shop also takes **gift cards and promo codes** (docs/GIFT_CARDS_PROMOS.md).
 A gift card is prepaid credit, issued by Mark from the admin console
-(`/admin`) or the CLI (`scripts/beech-admin.mjs`); redeeming it in the shop
+(the `beech-admin` service) or the CLI (`scripts/beech-admin.mjs`); redeeming it in the shop
 adds the credit to your account, and credit buys products in the shop with
 an optional promo code. Promo codes discount a credit purchase (percent or
 a fixed amount, optionally for one product, with usage limits and expiry).
@@ -64,9 +64,11 @@ from our side, so credit purchases are entirely server-side.
   there's enough to give each month.
 - **No selling advantages over other people.** Stars, neighbors and the shore
   can't be bought.
-- **No web payments.** Purchases go through Apple and Google (they handle
-  payment, tax, refunds and receipts; we never see card details). The web shop
-  shows the same products and sends people to the app.
+- **Web payments through a merchant of record only.** In the apps,
+  purchases go through Apple and Google. On the web they go through Xsolla
+  (docs/WEB_PAYMENTS.md), which handles payment, tax, refunds and receipts;
+  we never see card details. Same USD prices, converted at checkout. Until
+  the Xsolla account is set up, the web shop sends people to the app.
 
 ## Store costs
 

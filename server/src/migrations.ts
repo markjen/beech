@@ -307,6 +307,7 @@ const MIGRATIONS: string[] = [
   CREATE INDEX admin_audit_created ON admin_audit (created_at DESC);
   `,
 
+
   // 13: checkpoints (docs/CHECKPOINTS.md): named copies of your beaches,
   // restorable onto any of them if your bag covers the things on it. The
   // epoch goes up on each restore, so a device still showing the old sand
@@ -332,6 +333,49 @@ const MIGRATIONS: string[] = [
   CREATE INDEX checkpoints_owner ON checkpoints (owner_id, created_at DESC);
   CREATE UNIQUE INDEX checkpoints_one_auto ON checkpoints (from_beach) WHERE kind = 'auto';
   ALTER TABLE beach ADD COLUMN epoch INTEGER NOT NULL DEFAULT 0;
+  `,
+
+  // 14: the admin console is its own app (adminServer.ts): it signs in with
+  // Google itself and keeps its own sessions (an HttpOnly cookie holding a
+  // random token; only its SHA-256 is stored), separate from players'
+  // sessions. The email is checked against ADMIN_EMAILS on every request, so
+  // taking someone off the list locks them out at once. From here on
+  // admin_audit.actor is the admin's email ('cli-token' for the CLI).
+  `
+  CREATE TABLE admin_sessions (
+    token_hash TEXT PRIMARY KEY,
+    email TEXT NOT NULL,
+    created_at BIGINT NOT NULL,
+    expires_at BIGINT NOT NULL
+  );
+  CREATE INDEX admin_sessions_expires ON admin_sessions (expires_at);
+  `,
+
+  // 15: web checkout through Xsolla (docs/WEB_PAYMENTS.md). One row per
+  // checkout attempt, so every web payment traces back to a player, a
+  // product and a price. Fulfilment reuses purchases + inventory: a paid
+  // order becomes a purchases row (store 'xsolla', transaction_id = Xsolla's
+  // order id), so the UNIQUE (store, transaction_id) guard makes a retried
+  // webhook grant nothing the second time, and refunds go through the same
+  // refund() as the app stores.
+  `
+  ALTER TABLE purchases DROP CONSTRAINT purchases_store_check;
+  ALTER TABLE purchases ADD CONSTRAINT purchases_store_check CHECK (store IN ('apple', 'google', 'dev', 'xsolla'));
+
+  CREATE TABLE web_orders (
+    id UUID PRIMARY KEY,                 -- ours; Xsolla's settings.external_id
+    user_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    product_id TEXT NOT NULL,
+    amount_cents INTEGER NOT NULL CHECK (amount_cents > 0),  -- the server's USD price
+    currency TEXT NOT NULL DEFAULT 'USD',
+    provider TEXT NOT NULL DEFAULT 'xsolla',
+    provider_order_id TEXT UNIQUE,       -- Xsolla's order id, from the token response
+    sandbox BOOLEAN NOT NULL DEFAULT false,
+    status TEXT NOT NULL DEFAULT 'created' CHECK (status IN ('created', 'paid', 'refunded', 'canceled')),
+    created_at BIGINT NOT NULL,
+    paid_at BIGINT
+  );
+  CREATE INDEX web_orders_user ON web_orders (user_id, created_at DESC);
   `,
 ];
 

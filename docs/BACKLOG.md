@@ -18,6 +18,12 @@ The single list of what's left to do, for the owner and for agents.
   Apple, the payments profile on Google, then create the products and
   notification URLs. Step by step in MOBILE.md, "In-app purchases".
 
+- [ ] **Xsolla account for web checkout**: Publisher Account, agreement,
+  tax and payout; catalog SKUs = product ids; webhook URL; two secrets and
+  the deploy-workflow lines. Step by step in
+  [WEB_PAYMENTS.md](WEB_PAYMENTS.md), "Turning it on". Get the all-in fee
+  in writing first. Then answer that doc's open questions.
+
 - [ ] **Google Cloud project**: run the one-time `gcloud` setup in
   [GCP.md](GCP.md), create the OAuth web client ID, set the GitHub variables,
   then set `GCP_ENABLED=1`.
@@ -68,9 +74,13 @@ _(nothing right now)_
 - [ ] **A "found" collection**: count what the sea brought in that you kept,
   and show rare finds (it could drop items here later).
 - [ ] **Shop (paid items)**: App Store / Play billing (both stores require
-  their own in-app purchase for digital goods) and Stripe on the web.
-  Purchases are verified on the server, which writes `inventory` rows.
-  Limited items use `available.until` and `expires_at`.
+  their own in-app purchase for digital goods); on the web, Xsolla
+  ([WEB_PAYMENTS.md](WEB_PAYMENTS.md), built). Purchases are verified on
+  the server, which writes `inventory` rows. Limited items use
+  `available.until` and `expires_at`.
+- [ ] **Promo codes on web card payments**: mirror codes into Xsolla and
+  accept `order.promocodes` on `order_paid` (WEB_PAYMENTS.md, "Promo
+  codes"). Only if Mark wants it (open question 2).
 - [ ] **Mystery boxes (paid pulls)**: reuse `draw()` and the pulls table
   once billing exists. Before shipping, check the odds-disclosure rules and
   country restrictions for paid random items.
@@ -119,6 +129,31 @@ _(nothing right now)_
 - [x] **Say so when a beach is full** (2026-11-23): 400 things at most;
   placing a 401st is refused with a message, and a save that can't hold
   everything (or is too big for the server) says so.
+- [x] **Web checkout through Xsolla** (2026-11-23): reviewed the PR 21 plan
+  and built it — `POST /api/store/web-checkout`, the signed webhook
+  (`order_paid` grants once, `order_canceled`/`refund` revoke, sandbox
+  refused on live), `GET /api/store/web-orders/:id`, migration 15
+  (`web_orders`, `purchases.store` allows `xsolla`), the web shop's card
+  button and the return-from-checkout toast. Off until the Xsolla settings
+  exist. `server/test/webCheckout.test.ts`.
+
+- [x] **Admin console is its own app, and manages beaches** (2026-11-23):
+  `/admin` and `/api/admin/*` are gone from the game server. The console
+  is a separate Cloud Run service, `beech-admin` (`server/src/adminServer.ts`,
+  `adminApp.ts`, `adminPage.ts`; Dockerfile target `admin`), on the same
+  database. Nothing loads until a Google sign-in by an `ADMIN_EMAILS`
+  account: an HttpOnly session cookie (`admin_sessions`, migration 14), the
+  allowlist re-checked on every request, a CSRF header, and a nonce CSP.
+  New Beaches tab: counts, search, a beach's details, and rename, hide from
+  the shore, new code, part neighbors, clear the sand (undoable via a
+  checkpoint) and delete a non-home beach. All actions are audited, and
+  there's a new Audit log tab. The CLI gained `beach …` and `audit` and now
+  takes `BEECH_ADMIN_URL`. Design in
+  [GIFT_CARDS_PROMOS.md](GIFT_CARDS_PROMOS.md#admin-console). **Owner:**
+  add the `beech-admin` URL (printed by the deploy's smoke test) to the web
+  OAuth client's Authorized JavaScript origins.
+
+
 - [x] **QA pass of main** (2026-11-23): neighbor name tags kept on screen
   and off the place card and tool column (`src/ui/tagPlace.ts`, tested);
   account panel rows no longer squeeze (visit box cut off, a beach's name
@@ -143,7 +178,7 @@ _(nothing right now)_
   credit (16-char bearer codes, HMAC-SHA-256 under a pepper, shown once at
   issue, never stored); promo codes discount a server-side credit purchase
   (percent/fixed, per-product, usage caps, expiry, claimed atomically with
-  the purchase). Admin console at `/admin` (Google sign-in + allowlist:
+  the purchase). Admin console (then at `/admin`; now its own service) (Google sign-in + allowlist:
   markjen@gmail.com only) and CLI `scripts/beech-admin.mjs` (admin API
   token from the environment, hashed server-side). Design and setup in
   [GIFT_CARDS_PROMOS.md](GIFT_CARDS_PROMOS.md). **Before merging: create

@@ -20,6 +20,9 @@
 //   POST   /api/gifts            { code, item }            -> { item, to: { name, code } }
 //   GET    /api/inventory                                  -> { items: [{ item, quantity, source, ... }] }
 //   POST   /api/dig-finds        { pathM, durationMs }     -> { found, item?, rarity?, findsToday, findsLeft, nextFindsAt }
+//   POST   /api/store/web-checkout { productId }           -> { order, url }  (web only; Xsolla Pay Station)
+//   GET    /api/store/web-orders/:id                       -> { order }
+//   POST   /api/store/xsolla/webhook                       Xsolla's signed webhooks (no session)
 //
 // Auth: `Authorization: Bearer <token>`; only the token's SHA-256 is stored.
 
@@ -31,12 +34,8 @@ import {
   claimCreditPurchase,
   discountCents,
   formatCents,
-  hashesEqual,
   hashGiftCode,
-  isAdminEmail,
   isGiftCodeShape,
-  isPromoCodeShape,
-  newGiftCardCode,
   normalizePromoCode,
   promoBlocked,
   type Promo,
@@ -59,6 +58,7 @@ import {
   shortfall,
 } from './checkpoints.js';
 import { createRateLimiter, logEvent, parseClientEvent, routeLabel } from './observability.js';
+import { createPaymentToken, payStationUrl, verifyWebhookSignature, xsollaError, type CreateToken, type XsollaConfig, type XsollaWebhook } from './xsolla.js';
 
 export interface AppConfig {
   googleClientIds: string[];
@@ -78,19 +78,6 @@ export interface AppConfig {
   androidPackage?: string;
   /** Google Play notifications (Pub/Sub push): the push's OIDC audience and service account */
   googleRtdn?: { audience: string; email: string };
-  /**
-   * Admin access (docs/GIFT_CARDS_PROMOS.md): the Google accounts allowed
-   * into the admin console, by verified email (exact match, case-insensitive).
-   * Empty means nobody — the console stays closed. Set ADMIN_EMAILS to
-   * markjen@gmail.com in production.
-   */
-  adminEmails?: string[];
-  /**
-   * The CLI's credential: the SHA-256 hex of the ADMIN_API_TOKEN env var
-   * (hashed once at startup in server.ts, so the raw token is never held
-   * past boot). Unset means the CLI can't authenticate.
-   */
-  adminTokenHash?: string;
   /** pepper for gift card code hashes (GIFT_CODE_PEPPER, required in production) */
   codePepper?: string;
   /** injectable for tests: how purchases and refunds are checked */
@@ -100,6 +87,13 @@ export interface AppConfig {
     appleRefund?: (signedPayload: string, bundleId: string) => Promise<string | null>;
     googleVoided?: typeof googleVoided;
   };
+  /**
+   * Web checkout through Xsolla (docs/WEB_PAYMENTS.md). Unset: the web shop
+   * keeps sending people to the apps.
+   */
+  xsolla?: XsollaConfig;
+  /** injectable for tests: how a Pay Station payment token is made */
+  xsollaToken?: CreateToken;
 }
 
 export interface User {
@@ -107,7 +101,7 @@ export interface User {
   name: string;
 }
 
-type Env = { Variables: { user: User; tokenHash: string; adminActor: string; adminEmail: string | null } };
+type Env = { Variables: { user: User; tokenHash: string } };
 
 /** most beaches one person can have */
 export const BEACH_CAP = 8;
@@ -195,8 +189,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       await db.query('UPDATE users SET name = $1 WHERE id = $2', [who.name, user.id]);
       user.name = who.name;
     }
-    // a Google sign-in refreshes the verified email (the admin allowlist
-    // reads it); an unverified or absent address never overwrites a stored one
+    // a Google sign-in refreshes the verified email (the admin console
+    // searches by it); an unverified or absent address never overwrites a stored one
     if (email) await db.query('UPDATE users SET email = $1 WHERE id = $2 AND (email IS NULL OR email <> $1)', [email, user!.id]);
     // everyone has a home beach: its id is theirs, its code their neighbor code
     await db.query(
@@ -231,81 +225,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     await next();
   };
 
-  // ---------------------------------------------------------------- admin
-  // Two ways in, both checked server-side on every request; nothing here
-  // trusts the client, and DEV_AUTH never counts (a dev user has no verified
-  // Google email, so the allowlist rejects it):
-  //   - the web console: a normal session, whose user signed in with Google
-  //     and whose verified email is on ADMIN_EMAILS (markjen@gmail.com);
-  //   - the CLI: `Authorization: Bearer <ADMIN_API_TOKEN>`, compared by
-  //     hash in constant time against the hashed env value.
-  // Either way the actor is recorded for the audit log ('cli-token' for the
-  // CLI). A wrong credential gets the same flat denial as a non-admin, so
-  // nothing about the allowlist leaks.
-  const adminEmails = cfg.adminEmails ?? [];
-  const adminLimiter = createRateLimiter(60);
-  const requireAdmin = async (c: Context<Env>, next: () => Promise<void>) => {
-    const ip = (c.req.header('x-forwarded-for') ?? '').split(',')[0]?.trim() || 'unknown';
-    if (!adminLimiter(ip)) return c.json({ error: 'slow down' }, 429);
-    const m = /^Bearer\s+(\S+)$/.exec(c.req.header('Authorization') ?? '');
-    if (m && cfg.adminTokenHash) {
-      if (hashesEqual(await hashToken(m[1]), cfg.adminTokenHash)) {
-        c.set('adminActor', 'cli-token');
-        c.set('adminEmail', null);
-        await next();
-        return;
-      }
-      // a wrong CLI token: fall through to the session check, so a valid
-      // admin session still works; a wrong token alone never gets in
-    }
-    if (!m) fail(401, 'sign in first');
-    const tokenHash = await hashToken(m![1]);
-    const rows = await db.query<{ id: string; provider: string; email: string | null; expires_at: string }>(
-      'SELECT u.id, u.provider, u.email, s.expires_at FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = $1',
-      [tokenHash],
-    );
-    const row = rows[0];
-    if (!row || Number(row.expires_at) < Date.now()) fail(401, 'session expired, sign in again');
-    if (row.provider !== 'google' || !isAdminEmail(row.email, adminEmails)) fail(403, 'not allowed');
-    c.set('adminActor', row.id);
-    c.set('adminEmail', row.email);
-    await next();
-  };
-
-  /** an admin audit line. `detail` must never hold a code value. */
-  const audit = async (actor: string, action: string, targetType: string, targetId: string, detail: Record<string, unknown>) => {
-    await db.query('INSERT INTO admin_audit (actor, action, target_type, target_id, detail, created_at) VALUES ($1, $2, $3, $4, $5, $6)', [
-      actor,
-      action,
-      targetType,
-      targetId,
-      JSON.stringify(detail),
-      Date.now(),
-    ]);
-  };
-
   const pepper = cfg.codePepper ?? '';
-  const giftCardJson = (r: {
-    id: string;
-    amount_cents: number;
-    status: string;
-    issued_at: string;
-    expires_at: string | null;
-    redeemed_at: string | null;
-    note: string;
-    redeemed_name?: string | null;
-  }) => ({
-    id: r.id,
-    amountCents: Number(r.amount_cents),
-    amount: formatCents(Number(r.amount_cents)),
-    status: r.status,
-    issuedAt: Number(r.issued_at),
-    expiresAt: r.expires_at === null ? null : Number(r.expires_at),
-    redeemedAt: r.redeemed_at === null ? null : Number(r.redeemed_at),
-    redeemedBy: r.redeemed_name ?? undefined,
-    note: r.note,
-  });
-
   const body = async <T>(c: Context<Env>): Promise<T> => {
     try {
       return (await c.req.json()) as T;
@@ -316,11 +236,6 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
 
   // ---------------------------------------------------------------- auth
   app.get('/health', (c) => c.json({ ok: true }));
-
-  // Public: the web OAuth client id, for the admin console's sign-in button
-  // (the id is public — it is also in the built web app). Null until
-  // Google sign-in is configured.
-  app.get('/config', (c) => c.json({ googleClientId: cfg.googleClientIds[0] ?? null }));
 
   // ---------------------------------------------------------------- client events
   // The web app reports unhandled errors and one page-load timing sample per
@@ -1505,7 +1420,11 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   };
 
   app.get('/store/products', (c) =>
-    c.json({ products: PRODUCTS.map((p) => ({ id: p.id, name: p.name, grants: p.grants, usd: p.usd, blurb: p.blurb, featured: !!p.featured })) }),
+    c.json({
+      products: PRODUCTS.map((p) => ({ id: p.id, name: p.name, grants: p.grants, usd: p.usd, blurb: p.blurb, featured: !!p.featured })),
+      // the web shop can take payment itself (Xsolla), instead of pointing at the apps
+      webCheckout: !!cfg.xsolla,
+    }),
   );
 
   /**
@@ -1556,7 +1475,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   });
 
   /** A refund: the purchase is marked, and what it granted expires now. */
-  const refund = async (store: 'apple' | 'google', transactionId: string) => {
+  const refund = async (store: 'apple' | 'google' | 'xsolla', transactionId: string) => {
     const now = clock();
     await db.query(
       `WITH p AS (UPDATE purchases SET refunded_at = $3 WHERE store = $1 AND transaction_id = $2 AND refunded_at IS NULL RETURNING id)
@@ -1592,6 +1511,214 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     return c.body(null, 204);
   });
 
+  // ---------------------------------------------------------------- web checkout (Xsolla)
+  // docs/WEB_PAYMENTS.md. The browser shop pays through Xsolla Pay Station
+  // (Xsolla is the merchant of record); the apps never use this — they sell
+  // through Apple and Google only. A paid order grants exactly what a store
+  // purchase grants, through the same purchases + inventory rows.
+  const WEB_ORDER_TTL_MS = 24 * 3600 * 1000; // Xsolla's payment tokens last 24 hours
+  const xsollaToken = cfg.xsollaToken ?? createPaymentToken;
+  const checkoutLimiter = createRateLimiter(10); // checkouts started, per user per minute
+
+  interface WebOrderRow {
+    id: string;
+    user_id: string;
+    product_id: string;
+    amount_cents: number;
+    provider_order_id: string | null;
+    sandbox: boolean;
+    status: string;
+    created_at: string | number;
+    paid_at: string | number | null;
+  }
+  /** an unpaid order past its token's life reads as expired (no sweeper needed) */
+  const orderView = (o: WebOrderRow) => {
+    const created = Number(o.created_at);
+    const status = o.status === 'created' && clock() - created > WEB_ORDER_TTL_MS ? 'expired' : o.status;
+    return {
+      id: o.id,
+      productId: o.product_id,
+      amountCents: Number(o.amount_cents),
+      status,
+      createdAt: created,
+      paidAt: o.paid_at === null ? null : Number(o.paid_at),
+      grants: productById(o.product_id)?.grants ?? [],
+    };
+  };
+  const isUuid = (s: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+
+  app.post('/store/web-checkout', requireUser, async (c) => {
+    if (!cfg.xsolla) fail(404, 'buying on the web is not open yet: buy in the beech app');
+    const me = c.get('user').id;
+    if (!checkoutLimiter(me)) return c.json({ error: 'slow down' }, 429);
+    const { productId, promoCode } = await body<{ productId?: string; promoCode?: string }>(c);
+    const product = productById(productId ?? '');
+    if (!product) fail(404, 'no such product');
+    // Xsolla charges its catalog price, so a promo from our own list can't
+    // discount a card payment yet (docs/WEB_PAYMENTS.md, "Promo codes").
+    if (promoCode) fail(400, 'promo codes work with credit only for now: clear the code to pay by card');
+    const id = crypto.randomUUID();
+    const now = clock();
+    const amount = Math.round(product!.usd * 100);
+    await db.query(
+      'INSERT INTO web_orders (id, user_id, product_id, amount_cents, sandbox, created_at) VALUES ($1, $2, $3, $4, $5, $6)',
+      [id, me, product!.id, amount, cfg.xsolla!.sandbox, now],
+    );
+    let t: { token: string; orderId: string };
+    try {
+      t = await xsollaToken(cfg.xsolla!, {
+        userId: me,
+        sku: product!.id,
+        webOrderId: id,
+        ip: (c.req.header('x-forwarded-for') ?? '').split(',')[0]?.trim() || undefined,
+      });
+    } catch (e) {
+      // the order never got a token: nothing can pay it, so drop it
+      await db.query('DELETE FROM web_orders WHERE id = $1', [id]);
+      logEvent('web_checkout_error', { product: product!.id, message: (e as Error).message }, 'ERROR');
+      return c.json({ error: 'the checkout could not be opened right now: try again in a minute' }, 502);
+    }
+    await db.query('UPDATE web_orders SET provider_order_id = $2 WHERE id = $1', [id, t!.orderId]);
+    logEvent('web_checkout', { product: product!.id, order: id, sandbox: cfg.xsolla!.sandbox });
+    return c.json({ order: id, url: payStationUrl(t!.token, cfg.xsolla!.sandbox) });
+  });
+
+  app.get('/store/web-orders/:id', requireUser, async (c) => {
+    const id = c.req.param('id') ?? '';
+    if (!isUuid(id)) fail(404, 'no such order');
+    const rows = await db.query<WebOrderRow>('SELECT * FROM web_orders WHERE id = $1 AND user_id = $2', [id, c.get('user').id]);
+    if (!rows[0]) fail(404, 'no such order');
+    return c.json({ order: orderView(rows[0]) });
+  });
+
+  /**
+   * Xsolla's webhooks. Not session-authenticated: the signature is the
+   * authentication, checked over the raw body before anything is parsed.
+   * Answers 204 to anything verified and handled (including a repeat, so
+   * Xsolla's retries are harmless), 400 with Xsolla's error body otherwise.
+   */
+  app.post('/store/xsolla/webhook', async (c) => {
+    if (!cfg.xsolla) fail(404, 'not set up');
+    const x = cfg.xsolla!;
+    const raw = new Uint8Array(await c.req.arrayBuffer());
+    if (!verifyWebhookSignature(raw, c.req.header('Authorization'), x.webhookSecret)) {
+      logEvent('xsolla_webhook', { outcome: 'bad_signature' }, 'WARNING');
+      return c.json(xsollaError('INVALID_SIGNATURE', 'Invalid signature'), 400);
+    }
+    let w: XsollaWebhook;
+    try {
+      w = JSON.parse(new TextDecoder().decode(raw)) as XsollaWebhook;
+    } catch {
+      return c.json(xsollaError('INVALID_PARAMETER', 'Invalid JSON'), 400);
+    }
+    const type = w.notification_type ?? '';
+    const log = (outcome: string, extra: Record<string, unknown> = {}, sev: 'INFO' | 'WARNING' | 'ERROR' = 'INFO') =>
+      logEvent('xsolla_webhook', { type, outcome, order: w.order?.id ?? null, ...extra }, sev);
+
+    const userExists = async (id: string | undefined) =>
+      !!id && isUuid(id) && (await db.query<{ id: string }>('SELECT id FROM users WHERE id = $1', [id])).length > 0;
+
+    if (type === 'user_validation') {
+      if (!(await userExists(w.user?.id ?? w.user?.external_id))) {
+        log('invalid_user', {}, 'WARNING');
+        return c.json(xsollaError('INVALID_USER', 'Invalid user'), 400);
+      }
+      return c.body(null, 204);
+    }
+
+    // find our order: by Xsolla's order id, else by the id we sent it
+    const ours = w.custom_parameters?.web_order ?? w.transaction?.external_id ?? w.billing?.transaction?.external_id;
+    const providerId = w.order?.id !== undefined ? String(w.order.id) : null;
+    const find = async () => {
+      if (providerId) {
+        const r = await db.query<WebOrderRow>('SELECT * FROM web_orders WHERE provider_order_id = $1', [providerId]);
+        if (r[0]) return r[0];
+      }
+      if (ours && isUuid(ours)) return (await db.query<WebOrderRow>('SELECT * FROM web_orders WHERE id = $1', [ours]))[0];
+      return undefined;
+    };
+
+    if (type === 'order_paid') {
+      const o = await find();
+      if (!o || !providerId || o.provider_order_id !== providerId) {
+        log('unknown_order', {}, 'ERROR');
+        return c.json(xsollaError('INCORRECT_INVOICE', 'Unknown order'), 400);
+      }
+      const buyer = w.user?.external_id ?? w.user?.id;
+      if (buyer !== o.user_id) {
+        log('wrong_user', {}, 'ERROR');
+        return c.json(xsollaError('INVALID_USER', 'Invalid user'), 400);
+      }
+      // a sandbox (test card) payment never grants in a live setup
+      const testPayment = w.order?.mode === 'sandbox' || w.billing?.transaction?.dry_run === 1 || w.transaction?.dry_run === 1;
+      if (testPayment && !x.sandbox) {
+        log('sandbox_payment_on_live', {}, 'ERROR');
+        return c.json(xsollaError('INVALID_PARAMETER', 'Sandbox payment'), 400);
+      }
+      // what was paid for must be exactly what we sold: the product, once,
+      // and (in US dollars) our price
+      const product = productById(o.product_id)!;
+      const items = w.items ?? [];
+      if (items.length !== 1 || items[0].sku !== product.id || Number(items[0].quantity ?? 1) !== 1) {
+        log('wrong_items', { items: items.map((i) => i.sku) }, 'ERROR');
+        return c.json(xsollaError('INCORRECT_INVOICE', 'Unexpected items'), 400);
+      }
+      const currency = (w.order?.currency ?? '').toUpperCase();
+      const paidCents = Math.round(Number(w.order?.amount ?? NaN) * 100);
+      if (currency === 'USD' && paidCents !== Number(o.amount_cents)) {
+        log('wrong_amount', { paid_cents: paidCents, want_cents: Number(o.amount_cents) }, 'ERROR');
+        return c.json(xsollaError('INCORRECT_AMOUNT', 'Incorrect amount'), 400);
+      }
+      if (currency && currency !== 'USD') log('local_currency', { currency });
+      const now = clock();
+      const grantItems = product.grants.map((g) => g.item);
+      const qty = product.grants.map((g) => g.quantity);
+      // One statement: record the payment once, mark the order paid, grant.
+      // A retried webhook hits the purchases unique key and changes nothing.
+      // An order Xsolla already canceled is not revived by a late payment.
+      const granted = await db.query<{ item_id: string }>(
+        `WITH p AS (
+           INSERT INTO purchases (user_id, store, transaction_id, product_id, environment, purchased_at, granted_at)
+           SELECT $1, 'xsolla', $2, $3, $4, $5, $5
+            WHERE EXISTS (SELECT 1 FROM web_orders WHERE id = $6 AND status IN ('created', 'paid'))
+           ON CONFLICT (store, transaction_id) DO NOTHING
+           RETURNING id, user_id
+         ), o AS (
+           UPDATE web_orders SET status = 'paid', paid_at = $5 WHERE id = $6 AND status = 'created' AND EXISTS (SELECT 1 FROM p)
+           RETURNING id
+         )
+         INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at, purchase_id)
+         SELECT p.user_id, g.item, g.qty, 'shop', $5, p.id FROM p, unnest($7::text[], $8::int[]) AS g(item, qty)
+         RETURNING item_id`,
+        [o.user_id, providerId, product.id, testPayment ? 'Sandbox' : 'Production', now, o.id, grantItems, qty],
+      );
+      log(granted.length ? 'granted' : 'already', { product: product.id });
+      return c.body(null, 204);
+    }
+
+    if (type === 'order_canceled' || type === 'refund') {
+      const o = await find();
+      if (!o) {
+        log('unknown_order', {}, 'WARNING');
+        // nothing of ours to take back; don't make Xsolla retry for days
+        return c.body(null, 204);
+      }
+      if (o.provider_order_id) await refund('xsolla', o.provider_order_id);
+      await db.query(
+        `UPDATE web_orders SET status = CASE WHEN status = 'paid' THEN 'refunded' ELSE 'canceled' END
+          WHERE id = $1 AND status IN ('created', 'paid')`,
+        [o.id],
+      );
+      log('revoked', { was: o.status });
+      return c.body(null, 204);
+    }
+
+    // payment, partial refunds, disputes and the rest: acknowledged, acted
+    // on elsewhere (order_paid / order_canceled carry what we need)
+    log('ignored');
+    return c.body(null, 204);
+  });
+
   // ---------------------------------------------------------------- gift cards, promos, credit
   // Gift cards are prepaid credit; credit buys products server-side, where
   // a promo code can discount the price. The server prices from its own
@@ -1624,199 +1751,6 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       expiresAt: r.expires_at === null ? null : Number(r.expires_at),
     };
   };
-
-  // --- admin console + CLI (requireAdmin: Google allowlist or CLI token) ---
-  app.get('/admin/me', requireAdmin, (c) =>
-    c.json({ admin: true, via: c.get('adminActor') === 'cli-token' ? 'token' : 'session', email: c.get('adminEmail') }),
-  );
-
-  app.post('/admin/gift-cards', requireAdmin, async (c) => {
-    const { amountCents, expiresAt, note } = await body<{ amountCents?: number; expiresAt?: number | null; note?: string }>(c);
-    const amount = Math.floor(Number(amountCents ?? NaN));
-    if (!Number.isInteger(amount) || amount < 50 || amount > 100000) fail(400, 'amountCents must be 50 to 100000 ($0.50 to $1,000)');
-    const exp = expiresAt == null ? null : Math.floor(Number(expiresAt));
-    if (exp !== null && (!Number.isInteger(exp) || exp <= Date.now())) fail(400, 'expiresAt must be in the future');
-    const cleanNote = (note ?? '').trim().slice(0, 200);
-    const now = clock();
-    const actor = c.get('adminActor');
-    // the code is returned once, in this response, and never again: only
-    // its hash is stored, so a leaked database can't redeem the card
-    for (let attempt = 0; attempt < 5; attempt++) {
-      const code = newGiftCardCode();
-      try {
-        const id = crypto.randomUUID();
-        await db.query(
-          'INSERT INTO gift_cards (id, code_hash, amount_cents, status, issued_by, issued_at, expires_at, note) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
-          [id, hashGiftCode(code, pepper), amount, 'active', actor === 'cli-token' ? null : actor, now, exp, cleanNote],
-        );
-        await audit(actor, 'gift_card.issue', 'gift_card', id, { amountCents: amount, expiresAt: exp });
-        return c.json({
-          id,
-          code,
-          amountCents: amount,
-          amount: formatCents(amount),
-          status: 'active',
-          issuedAt: now,
-          expiresAt: exp,
-          note: cleanNote,
-        });
-      } catch (e) {
-        if ((e as { code?: string }).code === '23505' && attempt < 4) continue; // hash collision: try another code
-        throw e;
-      }
-    }
-    return fail(500, 'could not make a gift card');
-  });
-
-  app.get('/admin/gift-cards', requireAdmin, async (c) => {
-    const rows = await db.query<{
-      id: string;
-      amount_cents: number;
-      status: string;
-      issued_at: string;
-      expires_at: string | null;
-      redeemed_at: string | null;
-      note: string;
-      redeemed_name: string | null;
-    }>(
-      `SELECT g.id, g.amount_cents, g.status, g.issued_at, g.expires_at, g.redeemed_at, g.note, u.name AS redeemed_name
-         FROM gift_cards g LEFT JOIN users u ON u.id = g.redeemed_by ORDER BY g.issued_at DESC LIMIT 100`,
-    );
-    return c.json({ giftCards: rows.map(giftCardJson) });
-  });
-
-  app.post('/admin/gift-cards/:id/disable', requireAdmin, async (c) => {
-    const id = c.req.param('id') ?? '';
-    const rows = await db.query<{ id: string }>(
-      "UPDATE gift_cards SET status = 'disabled' WHERE id = $1 AND status = 'active' RETURNING id",
-      [id],
-    );
-    if (!rows[0]) fail(404, 'no active gift card with that id');
-    await audit(c.get('adminActor'), 'gift_card.disable', 'gift_card', id, {});
-    return c.json({ id, status: 'disabled' });
-  });
-
-  app.post('/admin/promo-codes', requireAdmin, async (c) => {
-    const { code, kind, value, appliesTo, maxUses, expiresAt } = await body<{
-      code?: string;
-      kind?: string;
-      value?: number;
-      appliesTo?: string | null;
-      maxUses?: number | null;
-      expiresAt?: number | null;
-    }>(c);
-    const clean = normalizePromoCode(code ?? '');
-    if (!isPromoCodeShape(code ?? '')) fail(400, 'codes are 3-32 letters and numbers');
-    if (kind !== 'percent' && kind !== 'fixed') fail(400, 'kind must be percent or fixed');
-    const v = Math.floor(Number(value ?? NaN));
-    if (!Number.isInteger(v) || v <= 0 || (kind === 'percent' && v > 100)) fail(400, 'percent is 1-100; fixed is USD cents');
-    const applies = appliesTo ? String(appliesTo) : null;
-    if (applies && !productById(applies)) fail(400, 'no such product');
-    const max = maxUses == null ? null : Math.floor(Number(maxUses));
-    if (max !== null && (!Number.isInteger(max) || max <= 0)) fail(400, 'maxUses must be a positive number');
-    const exp = expiresAt == null ? null : Math.floor(Number(expiresAt));
-    if (exp !== null && (!Number.isInteger(exp) || exp <= Date.now())) fail(400, 'expiresAt must be in the future');
-    const now = clock();
-    const actor = c.get('adminActor');
-    try {
-      await db.query(
-        'INSERT INTO promo_codes (code, kind, value, applies_to, max_uses, active, created_by, created_at, expires_at) VALUES ($1, $2, $3, $4, $5, true, $6, $7, $8)',
-        [clean, kind, v, applies, max, actor === 'cli-token' ? null : actor, now, exp],
-      );
-    } catch (e) {
-      if ((e as { code?: string }).code === '23505') fail(409, 'that code already exists');
-      throw e;
-    }
-    await audit(actor, 'promo.create', 'promo_code', clean, { kind, value: v, appliesTo: applies, maxUses: max, expiresAt: exp });
-    return c.json({
-      promo: { code: clean, kind, value: v, appliesTo: applies, maxUses: max, uses: 0, active: true, createdAt: now, expiresAt: exp },
-    });
-  });
-
-  app.get('/admin/promo-codes', requireAdmin, async (c) => {
-    const rows = await db.query<{
-      code: string;
-      kind: string;
-      value: number;
-      applies_to: string | null;
-      max_uses: number | null;
-      uses: number;
-      active: boolean;
-      created_at: string;
-      expires_at: string | null;
-    }>('SELECT code, kind, value, applies_to, max_uses, uses, active, created_at, expires_at FROM promo_codes ORDER BY created_at DESC LIMIT 100');
-    return c.json({
-      promos: rows.map((r) => ({
-        code: r.code,
-        kind: r.kind,
-        value: Number(r.value),
-        appliesTo: r.applies_to,
-        maxUses: r.max_uses === null ? null : Number(r.max_uses),
-        uses: Number(r.uses),
-        active: r.active,
-        createdAt: Number(r.created_at),
-        expiresAt: r.expires_at === null ? null : Number(r.expires_at),
-      })),
-    });
-  });
-
-  app.post('/admin/promo-codes/:code/disable', requireAdmin, async (c) => {
-    const code = normalizePromoCode(c.req.param('code') ?? '');
-    const rows = await db.query<{ code: string }>("UPDATE promo_codes SET active = false WHERE code = $1 AND active RETURNING code", [code]);
-    if (!rows[0]) fail(404, 'no active promo code with that code');
-    await audit(c.get('adminActor'), 'promo.disable', 'promo_code', code, {});
-    return c.json({ code, active: false });
-  });
-
-  app.get('/admin/redemptions', requireAdmin, async (c) => {
-    const cards = await db.query<{
-      id: string;
-      amount_cents: number;
-      redeemed_at: string;
-      note: string;
-      redeemed_name: string | null;
-    }>(
-      `SELECT g.id, g.amount_cents, g.redeemed_at, g.note, u.name AS redeemed_name
-         FROM gift_cards g JOIN users u ON u.id = g.redeemed_by WHERE g.status = 'redeemed' ORDER BY g.redeemed_at DESC LIMIT 50`,
-    );
-    const promos = await db.query<{
-      code: string;
-      product_id: string;
-      discount_cents: number;
-      created_at: string;
-      user_name: string | null;
-    }>(
-      `SELECT p.code, p.product_id, p.discount_cents, p.created_at, u.name AS user_name
-         FROM promo_uses p JOIN users u ON u.id = p.user_id ORDER BY p.created_at DESC LIMIT 50`,
-    );
-    const ledger = await db.query<{ kind: string; amount_cents: number; ref: string; created_at: string; user_name: string | null }>(
-      `SELECT l.kind, l.amount_cents, l.ref, l.created_at, u.name AS user_name
-         FROM credit_ledger l JOIN users u ON u.id = l.user_id ORDER BY l.created_at DESC LIMIT 50`,
-    );
-    return c.json({
-      giftCards: cards.map((r) => ({
-        id: r.id,
-        amountCents: Number(r.amount_cents),
-        redeemedAt: Number(r.redeemed_at),
-        redeemedBy: r.redeemed_name,
-        note: r.note,
-      })),
-      promoUses: promos.map((r) => ({
-        code: r.code,
-        productId: r.product_id,
-        discountCents: Number(r.discount_cents),
-        usedAt: Number(r.created_at),
-        user: r.user_name,
-      })),
-      credit: ledger.map((r) => ({
-        kind: r.kind,
-        amountCents: Number(r.amount_cents),
-        ref: r.ref,
-        createdAt: Number(r.created_at),
-        user: r.user_name,
-      })),
-    });
-  });
 
   // --- players: redeem a gift card, see credit, buy with credit ---
   app.post('/gift-cards/redeem', requireUser, async (c) => {

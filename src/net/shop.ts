@@ -6,8 +6,11 @@ import { DEV_AUTH, type Account } from './account';
 // (StoreKit 2 / Google Play Billing, via @capgo/native-purchases); we never
 // see card details. The app hands the store's proof (a signed transaction on
 // iOS, a purchase token on Android) to the server, which checks it with the
-// store and adds what you bought to your bag. The web shop shows the same
-// things but sends you to the app to buy them.
+// store and adds what you bought to your bag. On the web, when the server
+// has web checkout switched on, you pay on Xsolla's Pay Station page
+// (Xsolla is the merchant of record; docs/WEB_PAYMENTS.md) and Xsolla tells
+// the server, which adds the item to your bag; otherwise the web shop sends
+// you to the app.
 
 export interface ShopProduct {
   id: string;
@@ -47,6 +50,45 @@ export const APP_LINKS = {
   android: String(env.VITE_PLAY_STORE_URL ?? ''),
 };
 
+/** Web orders started here and not yet seen paid (checked again on return and when the shop opens). */
+const WEB_ORDERS_KEY = 'beech.webOrders.v1';
+function readWebOrders(): string[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(WEB_ORDERS_KEY) ?? '[]') as unknown;
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string').slice(-20) : [];
+  } catch {
+    return [];
+  }
+}
+function writeWebOrders(list: string[]): void {
+  try {
+    localStorage.setItem(WEB_ORDERS_KEY, JSON.stringify(list));
+  } catch {
+    /* storage blocked: the return link still carries the order id */
+  }
+}
+
+export interface WebOrder {
+  id: string;
+  productId: string;
+  status: 'created' | 'paid' | 'refunded' | 'canceled' | 'expired';
+  grants: { item: string; quantity: number }[];
+}
+
+/** The `?web_order=` id Pay Station sends the player back with, or null. */
+export function webOrderFromUrl(search: string): string | null {
+  const id = new URLSearchParams(search).get('web_order') ?? '';
+  return /^[0-9a-f-]{36}$/i.test(id) ? id : null;
+}
+
+/** The query string without the return parameters (ours, and the ones Xsolla adds). */
+export function withoutWebOrderParams(search: string): string {
+  const q = new URLSearchParams(search);
+  for (const k of ['web_order', 'user_id', 'foreignInvoice', 'invoice_id', 'status']) q.delete(k);
+  const s = q.toString();
+  return s ? `?${s}` : '';
+}
+
 const PENDING_KEY = 'beech.pendingPurchases.v1';
 interface Pending {
   platform: 'ios' | 'android' | 'dev';
@@ -77,13 +119,18 @@ function native(): Promise<Purchases> {
 }
 
 export class ShopApi {
+  /** the server takes card payments on the web (Xsolla); learned from the product list */
+  webCheckout = false;
+
   constructor(private readonly account: Account) {}
 
   /** The products, with the store's local prices in the apps. */
   async products(): Promise<ShopProduct[]> {
     const res = await this.account.fetch('/api/store/products');
     if (!res.ok) throw new Error('the shop is closed right now');
-    const list = ((await res.json()) as { products: ShopProduct[] }).products;
+    const data = (await res.json()) as { products: ShopProduct[]; webCheckout?: boolean };
+    const list = data.products;
+    this.webCheckout = !!data.webCheckout;
     if (shopMode() === 'native') {
       try {
         const p = await native();
@@ -169,6 +216,74 @@ export class ShopApi {
       }
     }
     return done;
+  }
+
+  // --- web checkout (docs/WEB_PAYMENTS.md): the browser only, never the apps ---
+  /**
+   * Start paying for a product on the web. Returns the Pay Station page to
+   * send the player to; the server prices it, and grants it when Xsolla
+   * says it's paid. The order id is remembered so the bag can be refreshed
+   * when it lands, even if the return link is lost.
+   */
+  async startWebCheckout(productId: string): Promise<string> {
+    if (shopMode() !== 'web') throw new Error('buy in the beech app');
+    const res = await this.account.fetch('/api/store/web-checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ productId }),
+    });
+    if (!res.ok) {
+      const msg = ((await res.json().catch(() => ({}))) as { error?: string }).error;
+      throw new Error(msg ?? 'the checkout could not be opened');
+    }
+    const { order, url } = (await res.json()) as { order: string; url: string };
+    writeWebOrders([...readWebOrders().filter((x) => x !== order), order]);
+    return url;
+  }
+
+  /** One of your web orders, or null if the server doesn't know it. */
+  async webOrder(id: string): Promise<WebOrder | null> {
+    const res = await this.account.fetch(`/api/store/web-orders/${encodeURIComponent(id)}`);
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error('could not check that order');
+    return ((await res.json()) as { order: WebOrder }).order;
+  }
+
+  /**
+   * Wait for a web order to be paid (Xsolla's webhook can land a little
+   * after the player is sent back). Returns the order once settled, or
+   * whatever it was when time ran out.
+   */
+  async waitForWebOrder(id: string, timeoutMs = 60000, everyMs = 2000): Promise<WebOrder | null> {
+    const end = Date.now() + timeoutMs;
+    let o: WebOrder | null = null;
+    for (;;) {
+      try {
+        o = await this.webOrder(id);
+      } catch {
+        /* offline for a moment: keep trying */
+      }
+      if (!o || o.status !== 'created' || Date.now() >= end) break;
+      await new Promise((r) => setTimeout(r, everyMs));
+    }
+    if (o && o.status !== 'created') writeWebOrders(readWebOrders().filter((x) => x !== id));
+    if (!o) writeWebOrders(readWebOrders().filter((x) => x !== id));
+    return o;
+  }
+
+  /** Check remembered web orders once (when the shop opens): how many turned out paid. */
+  async checkWebOrders(): Promise<number> {
+    let paid = 0;
+    for (const id of readWebOrders()) {
+      try {
+        const o = await this.webOrder(id);
+        if (o?.status === 'paid') paid++;
+        if (!o || o.status !== 'created') writeWebOrders(readWebOrders().filter((x) => x !== id));
+      } catch {
+        /* try again next time */
+      }
+    }
+    return paid;
   }
 
   // --- gift cards, promo codes, credit (docs/GIFT_CARDS_PROMOS.md) ---

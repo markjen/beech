@@ -6,7 +6,7 @@
 #   - built-in Cloud Run / Cloud SQL metrics (free, no setup)
 #
 # Cost: uptime checks are $0.30/1,000 executions with 1M free per project
-# per month (2 checks x 1/min = ~86k/month, free). Each alert condition is
+# per month (3 checks x 1/min = ~130k/month, free). Each alert condition is
 # $0.10/month (6 conditions = $0.60/month). Dashboards, notification
 # channels and log-based metrics are free within the free tiers (log
 # ingestion: 50 GiB/project/month free). The $100/month budget is untouched
@@ -212,6 +212,47 @@ resource "google_monitoring_uptime_check_config" "api" {
     type = "uptime_url"
     labels = {
       host       = var.monitoring_host
+      project_id = var.project_id
+    }
+  }
+
+  depends_on = [google_project_service.monitoring]
+}
+
+# Admin console sign-in page. Only created when var.admin_custom_domain is
+# set, and only after the domain mapping exists (the check fails until the
+# DNS records are in place and the certificate is provisioned). The host is
+# the admin domain itself, so it can never drift from the mapping.
+# NOT wired into the uptime alert policy yet — see the PR body for why;
+# follow-up: add a condition for this check to google_monitoring_alert_policy.uptime.
+resource "google_monitoring_uptime_check_config" "admin" {
+  count            = var.admin_custom_domain != "" ? 1 : 0
+  project          = var.project_id
+  display_name     = "beech admin sign-in"
+  timeout          = "10s"
+  period           = "60s"
+  selected_regions = ["USA"]
+
+  http_check {
+    path         = "/"
+    port         = 443
+    use_ssl      = true
+    validate_ssl = true
+  }
+
+  # Signed out, the admin console serves only its sign-in page, whose
+  # <title> is exactly "beech admin sign-in" (server/src/adminPage.ts;
+  # the deploy workflow greps for the same string). Anything else — a
+  # 404, a redirect, the game — is a failure.
+  content_matchers {
+    content = "beech admin sign-in"
+    matcher = "CONTAINS_STRING"
+  }
+
+  monitored_resource {
+    type = "uptime_url"
+    labels = {
+      host       = var.admin_custom_domain
       project_id = var.project_id
     }
   }

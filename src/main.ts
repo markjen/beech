@@ -34,7 +34,7 @@ import { InventoryTray, PlaceBar } from './ui/inventory';
 import { ClawMachine } from './ui/clawMachine';
 import { DigFind } from './ui/digFind';
 import { Shop } from './ui/shop';
-import { ShopApi } from './net/shop';
+import { ShopApi, webOrderFromUrl, withoutWebOrderParams } from './net/shop';
 import { VendingMachine } from './ui/vendingMachine';
 import { DEFAULT_SIZE, ITEMS, rollPlacement, type Item } from './world/items';
 import { ACCOUNTS_ENABLED, Account, CheckpointApi, DigFindApi, GiftApi, PullApi } from './net/account';
@@ -1103,12 +1103,34 @@ async function boot() {
     });
     shopDialog = shop;
     inventory.onShop = () => (acct.user ? void shop.open() : sheet.show());
+    // back from web checkout (Pay Station adds ?web_order=…): once signed
+    // in, wait for Xsolla's webhook to land, then say so and refresh the bag
+    let returnedOrder = webOrderFromUrl(location.search);
+    if (returnedOrder) history.replaceState(null, '', location.pathname + withoutWebOrderParams(location.search) + location.hash);
+    const settleReturnedOrder = async () => {
+      if (!returnedOrder || !acct.user) return;
+      const id = returnedOrder;
+      returnedOrder = null;
+      showToast(uiRoot, 'Checking your payment…');
+      const o = await shopApi.waitForWebOrder(id);
+      if (o?.status === 'paid') {
+        showToast(uiRoot, 'Paid: it\'s in your bag. Thank you!');
+        void loadOwned();
+        void acct.loadBeaches().catch(() => {});
+      } else if (o?.status === 'created') {
+        showToast(uiRoot, 'Your payment is still being confirmed. It will be in your bag as soon as it is.');
+      } else if (o) {
+        showToast(uiRoot, 'That payment didn\'t go through: you weren\'t charged for it.');
+      }
+    };
+    void settleReturnedOrder();
     acct.onChange((u) => {
       // anything paid for but not yet confirmed by the server: hand it over again
       if (u)
         void shopApi.retryPending().then((n) => {
           if (n) void loadOwned();
         });
+      if (u) void settleReturnedOrder();
     });
     inventory.setClaw(acct.user ? 'play' : 'signin');
     const vending = new VendingMachine(uiRoot, new PullApi(acct), (item, place) => {
