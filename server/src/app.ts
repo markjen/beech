@@ -17,6 +17,8 @@
 //   GET    /api/shore?code=&depth=, /api/shore/more?from=&dir=&count=   the global beachfront
 //   GET    /api/neighbors/:side/beach                      -> that neighbor's sand bytes | 404
 //   POST   /api/neighbors/code                             -> { code } (new code; old one stops working)
+//   POST   /api/gifts            { code, item }            -> { item, to: { name, code } }
+//   GET    /api/inventory                                  -> { items: [{ item, quantity, source, ... }] }
 //
 // Auth: `Authorization: Bearer <token>`; only the token's SHA-256 is stored.
 
@@ -56,7 +58,7 @@ const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O or 1/I
 const SIDES = ['left', 'right'] as const;
 type Side = (typeof SIDES)[number];
 
-const fail = (status: 400 | 401 | 403 | 404 | 409 | 413 | 500, message: string): never => {
+const fail = (status: 400 | 401 | 403 | 404 | 409 | 413 | 429 | 500, message: string): never => {
   throw new HTTPException(status, { message });
 };
 
@@ -801,6 +803,56 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const who = await byCode(c.req.param('code') ?? '');
     if (!who) return c.json({ error: 'no beach with that code' }, 404);
     return sendBeach(c, who.id);
+  });
+
+  // ---------------------------------------------------------------- gifts
+  // Give one of your items to the owner of the beach with that code. Instant:
+  // there is no inbox to accept it in. One statement moves it, so two gifts
+  // of the same last item can't both go through: the second UPDATE finds
+  // quantity 0 and moves nothing. Free items have no inventory rows, so
+  // there is nothing to give (everyone already has them). The row on the
+  // sand is untouched: gifting moves what you own, not what's placed.
+  const GIFT_PER_HOUR = 20;
+  app.post('/gifts', requireUser, async (c) => {
+    const { code, item } = await body<{ code?: string; item?: string }>(c);
+    if (normalizeCode(code ?? '').length !== 6) fail(400, 'neighbor codes are 6 letters and numbers');
+    if (!item || typeof item !== 'string' || item.length > 40) fail(400, 'say which item to give');
+    const me = c.get('user').id;
+    const them = await nodeByCode(code!);
+    if (!them) fail(404, 'no beach has that code');
+    if (them!.owner_id === me) fail(400, "that's your own code");
+    const now = Date.now();
+    const recent = await db.query<{ n: string }>(
+      'SELECT COUNT(*) AS n FROM gifts WHERE from_id = $1 AND created_at > $2',
+      [me, now - 3600000],
+    );
+    if (Number(recent[0].n) >= GIFT_PER_HOUR) fail(429, 'slow down: 20 gifts an hour is the limit');
+    // take your oldest unexpired row of that item (one statement, so a race
+    // on the last one leaves the second gift with nothing to move)
+    const rows = await db.query<{ moved: string }>(
+      `WITH giver AS (
+         UPDATE inventory SET quantity = quantity - 1
+          WHERE id = (
+            SELECT id FROM inventory
+             WHERE user_id = $1 AND item_id = $2 AND quantity > 0
+               AND (expires_at IS NULL OR expires_at > $3)
+             ORDER BY acquired_at ASC LIMIT 1
+          ) AND quantity > 0
+         RETURNING item_id, expires_at
+       ), given AS (
+         INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at, expires_at)
+         SELECT $4, item_id, 1, 'gift', $3, expires_at FROM giver
+         RETURNING item_id
+       ), logged AS (
+         INSERT INTO gifts (from_id, to_id, item_id, created_at)
+         SELECT $1, $4, item_id, $3 FROM giver
+         RETURNING item_id
+       )
+       SELECT (SELECT COUNT(*) FROM giver) AS moved`,
+      [me, item, now, them!.owner_id],
+    );
+    if (Number(rows[0].moved) === 0) fail(409, "you don't have one of those to give");
+    return c.json({ item, to: { name: them!.name, code: them!.code } });
   });
 
   return app;

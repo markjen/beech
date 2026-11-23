@@ -44,11 +44,24 @@ export class StartScreen {
 
 /** A brief hint about the controls, shown once after the start screen. */
 export function showHint(parent: HTMLElement, isTouch: boolean): () => void {
-  const el = document.createElement('div');
-  el.className = 'hint';
+  const { el, hide } = showNote(parent, 9000);
   el.innerHTML = isTouch
     ? 'drag to look around · two fingers pinch, turn and tilt<br>pick the shovel to dig in the sand'
     : 'drag to look around · wheel zooms · right-drag turns and tilts<br>pick the shovel to dig in the sand';
+  return hide;
+}
+
+/** A short note over the beach ("no beach has that code"), gone after a few seconds. */
+export function showToast(parent: HTMLElement, text: string): () => void {
+  const { el, hide } = showNote(parent, 6000);
+  el.textContent = text;
+  return hide;
+}
+
+/** A `.hint` element that shows itself, then removes itself after `ms`. */
+function showNote(parent: HTMLElement, ms: number): { el: HTMLDivElement; hide: () => void } {
+  const el = document.createElement('div');
+  el.className = 'hint';
   parent.appendChild(el);
   requestAnimationFrame(() => el.classList.add('show'));
   let hidden = false;
@@ -58,8 +71,8 @@ export function showHint(parent: HTMLElement, isTouch: boolean): () => void {
     el.classList.remove('show');
     window.setTimeout(() => el.remove(), 800);
   };
-  window.setTimeout(hide, 9000);
-  return hide;
+  window.setTimeout(hide, ms);
+  return { el, hide };
 }
 
 export interface SettingsHandlers {

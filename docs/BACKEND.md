@@ -40,6 +40,7 @@ Migrations live in `src/migrations.ts` and are applied at startup.
 | `GET /api/beaches/:code` | anyone's saved beach, by code |
 | `GET /api/favorites`, `PUT`/`DELETE /api/favorites/:code` | your starred beaches |
 | `GET /api/inventory` | `{ items: [{ item, quantity, source, acquiredAt, expiresAt }] }`: what you own beyond the free items, unexpired. Empty until the shop and pulls exist; rows are only written by the server. |
+| `POST /api/gifts { code, item }` | give one of your items to someone else, by their neighbor code — instant, one atomic statement, 20 an hour (see [SHARING_GIFTING.md](SHARING_GIFTING.md)). |
 
 Sessions are 60-day random bearer tokens, and only their SHA-256 is stored.
 We keep the provider's user id, a first name (neighbors see it), your neighbor
@@ -75,6 +76,15 @@ are still how you ask someone to be a neighbor or jump straight to a beach.
 The store privacy forms must say that the first name and the beach are
 public to other users. A "keep my beach off the shore" setting is on the
 backlog.
+
+**Sharing and gifting.** A share link is `?visit=<code>` on the site's own
+URL (`src/net/share.ts`); opening it visits that beach once you're signed
+in. The Cloud Run server injects Open Graph tags for the beach into
+`index.html` for such requests (`server/src/shareMeta.ts`), so the link
+shows a preview where it's pasted. Gifting (`POST /api/gifts`) moves one
+inventory row to someone else by code, instantly and atomically; see
+[SHARING_GIFTING.md](SHARING_GIFTING.md) for the design and the decisions
+that are still the owner's to make.
 
 While the shore is shown, the app polls `GET /api/neighbors` and the shore
 every 30 s, and refetches a beach only when its `updatedAt` changed.
