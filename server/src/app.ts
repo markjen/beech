@@ -23,6 +23,8 @@
 import { Hono, type Context } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 
+import { PRODUCTS, productById } from './products.js';
+import { appleRefund, googleVoided, verifyAppleTransaction, verifyGooglePurchase, type VerifiedPurchase } from './store.js';
 import { POOLS, cooldownAfter, draw, pullDay, starterPrize, STARTER } from './pulls.js';
 import { hashToken, newSessionToken, SESSION_DAYS, verifyAppleIdToken, verifyGoogleIdToken, type VerifiedIdentity } from './auth.js';
 import { toBytes, type Db } from './db.js';
@@ -39,6 +41,18 @@ export interface AppConfig {
   verifyApple?: typeof verifyAppleIdToken;
   /** the clock (tests move it forward) */
   now?: () => number;
+  /** the iOS bundle id and Android package the store purchases are for */
+  appleBundleId?: string;
+  androidPackage?: string;
+  /** Google Play notifications (Pub/Sub push): the push's OIDC audience and service account */
+  googleRtdn?: { audience: string; email: string };
+  /** injectable for tests: how purchases and refunds are checked */
+  stores?: {
+    apple?: (jws: string, bundleId: string) => Promise<VerifiedPurchase>;
+    google?: (pkg: string, productId: string, token: string) => Promise<VerifiedPurchase>;
+    appleRefund?: (signedPayload: string, bundleId: string) => Promise<string | null>;
+    googleVoided?: typeof googleVoided;
+  };
 }
 
 export interface User {
@@ -57,7 +71,7 @@ const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O or 1/I
 const SIDES = ['left', 'right'] as const;
 type Side = (typeof SIDES)[number];
 
-const fail = (status: 400 | 401 | 403 | 404 | 409 | 413 | 500, message: string): never => {
+const fail = (status: 400 | 401 | 403 | 404 | 409 | 413 | 426 | 500, message: string): never => {
   throw new HTTPException(status, { message });
 };
 
@@ -304,6 +318,10 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const ny = Number(c.req.header('X-Beach-Ny'));
     if (!/^[a-z0-9-]+$/.test(location)) fail(400, 'bad X-Beach-Location');
     if (!Number.isInteger(nx) || !Number.isInteger(ny) || nx < 8 || ny < 8 || nx * ny > MAX_CELLS) fail(400, 'bad grid size');
+    // the world is square (32 m x 32 m). A non-square grid is an out-of-date app
+    // (the old 32 x 24 world): its save would squeeze the sand and shift the
+    // things on it, so refuse it until the app reloads.
+    if (nx !== ny) fail(426, 'this app is out of date: reload to save');
     if (Number(c.req.header('Content-Length') ?? 0) > MAX_BEACH_BYTES) fail(413, 'beach too large');
     const bytes = new Uint8Array(await c.req.arrayBuffer());
     if (bytes.byteLength === 0 || bytes.byteLength > MAX_BEACH_BYTES) fail(413, 'beach too large');
@@ -835,6 +853,105 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
 
   app.get('/beaches/mine/:id/sand', requireUser, async (c) => sendBeach(c, await mine(c, c.req.param('id'))));
   app.put('/beaches/mine/:id/sand', requireUser, async (c) => saveBeach(c, await mine(c, c.req.param('id'))));
+
+  // ---------------------------------------------------------------- the shop
+  // The app buys through Apple / Google; we only check and grant (store.ts).
+  const bundleId = cfg.appleBundleId ?? 'app.beech.beach';
+  const androidPackage = cfg.androidPackage ?? 'app.beech.beach';
+  const stores = {
+    apple: cfg.stores?.apple ?? ((jws: string, b: string) => verifyAppleTransaction(jws, b)),
+    google: cfg.stores?.google ?? verifyGooglePurchase,
+    appleRefund: cfg.stores?.appleRefund ?? ((p: string, b: string) => appleRefund(p, b)),
+    googleVoided: cfg.stores?.googleVoided ?? googleVoided,
+  };
+
+  app.get('/store/products', (c) =>
+    c.json({ products: PRODUCTS.map((p) => ({ id: p.id, name: p.name, grants: p.grants, usd: p.usd, blurb: p.blurb, featured: !!p.featured })) }),
+  );
+
+  /**
+   * The app finished a purchase: { platform: ios | android, productId, jws (iOS) | token (Android) }.
+   * We check it with the store, record it once, and add what it grants to
+   * your bag. Sending the same purchase again is harmless (it says so).
+   */
+  app.post('/store/purchase', requireUser, async (c) => {
+    const me = c.get('user').id;
+    const { platform, productId, jws, token } = await body<{ platform?: string; productId?: string; jws?: string; token?: string }>(c);
+    const product = productById(productId ?? '');
+    if (!product) fail(404, 'no such product');
+    const ok = (platform === 'ios' && jws) || (platform === 'android' && token) || (platform === 'dev' && cfg.devAuth && token);
+    if (!ok) fail(400, 'expected { platform: ios, jws } or { platform: android, token }');
+    let v: VerifiedPurchase;
+    try {
+      if (platform === 'ios') v = await stores.apple(jws!, bundleId);
+      else if (platform === 'android') v = await stores.google(androidPackage, product!.id, token!);
+      // local development and e2e only: a pretend store
+      else v = { store: 'dev', transactionId: token!, productId: product!.id, environment: 'Dev', purchasedAt: clock() };
+    } catch (e) {
+      return c.json({ error: `the store did not confirm this purchase: ${(e as Error).message}` }, 402);
+    }
+    if (v!.productId !== product!.id) fail(400, 'that purchase is for a different product');
+    // the app ties each purchase to the account that made it
+    if (v!.account && v!.account !== me) fail(403, 'that purchase belongs to another account');
+    const now = clock();
+    const items = product!.grants.map((g) => g.item);
+    const qty = product!.grants.map((g) => g.quantity);
+    // one statement: record the transaction (once) and grant its items
+    const rows = await db.query<{ item_id: string }>(
+      `WITH p AS (
+         INSERT INTO purchases (user_id, store, transaction_id, product_id, environment, purchased_at, granted_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (store, transaction_id) DO NOTHING
+         RETURNING id, user_id
+       )
+       INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at, purchase_id)
+       SELECT p.user_id, g.item, g.qty, 'shop', $7, p.id FROM p, unnest($8::text[], $9::int[]) AS g(item, qty)
+       RETURNING item_id`,
+      [me, v!.store, v!.transactionId, product!.id, v!.environment, v!.purchasedAt, now, items, qty],
+    );
+    if (!rows.length) {
+      const prev = (await db.query<{ user_id: string }>('SELECT user_id FROM purchases WHERE store = $1 AND transaction_id = $2', [v!.store, v!.transactionId]))[0];
+      if (prev && prev.user_id !== me) fail(409, 'that purchase was already used by another account');
+      return c.json({ already: true, product: product!.id, grants: product!.grants });
+    }
+    return c.json({ already: false, product: product!.id, grants: product!.grants });
+  });
+
+  /** A refund: the purchase is marked, and what it granted expires now. */
+  const refund = async (store: 'apple' | 'google', transactionId: string) => {
+    const now = clock();
+    await db.query(
+      `WITH p AS (UPDATE purchases SET refunded_at = $3 WHERE store = $1 AND transaction_id = $2 AND refunded_at IS NULL RETURNING id)
+       UPDATE inventory SET expires_at = $3 WHERE purchase_id IN (SELECT id FROM p)`,
+      [store, transactionId, now],
+    );
+  };
+
+  // App Store Server Notifications V2 (set this URL in App Store Connect → App Information)
+  app.post('/store/apple/notifications', async (c) => {
+    const { signedPayload } = await body<{ signedPayload?: string }>(c);
+    if (!signedPayload) fail(400, 'expected signedPayload');
+    let tx: string | null;
+    try {
+      tx = await stores.appleRefund(signedPayload!, bundleId);
+    } catch {
+      return fail(401, 'not from Apple');
+    }
+    if (tx) await refund('apple', tx);
+    return c.body(null, 200);
+  });
+
+  // Google Play real-time developer notifications (a Pub/Sub push subscription to this URL)
+  app.post('/store/google/rtdn', async (c) => {
+    if (!cfg.googleRtdn) fail(404, 'not set up');
+    let order: string | null;
+    try {
+      order = await stores.googleVoided(c.req.header('Authorization'), await body(c), cfg.googleRtdn!);
+    } catch {
+      return fail(401, 'not from Google');
+    }
+    if (order) await refund('google', order);
+    return c.body(null, 204);
+  });
 
   // (after /beaches/mine…, so 'mine' isn't taken for a code)
   app.get('/beaches/:code', requireUser, async (c) => {

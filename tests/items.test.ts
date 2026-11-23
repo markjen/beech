@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { POOLS, STARTER } from '../server/src/pulls';
+import { PRODUCTS } from '../server/src/products';
 import { ITEMS, extraById, itemById, rollPlacement } from '../src/world/items';
 import { OBJECT_KINDS } from '../src/sim/objects';
 
@@ -49,5 +50,15 @@ describe('item catalog', () => {
     }
     // a bigger pick is bigger, despite the variation
     expect(rollPlacement(rock, 0.8, () => 0).size).toBeGreaterThan(rollPlacement(rock, 0.6, () => 0.999).size);
+  });
+
+  it('the shop and the catalog agree: every product grants real things, every shop item is sold', () => {
+    for (const p of PRODUCTS) {
+      expect(p.id).toMatch(/^[a-z0-9_.]+$/); // a valid Google Play / App Store product id
+      for (const g of p.grants) expect(itemById(g.item) ?? extraById(g.item), `${p.id} grants ${g.item}`).toBeTruthy();
+    }
+    for (const it of ITEMS.filter((i) => i.source === 'shop')) {
+      expect(PRODUCTS.find((p) => p.id === it.product), `${it.id} is sold by ${it.product}`).toBeTruthy();
+    }
   });
 });

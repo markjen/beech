@@ -17,3 +17,6 @@ dist-artifact/
 *.tfstate
 *.tfstate.*
 .terraform/
+
+# agent worktrees (local only)
+.claude/worktrees/

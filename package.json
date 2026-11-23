@@ -29,6 +29,7 @@
     "@capacitor/haptics": "^8.0.2",
     "@capacitor/ios": "^8.6.0",
     "@capgo/capacitor-social-login": "8.7.6",
+    "@capgo/native-purchases": "8.9.6",
     "lil-gui": "^0.21.0"
   },
   "devDependencies": {
