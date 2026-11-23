@@ -129,7 +129,10 @@ export class ClawMachine {
     this.btn.disabled = !free || this.phase !== 'idle';
     if (this.error) this.note.textContent = this.error;
     else if (!this.pool) this.note.textContent = '';
-    else if (free) this.note.textContent = `A free go! After it the claw rests ${duration(this.pool.nextCooldown)}.`;
+    else if (free)
+      this.note.textContent = this.pool.cooldown
+        ? `A free go! After it the claw rests ${duration(this.pool.cooldown.min)} to ${duration(this.pool.cooldown.max)}: less if it slips, more if you win.`
+        : `A free go! After it the claw rests ${duration(this.pool.nextCooldown)}.`;
     else this.note.textContent = `Your next free go is in ${until(this.nextFree)}.`;
     if (!this.pool) {
       this.oddsEl.innerHTML = '';

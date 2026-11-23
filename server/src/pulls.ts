@@ -2,8 +2,8 @@
 // (never in the app), with odds that the app shows before every draw.
 //
 // The only pool so far is the free claw machine: nothing to pay. The wait
-// between goes starts short and doubles each go, up to once a day
-// (cooldownAfter). Paid pools will reuse the same draw once store
+// between goes is random, 5 minutes to 3 hours, shorter after a miss and
+// longer after a win (cooldownAfter). Paid pools will reuse the same draw once store
 // billing exists. Apple and Google require the odds of paid random items to
 // be shown, and some countries restrict paid random items; check before
 // adding a paid pool.
@@ -117,13 +117,19 @@ export function cryptoRandom(): number {
   return b[0] / 4294967296;
 }
 
-/** first wait, and the most it grows to */
-export const COOLDOWN_FIRST_MS = 5 * 60 * 1000;
-export const COOLDOWN_MAX_MS = 24 * 60 * 60 * 1000;
+/** the shortest and longest rest between goes on the claw */
+export const COOLDOWN_MIN_MS = 5 * 60 * 1000;
+export const COOLDOWN_MAX_MS = 3 * 60 * 60 * 1000;
 
-/** How long to wait after your nth go (n = 1, 2, …): 5 min, 10, 20, … up to a day. */
-export function cooldownAfter(n: number): number {
-  return Math.min(COOLDOWN_MAX_MS, COOLDOWN_FIRST_MS * Math.pow(2, Math.max(0, n - 1)));
+/**
+ * How long the claw rests after a go: random between 5 minutes and 3 hours.
+ * A miss skews short (u², mean ~1 h) so a dropped ball stings less; a win
+ * skews long (1 - (1-u)², mean ~2 h). `rand` returns [0, 1).
+ */
+export function cooldownAfter(missed: boolean, rand: () => number = cryptoRandom): number {
+  const u = Math.min(Math.max(rand(), 0), 1);
+  const t = missed ? u * u : 1 - (1 - u) * (1 - u);
+  return Math.round(COOLDOWN_MIN_MS + (COOLDOWN_MAX_MS - COOLDOWN_MIN_MS) * t);
 }
 
 /** The UTC day a pull happened on, e.g. "2026-11-22" (kept for the history). */

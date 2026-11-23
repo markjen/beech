@@ -362,12 +362,14 @@ branch, so the deploy job runs only there. Switch the default branch to
 ## Claw machine (added after chair polish)
 
 - **Free claw machine** (production builds, signed in): the rest between
-  goes starts at 5 minutes and doubles each go (10, 20, 40 min, …) up to once
-  a day, reached at the 10th go (`cooldownAfter`). Migration 6 adds
+  goes is random, 5 minutes to 3 hours (`cooldownAfter`), skewed short after
+  a miss (u², averages ~1 h) and long after a win (1 − (1−u)², ~2 h). The
+  machine's note shows the range. (Before: 5 min doubling each go up to a
+  day; before that, one go per UTC day.) Migration 6 adds
   `pull_state` (goes so far, free again at). One SQL statement claims the
   go, but only if it's free and the count hasn't moved, so two taps at once
   give one go. `pulls` becomes a plain history. Players who had already
-  played keep their count. (Originally: one go per UTC day.) The server draws the prize (`server/src/pulls.ts`, crypto
+  played keep their count. The server draws the prize (`server/src/pulls.ts`, crypto
   randomness) with published odds: common 70% (conch, sand dollar), rare 25%
   (starfish), legendary 5% (message in a bottle). The app shows the odds
   before every go. Migration 3 adds `pulls`, keyed on `(user, pool, day)`;

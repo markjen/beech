@@ -654,8 +654,10 @@ export interface PullPool {
   grab?: Record<'common' | 'rare' | 'legendary', number>;
   /** a free go is ready now */
   free: boolean;
-  /** how long the machine will rest after your next go (ms): 5 min, doubling, up to a day */
+  /** the longest the machine can rest after your next go (ms) */
   nextCooldown: number;
+  /** the claw's rest is random in this range (ms): shorter after a miss, longer after a win */
+  cooldown?: { min: number; max: number };
   /** when your next free go is ready (ms since epoch) */
   nextFree?: number;
   /** the fixed gifts of the first goes (shown before the odds) */
