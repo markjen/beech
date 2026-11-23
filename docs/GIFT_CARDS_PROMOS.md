@@ -77,6 +77,15 @@ The shop dialog shows the credit balance, a gift card redeem box, a promo
 code field, and a "Buy with credit" button on products the credit covers
 (`src/ui/shop.ts`, `src/net/shop.ts`).
 
+**Web only.** In the iOS and Android apps the shop shows none of these:
+digital items there must be bought through the store (App Store
+guideline 3.1.1, Google Play's payments policy), and an app that unlocks
+them with outside codes or credit risks rejection. `codesAllowed()` in
+`src/net/shop.ts` gates them; credit someone has is still theirs, and
+they spend it on the web. (The API itself doesn't check the platform:
+the rule is about what the apps offer, and a request's platform can't be
+trusted anyway.)
+
 ## Secrets and setup (nothing secret lives in this repo)
 
 | Secret / setting | Where it lives | How to set it |

@@ -1103,6 +1103,12 @@
   font-size: 13px;
 }
 
+/* hidden in the native apps (codesAllowed): display:flex would beat [hidden] */
+.shop-gift[hidden],
+.shop-promo[hidden] {
+  display: none;
+}
+
 .shop-gift input,
 .shop-promo input {
   flex: 1;

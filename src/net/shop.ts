@@ -29,6 +29,17 @@ export function shopMode(): ShopMode {
   return 'web';
 }
 
+/**
+ * Gift card and promo codes, and spending the credit they give: the web
+ * (and development builds) only. In the iOS and Android apps, digital items
+ * must be bought through the store (App Store guideline 3.1.1, Google
+ * Play's payments policy), so the apps show neither the code fields nor
+ * "Buy with credit". Credit someone has still works on the web.
+ */
+export function codesAllowed(mode: ShopMode = shopMode()): boolean {
+  return mode !== 'native';
+}
+
 const env = import.meta.env;
 /** store pages for "get the app" (set at build time once the apps are listed) */
 export const APP_LINKS = {
