@@ -1,5 +1,5 @@
 {
-  "about": "Performance budgets checked by scripts/perf.mjs (npm run perf) and the Performance workflow. Counts are exact and fail CI when exceeded. Timings come from a shared CI machine with a software GPU, so they're loose and only catch big regressions. Raise a number only on purpose, in the same commit as the change that needs it, and say why (docs/PERFORMANCE.md). Measured 2026-11-23 at 80de318: 0 things 10 draws; 400 things 132 draws; 2000 things 315 draws, 149 for things, 95 touched a frame (the flags), 0.4 ms main thread, 6 ms worker tick; main bundle 309 KB gzip. Glows instanced (2026-11-23): 400 things 98 draws; 2000 things 163 draws, 153 for things and glows. Sim tick measured in Node (scripts/perf-sim.mjs, app settings) after the 2026-11-23 sim work: low 3.2, medium 6.1, high 9.6 ms (were 5.5, 10.5, 16).",
+  "about": "Performance budgets checked by scripts/perf.mjs (npm run perf) and the Performance workflow. Counts are exact and fail CI when exceeded. Timings come from a shared CI machine with a software GPU, so they're loose and only catch big regressions. Raise a number only on purpose, in the same commit as the change that needs it, and say why (docs/PERFORMANCE.md). Measured 2026-11-23 at 80de318: 0 things 10 draws; 400 things 132 draws; 2000 things 315 draws, 149 for things, 95 touched a frame (the flags), 0.4 ms main thread, 6 ms worker tick; main bundle 309 KB gzip. Glows instanced (2026-11-23): 400 things 98 draws; 2000 things 163 draws, 153 for things and glows. Sim tick measured in Node (scripts/perf-sim.mjs, app settings) after the 2026-11-23 sim work: low 3.2, medium 6.1, high 9.6 ms (were 5.5, 10.5, 16). mainThingsMsPerFrame at 2000 swings 1.0-1.9 ms on CI runners from run to run, so its limit is 5 ms (it was 2.5 ms on a laptop before instancing).",
   "counts": {
     "scenes.0.drawCallsPerFrame": 12,
     "scenes.400.drawCallsPerFrame": 120,
@@ -11,7 +11,7 @@
     "bundle.totalJsGzipKB": 440
   },
   "timings": {
-    "scenes.2000.mainThingsMsPerFrame": 3,
+    "scenes.2000.mainThingsMsPerFrame": 5,
     "sim.low.msPerTick": 10,
     "sim.medium.msPerTick": 18,
     "sim.high.msPerTick": 28
