@@ -126,7 +126,11 @@ Terraform manages it. The Terraform equivalent is `var.custom_domain`
 
 **Shore domain (`beechshore.com`):** the public shore site is served by
 the same `beech` service, chosen by the Host header, so it only needs
-domain mappings: `terraform apply -var shore_custom_domain=beechshore.com`
+domain mappings — but verify the domain first: `beechshore.com` is not
+yet in the GCP account's verified-domains list, so run `gcloud domains
+verify beechshore.com` (browser flow to Search Console; add its TXT
+record in the Squarespace zone) before creating the mappings, or
+creation fails. Then `terraform apply -var shore_custom_domain=beechshore.com`
 (`google_cloud_run_domain_mapping.shore` for the apex and `.shore_www`
 for `www.beechshore.com`, plus a shore home-page uptime check — all gated
 on the same variable; the check is not yet wired into the uptime alert
