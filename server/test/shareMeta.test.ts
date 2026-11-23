@@ -109,8 +109,17 @@ describe('share page handler', () => {
     expect(html).not.toContain('og:image');
   });
 
+  it('injects invite tags for an invite link', async () => {
+    const res = await app.request(`/?invite=${anaCode}`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('ana-share invited you to beech');
+    expect(html).toContain('welcome gift');
+    expect(html).not.toContain('Visit ana-share');
+  });
+
   it('serves the plain page for an unknown code, and with no code at all', async () => {
-    for (const q of ['/?visit=ZZZZZZ', '/']) {
+    for (const q of ['/?visit=ZZZZZZ', '/?invite=ZZZZZZ', '/']) {
       const res = await app.request(q);
       expect(res.status).toBe(200);
       expect(await res.text()).not.toContain('og:title');

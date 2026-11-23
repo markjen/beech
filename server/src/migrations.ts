@@ -616,6 +616,37 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX item_comments_item ON item_comments (item_id, created_at DESC, id DESC);
   `,
+
+  // 23: the beach guide and invites (docs/INVITES_GUIDE.md). guide_steps:
+  // which steps of the guide each person has done (once each; the gift goes
+  // with the insert). referrals: who joined through whose invite link; when
+  // the friend settles in, the referral takes the inviter's next rank, and
+  // UNIQUE (inviter_id, reward_rank) keeps two friends settling at once from
+  // taking the same rung. Rewards are inventory rows with source 'reward'.
+  `
+  ALTER TABLE inventory DROP CONSTRAINT inventory_source_check;
+  ALTER TABLE inventory ADD CONSTRAINT inventory_source_check CHECK (source IN ('shop', 'event', 'pull', 'gift', 'reward'));
+
+  CREATE TABLE guide_steps (
+    user_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    step TEXT NOT NULL,
+    done_at BIGINT NOT NULL,
+    PRIMARY KEY (user_id, step)
+  );
+
+  CREATE TABLE referrals (
+    invitee_id UUID PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,
+    inviter_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    code TEXT NOT NULL,                  -- the code the link carried
+    created_at BIGINT NOT NULL,
+    qualified_at BIGINT,                 -- when the friend settled in
+    reward_rank INTEGER,                 -- 1 = the inviter's first settled friend
+    reward_item TEXT,                    -- what the inviter got (NULL past the cap)
+    UNIQUE (inviter_id, reward_rank),
+    CHECK (invitee_id <> inviter_id)
+  );
+  CREATE INDEX referrals_inviter ON referrals (inviter_id, created_at);
+  `,
 ];
 
 /** Apply migrations up to `upTo` (default: all). Tests use `upTo` to check a migration on older data. */

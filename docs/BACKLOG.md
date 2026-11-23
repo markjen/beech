@@ -51,6 +51,14 @@ The single list of what's left to do, for the owner and for agents.
   (`https://discord.gg/y7EGw2yg2d`) is in PR #40 (draft) — tick this once
   that merges.
 
+## Owner decisions
+
+- [ ] **Invite rewards** (2026-11-23): check the ladder (parasol,
+  surfboard, extra beach at 3 friends, tiki torch, sandcastle, then
+  starfish; 10 at most), "settled in = 3 guide steps", and the welcome
+  parasol. All in `server/src/referrals.ts`. [INVITES_GUIDE.md](INVITES_GUIDE.md),
+  "Decisions for the owner".
+
 ## In progress
 
 _(nothing right now)_
@@ -95,6 +103,24 @@ _(nothing right now)_
   [CHROME_TV_CAST.md](CHROME_TV_CAST.md)).
 - [ ] **Push for neighbor requests**: today you see them the next time the
   app polls (30 s) or opens.
+- [ ] **Visitors, inbox and notifications**: visitors sign in from a
+  beach, rate it (shells), leave a note and give from their bag; an inbox
+  for everything that happens to you; in-app, web and native push. Spec in
+  [INBOX_NOTIFICATIONS.md](INBOX_NOTIFICATIONS.md), six phases; owner
+  decisions at the end of it. Notes need filter, report and block before
+  they ship to the stores.
+- [ ] **Invites: open in the apps**: Universal Links / App Links so
+  `?invite=` and `?visit=` links open the phone apps (the invite code is
+  kept in `localStorage`, so the claim works the same once it lands).
+- [ ] **Invites: `og:image`**: a 1200×630 beach shot for link previews
+  (visit and invite links).
+- [ ] **Admin: referrals view**: who invited whom, for disputes and to
+  spot farming (`referrals` table).
+- [ ] **More guide steps**: the clearing tool, calming the waves, the
+  vending machine, a checkpoint. Add to both `src/world/guide.ts` and
+  `server/src/referrals.ts` (`tests/guide.test.ts` keeps them in step).
+- [ ] **Long-press to pick up and drag items**: long-press on an item picks
+  it up, then drag it somewhere else and release to put it down.
 
 ## Ideas
 
@@ -238,6 +264,14 @@ _(nothing right now)_
 - [x] **beechshore.com, the public shore** (2026-11-23): server-rendered
   pages for every beach on the shore, drawn pictures for link previews,
   share buttons, cross links with the game. [SHORE_SITE.md](SHORE_SITE.md).
+
+- [x] **Invites and the beach guide** (2026-11-23): a nine-step guide that
+  teaches each mechanic (coach card, checklist, a common for each step, a
+  starfish for all eight); invite links (`?invite=CODE`) with a welcome
+  parasol for the friend, a one-tap neighbor ask, and a reward ladder for
+  the inviter once the friend has done 3 guide steps (an extra beach at
+  three friends). Items, not credit, so it works in the apps. Migration 23,
+  `npm run e2e:invites`. [INVITES_GUIDE.md](INVITES_GUIDE.md).
 
 - [x] **Performance checks in CI** (2026-11-23): `npm run perf` and the
   Performance workflow (main, pull requests, weekly) with budgets in

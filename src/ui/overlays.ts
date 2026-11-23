@@ -41,6 +41,15 @@ export class StartScreen {
   get visible(): boolean {
     return !this.done;
   }
+
+  /** Who invited you (an `?invite=` link), under the title. */
+  setInvite(name: string, gift: string): void {
+    if (this.done) return;
+    const p = document.createElement('p');
+    p.className = 'start-invite';
+    p.textContent = `${name} invited you · a ${gift} is waiting`;
+    this.el.querySelector('.start-sub')!.after(p);
+  }
 }
 
 /** A short note over the beach ("no beach has that code"), gone after a few seconds. */

@@ -52,6 +52,10 @@ Migrations live in `src/migrations.ts` and are applied at startup.
 | `GET /api/checkpoints/:id/fit?beach=` | would it fit there: `{ ok, need, owned, elsewhere, short }` |
 | `POST /api/beaches/mine/:id/restore { checkpoint, mode: strict \| drop-missing }` | put it on that beach (one at a time per person). The beach as it was becomes its "before restoring" checkpoint (`undo`). Strict and short: 409 `{ error: 'short', short }`. Bumps the beach's epoch: a save sending an older `X-Beach-Epoch` gets 409 `restored` |
 | `POST /api/gifts { code, item }` | give one of your items to someone else, by their neighbor code — instant, one atomic statement, 20 an hour (see [SHARING_GIFTING.md](SHARING_GIFTING.md)). |
+| `GET /api/guide`, `POST /api/guide/:step` | the beach guide: steps done; mark one done (once, with its gift; claw, star and invite are checked on the server, 409 until true). See [INVITES_GUIDE.md](INVITES_GUIDE.md) |
+| `GET /api/invites/:code` | who an invite link is from (no session, 30/min per IP): `{ name, welcomeGift }` |
+| `POST /api/referrals/claim { code }` | a new player (account under 7 days old) claims the invite they came through, once: the welcome gift. 400 own code, 404 unknown, 409 already invited or too old |
+| `GET /api/referrals` | your invites: `{ code, joined, settled, friends, ladder, cap, settleSteps, welcomeGift }`. A friend settles in after 3 guide steps; the inviter then gets the next rung (parasol, surfboard, extra beach, …, 10 at most) |
 
 Every request from a client IP (Cloud Run's `x-forwarded-for`) is rate
 limited: 300 a minute on the API, 20 sign-ins a minute; the stores'
@@ -164,6 +168,7 @@ npm run e2e:accounts                    # sign in, dig, save, reload, restored, 
 npm run e2e:neighbors                   # Ana saves; Ben adds her code on his left and sees her beach
 npm run e2e:shore                       # walk down a 3-beach shore, head home, visit by code, favorites
 npm run e2e:leaderboard                 # fans star beaches; the board orders them; star and visit from it
+npm run e2e:invites                     # Fran joins through Ana's link, settles in; Ana is rewarded
 ```
 
 CI runs the server tests on PGlite and on a Postgres 16 service, builds the

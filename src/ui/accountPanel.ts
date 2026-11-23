@@ -32,6 +32,10 @@ function ago(ts: number): string {
 export class AccountPanel {
   private error = '';
   private confirmDelete = 0;
+  /** opens the invite panel (set by main once it exists) */
+  invite?: () => void;
+  /** said above the sign-in buttons instead of "sign in to keep your beach" (an invite) */
+  signInNote = '';
 
   constructor(
     private readonly el: HTMLElement,
@@ -111,7 +115,8 @@ export class AccountPanel {
         }
       });
     } else {
-      box.innerHTML = `<div class="who">sign in to keep your beach</div>`;
+      box.innerHTML = `<div class="who"></div>`;
+      box.querySelector('.who')!.textContent = this.signInNote || 'sign in to keep your beach';
       const buttons = document.createElement('div');
       buttons.className = 'buttons';
       const native = nativeProviders();
@@ -288,6 +293,17 @@ export class AccountPanel {
       snap.textContent = 'share snapshot ↗';
       links.append(view, snap);
       wrap.appendChild(links);
+    }
+    if (this.invite) {
+      // invites (docs/INVITES_GUIDE.md): your link, the gifts, who joined
+      const inv = document.createElement('button');
+      inv.type = 'button';
+      inv.className = 'action invite-open';
+      inv.dataset.act = 'invite-friends';
+      inv.textContent = 'invite friends · you both get a gift';
+      const open = this.invite;
+      inv.addEventListener('click', () => open());
+      wrap.appendChild(inv);
     }
     const help = document.createElement('div');
     help.className = 'status';
