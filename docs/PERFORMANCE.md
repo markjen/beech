@@ -18,7 +18,10 @@ node scripts/perf.mjs --url http://localhost:5173/   # against a dev server inst
 It serves `dist/` itself, opens it in headless Chromium (software GPU), and
 for each scene loads a seeded, realistic mix of things onto the dry sand:
 mostly free rocks, pebbles, driftwood, shells and flags, with about 2 %
-special things (those glow). Then it measures for a few seconds.
+special things (those glow). It waits until 8 seconds of *simulation* time
+have passed (`--settle`), so the sand around new rocks has slumped on any
+machine (CI's runs the sim about 4x slower than a laptop), then measures for a
+few seconds.
 
 | Metric | Kind | What it is |
 |---|---|---|

@@ -155,7 +155,17 @@ for (const n of counts) {
     const b = window.__beech;
     b.send({ type: 'setSand', delta: new Float32Array(b.grid.nx * b.grid.ny), objects });
   }, n);
-  await page.waitForTimeout(3000);
+  // let it settle in *simulation* time (sand slumps around new rocks for a
+  // few sim seconds): a slow CI machine runs the sim slower than real time,
+  // so a fixed wall-clock wait would measure a beach still on the move
+  const settle = await page.evaluate(async (simSeconds) => {
+    const info = () => window.__beech.info();
+    const t0 = info().t;
+    const w0 = performance.now();
+    while (info().t - t0 < simSeconds && performance.now() - w0 < 120000) await new Promise((r) => setTimeout(r, 250));
+    return { sim: info().t - t0, wall: (performance.now() - w0) / 1000 };
+  }, Number(opt.settle ?? 8));
+  say(`perf: ${n} things settled for ${settle.sim.toFixed(1)} sim s (${settle.wall.toFixed(1)} s)`);
   await page.evaluate(() => {
     const p = window.__perf;
     p.ms = 0;
