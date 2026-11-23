@@ -18,6 +18,12 @@ The single list of what's left to do, for the owner and for agents.
   Apple, the payments profile on Google, then create the products and
   notification URLs. Step by step in MOBILE.md, "In-app purchases".
 
+- [ ] **Xsolla account for web checkout**: Publisher Account, agreement,
+  tax and payout; catalog SKUs = product ids; webhook URL; two secrets and
+  the deploy-workflow lines. Step by step in
+  [WEB_PAYMENTS.md](WEB_PAYMENTS.md), "Turning it on". Get the all-in fee
+  in writing first. Then answer that doc's open questions.
+
 - [ ] **Google Cloud project**: run the one-time `gcloud` setup in
   [GCP.md](GCP.md), create the OAuth web client ID, set the GitHub variables,
   then set `GCP_ENABLED=1`.
@@ -90,14 +96,13 @@ The single list of what's left to do, for the owner and for agents.
 - [ ] **A "found" collection**: count what the sea brought in that you kept,
   and show rare finds (it could drop items here later).
 - [ ] **Shop (paid items)**: App Store / Play billing (both stores require
-  their own in-app purchase for digital goods) and Stripe on the web.
-  Purchases are verified on the server, which writes `inventory` rows.
-  Limited items use `available.until` and `expires_at`.
-- [ ] **Web payments (Xsolla)**: plan in [WEB_PAYMENTS.md](WEB_PAYMENTS.md) —
-  Pay Station checkout for store items on the web, direct item grants,
-  promo support; recommends Xsolla over FastSpring (and over the Stripe
-  mention in "Shop (paid items)" above — Stripe would make us the
-  merchant of record). Owner decisions are listed at the end of that doc.
+  their own in-app purchase for digital goods); on the web, Xsolla
+  ([WEB_PAYMENTS.md](WEB_PAYMENTS.md), built). Purchases are verified on
+  the server, which writes `inventory` rows. Limited items use
+  `available.until` and `expires_at`.
+- [ ] **Promo codes on web card payments**: mirror codes into Xsolla and
+  accept `order.promocodes` on `order_paid` (WEB_PAYMENTS.md, "Promo
+  codes"). Only if Mark wants it (open question 2).
 - [ ] **Mystery boxes (paid pulls)**: reuse `draw()` and the pulls table
   once billing exists. Before shipping, check the odds-disclosure rules and
   country restrictions for paid random items.
@@ -135,6 +140,14 @@ The single list of what's left to do, for the owner and for agents.
   shower night.
 
 ## Done (recent)
+
+- [x] **Web checkout through Xsolla** (2026-11-23): reviewed the PR 21 plan
+  and built it — `POST /api/store/web-checkout`, the signed webhook
+  (`order_paid` grants once, `order_canceled`/`refund` revoke, sandbox
+  refused on live), `GET /api/store/web-orders/:id`, migration 13
+  (`web_orders`, `purchases.store` allows `xsolla`), the web shop's card
+  button and the return-from-checkout toast. Off until the Xsolla settings
+  exist. `server/test/webCheckout.test.ts`.
 
 - [x] **QA pass of main** (2026-11-23): neighbor name tags kept on screen
   and off the place card and tool column (`src/ui/tagPlace.ts`, tested);

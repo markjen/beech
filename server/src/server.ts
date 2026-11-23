@@ -22,6 +22,11 @@
 //   GIFT_CODE_PEPPER     pepper for gift card code hashes (Secret Manager).
 //                        Optional in development; set it in production (a
 //                        missing pepper logs a warning and still works).
+//   XSOLLA_PROJECT_ID, XSOLLA_API_KEY, XSOLLA_WEBHOOK_SECRET   web checkout (docs/WEB_PAYMENTS.md;
+//                        the key and webhook secret come from Secret Manager). All three
+//                        set: the web shop takes card payments. Any missing: it doesn't.
+//   XSOLLA_SANDBOX       "1": test payments only (Xsolla sandbox, test cards)
+//   WEB_CHECKOUT_RETURN_URL  where Pay Station returns to (default https://beech.markjen.com/)
 //   ALLOWED_ORIGINS      extra CORS origins, default the Capacitor app shells
 //   DEV_AUTH             "1" enables /api/auth/dev; refused when NODE_ENV=production
 
@@ -39,6 +44,7 @@ import { createPgDb, createPgliteDb, type Db } from './db.js';
 import { migrate } from './migrations.js';
 import { httpLogger, logEvent } from './observability.js';
 import { createSharePageHandler } from './shareMeta.js';
+import { xsollaFromEnv } from './xsolla.js';
 
 const env = process.env;
 const list = (v?: string) => (v ?? '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -68,6 +74,13 @@ const adminTokenHash = env.ADMIN_API_TOKEN ? await hashToken(env.ADMIN_API_TOKEN
 const adminEmails = list(env.ADMIN_EMAILS);
 logEvent('admin_config', { admin_token: !!adminTokenHash, admin_emails: adminEmails.length, code_pepper: !!codePepper });
 
+// Web checkout (docs/WEB_PAYMENTS.md): on only when fully configured, so the
+// server keeps starting after a merge before the Xsolla secrets exist.
+const xsolla = xsollaFromEnv(env);
+if (!xsolla.cfg && xsolla.missing.length < 3)
+  logEvent('web_checkout_config', { warning: `web checkout is off: ${xsolla.missing.join(', ')} not set` }, 'WARNING');
+logEvent('web_checkout_config', { enabled: !!xsolla.cfg, sandbox: !!xsolla.cfg?.sandbox });
+
 const db = await openDb();
 const applied = await migrate(db);
 logEvent('database_ready', { schema: applied });
@@ -91,6 +104,7 @@ const api = createApp(db, {
   adminEmails,
   adminTokenHash,
   codePepper,
+  xsolla: xsolla.cfg ?? undefined,
 });
 
 const publicDir = path.resolve(env.PUBLIC_DIR ?? path.join(here, '..', '..', 'dist'));

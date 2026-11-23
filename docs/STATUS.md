@@ -273,8 +273,12 @@ branch, so the deploy job runs only there. Switch the default branch to
   checks it (Apple: certificate chain to the pinned root plus signature,
   offline; Google: the Play Developer API) and grants once. Unconfirmed
   hand-overs are kept and retried (`beech.pendingPurchases.v1`). On the web
-  the shop says to buy in the app. Development builds use a pretend store
-  (`platform: dev`, DEV_AUTH only).
+  the shop pays through Xsolla Pay Station when the server has it set up
+  (docs/WEB_PAYMENTS.md: `POST /api/store/web-checkout`, a signed webhook
+  grants once, refunds and cancellations revoke; migration 13), and says to
+  buy in the app when it isn't — which is today, until the Xsolla account
+  exists. Promo codes apply to credit only, not card payments.
+  Development builds use a pretend store (`platform: dev`, DEV_AUTH only).
 - **Refunds:** App Store Server Notifications V2 and Play RTDN expire the
   granted items (migration 8: `purchases`, `inventory.purchase_id`).
 - Not tried against the real stores yet: that needs the products set up

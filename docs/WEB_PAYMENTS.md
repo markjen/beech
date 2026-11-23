@@ -1,65 +1,37 @@
 # Web payments: buy store items on the web with Xsolla
 
-The shop sells through Apple and Google today, and the web shop just
-points people at the apps (docs/PRICING.md: "No web payments"). This plan
-adds real web checkout for the same store items, through a merchant of
-record, so a player on beech.markjen.com can pay with a card and get the
-item in their bag — no app install, no card details ever reaching us.
+Status: **built, switched off until the Xsolla account exists.** The server
+code, the web shop and the tests are in; web checkout turns on by itself
+when the three Xsolla settings are present (see "Turning it on"). Until
+then the web shop behaves exactly as before and points people at the apps.
 
-**Recommendation: Xsolla Pay Station.** The comparison and the numbers
-are in "Xsolla vs FastSpring" below. The short version: beech's items cost
-$0.99–$9.99, and FastSpring's $0.95 fixed fee per transaction eats the
-whole price on most of the catalog; Xsolla charges a percentage only.
-Xsolla is also the game-native option (a virtual-items catalog that maps
-1:1 onto our product list), while FastSpring is built for software
-licenses and subscriptions, which beech doesn't have.
+The shop sells through Apple and Google in the apps. This adds real web
+checkout for the same products, through a merchant of record, so a player
+on beech.markjen.com can pay by card and get the item in their bag on
+every device — no app install, and no card details ever reach us.
 
-## How the shop works today
+**Provider: Xsolla Pay Station** (In-Game Store API). The comparison with
+FastSpring is below; the short version is that beech's items cost
+$0.99–$9.99 and FastSpring's reported $0.95 fixed fee per transaction eats
+most of the catalog, while Xsolla charges a percentage only.
 
-- **Products** (`server/src/products.ts`): 10 consumables, $0.99–$9.99
-  US. The server prices from this list; the stores set their own
-  per-country prices. Each product grants items (`grants`) to the bag.
-- **Native purchase** (`POST /store/purchase`): the app pays through
-  StoreKit 2 or Google Play Billing, then hands the proof to the server.
-  The server verifies it (Apple JWS certificate chain in
-  `server/src/store.ts`; Google Play Developer API lookup), then — in one
-  SQL statement — records the transaction in `purchases` and grants the
-  items in `inventory`. `purchases` is `UNIQUE (store, transaction_id)`,
-  so a receipt can't grant twice. Refunds arrive as signed store
-  notifications and expire the granted inventory (`refund()` in
-  `server/src/app.ts`).
-- **Web today** (`src/ui/shop.ts`, `src/net/shop.ts`): the shop shows the
-  same products, but the buy button opens the App Store / Play link
-  ("Get these in the beech app"). The only thing a web player can
-  actually buy is with account credit (`POST /api/store/credit-purchase`,
-  docs/GIFT_CARDS_PROMOS.md) — credit that only comes from gift cards,
-  which only Mark can issue. There is no way to pay on the web.
-- **Apple and Google take 15%** (Small Business Program / the first $1M
-  a year on Google Play) or 30%. On a $2.99 beach that's about $2.54 to
-  us at 15%.
+## What it does
 
-## What web checkout changes
-
-One new way to pay, for the web client only:
-
-- A web player taps Buy in the shop, pays by card (or a local payment
-  method) in Xsolla's checkout, and the item lands in their bag on every
-  device — the same grant the stores give, through the same `purchases`
-  + `inventory` rows.
-- A web purchase **grants the item directly**, like a store purchase. It
-  does **not** add account credit. Credit stays gift-card-only, which
-  keeps one fulfillment path and keeps the gift-card rules
-  (docs/GIFT_CARDS_PROMOS.md) untouched. Selling gift cards on the web
-  is phase 2 (below), not this change.
-- Promo codes work on web checkout, validated and priced server-side
-  exactly as they are for credit purchases. The price always comes from
-  `server/src/products.ts`; the client never supplies a price.
-- The native apps don't change at all: they keep StoreKit / Play
-  Billing, and they must not link or steer players to web checkout
-  (App Store anti-steering). Web checkout lives only in the browser
-  client. The US link-out rules were in flux in late 2026 — re-check the
-  current App Store guidelines when this is implemented, and keep the
-  native buy flow exactly as it is regardless.
+- In the browser (never in the apps), the shop's price button opens
+  Xsolla's secure checkout. The player pays there, comes back to the beach,
+  and the item lands in their bag — the same grant an App Store or Play
+  purchase gives, through the same `purchases` + `inventory` rows.
+- A web purchase **grants the item directly**. It does not add account
+  credit; credit stays gift-card-only (docs/GIFT_CARDS_PROMOS.md).
+- The price comes from `server/src/products.ts`, mirrored as SKUs in the
+  Xsolla catalog. The client never supplies a price, and the server checks
+  what Xsolla charged against its own list before granting.
+- **Promo codes don't discount card payments yet** (see "Promo codes").
+  They keep working with "Buy with credit".
+- The native apps are unchanged: StoreKit / Play Billing only, and they
+  never link or steer to web checkout (App Store anti-steering, Play
+  payments policy). `shopMode()` is `'web'` only in a browser production
+  build; development builds keep the pretend store.
 
 ## Xsolla vs FastSpring
 
@@ -130,270 +102,219 @@ liability all land on us — the whole point of this change is to
 offload exactly that. Revisit only if web volume ever justifies
 running our own tax operation.
 
-## Architecture
+## How it works (as built)
 
 ### Purchase flow
 
-1. Web player taps Buy on a product in the shop (`src/ui/shop.ts`).
-   Web only — `shopMode()` is `'web'`.
-2. Client calls `POST /api/store/web-checkout { productId, promoCode? }`
-   with the session. The server prices from `products.ts`, validates
-   the promo the same way `POST /api/store/quote` does, and creates a
-   `web_orders` row (status `created`, 24 h expiry). It then calls
-   Xsolla to create a payment token for that order: amount, currency,
-   the product SKU, and our user id + web order id in custom
-   parameters. The server returns the Pay Station URL (v1: hosted
-   redirect; embedded SDK later if the redirect feels clunky).
-3. The player pays in Pay Station and is returned to
-   `https://beech.markjen.com/shop?web_order=<id>`. The client polls
-   `GET /api/store/web-orders/:id` until the order is `paid`, then
-   shows "added to your bag" and refreshes the bag and beaches — the
-   same `bought()` refresh the native flow uses. Pending orders are
-   re-checked when the shop opens, mirroring `retryPending()`.
-4. Xsolla calls our webhook. On `payment` / `order_paid` the server
-   verifies the signature, looks up the web order, checks the paid
-   amount against the server-computed price, and grants atomically
-   (below). On `refund` / `order_canceled` it calls the existing
-   `refund()` — the granted items expire, exactly as a store refund
-   does today.
-5. Xsolla also calls `user_validation` before taking payment: the
-   server confirms the account in the token's custom parameters exists
-   and matches the web order, and answers 200. An unknown user gets a
-   4xx and the payment never starts.
+1. **Buy** (`src/ui/shop.ts` → `ShopApi.startWebCheckout`): in web mode, when
+   `GET /api/store/products` says `webCheckout: true`, the price button
+   calls `POST /api/store/web-checkout { productId }`.
+2. **Checkout** (`server/src/app.ts`): the server prices the product, writes a
+   `web_orders` row (`created`), and asks Xsolla for a payment token —
+   `POST https://store.xsolla.com/api/v3/project/{project_id}/admin/payment/token`,
+   Basic auth `project_id:api_key`, body: our user id as `user.id.value`, one
+   item `{ sku: productId, quantity: 1 }`, `settings.external_id` and
+   `custom_parameters.web_order` = our order id, `settings.return_url`,
+   `sandbox` (`server/src/xsolla.ts`). The player's IPv4 goes in `X-User-Ip`
+   (Xsolla needs a country or an IP). Xsolla answers `{ token, order_id }`;
+   the order id is stored on the row. The client is sent to
+   `https://secure.xsolla.com/paystation4/?token=…` (sandbox:
+   `sandbox-secure.xsolla.com`). If the token call fails, the row is deleted
+   and the player sees "try again in a minute".
+3. **Webhook** (`POST /api/store/xsolla/webhook`): Xsolla calls it when the
+   order is paid. The server checks the signature, finds the order, checks
+   it, and grants in one statement (below).
+4. **Return**: Pay Station sends the player to
+   `https://beech.markjen.com/?web_order=<id>` (Xsolla adds `user_id`,
+   `foreignInvoice`, `invoice_id`, `status`). `main.ts` strips those, and
+   once signed in polls `GET /api/store/web-orders/:id` for up to a minute
+   ("Checking your payment…" → "Paid: it's in your bag" and a bag refresh).
+   Order ids are also kept in localStorage and re-checked when the shop
+   opens, so a lost return link still refreshes the bag.
 
-### Data model (migration 13)
+### Webhooks handled
 
-New table `web_orders` — one row per checkout attempt, so a payment
-can always be traced back to a player, a product and a price:
+Xsolla accounts registered after 22 Jan 2025 get everything in
+`order_paid` / `order_canceled`; those are what we act on.
+
+| `notification_type` | What we do |
+|---|---|
+| `user_validation` | 204 if `user.id` is a beech account, else 400 `INVALID_USER`. (Optional for the server-token flow; harmless if Xsolla sends it.) |
+| `order_paid` | Find the order by `order.id` (= stored `provider_order_id`). Check: `user.external_id` is the order's player; `items` is exactly one of the order's SKU; if `order.currency` is USD, `order.amount` equals our price; and a sandbox payment (`order.mode: sandbox` or `dry_run: 1`) is refused unless we are in sandbox mode. Then grant. Any check failing → 400 with Xsolla's code (`INCORRECT_INVOICE`, `INVALID_USER`, `INCORRECT_AMOUNT`, `INVALID_PARAMETER`) and an ERROR log line; nothing granted. |
+| `order_canceled`, `refund` | `refund('xsolla', order id)` — the same path as App Store / Play refunds: the purchase is marked and every item it granted expires, including any the player gifted on. The order becomes `refunded` (was paid) or `canceled` (wasn't). An unknown order is acknowledged (204) so Xsolla doesn't retry for 12 hours. |
+| anything else | 204, logged as ignored. |
+
+A verified, handled webhook always answers 204, including repeats, so
+Xsolla's retries are harmless. A paid order in another currency (Xsolla
+converts at checkout) is granted after the SKU and player checks, and the
+currency is logged.
+
+### Data (migration 13)
 
 ```sql
+ALTER TABLE purchases DROP CONSTRAINT purchases_store_check;
+ALTER TABLE purchases ADD CONSTRAINT purchases_store_check CHECK (store IN ('apple', 'google', 'dev', 'xsolla'));
+
 CREATE TABLE web_orders (
-  id TEXT PRIMARY KEY,              -- our order id (UUID), sent to Xsolla as the external id
-  user_id TEXT NOT NULL REFERENCES users (id),
+  id UUID PRIMARY KEY,                 -- ours; Xsolla's settings.external_id
+  user_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
   product_id TEXT NOT NULL,
-  promo_code TEXT,                  -- NULL when no promo was used
-  amount_cents INTEGER NOT NULL,    -- what we charged: server price after promo
+  amount_cents INTEGER NOT NULL CHECK (amount_cents > 0),
   currency TEXT NOT NULL DEFAULT 'USD',
   provider TEXT NOT NULL DEFAULT 'xsolla',
-  provider_order_id TEXT UNIQUE,    -- Xsolla's order id, filled in on payment
-  status TEXT NOT NULL CHECK (status IN ('created', 'paid', 'refunded', 'canceled', 'expired')),
+  provider_order_id TEXT UNIQUE,       -- Xsolla's order id
+  sandbox BOOLEAN NOT NULL DEFAULT false,
+  status TEXT NOT NULL DEFAULT 'created' CHECK (status IN ('created', 'paid', 'refunded', 'canceled')),
   created_at BIGINT NOT NULL,
   paid_at BIGINT
 );
-CREATE INDEX web_orders_user ON web_orders (user_id, created_at DESC);
 ```
 
-Fulfillment reuses the existing tables — no new grant path:
+The grant is one statement: insert into `purchases` (`store = 'xsolla'`,
+`transaction_id` = Xsolla's order id, `ON CONFLICT DO NOTHING`), mark the
+order `paid`, insert the items into `inventory` with `purchase_id`. The
+`UNIQUE (store, transaction_id)` key makes a retried or concurrent webhook
+grant nothing. An order already canceled isn't revived by a late payment.
+An unpaid order older than 24 hours (a token's life) reads as `expired`
+— computed on read, no sweeper; a payment that still arrives for it is
+granted, because the player paid.
 
-- The grant writes a row to `purchases` with `store = 'xsolla'` and
-  `transaction_id` = Xsolla's transaction id, and the items to
-  `inventory` with `source = 'shop'` and `purchase_id` pointing at it.
-  The `UNIQUE (store, transaction_id)` constraint is the idempotency
-  guard: Xsolla retries webhooks, and a retried `payment` event
-  inserts nothing the second time (the `ON CONFLICT DO NOTHING`
-  pattern already in `POST /store/purchase`).
-- The web order is marked `paid` in the same statement as the grant,
-  so an order can't be paid without granting, or granted without
-  being marked paid.
+### Endpoints
 
-### New endpoints
-
-| Endpoint | Auth | What it does |
+| Endpoint | Auth | |
 |---|---|---|
-| `POST /api/store/web-checkout { productId, promoCode? }` | session, rate-limited (same 30/min limiter as credit purchases) | Prices the product server-side, validates the promo, creates the `web_orders` row, creates the Xsolla payment token, returns the Pay Station URL. 402 if the promo is invalid for this product; 404 for an unknown product. |
-| `POST /api/store/xsolla/webhook` | signature, not session (below) | Dispatches on the event: `user_validation` → confirm the account; `payment` / `order_paid` → verify amount, grant atomically, mark paid; `refund` / `order_canceled` → `refund()`. Always answers 200 on a verified event, even a duplicate (idempotent). |
-| `GET /api/store/web-orders/:id` | session (owner only) | Status of one of your orders, for the return-page poll. 404 for someone else's order. |
+| `POST /api/store/web-checkout { productId }` | session; 10/min per player | → `{ order, url }`. 404 unknown product or checkout off; 400 with a promo code; 502 if Xsolla refuses. |
+| `GET /api/store/web-orders/:id` | session, owner only | → `{ order: { id, productId, amountCents, status, createdAt, paidAt, grants } }`; 404 otherwise. |
+| `POST /api/store/xsolla/webhook` | Xsolla signature | See "Webhooks handled". 404 while checkout is off. |
+| `GET /api/store/products` | none | now also `webCheckout: boolean`. |
 
-### The promo wrinkle (decide at implementation)
+### Security
 
-Credit purchases claim the promo atomically with the payment, because
-payment and grant happen in one statement. Web checkout splits them:
-the player may pay minutes or hours after the token is created, and
-the promo could be exhausted or expired in between. Recommended
-approach: **reserve at checkout creation, claim at grant.** Creating
-the web order inserts a `promo_uses` row marked pending against that
-web order id (with the same expiry as the token); the webhook grant
-finalizes it in the same statement as the grant, and a
-refund/cancel/expiry releases it. If that turns out to be too much
-machinery for v1, the fallback is to validate at creation and
-re-validate at grant, and grant anyway if the promo died in between
-(the player already paid the discounted amount) with an admin-audit
-row — but do not silently charge full price for a discounted checkout.
+- **Signature first.** `Authorization: Signature <sha1(raw body + webhook
+  secret)>`, lower-case hex; verified over the raw request bytes before any
+  parsing, constant-time (`verifyWebhookSignature`). Missing or wrong →
+  400 `INVALID_SIGNATURE`. The webhook secret is separate from the API key.
+- **Never trust the webhook's product, amount or player**: all three are
+  checked against our `web_orders` row, which only our server writes.
+- **Sandbox can't grant on live.** Xsolla's sandbox uses the same project
+  and webhook secret, so a test-card payment arrives correctly signed;
+  production refuses `order.mode: sandbox` / `dry_run: 1`.
+- **Every payment is tied to a signed-in account**: no anonymous checkout,
+  and the grant goes to `web_orders.user_id` only.
+- **No card data** touches our servers (PCI SAQ A); logs carry the event
+  type, outcome and Xsolla order id only, never payer details or keys.
+- Optional hardening for later: Xsolla publishes its webhook sender IP
+  ranges; Cloud Run can't filter by IP without a load balancer, so the
+  signature is the control.
 
-### Security considerations
+### Promo codes
 
-- **Webhook signature, always.** Xsolla signs each webhook with
-  SHA-1 over the raw JSON body plus the webhook secret key, sent in
-  the `Authorization` header. Verify over the **raw body bytes**
-  before parsing (re-serializing parsed JSON changes the hash), with
-  a constant-time compare — reuse the `hashesEqual` pattern from
-  `server/src/giftCards.ts`. Missing or bad signature → 400, no
-  further processing. The webhook secret is distinct from the API
-  key; mixing them up is the classic setup bug, so name the env vars
-  differently and fail boot if the webhook secret is unset in
-  production (same pattern as `ADMIN_API_TOKEN`).
-- **Never trust the webhook's amount or product.** The grant checks
-  the paid amount against the price the server computed for the
-  `web_orders` row (product + promo). A mismatch logs an alert and
-  grants nothing.
-- **Tie every payment to a signed-in account.** The token carries
-  our user id in custom parameters; `user_validation` confirms it;
-  the grant goes to `web_orders.user_id` only. There is no
-  anonymous checkout and no way to redirect a payment to another
-  account.
-- **Idempotency and replays.** The `purchases` unique constraint is
-  the backstop (above). Webhook retries are expected — answer 200
-  fast and make the handler safe to run twice. Keep a short log of
-  processed webhook deliveries for debugging (event type + Xsolla
-  order id + outcome, never card data).
-- **Secrets in Secret Manager, never in the repo** (same pattern as
-  `beech-admin-token` / `beech-gift-code-pepper` in
-  docs/GIFT_CARDS_PROMOS.md): `XSOLLA_MERCHANT_ID`,
-  `XSOLLA_API_KEY`, `XSOLLA_PROJECT_ID`,
-  `XSOLLA_WEBHOOK_SECRET_KEY`, passed to Cloud Run with
-  `--set-secrets` next to `DB_PASSWORD`. The API key creates payment
-  tokens; the webhook secret verifies incoming calls; neither is
-  ever logged.
-- **No card data touches our servers.** The player pays on Xsolla's
-  page. Our PCI scope stays SAQ A. Do not add card fields to our own
-  pages, and do not log webhook bodies that could contain payer
-  details beyond what fulfillment needs.
-- **Rate limits.** Checkout creation is rate-limited per user (same
-  limiter as credit purchases). The webhook endpoint is not
-  session-authenticated, so it relies on the signature alone — that
-  is the intended design, and it must reject unsigned calls fast.
+Xsolla charges its catalog price for a SKU; the In-Game Store token has no
+price override (the older merchant `/token` call that accepts a custom
+amount opens Pay Station for subscriptions only). So a beech promo can't
+discount a card payment without also existing in Xsolla. v1 refuses a
+promo at web checkout with a clear message, and promos keep working with
+credit. To add them: create the same codes in Xsolla's promo campaigns,
+pass `promo_code` on the token call, and on `order_paid` accept
+`order.promocodes[].code` plus the discounted amount, counting the use in
+`promo_uses` in the grant statement.
 
-### Client changes
+## Turning it on
 
-- `src/net/shop.ts`: a `buyOnWeb(productId, promoCode?)` that calls
-  the new checkout endpoint and returns the Pay Station URL; a
-  `webOrderStatus(id)` poll; web-mode pending orders re-checked on
-  shop open (same shape as `retryPending()`).
-- `src/ui/shop.ts`: in web mode the Buy button becomes a real buy
-  (today it opens the app-store link). The button shows the USD
-  price with a "converted at checkout" note — Xsolla converts to the
-  player's local currency inside Pay Station. After the return, the
-  shop shows the paid state from the poll. The "Buy with credit"
-  button is unchanged.
-- No changes to the native buy flow, the native shop UI, or the
-  store verification code.
+1. **Xsolla account (Mark).** Publisher Account, licensing agreement, tax
+   forms, payout details. Get the all-in fee in writing.
+2. **Catalog.** Create one virtual item per product in
+   `server/src/products.ts`, **SKU = product id**, USD price = `usd`
+   (same 10 SKUs). Keep the two in step when products change.
+3. **Webhooks.** Project → Webhooks: URL
+   `https://beech.markjen.com/api/store/xsolla/webhook`; copy the secret key.
+4. **Secrets** (Secret Manager, never the repo):
+   ```sh
+   printf %s "$KEY"    | gcloud secrets create beech-xsolla-api-key --data-file=-
+   printf %s "$SECRET" | gcloud secrets create beech-xsolla-webhook-secret --data-file=-
+   ```
+   Grant the runtime service account `secretAccessor` on both, then add to
+   `.github/workflows/deploy-gcp.yml` — `--set-secrets`:
+   `XSOLLA_API_KEY=beech-xsolla-api-key:latest,XSOLLA_WEBHOOK_SECRET=beech-xsolla-webhook-secret:latest`;
+   `--set-env-vars`: `XSOLLA_PROJECT_ID=<id>` and, for the first round,
+   `XSOLLA_SANDBOX=1`. (Not in the workflow yet: `--set-secrets` with a
+   secret that doesn't exist fails the deploy.)
+5. **Sandbox end to end** with `XSOLLA_SANDBOX=1`: buy with Xsolla's test
+   cards, cancel in Pay Station, refund from Publisher Account; check the
+   bag, the `web_orders` row and the `xsolla_webhook` log lines.
+6. **Live**: drop `XSOLLA_SANDBOX`, buy the $0.99 parasol with a real card,
+   refund it, and check it leaves the bag. Re-check the effective fee after
+   the first month before promoting web checkout anywhere.
 
-## Testing plan
+The server logs `web_checkout_config { enabled, sandbox }` at start, and a
+warning if only some of the three settings are present. Each checkout logs
+`web_checkout`; each webhook logs `xsolla_webhook { type, outcome }` (ERROR
+for refused payments — worth a log-based alert).
 
-- **Unit:** token creation (amount/SKU/user mapping, promo pricing),
-  webhook signature verification (good, bad, missing), grant
-  idempotency (same `payment` event twice grants once), amount
-  mismatch (grants nothing), refund (expires inventory), expired
-  token / canceled order (no grant).
-- **Sandbox end to end:** a sandbox Xsolla project and catalog
-  mirroring `products.ts`; Xsolla's sandbox test cards; a full
-  purchase in the local dev server with the webhook delivered through
-  a tunnel (ngrok / cloudflared) or replayed from a saved fixture;
-  then the same flow against staging Cloud Run with the real webhook
-  URL.
-- **Webhook replay:** save one signed fixture per event type
-  (`user_validation`, `payment`, `refund`, `order_canceled`) and
-  replay them in tests, exactly as the store tests do for Apple and
-  Google notifications.
-- **Failure matrix:** player cancels in Pay Station (order stays
-  `created`, expires, no grant); payment succeeds but the webhook is
-  delayed (return-page poll waits, then the webhook grants — the
-  player must never be told a paid order failed); webhook arrives
-  before the return page polls (grant first, poll sees `paid`);
-  promo exhausted between checkout and payment (see the wrinkle
-  above); Xsolla returns an error creating the token (surface it,
-  no order left `paid`).
-- **Production smoke:** after the first production deploy, buy the
-  cheapest item ($0.99 parasol) with a real card in production, then
-  refund it through Xsolla and confirm the item expires — the same
-  shape as the store refund tests.
+## Tests
 
-## Rollout phases
+- `server/test/webCheckout.test.ts`: signature (good, wrong secret,
+  tampered body, missing, upper-case hex); token body; config gating;
+  checkout (auth, unknown product, promo refused, token failure leaves no
+  order); `user_validation`; grant once under retries and concurrent
+  repeats; a multi-item pack; refused wrong amount / items / quantity /
+  player / order / sandbox-on-live; local-currency payment; refund and
+  cancel revoke; late payment after cancel grants nothing; expiry on read;
+  switched-off server.
+- `tests/webCheckout.test.ts`: the return-link helpers.
+- Before going live: the sandbox run in "Turning it on".
 
-0. **Accounts (Mark, no code).** Xsolla Publisher Account, licensing
-   agreement, tax forms, payout details. Sandbox project + catalog
-   mirroring `server/src/products.ts` (same 10 SKUs, same USD prices).
-   Get the all-in fee in writing.
-1. **Server.** Migration 13 (`web_orders`), token endpoint, webhook
-   endpoint, `GET /api/store/web-orders/:id`, secrets in Secret
-   Manager, deploy-workflow `--set-secrets` wiring. Server tests
-   green, including the webhook fixtures.
-2. **Client.** Web Buy button, Pay Station redirect, return-page
-   poll, pending-order re-check. Typecheck + client suite green.
-3. **Sandbox end to end.** Full purchase, refund, duplicate
-   webhook, cancel — all against the sandbox project.
-4. **Soft launch.** Production keys, one product only (`beach_1`,
-   $2.99) with the rest still app-only, for a week. Watch the
-   observability dashboard (HTTP errors, webhook failures) and the
-   payout report. If the all-in fee comes back materially above the
-   10% estimate, stop here and re-evaluate before going wider.
-5. **All products + promos on web.** The whole catalog, promo codes
-   at checkout, then update docs/PRICING.md (the "No web payments"
-   line goes away) and the shop note.
-6. **Phase 2 (separate plan).** Sell gift cards on the web: a web
-   checkout that issues a gift-card code (or credits the buyer's own
-   account). Needs the issuance path from the admin console reused at
-   payment time; do not fold it into this change.
+## Review of the first draft (PR 21)
 
-## Cost estimate
+What changed from the plan in PR 21, and why:
 
-At today's store volumes the absolute numbers are small; the
-comparison is what matters (table in "Why the fixed fee decides
-it"). At the 5% headline, a $2.99 beach keeps $2.84 on the web vs
-$2.54 through Apple/Google at 15% — about 30¢ more per beach, and
-about $0.60 more than the 30% tier. The web also reaches players who
-never install the app, which the stores can't do at any fee. Fixed
-costs: none known — no monthly fee, no setup fee (verify at signup);
-the only fixed cost is the chargeback fee ($7–15 per card
-chargeback, reported) and whatever the "cost of channel" turns out
-to be. Re-check the effective rate after the first month of real
-volume, per payment method, before expanding the catalog on the web.
+- **The Store API token, not a custom amount.** The plan priced each
+  checkout itself and validated promos into it. Xsolla's server-side item
+  token charges the catalog price by SKU, and the custom-amount token only
+  opens Pay Station for subscriptions, so web prices live in the Xsolla
+  catalog (mirroring `products.ts`) and the webhook checks them.
+- **Promos deferred** for the same reason (see "Promo codes"); the
+  reservation scheme in the draft isn't needed yet.
+- **Schema fixes.** `users.id` is a UUID, not TEXT (the draft's foreign
+  key wouldn't have applied); `purchases.store` has a CHECK that rejected
+  `'xsolla'`, so migration 13 widens it.
+- **`order.id` is the transaction id** — it's in both `order_paid` and
+  `order_canceled`, where the billing transaction id isn't always.
+- **Sandbox payments are refused on live** (missing from the draft: they
+  arrive with a valid signature).
+- **Webhook replies follow Xsolla's contract**: 204 on success, 400 with
+  `{ error: { code } }` on refusal — not "always 200".
+- **Return URL is `/?web_order=`**, not `/shop?…`; the app has no `/shop`
+  route and Xsolla adds its own parameters, which are stripped.
+- **Secrets stay out of the deploy workflow until they exist**, so merging
+  this can't break a deploy.
 
 ## What this deliberately does not do
 
-- **No subscriptions.** Beech sells one-off items; the "Beach club"
-  idea in docs/PRICING.md is a separate decision, and FastSpring's
-  subscription strength is not a reason to pick it.
-- **No paid random draws on the web.** The claw machine stays free;
-  paid mystery boxes need odds, a pity limit and a country check
-  (docs/PRICING.md) — out of scope here.
-- **No web checkout inside the native apps.** The apps keep
-  StoreKit / Play Billing and never link out to web checkout.
-- **No selling gift cards on the web yet.** That's phase 2.
-- **No changing store prices or the credit system.** Web checkout
-  adds a payment path; it doesn't reprice anything or touch how
-  credit works.
+- No subscriptions, no paid random draws, no gift-card sales on the web
+  (a later phase: issue a gift card at payment time), no web checkout
+  inside the native apps, no change to store prices or credit.
 
 ## Open questions for Mark
 
-1. **Confirm Xsolla** (recommended) — or FastSpring, knowing the
-   $0.95-per-transaction fee makes the $0.99–$2.99 items nearly
-   worthless on the web?
-2. **Web prices:** same USD list as the stores, converted by Xsolla
-   at checkout — or localized prices per country set in the Xsolla
-   catalog?
-3. **Refund policy for web purchases:** mirror the stores (refund
-   revokes the item, as `refund()` does) — and who handles a refund
-   request, Mark or Xsolla support?
-4. **Promo reservation:** reserve the promo use at checkout creation
-   (recommended) or accept the rare oversell and grant anyway? (See
-   "The promo wrinkle".)
-5. **Sell gift cards on the web** (phase 2) — or keep gift cards
-   admin-issued only?
-6. **Payout and tax setup:** bank details and tax forms for the
-   Xsolla licensing agreement — Mark to complete in Publisher
-   Account (no code).
-7. **Soft-launch scope:** one product (`beach_1`) for a week, or the
-   whole catalog at once?
+1. **Web prices:** same USD list converted by Xsolla (built this way), or
+   per-country prices in the Xsolla catalog?
+2. **Promos on card payments:** worth mirroring codes into Xsolla, or keep
+   promos for credit only?
+3. **Refunds:** who answers a refund request — Mark, or Xsolla support?
+   (Either way the item leaves the bag automatically.)
+4. **Gift cards on the web** (later phase), or admin-issued only?
+5. **Soft launch:** all products at once, or one product first? Today it's
+   all or nothing; a per-product allowlist is a small change if wanted.
 
 ## Sources
 
-- Xsolla: xsolla.com (5% headline, 1,000+ payment methods, MoR
-  model), developers.xsolla.com (Pay Station token flow, Headless
-  Checkout SDK, webhook setup and signature scheme).
-- FastSpring: fastspring.com, developer.fastspring.com (webhook
-  HMAC-SHA256 scheme, Store Builder Library), docs.fastspring.com
-  (product catalog, embedded checkout).
-- Fee benchmarks (third-party, not vendor-published): the 5.9% +
-  $0.95 FastSpring figure and the 7–10% Xsolla all-in estimate.
-  Verify both in writing before signing anything.
+- Xsolla developer docs: In-Game Store API "create payment token for
+  purchase" (`/v3/project/{project_id}/admin/payment/token`, server
+  `https://store.xsolla.com/api`), Pay Station "create token", webhooks
+  guide (signature generation, response codes, error codes, retry
+  schedule), and the webhooks OpenAPI bundle (`order_paid` /
+  `order_canceled` fields), read 23 Nov 2026.
+- Fee benchmarks are third-party, not vendor-published: the 5.9% + $0.95
+  FastSpring figure and the 7–10% Xsolla all-in estimate. Get both in
+  writing before signing.
