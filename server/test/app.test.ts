@@ -607,6 +607,8 @@ describe('vending machine', () => {
   });
 
   it('a one-of-a-kind item has one owner: the next draw of it gives a rare, a gift moves it', async () => {
+    // earlier random vending pulls in this suite have a 3 % chance of claiming nautilus
+    await db.query("DELETE FROM unique_items WHERE item_id = 'nautilus'");
     // the dice: the unique slot (3 %), first item
     forcedRand = () => 0.01;
     try {

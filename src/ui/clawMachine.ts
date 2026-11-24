@@ -1,7 +1,7 @@
 import type { PullApi, PullPool } from '../net/account';
 import { itemById, prizeName, type Rarity } from '../world/items';
 import { GUIDE_URL } from '../config';
-import { icon, type IconName } from './hud';
+import { itemIcon } from './hud';
 
 /** Capsule colours by rarity (UI only). */
 const CAPSULE: Record<string, string> = {
@@ -230,7 +230,7 @@ export class ClawMachine {
     this.reveal.hidden = false;
     this.reveal.className = `claw-reveal rarity-${p.rarity}`;
     this.reveal.innerHTML = `
-      <div class="claw-prize">${icon(p.item as IconName)}</div>
+      <div class="claw-prize">${itemIcon(p.item)}</div>
       <b>${prizeName(p.item)}</b>
       <span>${RARITY_NAME[p.rarity as Rarity] ?? p.rarity}</span>
       <button type="button" class="claw-place">${placeable ? 'Put it on the beach' : 'Keep it'}</button>`;

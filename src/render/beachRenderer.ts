@@ -173,28 +173,30 @@ export class BeachRenderer {
 
     this.rockMat = this.material('beachFlat', {
       attributes: ['position', 'normal'],
-      uniforms: [...light, 'baseCol', 'fogCol', 'fadeTop', 'fadeBottom'],
+      uniforms: [...light, 'baseCol', 'fogCol', 'fadeTop', 'fadeBottom', 'shine'],
       samplers: [],
     });
     this.rockMat.backFaceCulling = false;
     this.rockMat.setFloat('fadeTop', -2.8);
     this.rockMat.setFloat('fadeBottom', -7.5);
+    this.rockMat.setFloat('shine', 0);
 
     this.buildMeshes();
     this.bindFieldTextures();
   }
 
-  /** A flat-shaded lit material with a fixed colour (props such as shells). */
-  createPropMaterial(color: RGB): ShaderMaterial {
+  /** A flat-shaded lit material with a fixed colour (props such as shells). `shine` is its specular strength, 0 for matte. */
+  createPropMaterial(color: RGB, shine = 0): ShaderMaterial {
     const m = this.material('beachFlat', {
       attributes: ['position', 'normal'],
-      uniforms: ['sunDir', 'sunCol', 'ambCol', 'shadowCol', 'cameraDir', 'baseCol', 'fogCol', 'fadeTop', 'fadeBottom'],
+      uniforms: ['sunDir', 'sunCol', 'ambCol', 'shadowCol', 'cameraDir', 'baseCol', 'fogCol', 'fadeTop', 'fadeBottom', 'shine'],
       samplers: [],
     });
     m.setColor3('baseCol', c3(color));
     m.setColor3('fogCol', c3(color));
     m.setFloat('fadeTop', -40);
     m.setFloat('fadeBottom', -50);
+    m.setFloat('shine', shine);
     m.backFaceCulling = false;
     return m;
   }
