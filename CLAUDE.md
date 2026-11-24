@@ -28,6 +28,8 @@ Read these first:
   `node scripts/shot.mjs http://localhost:5173/ out.png 1280 800 3000`
   (use 390x844 for a phone).
 - The app must stay playable after every commit (a milestone rule).
+- Sandbox build changes (no accounts): `npx vite --port 5173 &` then
+  `npm run e2e:sandbox` (the beach kept on the device, local checkpoints).
 - Performance: changes to rendering, the simulation or the worker messages
   must stay within [perf/budget.json](perf/budget.json): `npm run build &&
   npm run perf`. CI checks it on main and on pull requests; see

@@ -16,6 +16,13 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    date: '2026-11-24',
+    title: 'Rocks stay put',
+    changes: [
+      'Rocks placed against each other no longer pile sand up into a tall spike. Beaches that grew one smooth it away the next time they’re opened.',
+    ],
+  },
+  {
     date: '2026-11-23',
     title: 'A quieter screen, and a guide',
     changes: [

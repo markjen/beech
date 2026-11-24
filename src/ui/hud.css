@@ -1423,3 +1423,17 @@
   font-style: normal;
   opacity: 0.7;
 }
+
+/* the bag's "found" collection */
+.inv-found-list {
+  margin-top: 10px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.inv-found-list p {
+  margin: 4px 0 0;
+  opacity: 0.85;
+}
+.inv-found-list b {
+  margin-right: 4px;
+}

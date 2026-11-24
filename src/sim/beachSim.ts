@@ -1013,6 +1013,12 @@ export class BeachSim {
     const H = this.ny * this.dx;
     const moved: PlacedObject = { ...prev, x: Math.min(W - 0.3, Math.max(0.3, x)), y: Math.min(H - 0.3, Math.max(0.3, y)) };
     delete moved.base; // a rock sits on the sand where it lands
+    // something the sea brought in, picked up and put down: it's yours now,
+    // and the sea won't take it back (the "found" collection)
+    if (moved.wild) {
+      delete moved.wild;
+      moved.found = true;
+    }
     const data = this.objects.add(moved);
     this.undo.push({ i0: 0, j0: 0, w: 0, h: 0, delta: new Float32Array(0), obj: { op: 'move', data: { ...data }, prev } });
     return data;
@@ -1055,21 +1061,28 @@ export class BeachSim {
     const before = this.objects.persisted();
     this.objects.clear();
     const sand = this.sand.slice();
-    const change = new Float32Array(this.n);
     for (let k = 0; k < this.n; k++) {
       const v = this.rest[k] + delta[k];
       this.sand[k] = v < this.bottom[k] ? this.bottom[k] : v;
-      change[k] = this.sand[k] - sand[k];
     }
     this.sediment.fill(0);
     this.easing = [];
-    const after = objects.map((o) => this.objects.add({ ...o, id: undefined }));
+    // an imported beach may carry the old stacked-rock saves: repair
+    // the rocks before embedding them (see loadDelta)
+    const fixed = this.objects.repairLoaded(objects);
+    // the change covers the sand shape including the repair; the rock
+    // lifts are re-applied by embedding on undo/redo, as before
+    const change = new Float32Array(this.n);
+    for (let k = 0; k < this.n; k++) change[k] = this.sand[k] - sand[k];
+    const after = fixed.objects.map((o) => this.objects.add({ ...o, id: undefined }, fixed.noRock ?? undefined));
     this.undo.push({ i0: 0, j0: 0, w: this.nx, h: this.ny, delta: change, swap: { before, after, sand } });
   }
 
   private applySwap(e: UndoEntry, sign: number): boolean {
     const { before, after, sand } = e.swap!;
-    for (const o of sign < 0 ? after : before) this.objects.remove(o.id);
+    // bulk: the sand is overwritten from the snapshot right after, so
+    // there is nothing to restore rock by rock
+    this.objects.clear();
     for (let k = 0; k < this.n; k++) {
       const v = sign < 0 ? sand[k] : sand[k] + e.delta[k];
       this.sand[k] = v < this.bottom[k] ? this.bottom[k] : v;
@@ -1111,7 +1124,11 @@ export class BeachSim {
       this.sand[k] = v < this.bottom[k] ? this.bottom[k] : v;
     }
     this.sediment.fill(0);
-    for (const o of objects) this.objects.add(o);
+    // old saves can hold rocks stacked on each other's lifted sand:
+    // repair them before embedding, or the stack (and its sand pillar)
+    // comes back with the load
+    const fixed = this.objects.repairLoaded(objects);
+    for (const o of fixed.objects) this.objects.add(o, fixed.noRock ?? undefined);
     this.undo.clear();
     this.easing = [];
   }

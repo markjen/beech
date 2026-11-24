@@ -51,10 +51,13 @@ _(nothing right now)_
 
 ## Up next (engineering)
 
-- [ ] **Checkpoints C6** (optional): a small top-down thumbnail on each
-  checkpoint, drawn on the client from its sand; local checkpoints in the
-  sandbox, together with "keep the sandbox beach on the device". See
-  [CHECKPOINTS.md](CHECKPOINTS.md).
+- [ ] **Buried rocks lose cover on reload** (predates the spire fix): a
+  save strips each rock's lift from the sand, so sand piled on a rock is
+  saved as `under + deposit`; on load the rock is embedded with that as
+  its `under`, and the sand comes back at `under + deposit` rather than
+  `top + deposit` — the rock pokes up through its cover by up to its
+  height. Fix: save the deposit separately (or the lifted sand) for cells
+  under rocks, a save-format change (docs/BEACH_FILE.md).
 
 - [ ] **Release setup for native sign-in** (DevOps): Android and iOS OAuth
   clients, build env vars, the Info.plist URL scheme, the Apple capability,
@@ -66,8 +69,6 @@ _(nothing right now)_
 - [ ] **Store privacy forms** (DevOps): the wording is in MOBILE.md.
 - [ ] **More free items**: a bucket that stamps sand castles, and a beach
   umbrella that casts a shadow (needs a shadow decal in the sand shader).
-- [ ] **A "found" collection**: count what the sea brought in that you kept,
-  and show rare finds (it could drop items here later).
 - [ ] **Promo codes on web card payments**: mirror codes into Xsolla and
   accept `order.promocodes` on `order_paid` (WEB_PAYMENTS.md, "Promo
   codes"). Only if Mark wants it (open question 2).
@@ -92,7 +93,6 @@ _(nothing right now)_
 - [ ] Tide-pool life: tiny crabs that scurry away from your finger.
 - [ ] Footprints and a little figure walking the waterline.
 - [ ] Sand-castle bucket stamps as a fourth tool.
-- [ ] Keep the sandbox beach on the device (IndexedDB) between visits.
 - [ ] More real beaches (Reynisfjara, Whitehaven, Navagio…), maybe with
   per-beach slope and sand-grain colour.
 - [ ] Weather: overcast, drizzle and wind, from a live forecast for the beach.
@@ -102,6 +102,19 @@ _(nothing right now)_
 
 ## Done (recent)
 
+- [x] **Checkpoints C6, and the sandbox keeps its beach** (2026-11-24):
+  each checkpoint has a small top-down thumbnail drawn on the device from
+  its sand. The sandbox build (no accounts) now keeps the beach between
+  visits (IndexedDB: saved a few seconds after a change and when the tab
+  goes to the back) and has checkpoints on the device: save, restore (one
+  undo step), rename, delete, export and import beach files
+  (`src/net/localStore.ts`, `src/ui/localCheckpoints.ts`,
+  `npm run e2e:sandbox`).
+- [x] **A "found" collection** (2026-11-24): pick up something the sea
+  brought in (hold on it) and put it down, and it's yours: no longer wild,
+  marked `found`, saved, never taken back. The bag's "Found" section lists
+  what you've kept from the sea and what you've dug up (`GET
+  /api/dig-finds`), with how many were rare or better.
 - [x] **Ask from the shore** (2026-11-24): a beach at the end of a stretch
   (the walk shows a free side) whose matching side of yours is free has
   "ask to be neighbors" on its name tag; it sends the usual request
@@ -128,6 +141,20 @@ _(nothing right now)_
   beach (MULTI_BEACH.md), the shop with App Store / Play billing and web
   checkout (PRICING.md, WEB_PAYMENTS.md), and keeping a beach off the shore
   (the on/off-shore switch on each beach).
+- [x] **Spire spike on Riley's beach** (2026-11-23): a wall of overlapping
+  rocks stacked its sand lifts without bound (each new rock's base was
+  sampled from sand already lifted by earlier rocks) and taking the rocks
+  off left the floor raised, so the leftover column — about 3.6 m on
+  Riley's beach (GJPUDD) — was permanent and survived save/load. Fixed in
+  `src/sim/objects.ts` (rock bases and `under` now come from the terrain
+  with lifts stripped; removal rebuilds the floor from the untouched floor
+  plus the rocks still there; `withoutRocks` peels exactly) and
+  `src/sim/beachSim.ts` (loading an old save that holds stacked rocks — a
+  rock whose centre sits at the height of another rock's dome — re-bases
+  just those rocks and replaces the stacked lift in that cluster with the
+  terrain estimate, so Riley's spire heals the next time her beach is
+  opened; beaches without stacking, including rocks on piles and buried
+  rocks, load exactly as saved). Regression tests in `tests/spike.test.ts`.
 - [x] **Discord links** (2026-11-23, PR #40 draft): the Discord server is
   the feedback channel — "Talk to us" section + footer link on the
   landing page, footer link on the shore site, "Join our Discord" at the

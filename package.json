@@ -25,7 +25,8 @@
     "e2e:shore": "node scripts/shore-e2e.mjs",
     "e2e:beaches": "node scripts/beaches-e2e.mjs",
     "e2e:leaderboard": "node scripts/leaderboard-e2e.mjs",
-    "e2e:checkpoints": "node scripts/checkpoints-e2e.mjs"
+    "e2e:checkpoints": "node scripts/checkpoints-e2e.mjs",
+    "e2e:sandbox": "node scripts/sandbox-e2e.mjs"
   },
   "dependencies": {
     "@babylonjs/core": "8.56.2",

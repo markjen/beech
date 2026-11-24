@@ -229,7 +229,10 @@ accepted the repo's default branch, so the deploy job ran only there.
   ellipse slightly inside the drawn rock. Water flows around them, sand scours
   beside them and settles in their lee, and they can't be dug. Removing one
   gives back the sand that was under it, plus anything that settled on top.
-  Saves store rocks as objects, not sand (`withoutRocks`).
+  Saves store rocks as objects, not sand (`withoutRocks`). Overlapping
+  rocks each sit on the terrain, never on another rock's dome, so their
+  lifts don't stack; loading an old save with stacked rocks re-bases just
+  those and smooths away the spire they built (`repairLoaded`).
 - **Driftwood** floats once the water is deeper than 1.1× its radius,
   follows the current averaged along its length plus a gentle onshore wave
   drift (so it comes ashore rather than out to sea), turns when its two ends

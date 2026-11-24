@@ -827,3 +827,23 @@ body.ambient-idle {
   color: inherit;
   opacity: 0.8;
 }
+
+.checkpoints .cp-row {
+  position: relative;
+  padding-left: 82px;
+  min-height: 72px;
+}
+
+.checkpoints .cp-thumb {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  width: 64px;
+  height: 64px;
+  border-radius: 8px;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+
+.checkpoints .cp-thumb:not([src]) {
+  visibility: visible;
+}

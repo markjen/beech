@@ -213,8 +213,11 @@ export class BeachFileDialog {
   }
 }
 
-/** A small top-down map: water blue, sand by height, objects as dots. Sea at the bottom. */
-function drawMap(canvas: HTMLCanvasElement, beach: ImportedBeach, objects: PlacedObject[]): void {
+/**
+ * A small top-down map: water blue, sand by height, objects as dots. Sea at
+ * the bottom. (Also the checkpoints' thumbnails.)
+ */
+export function drawMap(canvas: HTMLCanvasElement, beach: { nx: number; ny: number; delta: Float32Array }, objects: PlacedObject[]): void {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
   const W = canvas.width;

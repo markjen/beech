@@ -88,6 +88,8 @@ export interface PlacedObject {
   variant: number;
   /** brought in by the sea rather than put there by you */
   wild?: boolean;
+  /** brought in by the sea, and kept: you picked it up and put it down (the "found" collection) */
+  found?: boolean;
 }
 
 /** What the renderer needs each frame. */
@@ -111,14 +113,17 @@ export interface ObjectHost {
 
 interface RockCells {
   cells: Int32Array;
-  /** floor before the rock */
-  prevBottom: Float32Array;
   /** sand surface before the rock (kept for saving) */
   under: Float32Array;
   /** rock top height per cell */
   top: Float32Array;
   /** sand height at the centre when placed: where the rock sits */
   base: number;
+  /** footprint bounds in cells, for overlap checks on removal */
+  i0: number;
+  j0: number;
+  i1: number;
+  j1: number;
 }
 
 interface Live {
@@ -155,11 +160,14 @@ export class BeachObjects {
   private nextId = 1;
   private washClock: number;
   private rand: () => number;
+  /** the untouched floor, before any rock raised it */
+  private readonly floor0: Float32Array;
 
   constructor(
     private readonly h: ObjectHost,
     seed = 1,
   ) {
+    this.floor0 = this.h.bottom.slice();
     let st = (Math.imul(seed | 0, 2654435761) ^ 0x5bd1e995) >>> 0 || 1;
     this.rand = () => {
       st ^= st << 13;
@@ -176,7 +184,12 @@ export class BeachObjects {
 
   /** Sand height (bilinear) at sim metres. */
   sandAt(x: number, y: number): number {
-    const { nx, ny, dx, sand } = this.h;
+    return this.sampleField(this.h.sand, x, y);
+  }
+
+  /** Bilinear sample of any grid field at sim metres. */
+  private sampleField(field: Float32Array, x: number, y: number): number {
+    const { nx, ny, dx } = this.h;
     const fi = Math.min(nx - 1.001, Math.max(0, x / dx - 0.5));
     const fj = Math.min(ny - 1.001, Math.max(0, y / dx - 0.5));
     const i = fi | 0;
@@ -184,7 +197,33 @@ export class BeachObjects {
     const tx = fi - i;
     const ty = fj - j;
     const k = j * nx + i;
-    return (sand[k] * (1 - tx) + sand[k + 1] * tx) * (1 - ty) + (sand[k + nx] * (1 - tx) + sand[k + nx + 1] * tx) * ty;
+    return (field[k] * (1 - tx) + field[k + 1] * tx) * (1 - ty) + (field[k + nx] * (1 - tx) + field[k + nx + 1] * tx) * ty;
+  }
+
+  /**
+   * The sand field with every live rock's lift stripped: what the sand
+   * would be if the rocks were not there (the terrain, plus anything
+   * piled above the highest rock top). Exact for overlapping rocks, in
+   * any order: each rock's `under` is the terrain at the time it was
+   * embedded, so for a cell the rock with the highest top gives
+   * terrain + deposits, and the minimum over the covering rocks is that.
+   */
+  private stripLifts(field: Float32Array): Float32Array {
+    const out = field.slice();
+    for (const l of this.live.values()) {
+      if (!l.rock) continue;
+      const rc = l.rock;
+      for (let n = 0; n < rc.cells.length; n++) {
+        const k = rc.cells[n];
+        // sand above the higher of the rock's top and what was under it
+        // is a deposit, not lift; measuring above the top alone would
+        // double-count terrain that already stood above the top (a slope,
+        // a pile beside the centre)
+        const cand = rc.under[n] + Math.max(0, field[k] - Math.max(rc.top[n], rc.under[n]));
+        if (cand < out[k]) out[k] = cand;
+      }
+    }
+    return out;
   }
 
   private cellAt(x: number, y: number): number {
@@ -194,13 +233,25 @@ export class BeachObjects {
     return j * nx + i;
   }
 
-  /** Put something on the beach. Returns it with its id. */
-  add(o: Omit<PlacedObject, 'id'> & { id?: number }): PlacedObject {
+  /**
+   * Put something on the beach. Returns it with its id.
+   * `noRock` is the sand field with no rock lifts in it (terrain +
+   * deposits); a fresh rock's base and `under` are sampled from it, so a
+   * rock placed on another rock's dome sits on the terrain underneath,
+   * not on the dome — rocks never stack their lifts. Callers loading a
+   * beach pass the repaired field; everyone else leaves it out and the
+   * lifts are stripped from the live sand here.
+   */
+  add(o: Omit<PlacedObject, 'id'> & { id?: number }, noRock?: Float32Array): PlacedObject {
     const data: PlacedObject = { ...o, id: o.id ?? this.nextId++ };
     this.nextId = Math.max(this.nextId, data.id + 1);
-    if (data.kind === 'rock' && data.base === undefined) data.base = this.sandAt(data.x, data.y);
-    const l: Live = { data, z: this.sandAt(data.x, data.y), floating: false, vx: 0, vy: 0, spin: 0 };
-    if (data.kind === 'rock') l.rock = this.embedRock(data);
+    const terrain = noRock ?? this.stripLifts(this.h.sand);
+    if (data.kind === 'rock' && data.base === undefined) data.base = this.sampleField(terrain, data.x, data.y);
+    // a rock sits at its base, not at the lifted sand under it (a rock
+    // re-added on top of another rock's dome would otherwise report the
+    // dome height until the next step corrects it)
+    const l: Live = { data, z: data.kind === 'rock' ? data.base! : this.sandAt(data.x, data.y), floating: false, vx: 0, vy: 0, spin: 0 };
+    if (data.kind === 'rock') l.rock = this.embedRock(data, terrain);
     this.live.set(data.id, l);
     this.version++;
     return data;
@@ -209,8 +260,10 @@ export class BeachObjects {
   remove(id: number): PlacedObject | null {
     const l = this.live.get(id);
     if (!l) return null;
-    if (l.rock) this.liftRock(l.rock);
+    // off the roster first: lifting the rock rebuilds the floor from the
+    // rocks still there, and this one must not count
     this.live.delete(id);
+    if (l.rock) this.liftRock(l.rock);
     this.version++;
     // report where it actually was (driftwood may have drifted)
     return { ...l.data };
@@ -243,8 +296,17 @@ export class BeachObjects {
     return { data, lift };
   }
 
+  /**
+   * Take everything off at once. The floor goes back to the untouched
+   * beach; the sand is left alone — every caller overwrites it right
+   * after (load, import, whole-beach swap), so restoring it cell by
+   * cell here would be thrown away. Do not use this for a single
+   * removal: `remove` rebuilds the floor and sand for that rock.
+   */
   clear(): void {
-    for (const id of [...this.live.keys()]) this.remove(id);
+    this.h.bottom.set(this.floor0);
+    this.live.clear();
+    this.version++;
   }
 
   /** The nearest object within `radius` metres of a point, if any. */
@@ -272,14 +334,17 @@ export class BeachObjects {
     return out;
   }
 
-  private embedRock(o: PlacedObject): RockCells {
-    const { nx, ny, dx, sand, bottom } = this.h;
+  /**
+   * The cells a rock covers and the top height at each, from its
+   * geometry alone. The footprint does not depend on the base; the tops
+   * do. Shared by embedding and by the load repair, which needs the
+   * footprints before any rock is live.
+   */
+  private rockFootprint(o: PlacedObject, base: number): { cells: Int32Array; top: Float32Array; i0: number; j0: number; i1: number; j1: number } {
+    const { nx, ny, dx } = this.h;
     // a little inside the drawn rock, so the rock always covers the sand it lifts
     const rx = o.size * 0.88;
     const ry = o.size * (0.7 + 0.3 * frac(o.variant * 0.618)) * 0.88;
-    // where the rock sits: the height it was placed at, not the sand now
-    // (which may already be lifted by this or another rock)
-    const base = o.base ?? this.sandAt(o.x, o.y);
     const H = o.size * ROCK_HEIGHT * 0.75;
     const c = Math.cos(o.angle);
     const s = Math.sin(o.angle);
@@ -288,6 +353,10 @@ export class BeachObjects {
     const r = Math.ceil(rx / dx) + 1;
     const ci = Math.floor(o.x / dx);
     const cj = Math.floor(o.y / dx);
+    let i0 = nx;
+    let j0 = ny;
+    let i1 = -1;
+    let j1 = -1;
     for (let j = Math.max(0, cj - r); j <= Math.min(ny - 1, cj + r); j++) {
       for (let i = Math.max(0, ci - r); i <= Math.min(nx - 1, ci + r); i++) {
         const px = (i + 0.5) * dx - o.x;
@@ -298,19 +367,34 @@ export class BeachObjects {
         if (q >= 1) continue;
         cells.push(j * nx + i);
         tops.push(base + H * Math.sqrt(1 - q));
+        if (i < i0) i0 = i;
+        if (i > i1) i1 = i;
+        if (j < j0) j0 = j;
+        if (j > j1) j1 = j;
       }
     }
+    return { cells: Int32Array.from(cells), top: Float32Array.from(tops), i0, j0, i1, j1 };
+  }
+
+  private embedRock(o: PlacedObject, terrain: Float32Array): RockCells {
+    const { sand, bottom } = this.h;
+    // where the rock sits: the height it was placed at, not the sand now
+    // (which may already be lifted by another rock)
+    const base = o.base ?? this.sampleField(terrain, o.x, o.y);
+    const fp = this.rockFootprint(o, base);
     const rc: RockCells = {
-      cells: Int32Array.from(cells),
-      prevBottom: new Float32Array(cells.length),
-      under: new Float32Array(cells.length),
-      top: Float32Array.from(tops),
+      cells: fp.cells,
+      under: new Float32Array(fp.cells.length),
+      top: fp.top,
       base,
+      i0: fp.i0,
+      j0: fp.j0,
+      i1: fp.i1,
+      j1: fp.j1,
     };
-    for (let n = 0; n < cells.length; n++) {
-      const k = cells[n];
-      rc.prevBottom[n] = bottom[k];
-      rc.under[n] = sand[k];
+    for (let n = 0; n < fp.cells.length; n++) {
+      const k = fp.cells[n];
+      rc.under[n] = terrain[k];
       if (bottom[k] < rc.top[n]) bottom[k] = rc.top[n];
       if (sand[k] < rc.top[n]) sand[k] = rc.top[n];
     }
@@ -319,26 +403,183 @@ export class BeachObjects {
 
   private liftRock(rc: RockCells): void {
     const { sand, bottom } = this.h;
+    // The floor under the removed rock is the untouched floor, raised to
+    // the top of any rock still covering the cell. The old code restored
+    // a per-rock snapshot taken at embed time, which was stale whenever
+    // another rock had been placed on top since — taking overlapping
+    // rocks off in placement order left the floor (and the sand) raised.
+    const inFootprint = new Set<number>(rc.cells);
+    for (let n = 0; n < rc.cells.length; n++) bottom[rc.cells[n]] = this.floor0[rc.cells[n]];
+    for (const l of this.live.values()) {
+      if (!l.rock) continue;
+      const other = l.rock;
+      if (other.i1 < rc.i0 || other.i0 > rc.i1 || other.j1 < rc.j0 || other.j0 > rc.j1) continue;
+      for (let m = 0; m < other.cells.length; m++) {
+        const k = other.cells[m];
+        if (inFootprint.has(k) && other.top[m] > bottom[k]) bottom[k] = other.top[m];
+      }
+    }
     for (let n = 0; n < rc.cells.length; n++) {
       const k = rc.cells[n];
-      // keep any sand that settled on the rock; give back what was under it
-      const onTop = Math.max(0, sand[k] - rc.top[n]);
-      bottom[k] = rc.prevBottom[n];
+      // keep any sand that settled on the rock; give back what was under it.
+      // Sand above the higher of the top and the under is a deposit — it
+      // stays. Measuring above the top alone would double-count terrain
+      // that already stood above the top (a slope, a pile beside the
+      // centre).
+      const onTop = Math.max(0, sand[k] - Math.max(rc.top[n], rc.under[n]));
       sand[k] = Math.max(bottom[k], rc.under[n] + onTop);
     }
   }
 
   /** For saving: what the sand would be without the rocks. */
   withoutRocks(sandCopy: Float32Array): Float32Array {
-    for (const l of this.live.values()) {
-      if (!l.rock) continue;
-      const rc = l.rock;
-      for (let n = 0; n < rc.cells.length; n++) {
-        const k = rc.cells[n];
-        sandCopy[k] = rc.under[n] + Math.max(0, sandCopy[k] - rc.top[n]);
+    return this.stripLifts(sandCopy);
+  }
+
+  /**
+   * Repair rocks from an old save (or an imported beach) before they are
+   * embedded. Old saves can hold rocks whose bases were sampled from
+   * sand already lifted by earlier rocks, so a wall of overlapping rocks
+   * stacks higher and higher and its sand is a pillar.
+   *
+   * The repair only runs when it finds that stacking: a rock whose centre
+   * sits on another rock's dome, at (or above) the height of that dome
+   * (see `stackedRocks`). The current code never saves that — a new
+   * rock's base is the terrain under the dome — so a healthy beach,
+   * including rocks on piles and rocks buried under sand, loads exactly
+   * as saved (`noRock` null: the exact strip is used instead).
+   *
+   * When it does run, it only touches the stacked rocks and the rocks
+   * they sit on: the stacked ones are re-based to the sand around them,
+   * and sand inside that cluster's footprints standing more than 25 cm
+   * above what the re-based rocks justify is replaced with the terrain
+   * estimate plus that margin. Everything else on the beach is left
+   * alone. Idempotent: a repaired beach is no longer stacked.
+   */
+  repairLoaded(objects: PlacedObject[]): { objects: PlacedObject[]; noRock: Float32Array | null } {
+    const { stacked, cluster } = this.stackedRocks(objects);
+    if (stacked.size === 0) return { objects, noRock: null };
+    const { nx, ny, sand } = this.h;
+    const n = nx * ny;
+    // union of all rock footprints (the terrain estimate samples outside
+    // every rock), and the cluster's footprints (the only cells repaired)
+    const inU = new Uint8Array(n);
+    const inC = new Uint8Array(n);
+    objects.forEach((o, idx) => {
+      if (o.kind !== 'rock') return;
+      const fp = this.rockFootprint(o, 0);
+      for (let m = 0; m < fp.cells.length; m++) {
+        inU[fp.cells[m]] = 1;
+        if (cluster.has(idx)) inC[fp.cells[m]] = 1;
+      }
+    });
+    // terrain estimate: the sand outside the footprints, filled inward so
+    // every cell under a rock takes the nearest sand outside the wall
+    const terrain = new Float32Array(n);
+    const filled = new Uint8Array(n);
+    const queue = new Int32Array(n);
+    let qh = 0;
+    let qt = 0;
+    for (let k = 0; k < n; k++) {
+      if (inU[k]) continue;
+      terrain[k] = sand[k];
+      filled[k] = 1;
+      queue[qt++] = k;
+    }
+    if (qt === 0) return { objects, noRock: null }; // rocks cover the whole beach: nothing to sample
+    while (qh < qt) {
+      const k = queue[qh++];
+      const i = k % nx;
+      const j = (k / nx) | 0;
+      const v = terrain[k];
+      if (i > 0 && !filled[k - 1]) { filled[k - 1] = 1; terrain[k - 1] = v; queue[qt++] = k - 1; }
+      if (i < nx - 1 && !filled[k + 1]) { filled[k + 1] = 1; terrain[k + 1] = v; queue[qt++] = k + 1; }
+      if (j > 0 && !filled[k - nx]) { filled[k - nx] = 1; terrain[k - nx] = v; queue[qt++] = k - nx; }
+      if (j < ny - 1 && !filled[k + nx]) { filled[k + nx] = 1; terrain[k + nx] = v; queue[qt++] = k + nx; }
+    }
+    // re-base the stacked rocks: a rock sits on the terrain around it,
+    // never on lifted sand. Sample the terrain in the rock's own row,
+    // where the rest profile is flat: the BFS fill's nearest outside cell
+    // can be rows away, and on the sloping beach that reads the terrain
+    // low by the slope.
+    const newTops = new Float32Array(n);
+    const fixed = objects.map((o, idx) => {
+      if (o.kind !== 'rock') return { ...o };
+      let base = o.base;
+      if (stacked.has(idx)) {
+        let around = this.sampleField(terrain, o.x, o.y);
+        const ci = Math.min(nx - 1, Math.max(0, Math.floor(o.x / this.h.dx)));
+        const cj = Math.min(ny - 1, Math.max(0, Math.floor(o.y / this.h.dx)));
+        for (let d = 0; d < nx; d++) {
+          if (ci - d >= 0 && !inU[cj * nx + ci - d]) { around = terrain[cj * nx + ci - d]; break; }
+          if (ci + d < nx && !inU[cj * nx + ci + d]) { around = terrain[cj * nx + ci + d]; break; }
+        }
+        if (base === undefined || around < base) base = around;
+      }
+      if (cluster.has(idx) && base !== undefined) {
+        const fp = this.rockFootprint(o, base);
+        for (let m = 0; m < fp.cells.length; m++) {
+          const k = fp.cells[m];
+          if (fp.top[m] > newTops[k]) newTops[k] = fp.top[m];
+        }
+      }
+      return { ...o, base };
+    });
+    // The pre-rock sand under the cluster: sand standing at most 25 cm
+    // above the re-based tops (or the terrain) is kept as it is. Anything
+    // higher is stacked lift from the old saves: it is replaced by the
+    // terrain plus the same 25 cm margin. This mutates the host sand in
+    // place, before the rocks are embedded, so `under` is the estimate
+    // and taking a rock off later gives the estimate back exactly.
+    const noRock = sand.slice();
+    for (let k = 0; k < n; k++) {
+      if (!inC[k]) continue;
+      const excess = sand[k] - Math.max(newTops[k], terrain[k]);
+      if (excess > 0.25) {
+        noRock[k] = terrain[k] + 0.25;
+        sand[k] = noRock[k];
       }
     }
-    return sandCopy;
+    return { objects: fixed, noRock };
+  }
+
+  /**
+   * Which saved rocks were stacked by the old code. Rock B is stacked when
+   * its centre lies on rock A's dome where the dome rises at least 10 cm,
+   * and B's saved base is at (or above, within 5 cm) the dome's height
+   * there: the old code sampled B's base from the sand A had lifted. The
+   * current code samples the terrain under the dome, so B's base is the
+   * sand under A plus whatever is piled on A — it only reaches A's dome
+   * height if A is buried by about its own height first, which is rare.
+   * `cluster` is the stacked rocks plus the rocks they sit on (indices
+   * into `objects`).
+   */
+  private stackedRocks(objects: PlacedObject[]): { stacked: Set<number>; cluster: Set<number> } {
+    const stacked = new Set<number>();
+    const cluster = new Set<number>();
+    const rocks: { idx: number; o: PlacedObject; fp: ReturnType<BeachObjects['rockFootprint']> }[] = [];
+    objects.forEach((o, idx) => {
+      if (o.kind === 'rock' && o.base !== undefined) rocks.push({ idx, o, fp: this.rockFootprint(o, o.base) });
+    });
+    const { nx } = this.h;
+    for (const b of rocks) {
+      const kb = this.cellAt(b.o.x, b.o.y);
+      const ib = kb % nx;
+      const jb = (kb / nx) | 0;
+      for (const a of rocks) {
+        if (a === b) continue;
+        if (ib < a.fp.i0 || ib > a.fp.i1 || jb < a.fp.j0 || jb > a.fp.j1) continue;
+        const m = a.fp.cells.indexOf(kb);
+        if (m < 0) continue;
+        const lift = a.fp.top[m] - a.o.base!;
+        if (lift >= 0.1 && b.o.base! >= a.fp.top[m] - 0.05) {
+          stacked.add(b.idx);
+          cluster.add(b.idx);
+          cluster.add(a.idx);
+        }
+      }
+    }
+    return { stacked, cluster };
   }
 
   /** For tests: the sea brings the next thing in on the next step. */
