@@ -62,4 +62,9 @@ describe('the guide catalog', () => {
   it('never mentions the claw’s starter gifts', () => {
     expect(guideHtml(GUIDE_NOW).toLowerCase()).not.toContain('starter');
   });
+
+  it('uses each section id only once', () => {
+    const ids = [...guideHtml(GUIDE_NOW).matchAll(/ id="([^"]+)"/g)].map((m) => m[1]);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
 });

@@ -195,7 +195,7 @@ const NAV_SECTIONS: [string, string][] = [
   ['checkpoints', 'Checkpoints'],
   ['files', 'Beach files'],
   ['shop', 'Shop'],
-  ['catalog', 'Item catalog'],
+  ['item-catalog', 'Item catalog'],
   ['settings', 'Settings'],
   ['limits', 'Limits'],
 ];
@@ -292,7 +292,7 @@ ${catalogSection(now)}
 <p>Make an item for Beech and <a href="https://beechshore.com/submit">submit it on beechshore</a>. You can propose a price and how often it should appear. If your item is approved and sold, you earn 30% in Beech account credit to spend in the web shop.</p>
 <p>Rare and legendary things glow and sparkle on the sand; lamps and flames glow at night.</p>
 
-<h2 id="catalog">Item catalog</h2>
+<h2 id="item-catalog">Item catalog</h2>
 <p>Every item in the game — free things, claw and vending prizes, and shop pieces — is listed on beechshore, with a picture, its size and price, and how to get it: <a href="https://beechshore.com/items">beechshore.com/items</a>. Sign in there to vote for the items you like and leave a comment on any of them.</p>
 
 <h2 id="settings">Settings</h2>
