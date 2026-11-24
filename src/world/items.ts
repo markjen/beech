@@ -38,6 +38,11 @@ export const ITEMS: Item[] = [
   { id: 'driftwood', name: 'Driftwood', kind: 'driftwood', rarity: 'common', source: 'free', unlimited: true, size: [0.5, 3.2], variants: 6 },
   { id: 'shell', name: 'Shell', kind: 'shell', rarity: 'common', source: 'free', unlimited: true, size: [0.05, 0.5], variants: 8 },
   { id: 'seaglass', name: 'Sea glass', kind: 'seaglass', rarity: 'common', source: 'free', unlimited: true, size: [0.05, 0.16], variants: 4 },
+  // wash-ashore finds: the sea brings these in on its own (washIn in
+  // src/sim/objects.ts). Pick one up and put it down and it's yours.
+  { id: 'trash', name: 'Trash', kind: 'trash', rarity: 'common', source: 'free', unlimited: true, size: [0.08, 0.25], variants: 3 },
+  { id: 'seaweed', name: 'Seaweed', kind: 'seaweed', rarity: 'common', source: 'free', unlimited: true, size: [0.15, 0.6], variants: 3 },
+  { id: 'cowrie', name: 'Cowrie', kind: 'shell', rarity: 'rare', source: 'free', unlimited: true, size: [0.05, 0.2], variants: 3 },
   { id: 'flag', name: 'Flag', kind: 'flag', rarity: 'common', source: 'free', unlimited: true, size: [0.4, 0.4], variants: 4, fixedSize: true },
   // won from the claw machine (server/src/pulls.ts); you can place as many as you own
   { id: 'conch', name: 'Conch', kind: 'conch', rarity: 'common', source: 'pull', unlimited: false, size: [0.1, 0.35], variants: 3 },

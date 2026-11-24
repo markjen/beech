@@ -18,19 +18,28 @@ Unlimited, yours from the start. Place as many as you like.
 | Driftwood | `driftwood` | common | 0.5–3.2 | 6 | float | `src/render/objects.ts` |
 | Shell | `shell` | common | 0.05–0.5 | 8 | tumble | `src/render/objects.ts` |
 | Sea glass | `seaglass` | common | 0.05–0.16 | 4 | tumble | `src/render/objects.ts` |
+| Trash | `trash` | common | 0.08–0.25 | 3 | tumble | `src/render/objects.ts` |
+| Seaweed | `seaweed` | common | 0.15–0.6 | 3 | tumble | `src/render/objects.ts` |
+| Cowrie | `shell` | rare | 0.05–0.2 | 3 | tumble | `src/render/objects.ts` |
 | Flag | `flag` | common | 0.4 fixed | 4 | fixed | `src/render/objects.ts` |
 
 ## Wash-ashore finds
 
 Things the sea brings in on its own (`washIn` in `src/sim/objects.ts`,
-at most 6 wild things at a time). Pick one up and put it down and it's
-yours — the bag's "Found" section lists what you've kept from the sea.
+at most 6 wild things at a time). Pick one up and put it down to keep it.
+The bag's "Found" section lists how many of each item you've kept from the sea.
 
 | Item | Kind | Rarity | Size (m) | Variants | Behaviour | Mesh |
 |---|---|---|---|---|---|---|
-| Driftwood (also in the bag) | `driftwood` | common | 0.7–1.8 | 6 | float | `src/render/objects.ts` |
-| Shell (also in the bag) | `shell` | common | 0.07–0.13 | 6 | tumble | `src/render/objects.ts` |
-| Sea glass (also in the bag) | `seaglass` | common | 0.07–0.11 | 4 | tumble | `src/render/objects.ts` |
+| Driftwood | `driftwood` | common | 0.7–1.8 | 6 | float | `src/render/objects.ts` |
+| Shell | `shell` | common | 0.07–0.13 | 6 | tumble | `src/render/objects.ts` |
+| Sea glass | `seaglass` | common | 0.07–0.11 | 4 | tumble | `src/render/objects.ts` |
+| Trash | `trash` | common | 0.08–0.25 | 3 | tumble | `src/render/objects.ts` |
+| Seaweed | `seaweed` | common | 0.15–0.6 | 3 | tumble | `src/render/objects.ts` |
+| Cowrie | `shell` | rare | 0.05–0.2 | 3 | tumble | `src/render/objects.ts` (shell mesh with spots) |
+
+Wash-in weights (of each thing the sea brings in): driftwood 35%,
+shell 22%, sea glass 15%, seaweed 12%, cowrie 8%, trash 8%.
 
 ## Claw pool
 
@@ -108,8 +117,6 @@ Things you own that aren't placed on the sand: **Extra beach**
 Rose's Discord #feedback (2026-11-23), approved by Mark (2026-11-24).
 Each lands as its own PR; the tables above grow with it.
 
-- **Wash-ashore finds** (`feat/wash-ashore-finds`): `trash`, `seaweed`,
-  `cowrie` — new kinds washing in alongside shells and sea glass.
 - **Vending Week 2 "Beach day"** (`feat/vending-week2-beach-day`):
   `beach-ball`, `sandals`, `bucket` — a mixed set with Week 1 items,
   because three new items can't fill all four tiers.

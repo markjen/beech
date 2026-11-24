@@ -29,6 +29,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       'The golden sand dollar is now giant: it starts at twice the size of the largest regular sand dollar and scales up from there.',
       'Sand piled over rocks now stays over them when you reload, export a beach, or restore a checkpoint.',
       'Rocks placed against each other no longer pile sand up into a tall spike. Beaches that grew one smooth it away the next time they’re opened.',
+      'The sea now brings in more than shells and sea glass: a crumpled bright bottle or can, a strand of seaweed, and a spotted cowrie now and then. Pick one up and put it down and it’s yours — the bag’s “Found” section keeps track.',
     ],
   },
   {

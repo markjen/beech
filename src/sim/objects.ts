@@ -9,6 +9,9 @@
 //             different flow, and is stranded where the backwash leaves it.
 //  shell,     Small and heavy for their size: they sit on the sand and are
 //  seaglass   rolled along by fast water (swash and backwash), then settle.
+//  trash,     A crumpled bottle or can: light, so the swash rolls it along
+//  seaweed    like a shell, until it snags on the sand. Seaweed is a strand
+//             or clump lying flat: the water slides it about, then leaves it.
 //  flag       Pushed into the sand: stays put.
 //
 // Now and then the sea also brings things in by itself (driftwood far out,
@@ -20,6 +23,8 @@ export type ObjectKind =
   | 'driftwood'
   | 'shell'
   | 'seaglass'
+  | 'trash'
+  | 'seaweed'
   | 'flag'
   | 'conch'
   | 'sanddollar'
@@ -35,7 +40,7 @@ export type ObjectKind =
   | 'lighthouse'
   | 'tikitorch';
 export const OBJECT_KINDS: ObjectKind[] = [
-  'rock', 'driftwood', 'shell', 'seaglass', 'flag', 'conch', 'sanddollar', 'starfish', 'bottle', 'nautilus', 'deckchair',
+  'rock', 'driftwood', 'shell', 'seaglass', 'trash', 'seaweed', 'flag', 'conch', 'sanddollar', 'starfish', 'bottle', 'nautilus', 'deckchair',
   'parasol', 'surfboard', 'sandcastle', 'beachhut', 'lighthouse', 'tikitorch',
 ];
 
@@ -45,6 +50,10 @@ const BEHAVIOUR: Record<ObjectKind, Behaviour> = {
   driftwood: 'float',
   shell: 'tumble',
   seaglass: 'tumble',
+  // trash and seaweed tumble like shells: the swash rolls them along,
+  // then they settle on the sand
+  trash: 'tumble',
+  seaweed: 'tumble',
   flag: 'fixed',
   conch: 'tumble',
   sanddollar: 'tumble',
@@ -705,7 +714,7 @@ export class BeachObjects {
     }
   }
 
-  /** The sea brings in a piece of driftwood, a shell or a bit of sea glass. */
+  /** The sea brings in driftwood, shells, sea glass — and now trash, seaweed and cowries too. */
   private washIn(dt: number): void {
     this.washClock -= dt;
     if (this.washClock > 0) return;
@@ -714,8 +723,9 @@ export class BeachObjects {
     const r = this.rand();
     const x = 2 + this.rand() * (nx * dx - 4);
     let item: Omit<PlacedObject, 'id'>;
-    if (r < 0.4) {
-      // out at sea; the waves carry it in
+    // out at sea; the waves carry it in. Driftwood is still the most
+    // common thing the sea brings: 35%.
+    if (r < 0.35) {
       item = { kind: 'driftwood', item: 'driftwood', x, y: 1.2, angle: this.rand() * Math.PI, size: 0.7 + this.rand() * 1.1, variant: 1 + Math.floor(this.rand() * 6), wild: true };
     } else {
       // at the waterline: the highest wet cell in this column
@@ -728,10 +738,15 @@ export class BeachObjects {
         }
       }
       if (y < 0.5) return;
-      const glass = r > 0.85;
-      item = glass
-        ? { kind: 'seaglass', item: 'seaglass', x, y, angle: this.rand() * 6.28, size: 0.07 + this.rand() * 0.04, variant: 1 + Math.floor(this.rand() * 4), wild: true }
-        : { kind: 'shell', item: 'shell', x, y, angle: this.rand() * 6.28, size: 0.07 + this.rand() * 0.06, variant: 1 + Math.floor(this.rand() * 6), wild: true };
+      // shells are the everyday find (22%); trash is kept rarer than
+      // shells (8%) so the beach doesn't fill with it, and cowries are
+      // rare (8%) — a spotted shell worth keeping.
+      const a = this.rand() * Math.PI * 2;
+      if (r < 0.57) item = { kind: 'shell', item: 'shell', x, y, angle: a, size: 0.07 + this.rand() * 0.06, variant: 1 + Math.floor(this.rand() * 6), wild: true };
+      else if (r < 0.72) item = { kind: 'seaglass', item: 'seaglass', x, y, angle: a, size: 0.07 + this.rand() * 0.04, variant: 1 + Math.floor(this.rand() * 4), wild: true };
+      else if (r < 0.84) item = { kind: 'seaweed', item: 'seaweed', x, y, angle: a, size: 0.15 + this.rand() * 0.45, variant: 1 + Math.floor(this.rand() * 3), wild: true };
+      else if (r < 0.92) item = { kind: 'shell', item: 'cowrie', x, y, angle: a, size: 0.05 + this.rand() * 0.15, variant: 1 + Math.floor(this.rand() * 3), wild: true };
+      else item = { kind: 'trash', item: 'trash', x, y, angle: a, size: 0.08 + this.rand() * 0.17, variant: 1 + Math.floor(this.rand() * 3), wild: true };
     }
     this.add(item);
     // the sea takes the oldest stray back
