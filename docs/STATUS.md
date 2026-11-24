@@ -700,6 +700,24 @@ here: it needs the service's URL on the web OAuth client.
   entry points were run locally. The Docker `admin` target wasn't built
   here, because no Docker daemon was available.
 
+## Item catalog and sample renders (2026-11-24)
+
+- **The catalog is organized** in [ITEMS.md](ITEMS.md): every item by
+  how you get it (free, wash-ashore, claw pool, vending sets, shop,
+  extras), with kind, rarity, size, variants, behaviour, mesh file and
+  price, plus the checklist for adding the next item and the design
+  rules (special items look different — and better — than the free
+  items sharing their kind; free shells never pink, free sand dollars
+  never gold).
+- **Sample renders** (`scripts/render-items.mjs`, committed under
+  `docs/items/renders/`): headless Chromium, day light, seed 1. The
+  script bundles the app's own catalog, places every item in rows on
+  dry sand, pauses the sea, and screenshots the whole beach plus a
+  close-up of each item, then composes a labelled contact sheet.
+  Regenerate with `--only <id,...>` when an item's look changes.
+  Needs playwright (`npm install --no-save playwright@1.63.0`, as in
+  CI) and a dev server (or `--url`).
+
 ## Verification
 
 - `npm test`: unit tests for the sim (water/sand conservation, run-up range,
