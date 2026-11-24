@@ -5,8 +5,8 @@
 
 import { Capacitor } from '@capacitor/core';
 import { PROFILE, WORLD_SIZE_X } from '../config';
-import type { PlacedObject } from '../sim/objects';
-import { restHeight } from '../sim/profile';
+import { applyRockCover, type PlacedObject } from '../sim/objects';
+import { buildRestProfile, restHeight } from '../sim/profile';
 import { parseBeachFile, reconcileItems, type ImportedBeach, type Issue, type Shortfall } from '../world/beachFile';
 import { itemById } from '../world/items';
 
@@ -217,9 +217,18 @@ export class BeachFileDialog {
  * A small top-down map: water blue, sand by height, objects as dots. Sea at
  * the bottom. (Also the checkpoints' thumbnails.)
  */
-export function drawMap(canvas: HTMLCanvasElement, beach: { nx: number; ny: number; delta: Float32Array }, objects: PlacedObject[]): void {
+export function drawMap(canvas: HTMLCanvasElement, beach: { nx: number; ny: number; delta: Float32Array; cover?: Float32Array }, objects: PlacedObject[]): void {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
+  // The saved delta is stripped of the sand piled over buried rocks, so lift
+  // it back with the same cover math the neighbor views use (on a copy —
+  // the caller's delta stays stripped).
+  let delta = beach.delta;
+  if (beach.cover) {
+    const dx = WORLD_SIZE_X / beach.nx;
+    delta = Float32Array.from(beach.delta);
+    applyRockCover(delta, buildRestProfile({ nx: beach.nx, ny: beach.ny, dx }), beach.nx, beach.ny, dx, objects, beach.cover);
+  }
   const W = canvas.width;
   const img = ctx.createImageData(W, W);
   const s = WORLD_SIZE_X / W;
@@ -229,7 +238,7 @@ export function drawMap(canvas: HTMLCanvasElement, beach: { nx: number; ny: numb
     for (let px = 0; px < W; px++) {
       const x = (px + 0.5) * s;
       const i = Math.min(beach.nx - 1, Math.floor((x / WORLD_SIZE_X) * beach.nx));
-      const h = restHeight(x, y) + beach.delta[j * beach.nx + i];
+      const h = restHeight(x, y) + delta[j * beach.nx + i];
       const o = (py * W + px) * 4;
       if (h < 0) {
         const d = Math.min(1, -h / PROFILE.offshoreDepth);
