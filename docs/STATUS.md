@@ -369,9 +369,10 @@ accepted the repo's default branch, so the deploy job ran only there.
   scale show with one public beach either side — linked flush, unlinked
   with the 1.6 m gap — and the neighbours mirror between the two views,
   because you are looking from opposite directions. The frame fits the
-  centre beach plus a 14 m slice of each neighbour, so the beach is the
-  subject; a side with no public neighbour shows no shore at all, with no
-  faded filler. Only public beaches ever appear; a non-public neighbour
+  centre beach plus a 4 m sliver of each neighbour, so the beach being
+  shared is the subject (it spans 516 px, 43% of the picture width); a
+  side with no public neighbour shows no shore at all, with no faded
+  filler. Only public beaches ever appear; a non-public neighbour
   renders as untouched shore.
   `og:image` stays the top-down card. Samples: `docs/shore-iso-sample.png`
   (ocean) and `docs/shore-iso-land-sample.png` (land), re-rendered from a
