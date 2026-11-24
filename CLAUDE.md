@@ -17,6 +17,7 @@ Read these first:
 
 ## Ground rules
 
+- **Git & PR workflow:** Always push finished work to GitHub. For bigger or higher-risk changes, push a feature branch and open a pull request. For smaller, high-confidence changes, push directly to `main`.
 - `npm test` and `npm run build` must pass before every commit. CI runs both.
 - The simulation (`src/sim/`) is plain TypeScript with no DOM or Babylon
   imports, so it runs in a Web Worker and in Vitest. Keep it that way.
