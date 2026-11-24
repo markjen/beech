@@ -279,7 +279,11 @@ accepted the repo's default branch, so the deploy job ran only there.
   (docs/WEB_PAYMENTS.md: `POST /api/store/web-checkout`, a signed webhook
   grants once, refunds and cancellations revoke; migration 13), and says to
   buy in the app when it isn't — which is today, until the Xsolla account
-  exists. Promo codes apply to credit only, not card payments.
+  exists. Promo codes apply to credit only, not card payments. When a
+  product can be bought with gift-card credit too, its two buttons share a
+  row of their own under the text (2026-11-24): on a phone the card is only
+  340px wide, and four flex children in one row squeezed the description
+  to a word per line.
   Development builds use a pretend store (`platform: dev`, DEV_AUTH only).
 - **Refunds:** App Store Server Notifications V2 and Play RTDN expire the
   granted items (migration 8: `purchases`, `inventory.purchase_id`).

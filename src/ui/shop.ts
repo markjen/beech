@@ -178,7 +178,14 @@ export class Shop {
         btn.textContent = price;
         btn.addEventListener('click', () => void this.buy(p, btn));
       }
-      row.appendChild(btn);
+      // The buttons share a row of their own under the text when the credit
+      // button is there too: on a phone the card is only 340px wide, and
+      // four flex children in one row starve the text column to a word
+      // per line. (display: contents keeps the one-button layout as-is.)
+      const actions = document.createElement('div');
+      actions.className = 'shop-actions';
+      actions.appendChild(btn);
+      row.appendChild(actions);
       // credit from gift cards buys here too (on the web: the apps sell
       // through the stores only); the server prices it and checks the balance.
       // The button shows when the credit covers the price after the promo,
@@ -190,7 +197,8 @@ export class Shop {
         creditBtn.className = 'shop-buy shop-credit-buy';
         creditBtn.textContent = 'Buy with credit';
         creditBtn.addEventListener('click', () => void this.buyWithCredit(p, creditBtn));
-        row.appendChild(creditBtn);
+        actions.appendChild(creditBtn);
+        row.classList.add('has-credit');
       }
       this.list.appendChild(row);
     }

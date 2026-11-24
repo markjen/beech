@@ -1033,6 +1033,24 @@
   opacity: 0.5;
 }
 
+/* The buttons sit in the row as usual (display: contents), except when a
+   credit button is there too: then they share a row of their own under the
+   text, so the text keeps its full width on a phone. */
+.shop-actions {
+  display: contents;
+}
+
+.shop-item.has-credit {
+  flex-wrap: wrap;
+}
+
+.shop-item.has-credit .shop-actions {
+  display: flex;
+  flex-basis: 100%;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 
 .shop-credit {
   margin: 0 0 8px;
