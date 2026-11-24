@@ -54,18 +54,36 @@ logged — they can hold user data):
 
 ### Client
 
-`src/net/telemetry.ts`, hooked in first thing in `src/main.ts`:
+`src/net/telemetry.ts`, hooked in first thing in `src/main.ts` (production
+builds only, gated on `ACCOUNTS_ENABLED`):
 
-- Unhandled errors and unhandled rejections (max 10 per page load) go to
-  `POST /api/client-events` as `{kind:"error", message, source?, path?}`.
-  Only the pathname is sent, never the query string (it can hold a
-  `?visit=` code).
-- One page-load timing sample per visit: `{kind:"perf", load_ms, dcl_ms}`
-  from the navigation timing entry.
-- The endpoint is unauthenticated by design — it only writes a log line,
-  never the database — and is validated (2 KB cap, known fields only)
-  and rate-limited per IP (30/min, in-memory). Anything else is dropped
-  with a 4xx and never reaches the logs.
+- Posts to `${VITE_API_URL}/api/client-events` via `fetch(..., { keepalive: true })`
+  so both the website and the native Android/iOS Capacitor shells (running
+  under `https://localhost` / `capacitor://localhost`) reach the API cleanly
+  through CORS.
+- Every payload carries `platform` (`web` | `android` | `ios`), `version`
+  (`package.json` semver) and `build` (`__APP_BUILD__`).
+- **Errors (`kind: "error"` → `client_error`, severity `WARNING`):**
+  - Unhandled `window` errors and unhandled promise rejections, plus caught
+    failures via `reportError(category, err, opts)` — covering native & web
+    sign-in (`auth`), in-app purchases & checkout (`shop`), beach save/restore
+    (`sync`), simulation worker errors (`worker`), WebGL context loss
+    (`webgl`), and fatal startup failures (`boot`).
+  - Carries `{ category, message, source?, stack?, path?, meta? }`. Stack
+    traces strip query strings and hashes so share codes never leak; only the
+    pathname is sent. Capped at 20/load and deduplicated over 10 s on the
+    client.
+- **Load timing (`kind: "perf"` → `client_perf`, severity `INFO`):** one
+  navigation-timing sample per visit (`load_ms`, `dcl_ms`).
+- **Diagnostic telemetry (`kind: "event"` → `client_event`, severity `INFO`):**
+  low-cardinality lifecycle events via `reportEvent(name, meta)` — `app_boot`
+  (quality tier, DPR, touch), `auth_success` / `auth_cancel`,
+  `purchase_success` / `purchase_cancel`, and `res_drop` (first dynamic
+  resolution step-down). Capped at 40/load on the client.
+- The endpoint is unauthenticated by design — it only writes a structured log
+  line, never the database — and is strictly validated (4 KB cap, known fields
+  only, flat primitive `meta` up to 8 keys) and rate-limited per IP (60/min,
+  in-memory). Anything else is dropped with a 4xx and never reaches the logs.
 
 ## The dashboard
 
@@ -89,6 +107,7 @@ markjen@gmail.com); uptime checks `beech-web-3XEbuoHRxM8` (site) and
 | Cloud Run CPU + memory + instances | built-in `run.googleapis.com/container/*` |
 | Cloud SQL CPU + connections | built-in `cloudsql.googleapis.com/database/*` |
 | Client + database errors | log-based counters `beech_client_errors_total`, `beech_db_errors_total` |
+| Client telemetry events | log-based counter `beech_client_events_total` (by `name` and `platform`) |
 
 The log-based metrics are defined in `infra/monitoring.tf`
 (`google_logging_metric`). There is also `beech_db_slow_queries_total`
@@ -96,12 +115,13 @@ for ad-hoc queries; it has no panel yet.
 
 ## Alerts
 
-All five go to `markjen@gmail.com` (var `alert_email`):
+All six go to `markjen@gmail.com` (var `alert_email`):
 
 | Alert | Fires when |
 |---|---|
 | beech: site or API down | either uptime check fails for 2 minutes |
 | beech: server errors (5xx) | any 5xx in 10 minutes |
+| beech: client errors | more than 3 `client_error` events in 10 minutes (web, Android, or iOS) |
 | beech: slow responses (p95 latency) | p95 latency over 1 s for 5 minutes |
 | beech: Cloud SQL CPU high | SQL CPU over 80% for 5 minutes |
 | beech: Cloud SQL connections high | over 20 backends for 5 minutes (the db-f1-micro allows 25; each Cloud Run instance pools at most 5) |

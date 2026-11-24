@@ -6,6 +6,7 @@ import { beachShareText, shareUrl, shoreBeachUrl } from '../net/share';
 import { DISCORD_INVITE_URL } from '../../server/src/community';
 import { copyText, shareLink } from './shareSheet';
 import { nativeProviders, nativeSignIn, SignInCancelled, type NativeProvider } from '../net/nativeAuth';
+import { reportError, reportEvent } from '../net/telemetry';
 
 const APPLE_LOGO = `<svg viewBox="0 0 814 1000" aria-hidden="true"><path fill="currentColor" d="M788 341c-6 4-108 62-108 190 0 148 130 200 134 202-1 3-21 72-69 142-43 62-88 124-156 124s-86-40-165-40c-77 0-104 41-166 41s-106-57-156-127C44 791 0 667 0 549c0-191 124-292 246-292 65 0 119 43 160 43 39 0 100-45 174-45 28 0 129 2 196 86zM554 159c31-37 53-88 53-139 0-7-1-14-2-20-50 2-110 34-146 76-28 32-55 83-55 135 0 8 1 16 2 18 3 1 9 1 14 1 45 0 102-30 134-71z"/></svg>`;
 const G_LOGO = `<svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.7 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.6 13.2l7.9 6.2C12.4 13.6 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.2 5.3-4.6 6.9l7.4 5.8c4.3-4 6.9-9.9 6.9-17.2z"/><path fill="#FBBC05" d="M10.5 28.6c-.5-1.4-.8-3-.8-4.6s.3-3.2.8-4.6l-7.9-6.2C1 16.5 0 20.1 0 24s1 7.5 2.6 10.8l7.9-6.2z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.4-5.8c-2.1 1.4-4.8 2.3-8.5 2.3-6.3 0-11.6-4.1-13.5-9.8l-7.9 6.2C6.6 42.6 14.6 48 24 48z"/></svg>`;
@@ -117,7 +118,8 @@ export class AccountPanel {
         const gis = document.createElement('div');
         gis.className = 'gis';
         buttons.appendChild(gis);
-        renderGoogleButton(gis, (credential) => void this.signIn(() => this.account.signInWithGoogle(credential))).catch(() => {
+        renderGoogleButton(gis, (credential) => void this.signIn(() => this.account.signInWithGoogle(credential), 'web_google')).catch((e) => {
+          reportError('auth', e, { source: 'web_google:gis_load' });
           this.error = 'Google sign-in could not load. Check your connection.';
           this.render();
         });
@@ -133,7 +135,7 @@ export class AccountPanel {
         dev.className = 'action';
         dev.dataset.act = 'dev';
         dev.textContent = 'dev sign in';
-        dev.addEventListener('click', () => void this.signIn(() => this.account.signInDev('tester')));
+        dev.addEventListener('click', () => void this.signIn(() => this.account.signInDev('tester'), 'dev'));
         buttons.appendChild(dev);
       }
       box.appendChild(buttons);
@@ -482,21 +484,29 @@ export class AccountPanel {
     b.dataset.act = `native-${p}`;
     b.innerHTML = p === 'apple' ? `${APPLE_LOGO}<span>Sign in with Apple</span>` : `${G_LOGO}<span>Continue with Google</span>`;
     b.addEventListener('click', () =>
-      void this.signIn(async () => {
-        const who = await nativeSignIn(p);
-        return p === 'apple' ? this.account.signInWithApple(who.idToken, who.name) : this.account.signInWithGoogle(who.idToken);
-      }),
+      void this.signIn(
+        async () => {
+          const who = await nativeSignIn(p);
+          return p === 'apple' ? this.account.signInWithApple(who.idToken, who.name) : this.account.signInWithGoogle(who.idToken);
+        },
+        `native_${p}`,
+      ),
     );
     return b;
   }
 
-  private async signIn(fn: () => Promise<unknown>): Promise<void> {
+  private async signIn(fn: () => Promise<unknown>, method: string): Promise<void> {
     this.error = '';
     try {
       await fn();
+      reportEvent('auth_success', { method });
       this.onSignedIn();
     } catch (e) {
-      if (e instanceof SignInCancelled) return;
+      if (e instanceof SignInCancelled) {
+        reportEvent('auth_cancel', { method });
+        return;
+      }
+      reportError('auth', e, { source: `accountPanel:${method}`, meta: { method } });
       this.error = (e as Error).message;
       this.render();
     }

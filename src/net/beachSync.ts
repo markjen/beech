@@ -1,6 +1,7 @@
 import { decodeSand, encodeSand, fitWorld, objectsToSave, resampleField } from '../sim/sandCodec';
 import type { PlacedObject } from '../sim/objects';
 import { ApiError, type Account } from './account';
+import { reportError } from './telemetry';
 import { itemById } from '../world/items';
 
 /**
@@ -154,14 +155,20 @@ export class BeachSync {
       }
       if (e instanceof ApiError && e.status === 426) {
         // this app is older than the server's data: saving again won't help; reload
+        reportError('sync', e, { source: 'beachSync:save', meta: { status: 426 } });
         this.set('outdated');
         return;
       }
       if (e instanceof ApiError && e.status === 413) {
         // retrying won't help; the next change tries again (it may be smaller)
+        reportError('sync', e, { source: 'beachSync:save', meta: { status: 413 } });
         this.set('tooBig');
         return;
       }
+      reportError('sync', e, {
+        source: 'beachSync:save',
+        meta: e instanceof ApiError ? { status: e.status } : undefined,
+      });
       this.set('offline');
       // try again later
       this.timer = window.setTimeout(() => void this.flush(), 30000);
@@ -234,7 +241,8 @@ export class BeachSync {
     this.switching = true;
     try {
       await this.restoreOrCreate();
-    } catch {
+    } catch (e) {
+      reportError('sync', e, { source: 'beachSync:reloadRestored' });
       /* offline: the next save tries again and lands here again */
     } finally {
       this.switching = false;
