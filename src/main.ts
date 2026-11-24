@@ -775,10 +775,13 @@ async function boot() {
     const b = away ? beachHere() : null;
     const fav = !!b && !!neighbors?.favorites.has(b.code);
     const signedIn = !!account?.user;
-    const key = `${away}|${b?.code}|${b?.name}|${fav}|${!!neighbors?.visiting}|${signedIn}`;
+    // in viewing mode the shore bar's pill is gone too: the beach info
+    // lives behind the "i" button at the bottom instead
+    const viewing = !!neighbors && neighbors.viewing;
+    const key = `${away}|${b?.code}|${b?.name}|${fav}|${!!neighbors?.visiting}|${signedIn}|${viewing}`;
     if (key === shoreKey) return;
     shoreKey = key;
-    shoreBar.classList.toggle('shown', away);
+    shoreBar.classList.toggle('shown', away && !viewing);
     const place = b?.location ? beachById(b.location) : undefined;
     sbWhere.textContent = b ? `${neighbors?.visiting ? 'Visiting ' : ''}${b.name || 'a beach'}${place ? ` · ${place.name}` : ''}` : 'Down the shore';
     sbFav.hidden = !b || !signedIn;
@@ -830,11 +833,9 @@ async function boot() {
   const gestures = new Gestures(canvas, cam, {
     digStart: (sx, sy) => {
       if (cam.animating) return;
-      if (neighbors && (neighbors.visiting || !neighbors.ownVisible)) {
+      if (neighbors && neighbors.viewing) {
         // someone else's beach: look, don't touch
-        shoreBar.classList.remove('nudge');
-        void shoreBar.offsetWidth;
-        shoreBar.classList.add('nudge');
+        neighbors.nudgeInfo();
         return;
       }
       inventory.setOpen(false);
@@ -1235,6 +1236,7 @@ async function boot() {
     });
     neighbors = new NeighborView(scene, grid, ready.rest, swell, cam, uiRoot, account, renderer);
     const nv = neighbors;
+    nv.onHome = () => void goHome();
     const acct = account;
     // a share link (?visit=CODE) waits for sign-in, then lands on that beach
     let pendingVisit: string | null = visitCode;

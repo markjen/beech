@@ -350,10 +350,18 @@ accepted the repo's default branch, so the deploy job ran only there.
   › or Q/E). After a second of holding, walking speeds up to 4×. In the chair
   view the static shore fills the gaps between drawn beaches and runs on past
   both ends.
-- **Home:** away from your own beach, a bar (top right; under the place
+- **Home:** just past your own beach, a bar (top right; under the place
   label on phones) says whose beach you're on, with ☆ to favorite it and
-  "⌂ my beach" to glide home. It pulses if you try to dig someone else's
-  beach.
+  "⌂ my beach" to glide home.
+- **Viewing mode (2026-11-24):** once you're looking at someone else's
+  stretch of shore — visiting a beach by code, or scrolled away from your
+  own — no name tags float over the sand, and the bar above goes away too.
+  A small "i" sits at the bottom centre instead (raised above the walk
+  buttons in the chair view); tapping it opens a card with "⌂ my beach" and
+  the name cards for the beaches in view, nearest first — same names,
+  stars and "ask to be neighbors" buttons as the tags had, just behind the
+  tap. Trying to dig someone else's beach nudges the "i" button.
+  (`src/ui/shoreInfo.ts`, `NeighborView.viewing`.)
 - **Visiting by code** (settings → visit): their beach takes the middle, with
   their shore either side, until you head home. **Favorites** come from ☆ on
   a name tag or on the bar. The list sits in the settings sheet, with visit
