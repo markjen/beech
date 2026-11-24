@@ -179,6 +179,15 @@ describe('item comments', () => {
     expect(page).toContain('I’d build a harbour around it.');
     expect(page).toContain('Ana');
 
+    expect((await json('/items/lighthouse/comments', 'GET')).status).toBe(401);
+    const mineAna = await json('/items/lighthouse/comments', 'GET', ana.scoped);
+    expect(mineAna.status).toBe(200);
+    expect(await mineAna.json()).toEqual({ mine: [comment.id] });
+    const mineBob = await json('/items/lighthouse/comments', 'GET', bob.scoped);
+    expect(await mineBob.json()).toEqual({ mine: [] });
+
+    expect((await json('/items/lighthouse/comments/not-a-uuid', 'DELETE', ana.scoped)).status).toBe(404);
+    expect((await json(`/items/rock/comments/${comment.id}`, 'DELETE', ana.scoped)).status).toBe(404);
     expect((await json(`/items/lighthouse/comments/${comment.id}`, 'DELETE', bob.scoped)).status).toBe(404);
     const gone = await json(`/items/lighthouse/comments/${comment.id}`, 'DELETE', ana.scoped);
     expect(gone.status).toBe(200);

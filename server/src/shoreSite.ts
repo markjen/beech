@@ -47,6 +47,7 @@ import {
   deleteComment,
   howToGet,
   listComments,
+  myCommentIds,
   myVote,
   RARITY_LABEL,
   toggleVote,
@@ -821,7 +822,6 @@ ${
       catalogDetailHtml({ item, votes, creator, comments }, itemLinks, game) +
       catalogDetailScript({
         connectUrl: itemConnectUrl,
-        itemId: item.id,
         voteUrl: href(`/items/${item.id}/vote`),
         commentsUrl: href(`/items/${item.id}/comments`),
       });
@@ -856,6 +856,12 @@ ${
     const voted = await toggleVote(db, item.id, user.id, now());
     return c.json({ voted, votes: await voteCount(db, item.id) });
   });
+  app.get('/items/:id{[a-z0-9-]+}/comments', submissionSession, async (c) => {
+    const item = catalogItemById(c.req.param('id'));
+    if (!item) return c.json({ error: 'No such item.' }, 404);
+    const user = c.get('submitter');
+    return c.json({ mine: await myCommentIds(db, item.id, user.id) });
+  });
   app.post('/items/:id{[a-z0-9-]+}/comments', submissionSession, async (c) => {
     const item = catalogItemById(c.req.param('id'));
     if (!item) return c.json({ error: 'No such item.' }, 404);
@@ -870,7 +876,7 @@ ${
     const item = catalogItemById(c.req.param('id'));
     if (!item) return c.json({ error: 'No such item.' }, 404);
     const user = c.get('submitter');
-    const ok = await deleteComment(db, c.req.param('commentId'), user.id);
+    const ok = await deleteComment(db, item.id, c.req.param('commentId'), user.id);
     if (!ok) return c.json({ error: 'No such comment.' }, 404);
     return c.json({ deleted: true });
   });

@@ -233,10 +233,24 @@ export async function addComment(db: Db, itemId: string, userId: string, userNam
   return { id, userId, name: userName || 'Someone', body, createdAt: now };
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export async function myCommentIds(db: Db, itemId: string, userId: string): Promise<string[]> {
+  const rows = await db.query<{ id: string }>(
+    'SELECT id FROM item_comments WHERE item_id = $1 AND user_id = $2',
+    [itemId, userId],
+  );
+  return rows.map((r) => r.id);
+}
+
 /** Delete a comment. Only its author can (admin delete isn't available from
     the game server — admin identity lives in the separate admin console). */
-export async function deleteComment(db: Db, commentId: string, userId: string): Promise<boolean> {
-  const rows = await db.query('DELETE FROM item_comments WHERE id = $1 AND user_id = $2 RETURNING id', [commentId, userId]);
+export async function deleteComment(db: Db, itemId: string, commentId: string, userId: string): Promise<boolean> {
+  if (!UUID_RE.test(commentId)) return false;
+  const rows = await db.query(
+    'DELETE FROM item_comments WHERE id = $1 AND item_id = $2 AND user_id = $3 RETURNING id',
+    [commentId, itemId, userId],
+  );
   return rows.length > 0;
 }
 
@@ -280,9 +294,10 @@ export const ITEM_CSS = `
 .comments li{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 14px}
 .comments .who{font-size:13px;color:var(--ink2)}
 .comments .who b{color:var(--ink)}
-.comments p{margin:4px 0 0;overflow-wrap:anywhere}
+.comments p{margin:4px 0 0;overflow-wrap:anywhere;white-space:pre-wrap}
 .comment-form{display:grid;gap:10px;margin-top:14px}
 .comment-form textarea{width:100%;min-height:74px;padding:9px;border:1px solid var(--line2);border-radius:8px;background:var(--sand2);color:var(--ink);font:inherit}
+[hidden]{display:none!important}
 @media(max-width:640px){.item-detail{grid-template-columns:minmax(0,1fr)}}
 `;
 
@@ -381,7 +396,7 @@ export function catalogDetailHtml(d: ItemDetailData, links: ItemPageLinks, gameU
 
 export function commentHtml(c: ItemComment, mine: boolean): string {
   const when = new Date(c.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
-  return `<li data-comment="${esc(c.id)}"><span class="who"><b>${esc(c.name)}</b> · ${esc(when)}</span><p>${esc(c.body).replace(/\n/g, '<br>')}</p>${
+  return `<li data-comment="${esc(c.id)}"><span class="who"><b>${esc(c.name)}</b> · ${esc(when)}</span><p>${esc(c.body)}</p>${
     mine ? ` <button type="button" class="linkish" data-delete-comment="${esc(c.id)}">Delete</button>` : ''
   }</li>`;
 }
@@ -390,11 +405,11 @@ export function commentHtml(c: ItemComment, mine: boolean): string {
     Reuses the beechshore account connection from the submission flow
     (submissionPage.ts): the same popup posts the same token back, and the
     same session authorises the vote/comment calls. */
-export function catalogDetailScript(config: { connectUrl: string; itemId: string; voteUrl: string; commentsUrl: string }): string {
+export function catalogDetailScript(config: { connectUrl: string; voteUrl: string; commentsUrl: string }): string {
   const settings = JSON.stringify(config).replace(/</g, '\\u003c');
   return `<script>
 (() => {
-  const { connectUrl, itemId, voteUrl, commentsUrl } = ${settings};
+  const { connectUrl, voteUrl, commentsUrl } = ${settings};
   const voteBtn = document.getElementById('item-vote');
   const count = document.getElementById('item-vote-count');
   const status = document.getElementById('item-vote-status');
@@ -404,21 +419,38 @@ export function catalogDetailScript(config: { connectUrl: string; itemId: string
   let token;
   let popup;
   let voted = false;
+  let posting = false;
   const setCount = (n) => { count.textContent = n === 1 ? '1 vote' : n + ' votes'; };
   const setVoted = (v) => { voted = v; voteBtn.textContent = v ? '★ You voted for this item' : '★ Vote for this item'; };
+  function addDeleteBtn(li, id) {
+    if (li.querySelector('[data-delete-comment]')) return;
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'linkish';
+    del.dataset.deleteComment = id;
+    del.textContent = 'Delete';
+    li.append(' ', del);
+  }
   async function api(url, method, body) {
     const res = await fetch(url, { method, body: body === undefined ? undefined : JSON.stringify(body), headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' } });
     const data = await res.json().catch(() => ({}));
-    if (res.status === 401) { token = undefined; status.textContent = 'Connect your Beech account again.'; form.hidden = true; }
+    if (res.status === 401) {
+      token = undefined;
+      form.hidden = true;
+      for (const btn of list.querySelectorAll('[data-delete-comment]')) btn.remove();
+      throw new Error('Connect your Beech account again.');
+    }
     if (!res.ok) throw new Error(data.error || 'The request did not go through.');
     return data;
   }
   async function refresh() {
-    try {
-      const data = await api(voteUrl, 'GET');
-      setVoted(data.voted);
-      setCount(data.votes);
-    } catch (err) { status.textContent = err.message; }
+    const [vote, comments] = await Promise.all([api(voteUrl, 'GET'), api(commentsUrl, 'GET')]);
+    setVoted(vote.voted);
+    setCount(vote.votes);
+    const mine = new Set(comments.mine || []);
+    for (const li of list.children) {
+      if (li.dataset.comment && mine.has(li.dataset.comment)) addDeleteBtn(li, li.dataset.comment);
+    }
   }
   async function connected(value) {
     token = value;
@@ -438,6 +470,7 @@ export function catalogDetailScript(config: { connectUrl: string; itemId: string
   });
   voteBtn.addEventListener('click', async () => {
     if (!token) {
+      if (popup && !popup.closed) { popup.focus(); return; }
       popup = window.open(connectUrl, '_blank', 'popup,width=520,height=540');
       status.textContent = popup ? 'Finish connecting in the Beech window.' : 'Allow pop-ups for this page and try connecting again.';
       return;
@@ -451,7 +484,8 @@ export function catalogDetailScript(config: { connectUrl: string; itemId: string
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     const text = box.value.trim();
-    if (!text) return;
+    if (!text || posting || !token) return;
+    posting = true;
     try {
       const data = await api(commentsUrl, 'POST', { text });
       const empty = list.querySelector('.empty');
@@ -464,15 +498,12 @@ export function catalogDetailScript(config: { connectUrl: string; itemId: string
       who.querySelector('b').textContent = data.comment.name;
       const p = document.createElement('p');
       p.textContent = data.comment.body;
-      const del = document.createElement('button');
-      del.type = 'button';
-      del.className = 'linkish';
-      del.dataset.deleteComment = data.comment.id;
-      del.textContent = 'Delete';
-      li.append(who, p, ' ', del);
+      li.append(who, p);
+      addDeleteBtn(li, data.comment.id);
       list.prepend(li);
       box.value = '';
     } catch (err) { status.textContent = err.message; }
+    finally { posting = false; }
   });
   list.addEventListener('click', async (event) => {
     const btn = event.target.closest('[data-delete-comment]');
