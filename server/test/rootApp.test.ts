@@ -32,6 +32,7 @@ beforeAll(async () => {
     path.join(publicDir, 'privacy.html'),
     '<!doctype html><html><head><title>Privacy Policy — beech</title></head><body>privacy-policy-marker</body></html>',
   );
+  fs.writeFileSync(path.join(publicDir, 'hero-beach.jpg'), 'hero-beach-marker');
   fs.mkdirSync(path.join(publicDir, 'landing-assets'), { recursive: true });
   fs.writeFileSync(path.join(publicDir, 'landing-assets', 'hero-day.webp'), 'landing-asset-marker');
   root = createRootApp(db, api, publicDir);
@@ -164,6 +165,21 @@ describe('the landing page and host routing', () => {
     const r = await on('/landing-assets/hero-day.webp', 'beech.games');
     expect(r.status).toBe(200);
     expect(await r.text()).toBe('landing-asset-marker');
+  });
+
+  it('the hero splash answers on a landing host, and the landing page shows it', async () => {
+    const r = await on('/hero-beach.jpg', 'beech.games');
+    expect(r.status).toBe(200);
+    expect(r.headers.get('Content-Type')).toContain('image/jpeg');
+    expect(await r.text()).toBe('hero-beach-marker');
+    // and on the game host too — it is a static file, not a landing-only route
+    expect((await root.request('/hero-beach.jpg')).status).toBe(200);
+    const html = await (await on('/', 'beech.games')).text();
+    expect(html).toContain('<img src="/hero-beach.jpg"');
+    expect(html).toContain('https://beech.games/hero-beach.jpg');
+    // the old time-of-day diorama is gone: no mood picker, no diorama frames
+    expect(html).not.toContain('data-set-mood');
+    expect(html).not.toContain('hero-day.webp');
   });
 
   it('the privacy policy answers on a landing host, and /privacy redirects to it', async () => {

@@ -77,14 +77,14 @@ export function landingHtml(gameUrl: string = LANDING_GAME_URL): string {
 <meta property="og:title" content="beech — a quiet place by the sea">
 <meta property="og:description" content="Shape the sand, watch the waves rework it, and build a beach of your own. Play now on the web or on Google Play; iOS coming soon.">
 <meta property="og:url" content="https://beech.games/">
-<meta property="og:image" content="https://beech.games/landing-assets/og-card.jpg">
-<meta property="og:image:width" content="1200">
-<meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="A sunlit 3D beach diorama in beech with a lighthouse, beach hut, striped parasol, sandcastle, shells, and turquoise waves">
+<meta property="og:image" content="https://beech.games/hero-beach.jpg">
+<meta property="og:image:width" content="2048">
+<meta property="og:image:height" content="1152">
+<meta property="og:image:alt" content="A sunny illustrated beach in beech: a red-and-white lighthouse, beach hut, striped parasol, sandcastle, shells, and gentle waves">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="beech — a quiet place by the sea">
 <meta name="twitter:description" content="Shape the sand, watch the waves rework it, and build a beach of your own. Free on the web and Google Play; iOS coming soon.">
-<meta name="twitter:image" content="https://beech.games/landing-assets/og-card.jpg">
+<meta name="twitter:image" content="https://beech.games/hero-beach.jpg">
 <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
 <link rel="icon" href="/icons/favicon-32.png" sizes="32x32" type="image/png">
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
@@ -116,30 +116,10 @@ export function landingHtml(gameUrl: string = LANDING_GAME_URL): string {
   --shadow-md: 0 14px 36px rgba(32, 48, 60, 0.10), 0 2px 8px rgba(32, 48, 60, 0.05);
   --shadow-lg: 0 28px 68px rgba(24, 42, 54, 0.18), 0 6px 18px rgba(24, 42, 54, 0.08);
   --nav-bg: rgba(251, 244, 231, 0.78);
-  --hero-sky-top: #b8e0ee;
-  --hero-sky-mid: #e6f2f1;
-  --hero-sky-bottom: #fbf4e7;
   --wave-back: rgba(143, 218, 210, 0.42);
   --wave-front: #fbf4e7;
   --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
   --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
-}
-
-/* Time-of-day hero atmosphere states (matched to src/palette.ts) */
-.hero[data-mood="dawn"] {
-  --hero-sky-top: #c2cce8;
-  --hero-sky-mid: #f5d8ce;
-  --wave-back: rgba(159, 227, 216, 0.38);
-}
-.hero[data-mood="golden"] {
-  --hero-sky-top: #f2be9d;
-  --hero-sky-mid: #fce5be;
-  --wave-back: rgba(242, 180, 128, 0.34);
-}
-.hero[data-mood="dusk"] {
-  --hero-sky-top: #8f95bd;
-  --hero-sky-mid: #e8bcb8;
-  --wave-back: rgba(136, 201, 207, 0.35);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -167,15 +147,9 @@ export function landingHtml(gameUrl: string = LANDING_GAME_URL): string {
     --shadow-md: 0 16px 40px rgba(0, 0, 0, 0.34);
     --shadow-lg: 0 30px 72px rgba(0, 0, 0, 0.5);
     --nav-bg: rgba(19, 27, 38, 0.8);
-    --hero-sky-top: #1b364a;
-    --hero-sky-mid: #1a2a3b;
-    --hero-sky-bottom: #131b26;
     --wave-back: rgba(74, 152, 174, 0.22);
     --wave-front: #131b26;
   }
-  .hero[data-mood="dawn"] { --hero-sky-top: #26314c; --hero-sky-mid: #312c3c; }
-  .hero[data-mood="golden"] { --hero-sky-top: #46322b; --hero-sky-mid: #2a2427; }
-  .hero[data-mood="dusk"] { --hero-sky-top: #1d2742; --hero-sky-mid: #282436; }
 }
 
 * { box-sizing: border-box; }
@@ -284,19 +258,28 @@ body::before {
 .hero {
   position: relative;
   overflow: hidden;
-  background: linear-gradient(180deg, var(--hero-sky-top) 0%, var(--hero-sky-mid) 48%, var(--hero-sky-bottom) 100%);
-  transition: background 450ms ease;
-  padding: 56px 24px 104px;
+  background: var(--bg);
+  padding: 40px 24px 104px;
+}
+/* Full-width hero splash: an illustration of a beach you could build in
+   the game, with no text on top of it. */
+.hero-splash {
+  max-width: 1180px;
+  margin: 0 auto 40px;
+}
+.hero-splash img {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 26px;
+  box-shadow: var(--shadow-lg);
 }
 .hero-inner {
   position: relative;
   z-index: 2;
-  max-width: 1180px;
+  max-width: 780px;
   margin: 0 auto;
-  display: grid;
-  grid-template-columns: minmax(0, 0.96fr) minmax(0, 1.14fr);
-  align-items: center;
-  gap: 52px;
+  text-align: center;
 }
 .eyebrow {
   margin: 0 0 14px;
@@ -320,8 +303,8 @@ body::before {
   font-weight: 400;
 }
 .hero-lead {
-  margin: 22px 0 32px;
-  max-width: 490px;
+  margin: 22px auto 32px;
+  max-width: 560px;
   font-size: 18px;
   line-height: 1.62;
   color: var(--ink-soft);
@@ -332,6 +315,7 @@ body::before {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: center;
   gap: 14px;
 }
 .btn-primary {
@@ -390,6 +374,7 @@ body::before {
   display: flex;
   flex-wrap: wrap;
   align-items: stretch;
+  justify-content: center;
   gap: 12px;
 }
 .store-btn {
@@ -448,6 +433,7 @@ body::before {
   margin-top: 16px;
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   gap: 8px 18px;
   font-size: 14px;
   color: var(--ink-faint);
@@ -458,88 +444,6 @@ body::before {
   font-weight: 500;
 }
 .hero-sublinks a:hover { color: var(--sea); text-decoration: underline; }
-
-/* Hero 3D Diorama Stage */
-.hero-stage {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-.diorama-frame {
-  position: relative;
-  aspect-ratio: 3 / 2;
-  border-radius: 26px;
-  overflow: hidden;
-  background: var(--bg-deep);
-  border: 1px solid rgba(255, 255, 255, 0.55);
-  box-shadow: var(--shadow-lg);
-}
-@media (prefers-color-scheme: dark) {
-  .diorama-frame { border-color: rgba(255, 255, 255, 0.12); }
-}
-.diorama-frame img {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  opacity: 0;
-  transition: opacity 550ms ease;
-}
-.diorama-frame img.is-active { opacity: 1; }
-
-.stage-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px 12px;
-  padding: 0 4px;
-}
-.stage-caption {
-  font-size: 13px;
-  color: var(--ink-soft);
-  margin: 0;
-  white-space: nowrap;
-}
-.mood-picker {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  padding: 4px;
-  border-radius: 999px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  box-shadow: var(--shadow-sm);
-}
-.mood-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 6px 10px;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--ink-soft);
-  font: 600 12px/1 var(--font-sans);
-  cursor: pointer;
-  transition: background 180ms ease, color 180ms ease;
-}
-.mood-btn:hover { color: var(--ink); }
-.mood-btn[aria-pressed="true"] {
-  background: var(--bg-deep);
-  color: var(--ink);
-}
-.mood-swatch {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-.mood-swatch.dawn { background: linear-gradient(135deg, #a9b8e0, #f7d2c4); }
-.mood-swatch.day { background: linear-gradient(135deg, #8fd0e6, #f6e3c3); }
-.mood-swatch.golden { background: linear-gradient(135deg, #f0a98f, #fde3b3); }
-.mood-swatch.dusk { background: linear-gradient(135deg, #4a4f85, #e59a9a); }
 
 /* Animated coastal shoreline divider at the base of the hero */
 .hero-waves {
@@ -570,7 +474,7 @@ body::before {
 }
 @media (prefers-reduced-motion: reduce) {
   .wave-back, .wave-front { animation: none; }
-  .diorama-frame img, .btn-primary, .store-btn { transition: none; }
+  .btn-primary, .store-btn { transition: none; }
 }
 
 /* ---------- Main Sections ---------- */
@@ -860,11 +764,8 @@ footer nav a:hover { color: var(--sea); text-decoration: underline; }
 
 /* ---------- Responsive ---------- */
 @media (max-width: 980px) {
-  .hero { padding: 40px 20px 88px; }
-  .hero-inner {
-    grid-template-columns: 1fr;
-    gap: 36px;
-  }
+  .hero { padding: 32px 20px 88px; }
+  .hero-splash { margin-bottom: 32px; }
   .hero-lead { max-width: 580px; }
   .pillars, .platforms { grid-template-columns: 1fr; }
   .releases { grid-template-columns: 1fr; }
@@ -873,9 +774,10 @@ footer nav a:hover { color: var(--sea); text-decoration: underline; }
   .topbar-inner { padding: 11px 16px; }
   .nav-links .nav-hide-sm { display: none; }
   .nav-links { gap: 14px; }
-  .hero { padding: 26px 16px 76px; }
-  .hero-inner { gap: 26px; }
-  .hero-lead { margin: 14px 0 22px; font-size: 16.5px; }
+  .hero { padding: 20px 16px 76px; }
+  .hero-splash { margin-bottom: 24px; }
+  .hero-splash img { border-radius: 18px; }
+  .hero-lead { margin: 14px auto 22px; font-size: 16.5px; }
   .details-grid { grid-template-columns: 1fr; gap: 22px; }
   .play-band, .community { padding: 28px 20px; border-radius: 22px; }
   .hero-actions { display: grid; grid-template-columns: 1fr auto; gap: 10px; }
@@ -886,7 +788,6 @@ footer nav a:hover { color: var(--sea); text-decoration: underline; }
   .store-name { font-size: 13.5px; }
   .hero-sublinks { margin-top: 12px; gap: 4px 14px; font-size: 13.5px; }
   .sublink-sep { display: none; }
-  .stage-bar { flex-direction: column; align-items: flex-start; }
   footer { flex-direction: column; align-items: flex-start; }
 }
 </style>
@@ -910,7 +811,10 @@ footer nav a:hover { color: var(--sea); text-decoration: underline; }
   </div>
 </div>
 
-<header class="hero" id="hero" data-mood="day">
+<header class="hero" id="hero">
+  <div class="hero-splash">
+    <img src="/hero-beach.jpg" alt="A sunny illustrated beach in beech: a red-and-white lighthouse, beach hut, striped parasol, sandcastle, shells, and gentle waves" width="2048" height="1152" fetchpriority="high" decoding="async">
+  </div>
   <div class="hero-inner">
     <div class="hero-copy">
       <p class="eyebrow">beech · a quiet place by the sea</p>
@@ -947,24 +851,6 @@ footer nav a:hover { color: var(--sea); text-decoration: underline; }
         <span>Free to play · no install needed on web</span>
         <span class="sublink-sep" aria-hidden="true">·</span>
         <a href="${esc(LANDING_SHORE_URL)}">Walk the public shore →</a>
-      </div>
-    </div>
-
-    <div class="hero-stage">
-      <div class="diorama-frame">
-        <img data-mood="day" class="is-active" src="/landing-assets/hero-day.webp" alt="beech 3D beach diorama in daylight with a lighthouse, beach hut, striped parasol, sandcastle, golden sand dollar, and turquoise waves" width="1200" height="800" fetchpriority="high" decoding="async">
-        <img data-mood="golden" src="/landing-assets/hero-golden.webp" alt="beech 3D beach diorama in warm golden hour sunlight" width="1200" height="800" loading="lazy" decoding="async">
-        <img data-mood="dawn" src="/landing-assets/hero-dawn.webp" alt="beech 3D beach diorama in soft pastel dawn light" width="1200" height="800" loading="lazy" decoding="async">
-        <img data-mood="dusk" src="/landing-assets/hero-dusk.webp" alt="beech 3D beach diorama in rose and indigo dusk light" width="1200" height="800" loading="lazy" decoding="async">
-      </div>
-      <div class="stage-bar">
-        <p class="stage-caption">In-game · live sky &amp; tide</p>
-        <div class="mood-picker" role="group" aria-label="Preview time of day">
-          <button id="mood-dawn" type="button" class="mood-btn" data-set-mood="dawn" aria-pressed="false"><span class="mood-swatch dawn" aria-hidden="true"></span>Dawn</button>
-          <button id="mood-day" type="button" class="mood-btn" data-set-mood="day" aria-pressed="true"><span class="mood-swatch day" aria-hidden="true"></span>Day</button>
-          <button id="mood-golden" type="button" class="mood-btn" data-set-mood="golden" aria-pressed="false"><span class="mood-swatch golden" aria-hidden="true"></span>Golden</button>
-          <button id="mood-dusk" type="button" class="mood-btn" data-set-mood="dusk" aria-pressed="false"><span class="mood-swatch dusk" aria-hidden="true"></span>Dusk</button>
-        </div>
       </div>
     </div>
   </div>
@@ -1134,20 +1020,6 @@ footer nav a:hover { color: var(--sea); text-decoration: underline; }
   </nav>
 </footer>
 
-<script>
-(() => {
-  const hero = document.getElementById('hero');
-  if (!hero) return;
-  const imgs = hero.querySelectorAll('.diorama-frame img[data-mood]');
-  const btns = hero.querySelectorAll('[data-set-mood]');
-  const setMood = (mood) => {
-    hero.dataset.mood = mood;
-    imgs.forEach((img) => img.classList.toggle('is-active', img.dataset.mood === mood));
-    btns.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.setMood === mood)));
-  };
-  btns.forEach((b) => b.addEventListener('click', () => setMood(b.dataset.setMood)));
-})();
-</script>
 </body>
 </html>`;
 }
