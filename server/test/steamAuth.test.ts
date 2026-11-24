@@ -160,4 +160,24 @@ describe('Steam auth and cross-platform account linking', () => {
     const c = (await (await post('/auth/steam', { ticket: `${GOOD_TICKET}04`, name: 'LateSteam' })).json()) as { token: string };
     expect((await post('/account/link', { code }, c.token)).status).toBe(404);
   });
+
+  it('refuses to link an account that starred a beach, even with an empty bag', async () => {
+    const a = (await (await post('/auth/dev', { name: 'Target' })).json()) as { token: string; user: { id: string } };
+    const { code } = (await (await post('/account/link-code', {}, a.token)).json()) as { code: string };
+
+    const steam = (await (await post('/auth/steam', { ticket: `${GOOD_TICKET}05`, name: 'Stargazer' })).json()) as {
+      token: string;
+      user: { id: string };
+    };
+    // Star the target's beach: no items, no saved beach, but the star would
+    // be silently lost by the merge, so the link must be refused.
+    const beachRows = await db.query<{ id: string }>('SELECT id FROM beach WHERE owner_id = $1', [a.user.id]);
+    expect(beachRows.length).toBe(1);
+    await db.query('INSERT INTO star_first (user_id, beach_id, at) VALUES ($1, $2, $3)', [
+      steam.user.id,
+      beachRows[0].id,
+      Date.now(),
+    ]);
+    expect((await post('/account/link', { code }, steam.token)).status).toBe(409);
+  });
 });

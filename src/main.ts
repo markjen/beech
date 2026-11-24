@@ -1421,7 +1421,9 @@ async function boot() {
         if (steam) {
           try {
             const t = await steam.getAuthTicket();
-            u = await account.signInWithSteam(t.ticketHex, t.personaName);
+            // acct, not account: the await above resets narrowing of the
+            // mutable `account` binding, and acct is the const alias.
+            u = await acct.signInWithSteam(t.ticketHex, t.personaName);
           } catch {
             /* offline or Steam unavailable: stay playable locally */
           }

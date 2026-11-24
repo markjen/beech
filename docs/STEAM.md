@@ -40,7 +40,7 @@ Replaces direct `Capacitor.isNativePlatform()` checks with `getRuntime()` (`'web
 
 - **Zero-friction Steam sign-in:** On boot, the Steam client requests a Web API auth ticket (`getAuthTicketForWebApi('beech')`) and sends `POST /api/auth/steam { ticket, name }` to Cloud Run. The server verifies it via `GET https://partner.steam-api.com/ISteamUserAuth/AuthenticateUserTicket/v1/` (checking `result === 'OK'`, `!vacbanned`, `!publisherbanned`), upserts the user, and returns a standard 60-day hashed bearer session. Because sign-in is automatic, the Steam store page does **not** need a "Requires 3rd-Party Account" warning.
 - **Offline startup:** If Steam is offline or `play.beech.games` is unreachable, the client falls back cleanly to local IndexedDB storage (`src/net/localStore.ts`) instead of blocking launch.
-- **Cross-platform account linking (`user_identities`, migration 17):** Moves `(provider, provider_sub)` lookup into a `user_identities` table so one `users.id` can hold Google, Apple, and Steam identities. Players who already play on web/iOS/Android generate a 10-minute 8-character link code in Settings (`POST /api/account/link-code`) and enter it on Steam (`POST /api/account/link { code }`) to share their beaches, inventory, purchases, neighbors, and checkpoints.
+- **Cross-platform account linking (`user_identities`, migration 18):** Moves `(provider, provider_sub)` lookup into a `user_identities` table so one `users.id` can hold Google, Apple, and Steam identities. Players who already play on web/iOS/Android generate a 10-minute 8-character link code in Settings (`POST /api/account/link-code`) and enter it on Steam (`POST /api/account/link { code }`) to share their beaches, inventory, purchases, neighbors, and checkpoints.
 
 ## Monetization: Steam Microtransactions (S3)
 
@@ -94,7 +94,7 @@ Required 2024+ Steam graphical asset sizes (older dimensions are rejected):
 ## Milestones
 
 - **S1:** Runtime abstraction (`src/platform/runtime.ts`), Electron + `steamworks.js` shell (`desktop/`), `app://beech` CORS origin, version script update.
-- **S2:** `POST /api/auth/steam`, offline fallback, `user_identities` (migration 17) + 8-char cross-platform account linking.
+- **S2:** `POST /api/auth/steam`, offline fallback, `user_identities` (migration 18) + 8-char cross-platform account linking.
 - **S3:** `ISteamMicroTxn` server + client shop `'steam'` mode (migration 18) + `GetReport/v5` refund sync job.
 - **S4:** Steam Achievements, Rich Presence, Gamepad API + Steam Deck `1280×800` verification.
 - **S5:** Clean-machine Windows & Steam Deck beta testing. (The `.github/workflows/release-steam.yml` SteamPipe workflow itself was built in S1.)

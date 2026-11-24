@@ -130,7 +130,7 @@ export class AccountPanel {
           void this.signIn(async () => {
             const t = await steam.getAuthTicket();
             return this.account.signInWithSteam(t.ticketHex, t.personaName);
-          });
+          }, 'steam');
         });
         buttons.appendChild(steamBtn);
       } else if (native.length) {
@@ -523,7 +523,7 @@ export class AccountPanel {
       void this.signIn(async () => {
         await this.account.redeemLinkCode(code);
         await this.account.loadBeaches();
-      });
+      }, 'link_code');
     });
     return wrap;
   }
