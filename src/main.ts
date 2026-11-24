@@ -204,7 +204,7 @@ async function boot() {
   let frames = 0;
   let swashRate = 0;
 
-  type SandReply = { delta: Float32Array; objects: PlacedObject[] };
+  type SandReply = { delta: Float32Array; objects: PlacedObject[]; cover?: Float32Array };
   /** what's on the beach now (the worker sends the roster when it changes, positions every frame) */
   let objectStates: ObjectState[] = [];
   /** the strays from the sea you've kept, by item (the bag's "found" list) */
@@ -225,7 +225,7 @@ async function boot() {
   worker.onmessage = (ev: MessageEvent<FromWorker>) => {
     const m = ev.data;
     if (m.type === 'sand') {
-      sandWaiters.get(m.id)?.({ delta: m.delta, objects: m.objects });
+      sandWaiters.get(m.id)?.({ delta: m.delta, objects: m.objects, ...(m.cover ? { cover: m.cover } : {}) });
       sandWaiters.delete(m.id);
       return;
     }
@@ -564,10 +564,10 @@ async function boot() {
   // beach files (docs/BEACH_FILE.md): export what's here, import a designed beach
   const myBeachName = () => account?.beaches.find((b) => b.id === account?.beachId)?.name || beach.name;
   const exportBeach = async () => {
-    const { delta, objects } = await getSand();
+    const { delta, objects, cover } = await getSand();
     const name = myBeachName();
     const text = await writeBeachFile(
-      { nx: grid.nx, ny: grid.ny, delta, objects },
+      { nx: grid.nx, ny: grid.ny, delta, objects, ...(cover ? { cover } : {}) },
       { name, location: beach.id, createdWith: `beech ${APP_VERSION}` },
     );
     await saveText(beachFileName(name), text);
@@ -579,7 +579,9 @@ async function boot() {
     hasBag: ACCOUNTS_ENABLED,
     shop: ACCOUNTS_ENABLED ? () => void shopDialog?.open() : undefined,
     apply: (b) => {
-      send({ type: 'importBeach', delta: b.delta, objects: b.objects }, [b.delta.buffer]);
+      const xfer: Transferable[] = [b.delta.buffer];
+      if (b.cover) xfer.push(b.cover.buffer);
+      send({ type: 'importBeach', delta: b.delta, objects: b.objects, ...(b.cover ? { cover: b.cover } : {}) }, xfer);
       const loc = beachById(b.location);
       if (loc && loc.id !== beach.id) setBeach(loc);
       markDirty(1500);
@@ -1020,7 +1022,11 @@ async function boot() {
     account = new Account();
     sync = new BeachSync(account, {
       getSand,
-      setSand: (delta, objects) => send({ type: 'setSand', delta, objects }, [delta.buffer]),
+      setSand: (delta, objects, cover) => {
+        const xfer: Transferable[] = [delta.buffer];
+        if (cover) xfer.push(cover.buffer);
+        send({ type: 'setSand', delta, objects, ...(cover ? { cover } : {}) }, xfer);
+      },
       grid: { nx: grid.nx, ny: grid.ny },
       location: () => beach.id,
       setLocation: (id) => {
@@ -1104,8 +1110,11 @@ async function boot() {
     // checkpoints (docs/CHECKPOINTS.md): saved copies of your beaches
     let panel: AccountPanel | null = null;
     const cpApi = new CheckpointApi(acct);
-    const keepAsCheckpoint = async (b: { nx: number; ny: number; delta: Float32Array; objects: PlacedObject[]; name?: string; location?: string }, fallback: string) => {
-      const bytes = await encodeSand(b.delta, b.nx, b.ny, b.objects);
+    const keepAsCheckpoint = async (
+      b: { nx: number; ny: number; delta: Float32Array; objects: PlacedObject[]; cover?: Float32Array; name?: string; location?: string },
+      fallback: string,
+    ) => {
+      const bytes = await encodeSand(b.delta, b.nx, b.ny, b.objects, b.cover);
       const cp = await cpApi.import(bytes, (b.name || fallback || 'Imported beach').slice(0, 40), b.location);
       showToast(uiRoot, `Kept “${cp.name}” as a checkpoint`);
       await checkpoints.load();
@@ -1375,13 +1384,19 @@ async function boot() {
   if (!ACCOUNTS_ENABLED) {
     const restoreBytes = async (bytes: Uint8Array) => {
       const b = fitWorld(await decodeSand(bytes));
-      return { delta: resampleField(b.delta, b.nx, b.ny, grid.nx, grid.ny), objects: b.objects };
+      return {
+        delta: resampleField(b.delta, b.nx, b.ny, grid.nx, grid.ny),
+        objects: b.objects,
+        ...(b.cover ? { cover: resampleField(b.cover, b.nx, b.ny, grid.nx, grid.ny) } : {}),
+      };
     };
     const kept = await loadLocalBeach();
     if (kept && !params.has('fresh')) {
       try {
         const b = await restoreBytes(kept.bytes);
-        send({ type: 'setSand', delta: b.delta, objects: b.objects }, [b.delta.buffer]);
+        const xfer: Transferable[] = [b.delta.buffer];
+        if (b.cover) xfer.push(b.cover.buffer);
+        send({ type: 'setSand', delta: b.delta, objects: b.objects, ...(b.cover ? { cover: b.cover } : {}) }, xfer);
         const loc = beachById(kept.location);
         if (loc && loc.id !== beach.id && !params.get('beach')) setBeach(loc);
       } catch {
@@ -1391,8 +1406,8 @@ async function boot() {
     let saveTimer = 0;
     const saveHere = async () => {
       window.clearTimeout(saveTimer);
-      const { delta, objects } = await getSand();
-      await saveLocalBeach({ bytes: await encodeSand(delta, grid.nx, grid.ny, objects), location: beach.id, savedAt: Date.now() });
+      const { delta, objects, cover } = await getSand();
+      await saveLocalBeach({ bytes: await encodeSand(delta, grid.nx, grid.ny, objects, cover), location: beach.id, savedAt: Date.now() });
     };
     markDirty = (delayMs = 4000) => {
       window.clearTimeout(saveTimer);
@@ -1403,12 +1418,14 @@ async function boot() {
     });
     new LocalCheckpointsSection(sheet.accountSlot, {
       snapshot: async () => {
-        const { delta, objects } = await getSand();
-        return { bytes: await encodeSand(delta, grid.nx, grid.ny, objects), objects: objects.filter((o) => !o.wild).length, location: beach.id };
+        const { delta, objects, cover } = await getSand();
+        return { bytes: await encodeSand(delta, grid.nx, grid.ny, objects, cover), objects: objects.filter((o) => !o.wild).length, location: beach.id };
       },
       restore: async (bytes) => {
         const b = await restoreBytes(bytes);
-        send({ type: 'importBeach', delta: b.delta, objects: b.objects }, [b.delta.buffer]);
+        const xfer: Transferable[] = [b.delta.buffer];
+        if (b.cover) xfer.push(b.cover.buffer);
+        send({ type: 'importBeach', delta: b.delta, objects: b.objects, ...(b.cover ? { cover: b.cover } : {}) }, xfer);
         markDirty(1500);
       },
       exportFile: async (name, bytes) => {
@@ -1422,7 +1439,7 @@ async function boot() {
         if (!r.ok) throw new Error(`${f.name} isn't a beach file (${r.errors[0].path || 'file'}: ${r.errors[0].message})`);
         return {
           name: r.beach.name || f.name.replace(/(\.beach)?\.json$/i, ''),
-          bytes: await encodeSand(r.beach.delta, grid.nx, grid.ny, r.beach.objects),
+          bytes: await encodeSand(r.beach.delta, grid.nx, grid.ny, r.beach.objects, r.beach.cover),
           objects: r.beach.objects.length,
           location: r.beach.location ?? beach.id,
         };

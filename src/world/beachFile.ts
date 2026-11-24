@@ -110,18 +110,18 @@ class Checker {
 
 // ------------------------------------------------------------------ sand grid
 
-async function readSand(c: Checker, raw: unknown): Promise<{ nx: number; ny: number; mm: Float32Array } | null> {
+async function readSand(c: Checker, raw: unknown, prefix = 'sand'): Promise<{ nx: number; ny: number; mm: Float32Array } | null> {
   if (!isObj(raw)) {
-    c.err('sand', 'must be an object');
+    c.err(prefix, 'must be an object');
     return null;
   }
   const { nx, ny, unit, encoding, data } = raw;
   const sizeOk = (v: unknown) => Number.isInteger(v) && (v as number) >= MIN_GRID && (v as number) <= MAX_GRID;
-  if (!sizeOk(nx)) c.err('sand.nx', `must be a whole number from ${MIN_GRID} to ${MAX_GRID}`);
-  if (!sizeOk(ny)) c.err('sand.ny', `must be a whole number from ${MIN_GRID} to ${MAX_GRID}`);
-  if (unit !== 'mm') c.err('sand.unit', 'must be "mm"');
+  if (!sizeOk(nx)) c.err(`${prefix}.nx`, `must be a whole number from ${MIN_GRID} to ${MAX_GRID}`);
+  if (!sizeOk(ny)) c.err(`${prefix}.ny`, `must be a whole number from ${MIN_GRID} to ${MAX_GRID}`);
+  if (unit !== 'mm') c.err(`${prefix}.unit`, 'must be "mm"');
   if (encoding !== 'rows' && encoding !== 'int16le' && encoding !== 'deflate-int16le') {
-    c.err('sand.encoding', 'must be "rows", "int16le" or "deflate-int16le"');
+    c.err(`${prefix}.encoding`, 'must be "rows", "int16le" or "deflate-int16le"');
   }
   if (c.errors.length) return null;
   const w = nx as number;
@@ -129,20 +129,20 @@ async function readSand(c: Checker, raw: unknown): Promise<{ nx: number; ny: num
   const mm = new Float32Array(w * h);
   if (encoding === 'rows') {
     if (!Array.isArray(data) || data.length !== h) {
-      c.err('sand.data', `must be an array of ${h} rows`);
+      c.err(`${prefix}.data`, `must be an array of ${h} rows`);
       return null;
     }
     let clamped = 0;
     for (let j = 0; j < h; j++) {
       const row = data[j];
       if (!Array.isArray(row) || row.length !== w) {
-        c.err(`sand.data[${j}]`, `must be an array of ${w} numbers`);
+        c.err(`${prefix}.data[${j}]`, `must be an array of ${w} numbers`);
         return null;
       }
       for (let i = 0; i < w; i++) {
         const v = row[i];
         if (!isNum(v)) {
-          c.err(`sand.data[${j}][${i}]`, 'must be a number');
+          c.err(`${prefix}.data[${j}][${i}]`, 'must be a number');
           return null;
         }
         const q = Math.round(v);
@@ -150,28 +150,28 @@ async function readSand(c: Checker, raw: unknown): Promise<{ nx: number; ny: num
         mm[j * w + i] = clamp(q, -32767, 32767);
       }
     }
-    if (clamped) c.warn('sand.data', `${clamped} heights were outside -32767 to 32767 mm and were clamped`);
+    if (clamped) c.warn(`${prefix}.data`, `${clamped} heights were outside -32767 to 32767 mm and were clamped`);
     return { nx: w, ny: h, mm };
   }
   if (typeof data !== 'string') {
-    c.err('sand.data', 'must be a base64 string');
+    c.err(`${prefix}.data`, 'must be a base64 string');
     return null;
   }
   let bytes = fromBase64(data);
   if (!bytes) {
-    c.err('sand.data', 'is not valid base64');
+    c.err(`${prefix}.data`, 'is not valid base64');
     return null;
   }
   if (encoding === 'deflate-int16le') {
     try {
       bytes = await pipe(bytes, new DecompressionStream('deflate'));
     } catch {
-      c.err('sand.data', 'is not valid deflate (zlib) data');
+      c.err(`${prefix}.data`, 'is not valid deflate (zlib) data');
       return null;
     }
   }
   if (bytes.length !== w * h * 2) {
-    c.err('sand.data', `holds ${bytes.length} bytes; ${w} x ${h} heights need ${w * h * 2}`);
+    c.err(`${prefix}.data`, `holds ${bytes.length} bytes; ${w} x ${h} heights need ${w * h * 2}`);
     return null;
   }
   const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -372,12 +372,24 @@ function readObjects(c: Checker, raw: unknown): PlacedObject[] {
     const angle = c.num(o, 'angle', path, -1e6, 1e6, 0) as number;
     const [lo, hi] = item.size;
     const size = item.fixedSize ? lo : (c.num(o, 'size', path, lo, hi, Math.sqrt(lo * hi)) as number);
+    const base = item.kind === 'rock' && o.base !== undefined ? c.num(o, 'base', path, -10, 10) : undefined;
+    if (c.errors.length > before) return;
     let variant = defaultVariant(x as number, y as number, n);
     if (o.variant !== undefined) {
       if (Number.isInteger(o.variant) && (o.variant as number) >= 0 && (o.variant as number) <= MAX_VARIANT) variant = o.variant as number;
       else c.warn(`${path}.variant`, `must be a whole number from 0 to ${MAX_VARIANT}; using ${variant}`);
     }
-    out.push({ id: out.length + 1, kind: item.kind, item: item.id, x: x as number, y: y as number, angle: (angle * Math.PI) / 180, size, variant });
+    out.push({
+      id: out.length + 1,
+      kind: item.kind,
+      item: item.id,
+      x: x as number,
+      y: y as number,
+      angle: (angle * Math.PI) / 180,
+      size,
+      variant,
+      ...(base !== undefined ? { base } : {}),
+    });
   });
   return out;
 }
@@ -454,9 +466,45 @@ export async function parseBeachFile(text: string, opts: ParseOptions = {}): Pro
   if (low) c.warn('sand', `${low} cells dug deeper than ${-MIN_DELTA} m reach the rock below and were raised to it`);
   if (high) c.warn('sand', `${high} cells piled higher than ${MAX_RAISE} m were lowered to it`);
 
+  let cover: Float32Array | undefined;
+  if (root.cover !== undefined) {
+    const rawCov = await readSand(c, root.cover, 'cover');
+    if (rawCov) {
+      const maxCov = MAX_RAISE - MIN_DELTA;
+      const m = new Float32Array(rawCov.mm.length);
+      let neg = 0;
+      let over = 0;
+      for (let k = 0; k < m.length; k++) {
+        const v = rawCov.mm[k] / 1000;
+        if (v < 0) {
+          m[k] = 0;
+          neg++;
+        } else if (v > maxCov) {
+          m[k] = maxCov;
+          over++;
+        } else {
+          m[k] = v;
+        }
+      }
+      if (neg) c.warn('cover', `${neg} negative cover cells were raised to 0`);
+      if (over) c.warn('cover', `${over} cover cells above ${maxCov} m were lowered to it`);
+      const resampled = resampleField(m, rawCov.nx, rawCov.ny, nx, ny);
+      let any = false;
+      for (let k = 0; k < resampled.length; k++) {
+        if (resampled[k] > 0) any = true;
+        else resampled[k] = 0;
+      }
+      if (any) cover = resampled;
+    }
+  }
+
   const objects = root.objects === undefined ? [] : readObjects(c, root.objects);
   if (c.errors.length) return { ok: false, errors: c.errors };
-  return { ok: true, beach: { nx, ny, delta, objects, ...(name ? { name } : {}), ...(location ? { location } : {}) }, warnings: c.warnings };
+  return {
+    ok: true,
+    beach: { nx, ny, delta, objects, ...(cover ? { cover } : {}), ...(name ? { name } : {}), ...(location ? { location } : {}) },
+    warnings: c.warnings,
+  };
 }
 
 // ------------------------------------------------------------------ writing
@@ -470,21 +518,36 @@ export interface WriteOptions {
   encoding?: SandEncoding;
 }
 
+async function encodeGrid(q: Int16Array, nx: number, ny: number, encoding: SandEncoding): Promise<string> {
+  if (encoding === 'rows') {
+    const rows: number[][] = [];
+    for (let j = 0; j < ny; j++) rows.push(Array.from(q.subarray(j * nx, (j + 1) * nx)));
+    return `[\n${rows.map((r) => `      ${JSON.stringify(r)}`).join(',\n')}\n    ]`;
+  }
+  // int16 arrays are little-endian on every platform we run on
+  const bytes = new Uint8Array(q.buffer);
+  return JSON.stringify(toBase64(encoding === 'deflate-int16le' ? await pipe(bytes, new CompressionStream('deflate')) : bytes));
+}
+
 /** Write a beach as a version 1 beach file (pretty enough to read). */
 export async function writeBeachFile(beach: SavedBeach, opts: WriteOptions = {}): Promise<string> {
   const { nx, ny, delta } = beach;
   const q = new Int16Array(nx * ny);
   for (let k = 0; k < q.length; k++) q[k] = clamp(Math.round(delta[k] * 1000), -32767, 32767);
   const encoding = opts.encoding ?? 'deflate-int16le';
-  let data: unknown;
-  if (encoding === 'rows') {
-    const rows: number[][] = [];
-    for (let j = 0; j < ny; j++) rows.push(Array.from(q.subarray(j * nx, (j + 1) * nx)));
-    data = rows;
-  } else {
-    // int16 arrays are little-endian on every platform we run on
-    const bytes = new Uint8Array(q.buffer);
-    data = toBase64(encoding === 'deflate-int16le' ? await pipe(bytes, new CompressionStream('deflate')) : bytes);
+  const dataJson = await encodeGrid(q, nx, ny, encoding);
+  let coverJson: string | null = null;
+  if (beach.cover && beach.cover.length === nx * ny) {
+    const qc = new Int16Array(nx * ny);
+    let any = false;
+    for (let k = 0; k < qc.length; k++) {
+      const v = clamp(Math.round(beach.cover[k] * 1000), 0, 32767);
+      if (v > 0) {
+        qc[k] = v;
+        any = true;
+      }
+    }
+    if (any) coverJson = await encodeGrid(qc, nx, ny, encoding);
   }
   const objects = beach.objects
     .filter((o) => !o.wild)
@@ -497,6 +560,7 @@ export async function writeBeachFile(beach: SavedBeach, opts: WriteOptions = {})
         y: r3(o.y),
         angle: r1((o.angle * 180) / Math.PI),
         ...(item?.fixedSize ? {} : { size: r3(o.size) }),
+        ...(o.kind === 'rock' && o.base !== undefined ? { base: r3(o.base) } : {}),
         variant: Math.round(o.variant),
       };
     });
@@ -507,13 +571,14 @@ export async function writeBeachFile(beach: SavedBeach, opts: WriteOptions = {})
     ...(opts.location ? { location: opts.location } : {}),
     ...(opts.createdWith ? { createdWith: opts.createdWith } : {}),
     sand: { nx, ny, unit: 'mm', encoding, data: '\u0000' },
+    ...(coverJson ? { cover: { nx, ny, unit: 'mm', encoding, data: '\u0002' } } : {}),
     objects: '\u0001',
   };
   // one object per line and one sand row per line: readable, and diffs well
-  const dataJson =
-    encoding === 'rows' ? `[\n${(data as number[][]).map((r) => `      ${JSON.stringify(r)}`).join(',\n')}\n    ]` : JSON.stringify(data);
   const objsJson = objects.length ? `[\n${objects.map((o) => `    ${JSON.stringify(o)}`).join(',\n')}\n  ]` : '[]';
-  return `${JSON.stringify(file, null, 2).replace('"\\u0000"', dataJson).replace('"\\u0001"', objsJson)}\n`;
+  let text = JSON.stringify(file, null, 2).replace('"\\u0000"', dataJson).replace('"\\u0001"', objsJson);
+  if (coverJson) text = text.replace('"\\u0002"', coverJson);
+  return `${text}\n`;
 }
 
 // ------------------------------------------------------------------ inventory

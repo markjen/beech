@@ -25,6 +25,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       'Linked neighbors now touch edge to edge as one continuous stretch of sand, with no gap between them. Unlinked beaches along the shore keep their space.',
       'Prizes from the claw and vending machines now look the part on your beach: the pink shell is properly pink, the golden sand dollar is shiny gold, and the rest of the week’s set stands out from the free shells and sea glass.',
       'The golden sand dollar is now giant: it starts at twice the size of the largest regular sand dollar and scales up from there.',
+      'Sand piled over rocks now stays over them when you reload, export a beach, or restore a checkpoint.',
       'Rocks placed against each other no longer pile sand up into a tall spike. Beaches that grew one smooth it away the next time they’re opened.',
     ],
   },

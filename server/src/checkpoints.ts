@@ -26,6 +26,7 @@ export const CHECKPOINT_NAME_MAX = 40;
 
 const MAGIC1 = 'BCH1';
 const MAGIC2 = 'BCH2';
+const MAGIC3 = 'BCH3';
 
 export interface BlobInfo {
   nx: number;
@@ -43,19 +44,32 @@ interface RawObject {
   wild?: unknown;
 }
 
-function parts(bytes: Uint8Array): { nx: number; ny: number; sand: Uint8Array; objs: Uint8Array | null } {
+function parts(bytes: Uint8Array): { nx: number; ny: number; sand: Uint8Array; objs: Uint8Array | null; cover: Uint8Array | null } {
   if (bytes.byteLength > MAX_BEACH_BYTES) throw new BadBlob('too big');
   const magic = Buffer.from(bytes.subarray(0, 4)).toString('latin1');
-  if (bytes.byteLength < 8 || (magic !== MAGIC1 && magic !== MAGIC2)) throw new BadBlob('not a saved beach');
+  if (bytes.byteLength < 8 || (magic !== MAGIC1 && magic !== MAGIC2 && magic !== MAGIC3)) throw new BadBlob('not a saved beach');
   const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const nx = dv.getUint16(4, true);
   const ny = dv.getUint16(6, true);
   if (nx < 8 || ny < 8 || nx * ny > MAX_CELLS) throw new BadBlob('bad grid size');
-  if (magic === MAGIC1) return { nx, ny, sand: bytes.subarray(8), objs: null };
-  if (bytes.byteLength < 12) throw new BadBlob('not a saved beach');
-  const len = dv.getUint32(8, true);
-  if (12 + len > bytes.byteLength) throw new BadBlob('corrupt saved beach');
-  return { nx, ny, sand: bytes.subarray(12, 12 + len), objs: bytes.subarray(12 + len) };
+  if (magic === MAGIC1) return { nx, ny, sand: bytes.subarray(8), objs: null, cover: null };
+  if (magic === MAGIC2) {
+    if (bytes.byteLength < 12) throw new BadBlob('not a saved beach');
+    const len = dv.getUint32(8, true);
+    if (12 + len > bytes.byteLength) throw new BadBlob('corrupt saved beach');
+    return { nx, ny, sand: bytes.subarray(12, 12 + len), objs: bytes.subarray(12 + len), cover: null };
+  }
+  if (bytes.byteLength < 16) throw new BadBlob('not a saved beach');
+  const sandLen = dv.getUint32(8, true);
+  const objsLen = dv.getUint32(12, true);
+  if (16 + sandLen + objsLen > bytes.byteLength) throw new BadBlob('corrupt saved beach');
+  return {
+    nx,
+    ny,
+    sand: bytes.subarray(16, 16 + sandLen),
+    objs: bytes.subarray(16 + sandLen, 16 + sandLen + objsLen),
+    cover: bytes.subarray(16 + sandLen + objsLen),
+  };
 }
 
 function inflate(data: Uint8Array, max: number): Buffer {
@@ -95,9 +109,13 @@ export function countObjects(bytes: Uint8Array): number {
 
 /** Count what's on a saved beach. Throws BadBlob if it isn't one. */
 export function inspectBlob(bytes: Uint8Array): BlobInfo {
-  const { nx, ny, sand, objs } = parts(bytes);
+  const { nx, ny, sand, objs, cover } = parts(bytes);
   const raw = inflate(sand, nx * ny * 2 + 1);
   if (raw.byteLength !== nx * ny * 2) throw new BadBlob('corrupt saved beach');
+  if (cover) {
+    const rawCov = inflate(cover, nx * ny * 2 + 1);
+    if (rawCov.byteLength !== nx * ny * 2) throw new BadBlob('corrupt saved beach');
+  }
   const list = readObjects(objs);
   const items: Record<string, number> = {};
   for (const o of list) {
@@ -135,10 +153,10 @@ export function shortfall(
 
 /**
  * The same beach without what's short: of each short item, the ones placed
- * last (highest ids) come off. The sand bytes are kept as they are.
+ * last (highest ids) come off. The sand (and rock cover) bytes are kept as they are.
  */
 export function dropMissing(bytes: Uint8Array, short: Short[]): { bytes: Uint8Array; dropped: number } {
-  const { sand, objs } = parts(bytes);
+  const { sand, objs, cover } = parts(bytes);
   if (!objs || !short.length) return { bytes, dropped: 0 };
   const list = readObjects(objs);
   const drop = new Map(short.map((s) => [s.item, s.need - s.have]));
@@ -155,6 +173,17 @@ export function dropMissing(bytes: Uint8Array, short: Short[]): { bytes: Uint8Ar
   }
   const kept = list.filter((_, i) => !gone.has(i));
   const json = deflateSync(Buffer.from(JSON.stringify(kept), 'utf8'));
+  if (cover) {
+    const out = new Uint8Array(16 + sand.byteLength + json.byteLength + cover.byteLength);
+    out.set(bytes.subarray(0, 16), 0);
+    const dv = new DataView(out.buffer);
+    dv.setUint32(8, sand.byteLength, true);
+    dv.setUint32(12, json.byteLength, true);
+    out.set(sand, 16);
+    out.set(json, 16 + sand.byteLength);
+    out.set(cover, 16 + sand.byteLength + json.byteLength);
+    return { bytes: out, dropped: gone.size };
+  }
   const out = new Uint8Array(12 + sand.byteLength + json.byteLength);
   out.set(bytes.subarray(0, 12), 0);
   new DataView(out.buffer).setUint32(8, sand.byteLength, true);

@@ -77,4 +77,19 @@ describe('drawing a saved beach', () => {
     // a broken save still draws (as the untouched beach)
     expect(beachPng(new Uint8Array([1, 2, 3]), { width: 30, height: 20 }).length).toBeGreaterThan(60);
   });
+
+  it('decodes and draws BCH3 saves with buried rock cover', async () => {
+    const { BeachSim } = await import('../src/sim/beachSim');
+    const { GRID_TIERS, PROFILE: P } = await import('../src/config');
+    const sim = new BeachSim(GRID_TIERS.low, 1, { waves: false, erosion: false, healing: false, seep: false });
+    sim.placeObject({ kind: 'rock', item: 'rock', x: 16, y: P.shoreline + 8, angle: 0, size: 0.6, variant: 1 });
+    for (let s = 0; s < 4; s++) sim.stamp('pile', 16, P.shoreline + 8, 1.0, 0.4);
+    const bytes = await encodeSand(sim.sandDelta(), sim.nx, sim.ny, sim.objects.persisted(), sim.sandCover());
+    expect(String.fromCharCode(...bytes.subarray(0, 4))).toBe('BCH3');
+    const sand = decodeSavedBeach(bytes);
+    expect(sand.cover).toBeDefined();
+    expect(sand.things[0].base).toBeDefined();
+    const png = beachPng(bytes, { width: 120, height: 80, location: 'bondi' });
+    expect([...png.subarray(0, 8)]).toEqual([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  });
 });

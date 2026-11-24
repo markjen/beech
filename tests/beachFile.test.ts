@@ -58,6 +58,28 @@ describe('beach files', () => {
     if (r.ok) expect(Array.from(r.beach.delta)).toEqual(Array.from(saved.delta).map((v) => Math.round(v * 1000) / 1000).map((v) => Math.fround(v)));
   });
 
+  it('round-trips rock cover and rock base, and clamps bad cover with warnings', async () => {
+    const delta = new Float32Array(N * N);
+    const cover = new Float32Array(N * N);
+    cover[cell(10.25, 18.5)] = 0.25;
+    const withBase: PlacedObject[] = [{ ...objs[0], base: 0.42 }];
+    for (const encoding of ['deflate-int16le', 'int16le', 'rows'] as const) {
+      const text = await writeBeachFile({ nx: N, ny: N, delta, cover, objects: withBase }, { encoding });
+      const r = await parseBeachFile(text, { nx: N, ny: N });
+      if (!r.ok) throw new Error(JSON.stringify(r.errors));
+      expect(r.warnings).toEqual([]);
+      expect(r.beach.cover?.[cell(10.25, 18.5)]).toBeCloseTo(0.25, 3);
+      expect(r.beach.objects[0].base).toBeCloseTo(0.42, 3);
+    }
+    const rows = Array.from({ length: 8 }, () => Array(8).fill(-50));
+    rows[0][0] = 9000;
+    const bad = await parseBeachFile(file({ cover: { nx: 8, ny: 8, unit: 'mm', encoding: 'rows', data: rows } }), { nx: 8, ny: 8 });
+    if (!bad.ok) throw new Error(JSON.stringify(bad.errors));
+    expect(bad.warnings.map((w) => w.path)).toEqual(['cover', 'cover']);
+    expect(bad.beach.cover![0]).toBeCloseTo(MAX_RAISE - MIN_DELTA, 3);
+    expect(bad.beach.cover![1]).toBe(0);
+  });
+
   it('resamples a small grid to the device grid', async () => {
     const rows = Array.from({ length: 8 }, () => Array(8).fill(200));
     const r = await parseBeachFile(file({ sand: { nx: 8, ny: 8, unit: 'mm', encoding: 'rows', data: rows } }), { nx: N, ny: N });

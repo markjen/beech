@@ -736,7 +736,10 @@ export class ObjectView {
     this.set(
       objects.map((o) => ({
         ...o,
-        z: heightAt(o.x, o.y) + (o.kind === 'driftwood' || o.kind === 'bottle' ? floatRadius(o) * 0.7 : 0),
+        z:
+          o.kind === 'rock' && o.base !== undefined
+            ? o.base
+            : heightAt(o.x, o.y) + (o.kind === 'driftwood' || o.kind === 'bottle' ? floatRadius(o) * 0.7 : 0),
         floating: false,
       })),
     );

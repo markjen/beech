@@ -341,39 +341,7 @@ export class BeachObjects {
    * footprints before any rock is live.
    */
   private rockFootprint(o: PlacedObject, base: number): { cells: Int32Array; top: Float32Array; i0: number; j0: number; i1: number; j1: number } {
-    const { nx, ny, dx } = this.h;
-    // a little inside the drawn rock, so the rock always covers the sand it lifts
-    const rx = o.size * 0.88;
-    const ry = o.size * (0.7 + 0.3 * frac(o.variant * 0.618)) * 0.88;
-    const H = o.size * ROCK_HEIGHT * 0.75;
-    const c = Math.cos(o.angle);
-    const s = Math.sin(o.angle);
-    const cells: number[] = [];
-    const tops: number[] = [];
-    const r = Math.ceil(rx / dx) + 1;
-    const ci = Math.floor(o.x / dx);
-    const cj = Math.floor(o.y / dx);
-    let i0 = nx;
-    let j0 = ny;
-    let i1 = -1;
-    let j1 = -1;
-    for (let j = Math.max(0, cj - r); j <= Math.min(ny - 1, cj + r); j++) {
-      for (let i = Math.max(0, ci - r); i <= Math.min(nx - 1, ci + r); i++) {
-        const px = (i + 0.5) * dx - o.x;
-        const py = (j + 0.5) * dx - o.y;
-        const u = (px * c + py * s) / rx;
-        const v = (-px * s + py * c) / ry;
-        const q = u * u + v * v;
-        if (q >= 1) continue;
-        cells.push(j * nx + i);
-        tops.push(base + H * Math.sqrt(1 - q));
-        if (i < i0) i0 = i;
-        if (i > i1) i1 = i;
-        if (j < j0) j0 = j;
-        if (j > j1) j1 = j;
-      }
-    }
-    return { cells: Int32Array.from(cells), top: Float32Array.from(tops), i0, j0, i1, j1 };
+    return rockFootprintAt(o, base, this.h.nx, this.h.ny, this.h.dx);
   }
 
   private embedRock(o: PlacedObject, terrain: Float32Array): RockCells {
@@ -434,6 +402,48 @@ export class BeachObjects {
   /** For saving: what the sand would be without the rocks. */
   withoutRocks(sandCopy: Float32Array): Float32Array {
     return this.stripLifts(sandCopy);
+  }
+
+  /**
+   * For saving: sand piled on top of rocks (thickness above the highest rock
+   * dome, metres), or undefined when no rock is buried. Without this, saving
+   * `under + deposit` collapses the terrain under a rock and the deposit on
+   * top of it into one number, so reloading embeds the rock on `under + deposit`
+   * and loses the cover.
+   */
+  rockCover(sand: Float32Array): Float32Array | undefined {
+    let hasRock = false;
+    for (const l of this.live.values()) {
+      if (l.rock) {
+        hasRock = true;
+        break;
+      }
+    }
+    if (!hasRock) return undefined;
+    const n = this.h.nx * this.h.ny;
+    const topMax = new Float32Array(n).fill(-Infinity);
+    for (const l of this.live.values()) {
+      if (!l.rock) continue;
+      const rc = l.rock;
+      for (let m = 0; m < rc.cells.length; m++) {
+        const k = rc.cells[m];
+        if (rc.top[m] > topMax[k]) topMax[k] = rc.top[m];
+      }
+    }
+    const stripped = this.stripLifts(sand);
+    let out: Float32Array | undefined;
+    for (let k = 0; k < n; k++) {
+      const top = topMax[k];
+      if (top === -Infinity) continue;
+      // only where sand rises above both the rock dome and the stripped terrain
+      // (a rock cell on a slope where `under >= top` has stripped === sand, so
+      // reload already restores it without cover)
+      if (sand[k] > Math.max(top, stripped[k]) + 1e-4) {
+        if (!out) out = new Float32Array(n);
+        out[k] = sand[k] - top;
+      }
+    }
+    return out;
   }
 
   /**
@@ -734,3 +744,90 @@ export class BeachObjects {
 }
 
 const frac = (x: number) => x - Math.floor(x);
+
+function sampleGrid(field: Float32Array, nx: number, ny: number, dx: number, x: number, y: number): number {
+  const fi = Math.min(nx - 1.001, Math.max(0, x / dx - 0.5));
+  const fj = Math.min(ny - 1.001, Math.max(0, y / dx - 0.5));
+  const i = fi | 0;
+  const j = fj | 0;
+  const tx = fi - i;
+  const ty = fj - j;
+  const k = j * nx + i;
+  return (field[k] * (1 - tx) + field[k + 1] * tx) * (1 - ty) + (field[k + nx] * (1 - tx) + field[k + nx + 1] * tx) * ty;
+}
+
+/** The grid cells a rock covers and its dome top height at each cell. */
+export function rockFootprintAt(
+  o: Pick<PlacedObject, 'x' | 'y' | 'angle' | 'size' | 'variant'>,
+  base: number,
+  nx: number,
+  ny: number,
+  dx: number,
+): { cells: Int32Array; top: Float32Array; i0: number; j0: number; i1: number; j1: number } {
+  // a little inside the drawn rock, so the rock always covers the sand it lifts
+  const rx = o.size * 0.88;
+  const ry = o.size * (0.7 + 0.3 * frac(o.variant * 0.618)) * 0.88;
+  const H = o.size * ROCK_HEIGHT * 0.75;
+  const c = Math.cos(o.angle);
+  const s = Math.sin(o.angle);
+  const cells: number[] = [];
+  const tops: number[] = [];
+  const r = Math.ceil(rx / dx) + 1;
+  const ci = Math.floor(o.x / dx);
+  const cj = Math.floor(o.y / dx);
+  let i0 = nx;
+  let j0 = ny;
+  let i1 = -1;
+  let j1 = -1;
+  for (let j = Math.max(0, cj - r); j <= Math.min(ny - 1, cj + r); j++) {
+    for (let i = Math.max(0, ci - r); i <= Math.min(nx - 1, ci + r); i++) {
+      const px = (i + 0.5) * dx - o.x;
+      const py = (j + 0.5) * dx - o.y;
+      const u = (px * c + py * s) / rx;
+      const v = (-px * s + py * c) / ry;
+      const q = u * u + v * v;
+      if (q >= 1) continue;
+      cells.push(j * nx + i);
+      tops.push(base + H * Math.sqrt(1 - q));
+      if (i < i0) i0 = i;
+      if (i > i1) i1 = i;
+      if (j < j0) j0 = j;
+      if (j > j1) j1 = j;
+    }
+  }
+  return { cells: Int32Array.from(cells), top: Float32Array.from(tops), i0, j0, i1, j1 };
+}
+
+/**
+ * Raise a saved (stripped) sand delta in place where rocks have cover piled on
+ * top of them, for static views (neighbor beaches) that don't run BeachSim.
+ */
+export function applyRockCover(
+  delta: Float32Array,
+  rest: Float32Array,
+  nx: number,
+  ny: number,
+  dx: number,
+  objects: PlacedObject[],
+  cover: Float32Array,
+): void {
+  const n = nx * ny;
+  const terrain = new Float32Array(n);
+  for (let k = 0; k < n; k++) terrain[k] = rest[k] + delta[k] - (cover[k] > 0 ? cover[k] : 0);
+  const topMax = new Float32Array(n).fill(-Infinity);
+  for (const o of objects) {
+    if (o.kind !== 'rock') continue;
+    const base = o.base ?? sampleGrid(terrain, nx, ny, dx, o.x, o.y);
+    const fp = rockFootprintAt(o, base, nx, ny, dx);
+    for (let m = 0; m < fp.cells.length; m++) {
+      const k = fp.cells[m];
+      if (fp.top[m] > topMax[k]) topMax[k] = fp.top[m];
+    }
+  }
+  for (let k = 0; k < n; k++) {
+    if (cover[k] > 0 && topMax[k] > -Infinity) {
+      const lifted = topMax[k] + cover[k] - rest[k];
+      if (lifted > delta[k]) delta[k] = lifted;
+    }
+  }
+}

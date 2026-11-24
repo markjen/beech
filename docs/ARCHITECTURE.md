@@ -53,7 +53,7 @@ simulated one.
 | `scripts/perf-sim.mjs` | The simulation's tick by phase and grid tier, in Node with the app's settings (`npm run perf:sim`; `perf.mjs` budgets its totals) |
 | `scripts/perf.mjs`, `perf/budget.json` | Performance profile (draw calls, meshes, main-thread and worker ms, bundle size) checked against budgets; `npm run perf`, CI's Performance workflow. See PERFORMANCE.md |
 | `src/sim/objects.ts` | Things on the beach: rocks (raise the non-erodible floor), driftwood (floats, drifts, strands), shells and sea glass (rolled by fast water), flags (fixed), and what the sea washes in. Tested in `tests/objects.test.ts`. |
-| `src/sim/sandCodec.ts` | Saved-beach format: BCH1 (sand) and BCH2 (sand plus placed objects, validated on load) |
+| `src/sim/sandCodec.ts` | Saved-beach format: BCH1 (sand), BCH2 (sand plus placed objects, validated on load), and BCH3 (adds rock cover when any rock is buried) |
 | `src/world/beachFile.ts` | Beach files (`.beach.json`, spec in BEACH_FILE.md): read and write, shapes, `reconcileItems` (what of a beach your bag can build) |
 | `scripts/beach-file.mjs` | Offline beach-file tool: validate, rows/compact, heightmap PNG (`scripts/lib/png.mjs`) |
 | `src/net/localStore.ts`, `src/ui/localCheckpoints.ts` | The sandbox build's device storage (IndexedDB): the beach between visits, and checkpoints on the device |

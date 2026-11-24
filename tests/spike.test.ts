@@ -264,9 +264,6 @@ describe('old stacked saves heal on load', () => {
     return r.noRock;
   }
 
-  // (buried rocks lose some cover on any reload, a separate round-trip
-  // issue that predates this fix: see BACKLOG. These check the repair
-  // leaves them alone.)
   it('the repair leaves a rock buried under sand alone', () => {
     for (const stamps of [2, 6]) {
       const sim = new BeachSim(grid, 1, FLAGS);
@@ -304,5 +301,167 @@ describe('old stacked saves heal on load', () => {
     expect(loaded.find((o) => o.id === piled.id)!.base).toBe(piled.base);
     expect(loaded.find((o) => o.id === 11)!.base!).toBeLessThanOrEqual(rest + 0.15);
     expect(sandDiff(sim2, farSand, far, 1.5)).toBeLessThan(1e-4);
+  });
+});
+
+describe('buried rocks keep their cover on reload', () => {
+  it('unburied rocks produce no cover and still save as BCH2', async () => {
+    const { encodeSand } = await import('../src/sim/sandCodec');
+    const sim = new BeachSim(grid, 1, FLAGS);
+    placeWall(sim);
+    expect(sim.sandCover()).toBeUndefined();
+    const bytes = await encodeSand(sim.sandDelta(), sim.nx, sim.ny, sim.objects.persisted(), sim.sandCover());
+    expect(String.fromCharCode(...bytes.subarray(0, 4))).toBe('BCH2');
+  });
+
+  it('a buried rock keeps its cover, base and floor across reload, BCH3 and beach files, and removes cleanly', async () => {
+    const { decodeSand, encodeSand } = await import('../src/sim/sandCodec');
+    const { parseBeachFile, writeBeachFile } = await import('../src/world/beachFile');
+    for (const stamps of [1, 4]) {
+      const sim = new BeachSim(grid, 1, FLAGS);
+      const rock = sim.placeObject({ kind: 'rock', item: 'rock', x: 16, y, angle: 0.3, size: 0.5, variant: 2 });
+      for (let s = 0; s < stamps; s++) sim.stamp('pile', 16, y, 0.9, 0.4);
+      const sandBefore = sim.sand.slice();
+      const bottomBefore = sim.bottom.slice();
+      const delta = sim.sandDelta();
+      const cover = sim.sandCover();
+      expect(cover).toBeDefined();
+
+      // direct loadDelta
+      const simDirect = new BeachSim(grid, 1, FLAGS);
+      simDirect.loadDelta(delta, sim.objects.persisted(), cover);
+      expect(sandDiff(simDirect, sandBefore, 16, 1.5)).toBeLessThan(1e-5);
+      expect(simDirect.objects.persisted()[0].base).toBeCloseTo(rock.base!, 5);
+      expect(simDirect.bottom).toEqual(bottomBefore);
+
+      // BCH3 round-trip
+      const bytes = await encodeSand(delta, sim.nx, sim.ny, sim.objects.persisted(), cover);
+      expect(String.fromCharCode(...bytes.subarray(0, 4))).toBe('BCH3');
+      const decoded = await decodeSand(bytes);
+      expect(decoded.cover).toBeDefined();
+      const simBch = new BeachSim(grid, 1, FLAGS);
+      simBch.loadDelta(decoded.delta, decoded.objects, decoded.cover);
+      expect(sandDiff(simBch, sandBefore, 16, 1.5)).toBeLessThan(0.002);
+      expect(simBch.objects.persisted()[0].base).toBeCloseTo(rock.base!, 3);
+
+      // removing the rock after reload restores exact under + deposit, matching direct removal
+      const simRef = new BeachSim(grid, 1, FLAGS);
+      simRef.loadDelta(delta, sim.objects.persisted(), cover);
+      sim.removeObject(rock.id);
+      simRef.removeObject(simRef.objects.persisted()[0].id);
+      expect(sandDiff(simRef, sim.sand, 16, 1.5)).toBeLessThan(1e-5);
+      expect(simRef.bottom).toEqual(sim.bottom);
+
+      // .beach.json export -> import round-trip (all encodings)
+      for (const encoding of ['deflate-int16le', 'int16le', 'rows'] as const) {
+        const text = await writeBeachFile({ nx: sim.nx, ny: sim.ny, delta, objects: decoded.objects, cover }, { encoding });
+        const parsed = await parseBeachFile(text, { nx: sim.nx, ny: sim.ny });
+        if (!parsed.ok) throw new Error(JSON.stringify(parsed.errors));
+        expect(parsed.warnings).toEqual([]);
+        const simFile = new BeachSim(grid, 1, FLAGS);
+        simFile.loadDelta(parsed.beach.delta, parsed.beach.objects, parsed.beach.cover);
+        expect(sandDiff(simFile, sandBefore, 16, 1.5)).toBeLessThan(0.002);
+      }
+    }
+  });
+
+  it('overlapping buried rocks and a rock on a pile that is also buried round-trip cleanly', async () => {
+    const { decodeSand, encodeSand } = await import('../src/sim/sandCodec');
+    const sim = new BeachSim(grid, 1, FLAGS);
+    // buried wall
+    placeWall(sim);
+    for (let s = 0; s < 3; s++) sim.stamp('pile', 17.3, y, 1.2, 0.4);
+    // rock placed on a pile, then buried further
+    const px = 8;
+    for (let s = 0; s < 3; s++) sim.stamp('pile', px, y, 0.8, 0.4);
+    const piledRock = sim.placeObject({ kind: 'rock', item: 'rock', x: px, y, angle: 0, size: 0.5, variant: 1 });
+    for (let s = 0; s < 2; s++) sim.stamp('pile', px, y, 0.8, 0.4);
+
+    const sandBefore = sim.sand.slice();
+    const bytes = await encodeSand(sim.sandDelta(), sim.nx, sim.ny, sim.objects.persisted(), sim.sandCover());
+    const back = await decodeSand(bytes);
+    const sim2 = new BeachSim(grid, 1, FLAGS);
+    sim2.loadDelta(back.delta, back.objects, back.cover);
+    expect(sandDiff(sim2, sandBefore, 17.3, 3)).toBeLessThan(0.002);
+    expect(sandDiff(sim2, sandBefore, px, 1.5)).toBeLessThan(0.002);
+    expect(sim2.objects.persisted().find((o) => o.id === piledRock.id)!.base).toBeCloseTo(piledRock.base!, 3);
+  });
+
+  it('repeated BCH3 save/load cycles do not drift', async () => {
+    const { decodeSand, encodeSand } = await import('../src/sim/sandCodec');
+    let cur = new BeachSim(grid, 1, FLAGS);
+    cur.placeObject({ kind: 'rock', item: 'rock', x: 16, y, angle: 0, size: 0.6, variant: 1 });
+    for (let s = 0; s < 3; s++) cur.stamp('pile', 16, y, 0.9, 0.4);
+
+    let firstAfter: Float32Array | null = null;
+    for (let round = 0; round < 5; round++) {
+      const bytes = await encodeSand(cur.sandDelta(), cur.nx, cur.ny, cur.objects.persisted(), cur.sandCover());
+      const back = await decodeSand(bytes);
+      const next = new BeachSim(grid, 1, FLAGS);
+      next.loadDelta(back.delta, back.objects, back.cover);
+      if (!firstAfter) firstAfter = next.sand.slice();
+      else expect(sandDiff(next, firstAfter, 16, 2)).toBeLessThan(1e-5);
+      cur = next;
+    }
+  });
+
+  it('keeps buried rocks covered across quality tiers (resampling)', async () => {
+    const { decodeSand, encodeSand, resampleField } = await import('../src/sim/sandCodec');
+    const med = new BeachSim(GRID_TIERS.medium, 1, FLAGS);
+    const rock = med.placeObject({ kind: 'rock', item: 'rock', x: 16, y, angle: 0, size: 0.6, variant: 1 });
+    for (let s = 0; s < 4; s++) med.stamp('pile', 16, y, 1.0, 0.4);
+    const kMed = Math.floor(y / med.dx) * med.nx + Math.floor(16 / med.dx);
+    const peakMed = med.sand[kMed];
+
+    const bytes = await encodeSand(med.sandDelta(), med.nx, med.ny, med.objects.persisted(), med.sandCover());
+    const back = await decodeSand(bytes);
+    const low = new BeachSim(GRID_TIERS.low, 1, FLAGS);
+    low.loadDelta(
+      resampleField(back.delta, back.nx, back.ny, low.nx, low.ny),
+      back.objects,
+      resampleField(back.cover!, back.nx, back.ny, low.nx, low.ny),
+    );
+    const kLow = Math.floor(y / low.dx) * low.nx + Math.floor(16 / low.dx);
+    expect(low.sand[kLow]).toBeCloseTo(peakMed, 1);
+    expect(low.objects.persisted()[0].base).toBeCloseTo(rock.base!, 2);
+  });
+
+  it('importBeach with buried rocks undoes and redoes cleanly', () => {
+    const sim = new BeachSim(grid, 1, FLAGS);
+    sim.placeObject({ kind: 'rock', item: 'rock', x: 12, y, angle: 0, size: 0.5, variant: 1 });
+    for (let s = 0; s < 3; s++) sim.stamp('pile', 12, y, 0.8, 0.4);
+    const beforeSand = sim.sand.slice();
+
+    const src = new BeachSim(grid, 1, FLAGS);
+    src.placeObject({ kind: 'rock', item: 'rock', x: 20, y, angle: 0, size: 0.5, variant: 2 });
+    for (let s = 0; s < 3; s++) src.stamp('pile', 20, y, 0.8, 0.4);
+    const afterSand = src.sand.slice();
+
+    sim.importBeach(src.sandDelta(), src.objects.persisted(), src.sandCover());
+    expect(sandDiff(sim, afterSand, 20, 1.5)).toBeLessThan(1e-5);
+    sim.undoStroke(false);
+    expect(sandDiff(sim, beforeSand, 12, 1.5)).toBeLessThan(1e-5);
+    sim.redoStroke(false);
+    expect(sandDiff(sim, afterSand, 20, 1.5)).toBeLessThan(1e-5);
+  });
+
+  it('applyRockCover raises a neighbor view to match the live buried sand', async () => {
+    const { applyRockCover } = await import('../src/sim/objects');
+    const sim = new BeachSim(grid, 1, FLAGS);
+    sim.placeObject({ kind: 'rock', item: 'rock', x: 16, y, angle: 0.2, size: 0.6, variant: 1 });
+    for (let s = 0; s < 3; s++) sim.stamp('pile', 16, y, 0.9, 0.4);
+    const delta = sim.sandDelta();
+    const cover = sim.sandCover()!;
+    applyRockCover(delta, sim.rest, sim.nx, sim.ny, sim.dx, sim.objects.persisted(), cover);
+    const k = Math.floor(y / sim.dx) * sim.nx + Math.floor(16 / sim.dx);
+    expect(sim.rest[k] + delta[k]).toBeCloseTo(sim.sand[k], 5);
+  });
+
+  it('bogus cover outside rock footprints cannot create sand on load', () => {
+    const sim = new BeachSim(grid, 1, FLAGS);
+    const baseline = sim.sand.slice();
+    const bogusCover = new Float32Array(sim.n).fill(5);
+    sim.loadDelta(new Float32Array(sim.n), [], bogusCover);
+    expect(sandDiff(sim, baseline, 16, 4)).toBeLessThan(1e-5);
   });
 });

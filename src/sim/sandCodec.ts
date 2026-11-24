@@ -16,14 +16,25 @@
 //   bytes 8-11  length of the compressed sand (uint32 LE)
 //   then        deflate(int16 sand), deflate(UTF-8 JSON PlacedObject[])
 //
+// Version 3 adds sand piled on top of rocks (only written when any rock is
+// buried; beaches without buried rocks still write BCH1 or BCH2):
+//
+//   bytes 0-3   "BCH3"
+//   bytes 4-7   nx, ny (uint16 LE)
+//   bytes 8-11  length of the compressed sand (uint32 LE)
+//   bytes 12-15 length of the compressed objects (uint32 LE)
+//   then        deflate(int16 sand), deflate(UTF-8 JSON PlacedObject[]),
+//               deflate(int16 cover mm, >= 0)
+//
 // Rocks are stored as objects, not as sand, so a saved rock is a rock again
-// when the beach loads. Version 1 files still load (with no objects).
+// when the beach loads. Version 1 and 2 files still load.
 
 import { WORLD_SIZE_X, WORLD_SIZE_Z } from '../config';
 import { OBJECT_KINDS, type PlacedObject } from './objects';
 
 const MAGIC = [0x42, 0x43, 0x48, 0x31]; // "BCH1"
 const MAGIC2 = [0x42, 0x43, 0x48, 0x32]; // "BCH2"
+const MAGIC3 = [0x42, 0x43, 0x48, 0x33]; // "BCH3"
 const KINDS = new Set<string>(OBJECT_KINDS);
 /**
  * A saved beach never holds more than this many objects. (It was 400 until
@@ -60,18 +71,48 @@ function quantize(delta: Float32Array): Int16Array {
   return q;
 }
 
+function quantizeCover(cover: Float32Array): Int16Array | null {
+  const q = new Int16Array(cover.length);
+  let any = false;
+  for (let k = 0; k < q.length; k++) {
+    const v = Math.round(cover[k] * MM);
+    if (v > 0) {
+      q[k] = v > 32767 ? 32767 : v;
+      any = true;
+    }
+  }
+  return any ? q : null;
+}
+
 export async function encodeSand(
   delta: Float32Array,
   nx: number,
   ny: number,
   objects: PlacedObject[] = [],
+  cover?: Float32Array,
 ): Promise<Uint8Array> {
   if (delta.length !== nx * ny) throw new Error('size mismatch');
+  if (cover && cover.length !== nx * ny) throw new Error('size mismatch');
   const q = quantize(delta);
   if (objects.length) {
     const sand = await pipe(new Uint8Array(q.buffer), new CompressionStream('deflate'));
     const json = new TextEncoder().encode(JSON.stringify(objectsToSave(objects).keep.map(round)));
     const objs = await pipe(json, new CompressionStream('deflate'));
+    const qc = cover ? quantizeCover(cover) : null;
+    if (qc) {
+      const cov = await pipe(new Uint8Array(qc.buffer), new CompressionStream('deflate'));
+      const out = new Uint8Array(16 + sand.length + objs.length + cov.length);
+      out.set(MAGIC3, 0);
+      const dv = new DataView(out.buffer);
+      dv.setUint16(4, nx, true);
+      dv.setUint16(6, ny, true);
+      dv.setUint32(8, sand.length, true);
+      dv.setUint32(12, objs.length, true);
+      out.set(sand, 16);
+      out.set(objs, 16 + sand.length);
+      out.set(cov, 16 + sand.length + objs.length);
+      return out;
+    }
     const out = new Uint8Array(12 + sand.length + objs.length);
     out.set(MAGIC2, 0);
     const dv = new DataView(out.buffer);
@@ -98,34 +139,68 @@ export interface SavedBeach {
   ny: number;
   delta: Float32Array;
   objects: PlacedObject[];
+  /** sand piled on top of rocks (m above rock dome), present when any rock is buried */
+  cover?: Float32Array;
 }
 
 export async function decodeSand(bytes: Uint8Array): Promise<SavedBeach> {
   const v1 = bytes.length >= 8 && MAGIC.every((m, i) => bytes[i] === m);
   const v2 = bytes.length >= 12 && MAGIC2.every((m, i) => bytes[i] === m);
-  if (!v1 && !v2) throw new Error('not a saved beach');
+  const v3 = bytes.length >= 16 && MAGIC3.every((m, i) => bytes[i] === m);
+  if (!v1 && !v2 && !v3) throw new Error('not a saved beach');
   const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const nx = dv.getUint16(4, true);
   const ny = dv.getUint16(6, true);
   let sandBytes = bytes.subarray(8);
   let objects: PlacedObject[] = [];
+  let coverBytes: Uint8Array | null = null;
   if (v2) {
     const len = dv.getUint32(8, true);
     if (12 + len > bytes.length) throw new Error('corrupt saved beach');
     sandBytes = bytes.subarray(12, 12 + len);
     const json = await pipe(bytes.subarray(12 + len), new DecompressionStream('deflate'));
     objects = sanitizeObjects(JSON.parse(new TextDecoder().decode(json)));
+  } else if (v3) {
+    const sandLen = dv.getUint32(8, true);
+    const objsLen = dv.getUint32(12, true);
+    if (16 + sandLen + objsLen > bytes.length) throw new Error('corrupt saved beach');
+    sandBytes = bytes.subarray(16, 16 + sandLen);
+    const json = await pipe(bytes.subarray(16 + sandLen, 16 + sandLen + objsLen), new DecompressionStream('deflate'));
+    objects = sanitizeObjects(JSON.parse(new TextDecoder().decode(json)));
+    coverBytes = bytes.subarray(16 + sandLen + objsLen);
   }
   const raw = await pipe(sandBytes, new DecompressionStream('deflate'));
   if (raw.byteLength !== nx * ny * 2) throw new Error('corrupt saved beach');
   const q = new Int16Array(raw.buffer, raw.byteOffset, nx * ny);
   const delta = new Float32Array(nx * ny);
   for (let k = 0; k < delta.length; k++) delta[k] = q[k] / MM;
-  return { nx, ny, delta, objects };
+  let cover: Float32Array | undefined;
+  if (coverBytes) {
+    const rawCov = await pipe(coverBytes, new DecompressionStream('deflate'));
+    if (rawCov.byteLength !== nx * ny * 2) throw new Error('corrupt saved beach');
+    const qc = new Int16Array(rawCov.buffer, rawCov.byteOffset, nx * ny);
+    const cov = new Float32Array(nx * ny);
+    let any = false;
+    for (let k = 0; k < cov.length; k++) {
+      if (qc[k] > 0) {
+        cov[k] = qc[k] / MM;
+        any = true;
+      }
+    }
+    if (any) cover = cov;
+  }
+  return { nx, ny, delta, objects, ...(cover ? { cover } : {}) };
 }
 
 const r3 = (v: number) => Math.round(v * 1000) / 1000;
-const round = (o: PlacedObject): PlacedObject => ({ ...o, x: r3(o.x), y: r3(o.y), angle: r3(o.angle), size: r3(o.size) });
+const round = (o: PlacedObject): PlacedObject => ({
+  ...o,
+  x: r3(o.x),
+  y: r3(o.y),
+  angle: r3(o.angle),
+  size: r3(o.size),
+  ...(o.base !== undefined ? { base: r3(o.base) } : {}),
+});
 
 /** Saved data comes from elsewhere: keep only well-formed objects on the beach. */
 export function sanitizeObjects(raw: unknown): PlacedObject[] {
@@ -150,6 +225,7 @@ export function sanitizeObjects(raw: unknown): PlacedObject[] {
       angle: p.angle as number,
       size: p.size as number,
       variant: p.variant as number,
+      ...(p.kind === 'rock' && num(p.base, -10, 10) ? { base: p.base as number } : {}),
       ...(p.wild === true ? { wild: true } : {}),
       ...(p.found === true ? { found: true } : {}),
     });
@@ -187,9 +263,14 @@ export function fitWorld(b: SavedBeach): SavedBeach {
     const ny = b.ny + pad;
     const delta = new Float32Array(b.nx * ny);
     delta.set(b.delta, pad * b.nx);
+    let cover: Float32Array | undefined;
+    if (b.cover) {
+      cover = new Float32Array(b.nx * ny);
+      cover.set(b.cover, pad * b.nx);
+    }
     const inNewWorld = b.objects.some((o) => o.y > savedZ + EDGE);
     const shift = inNewWorld ? 0 : pad * dx;
-    out = { nx: b.nx, ny, delta, objects: b.objects.map((o) => ({ ...o, y: o.y + shift })) };
+    out = { nx: b.nx, ny, delta, objects: b.objects.map((o) => ({ ...o, y: o.y + shift })), ...(cover ? { cover } : {}) };
   }
   const stray = (o: PlacedObject) => o.y > WORLD_SIZE_Z - EDGE || o.x > WORLD_SIZE_X - EDGE || o.x < EDGE || o.y < EDGE;
   if (!out.objects.some(stray)) return out;

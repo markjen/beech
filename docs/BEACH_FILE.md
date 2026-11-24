@@ -57,6 +57,7 @@ MIME type is `application/json`.
 | `location` | string | no | A location id from `src/world/locations.ts` (the real beach whose tides and light it uses). Unknown ids are ignored. |
 | `createdWith` | string | no | Free text, e.g. `"beech 1.4.0"` or `"my-generator 0.2"`. Informational. |
 | `sand` | object | no | A grid of sand heights. See below. |
+| `cover` | object | no | Sand piled on top of rocks (same grid format as `sand`, non-negative millimetres). Written only when a beach has buried rocks; omitted otherwise. |
 | `shapes` | array | no | Shapes applied on top of the grid, in order. See below. |
 | `objects` | array | no | Things on the beach. See below. |
 
@@ -148,6 +149,7 @@ gives a lower, rounder top. Limits: at most 500 shapes; sizes from
 | `x`, `y` | number | yes | Where it sits (metres). Kept 0.3 m inside the edges. |
 | `angle` | number | no | Degrees. Default 0. |
 | `size` | number | no | Metres: a rock's radius, a driftwood log's length, a shell's width. Clamped to the item's size range. Ignored for fixed-size items (flag, deckchair and the shop items). The default is the middle of the range. |
+| `base` | number | no | Rocks only: metres above still water where the rock sits (kept by exports so buried rocks stay buried). Hand-written files can omit it and rocks sit on the sand at `(x, y)`. |
 | `variant` | integer | no | A seed, 0 to 1000000, for the object's exact shape and colour. The same number always looks the same; try a few. The default is worked out from the object's position, so it stays the same each time the file loads. |
 
 At most **2000** objects (400 before 2026-11-23: an app from before then keeps the first 400 and warns). The order doesn't matter. Things the sea brought in
