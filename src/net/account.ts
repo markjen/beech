@@ -136,6 +136,35 @@ export class Account {
     }).then((r) => this.session(r));
   }
 
+  /** Sign in with a Steam Web API auth ticket (from window.beechSteam.getAuthTicket). */
+  signInWithSteam(ticket: string, name: string): Promise<AccountUser> {
+    return this.call('/api/auth/steam', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ticket, name }),
+    }).then((r) => this.session(r));
+  }
+
+  /** Generate a 10-minute one-time code to link a fresh Steam/other-device account to this one. */
+  async createLinkCode(): Promise<{ code: string; expiresAt: number }> {
+    const res = await this.call('/api/account/link-code', { method: 'POST' });
+    if (!res.ok) throw await errorOf(res, 'could not create a link code');
+    return (await res.json()) as { code: string; expiresAt: number };
+  }
+
+  /** Link this fresh account to an existing account using its 8-character code. */
+  async redeemLinkCode(code: string): Promise<AccountUser> {
+    const res = await this.call('/api/account/link', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
+    });
+    const user = await this.session(res);
+    this.beaches = [];
+    this.beachId = null;
+    return user;
+  }
+
   signInDev(name: string): Promise<AccountUser> {
     return this.call('/api/auth/dev', {
       method: 'POST',

@@ -5,7 +5,7 @@ const GOOGLE_JWKS = createRemoteJWKSet(new URL('https://www.googleapis.com/oauth
 const GOOGLE_ISSUERS = ['https://accounts.google.com', 'accounts.google.com'];
 
 export interface VerifiedIdentity {
-  provider: 'google' | 'apple';
+  provider: 'google' | 'apple' | 'steam';
   sub: string;
   name: string;
   /**
@@ -61,6 +61,57 @@ export async function verifyAppleIdToken(
   });
   if (typeof payload.sub !== 'string' || !payload.sub) throw new Error('token has no subject');
   return { provider: 'apple', sub: payload.sub, name: name.slice(0, 60) };
+}
+
+export interface SteamAuthConfig {
+  appId: string;
+  webApiKey: string;
+  /** identity string passed to GetAuthTicketForWebApi (default 'beech') */
+  identity?: string;
+}
+
+interface SteamAuthResponse {
+  response?: {
+    params?: {
+      result?: string;
+      steamid?: string;
+      ownersteamid?: string;
+      vacbanned?: boolean;
+      publisherbanned?: boolean;
+    };
+    error?: { errorcode?: number; errordesc?: string };
+  };
+}
+
+/**
+ * Verify a Steam Web API auth ticket (from GetAuthTicketForWebApi) via
+ * ISteamUserAuth/AuthenticateUserTicket/v1. Throws if Steam rejects the ticket
+ * or the account is VAC/publisher banned.
+ */
+export async function verifySteamTicket(
+  ticketHex: string,
+  cfg: SteamAuthConfig,
+  name = '',
+  fetchFn: typeof fetch = fetch,
+): Promise<VerifiedIdentity> {
+  if (!cfg.appId || !cfg.webApiKey) throw new Error('steam sign-in is not configured');
+  if (!/^[0-9a-f]{16,4096}$/i.test(ticketHex)) throw new Error('malformed steam ticket');
+  const params = new URLSearchParams({
+    key: cfg.webApiKey,
+    appid: cfg.appId,
+    ticket: ticketHex,
+    identity: cfg.identity ?? 'beech',
+  });
+  const res = await fetchFn(`https://partner.steam-api.com/ISteamUserAuth/AuthenticateUserTicket/v1/?${params.toString()}`);
+  if (!res.ok) throw new Error(`steam auth HTTP ${res.status}`);
+  const data = (await res.json()) as SteamAuthResponse;
+  const err = data.response?.error;
+  if (err) throw new Error(err.errordesc || `steam error ${err.errorcode ?? ''}`.trim());
+  const p = data.response?.params;
+  if (!p || p.result !== 'OK') throw new Error('steam ticket rejected');
+  if (p.vacbanned || p.publisherbanned) throw new Error('steam account is restricted');
+  if (typeof p.steamid !== 'string' || !/^\d{10,25}$/.test(p.steamid)) throw new Error('invalid steamid');
+  return { provider: 'steam', sub: p.steamid, name: name.trim().slice(0, 60) };
 }
 
 const b64url = (bytes: Uint8Array) =>

@@ -80,11 +80,6 @@ _(nothing right now)_
 - [ ] **Free item: footprints**: Rose, Discord #feedback 2026-11-23.
   Footprints left in the sand, plus a little figure walking the
   waterline (promoted from Ideas).
-
-- [ ] **Steam S2 (Auth & cross-platform account linking)**: `POST
-  /api/auth/steam` (`ISteamUserAuth/AuthenticateUserTicket/v1`), auto-sign-in
-  with offline fallback, and migration 17 (`user_identities`) + 8-char link
-  code so web/mobile/Steam share one account. See [STEAM.md](STEAM.md).
 - [ ] **Steam S3 (Microtransactions)**: `ISteamMicroTxn` (`InitTxn/v3`,
   `FinalizeTxn/v2`, `QueryTxn/v3`), migration 18 (`steam_orders`,
   `purchases.store` allows `'steam'`), client `'steam'` shop flow, and
