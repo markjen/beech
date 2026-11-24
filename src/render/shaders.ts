@@ -391,10 +391,14 @@ uniform vec3 baseCol;
 uniform vec3 fogCol;
 uniform float fadeTop;
 uniform float fadeBottom;
+/** specular strength, 0 for matte props (set by createPropMaterial) */
+uniform float shine;
 void main() {
   float ndl = dot(normalize(vNormal), -sunDir);
   float lit = 0.5 + 0.5 * smoothstep(-0.2, 0.5, ndl);
   vec3 col = baseCol * mix(shadowCol, sunCol, lit);
+  float spec = pow(max(dot(reflect(sunDir, normalize(vNormal)), -cameraDir), 0.0), 24.0) * shine;
+  col += sunCol * spec;
   col = mix(col, fogCol, (1.0 - smoothstep(fadeBottom, fadeTop, vWorld.y)) * 0.85);
   gl_FragColor = vec4(col, 1.0);
 }

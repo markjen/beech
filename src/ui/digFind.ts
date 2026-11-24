@@ -1,5 +1,5 @@
 import { itemById, prizeName, type Rarity } from '../world/items';
-import { icon, type IconName } from './hud';
+import { itemIcon } from './hud';
 
 const RARITY_NAME: Record<string, string> = { common: 'Common', uncommon: 'Uncommon', rare: 'Rare', legendary: 'Legendary', unique: 'One of a kind' };
 
@@ -51,7 +51,7 @@ export class DigFind {
       findsLeft > 0 ? `${findsLeft} more buried today.` : 'That is all the buried treasure for today.';
     this.reveal.className = `digfind-reveal rarity-${prize.rarity}`;
     this.reveal.innerHTML = `
-      <div class="digfind-prize">${icon(prize.item as IconName)}</div>
+      <div class="digfind-prize">${itemIcon(prize.item)}</div>
       <b>${prizeName(prize.item)}</b>
       <span>${RARITY_NAME[prize.rarity as Rarity] ?? prize.rarity}</span>
       <button type="button" class="digfind-place">${placeable ? 'Put it on the beach' : 'Keep it'}</button>`;

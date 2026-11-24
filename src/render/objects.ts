@@ -4,7 +4,7 @@ import type { Mesh } from '@babylonjs/core/Meshes/mesh';
 import '@babylonjs/core/Meshes/thinInstanceMesh';
 import type { Scene } from '@babylonjs/core/scene';
 
-import { PROP_COLORS } from '../palette';
+import { ITEM_LOOKS, PROP_COLORS } from '../palette';
 import { OBJECT_KINDS, ROCK_HEIGHT, WOOD_RADIUS, floatRadius, type ObjectKind, type ObjectState, type PlacedObject } from '../sim/objects';
 import { ORIGIN_X, ORIGIN_Z, type BeachRenderer } from './beachRenderer';
 import { box, finish, lathe, orient, rng } from './meshKit';
@@ -415,13 +415,16 @@ interface Look {
 }
 
 function lookKey(o: PlacedObject): { key: string; base: number } {
-  if (LINEAR.has(o.kind)) return { key: `${o.kind}:${o.variant}`, base: 1 };
+  // a prize item shares its kind's shape but not its look — pink-shell is
+  // kind shell — so the look key carries the item too (src/palette.ts)
+  const item = ITEM_LOOKS[o.item] ? `:${o.item}` : '';
+  if (LINEAR.has(o.kind)) return { key: `${o.kind}${item}:${o.variant}`, base: 1 };
   if (o.kind === 'driftwood') {
     const b = Math.round(Math.log(Math.max(0.05, o.size)) / WOOD_STEP);
-    return { key: `driftwood:${o.variant}:${b}`, base: Math.exp(b * WOOD_STEP) };
+    return { key: `driftwood${item}:${o.variant}:${b}`, base: Math.exp(b * WOOD_STEP) };
   }
   // flags, deckchairs and the shop's things are one size
-  return { key: `${o.kind}:${o.variant}`, base: 1 };
+  return { key: `${o.kind}${item}:${o.variant}`, base: 1 };
 }
 
 class PropBank {
@@ -434,13 +437,26 @@ class PropBank {
 
   constructor(
     private readonly scene: Scene,
-    renderer: BeachRenderer,
+    private readonly renderer: BeachRenderer,
   ) {
     this.mats = Object.fromEntries(OBJECT_KINDS.map((k) => [k, PROP_COLORS[k].map((c) => renderer.createPropMaterial(c))])) as Record<ObjectKind, ShaderMaterial[]>;
     this.poleMat = renderer.createPropMaterial(PROP_COLORS.pole);
     this.glow = new Glow(scene);
     // one upload per changed source per frame, whatever moved
     scene.onBeforeRenderObservable.add(() => this.flush());
+  }
+
+  /** Materials for one thing: its own item's colours and finish, or its kind's. */
+  private readonly itemMats = new Map<string, ShaderMaterial[]>();
+  private matsFor(o: PlacedObject): ShaderMaterial[] {
+    const look = ITEM_LOOKS[o.item];
+    if (!look) return this.mats[o.kind];
+    let set = this.itemMats.get(o.item);
+    if (!set) {
+      set = look.colors.map((c) => this.renderer.createPropMaterial(c, look.gloss));
+      this.itemMats.set(o.item, set);
+    }
+    return set;
   }
 
   /** The look for this thing (built the first time it's needed). */
@@ -465,7 +481,7 @@ class PropBank {
   }
 
   private build(key: string, o: PlacedObject, base: number): Look {
-    const set = this.mats[o.kind];
+    const set = this.matsFor(o);
     const mat = set[o.variant % set.length];
     let root: Mesh;
     let lights: Vector3[] = [];
@@ -671,7 +687,7 @@ export class ObjectView {
     for (const st of states) {
       seen.add(st.id);
       const cur = this.shown.get(st.id);
-      if (cur && cur.st.kind === st.kind && cur.st.variant === st.variant && cur.st.size === st.size) {
+      if (cur && cur.st.kind === st.kind && cur.st.item === st.item && cur.st.variant === st.variant && cur.st.size === st.size) {
         cur.st = st;
         cur.settled = false;
         continue;
@@ -694,9 +710,10 @@ export class ObjectView {
       sy = sz = WOOD_RADIUS(st.size) / WOOD_RADIUS(look.base);
     }
     const s: Shown = { st, look, insts, x: st.x, y: st.y, z: st.z, angle: st.angle, bob: Math.random() * 6, sx, sy, sz, settled: false };
-    // rare, legendary, unique and shop things glow and sparkle; lamps shine
+    // rare, legendary, unique and shop things glow and sparkle; lamps shine.
+    // A prize item can also carry its own glow (the golden sand dollar's gold halo).
     const rarity = itemById(st.item)?.rarity;
-    const special = rarity === 'rare' || rarity === 'legendary' || rarity === 'unique' ? rarity : null;
+    const special = ITEM_LOOKS[st.item]?.glow ?? (rarity === 'rare' || rarity === 'legendary' || rarity === 'unique' ? rarity : null);
     if (special || look.lights.length) {
       const { reach, height } = extent(st);
       s.glow = this.bank.glow.attach(special, reach, height, look.lights, st.id + st.variant * 7);

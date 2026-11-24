@@ -1,4 +1,4 @@
-import { icon, type IconName } from './hud';
+import { icon, itemIcon, type IconName } from './hud';
 import { EXTRAS, isAvailable, type Item } from '../world/items';
 
 /** What's planned but not here yet, shown greyed out so the tray reads as a beginning. */
@@ -159,7 +159,7 @@ export class InventoryTray {
   select(id: string | null): void {
     const item = id ? this.items.find((i) => i.id === id) ?? null : null;
     this.selected = item?.id ?? null;
-    this.button.innerHTML = icon(item ? (item.id as IconName) : 'bag');
+    this.button.innerHTML = item ? itemIcon(item.id) : icon('bag');
     this.render();
     this.pick(item);
   }
@@ -200,7 +200,7 @@ export class InventoryTray {
       b.setAttribute('aria-pressed', String(it.id === this.selected));
       const left = this.ownedOf(it.id) - this.placedOf(it.id);
       const finder = this.foundBy.get(it.id);
-      b.innerHTML = `${icon(it.id as IconName)}<b>${it.name}</b><span>${it.unlimited ? 'Free · ∞' : finder !== undefined ? 'one of a kind' : `${Math.max(0, left)} of ${this.ownedOf(it.id)} left`}</span>`;
+      b.innerHTML = `${itemIcon(it.id)}<b>${it.name}</b><span>${it.unlimited ? 'Free · ∞' : finder !== undefined ? 'one of a kind' : `${Math.max(0, left)} of ${this.ownedOf(it.id)} left`}</span>`;
       if (finder !== undefined) {
         // the only one in the game, and who found it
         const f = document.createElement('i');
@@ -356,7 +356,7 @@ export class PlaceBar {
     this.setGifting(false);
     this.root.classList.toggle('shown', !!item);
     if (!item) return;
-    this.ico.innerHTML = icon(item.id as IconName);
+    this.ico.innerHTML = itemIcon(item.id);
     this.name.textContent = item.name;
     this.sizeRow.hidden = !!item.fixedSize;
     this.slider.value = String(this.sizes()[item.id] ?? size01);
