@@ -107,7 +107,7 @@ export function createRootApp(db: Db, api: Hono<any, any, any>, publicDir: strin
       const u = new URL(c.req.url);
       return c.redirect(`${landing.url.replace(/\/$/, '')}${u.pathname}${u.search}`, 301);
     }
-    // the guide and the privacy policy, and the landing page's own icon,
+    // the guide, the privacy policy, and the landing page's own icons/artwork
     // still answer on this host; everything else here is the landing page
     // (including /api — the game API is not served on the landing hosts)
     const p = c.req.path;
@@ -115,7 +115,8 @@ export function createRootApp(db: Db, api: Hono<any, any, any>, publicDir: strin
       p === '/guide' || p === '/guide/' || p.startsWith('/guide/') ||
       p === '/help' || p === '/releases' ||
       p === '/privacy.html' || p === '/privacy' ||
-      p.startsWith('/icons/') || p === '/favicon-32.png' || p === '/apple-touch-icon.png'
+      p.startsWith('/icons/') || p.startsWith('/landing-assets/') ||
+      p === '/favicon-32.png' || p === '/apple-touch-icon.png'
     ) return next();
     return landingPage(c);
   });
@@ -145,8 +146,15 @@ export function createRootApp(db: Db, api: Hono<any, any, any>, publicDir: strin
     serveStatic({
       root: path.relative(process.cwd(), publicDir) || '.',
       onFound: (p, c) => {
-        // hashed bundles never change; the page and service worker must revalidate
-        c.header('Cache-Control', p.includes('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache');
+        // hashed bundles never change; landing artwork caches for a day; the page and service worker must revalidate
+        c.header(
+          'Cache-Control',
+          p.includes('/assets/')
+            ? 'public, max-age=31536000, immutable'
+            : p.includes('/landing-assets/')
+              ? 'public, max-age=86400'
+              : 'no-cache',
+        );
       },
     }),
   );

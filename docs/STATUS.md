@@ -405,10 +405,11 @@ accepted the repo's default branch, so the deploy job ran only there.
 - **The landing page** is on the website too: `beech.games` serves
   `server/src/landingSite.ts` (Host-header routing in `rootApp.ts`; www
   301s to the apex; the game API is not served there), previewable under
-  `/landing` on every other host. It says what beech is, what you do, what's
-  new (from the release notes), and where to play — free in the browser now,
-  phone apps coming. No screenshots, no store claims. The domain itself
-  still points at Squarespace until the DNS cutover (docs/LANDING_PAGE.md).
+  `/landing` on every other host. Updated (2026-11-24) with an editorial hero,
+  an interactive Dawn/Day/Golden/Dusk lighting showcase of UI-free in-game 3D
+  renders (`public/landing-assets/`), a **Play now on web** CTA, a **Google
+  Play** store link (`app.beech.beach`), and an **iOS coming soon** badge
+  (docs/LANDING_PAGE.md).
 
 ## Claw machine (added after chair polish)
 

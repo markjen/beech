@@ -1,6 +1,6 @@
 # beech.games: the landing page
 
-Status: **built** (2026-11-23).
+Status: **built** (2026-11-23; hero redesign + Google Play link 2026-11-24).
 
 The home page for beech: what it is, what you do in it, what's new, and
 where to play. It is the place people land from a search or a shared link,
@@ -10,8 +10,9 @@ and it sends them on into the game.
 
 | URL | What |
 |---|---|
-| `/` (on `beech.games`) | The landing page: hero ("beech — a quiet place by the sea"), Play in your browser → `https://play.beech.games`, How to play → `/guide`, "What you do", "What's new", where to play, "Talk to us" (Discord), footer. |
+| `/` (on `beech.games`) | The landing page: editorial hero ("Shape the sand, stay for the tide.") with an interactive Dawn/Day/Golden/Dusk lighting preview of an in-game 3D beach diorama, **Play now on web** → `https://play.beech.games`, **Google Play** → `https://play.google.com/store/apps/details?id=app.beech.beach`, **iOS coming soon** badge, How to play → `/guide`, "What you do", "Where to play", "What's new", "Talk to us" (Discord), footer. |
 | `/landing` (every other host) | The same page, for preview before the domain flips — e.g. `https://play.beech.games/landing`, or `http://localhost:8787/landing` in development. |
+| `/landing-assets/*` | Clean UI-free 3D beach diorama renders (`hero-day.webp`, `hero-golden.webp`, `hero-dawn.webp`, `hero-dusk.webp`, `og-card.jpg`) captured directly from the beech engine with no test account or HUD. |
 | `/guide`, `/guide/releases` | The user guide and release notes; they keep working on the landing hosts too, and the landing page links to them. |
 | `/privacy.html` (`/privacy` → 301) | The privacy policy (`public/privacy.html`); it answers on the landing hosts too, and on every other host as a static file. The footer links it. |
 
@@ -28,20 +29,18 @@ invite URL lives in one place, `server/src/community.ts`
 (`DISCORD_INVITE_URL`); it is the server's permanent invite
 (`https://discord.gg/y7EGw2yg2d`).
 
-What the page does **not** claim:
+Store links & claims:
 
-- No store listing is live: iPhone and Android apps are "coming". No store
-  badges, no download links. (Play internal-track upload status is
-  unverified; Apple enrollment is unconfirmed.)
-- No screenshots: the only ones in the repo (PR #27) show a test account
-  and a test beach code. The page uses the existing icon
-  (`public/icons/icon-192.png`) and CSS only.
-- Privacy: linked in the footer → `/privacy.html` (the approved text,
+- **Web**: "Play now on web" links to `https://play.beech.games`.
+- **Android**: "Get it on Google Play" links to `https://play.google.com/store/apps/details?id=app.beech.beach` (`GOOGLE_PLAY_URL`).
+- **iOS**: clearly marked **iOS coming soon** with no App Store link yet.
+- **Artwork**: clean UI-free in-game 3D renders under `public/landing-assets/` (no test account or beach code).
+- **Privacy**: linked in the footer → `/privacy.html` (the approved text,
   `public/privacy.html`). Do not duplicate or rewrite the privacy text.
 
 SEO basics are in: `<title>`, meta description, canonical
 `https://beech.games/`, Open Graph tags (`og:image` →
-`https://beech.games/icons/icon-512.png`).
+`https://beech.games/landing-assets/og-card.jpg`, `summary_large_image`).
 
 ## How it's served
 
@@ -52,11 +51,11 @@ The game's own server (`beech` on Cloud Run) serves it; no new service.
   is the landing page. `www` 301s to the apex, keeping the path. The game
   API is not served there — `/api/*` on a landing host gets the landing
   page, not the game. `/healthz` still answers `ok`.
-- Three things still answer on a landing host: the guide (`/guide`,
+- Four things still answer on a landing host: the guide (`/guide`,
   `/guide/releases`, `/help`, `/releases`), the privacy policy
-  (`/privacy.html`; `/privacy` redirects to it), and the landing page's own
-  icon (`/icons/*`, `/favicon-32.png`, `/apple-touch-icon.png` — the page and
-  its `og:image` need them).
+  (`/privacy.html`; `/privacy` redirects to it), the landing page's own
+  artwork (`/landing-assets/*`), and icons (`/icons/*`, `/favicon-32.png`,
+  `/apple-touch-icon.png`).
 - Every other host: the page lives under `/landing`.
 
 Environment (server.ts): `LANDING_URL` (default `https://beech.games`),

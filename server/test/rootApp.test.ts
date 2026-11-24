@@ -32,6 +32,8 @@ beforeAll(async () => {
     path.join(publicDir, 'privacy.html'),
     '<!doctype html><html><head><title>Privacy Policy — beech</title></head><body>privacy-policy-marker</body></html>',
   );
+  fs.mkdirSync(path.join(publicDir, 'landing-assets'), { recursive: true });
+  fs.writeFileSync(path.join(publicDir, 'landing-assets', 'hero-day.webp'), 'landing-asset-marker');
   root = createRootApp(db, api, publicDir);
 });
 
@@ -125,7 +127,7 @@ describe('the landing page and host routing', () => {
         expect(html).toContain('release notes');
       } else {
         expect(html).toContain(hero);
-        expect(html).toContain('Play in your browser');
+        expect(html).toContain('Play now on web');
         expect(html).toContain('https://play.beech.games');
         expect(html).toContain('/guide');
       }
@@ -156,6 +158,12 @@ describe('the landing page and host routing', () => {
     const r = await on('/guide', 'beech.games');
     expect(r.status).toBe(200);
     expect(await r.text()).toContain('id="claw"');
+  });
+
+  it('landing artwork under /landing-assets/ answers on a landing host', async () => {
+    const r = await on('/landing-assets/hero-day.webp', 'beech.games');
+    expect(r.status).toBe(200);
+    expect(await r.text()).toBe('landing-asset-marker');
   });
 
   it('the privacy policy answers on a landing host, and /privacy redirects to it', async () => {
@@ -192,10 +200,14 @@ describe('the landing page and host routing', () => {
     expect(await r.text()).toContain('beech-spa-marker');
   });
 
-  it('the landing page never gives away the starter gifts, and claims no store listing', async () => {
-    const html = (await (await root.request('/landing')).text()).toLowerCase();
-    expect(html).not.toMatch(/starter|first go|first goes/);
-    expect(html).not.toMatch(/app store|google play|download on|get it on/);
-    expect(html).toContain('iphone and android apps are coming');
+  it('links Play now on web and Google Play, marks iOS coming soon, and never gives away starter gifts', async () => {
+    const html = await (await root.request('/landing')).text();
+    const lower = html.toLowerCase();
+    expect(lower).not.toMatch(/starter|first go|first goes/);
+    expect(html).toContain('Play now on web');
+    expect(html).toContain('href="https://play.google.com/store/apps/details?id=app.beech.beach"');
+    expect(html).toContain('Google Play');
+    expect(lower).toContain('ios coming soon');
+    expect(lower).not.toContain('apps.apple.com');
   });
 });
