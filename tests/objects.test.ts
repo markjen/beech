@@ -171,3 +171,32 @@ describe('the roster and packed positions (what the worker sends each frame)', (
     expect(objs.packPositions().length).toBe(POS_STRIDE);
   });
 });
+
+describe('moving a thing (long-press and drag)', () => {
+  it('lifts a rock out where it was, settles it where it lands, and undoes and redoes as one step', () => {
+    const sim = new BeachSim(GRID_TIERS.low, 1, { waves: false, erosion: false, healing: false, seep: false });
+    const y = 26;
+    const cell = (x: number) => Math.floor(y / sim.dx) * sim.nx + Math.floor(x / sim.dx);
+    const sandBefore = sim.sand.slice();
+    const floorBefore = sim.bottom.slice();
+    const rock = sim.placeObject({ kind: 'rock', item: 'rock', x: 10, y, angle: 0, size: 0.5, variant: 1 });
+    expect(sim.bottom[cell(10)]).toBeGreaterThan(floorBefore[cell(10)]);
+    const undos = sim.undo.undoCount;
+    const moved = sim.moveObject(rock.id, 20, y)!;
+    expect(sim.undo.undoCount).toBe(undos + 1);
+    expect(moved.id).toBe(rock.id);
+    // the old spot is sand again, exactly as before; the new spot has the rock
+    expect(sim.bottom[cell(10)]).toBeCloseTo(floorBefore[cell(10)], 6);
+    expect(sim.sand[cell(10)]).toBeCloseTo(sandBefore[cell(10)], 6);
+    expect(sim.bottom[cell(20)]).toBeGreaterThan(floorBefore[cell(20)]);
+    expect(sim.objects.persisted().map((o) => [o.id, Math.round(o.x)])).toEqual([[rock.id, 20]]);
+    sim.undoStroke(false);
+    expect(sim.objects.persisted().map((o) => Math.round(o.x))).toEqual([10]);
+    expect(sim.bottom[cell(20)]).toBeCloseTo(floorBefore[cell(20)], 6);
+    sim.redoStroke(false);
+    expect(sim.objects.persisted().map((o) => Math.round(o.x))).toEqual([20]);
+    // kept on the beach
+    expect(sim.moveObject(rock.id, 99, -5)!.x).toBeLessThan(32);
+    expect(sim.moveObject(12345, 1, 1)).toBe(null);
+  });
+});

@@ -88,8 +88,6 @@ _(nothing right now)_
   stretch, offer "ask to be neighbors" right on its name tag.
 - [ ] **Push for neighbor requests**: today you see them the next time the
   app polls (30 s) or opens.
-- [ ] **Long-press to pick up and drag items**: long-press on an item picks
-  it up, then drag it somewhere else and release to put it down.
 
 ## Ideas
 
@@ -106,6 +104,11 @@ _(nothing right now)_
 
 ## Done (recent)
 
+- [x] **Long-press to pick up and drag** (2026-11-24): hold still on a thing
+  for 0.42 s (any tool, the look tool included) to pick it up, drag it, let
+  go to put it down: one undo step (`BeachSim.moveObject`; rocks lift out
+  of the floor and settle where they land). Moving first, or a quick tap,
+  digs as before.
 - [x] **Reload stale tabs** (2026-11-24): the build writes `version.json`
   and the app knows its own build; a web tab checks every 10 minutes and
   when it comes back to the front, and offers "a new version is ready ·

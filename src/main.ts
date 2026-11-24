@@ -6,7 +6,7 @@ import { Scene } from '@babylonjs/core/scene';
 import { Ambience } from './audio/ambience';
 import { GRID_TIERS, SIM_HZ, WAVES, WORLD_SIZE_X, type QualityTier } from './config';
 import { CameraController } from './input/cameraController';
-import { Gestures } from './input/gestures';
+import { Gestures, HOLD_SLOP_PX, LONG_PRESS_MS } from './input/gestures';
 import { SandPicker } from './input/sandPicker';
 import { rgbToCss, type Palette } from './palette';
 import { Haptics } from './platform/haptics';
@@ -242,6 +242,12 @@ async function boot() {
       s.angle = pos[o + 3];
       s.floating = pos[o + 4] > 0;
     }
+    // a held thing follows the finger; one just put down waits for the worker
+    if (settling) {
+      const s = objectStates.find((o) => o.id === settling!.id);
+      if (!s || performance.now() > settling.until || (Math.abs(s.x - settling.x) < 0.05 && Math.abs(s.y - settling.y) < 0.05)) settling = null;
+    }
+    applyDrag();
     objectView.touch();
     picker.updateFromFrame(m.buf);
     send({ type: 'return', buf: m.buf }, [m.buf.buffer]);
@@ -272,6 +278,52 @@ async function boot() {
 
   const pickAt = (sx: number, sy: number): Hit | null => picker.pick(cam.ray(sx, sy));
   const toSim = (p: { x: number; z: number }) => ({ x: p.x - ORIGIN_X, y: p.z - ORIGIN_Z });
+
+  // ---------------------------------------------------------------- picking things up
+  // Long-press on a thing picks it up; drag it, and it goes down where you let
+  // go (one undo step). While held, its drawn position follows the finger.
+  let press: { sx: number; sy: number; timer: number } | null = null;
+  let dragging: { id: number; x: number; y: number } | null = null;
+  /** just let go: keep drawing it there until the worker's next frame has it */
+  let settling: { id: number; x: number; y: number; until: number } | null = null;
+  /** the thing under the pointer, if any (its footprint, roughly) */
+  const thingAt = (sx: number, sy: number): ObjectState | null => {
+    const hit = pickAt(sx, sy);
+    if (!hit) return null;
+    const p = toSim(hit);
+    let best: ObjectState | null = null;
+    let bestD = Infinity;
+    for (const o of objectStates) {
+      const reach = o.kind === 'driftwood' ? o.size * 0.5 : Math.max(0.22, Math.min(1, o.size) * 0.9);
+      const d = Math.hypot(o.x - p.x, o.y - p.y);
+      if (d < reach && d < bestD) {
+        best = o;
+        bestD = d;
+      }
+    }
+    return best;
+  };
+  /** draw the held thing at the finger (after the worker's positions are applied) */
+  const applyDrag = () => {
+    const d = dragging ?? settling;
+    if (!d) return;
+    const s = objectStates.find((o) => o.id === d.id);
+    if (!s) return;
+    s.x = d.x;
+    s.y = d.y;
+    s.z = picker.heightAt(d.x + ORIGIN_X, d.y + ORIGIN_Z) + (dragging ? 0.12 : 0);
+    s.floating = false;
+    objectView.touch();
+  };
+
+  const startDig = (sx: number, sy: number) => {
+    digging = true;
+    strokeOpen = false;
+    digPathM = 0;
+    digStrokeStart = performance.now();
+    hover = null;
+    strokeTo(sx, sy);
+  };
 
   const strokeTo = (sx: number, sy: number) => {
     const hit = pickAt(sx, sy);
@@ -684,17 +736,67 @@ async function boot() {
         putDown(sx, sy);
         return;
       }
-      digging = true;
-      strokeOpen = false;
-      digPathM = 0;
-      digStrokeStart = performance.now();
-      hover = null;
-      strokeTo(sx, sy);
+      // pressing on a thing: hold still to pick it up (a move or a quick tap digs)
+      const thing = thingAt(sx, sy);
+      if (thing) {
+        const id = thing.id;
+        press = {
+          sx,
+          sy,
+          timer: window.setTimeout(() => {
+            press = null;
+            const t = objectStates.find((o) => o.id === id);
+            if (!t) return;
+            dragging = { id, x: t.x, y: t.y };
+            haptics.impact('medium');
+          }, LONG_PRESS_MS),
+        };
+        return;
+      }
+      startDig(sx, sy);
     },
     digMove: (sx, sy) => {
+      if (press) {
+        // moved before the long-press: it's a dig after all
+        if (Math.hypot(sx - press.sx, sy - press.sy) > HOLD_SLOP_PX) {
+          const p = press;
+          window.clearTimeout(p.timer);
+          press = null;
+          startDig(p.sx, p.sy);
+          strokeTo(sx, sy);
+        }
+        return;
+      }
+      if (dragging) {
+        const hit = pickAt(sx, sy);
+        if (hit) {
+          const p = toSim(hit);
+          dragging.x = p.x;
+          dragging.y = p.y;
+          applyDrag();
+        }
+        return;
+      }
       if (digging) strokeTo(sx, sy);
     },
     digEnd: () => {
+      if (press) {
+        // a quick tap on a thing: dig there, as a tap anywhere else does
+        const p = press;
+        window.clearTimeout(p.timer);
+        press = null;
+        startDig(p.sx, p.sy);
+      }
+      if (dragging) {
+        const d = dragging;
+        dragging = null;
+        // (a few frames at most: the worker's own position takes over)
+        settling = { ...d, until: performance.now() + 400 };
+        send({ type: 'moveObject', id: d.id, x: d.x, y: d.y });
+        haptics.impact('light');
+        markDirty();
+        return;
+      }
       const wasDig = strokeOpen && brushMode === 'dig';
       const pathM = digPathM;
       const durationMs = performance.now() - digStrokeStart;
@@ -706,7 +808,22 @@ async function boot() {
       strokeOpen = false;
       if (wasDig) void tryDigFind(pathM, durationMs);
     },
+    grabAt: (sx, sy) => {
+      // look mode: a long-press on a thing picks it up
+      if (neighbors && (neighbors.visiting || !neighbors.ownVisible)) return false;
+      const t = thingAt(sx, sy);
+      if (!t) return false;
+      dragging = { id: t.id, x: t.x, y: t.y };
+      haptics.impact('medium');
+      return true;
+    },
     digCancel: () => {
+      if (press) {
+        window.clearTimeout(press.timer);
+        press = null;
+      }
+      // a second finger mid-drag: put it back where it was
+      dragging = null;
       if (strokeOpen) send({ type: 'brush', phase: 'cancel' });
       digging = false;
       strokeOpen = false;

@@ -9,7 +9,8 @@ export interface UndoEntry {
   /** sand height after - before, row-major w*h */
   delta: Float32Array;
   /** an object placed on / taken off the beach (no sand change) */
-  obj?: { op: 'add' | 'remove'; data: PlacedObject };
+  /** an object placed, taken off, or moved (move: `prev` is where it was) */
+  obj?: { op: 'add' | 'remove' | 'move'; data: PlacedObject; prev?: PlacedObject };
   /** objects a dozer or vacuum stroke swept up along its path (sand change too, or none) */
   removed?: PlacedObject[];
   /**
