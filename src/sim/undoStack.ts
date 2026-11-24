@@ -18,7 +18,7 @@ export interface UndoEntry {
    * the whole sand before (after = before + delta). Undo and redo restore
    * these exactly, rather than subtracting.
    */
-  swap?: { before: PlacedObject[]; after: PlacedObject[]; sand: Float32Array };
+  swap?: { before: PlacedObject[]; after: PlacedObject[]; sand: Float32Array; beforeCover?: Float32Array; afterCover?: Float32Array };
 }
 
 /**

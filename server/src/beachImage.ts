@@ -173,6 +173,7 @@ export interface Thing {
   angle: number;
   size: number;
   variant: number;
+  base?: number;
 }
 export interface SavedSand {
   nx: number;
@@ -180,35 +181,62 @@ export interface SavedSand {
   /** sand minus the untouched beach, metres, row j (offshore first) by column i */
   delta: Float32Array;
   things: Thing[];
+  /** sand piled on top of rocks (m), when any rock is buried (BCH3) */
+  cover?: Float32Array;
 }
 
 const MAX_BYTES = 768 * 1024;
 const MAX_CELLS = 400 * 400;
 const MAX_THINGS = 2000;
 
-/** BCH1 / BCH2 (src/sim/sandCodec.ts) → heights and things. Throws on anything malformed. */
+/** BCH1 / BCH2 / BCH3 (src/sim/sandCodec.ts) → heights and things. Throws on anything malformed. */
 export function decodeSavedBeach(bytes: Uint8Array): SavedSand {
   if (bytes.byteLength > MAX_BYTES || bytes.byteLength < 8) throw new Error('not a saved beach');
   const magic = Buffer.from(bytes.subarray(0, 4)).toString('latin1');
-  if (magic !== 'BCH1' && magic !== 'BCH2') throw new Error('not a saved beach');
+  if (magic !== 'BCH1' && magic !== 'BCH2' && magic !== 'BCH3') throw new Error('not a saved beach');
   const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const nx = dv.getUint16(4, true);
   const ny = dv.getUint16(6, true);
   if (nx < 8 || ny < 8 || nx * ny > MAX_CELLS) throw new Error('bad grid size');
   let sand = bytes.subarray(8);
   let objs: Uint8Array | null = null;
+  let coverBytes: Uint8Array | null = null;
   if (magic === 'BCH2') {
     if (bytes.byteLength < 12) throw new Error('not a saved beach');
     const len = dv.getUint32(8, true);
     if (12 + len > bytes.byteLength) throw new Error('corrupt saved beach');
     sand = bytes.subarray(12, 12 + len);
     objs = bytes.subarray(12 + len);
+  } else if (magic === 'BCH3') {
+    if (bytes.byteLength < 16) throw new Error('not a saved beach');
+    const sandLen = dv.getUint32(8, true);
+    const objsLen = dv.getUint32(12, true);
+    if (16 + sandLen + objsLen > bytes.byteLength) throw new Error('corrupt saved beach');
+    sand = bytes.subarray(16, 16 + sandLen);
+    objs = bytes.subarray(16 + sandLen, 16 + sandLen + objsLen);
+    coverBytes = bytes.subarray(16 + sandLen + objsLen);
   }
   const raw = inflateSync(sand, { maxOutputLength: nx * ny * 2 + 16 });
   if (raw.byteLength !== nx * ny * 2) throw new Error('corrupt saved beach');
   const delta = new Float32Array(nx * ny);
   const rv = new DataView(raw.buffer, raw.byteOffset, raw.byteLength);
   for (let k = 0; k < delta.length; k++) delta[k] = rv.getInt16(k * 2, true) / 1000;
+  let cover: Float32Array | undefined;
+  if (coverBytes) {
+    const rawCov = inflateSync(coverBytes, { maxOutputLength: nx * ny * 2 + 16 });
+    if (rawCov.byteLength !== nx * ny * 2) throw new Error('corrupt saved beach');
+    const cov = new Float32Array(nx * ny);
+    const cv = new DataView(rawCov.buffer, rawCov.byteOffset, rawCov.byteLength);
+    let any = false;
+    for (let k = 0; k < cov.length; k++) {
+      const v = cv.getInt16(k * 2, true);
+      if (v > 0) {
+        cov[k] = v / 1000;
+        any = true;
+      }
+    }
+    if (any) cover = cov;
+  }
   const things: Thing[] = [];
   if (objs && objs.byteLength) {
     let list: unknown = [];
@@ -231,10 +259,11 @@ export function decodeSavedBeach(bytes: Uint8Array): SavedSand {
         angle: num(p.angle, -1e4, 1e4) ? (p.angle as number) : 0,
         size: num(p.size, 0.05, 4) ? (p.size as number) : 0.3,
         variant: num(p.variant, 0, 1e6) ? (p.variant as number) : 0,
+        ...(p.kind === 'rock' && num(p.base, -10, 10) ? { base: p.base as number } : {}),
       });
     }
   }
-  return { nx, ny, delta, things };
+  return { nx, ny, delta, things, ...(cover ? { cover } : {}) };
 }
 
 // ---------------------------------------------------------------- drawing
@@ -267,12 +296,59 @@ export function renderBeach(sand: SavedSand | null, opts: ImageOptions): Uint8Ar
   const gy = ny + 2;
   const hgt = new Float32Array(gx * gy);
   const dug = new Float32Array(gx * gy);
+  const effDelta = sand ? sand.delta.slice() : null;
+  if (sand?.cover && effDelta) {
+    const cover = sand.cover;
+    const terrain = new Float32Array(nx * ny);
+    for (let j = 0; j < ny; j++) {
+      for (let i = 0; i < nx; i++) {
+        const k = j * nx + i;
+        terrain[k] = restHeight((i + 0.5) * dx, (j + 0.5) * dy) + effDelta[k] - cover[k];
+      }
+    }
+    const topMax = new Float32Array(nx * ny).fill(-Infinity);
+    for (const t of sand.things) {
+      if (t.kind !== 'rock') continue;
+      const rx = t.size * 0.88;
+      const frac = t.variant * 0.618 - Math.floor(t.variant * 0.618);
+      const ry = t.size * (0.7 + 0.3 * frac) * 0.88;
+      const Hr = t.size * 0.8 * 0.75;
+      const c = Math.cos(t.angle);
+      const s = Math.sin(t.angle);
+      const ci = Math.min(nx - 1, Math.max(0, Math.floor(t.x / dx)));
+      const cj = Math.min(ny - 1, Math.max(0, Math.floor(t.y / dy)));
+      const base = t.base ?? terrain[cj * nx + ci];
+      const r = Math.ceil(rx / Math.min(dx, dy)) + 1;
+      for (let j = Math.max(0, cj - r); j <= Math.min(ny - 1, cj + r); j++) {
+        for (let i = Math.max(0, ci - r); i <= Math.min(nx - 1, ci + r); i++) {
+          const px = (i + 0.5) * dx - t.x;
+          const py = (j + 0.5) * dy - t.y;
+          const u = (px * c + py * s) / rx;
+          const v = (-px * s + py * c) / ry;
+          const q = u * u + v * v;
+          if (q >= 1) continue;
+          const top = base + Hr * Math.sqrt(1 - q);
+          const k = j * nx + i;
+          if (top > topMax[k]) topMax[k] = top;
+        }
+      }
+    }
+    for (let j = 0; j < ny; j++) {
+      for (let i = 0; i < nx; i++) {
+        const k = j * nx + i;
+        if (cover[k] > 0 && topMax[k] > -Infinity) {
+          const lifted = topMax[k] + cover[k] - restHeight((i + 0.5) * dx, (j + 0.5) * dy);
+          if (lifted > effDelta[k]) effDelta[k] = lifted;
+        }
+      }
+    }
+  }
   for (let j = -1; j <= ny; j++) {
     for (let i = -1; i <= nx; i++) {
       const x = (i + 0.5) * dx;
       const y = (j + 0.5) * dy;
       const inside = i >= 0 && j >= 0 && i < nx && j < ny;
-      const d = inside && sand ? sand.delta[j * nx + i] : 0;
+      const d = inside && effDelta ? effDelta[j * nx + i] : 0;
       hgt[(j + 1) * gx + (i + 1)] = restHeight(x, y) + d;
       dug[(j + 1) * gx + (i + 1)] = d;
     }
@@ -340,7 +416,12 @@ export function renderBeach(sand: SavedSand | null, opts: ImageOptions): Uint8Ar
       out[k + 2] = to8(col[2]);
     }
   }
-  if (sand) drawThings(out, W, H, sand.things, look, (x, y) => [cx - (x - WORLD / 2) * scale, (y - VIEW_Y0) * scale], scale);
+  if (sand) {
+    const visible = sand.cover
+      ? sand.things.filter((t) => !(t.kind === 'rock' && t.base !== undefined && sample(hgt, t.x, t.y) > t.base + t.size * 0.8))
+      : sand.things;
+    drawThings(out, W, H, visible, look, (x, y) => [cx - (x - WORLD / 2) * scale, (y - VIEW_Y0) * scale], scale);
+  }
   return out;
 }
 

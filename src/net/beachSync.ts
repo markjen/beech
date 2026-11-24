@@ -23,8 +23,8 @@ export type SyncState = 'idle' | 'saving' | 'saved' | 'offline' | 'tooBig' | 'ou
 
 export interface SyncHost {
   /** current sand minus the rest beach, at the live grid size, plus what's on it */
-  getSand(): Promise<{ delta: Float32Array; objects: PlacedObject[] }>;
-  setSand(delta: Float32Array, objects: PlacedObject[]): void;
+  getSand(): Promise<{ delta: Float32Array; objects: PlacedObject[]; cover?: Float32Array }>;
+  setSand(delta: Float32Array, objects: PlacedObject[], cover?: Float32Array): void;
   grid: { nx: number; ny: number };
   location(): string;
   setLocation(id: string): void;
@@ -123,8 +123,8 @@ export class BeachSync {
     this.set('saving');
     try {
       const forBeach = this.account.beachId;
-      const { delta, objects } = await this.host.getSand();
-      const bytes = await encodeSand(delta, this.host.grid.nx, this.host.grid.ny, objects);
+      const { delta, objects, cover } = await this.host.getSand();
+      const bytes = await encodeSand(delta, this.host.grid.nx, this.host.grid.ny, objects, cover);
       // switched accounts or beaches mid-save: this sand isn't theirs
       if (this.account.user?.id !== forUser || this.account.beachId !== forBeach) return;
       this.savedAt = await this.account.saveBeach(
@@ -183,9 +183,10 @@ export class BeachSync {
       return 'created';
     }
     this.epoch = saved.epoch;
-    const { nx, ny, delta, objects } = fitWorld(await decodeSand(saved.bytes));
+    const { nx, ny, delta, objects, cover } = fitWorld(await decodeSand(saved.bytes));
     if (saved.location) this.host.setLocation(saved.location);
-    this.host.setSand(resampleField(delta, nx, ny, this.host.grid.nx, this.host.grid.ny), objects);
+    const resampledCover = cover ? resampleField(cover, nx, ny, this.host.grid.nx, this.host.grid.ny) : undefined;
+    this.host.setSand(resampleField(delta, nx, ny, this.host.grid.nx, this.host.grid.ny), objects, resampledCover);
     this.savedAt = saved.updatedAt;
     this.dirty = false;
     this.set('saved');

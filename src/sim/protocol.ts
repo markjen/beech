@@ -21,9 +21,9 @@ export type ToWorker =
   /** ask for the player's sand (minus the rest beach) for saving */
   | { type: 'getSand'; id: number }
   /** replace the sand with a saved beach (same grid size) */
-  | { type: 'setSand'; delta: Float32Array; objects?: PlacedObject[] }
+  | { type: 'setSand'; delta: Float32Array; objects?: PlacedObject[]; cover?: Float32Array }
   /** replace the whole beach with an imported one, as one undo step */
-  | { type: 'importBeach'; delta: Float32Array; objects: PlacedObject[] }
+  | { type: 'importBeach'; delta: Float32Array; objects: PlacedObject[]; cover?: Float32Array }
   /** put an inventory item on the beach (undoable) */
   | { type: 'placeObject'; obj: Omit<PlacedObject, 'id'> }
   /** take one off again (undoable) */
@@ -56,7 +56,7 @@ export interface FrameInfo {
 export type FromWorker =
   | { type: 'ready'; grid: GridSpec; rest: Float32Array; seed: number }
   | { type: 'bench'; msPerTickLow: number }
-  | { type: 'sand'; id: number; delta: Float32Array; objects: PlacedObject[] }
+  | { type: 'sand'; id: number; delta: Float32Array; objects: PlacedObject[]; cover?: Float32Array }
   | ({
       type: 'frame';
       buf: Float32Array;

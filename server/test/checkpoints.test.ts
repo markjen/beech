@@ -121,6 +121,45 @@ describe('reading a saved beach', () => {
     expect(objectsOf(bytes).map((o) => o.id)).toEqual([1, 2]);
     expect(fillOf(bytes)).toBe(120);
   });
+  it('reads BCH3 saves with rock cover, rejects corrupt cover, and keeps cover when dropping items', () => {
+    const n = 16;
+    const sand = deflateSync(Buffer.from(new Int16Array(n * n).fill(80).buffer));
+    const objs = deflateSync(
+      Buffer.from(
+        JSON.stringify([
+          { id: 1, kind: 'rock', item: 'rock', x: 5, y: 20, angle: 0, size: 0.4, variant: 1, base: 0.5 },
+          { id: 2, kind: 'deckchair', item: 'deckchair', x: 6, y: 20, angle: 0, size: 1, variant: 1 },
+          { id: 3, kind: 'deckchair', item: 'deckchair', x: 7, y: 20, angle: 0, size: 1, variant: 1 },
+        ]),
+      ),
+    );
+    const coverArr = new Int16Array(n * n);
+    coverArr[5] = 250;
+    const cov = deflateSync(Buffer.from(coverArr.buffer));
+    const b3 = new Uint8Array(16 + sand.length + objs.length + cov.length);
+    b3.set(Buffer.from('BCH3', 'latin1'), 0);
+    const dv = new DataView(b3.buffer);
+    dv.setUint16(4, n, true);
+    dv.setUint16(6, n, true);
+    dv.setUint32(8, sand.length, true);
+    dv.setUint32(12, objs.length, true);
+    b3.set(sand, 16);
+    b3.set(objs, 16 + sand.length);
+    b3.set(cov, 16 + sand.length + objs.length);
+
+    expect(inspectBlob(b3)).toEqual({ nx: n, ny: n, items: { deckchair: 2 }, objects: 3 });
+    expect(() => inspectBlob(b3.subarray(0, b3.length - 3))).toThrow(/corrupt/);
+
+    const { bytes, dropped } = dropMissing(b3, [{ item: 'deckchair', need: 2, have: 1 }]);
+    expect(dropped).toBe(1);
+    expect(Buffer.from(bytes.subarray(0, 4)).toString('latin1')).toBe('BCH3');
+    expect(inspectBlob(bytes)).toEqual({ nx: n, ny: n, items: { deckchair: 1 }, objects: 2 });
+    const dv2 = new DataView(bytes.buffer, bytes.byteOffset);
+    const sLen = dv2.getUint32(8, true);
+    const oLen = dv2.getUint32(12, true);
+    const covBack = new Int16Array(new Uint8Array(inflateSync(bytes.subarray(16 + sLen + oLen))).buffer);
+    expect(covBack[5]).toBe(250);
+  });
   it('matches the shared fit cases (the app runs the same file)', () => {
     const { cases } = JSON.parse(readFileSync(new URL('../../tests/fixtures/checkpoint-fit.json', import.meta.url), 'utf8')) as {
       cases: { name: string; need: Record<string, number>; owned: Record<string, number>; elsewhere: Record<string, number>; short: unknown[] }[];

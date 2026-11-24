@@ -1055,31 +1055,49 @@ export class BeachSim {
    * whole-beach swap restores a snapshot, since subtracting the change would
    * leave ghosts of every edge that has slumped since.
    */
-  importBeach(delta: Float32Array, objects: PlacedObject[]): void {
+  importBeach(delta: Float32Array, objects: PlacedObject[], cover?: Float32Array): void {
     if (delta.length !== this.n) throw new Error('grid size mismatch');
+    if (cover && cover.length !== this.n) throw new Error('grid size mismatch');
     if (this.stroke) this.cancelStroke();
     const before = this.objects.persisted();
+    const beforeCover = this.objects.rockCover(this.sand);
+    const beforeSand = this.objects.withoutRocks(this.sand.slice());
     this.objects.clear();
-    const sand = this.sand.slice();
-    for (let k = 0; k < this.n; k++) {
-      const v = this.rest[k] + delta[k];
-      this.sand[k] = v < this.bottom[k] ? this.bottom[k] : v;
+    if (beforeCover) {
+      for (let k = 0; k < this.n; k++) {
+        const floor = this.bottom[k];
+        const saved = Math.max(floor, beforeSand[k]);
+        const c = Math.min(beforeCover[k], saved - floor);
+        beforeCover[k] = c;
+        beforeSand[k] = saved - c;
+      }
     }
+    const afterCover = this.applyTerrain(delta, cover);
     this.sediment.fill(0);
     this.easing = [];
     // an imported beach may carry the old stacked-rock saves: repair
     // the rocks before embedding them (see loadDelta)
     const fixed = this.objects.repairLoaded(objects);
     // the change covers the sand shape including the repair; the rock
-    // lifts are re-applied by embedding on undo/redo, as before
+    // lifts and cover are re-applied by embedding on undo/redo
     const change = new Float32Array(this.n);
-    for (let k = 0; k < this.n; k++) change[k] = this.sand[k] - sand[k];
+    for (let k = 0; k < this.n; k++) change[k] = this.sand[k] - beforeSand[k];
     const after = fixed.objects.map((o) => this.objects.add({ ...o, id: undefined }, fixed.noRock ?? undefined));
-    this.undo.push({ i0: 0, j0: 0, w: this.nx, h: this.ny, delta: change, swap: { before, after, sand } });
+    if (afterCover) {
+      for (let k = 0; k < this.n; k++) if (afterCover[k] > 0) this.sand[k] += afterCover[k];
+    }
+    this.undo.push({
+      i0: 0,
+      j0: 0,
+      w: this.nx,
+      h: this.ny,
+      delta: change,
+      swap: { before, after, sand: beforeSand, beforeCover, afterCover },
+    });
   }
 
   private applySwap(e: UndoEntry, sign: number): boolean {
-    const { before, after, sand } = e.swap!;
+    const { before, after, sand, beforeCover, afterCover } = e.swap!;
     // bulk: the sand is overwritten from the snapshot right after, so
     // there is nothing to restore rock by rock
     this.objects.clear();
@@ -1089,8 +1107,35 @@ export class BeachSim {
     }
     this.sediment.fill(0);
     this.easing = [];
-    for (const o of sign < 0 ? before : after) this.objects.add({ ...o });
+    const terrain = this.sand.slice();
+    for (const o of sign < 0 ? before : after) this.objects.add({ ...o }, terrain);
+    const cover = sign < 0 ? beforeCover : afterCover;
+    if (cover) {
+      for (let k = 0; k < this.n; k++) if (cover[k] > 0) this.sand[k] += cover[k];
+    }
     return true;
+  }
+
+  /**
+   * Write the terrain before rocks (saved sand minus any rock cover) into
+   * `this.sand` and return the clamped cover that was subtracted (undefined
+   * when no cover was given). Clamping cover to `saved - bottom` ensures
+   * adding it back after embedding rocks can never create sand outside rock
+   * footprints.
+   */
+  private applyTerrain(delta: Float32Array, cover?: Float32Array): Float32Array | undefined {
+    let applied: Float32Array | undefined;
+    for (let k = 0; k < this.n; k++) {
+      const floor = this.bottom[k];
+      const saved = Math.max(floor, this.rest[k] + delta[k]);
+      const c = cover && cover[k] > 0 ? Math.min(cover[k], saved - floor) : 0;
+      if (c > 0) {
+        if (!applied) applied = new Float32Array(this.n);
+        applied[k] = c;
+      }
+      this.sand[k] = saved - c;
+    }
+    return applied;
   }
 
   /** Put the whole beach back to its rest shape (undoable). */
@@ -1114,21 +1159,27 @@ export class BeachSim {
     return out;
   }
 
+  /** Sand piled on top of rocks (thickness above the rock dome, m), or undefined when none. */
+  sandCover(): Float32Array | undefined {
+    return this.objects.rockCover(this.sand);
+  }
+
   /** Restore a saved beach (same grid size). Clears undo history. */
-  loadDelta(delta: Float32Array, objects: PlacedObject[] = []): void {
+  loadDelta(delta: Float32Array, objects: PlacedObject[] = [], cover?: Float32Array): void {
     if (delta.length !== this.n) throw new Error('grid size mismatch');
+    if (cover && cover.length !== this.n) throw new Error('grid size mismatch');
     if (this.stroke) this.cancelStroke();
     this.objects.clear();
-    for (let k = 0; k < this.n; k++) {
-      const v = this.rest[k] + delta[k];
-      this.sand[k] = v < this.bottom[k] ? this.bottom[k] : v;
-    }
+    const appliedCover = this.applyTerrain(delta, cover);
     this.sediment.fill(0);
     // old saves can hold rocks stacked on each other's lifted sand:
     // repair them before embedding, or the stack (and its sand pillar)
     // comes back with the load
     const fixed = this.objects.repairLoaded(objects);
     for (const o of fixed.objects) this.objects.add(o, fixed.noRock ?? undefined);
+    if (appliedCover) {
+      for (let k = 0; k < this.n; k++) if (appliedCover[k] > 0) this.sand[k] += appliedCover[k];
+    }
     this.undo.clear();
     this.easing = [];
   }

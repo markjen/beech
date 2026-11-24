@@ -79,6 +79,58 @@
         }
       }
     },
+    "cover": {
+      "type": "object",
+      "description": "optional grid of sand piled on top of rocks (mm, non-negative); same format as sand",
+      "required": [
+        "nx",
+        "ny",
+        "unit",
+        "encoding",
+        "data"
+      ],
+      "properties": {
+        "nx": {
+          "type": "integer",
+          "minimum": 8,
+          "maximum": 512
+        },
+        "ny": {
+          "type": "integer",
+          "minimum": 8,
+          "maximum": 512
+        },
+        "unit": {
+          "const": "mm"
+        },
+        "encoding": {
+          "enum": [
+            "rows",
+            "int16le",
+            "deflate-int16le"
+          ]
+        },
+        "data": {
+          "oneOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 32767
+                }
+              }
+            },
+            {
+              "type": "string",
+              "contentEncoding": "base64"
+            }
+          ]
+        }
+      }
+    },
     "shapes": {
       "type": "array",
       "maxItems": 500,
@@ -370,6 +422,12 @@
             "type": "number",
             "exclusiveMinimum": 0,
             "description": "metres; clamped to the item's range"
+          },
+          "base": {
+            "type": "number",
+            "minimum": -10,
+            "maximum": 10,
+            "description": "rocks only: metres above still water where the rock sits"
           },
           "variant": {
             "type": "integer",

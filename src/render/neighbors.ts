@@ -6,7 +6,7 @@ import type { CameraController } from '../input/cameraController';
 import type { Account, Neighbors, ShoreBeach, Side } from '../net/account';
 import { NeighborApi } from '../net/account';
 import type { Palette } from '../palette';
-import type { PlacedObject } from '../sim/objects';
+import { applyRockCover, type PlacedObject } from '../sim/objects';
 import { decodeSand, fitWorld, resampleField } from '../sim/sandCodec';
 import type { Swell } from '../sim/waves';
 import { beachById } from '../world/locations';
@@ -444,6 +444,10 @@ export class NeighborView {
           const d = fitWorld(await decodeSand(saved.bytes));
           delta = resampleField(d.delta, d.nx, d.ny, this.grid.nx, this.grid.ny);
           objects = d.objects;
+          if (d.cover) {
+            const cover = resampleField(d.cover, d.nx, d.ny, this.grid.nx, this.grid.ny);
+            applyRockCover(delta, this.rest, this.grid.nx, this.grid.ny, this.grid.dx, objects, cover);
+          }
         } catch {
           /* unreadable save: show their beach untouched */
         }

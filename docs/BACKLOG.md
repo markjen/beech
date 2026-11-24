@@ -75,14 +75,6 @@ _(nothing right now)_
   Footprints left in the sand, plus a little figure walking the
   waterline (promoted from Ideas).
 
-- [ ] **Buried rocks lose cover on reload** (predates the spire fix): a
-  save strips each rock's lift from the sand, so sand piled on a rock is
-  saved as `under + deposit`; on load the rock is embedded with that as
-  its `under`, and the sand comes back at `under + deposit` rather than
-  `top + deposit` — the rock pokes up through its cover by up to its
-  height. Fix: save the deposit separately (or the lifted sand) for cells
-  under rocks, a save-format change (docs/BEACH_FILE.md).
-
 - [ ] **Release setup for native sign-in** (DevOps): Android and iOS OAuth
   clients, build env vars, the Info.plist URL scheme, the Apple capability,
   and server client IDs. Steps are in BACKEND.md, "Phone apps". Then test on
@@ -130,6 +122,16 @@ _(nothing right now)_
   `beach_public_location`) for the lists and counts at scale, and per-IP rate
   limiting on uncached image draws (`60/min`, 429 with `Retry-After`, cache
   hits free). [SHORE_SITE.md](SHORE_SITE.md).
+- [x] **Buried rocks keep their cover on reload** (2026-11-24): sand piled
+  over rocks is now saved as a separate `cover` layer (`BeachObjects.rockCover`,
+  `BeachSim.sandCover`, binary save format **BCH3** when any rock is buried —
+  unburied beaches still write BCH1/BCH2 — and optional `cover` + rock `base`
+  in `.beach.json`, docs/BEACH_FILE.md). `sanitizeObjects` also now preserves
+  rock `base`. On load (`loadDelta`, `importBeach` + undo/redo), `cover` is
+  subtracted to recover `under` before embedding rocks and added back on top,
+  so buried rocks stay buried (and removing them afterward restores `under +
+  deposit` cleanly), across grid tiers, checkpoints (`server/src/checkpoints.ts`),
+  neighbor views (`applyRockCover`), and server thumbnails (`server/src/beachImage.ts`).
 - [x] **Checkpoints C6, and the sandbox keeps its beach** (2026-11-24):
   each checkpoint has a small top-down thumbnail drawn on the device from
   its sand. The sandbox build (no accounts) now keeps the beach between

@@ -229,10 +229,13 @@ accepted the repo's default branch, so the deploy job ran only there.
   ellipse slightly inside the drawn rock. Water flows around them, sand scours
   beside them and settles in their lee, and they can't be dug. Removing one
   gives back the sand that was under it, plus anything that settled on top.
-  Saves store rocks as objects, not sand (`withoutRocks`). Overlapping
-  rocks each sit on the terrain, never on another rock's dome, so their
-  lifts don't stack; loading an old save with stacked rocks re-bases just
-  those and smooths away the spire they built (`repairLoaded`).
+  Saves store rocks as objects, not sand (`withoutRocks`), and when sand is
+  piled over any rock, a separate `cover` layer (**BCH3**, and optional `cover`
+  + rock `base` in `.beach.json`) keeps the cover across reloads, checkpoints,
+  exports, neighbor views and beach previews. Overlapping rocks each sit on
+  the terrain, never on another rock's dome, so their lifts don't stack;
+  loading an old save with stacked rocks re-bases just those and smooths away
+  the spire they built (`repairLoaded`).
 - **Driftwood** floats once the water is deeper than 1.1× its radius,
   follows the current averaged along its length plus a gentle onshore wave
   drift (so it comes ashore rather than out to sea), turns when its two ends
@@ -254,7 +257,8 @@ accepted the repo's default branch, so the deploy job ran only there.
   washed-up shells are now real objects that save with your beach.
 - **Objects live in the worker** (`BeachObjects`). Their states go out with
   every frame, and the renderer eases toward them. Save format **BCH2** adds a
-  deflated JSON list of objects. BCH1 saves still load. Loaded objects are
+  deflated JSON list of objects, and **BCH3** adds a deflated rock-cover layer
+  when any rock is buried. BCH1 and BCH2 saves still load. Loaded objects are
   validated (`sanitizeObjects`, 2000 max; 400 before 2026-11-23).
 - **Catalog** (`src/world/items.ts`): rarity common/rare/legendary/unique;
   source free/shop/event/pull; `unlimited`, `available {from, until}`,

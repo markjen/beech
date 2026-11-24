@@ -40,10 +40,36 @@ describe('saved beach codec', () => {
     expect(v1.objects).toEqual([]);
   });
 
+  it('saves buried rock cover (v3) and preserves rock base', async () => {
+    const g = GRID_TIERS.low;
+    const cover = new Float32Array(g.nx * g.ny);
+    cover[10 * g.nx + 20] = 0.234;
+    const objects: PlacedObject[] = [
+      { id: 1, kind: 'rock', item: 'rock', x: 16, y: 19, angle: 0.5, size: 0.4, variant: 3, base: 0.4567 },
+    ];
+    const bytes = await encodeSand(new Float32Array(g.nx * g.ny), g.nx, g.ny, objects, cover);
+    expect(String.fromCharCode(...bytes.subarray(0, 4))).toBe('BCH3');
+    const back = await decodeSand(bytes);
+    expect(back.objects[0].base).toBeCloseTo(0.457, 3);
+    expect(back.cover?.[10 * g.nx + 20]).toBeCloseTo(0.234, 3);
+    // all-zero cover still writes BCH2
+    const b2 = await encodeSand(new Float32Array(g.nx * g.ny), g.nx, g.ny, objects, new Float32Array(g.nx * g.ny));
+    expect(String.fromCharCode(...b2.subarray(0, 4))).toBe('BCH2');
+    // truncated BCH3 is rejected
+    await expect(decodeSand(bytes.subarray(0, 14))).rejects.toThrow();
+    await expect(decodeSand(bytes.subarray(0, bytes.length - 4))).rejects.toThrow();
+  });
+
   it('drops malformed objects from a saved beach', async () => {
     const { sanitizeObjects } = await import('../src/sim/sandCodec');
     const ok = { id: 1, kind: 'rock', item: 'rock', x: 3, y: 4, angle: 0, size: 0.4, variant: 1 };
-    expect(sanitizeObjects([ok, { ...ok, id: 2, kind: 'boat' }, { ...ok, id: 3, x: NaN }, { ...ok }, null, 'x'])).toEqual([ok]);
+    const withBase = { ...ok, id: 4, base: 0.65 };
+    const badBase = { ...ok, id: 5, base: 99 };
+    expect(sanitizeObjects([ok, withBase, badBase, { ...ok, id: 2, kind: 'boat' }, { ...ok, id: 3, x: NaN }, { ...ok }, null, 'x'])).toEqual([
+      ok,
+      withBase,
+      { ...ok, id: 5 },
+    ]);
     expect(sanitizeObjects({})).toEqual([]);
   });
 
@@ -53,13 +79,17 @@ describe('saved beach codec', () => {
     const ny = 144; // old low tier
     const delta = new Float32Array(nx * ny);
     delta[100 * nx + 50] = 0.3;
-    const old = { nx, ny, delta, objects: [{ id: 1, kind: 'rock' as const, item: 'rock', x: 5, y: 20, angle: 0, size: 0.4, variant: 1 }] };
+    const cover = new Float32Array(nx * ny);
+    cover[100 * nx + 50] = 0.15;
+    const old = { nx, ny, delta, cover, objects: [{ id: 1, kind: 'rock' as const, item: 'rock', x: 5, y: 20, angle: 0, size: 0.4, variant: 1 }] };
     const now = fitWorld(old);
     const dx = 32 / nx;
     expect(now.ny).toBe(Math.round(32 / dx));
     const pad = now.ny - ny;
     expect(now.delta[(100 + pad) * nx + 50]).toBeCloseTo(0.3, 6);
+    expect(now.cover![(100 + pad) * nx + 50]).toBeCloseTo(0.15, 6);
     expect(now.delta[0]).toBe(0);
+    expect(now.cover![0]).toBe(0);
     expect(now.objects[0].y).toBeCloseTo(20 + pad * dx, 6);
     // today's saves are left alone
     const fresh = { nx, ny: 192, delta: new Float32Array(nx * 192), objects: [] };
