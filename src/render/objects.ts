@@ -129,6 +129,61 @@ function shellMesh(scene: Scene, o: PlacedObject): Mesh {
   return finish(scene, `shell${o.id}`, P, I);
 }
 
+/** A crumpled plastic bottle: a squashed, dented lathe lying on its side, its axis at the given height. */
+function trashMesh(scene: Scene, o: PlacedObject): Mesh {
+  const r = rng(o.variant * 167 + 3);
+  const L = o.size;
+  const R = L * 0.32;
+  const { P, I } = lathe(
+    [
+      [-L * 0.5, R * 0.55],
+      [-L * 0.35, R],
+      [-L * 0.1, R * 0.82],
+      [L * 0.15, R * 0.9],
+      [L * 0.35, R * 0.7],
+      [L * 0.5, R * 0.4],
+    ],
+    7,
+    0.6,
+    () => 0.72 + r() * 0.55,
+  );
+  orient(P, I, (x) => [x, 0, 0]);
+  return finish(scene, `trash${o.id}`, P, I);
+}
+
+/** A clump of seaweed: a few thin ribbons lying flat on the sand, radiating from the middle. */
+function seaweedMesh(scene: Scene, o: PlacedObject): Mesh {
+  const r = rng(o.variant * 211 + 9);
+  const P: number[] = [];
+  const I: number[] = [];
+  const strands = 3 + (o.variant % 2);
+  for (let s = 0; s < strands; s++) {
+    const a = (s / strands) * Math.PI * 2 + r() * 0.9;
+    const len = o.size * (0.6 + r() * 0.4);
+    const w = o.size * 0.07;
+    const ca = Math.cos(a);
+    const sa = Math.sin(a);
+    const segs = 5;
+    const base = P.length / 3;
+    for (let k = 0; k <= segs; k++) {
+      const t = k / segs;
+      // the strand wanders a little as it runs out
+      const bend = Math.sin(t * Math.PI * 1.5 + s) * o.size * 0.12;
+      const cx = ca * len * t - sa * bend;
+      const cz = sa * len * t + ca * bend;
+      const px = -sa * w * (1 - t * 0.4);
+      const pz = ca * w * (1 - t * 0.4);
+      P.push(cx + px, 0.012, cz + pz, cx - px, 0.012, cz - pz);
+    }
+    for (let k = 0; k < segs; k++) {
+      const a0 = base + k * 2;
+      I.push(a0, a0 + 2, a0 + 1, a0 + 1, a0 + 2, a0 + 3);
+    }
+  }
+  orient(P, I, () => [0, -0.01, 0]);
+  return finish(scene, `seaweed${o.id}`, P, I);
+}
+
 /** A frosted, tumbled pebble of glass. */
 function glassMesh(scene: Scene, o: PlacedObject): Mesh {
   const r = rng(o.variant * 977 + 3);
@@ -373,7 +428,7 @@ function extent(o: PlacedObject): { reach: number; height: number } {
 // The other kinds are built at size 1 and scaled, or are a fixed size.
 
 /** kinds whose every dimension is proportional to `size` */
-const LINEAR = new Set<ObjectKind>(['rock', 'shell', 'seaglass', 'conch', 'sanddollar', 'starfish', 'nautilus', 'bottle']);
+const LINEAR = new Set<ObjectKind>(['rock', 'shell', 'seaglass', 'trash', 'seaweed', 'conch', 'sanddollar', 'starfish', 'nautilus', 'bottle']);
 /**
  * Driftwood's thickness isn't proportional to its length: it's built in
  * size buckets and stretched to the exact length along the log and to
@@ -646,6 +701,8 @@ class PropBank {
         : o.kind === 'sanddollar' ? sanddollarMesh(this.scene, o)
         : o.kind === 'starfish' ? starfishMesh(this.scene, o)
         : o.kind === 'nautilus' ? nautilusMesh(this.scene, o)
+        : o.kind === 'trash' ? trashMesh(this.scene, o)
+        : o.kind === 'seaweed' ? seaweedMesh(this.scene, o)
         : glassMesh(this.scene, o);
       root.material = mat;
     }

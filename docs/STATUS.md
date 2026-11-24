@@ -716,7 +716,19 @@ here: it needs the service's URL on the web OAuth client.
   close-up of each item, then composes a labelled contact sheet.
   Regenerate with `--only <id,...>` when an item's look changes.
   Needs playwright (`npm install --no-save playwright@1.63.0`, as in
-  CI) and a dev server (or `--url`).
+  CI) and a dev server (or `--url`). With `--only` the script shoots
+  only the requested per-item PNGs and skips the full-beach shot and
+  the contact sheet, so a partial run can't overwrite them.
+- **Wash-ashore finds** (2026-11-24): the sea now brings in trash (a
+  crumpled bright bottle or can), seaweed, and spotted cowries, new
+  kinds `trash` and `seaweed` (both tumble in the swash) and a rare
+  free `cowrie` on kind `shell` with its own brown colours. Wash-in
+  weights: driftwood 35%, shell 22%, sea glass 15%, seaweed 12%,
+  cowrie 8%, trash 8% — trash stays rarer than shells. All three are
+  free and unlimited, and keeping one works through the generic found
+  mechanism (pick it up, put it down, it shows in the bag's "Found"
+  section). Renders in `docs/items/renders/` (trash, seaweed, cowrie)
+  were regenerated with the full harness.
 
 ## Verification
 

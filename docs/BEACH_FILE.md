@@ -331,7 +331,7 @@ console.log(JSON.stringify(beach, null, 2));
 
 ## Appendix: item ids (version 1)
 
-Free: `rock`, `driftwood`, `shell`, `seaglass`, `flag`.
+Free: `rock`, `driftwood`, `shell`, `seaglass`, `trash`, `seaweed`, `cowrie`, `flag`.
 Owned (prizes and the shop): `conch`, `sanddollar`, `starfish`, `deckchair`,
 `parasol`, `surfboard`, `tikitorch`, `sandcastle`, `beachhut`, `lighthouse`,
 `bottle`, `pink-shell`, `blue-seaglass`, `pebble`, `spiral-conch`,

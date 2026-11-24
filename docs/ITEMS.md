@@ -24,11 +24,19 @@ Unlimited, yours from the start. Place as many as you like.
 
 Things the sea brings in on its own (`washIn` in `src/sim/objects.ts`,
 at most 6 wild things at a time). Pick one up and put it down and it's
-yours — the bag's "Found" section lists what you've kept from the sea.
+yours — the bag's "Found" section lists what you've kept from the sea,
+with counts, through the generic found mechanism (no item-specific
+work needed). Trash is kept rarer than shells so the beach doesn't fill
+with it; cowries are rare.
 
 | Item | Kind | Rarity | Size (m) | Variants | Behaviour | Mesh |
 |---|---|---|---|---|---|---|
-| *(none yet — see [Coming next](#coming-next))* | | | | | | |
+| Trash | `trash` | common | 0.08–0.25 | 3 | tumble | `src/render/objects.ts` |
+| Seaweed | `seaweed` | common | 0.15–0.6 | 3 | tumble | `src/render/objects.ts` |
+| Cowrie | `shell` | rare | 0.05–0.2 | 3 | tumble | `src/render/objects.ts` (shell mesh, its own colours) |
+
+Wash-in weights (of each thing the sea brings in): driftwood 35%,
+shell 22%, sea glass 15%, seaweed 12%, cowrie 8%, trash 8%.
 
 ## Claw pool
 
@@ -106,8 +114,6 @@ Things you own that aren't placed on the sand: **Extra beach**
 Rose's Discord #feedback (2026-11-23), approved by Mark (2026-11-24).
 Each lands as its own PR; the tables above grow with it.
 
-- **Wash-ashore finds** (`feat/wash-ashore-finds`): `trash`, `seaweed`,
-  `cowrie` — new kinds washing in alongside shells and sea glass.
 - **Vending Week 2 "Beach day"** (`feat/vending-week2-beach-day`):
   `beach-ball`, `sandals`, `bucket` — a mixed set with Week 1 items,
   because three new items can't fill all four tiers.

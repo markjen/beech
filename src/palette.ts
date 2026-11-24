@@ -189,6 +189,10 @@ export const PROP_COLORS = {
   driftwood: [hex('#e0d2bd'), hex('#cfbfa8'), hex('#eae0d2')] as RGB[],
   shell: [hex('#fdf2e1'), hex('#f0c09a'), hex('#e6d3ae'), hex('#f5e7c8')] as RGB[],
   seaglass: [hex('#9fd8c0'), hex('#a8d4e6'), hex('#e8c27a'), hex('#e6f0ee')] as RGB[],
+  /** bright plastic: a crumpled bottle or can reads as litter, never as a shell or sea glass */
+  trash: [hex('#e63329'), hex('#1f8fff'), hex('#22b573'), hex('#ffcf00')] as RGB[],
+  /** dark olive and green-brown strands */
+  seaweed: [hex('#4a5d23'), hex('#3d4a1f'), hex('#5d6b2a'), hex('#6b5e2f')] as RGB[],
   flag: [hex('#f07f6b'), hex('#f4c95d'), hex('#5fb8b2'), hex('#8f7fd1')] as RGB[],
   conch: [hex('#f6c7b6'), hex('#f2dcc4'), hex('#e9b4a8')] as RGB[],
   sanddollar: [hex('#efe6d4'), hex('#e8dcc6')] as RGB[],
@@ -237,6 +241,10 @@ export interface ItemLook {
 }
 
 export const ITEM_LOOKS: Record<string, ItemLook> = {
+  // A spotted cowrie: deep chestnut and caramel browns with a polished
+  // sheen — disjoint from the free shell palette (warm cream, tan and
+  // peach) and from the pink shell, and never pink.
+  cowrie: { colors: [hex('#5d3a1a'), hex('#8a5a2b'), hex('#c98f4e')], gloss: 0.5 },
   // Week 1 vending set ("First light", server/src/vending.ts).
   'pink-shell': { colors: [hex('#f27ba7'), hex('#ef5d8f'), hex('#f8a8c4'), hex('#e8437a')], gloss: 0.45 },
   'blue-seaglass': { colors: [hex('#2f7fc9'), hex('#1f6fb8'), hex('#4aa3e0'), hex('#185a9e')], gloss: 0.8 },

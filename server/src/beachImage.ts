@@ -686,6 +686,8 @@ const FLAGS = ['#e2574c', '#f2b134', '#4a90d9', '#55b27a'].map(C);
 
 /** Prize items draw in their own colours (a copy of src/palette.ts ITEM_LOOKS). */
 export const ITEM_COLORS: Record<string, string[]> = {
+  // a spotted cowrie (a copy of src/palette.ts ITEM_LOOKS)
+  cowrie: ['#5d3a1a', '#8a5a2b', '#c98f4e'],
   'pink-shell': ['#f27ba7', '#ef5d8f', '#f8a8c4', '#e8437a'],
   'blue-seaglass': ['#2f7fc9', '#1f6fb8', '#4aa3e0', '#185a9e'],
   pebble: ['#5a5f6b', '#6e7683', '#3f4650', '#7d838e'],
@@ -744,6 +746,24 @@ function drawThings(img: Uint8Array, W: number, H: number, things: Thing[], look
       case 'seaglass':
         parts.push([circle(px, py, m(0.07, 1.6), 6), itemColor(t.item, v) ?? GLASS[v % GLASS.length]]);
         break;
+      case 'trash': {
+        // a crumpled bright bottle: a short body with a neck, in vivid plastic colours
+        const TRASH = ['#e63329', '#1f8fff', '#22b573', '#ffcf00'].map(C);
+        const c = TRASH[v % TRASH.length];
+        parts.push([rect(px, py, m(0.13, 2.5), m(0.055, 1.2), a), c]);
+        parts.push([rect(px + Math.cos(a) * m(0.15, 2.5), py - Math.sin(a) * m(0.15, 2.5), m(0.05, 1), m(0.04, 0.8), a), lighten(c, 0.3)]);
+        break;
+      }
+      case 'seaweed': {
+        // a dark green strand: three thin arms radiating from the middle
+        const WEED = ['#4a5d23', '#3d4a1f', '#5d6b2a', '#6b5e2f'].map(C);
+        const c = WEED[v % WEED.length];
+        for (let k = 0; k < 3; k++) {
+          const aa = a + (k / 3) * Math.PI * 2;
+          parts.push([rect(px + Math.cos(aa) * m(0.16, 2), py - Math.sin(aa) * m(0.16, 2), m(0.18, 2.5), m(0.035, 0.8), aa), c]);
+        }
+        break;
+      }
       case 'starfish':
         parts.push([star(px, py, m(Math.max(0.12, t.size * 0.6), 3), a), itemColor(t.item, v) ?? C('#f08a4b')]);
         break;

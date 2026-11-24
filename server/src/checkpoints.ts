@@ -17,7 +17,7 @@ const MAX_OBJECTS_JSON = 512 * 1024;
  * ids included, has to be owned. Kept in step with the catalog's `unlimited`
  * items (src/world/items.ts) by a client test.
  */
-export const FREE_ITEMS: ReadonlySet<string> = new Set(['rock', 'driftwood', 'shell', 'seaglass', 'flag']);
+export const FREE_ITEMS: ReadonlySet<string> = new Set(['rock', 'driftwood', 'shell', 'seaglass', 'trash', 'seaweed', 'cowrie', 'flag']);
 
 /** checkpoint limits */
 export const CHECKPOINTS_PER_BEACH = 5;

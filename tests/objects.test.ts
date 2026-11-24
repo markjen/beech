@@ -139,6 +139,47 @@ describe('shells, sea glass and flags', () => {
     expect(sim.undo.undoCount).toBe(0);
   });
 
+  it('the sea brings trash, seaweed and cowries in too, and still keeps only a few', async () => {
+    const sim = new BeachSim(g, 3);
+    const kinds = new Set<string>();
+    const items = new Set<string>();
+    for (let s = 0; s < 150; s++) {
+      if (s % 150 === 0) await tick();
+      sim.objects.washSoon(); // one wash-in per step
+      sim.step(DT);
+      for (const o of sim.objects.states()) {
+        if (o.wild) {
+          kinds.add(o.kind);
+          items.add(o.item);
+        }
+      }
+    }
+    expect(kinds.has('trash')).toBe(true);
+    expect(kinds.has('seaweed')).toBe(true);
+    expect(items.has('cowrie')).toBe(true);
+    expect(sim.objects.states().filter((o) => o.wild).length).toBeLessThanOrEqual(6);
+  });
+
+  it('trash and seaweed tumble in the swash like shells', async () => {
+    const sim = new BeachSim(g, 1);
+    const tr = sim.placeObject({ kind: 'trash', item: 'trash', x: 16, y: 16.5, angle: 0, size: 0.15, variant: 1 });
+    const sw = sim.placeObject({ kind: 'seaweed', item: 'seaweed', x: 18, y: 16.5, angle: 0, size: 0.3, variant: 2 });
+    let trTravel = 0;
+    let swTravel = 0;
+    for (let s = 0; s < 30 * 60; s++) {
+      if (s % 150 === 0) await tick();
+      sim.step(DT);
+      const t = sim.objects.states().find((o) => o.id === tr.id)!;
+      const w = sim.objects.states().find((o) => o.id === sw.id)!;
+      trTravel = Math.max(trTravel, Math.hypot(t.x - 16, t.y - 16.5));
+      swTravel = Math.max(swTravel, Math.hypot(w.x - 18, w.y - 16.5));
+      expect(Number.isFinite(t.x + t.y + t.z)).toBe(true);
+      expect(Number.isFinite(w.x + w.y + w.z)).toBe(true);
+    }
+    expect(trTravel).toBeGreaterThan(0.1);
+    expect(swTravel).toBeGreaterThan(0.1);
+  });
+
   it('no wash-ins while the waves are off', async () => {
     const sim = new BeachSim(g, 3, { waves: false });
     sim.objects.washSoon();

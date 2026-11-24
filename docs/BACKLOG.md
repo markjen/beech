@@ -63,10 +63,6 @@ _(nothing right now)_
   customize a detailed sandcastle (towers, walls, moat, decorations)
   rather than adding more preset shapes. The shop sandcastle ($1.99,
   legendary) stays as is.
-- [ ] **Wash-ashore finds: trash, seaweed, unique shells**: Rose,
-  Discord #feedback 2026-11-23. New kinds washing in from the sea,
-  alongside the existing shells, sea glass and flags. Decide which are
-  keepable finds vs scenery.
 - [ ] **Vending set additions: beach ball, sandals, bucket**: Rose,
   Discord #feedback 2026-11-23. New items for a future weekly vending
   set (catalog entry, kind, mesh and icon each; see "More prizes").
@@ -123,6 +119,15 @@ _(nothing right now)_
 
 ## Done (recent)
 
+- [x] **Wash-ashore finds: trash, seaweed, cowrie** (2026-11-24, PR #TBD):
+  the sea now brings in a crumpled bright bottle or can (`trash`), a
+  strand of seaweed (`seaweed`), and a spotted cowrie (`cowrie`, kind
+  `shell`, rare) alongside shells, sea glass and driftwood — new kinds
+  `trash` and `seaweed`, both tumble in the swash; trash is rarer than
+  shells (8% of wash-ins) so the beach doesn't fill with it; at most 6
+  wild things at a time, as before. All three are free and unlimited;
+  pick one up and put it down and it's yours, listed in the bag's
+  "Found" section through the generic found mechanism.
 - [x] **beechshore follow-ups** (2026-11-24): read-only 3D visits for
   signed-out visitors (opening `?visit=CODE` for any public beach loads it and
   the public shore in 3D via `/api/public/shore`, `/api/public/shore/more` and
