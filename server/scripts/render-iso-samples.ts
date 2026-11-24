@@ -78,16 +78,16 @@ function centreBeach(): SavedSand {
   return s;
 }
 
-/** the walk-left neighbour (linked, flush): a palm, a towel, a bucket and ball — only its first 14 m show */
+/** the walk-left neighbour (linked, flush): a palm, a towel, a bucket and ball — only its first 4 m show, so the palm and a shell sit in the sliver */
 function leftBeach(): SavedSand {
   const s = blank();
   mound(s, 8, 26, 0.4, 3);
   s.things = [
-    thing('palmtree', 6, 23, 1.1),
+    thing('palmtree', 2, 23, 1.1),
     thing('towel', 10, 20, 1),
     thing('bucket', 11, 22, 0.8, 0),
     thing('beachball', 12.5, 21, 0.7, 0),
-    thing('shell', 4, 25, 0.6, 1),
+    thing('shell', 3, 25, 0.6, 1),
     thing('shell', 8, 18, 0.5, 3),
     thing('rock', 3, 17, 0.9, 2),
     thing('starfish', 12, 27, 0.6, 0),
@@ -95,14 +95,14 @@ function leftBeach(): SavedSand {
   return s;
 }
 
-/** the walk-right neighbour (unlinked, 1.6 m gap): a lifeguard tower and a bonfire — only the 14 m nearest the centre beach show (local x 18..32) */
+/** the walk-right neighbour (unlinked, 1.6 m gap): a lifeguard tower and a bonfire — only the 4 m nearest the centre beach show (local x 28..32), so a shell, a rock and the hammock sit in the sliver */
 function rightBeach(): SavedSand {
   const s = blank();
   mound(s, 25, 26, 0.4, 3);
   s.things = [
     thing('lifeguardtower', 26, 24, 1.1),
     thing('bonfire', 24, 22, 0.9),
-    thing('hammock', 28, 25, 1),
+    thing('hammock', 31, 25, 1),
     thing('coconut', 22, 19, 0.7, 0),
     thing('coral', 27, 18, 0.8, 1),
     thing('shell', 23, 26, 0.6, 0),

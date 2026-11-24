@@ -930,8 +930,9 @@ function drawThings(img: Uint8Array, W: number, H: number, things: Thing[], look
 // from the walk; a linked neighbour sits flush, an unlinked one keeps the
 // 1.6 m diorama gap, and where there is no public neighbour the frame ends
 // at the centre beach — no faded filler shore on any side. The frame shows
-// the centre beach plus a slice (14 m) of each neighbour, so the beach is
-// the subject instead of a thin strip in a void.
+// the centre beach plus a sliver (4 m) of each neighbour, so the beach is
+// the subject instead of a thin strip in a void — the neighbours show just
+// enough to read that there are beaches next door before they crop off.
 //
 // Alongshore the picture is mirrored against a literal offshore camera so
 // left and right match the top-down card (facing the sea, left is +x, so
@@ -965,9 +966,9 @@ interface IsoCam {
   /** +1: camera offshore looking landward (sea in front); -1: camera inland looking seaward */
   sgn: 1 | -1;
 }
-/** metres of each neighbour shown either side of the centre beach */
-const ISO_SHOW = 14;
-/** Fit the frame to the centre beach plus a slice of each neighbour (fx0..fx1 are the strip's ends, 0/32 with no neighbours). The beach is the subject — the frame does not fit the whole 96 m strip, which reads as a thin diagonal in a void. A side with no neighbour ends at the centre beach, with no filler shore past it. */
+/** metres of each neighbour shown either side of the centre beach — a sliver, not a slice: the shared beach is the subject */
+const ISO_SHOW = 4;
+/** Fit the frame to the centre beach plus a sliver of each neighbour (fx0..fx1 are the strip's ends, 0/32 with no neighbours). The beach is the subject — the frame does not fit the whole 96 m strip, which reads as a thin diagonal in a void. A side with no neighbour ends at the centre beach, with no filler shore past it. */
 const isoCam = (W: number, H: number, fx0: number, fx1: number, dir: IsoDir): IsoCam => {
   const vx0 = Math.max(fx0, -ISO_SHOW);
   const vx1 = Math.min(fx1, WORLD + ISO_SHOW);
@@ -1094,7 +1095,7 @@ function fillQuad(img: Uint8Array, W: number, H: number, pts: Pt[], r: number, g
  * picture's left. `land` is the view from the land side, looking out toward
  * the sea: the beach in the foreground, the sea far away, and the neighbours
  * mirrored — the walk-left neighbour is on the picture's right. The frame
- * fits the centre beach plus a slice of each neighbour; a side with no
+ * fits the centre beach plus a sliver of each neighbour; a side with no
  * public neighbour ends at the centre beach, with no filler shore past it.
  */
 export function renderIsoBeach(

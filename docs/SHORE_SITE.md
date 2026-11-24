@@ -101,8 +101,8 @@ card and the beach-page strip; from the land the neighbours appear on the
 opposite sides, because you are looking from the other direction. One
 public beach shows on each side — linked flush at 32 m, unlinked keeping
 the 1.6 m gap of untouched shore — and the frame fits the centre beach
-plus a 14 m slice of each neighbour, so the beach is the subject instead
-of a thin strip in a void; a side with no public neighbor shows no shore
+plus a 4 m sliver of each neighbour, so the beach being shared is the
+subject instead of a thin strip in a void; a side with no public neighbor shows no shore
 at all, with no faded empty-shore filler. A non-public neighbor never
 appears: the route only ever fetches neighbours through `shoreGraph.walk`
 with `keep=isPublic`, and the cache key carries the neighbours' save

@@ -32,13 +32,13 @@ function moundSand(cx: number, cy: number, height: number, r = 6, nx = 64): Save
 
 const flat: SavedSand = { nx: 64, ny: 64, delta: new Float32Array(64 * 64), things: [] };
 const centerPanel: IsoPanel = { sand: moundSand(32, 48, 1.2), location: 'bondi', linked: false };
-// A mound on the dry sand of each neighbour, inside the slice the frame
-// shows: the left neighbour's first 14 m (local cell 16 = 8 m in) and the
-// right neighbour's 14 m nearest the centre beach (local cell 48 = 24 m in).
+// A mound on the dry sand of each neighbour, inside the sliver the frame
+// shows: the left neighbour's first 4 m (local cell 4 = 2 m in) and the
+// right neighbour's 4 m nearest the centre beach (local cell 60 = 30 m in).
 // The left neighbour sits flush at +32 m, the right one keeps its 1.6 m gap.
-const leftMound: IsoPanel = { sand: moundSand(16, 48, 1.2), location: 'waikiki', linked: true };
+const leftMound: IsoPanel = { sand: moundSand(4, 48, 1.2), location: 'waikiki', linked: true };
 const leftFlat: IsoPanel = { sand: flat, location: 'waikiki', linked: true };
-const rightMound: IsoPanel = { sand: moundSand(48, 48, 1.2), location: 'piha', linked: false };
+const rightMound: IsoPanel = { sand: moundSand(60, 48, 1.2), location: 'piha', linked: false };
 const rightFlat: IsoPanel = { sand: flat, location: 'piha', linked: false };
 
 function px(buf: Uint8Array, x: number, y: number): [number, number, number] {
@@ -91,9 +91,9 @@ describe('renderIsoBeach', () => {
       const withRight = renderIsoBeach(centerPanel, null, rightMound, { width: W, height: H }, dir);
       const flatRight = renderIsoBeach(centerPanel, null, rightFlat, { width: W, height: H }, dir);
       // The frame with one neighbour: centre 0..32, left 32..64 or right -33.6..-1.6.
-      // The mounds sit in the slice the frame shows (left local 8 m, right local 24 m).
-      const [lx] = isoScreenPoint(W, H, dir, 32 + 8, 24, moundH, 0, 64);
-      const [rx] = isoScreenPoint(W, H, dir, -(32 + 1.6) + 24, 24, moundH, -(32 + 1.6), 32);
+      // The mounds sit in the sliver the frame shows (left local 2 m, right local 30 m).
+      const [lx] = isoScreenPoint(W, H, dir, 32 + 2, 24, moundH, 0, 64);
+      const [rx] = isoScreenPoint(W, H, dir, -(32 + 1.6) + 30, 24, moundH, -(32 + 1.6), 32);
       const dl = maxDiff(withLeft, flatLeft);
       const dr = maxDiff(withRight, flatRight);
       expect(dl.d).toBeGreaterThan(30);
@@ -140,12 +140,13 @@ describe('renderIsoBeach', () => {
 
   it('frames the centre beach big: with neighbours it spans a good part of the picture, and the far ends are cropped off', () => {
     // Before the crop the frame fitted the whole 96 m strip and the centre
-    // beach was 286 px wide (24% of the picture); now it is 403 px (34%),
-    // and the far end of a neighbour is off the frame instead of fitted.
+    // beach was 286 px wide (24% of the picture); the 14 m slice made it
+    // 403 px (34%); the 4 m sliver makes it 516 px (43%), and the far end
+    // of a neighbour is off the frame instead of fitted.
     for (const dir of ['ocean', 'land'] as IsoDir[]) {
       const [x0] = isoScreenPoint(W, H, dir, 0, 16, 0, -(32 + 1.6), 64);
       const [x1] = isoScreenPoint(W, H, dir, 32, 16, 0, -(32 + 1.6), 64);
-      expect(Math.abs(x1 - x0)).toBeGreaterThan(W * 0.3);
+      expect(Math.abs(x1 - x0)).toBeGreaterThan(W * 0.4);
       const [fx] = isoScreenPoint(W, H, dir, 64, 16, 0, -(32 + 1.6), 64);
       expect(fx < 0 || fx > W).toBe(true);
     }
@@ -181,8 +182,13 @@ describe('renderIsoBeach', () => {
     const patch: number[] = [];
     let sum = 0;
     let n = 0;
-    for (let wx = -30; wx <= -24; wx += 1)
-      for (let wy = 20; wy <= 28; wy += 1) {
+    // The visible sliver of the Piha neighbour is local 29.6..32 m, so the
+    // patch sits there (world -4..-2), on dry sand in two bands — wy 12..20
+    // and wy 28..31 — clear of the mound at local 30 m / wy 21..27. The
+    // bands together cover about the same area as the old 6x8 m patch, so
+    // the slow grain has room to vary.
+    for (let wx = -4; wx <= -2; wx += 0.5)
+      for (const wy of [12, 13, 14, 15, 16, 17, 18, 19, 20, 28, 29, 30, 31]) {
         const [sx, sy] = isoScreenPoint(W, H, 'ocean', wx, wy, restHeight(wx + 33.6, wy), -(32 + 1.6), 64).map(Math.round);
         if (sx < 0 || sx >= W || sy < 0 || sy >= H) continue;
         const [r, g, b] = px(img, sx, sy);
