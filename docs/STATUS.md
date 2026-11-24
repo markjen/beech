@@ -649,6 +649,14 @@ here: it needs the service's URL on the web OAuth client.
   game link is still one tap away ("game link" in settings).
 - **Decision:** a shore link for a beach that is off the shore redirects to
   the game's visit link rather than 404, so a link the owner sent still works.
+- **UI polish & social snapshot studio (2026-11-24):** refreshed coastal visual
+  design (`server/src/shoreAssets.ts`), `/find` code/name beach finder, mobile
+  navigation strip, and an in-page Social Share & Snapshot Studio (`#share`)
+  offering Postcard (1200×630), Square (1080×1080), Story (1080×1920), and Clean
+  snapshots with Web Share file attachment, clipboard image copy, PNG download,
+  editable caption, and direct social sharing (X, Bluesky, Threads, Reddit,
+  WhatsApp, Facebook, Text), plus a "share snapshot ↗" link in the game's
+  account settings.
 - Needs the domain mapped (owner task in BACKLOG.md).
 
 ## Deploy and build status

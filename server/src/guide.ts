@@ -179,7 +179,7 @@ ${
 
 <h2 id="shore">Neighbors and the shore</h2>
 <p>Every beach has a code. To have a neighbor, put their code in “left” or “right” in settings and ask; it links when they accept. A new code stops your old one working; neighbors you already have keep you.</p>
-<p>Past your neighbors the shore carries on into everyone else’s beaches: pan along it, or walk it in the chair view. You can look at other beaches but only dig your own. Tap ☆ on a name tag or the bar at the top to keep a beach in your favorites; “⌂ my beach” takes you home. Visit any beach by its code from settings, or share a link to yours.</p>
+<p>Past your neighbors the shore carries on into everyone else’s beaches: pan along it, or walk it in the chair view. You can look at other beaches but only dig your own. Tap ☆ on a name tag or the bar at the top to keep a beach in your favorites; “⌂ my beach” takes you home. Visit any beach by its code from settings, or share a link to yours — opening it on beechshore.com lets you grab a Postcard, Square, Story, or Clean preview snapshot to post on social media.</p>
 
 <h2 id="leaderboard">Leaderboard</h2>
 <p>The trophy button shows the most-starred beaches. <b>All time</b> counts every star a beach has now. <b>Rising</b> counts stars from the past week, and the newest count most (a star’s weight halves every 2 days). Visit or star a beach from its row. Signed in only.</p>

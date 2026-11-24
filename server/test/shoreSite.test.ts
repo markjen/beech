@@ -276,6 +276,56 @@ describe('the shore site', () => {
     );
     expect(idx.map((r) => r.indexname)).toEqual(['beach_public_location', 'beach_public_updated']);
   });
+
+  it('beach page includes the social share & snapshot postcard studio and full OG/Twitter image tags', async () => {
+    const r = await root.request(`/${people.Ana.code}`, shoreHost);
+    expect(r.status).toBe(200);
+    const html = await r.text();
+    expect(html).toContain('id="share"');
+    expect(html).toContain('data-fmt="postcard"');
+    expect(html).toContain('data-fmt="square"');
+    expect(html).toContain('data-fmt="story"');
+    expect(html).toContain('data-fmt="clean"');
+    expect(html).toContain('data-share-snap');
+    expect(html).toContain('data-copy-img');
+    expect(html).toContain('data-download-snap');
+    expect(html).toContain('bsky.app/intent/compose');
+    expect(html).toContain('threads.net/intent/post');
+    expect(html).toContain('reddit.com/submit');
+    expect(html).toContain('<meta property="og:image:type" content="image/png">');
+    expect(html).toContain('<meta name="twitter:image:alt" content="Ana’s beach, seen from above">');
+  });
+
+  it('finds beaches by 6-letter code (redirect) or public name, never leaking hidden or unsaved ones', async () => {
+    // 6-letter code jumps straight to the canonical beach page (forgiving case and dashes)
+    const lower = people.Ana.code.toLowerCase();
+    const byCode = await root.request(`/find?q=${lower.slice(0, 3)}-${lower.slice(3)}`, shoreHost);
+    expect(byCode.status).toBe(302);
+    expect(byCode.headers.get('Location')).toBe(`/${people.Ana.code}`);
+
+    // name search finds public beaches only
+    const byName = await root.request('/find?q=ana', shoreHost);
+    expect(byName.status).toBe(200);
+    const anaHtml = await byName.text();
+    expect(anaHtml).toContain(people.Ana.code);
+    expect(anaHtml).not.toContain(people.Bob.code);
+
+    // off-shore (Bob) and unsaved (Cy) never appear in name search
+    for (const hidden of ['Bob', 'Cy']) {
+      const r = await root.request(`/find?q=${hidden}`, shoreHost);
+      expect(r.status).toBe(200);
+      const html = await r.text();
+      expect(html).not.toContain(people[hidden].code);
+      expect(html).toContain('No beaches on the shore match');
+    }
+
+    // hostile query is escaped
+    const xss = await root.request(`/find?q=${encodeURIComponent('<script>alert(1)</script>')}`, shoreHost);
+    expect(xss.status).toBe(200);
+    const xssHtml = await xss.text();
+    expect(xssHtml).not.toContain('<script>alert(1)</script>');
+    expect(xssHtml).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+  });
 });
 
 describe('shore site helpers', () => {

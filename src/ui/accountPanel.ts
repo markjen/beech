@@ -229,15 +229,24 @@ export class AccountPanel {
     });
     share.append(copy, link, gameLink, fresh);
     wrap.appendChild(share);
-    // see it the way everyone else does
+    // see it the way everyone else does, or open the snapshot share studio
     if (here?.onShore !== false) {
+      const links = document.createElement('div');
+      links.className = 'shore-links';
       const view = document.createElement('a');
       view.className = 'shore-link';
       view.href = shoreBeachUrl(n.code);
       view.target = '_blank';
       view.rel = 'noopener';
       view.textContent = 'see it on beechshore ↗';
-      wrap.appendChild(view);
+      const snap = document.createElement('a');
+      snap.className = 'shore-link';
+      snap.href = `${shoreBeachUrl(n.code)}#share`;
+      snap.target = '_blank';
+      snap.rel = 'noopener';
+      snap.textContent = 'share snapshot ↗';
+      links.append(view, snap);
+      wrap.appendChild(links);
     }
     const help = document.createElement('div');
     help.className = 'status';

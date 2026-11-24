@@ -14,8 +14,9 @@ land from a shared link, and it sends them on into the game.
 | `/` | The best beach's picture, then most loved, rising this week, just built, and beaches by real place. Share buttons for the site. |
 | `/top`, `/rising`, `/new` | The lists, 24 a page (`?page=2`). Same scoring as the in-game leaderboard (BACKEND.md, "Leaderboard"). |
 | `/at/bondi` (any place id) | Beaches built at one real beach. |
+| `/find?q=...` | Jump straight to a 6-letter beach code, or search public beaches by beach or owner name. |
 | `/random` | A random beach ("Walk the shore", "Surprise me"). |
-| `/K7F2QX` | One beach: its picture, owner, place, stars, neighbors, the stretch of shore either side (← → to walk), **Visit in beech →** (`GAME_URL/?visit=K7F2QX`), and share buttons (share sheet, Text, WhatsApp, X, Facebook, copy). |
+| `/K7F2QX` | One beach: its picture, owner, place, stars, neighbors, **Visit in beech →** (`GAME_URL/?visit=K7F2QX`), a **Share & Snapshot Studio** (`#share`: live Postcard, Square, Story, and Clean PNG snapshots with Web Share file attachment, clipboard image copy, PNG download, editable caption, and direct buttons for X, Bluesky, Threads, Reddit, WhatsApp, Facebook, and Text), and the stretch of shore either side (← → to walk). |
 | `/img/K7F2QX.png` | The beach's 1200×630 card, used as `og:image` (also by the game's own `?visit=` links). |
 | `/img/K7F2QX/thumb.png` | 480×300 thumbnail. |
 | `/img/shore.png` | The site card (an untouched beach). |

@@ -25,6 +25,21 @@ describe('share meta tags', () => {
     expect(out).toContain('Visit Ana&#39;s beach');
     expect(injectShareMeta('<html><body>no head</body></html>', 'TAGS')).toBe('<html><body>no head</body></html>');
   });
+
+  it('includes custom beach name, location, and image metadata when provided', () => {
+    const tags = shareMetaTags({
+      name: 'Ana',
+      beachName: 'Castle Cove',
+      location: 'waikiki',
+      url: 'https://play.beech.games/?visit=K7F2QX',
+      image: 'https://beechshore.com/img/K7F2QX.png?v=1',
+    });
+    expect(tags).toContain('Visit Castle Cove (Ana&#39;s beach) on beech');
+    expect(tags).toContain('Waikīkī, Honolulu');
+    expect(tags).toContain('og:site_name" content="beech"');
+    expect(tags).toContain('og:image:type" content="image/png"');
+    expect(tags).toContain('twitter:image:alt" content="Castle Cove, Ana&#39;s beach seen from above"');
+  });
 });
 
 describe('share page handler', () => {

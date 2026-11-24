@@ -820,9 +820,15 @@ body.ambient-idle {
 }
 
 /* your beach on beechshore.com, under your code */
+.neighbors .shore-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 2px 0 4px;
+}
+
 .neighbors .shore-link {
   display: inline-block;
-  margin: 2px 0 4px;
   font-size: 13px;
   color: inherit;
   opacity: 0.8;

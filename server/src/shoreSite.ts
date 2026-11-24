@@ -1,8 +1,9 @@
 // beechshore.com: every beach on the shore, public, no sign-in.
 //
 // Server-rendered pages (fast, and link previews and search engines see
-// everything without running JavaScript), with a few lines of script for
-// sharing and arrow-key walking. Only beaches that are on the shore and
+// everything without running JavaScript), with progressive enhancement for
+// social snapshot postcards, clipboard copy, Web Share API (including image
+// files), and arrow-key walking. Only beaches that are on the shore and
 // saved (`isPublic`) appear anywhere here: no picture, name or listing for
 // any other beach. A beach page for a code that is off the shore sends you
 // on to the game's own visit link (the game asks you to sign in, as it
@@ -12,11 +13,13 @@
 // shore's own hosts (SHORE_HOSTS, beechshore.com), and under `/shore` on
 // every other host, so it works before the domain does and in development.
 //
-//   /                      home: most loved, rising, just built, places
+//   /                      home: featured beach, most loved, rising, just built, places
 //   /top /rising /new      the lists, 24 a page (?page=2)
 //   /at/:place             beaches at one real place (bondi, waikiki…)
+//   /find?q=...            jump to a beach by 6-letter code or search public beaches by name
 //   /random                a random beach (302)
-//   /:CODE                 one beach: its picture, its stretch of shore, share, visit in beech
+//   /:CODE                 one beach: its picture, social share & snapshot studio,
+//                          its stretch of shore, visit in beech
 //                          (off the shore: 302 to the game's ?visit= link; no such code: 404)
 //   /img/:CODE.png         its link-preview card (1200×630)
 //   /img/:CODE/thumb.png   its thumbnail (480×300)
@@ -28,8 +31,9 @@ import { Hono, type Context } from 'hono';
 import { beachPng, placeById, PLACES } from './beachImage.js';
 import { DISCORD_INVITE_URL } from './community.js';
 import { toBytes, type Db } from './db.js';
-import { BEACH, NODE, isPublic, normalizeCode, shoreGraph, type NodeRow, type Step } from './shore.js';
 import { createRateLimiter, logEvent } from './observability.js';
+import { BEACH, NODE, isPublic, normalizeCode, shoreGraph, type NodeRow, type Step } from './shore.js';
+import { FAVICON, ICONS, SHORE_CSS, SHORE_SCRIPT, WAVE_SVG } from './shoreAssets.js';
 
 export interface ShoreSiteConfig {
   /** path the site is mounted at: '' on beechshore.com, '/shore' elsewhere */
@@ -52,6 +56,7 @@ const CARD = { width: 1200, height: 630 };
 const THUMB = { width: 480, height: 300 };
 
 type Sort = 'top' | 'rising' | 'new';
+type NavKey = 'home' | 'top' | 'rising' | 'new' | 'other';
 interface ListRow extends NodeRow {
   stars: string | number;
   recent: string | number;
@@ -68,6 +73,12 @@ export interface ShoreBeach {
 }
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+const slug = (s: string) =>
+  s
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 36) || 'beach';
 
 /** "Ana's beach", or the name its owner gave it */
 export const beachTitle = (b: { name: string; beachName?: string }) => b.beachName?.trim() || `${b.name?.trim() || 'Someone'}’s beach`;
@@ -112,7 +123,7 @@ export function createShoreSite(db: Db, cfg: ShoreSiteConfig): Hono<any, any, an
     return `${proto}://${c.req.header('host') ?? u.host}${href(p)}`;
   };
   const visitUrl = (code: string) => `${game}/?visit=${code}`;
-  const imgPath = (b: ShoreBeach, kind: 'card' | 'thumb') =>
+  const imgPath = (b: Pick<ShoreBeach, 'code' | 'updatedAt'>, kind: 'card' | 'thumb') =>
     `/img/${b.code}${kind === 'thumb' ? '/thumb' : ''}.png?v=${b.updatedAt ?? 0}`;
 
   // ------------------------------------------------------------ data
@@ -161,6 +172,20 @@ export function createShoreSite(db: Db, cfg: ShoreSiteConfig): Hono<any, any, an
     args.push(limit, offset);
     const rows = await db.query<ListRow>(
       `SELECT ${COLS} FROM ${BEACH} ${SCORE} WHERE ${where} ORDER BY ${order}, b.id LIMIT $${args.length - 1} OFFSET $${args.length}`,
+      args,
+    );
+    return rows.map(toBeach);
+  }
+
+  async function search(q: string, limit: number): Promise<ShoreBeach[]> {
+    const escaped = q.replace(/[\\%_]/g, '\\$&').toLowerCase();
+    const args: unknown[] = [...scoreArgs(), `%${escaped}%`, limit];
+    const rows = await db.query<ListRow>(
+      `SELECT ${COLS} FROM ${BEACH} ${SCORE}
+        WHERE ${PUBLIC}
+          AND (LOWER(b.name) LIKE $4 ESCAPE '\\' OR LOWER(u.name) LIKE $4 ESCAPE '\\')
+        ORDER BY stars DESC, b.updated_at DESC, b.id
+        LIMIT $5`,
       args,
     );
     return rows.map(toBeach);
@@ -255,7 +280,22 @@ export function createShoreSite(db: Db, cfg: ShoreSiteConfig): Hono<any, any, an
     image: string;
     imageAlt: string;
   }
-  const layout = (m: Meta, main: string, opts: { share?: { url: string; text: string; title: string } } = {}) => `<!doctype html>
+  const navLinks = (active: NavKey) =>
+    [
+      `<a href="${href('/top')}"${active === 'top' ? ' aria-current="page"' : ''}>Most loved</a>`,
+      `<a href="${href('/rising')}"${active === 'rising' ? ' aria-current="page"' : ''}>Rising</a>`,
+      `<a href="${href('/new')}"${active === 'new' ? ' aria-current="page"' : ''}>Just built</a>`,
+      `<a href="${href('/random')}" rel="nofollow">Surprise me</a>`,
+    ].join('');
+
+  const layout = (
+    m: Meta,
+    main: string,
+    opts: { share?: { url: string; text: string; title: string }; active?: NavKey; query?: string } = {},
+  ) => {
+    const active = opts.active ?? 'other';
+    const links = navLinks(active);
+    return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -263,14 +303,18 @@ export function createShoreSite(db: Db, cfg: ShoreSiteConfig): Hono<any, any, an
 <title>${esc(m.title)}</title>
 <meta name="description" content="${esc(m.description)}">
 <link rel="canonical" href="${esc(m.url)}">
-<meta name="theme-color" content="#8fd0e6">
+<meta name="theme-color" content="#fbf6ee">
 <link rel="icon" href="${FAVICON}" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,SOFT,wght@9..144,50,600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
 <meta property="og:site_name" content="beechshore">
 <meta property="og:type" content="website">
 <meta property="og:title" content="${esc(m.title)}">
 <meta property="og:description" content="${esc(m.description)}">
 <meta property="og:url" content="${esc(m.url)}">
 <meta property="og:image" content="${esc(m.image)}">
+<meta property="og:image:type" content="image/png">
 <meta property="og:image:width" content="${CARD.width}">
 <meta property="og:image:height" content="${CARD.height}">
 <meta property="og:image:alt" content="${esc(m.imageAlt)}">
@@ -278,39 +322,56 @@ export function createShoreSite(db: Db, cfg: ShoreSiteConfig): Hono<any, any, an
 <meta name="twitter:title" content="${esc(m.title)}">
 <meta name="twitter:description" content="${esc(m.description)}">
 <meta name="twitter:image" content="${esc(m.image)}">
-<style>${CSS}</style>
+<meta name="twitter:image:alt" content="${esc(m.imageAlt)}">
+<style>${SHORE_CSS}</style>
 </head>
 <body>
-<header class="top">
-  <a class="brand" href="${href('/')}" aria-label="beechshore home">${WAVE_SVG}<span>beech<b>shore</b></span></a>
-  <nav>
-    <a href="${href('/top')}">Most loved</a>
-    <a href="${href('/new')}">Just built</a>
-    <a href="${href('/random')}" rel="nofollow">Surprise me</a>
-  </nav>
-  <a class="btn small" href="${esc(game)}/">Build a beach</a>
-</header>
+<div class="top-wrap">
+  <header class="top">
+    <a class="brand" href="${href('/')}" aria-label="beechshore home">${WAVE_SVG}<span>beech<b>shore</b></span></a>
+    <nav aria-label="Browse the shore">${links}</nav>
+    <form class="find" action="${href('/find')}" method="get" role="search">
+      ${ICONS.search}
+      <input type="search" name="q" value="${esc(opts.query ?? '')}" placeholder="Code or name…" aria-label="Find a beach by code or name" autocomplete="off" spellcheck="false">
+    </form>
+    <a class="btn small" href="${esc(game)}/">Build a beach</a>
+  </header>
+  <nav class="mob-nav" aria-label="Browse the shore">${links}</nav>
+</div>
 <main>
 ${main}
 </main>
 <footer>
   <p><b>beech</b> is a calm sand-and-waves toy: dig, build, and watch the sea rework it. Every beach here is someone’s, built in the game and set on the shore.</p>
-  <p><a href="${esc(game)}/">Play beech</a> · <a href="${href('/top')}">Most loved</a> · <a href="${href('/rising')}">Rising</a> · <a href="${href('/new')}">Just built</a> · <a href="${esc(DISCORD_INVITE_URL)}">Discord</a>${
-    opts.share ? ` · <button type="button" class="linkish" data-share data-url="${esc(opts.share.url)}" data-text="${esc(opts.share.text)}" data-title="${esc(opts.share.title)}">Share this page</button>` : ''
-  }</p>
+  <div class="flinks">
+    <a href="${esc(game)}/">Play beech</a>
+    <a href="${href('/top')}">Most loved</a>
+    <a href="${href('/rising')}">Rising</a>
+    <a href="${href('/new')}">Just built</a>
+    <a href="${href('/find')}">Find a beach</a>
+    <a href="${esc(DISCORD_INVITE_URL)}">Discord</a>${
+      opts.share
+        ? ` <button type="button" class="linkish" data-share data-url="${esc(opts.share.url)}" data-text="${esc(opts.share.text)}" data-title="${esc(opts.share.title)}">Share this page</button>`
+        : ''
+    }
+  </div>
 </footer>
 <div class="toast" role="status" aria-live="polite"></div>
-<script>${SCRIPT}</script>
+<script>${SHORE_SCRIPT}</script>
 </body>
 </html>`;
+  };
 
   const card = (b: ShoreBeach, n: number, opts: { rank?: number } = {}) => {
     const where = placeLabel(b.location);
     return `<li class="card">
   <a href="${href(`/${b.code}`)}">
-    <img src="${esc(href(imgPath(b, 'thumb')))}" width="${THUMB.width}" height="${THUMB.height}" loading="lazy" decoding="async" alt="${esc(`${beachTitle(b)}, seen from above`)}">
+    <span class="thumb">
+      ${opts.rank ? `<span class="rank-badge r${opts.rank}">#${opts.rank}</span>` : ''}
+      <img src="${esc(href(imgPath(b, 'thumb')))}" width="${THUMB.width}" height="${THUMB.height}" loading="lazy" decoding="async" alt="${esc(`${beachTitle(b)}, seen from above`)}">
+    </span>
     <span class="info">
-      <span class="t">${opts.rank ? `<span class="rank r${opts.rank}">${opts.rank}</span>` : ''}${esc(beachTitle(b))}</span>
+      <span class="t">${esc(beachTitle(b))}</span>
       <span class="s">${b.beachName ? `${esc(ownerName(b))} · ` : ''}${esc(where || 'somewhere on the shore')}</span>
       <span class="m">${b.stars ? `<span class="stars" title="${b.stars} stars">★ ${b.stars}</span>` : ''}${b.recent ? `<span class="up">▲ ${b.recent} this week</span>` : ''}<span class="when">${esc(ago(b.updatedAt, n))}</span></span>
     </span>
@@ -319,18 +380,26 @@ ${main}
   };
   const grid = (bs: ShoreBeach[], ranked = false, offset = 0) => {
     const n = now();
-    return `<ul class="grid">${bs.map((b, i) => card(b, n, ranked ? { rank: offset + i + 1 } : {})).join('')}</ul>`;
+    return `<div class="grid-wrap"><ul class="grid">${bs.map((b, i) => card(b, n, ranked ? { rank: offset + i + 1 } : {})).join('')}</ul></div>`;
   };
-  const shareRow = (url: string, text: string, title: string) => {
+
+  const socialButtons = (url: string, text: string, title: string, includeNative = false) => {
     const msg = `${text} ${url}`;
     const e = encodeURIComponent;
-    return `<div class="share">
-  <button type="button" class="btn" data-share data-url="${esc(url)}" data-text="${esc(text)}" data-title="${esc(title)}">${SHARE_SVG} Share</button>
-  <a class="chip" href="sms:?&amp;body=${esc(e(msg))}">Text</a>
-  <a class="chip" href="https://wa.me/?text=${esc(e(msg))}" target="_blank" rel="noopener">WhatsApp</a>
-  <a class="chip" href="https://twitter.com/intent/tweet?text=${esc(e(text))}&amp;url=${esc(e(url))}" target="_blank" rel="noopener">X</a>
-  <a class="chip" href="https://www.facebook.com/sharer/sharer.php?u=${esc(e(url))}" target="_blank" rel="noopener">Facebook</a>
-  <button type="button" class="chip" data-copy="${esc(url)}">Copy link</button>
+    return `<div class="share">${
+      includeNative
+        ? `\n  <button type="button" class="btn small" data-share data-url="${esc(url)}" data-text="${esc(text)}" data-title="${esc(title)}">${ICONS.share} Share</button>`
+        : ''
+    }
+  <a class="chip" data-net="x" href="https://twitter.com/intent/tweet?text=${esc(e(text))}&amp;url=${esc(e(url))}" target="_blank" rel="noopener">${ICONS.x} X</a>
+  <a class="chip" data-net="bsky" href="https://bsky.app/intent/compose?text=${esc(e(msg))}" target="_blank" rel="noopener">${ICONS.bsky} Bluesky</a>
+  <a class="chip" data-net="threads" href="https://www.threads.net/intent/post?text=${esc(e(msg))}" target="_blank" rel="noopener">${ICONS.threads} Threads</a>
+  <a class="chip" data-net="reddit" href="https://www.reddit.com/submit?url=${esc(e(url))}&amp;title=${esc(e(text || title))}" target="_blank" rel="noopener">${ICONS.reddit} Reddit</a>
+  <a class="chip" data-net="wa" href="https://wa.me/?text=${esc(e(msg))}" target="_blank" rel="noopener">${ICONS.whatsapp} WhatsApp</a>
+  <a class="chip" data-net="fb" href="https://www.facebook.com/sharer/sharer.php?u=${esc(e(url))}" target="_blank" rel="noopener">${ICONS.facebook} Facebook</a>
+  <a class="chip" data-net="sms" href="sms:?&amp;body=${esc(e(msg))}">${ICONS.sms} Text</a>${
+    includeNative ? `\n  <button type="button" class="chip" data-copy="${esc(url)}">${ICONS.copy} Copy link</button>` : ''
+  }
 </div>`;
   };
 
@@ -339,20 +408,32 @@ ${main}
     const [top, rising, fresh, n] = await Promise.all([list('top', 8, 0), list('rising', 4, 0), list('new', 8, 0), counts()]);
     const url = abs(c, '/');
     const text = shareText(null);
+    const featured = top[0] ?? fresh[0] ?? null;
+    const featuredWhere = featured ? placeLabel(featured.location) : '';
     const places = PLACES.filter((p) => n.places[p.id])
       .sort((a, b) => (n.places[b.id] ?? 0) - (n.places[a.id] ?? 0))
-      .map((p) => `<a class="chip" href="${href(`/at/${p.id}`)}">${esc(p.name)} <span>${n.places[p.id]}</span></a>`)
+      .map(
+        (p) =>
+          `<a class="chip" href="${href(`/at/${p.id}`)}"><span class="dot-swatch" style="--dot:${esc(p.sand)}" aria-hidden="true"></span>${esc(p.name)} <span>${n.places[p.id]}</span></a>`,
+      )
       .join('');
     const main = `
 <section class="hero">
-  <img class="hero-img" src="${esc(href(top[0] ? imgPath(top[0], 'card') : '/img/shore.png'))}" width="${CARD.width}" height="${CARD.height}" alt="">
+  ${
+    featured
+      ? `<a class="hero-badge" href="${href(`/${featured.code}`)}">${ICONS.pin} Featured · ${esc(beachTitle(featured))}${featuredWhere ? ` · ${esc(featuredWhere)}` : ''}</a>`
+      : ''
+  }
+  <img class="hero-img" src="${esc(href(featured ? imgPath(featured, 'card') : '/img/shore.png'))}" width="${CARD.width}" height="${CARD.height}" alt="${
+    featured ? esc(`${beachTitle(featured)}, seen from above`) : ''
+  }">
   <div class="hero-text">
     <h1>Every beach on the shore</h1>
-    <p>Sandcastles, moats, harbours and terraces, built by people in <b>beech</b> and set one after another along a shore that never ends. ${
-      n.beaches ? `<b>${n.beaches.toLocaleString('en')}</b> ${n.beaches === 1 ? 'beach' : 'beaches'} so far.` : ''
+    <p>Sandcastles, moats, harbours and terraces, built by people in <b>beech</b> and set one after another along a shore that never ends.${
+      n.beaches ? ` <b>${n.beaches.toLocaleString('en')}</b> ${n.beaches === 1 ? 'beach' : 'beaches'} so far.` : ''
     }</p>
     <div class="cta">
-      ${n.beaches ? `<a class="btn" href="${href('/random')}" rel="nofollow">Walk the shore</a>` : ''}
+      ${n.beaches ? `<a class="btn" href="${href('/random')}" rel="nofollow">${ICONS.compass} Walk the shore</a>` : ''}
       <a class="btn ghost" href="${esc(game)}/">Build your own beach</a>
     </div>
   </div>
@@ -361,12 +442,26 @@ ${
   n.beaches === 0
     ? `<section><p class="empty">Nobody has set a beach on the shore yet. <a href="${esc(game)}/">Be the first.</a></p></section>`
     : `
-${top.some((b) => b.stars) ? `<section><h2>Most loved <a href="${href('/top')}">see all</a></h2>${grid(top.filter((b) => b.stars), true)}</section>` : ''}
-${rising.length ? `<section><h2>Rising this week <a href="${href('/rising')}">see all</a></h2>${grid(rising)}</section>` : ''}
-<section><h2>Just built <a href="${href('/new')}">see all</a></h2>${grid(fresh)}</section>
-${places ? `<section><h2>By place</h2><div class="chips">${places}</div></section>` : ''}`
+${
+  top.some((b) => b.stars)
+    ? `<section><div class="sec-head"><h2>Most loved</h2><a class="see-all" href="${href('/top')}">See all →</a></div>${grid(top.filter((b) => b.stars), true)}</section>`
+    : ''
 }
-<section class="sharebox"><h2>Send the shore to someone</h2>${shareRow(url, text, 'beechshore')}</section>`;
+${
+  rising.length
+    ? `<section><div class="sec-head"><h2>Rising this week</h2><a class="see-all" href="${href('/rising')}">See all →</a></div>${grid(rising)}</section>`
+    : ''
+}
+<section><div class="sec-head"><h2>Just built</h2><a class="see-all" href="${href('/new')}">See all →</a></div>${grid(fresh)}</section>
+${places ? `<section><div class="sec-head"><h2>By real beach</h2></div><div class="chips">${places}</div></section>` : ''}`
+}
+<section class="sharebox">
+  <div>
+    <h2>Send the shore to someone</h2>
+    <p>Share beechshore, or open any beach to grab a postcard snapshot for social media.</p>
+  </div>
+  ${socialButtons(url, text, 'beechshore', true)}
+</section>`;
     return html(
       c,
       layout(
@@ -374,11 +469,11 @@ ${places ? `<section><h2>By place</h2><div class="chips">${places}</div></sectio
           title: 'beechshore: every beach on the shore',
           description: 'Sandcastles, moats and harbours people built in beech, one beach after another along an endless shore. Walk it, then build your own.',
           url,
-          image: abs(c, top[0] ? imgPath(top[0], 'card') : '/img/shore.png'),
+          image: abs(c, featured ? imgPath(featured, 'card') : '/img/shore.png'),
           imageAlt: 'A beach from above, sand and sea',
         },
         main,
-        { share: { url, text, title: 'beechshore' } },
+        { share: { url, text, title: 'beechshore' }, active: 'home' },
       ),
     );
   });
@@ -398,7 +493,9 @@ ${places ? `<section><h2>By place</h2><div class="chips">${places}</div></sectio
       const L = LISTS[sort];
       const url = abs(c, `/${sort}${page > 1 ? `?page=${page}` : ''}`);
       const main = `
-<section class="head"><h1>${esc(L.title)}</h1><p>${esc(L.blurb)}</p>
+<section class="head">
+  <h1>${esc(L.title)}</h1>
+  <p>${esc(L.blurb)}</p>
   <div class="tabs">${(['top', 'rising', 'new'] as const).map((s) => `<a href="${href(`/${s}`)}"${s === sort ? ' aria-current="page"' : ''}>${LISTS[s].title}</a>`).join('')}</div>
 </section>
 <section>${bs.length ? grid(bs, sort !== 'new', (page - 1) * PAGE) : `<p class="empty">Nothing here yet.</p>`}
@@ -416,11 +513,59 @@ ${places ? `<section><h2>By place</h2><div class="chips">${places}</div></sectio
             imageAlt: 'A beach from above',
           },
           main,
-          { share: { url, text: `${L.title} on beechshore 🏖️`, title: L.title } },
+          { share: { url, text: `${L.title} on beechshore 🏖️`, title: L.title }, active: sort },
         ),
       );
     });
   }
+
+  // find by 6-character code or public beach/owner name
+  app.get('/find', async (c) => {
+    const raw = (c.req.query('q') ?? '').trim().slice(0, 80);
+    const code = normalizeCode(raw);
+    // Direct jump when someone pastes a 6-character code (e.g. "k7f-2qx" or "K7F2QX").
+    if (code.length === 6 && /^[A-Za-z0-9\s-]+$/.test(raw)) {
+      const exists = (await db.query('SELECT 1 FROM beach WHERE code = $1', [code])).length > 0;
+      if (exists) {
+        c.header('Cache-Control', 'no-store');
+        return c.redirect(href(`/${code}`), 302);
+      }
+    }
+    const hits = raw ? await search(raw, PAGE) : [];
+    const url = abs(c, '/find');
+    const main = `
+<section class="head">
+  <h1>Find a beach</h1>
+  <p>Enter a 6-letter beach code to jump straight to it, or search public beaches by name to view and share their snapshot.</p>
+  <form class="find-big" action="${href('/find')}" method="get" role="search">
+    <input type="search" name="q" value="${esc(raw)}" placeholder="e.g. K7F2QX or Ana" aria-label="Beach code or name" autofocus>
+    <button type="submit" class="btn">Find</button>
+  </form>
+</section>
+${
+  raw
+    ? `<section>${
+        hits.length
+          ? `<div class="sec-head"><h2>${hits.length} ${hits.length === 1 ? 'beach' : 'beaches'} matching “${esc(raw)}”</h2></div>${grid(hits)}`
+          : `<p class="empty">No beaches on the shore match “${esc(raw)}”. Check the 6-letter code in beech’s settings and try again.</p>`
+      }</section>`
+    : ''
+}`;
+    return html(
+      c,
+      layout(
+        {
+          title: raw ? `Search “${raw}” · beechshore` : 'Find a beach · beechshore',
+          description: 'Find any beach on beechshore by its 6-letter code or name to visit it in 3D or share a snapshot.',
+          url,
+          image: abs(c, hits[0] ? imgPath(hits[0], 'card') : '/img/shore.png'),
+          imageAlt: 'Find a beach on beechshore',
+        },
+        main,
+        { query: raw },
+      ),
+    );
+  });
 
   // a real place
   app.get('/at/:place', async (c) => {
@@ -431,7 +576,10 @@ ${places ? `<section><h2>By place</h2><div class="chips">${places}</div></sectio
     const bs = rows.slice(0, PAGE);
     const url = abs(c, `/at/${p.id}`);
     const main = `
-<section class="head"><h1>${esc(p.name)}</h1><p>Beaches built at ${esc(p.name)}, ${esc(p.place)}. In the game they get the real sun, moon and tides there.</p></section>
+<section class="head">
+  <h1>${esc(p.name)}</h1>
+  <p>Beaches built at ${esc(p.name)}, ${esc(p.place)}. In the game they get the real sun, moon and tides there.</p>
+</section>
 <section>${bs.length ? grid(bs) : '<p class="empty">Nobody has built here yet.</p>'}
 <nav class="pager">${page > 1 ? `<a class="btn ghost" href="${href(`/at/${p.id}${page > 2 ? `?page=${page - 1}` : ''}`)}">← back</a>` : ''}${
       rows.length > PAGE ? `<a class="btn ghost" href="${href(`/at/${p.id}?page=${page + 1}`)}">more →</a>` : ''
@@ -439,7 +587,13 @@ ${places ? `<section><h2>By place</h2><div class="chips">${places}</div></sectio
     return html(
       c,
       layout(
-        { title: `${p.name}, ${p.place} · beechshore`, description: `Beaches people built at ${p.name} in beech.`, url, image: abs(c, bs[0] ? imgPath(bs[0], 'card') : '/img/shore.png'), imageAlt: p.name },
+        {
+          title: `${p.name}, ${p.place} · beechshore`,
+          description: `Beaches people built at ${p.name} in beech.`,
+          url,
+          image: abs(c, bs[0] ? imgPath(bs[0], 'card') : '/img/shore.png'),
+          imageAlt: p.name,
+        },
         main,
         { share: { url, text: `Beaches built at ${p.name} 🏖️`, title: p.name } },
       ),
@@ -452,7 +606,7 @@ ${places ? `<section><h2>By place</h2><div class="chips">${places}</div></sectio
     return c.redirect(rows[0] ? href(`/${rows[0].code}`) : href('/'), 302);
   });
 
-  app.get('/robots.txt', (c) => c.text(`User-agent: *\nAllow: /\nDisallow: ${base}/random\nSitemap: ${abs(c, '/sitemap.xml')}\n`));
+  app.get('/robots.txt', (c) => c.text(`User-agent: *\nAllow: /\nDisallow: ${base}/random\nDisallow: ${base}/find\nSitemap: ${abs(c, '/sitemap.xml')}\n`));
 
   app.get('/sitemap.xml', async (c) => {
     const rows = await db.query<{ code: string; updated_at: string | null }>(
@@ -492,29 +646,38 @@ ${places ? `<section><h2>By place</h2><div class="chips">${places}</div></sectio
     if (raw !== b.code) return c.redirect(href(`/${b.code}`), 301);
     const { left, right } = await graph.walk(node, ['left', 'right'], 3, new Set([node.id]), isPublic);
     const title = beachTitle(b);
+    const owner = ownerName(b);
     const where = placeLabel(b.location);
     const url = abs(c, `/${b.code}`);
+    const shortUrl = url.replace(/^https?:\/\//, '');
     const text = shareText(b);
+    const cardHref = href(imgPath(b, 'card'));
+    const thumbHref = href(imgPath(b, 'thumb'));
     const n = now();
     const step = (s: Step | undefined, dir: 'left' | 'right') =>
       s
-        ? `<a class="walk ${dir}" href="${href(`/${s.code}`)}" rel="${dir === 'left' ? 'prev' : 'next'}" data-key="${dir === 'left' ? 'ArrowLeft' : 'ArrowRight'}" aria-label="Walk ${dir} to ${esc(beachTitle(s))}">${dir === 'left' ? '‹' : '›'}</a>`
+        ? `<a class="walk ${dir}" href="${href(`/${s.code}`)}" rel="${dir === 'left' ? 'prev' : 'next'}" data-key="${dir === 'left' ? 'ArrowLeft' : 'ArrowRight'}" title="Walk ${dir} to ${esc(beachTitle(s))}" aria-label="Walk ${dir} to ${esc(beachTitle(s))}">${dir === 'left' ? '‹' : '›'}</a>`
         : '';
     const strip = (s: Step) =>
-      `<li><a href="${href(`/${s.code}`)}"><img src="${esc(href(`/img/${s.code}/thumb.png?v=${s.updatedAt ?? 0}`))}" width="${THUMB.width}" height="${THUMB.height}" loading="lazy" alt=""><span>${esc(beachTitle(s))}</span></a></li>`;
+      `<li><a href="${href(`/${s.code}`)}"><span class="sthumb"><img src="${esc(href(`/img/${s.code}/thumb.png?v=${s.updatedAt ?? 0}`))}" width="${THUMB.width}" height="${THUMB.height}" loading="lazy" alt="${esc(beachTitle(s))}"></span><span class="slabel"><span>${esc(beachTitle(s))}</span>${s.linked ? '<span class="linked-dot">Neighbor</span>' : ''}</span></a></li>`;
     // left is on the left, the way you'd see it facing the sea
-    const shore = [...left].reverse().map(strip).join('') + `<li class="here"><span class="dot"></span><span>${esc(title)}</span></li>` + right.map(strip).join('');
+    const hereItem = `<li class="here"><div class="here-inner"><span class="sthumb"><img src="${esc(thumbHref)}" width="${THUMB.width}" height="${THUMB.height}" alt=""></span><span class="slabel"><span>${esc(title)}</span></span></div></li>`;
+    const shore = [...left].reverse().map(strip).join('') + hereItem + right.map(strip).join('');
     const neighbors = [left[0]?.linked ? left[0] : null, right[0]?.linked ? right[0] : null].filter(Boolean) as Step[];
     const main = `
 <article class="beach">
   <div class="pic">
-    <img src="${esc(href(imgPath(b, 'card')))}" width="${CARD.width}" height="${CARD.height}" alt="${esc(`${title}, seen from above: the sand, the sea, and what's on it`)}">
+    <img src="${esc(cardHref)}" width="${CARD.width}" height="${CARD.height}" alt="${esc(`${title}, seen from above: the sand, the sea, and what's on it`)}">
+    <div class="pic-pills">
+      ${where ? `<a class="pic-pill" href="${href(`/at/${b.location}`)}">${ICONS.pin} ${esc(where)}</a>` : '<span></span>'}
+      <button type="button" class="pic-pill code" data-copy="${esc(b.code)}" data-copied="Code ${esc(b.code)} copied" title="Copy beach code">${esc(b.code)}</button>
+    </div>
     ${step(left[0], 'left')}${step(right[0], 'right')}
   </div>
   <div class="about">
     <div>
       <h1>${esc(title)}</h1>
-      <p class="by">${b.beachName ? `by ${esc(ownerName(b))}` : ''}${b.beachName && where ? ' · ' : ''}${
+      <p class="by">${b.beachName ? `by ${esc(owner)}` : ''}${b.beachName && where ? ' · ' : ''}${
         where ? `<a href="${href(`/at/${b.location}`)}">${esc(where)}</a>` : ''
       }</p>
       <p class="m">${b.stars ? `<span class="stars">★ ${b.stars} ${b.stars === 1 ? 'star' : 'stars'}</span>` : ''}${
@@ -523,24 +686,88 @@ ${places ? `<section><h2>By place</h2><div class="chips">${places}</div></sectio
       ${neighbors.length ? `<p class="nb">Neighbors: ${neighbors.map((s) => `<a href="${href(`/${s.code}`)}">${esc(beachTitle(s))}</a>`).join(' and ')}</p>` : ''}
     </div>
     <div class="actions">
-      <a class="btn big" href="${esc(visitUrl(b.code))}">Visit in beech →</a>
-      <p class="hint">Walk onto it, sit in a deckchair, star it. The waves are live.</p>
+      <div class="action-row">
+        <a class="btn big" href="${esc(visitUrl(b.code))}">Visit in beech →</a>
+        <a class="btn ghost big" href="#share">${ICONS.share} Share snapshot</a>
+      </div>
+      <p class="hint">Walk onto it in 3D, sit in a deckchair, star it. The waves are live.</p>
     </div>
   </div>
-  ${shareRow(url, text, title)}
+
+  <section id="share" class="studio"
+    data-img="${esc(cardHref)}"
+    data-title="${esc(title)}"
+    data-owner="${esc(owner)}"
+    data-place="${esc(where)}"
+    data-stars="${b.stars}"
+    data-code="${esc(b.code)}"
+    data-url="${esc(url)}"
+    data-text="${esc(text)}"
+    data-slug="${esc(slug(title))}">
+    <div class="studio-head">
+      <h2>Share this beach</h2>
+      <div class="seg" role="group" aria-label="Snapshot format">
+        <button type="button" data-fmt="postcard" aria-pressed="true">Postcard</button>
+        <button type="button" data-fmt="square" aria-pressed="false">Square</button>
+        <button type="button" data-fmt="story" aria-pressed="false">Story</button>
+        <button type="button" data-fmt="clean" aria-pressed="false">Clean</button>
+      </div>
+    </div>
+    <div class="studio-grid">
+      <div class="stage">
+        <div class="stage-frame">
+          <canvas class="snap-canvas" aria-label="${esc(`Preview snapshot of ${title}`)}"></canvas>
+          <img class="snap-fallback" src="${esc(cardHref)}" width="${CARD.width}" height="${CARD.height}" alt="${esc(`Preview snapshot of ${title}`)}">
+        </div>
+        <div class="stage-meta">1200 × 630 · Ready for X, Discord, Bluesky, Reddit, Facebook</div>
+      </div>
+      <div class="studio-controls">
+        <div class="snap-actions">
+          <button type="button" class="btn btn-primary-snap" data-share-snap>${ICONS.share} Share with snapshot</button>
+          <button type="button" class="btn ghost" data-copy-img>${ICONS.image} Copy snapshot</button>
+          <button type="button" class="btn ghost" data-download-snap>${ICONS.download} Download PNG</button>
+        </div>
+        <div class="field-group">
+          <span class="field-label">Direct link</span>
+          <div class="copy-bar">
+            <code>${esc(shortUrl)}</code>
+            <button type="button" class="chip" data-copy="${esc(url)}">${ICONS.copy} Copy link</button>
+          </div>
+        </div>
+        <div class="field-group">
+          <label class="field-label" for="share-caption">Caption</label>
+          <div class="copy-bar">
+            <input id="share-caption" type="text" data-caption value="${esc(text)}" aria-label="Post caption">
+            <button type="button" class="chip" data-copy-post>${ICONS.copy} Copy post</button>
+          </div>
+        </div>
+        <div class="field-group">
+          <span class="field-label">Post directly to</span>
+          ${socialButtons(url, text, title, false)}
+        </div>
+        <p class="share-note">Pasting <b>${esc(shortUrl)}</b> on X, Discord, iMessage, Bluesky, Slack, or WhatsApp automatically includes your beach’s preview snapshot.</p>
+      </div>
+    </div>
+  </section>
 </article>
-${left.length || right.length ? `<section><h2>Along the shore</h2><ul class="strip">${shore}</ul><p class="hint keys">Use ← and → to walk.</p></section>` : ''}
+${
+  left.length || right.length
+    ? `<section><div class="sec-head"><h2>Along the shore</h2><span class="hint keys">Use ← and → to walk</span></div><div class="strip-wrap"><ul class="strip">${shore}</ul></div></section>`
+    : ''
+}
 <section class="make">
-  <h2>Make one of your own</h2>
-  <p>Dig a moat, build a castle, put out a deckchair, and set your beach on the shore next to everyone else’s. Free, in your browser or on your phone.</p>
-  <a class="btn" href="${esc(game)}/">Start building</a>
+  <div>
+    <h2>Make one of your own</h2>
+    <p>Dig a moat, build a castle, put out a deckchair, and set your beach on the shore next to everyone else’s. Free, in your browser or on your phone.</p>
+  </div>
+  <a class="btn big" href="${esc(game)}/">Start building →</a>
 </section>`;
     return html(
       c,
       layout(
         {
           title: `${title} on beechshore`,
-          description: `${b.beachName ? `${ownerName(b)}’s beach` : 'A beach'}${where ? ` at ${where}` : ''}, built in beech. ${b.stars ? `★ ${b.stars}. ` : ''}Walk the shore, then build your own.`,
+          description: `${b.beachName ? `${owner}’s beach` : 'A beach'}${where ? ` at ${where}` : ''}, built in beech. ${b.stars ? `★ ${b.stars}. ` : ''}Walk the shore, then build your own.`,
           url,
           image: abs(c, imgPath(b, 'card')),
           imageAlt: `${title}, seen from above`,
@@ -555,7 +782,13 @@ ${left.length || right.length ? `<section><h2>Along the shore</h2><ul class="str
     html(
       c,
       layout(
-        { title: 'Washed away · beechshore', description: 'That beach is not on the shore.', url: abs(c, '/'), image: abs(c, '/img/shore.png'), imageAlt: 'An untouched beach' },
+        {
+          title: 'Washed away · beechshore',
+          description: 'That beach is not on the shore.',
+          url: abs(c, '/'),
+          image: abs(c, '/img/shore.png'),
+          imageAlt: 'An untouched beach',
+        },
         `<section class="head"><h1>Washed away</h1><p>No beach on the shore has that code. Its owner may have taken it off the shore, or the code changed.</p>
 <div class="cta"><a class="btn" href="${href('/')}">See the shore</a><a class="btn ghost" href="${esc(game)}/">Build a beach</a></div></section>`,
       ),
@@ -568,102 +801,3 @@ ${left.length || right.length ? `<section><h2>Along the shore</h2><ul class="str
   });
   return app;
 }
-
-// ------------------------------------------------------------------ look
-
-const WAVE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="28" height="28" aria-hidden="true"><circle cx="16" cy="16" r="15" fill="#f6e3c3"/><path d="M1.5 13c4-3 7-3 10 0s6 3 9 0 6-3 10 0V9A15 15 0 0 0 1.5 13z" fill="#2fa4bb"/><path d="M1 13.2c4-3 7-3 10.3 0s6 3 9 0 6.2-3 10.7 0" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/></svg>`;
-const FAVICON = `data:image/svg+xml,${encodeURIComponent(WAVE_SVG)}`;
-const SHARE_SVG = `<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-
-const CSS = `
-:root{--sand:#f6e3c3;--sand2:#fbeedd;--ink:#3c4a57;--ink2:#6b7a88;--sea:#2fa4bb;--sea2:#8ff0de;--card:#fffaf2;--line:#ead8bd;--accent:#e2574c;--gold:#e5a91a;color-scheme:light dark}
-@media (prefers-color-scheme:dark){:root{--sand:#2b2721;--sand2:#1f1c18;--ink:#efe6d8;--ink2:#b4a893;--card:#2a2621;--line:#3d362d;--sea:#58c3d6}}
-*{box-sizing:border-box}
-html{-webkit-text-size-adjust:100%}
-body{margin:0;background:var(--sand2);color:var(--ink);font:16px/1.5 ui-rounded,"SF Pro Rounded",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-a{color:var(--sea)}
-img{max-width:100%;height:auto;display:block}
-.top{display:flex;align-items:center;gap:16px;padding:12px max(16px,env(safe-area-inset-left));position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--sand2) 88%,transparent);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
-.brand{display:flex;align-items:center;gap:8px;text-decoration:none;color:var(--ink);font-size:20px;letter-spacing:-.01em}
-.brand b{color:var(--sea);font-weight:700}
-.top nav{display:flex;gap:14px;flex:1;overflow-x:auto;scrollbar-width:none}
-.top nav a{color:var(--ink2);text-decoration:none;white-space:nowrap;font-size:15px}
-.top nav a:hover{color:var(--ink)}
-main{max-width:1180px;margin:0 auto;padding:0 16px 32px}
-section{margin:28px 0}
-h1{font-size:clamp(28px,5vw,44px);line-height:1.1;margin:0 0 8px;letter-spacing:-.02em}
-h2{font-size:20px;margin:0 0 12px;display:flex;align-items:baseline;gap:12px}
-h2 a{font-size:14px;font-weight:400}
-.btn{display:inline-flex;align-items:center;gap:8px;background:var(--sea);color:#fff;border:0;border-radius:999px;padding:11px 20px;font:inherit;font-weight:600;text-decoration:none;cursor:pointer;white-space:nowrap}
-.btn:hover{filter:brightness(1.07)}
-.btn.ghost{background:transparent;color:var(--sea);box-shadow:inset 0 0 0 2px var(--sea)}
-.btn.small{padding:7px 14px;font-size:14px}
-.btn.big{padding:14px 26px;font-size:18px}
-.chip{display:inline-flex;align-items:center;gap:6px;background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:999px;padding:7px 14px;font:inherit;font-size:14px;text-decoration:none;cursor:pointer}
-.chip span{color:var(--ink2)}
-.chips{display:flex;flex-wrap:wrap;gap:8px}
-.linkish{background:none;border:0;padding:0;font:inherit;color:var(--sea);text-decoration:underline;cursor:pointer}
-.hero{position:relative;border-radius:24px;overflow:hidden;margin-top:20px;background:var(--sea)}
-.hero-img{width:100%;aspect-ratio:1200/630;object-fit:cover}
-.hero-text{position:absolute;inset:auto 0 0 0;padding:28px;background:linear-gradient(transparent,rgba(20,40,50,.72));color:#fff}
-.hero-text p{max-width:640px;margin:0 0 14px;font-size:17px}
-.hero .btn.ghost{color:#fff;box-shadow:inset 0 0 0 2px #fff}
-.cta{display:flex;flex-wrap:wrap;gap:10px}
-@media (max-width:640px){.hero-img{aspect-ratio:4/3}.hero-text{position:static;background:var(--card);color:var(--ink)}.hero .btn.ghost{color:var(--sea);box-shadow:inset 0 0 0 2px var(--sea)}.hero{background:var(--card)}}
-.grid{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:0}
-.card a{display:block;background:var(--card);border-radius:16px;overflow:hidden;text-decoration:none;color:var(--ink);border:1px solid var(--line);transition:transform .15s}
-.card a:hover{transform:translateY(-2px)}
-.card img{aspect-ratio:480/300;width:100%;object-fit:cover;background:var(--sand)}
-.info{display:flex;flex-direction:column;padding:10px 14px 12px;gap:2px}
-.info .t{font-weight:650;display:flex;align-items:center;gap:8px}
-.info .s{color:var(--ink2);font-size:14px}
-.m{display:flex;flex-wrap:wrap;gap:10px;font-size:13px;color:var(--ink2)}
-.stars{color:var(--gold);font-weight:600}
-.up{color:#3aa66a}
-.rank{display:inline-grid;place-items:center;min-width:24px;height:24px;border-radius:999px;background:var(--sand);font-size:13px}
-.rank.r1{background:#f3c74d;color:#5a4300}.rank.r2{background:#d4d9de;color:#3b4550}.rank.r3{background:#e2a777;color:#5a3110}
-.head{margin-top:28px}
-.head p{color:var(--ink2);max-width:680px}
-.tabs{display:flex;gap:8px;flex-wrap:wrap}
-.tabs a{padding:6px 14px;border-radius:999px;text-decoration:none;color:var(--ink2);border:1px solid var(--line)}
-.tabs a[aria-current]{background:var(--ink);color:var(--sand2);border-color:var(--ink)}
-.pager{display:flex;gap:10px;justify-content:center;margin-top:20px}
-.empty{color:var(--ink2)}
-.beach{margin-top:20px}
-.pic{position:relative;border-radius:22px;overflow:hidden;background:var(--sea)}
-.pic img{width:100%;aspect-ratio:1200/630}
-.walk{position:absolute;top:50%;transform:translateY(-50%);width:52px;height:52px;border-radius:999px;display:grid;place-items:center;background:rgba(255,255,255,.85);color:#3c4a57;font-size:34px;line-height:1;text-decoration:none;box-shadow:0 2px 10px rgba(0,0,0,.15)}
-.walk.left{left:12px}.walk.right{right:12px}
-.about{display:flex;flex-wrap:wrap;justify-content:space-between;gap:16px 32px;margin:18px 0 6px}
-.about .by{margin:0;color:var(--ink2)}
-.about .m{margin:6px 0 0;font-size:15px}
-.about .nb{margin:8px 0 0;color:var(--ink2);font-size:15px}
-.actions{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
-.hint{color:var(--ink2);font-size:14px;margin:4px 0 0}
-.share{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:14px}
-.strip{list-style:none;margin:0;padding:4px 0 8px;display:flex;gap:0;overflow-x:auto;scroll-snap-type:x mandatory}
-.strip li{flex:0 0 200px;scroll-snap-align:center}
-.strip a{display:block;text-decoration:none;color:var(--ink);font-size:14px}
-.strip img{border-radius:12px;aspect-ratio:480/300;object-fit:cover}
-.strip span{display:block;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.strip .here{display:flex;flex-direction:column;align-items:center;justify-content:center;border:2px dashed var(--sea);border-radius:12px;padding:12px;color:var(--sea);font-weight:600;text-align:center;flex-basis:140px}
-.strip .here .dot{width:10px;height:10px;border-radius:50%;background:var(--sea)}
-.make,.sharebox{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:22px}
-.make p{max-width:620px;color:var(--ink2)}
-footer{max-width:1180px;margin:0 auto;padding:20px 16px 40px;color:var(--ink2);font-size:14px;border-top:1px solid var(--line)}
-@media (hover:none){.hint.keys{display:none}}
-.toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,20px);background:var(--ink);color:var(--sand2);padding:10px 18px;border-radius:999px;opacity:0;transition:.2s;pointer-events:none;font-size:15px}
-.toast.on{opacity:1;transform:translate(-50%,0)}
-@media (max-width:640px){.top nav{display:none}.top{justify-content:space-between}.walk{width:42px;height:42px;font-size:28px}.about .actions{width:100%}.about .btn.big{width:100%;justify-content:center}}
-`;
-
-// share (the phone's share sheet where there is one, else copy), copy, and arrow keys to walk
-const SCRIPT = `(()=>{const t=document.querySelector('.toast');let h;const say=m=>{t.textContent=m;t.classList.add('on');clearTimeout(h);h=setTimeout(()=>t.classList.remove('on'),2200)};
-const copy=async u=>{try{await navigator.clipboard.writeText(u);say('Link copied')}catch{window.prompt('Copy this link',u)}};
-document.addEventListener('click',async e=>{const b=e.target.closest('[data-share],[data-copy]');if(!b)return;
-if(b.dataset.copy){copy(b.dataset.copy);return}
-const d={title:b.dataset.title,text:b.dataset.text,url:b.dataset.url};
-if(navigator.share){try{await navigator.share(d);return}catch(x){if(x&&x.name==='AbortError')return}}
-copy(d.url)});
-const st=document.querySelector('.strip'),hr=st&&st.querySelector('.here');if(hr)st.scrollLeft=hr.offsetLeft-st.offsetLeft-(st.clientWidth-hr.clientWidth)/2;
-document.addEventListener('keydown',e=>{if(e.metaKey||e.ctrlKey||e.altKey||/input|textarea/i.test(e.target.tagName))return;const a=document.querySelector('[data-key="'+e.key+'"]');if(a)location.href=a.href})})();`;
