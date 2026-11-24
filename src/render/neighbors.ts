@@ -12,11 +12,8 @@ import type { Swell } from '../sim/waves';
 import { beachById } from '../world/locations';
 import { BeachRenderer, ORIGIN_Z } from './beachRenderer';
 import { ObjectView } from './objects';
+import { shoreLayout, UNLINKED_STEP } from './shoreSpacing';
 import { placeTag } from '../ui/tagPlace';
-
-/** gap between dioramas, so each beach reads as its own little island */
-const GAP = 1.6;
-export const NEIGHBOR_OFFSET = WORLD_SIZE_X + GAP;
 /** how far down the shore to load at first, each way */
 const DEPTH = 6;
 /** load more of the shore when the view gets this close to the end of what's loaded */
@@ -75,6 +72,8 @@ export class NeighborView {
   visiting: ShoreBeach | null = null;
   readonly favorites = new Map<string, ShoreBeach>();
   private entries = new Map<number, Entry>();
+  /** world-X centre of each entry (linked neighbours touch, the rest keep the diorama gap) */
+  private pos = new Map<number, number>();
   private tide = 0;
   private lastTideRefresh = 0;
   private listeners: ((n: Neighbors | null) => void)[] = [];
@@ -108,8 +107,41 @@ export class NeighborView {
     this.favListeners.push(fn);
   }
 
-  static offsetFor(side: Side): number {
-    return side === 'left' ? NEIGHBOR_OFFSET : -NEIGHBOR_OFFSET;
+  /** World-X centre of the beach at a shore index (0 = the middle one). */
+  xFor(index: number): number {
+    return this.pos.get(index) ?? index * UNLINKED_STEP;
+  }
+
+  /** The shore index whose beach is nearest to a world-X point, if any. */
+  nearestIndex(x: number): number | null {
+    let best: number | null = null;
+    let bestD = Infinity;
+    for (const i of this.entries.keys()) {
+      const d = Math.abs(this.xFor(i) - x);
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    }
+    return best;
+  }
+
+  /** World-X [min, max] of the drawn window's beaches, slab edges included. */
+  windowExtent(): [number, number] {
+    const half = WORLD_SIZE_X / 2;
+    return [this.xFor(this.win[0]) - half, this.xFor(this.win[1]) + half];
+  }
+
+  /** World-X centres of the drawn beaches, nearest the middle first. */
+  windowCenters(): number[] {
+    const out: number[] = [];
+    for (let i = this.win[0]; i <= this.win[1]; i++) if (this.entries.has(i)) out.push(this.xFor(i));
+    return out;
+  }
+
+  /** Recompute every entry's centre from the entries' `linked` flags. */
+  private relayout(): void {
+    this.pos = shoreLayout([...this.entries.values()].map((e) => ({ index: e.index, linked: e.beach.linked })));
   }
 
   /** The beaches currently drawn, as shore indices [from, to] (0 = the middle one). */
@@ -337,10 +369,11 @@ export class NeighborView {
   }
 
   private updateBounds(): void {
+    this.relayout();
     const half = WORLD_SIZE_X / 2;
     const { left, right } = this.extent;
-    this.cam.maxX = left * NEIGHBOR_OFFSET + half;
-    this.cam.minX = -right * NEIGHBOR_OFFSET - half;
+    this.cam.maxX = this.xFor(left) + half;
+    this.cam.minX = this.xFor(-right) - half;
   }
 
   private title(b: ShoreBeach): string {
@@ -352,7 +385,7 @@ export class NeighborView {
 
   /** Draw the beaches near the view, load the ones about to come into view, let go of far ones. */
   private async fillWindow(wait = false): Promise<void> {
-    const c = Math.round(this.cam.focusX / NEIGHBOR_OFFSET);
+    const c = this.nearestIndex(this.cam.focusX) ?? 0;
     const { left, right } = this.extent;
     const lo = Math.max(-right, c - RENDER);
     const hi = Math.min(left, c + RENDER);
@@ -403,7 +436,7 @@ export class NeighborView {
 
   private makeSlot(e: Entry): void {
     if (!e.data || e.slot) return;
-    const x = e.index * NEIGHBOR_OFFSET;
+    const x = this.xFor(e.index);
     const renderer = new BeachRenderer(this.scene, this.grid, this.rest, this.swell, x);
     renderer.setChairView(this.chairView);
     const objects = new ObjectView(this.scene, renderer, x);
@@ -512,13 +545,23 @@ export class NeighborView {
 
   /** Sand height at a world point on a drawn beach along the shore, or NaN if it isn't on one. */
   heightAtWorld(x: number, z: number): number {
-    const i = Math.round(x / NEIGHBOR_OFFSET);
-    const e = this.entries.get(i);
-    if (!e?.data || (i === 0 && !this.visiting)) return NaN;
-    const sx = x - i * NEIGHBOR_OFFSET + WORLD_SIZE_X / 2;
+    let best: Entry | null = null;
+    let bestData: Loaded | null = null;
+    let bestD = Infinity;
+    for (const e of this.entries.values()) {
+      if (!e.data || (e.index === 0 && !this.visiting)) continue;
+      const d = Math.abs(x - this.xFor(e.index));
+      if (d <= WORLD_SIZE_X / 2 && d < bestD) {
+        bestD = d;
+        best = e;
+        bestData = e.data;
+      }
+    }
+    if (!best || !bestData) return NaN;
+    const sx = x - this.xFor(best.index) + WORLD_SIZE_X / 2;
     const sy = z - ORIGIN_Z;
     if (sx < 0 || sx > WORLD_SIZE_X || sy < 0 || sy > this.grid.ny * this.grid.dx) return NaN;
-    return this.heightAt(e.data.delta, sx, sy);
+    return this.heightAt(bestData.delta, sx, sy);
   }
 
   /** Their sand height at sim metres (bilinear). */
@@ -558,7 +601,7 @@ export class NeighborView {
     }
     void this.fillWindow();
     // infinite scroll: keep the shore loaded a few beaches past the view
-    const c = Math.round(this.cam.focusX / NEIGHBOR_OFFSET);
+    const c = this.nearestIndex(this.cam.focusX) ?? 0;
     const ext = this.extent;
     if (ext.left - c < AHEAD) void this.more('left');
     if (ext.right + c < AHEAD) void this.more('right');
