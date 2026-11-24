@@ -360,14 +360,25 @@ accepted the repo's default branch, so the deploy job ran only there.
   buttons (`favorites` table, migration 4).
 - The neighbor tags poll every 30 s across the whole shore.
 - `npm run e2e:shore` covers walking, home, visiting by code, and favorites.
-- **The 3D view (2026-11-24):** every beach page has a Top-down / 3D toggle
-  on its picture, and `GET /img/:CODE/iso.png` serves the 3D isometric view
-  (1200×630, same cache behaviour as the card, keyed on the beach's and its
-  neighbours' save times). The camera sits offshore looking landward; the
-  real heightfield, water, and billboarded things show with one public beach
-  either side — linked flush, unlinked with the 1.6 m gap. Only public
-  beaches ever appear; a non-public neighbour renders as untouched shore.
-  `og:image` stays the top-down card. Sample: `docs/shore-iso-sample.png`.
+- **The 3D views (2026-11-24):** every beach page has Flat / 3D / From the
+  sea buttons on its picture, and `GET /img/:CODE/iso.png` (from the land)
+  and `GET /img/:CODE/iso-ocean.png` (from the sea) serve the 3D isometric
+  views (1200×630, same cache behaviour as the card, keyed on the beach's
+  and its neighbours' save times). The real heightfield, water, and
+  billboarded things show with one public beach either side — linked flush,
+  unlinked with the 1.6 m gap — and the neighbours mirror between the two
+  views, because you are looking from opposite directions. A side with no
+  public neighbour shows no shore at all: the frame is fitted to the
+  beaches present, with no faded filler. Only public beaches ever appear;
+  a non-public neighbour renders as untouched shore.
+  `og:image` stays the top-down card. Samples: `docs/shore-iso-sample.png`
+  (ocean) and `docs/shore-iso-land-sample.png` (land).
+- **The flat card has no shoulders (2026-11-24):** the top-down card is
+  exactly the beach edge to edge — the 32 m beach is stretched alongshore
+  to fill the 1200 px width, so the pale bands of empty shore that flanked
+  it are gone. Things keep their size and shape; terrain features stretch
+  1.22× horizontally (a dug moat reads as an ellipse). Before/after:
+  `docs/shore-card-before.png` and `docs/shore-card-after.png`.
 
 ## Leaderboard (added after more than one beach)
 

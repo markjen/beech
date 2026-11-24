@@ -344,8 +344,11 @@ const VIEW_Y1 = WORLD;
 
 /**
  * Draw a saved beach (or the untouched beach, `sand` null) as RGB pixels.
- * The picture always shows the whole depth of the beach; wider pictures
- * show the shore carrying on either side, a little faded.
+ * The picture always shows the whole depth of the beach, edge to edge:
+ * the card is exactly the beach, sea at the top and sand to the sides.
+ * Alongshore the card spans the beach's 32 m exactly (no continuation
+ * shore flanking it); cross-shore it spans VIEW_Y0..VIEW_Y1, so the two
+ * scales differ a little (the card is wider than the beach is deep).
  */
 export function renderBeach(sand: SavedSand | null, opts: ImageOptions): Uint8Array {
   const { width: W, height: H } = opts;
@@ -396,9 +399,11 @@ export function renderBeach(sand: SavedSand | null, opts: ImageOptions): Uint8Ar
     const c = f[k + gx];
     return (a + (f[k + 1] - a) * tx) * (1 - ty) + (c + (f[k + gx + 1] - c) * tx) * ty;
   };
-  const scale = H / (VIEW_Y1 - VIEW_Y0); // px per metre
+  const scaleX = W / WORLD; // px per metre, alongshore: exactly the beach
+  const scaleY = H / (VIEW_Y1 - VIEW_Y0); // px per metre, cross-shore
   const cx = W / 2;
-  const invScale = 1 / scale;
+  const invScaleX = 1 / scaleX;
+  const invScaleY = 1 / scaleY;
   const out = new Uint8Array(W * H * 3);
   // light from the top left of the picture (offshore, +x)
   const L = norm3([-0.55, -0.55, 0.63]);
@@ -418,16 +423,9 @@ export function renderBeach(sand: SavedSand | null, opts: ImageOptions): Uint8Ar
   const sl = lighten(look.sandDry, 0.15);
   const sl0 = sl[0], sl1 = sl[1], sl2 = sl[2];
   const fm0 = look.foam[0], fm1 = look.foam[1], fm2 = look.foam[2];
-  const fg0 = look.fog[0], fg1 = look.fog[1], fg2 = look.fog[2];
 
   // Precompute per-column values and bilinear x indices (independent of py)
-  const colX = new Float64Array(W);
-  const colOff = new Uint8Array(W);
   const colWave = new Float64Array(W);
-  const colFog = new Float64Array(W);
-  const colWob = new Float64Array(W);
-  const colWobP = new Float64Array(W);
-  const colWobM = new Float64Array(W);
   const colI = new Int32Array(W);
   const colTx = new Float64Array(W);
   const colIp = new Int32Array(W);
@@ -435,37 +433,27 @@ export function renderBeach(sand: SavedSand | null, opts: ImageOptions): Uint8Ar
   const colIm = new Int32Array(W);
   const colTxm = new Float64Array(W);
   for (let px = 0; px < W; px++) {
-    // facing the sea, left is +x: the picture is mirrored alongshore
-    const x = WORLD / 2 - (px + 0.5 - cx) * invScale;
-    colX[px] = x;
-    const isOff = x < 0 || x > WORLD ? 1 : 0;
-    colOff[px] = isOff;
+    // facing the sea, left is +x: the picture is mirrored alongshore, and
+    // the card is exactly the beach edge to edge (no continuation shore)
+    const x = WORLD / 2 - (px + 0.5 - cx) * invScaleX;
     colWave[px] = Math.sin(x * 0.35) * 0.9 + noise1(x * 0.6, 3) * 2;
-    const edge = Math.max(-x, x - WORLD);
-    colFog[px] = edge > -0.6 ? 0.5 * smoothstep(-0.6, 5, edge) : 0;
-    if (isOff) {
-      colWob[px] = wobbleAt(x);
-      colWobP[px] = wobbleAt(x + e);
-      colWobM[px] = wobbleAt(x - e);
-    } else {
-      let fx = x * invDx + 0.5;
-      if (fx < 0) fx = 0; else if (fx > maxGx) fx = maxGx;
-      colI[px] = fx | 0;
-      colTx[px] = fx - (fx | 0);
-      let fxp = (x + e) * invDx + 0.5;
-      if (fxp < 0) fxp = 0; else if (fxp > maxGx) fxp = maxGx;
-      colIp[px] = fxp | 0;
-      colTxp[px] = fxp - (fxp | 0);
-      let fxm = (x - e) * invDx + 0.5;
-      if (fxm < 0) fxm = 0; else if (fxm > maxGx) fxm = maxGx;
-      colIm[px] = fxm | 0;
-      colTxm[px] = fxm - (fxm | 0);
-    }
+    let fx = x * invDx + 0.5;
+    if (fx < 0) fx = 0; else if (fx > maxGx) fx = maxGx;
+    colI[px] = fx | 0;
+    colTx[px] = fx - (fx | 0);
+    let fxp = (x + e) * invDx + 0.5;
+    if (fxp < 0) fxp = 0; else if (fxp > maxGx) fxp = maxGx;
+    colIp[px] = fxp | 0;
+    colTxp[px] = fxp - (fxp | 0);
+    let fxm = (x - e) * invDx + 0.5;
+    if (fxm < 0) fxm = 0; else if (fxm > maxGx) fxm = maxGx;
+    colIm[px] = fxm | 0;
+    colTxm[px] = fxm - (fxm | 0);
   }
 
   let kOut = 0;
   for (let py = 0; py < H; py++) {
-    const y = VIEW_Y0 + (py + 0.5) * invScale;
+    const y = VIEW_Y0 + (py + 0.5) * invScaleY;
     const waveY = (y - PROFILE.shoreline) * 2.2;
     let fy = y * invDy + 0.5;
     if (fy < 0) fy = 0; else if (fy > maxGy) fy = maxGy;
@@ -489,11 +477,8 @@ export function renderBeach(sand: SavedSand | null, opts: ImageOptions): Uint8Ar
     const rm = jm * gx;
 
     for (let px = 0; px < W; px++) {
-      const off = colOff[px];
       let h: number;
-      if (off) {
-        h = restHeightW(colX[px], y, colWob[px]);
-      } else {
+      {
         const k = r0 + colI[px];
         const tx = colTx[px];
         const a = hgt[k];
@@ -534,12 +519,7 @@ export function renderBeach(sand: SavedSand | null, opts: ImageOptions): Uint8Ar
       } else {
         let hx: number;
         let hy: number;
-        if (off) {
-          const x = colX[px];
-          const w = colWob[px];
-          hx = (restHeightW(x + e, y, colWobP[px]) - restHeightW(x - e, y, colWobM[px])) * inv2e;
-          hy = (restHeightW(x, y + e, w) - restHeightW(x, y - e, w)) * inv2e;
-        } else {
+        {
           const kp = r0 + colIp[px];
           const txp = colTxp[px];
           const hp = (hgt[kp] + (hgt[kp + 1] - hgt[kp]) * txp) * ity0 + (hgt[kp + gx] + (hgt[kp + gx + 1] - hgt[kp + gx]) * txp) * ty0;
@@ -566,7 +546,7 @@ export function renderBeach(sand: SavedSand | null, opts: ImageOptions): Uint8Ar
         r = sw0 + (sd0 - sw0) * ts;
         g = sw1 + (sd1 - sw1) * ts;
         b = sw2 + (sd2 - sw2) * ts;
-        if (!off) {
+        {
           const k = r0 + colI[px];
           const tx = colTx[px];
           const d = (dug[k] + (dug[k + 1] - dug[k]) * tx) * ity0 + (dug[k + gx] + (dug[k + gx + 1] - dug[k + gx]) * tx) * ty0;
@@ -588,13 +568,6 @@ export function renderBeach(sand: SavedSand | null, opts: ImageOptions): Uint8Ar
         g *= shade;
         b *= shade;
       }
-      // the shore carries on past the beach, faded into the haze
-      const fogT = colFog[px];
-      if (fogT > 0) {
-        r += (fg0 - r) * fogT;
-        g += (fg1 - g) * fogT;
-        b += (fg2 - b) * fogT;
-      }
       out[kOut++] = r <= 0 ? 0 : r >= 1 ? 255 : Math.round(r * 255);
       out[kOut++] = g <= 0 ? 0 : g >= 1 ? 255 : Math.round(g * 255);
       out[kOut++] = b <= 0 ? 0 : b >= 1 ? 255 : Math.round(b * 255);
@@ -604,7 +577,7 @@ export function renderBeach(sand: SavedSand | null, opts: ImageOptions): Uint8Ar
     const visible = sand.cover
       ? sand.things.filter((t) => !(t.kind === 'rock' && t.base !== undefined && sample(hgt, t.x, t.y) > t.base + t.size * 0.8))
       : sand.things;
-    drawThings(out, W, H, visible, look, (x, y) => [cx - (x - WORLD / 2) * scale, (y - VIEW_Y0) * scale], scale);
+    drawThings(out, W, H, visible, look, (x, y) => [cx - (x - WORLD / 2) * scaleX, (y - VIEW_Y0) * scaleY], scaleY);
   }
   return out;
 }
@@ -970,16 +943,15 @@ export interface IsoPanel {
   linked: boolean;
 }
 
+/** which side the isometric camera sits on */
+export type IsoDir = 'land' | 'ocean';
+
 const ISO_TILT = (20 * Math.PI) / 180;
 const ISO_A = Math.cos(ISO_TILT); // screen x per metre of (x + y)
 const ISO_B = Math.sin(ISO_TILT); // screen y per metre of (x - y)
 const ISO_Z = 2.0; // vertical exaggeration, × scale
 const ISO_CELL = 0.5; // m between height samples (0.4 looked the same; 0.5 is ~35% fewer quads)
 const ISO_GAP = 1.6; // m of untouched shore past an unlinked neighbour
-const ISO_MARGIN = 8; // m of shore shown past the outer beaches, fading out
-/** the frame is fixed, so a beach sits in the same place with or without neighbours */
-const ISO_X0 = -(WORLD + ISO_GAP + ISO_MARGIN);
-const ISO_X1 = WORLD + ISO_GAP + WORLD + ISO_MARGIN;
 
 interface IsoCam {
   s: number;
@@ -988,9 +960,12 @@ interface IsoCam {
   C: number;
   ox: number;
   oy: number;
+  /** +1: camera offshore looking landward (sea in front); -1: camera inland looking seaward */
+  sgn: 1 | -1;
 }
-const isoCam = (W: number, H: number): IsoCam => {
-  const span = ISO_X1 - ISO_X0 + WORLD;
+/** Fit the ground diamond to exactly the beaches present (fx0..fx1 alongshore, 0..32 offshore→land). No filler shore past the ends. */
+const isoCam = (W: number, H: number, fx0: number, fx1: number, dir: IsoDir): IsoCam => {
+  const span = fx1 - fx0 + WORLD;
   const mx = 20;
   const myTop = 80;
   const myBot = 16;
@@ -999,17 +974,22 @@ const isoCam = (W: number, H: number): IsoCam => {
   const A = ISO_A * s;
   const B = ISO_B * s;
   const C = ISO_Z * s;
-  // centre the ground diamond: sx = ox - (x+y)*A, sy = oy + (x-y)*B - h*C
-  const ox = (W + (ISO_X0 + ISO_X1 + WORLD) * A) / 2;
-  const oy = myTop + topH * C - (ISO_X0 - WORLD) * B;
-  return { s, A, B, C, ox, oy };
+  const sgn = dir === 'ocean' ? 1 : -1;
+  // centre the ground diamond; the land view mirrors it alongshore, so a
+  // neighbour that is on the left from the sea is on the right from the land
+  const ox = (W + sgn * (fx0 + fx1 + WORLD) * A) / 2;
+  const oy = myTop + topH * C + (sgn > 0 ? WORLD - fx0 : fx1) * B;
+  return { s, A, B, C, ox, oy, sgn };
 };
 /** world (x alongshore, y offshore→land, h height) → screen, y down */
-const isoPt = (cam: IsoCam, x: number, y: number, h: number): Pt => [cam.ox - (x + y) * cam.A, cam.oy + (x - y) * cam.B - h * cam.C];
+const isoPt = (cam: IsoCam, x: number, y: number, h: number): Pt => [
+  cam.ox - cam.sgn * (x + y) * cam.A,
+  cam.oy + cam.sgn * (x - y) * cam.B - h * cam.C,
+];
 
-/** screen position of a world point in the iso view (for tests) */
-export function isoScreenPoint(W: number, H: number, x: number, y: number, h: number): Pt {
-  return isoPt(isoCam(W, H), x, y, h);
+/** screen position of a world point in the iso view (for tests); fx0/fx1 are the strip's ends, 0/32 with no neighbours */
+export function isoScreenPoint(W: number, H: number, dir: IsoDir, x: number, y: number, h: number, fx0 = 0, fx1 = WORLD): Pt {
+  return isoPt(isoCam(W, H, fx0, fx1, dir), x, y, h);
 }
 
 interface Panel {
@@ -1102,18 +1082,30 @@ function fillQuad(img: Uint8Array, W: number, H: number, pts: Pt[], r: number, g
 }
 
 /**
- * Draw a beach and the shore either side of it as an isometric diorama,
- * 1200×630 or any size: sea in the foreground, the beach rising away,
- * neighbours flanking left and right. The centre beach is always in the
- * same place; a missing neighbour is untouched shore, faded at the edges.
+ * Draw a beach and the public beaches either side of it as an isometric
+ * diorama, 1200×630 or any size. `ocean` is the view from the sea: the sea
+ * in the foreground, the beach rising away, the walk-left neighbour on the
+ * picture's left. `land` is the view from the land side, looking out toward
+ * the sea: the beach in the foreground, the sea far away, and the neighbours
+ * mirrored — the walk-left neighbour is on the picture's right. The frame
+ * fits exactly the beaches present; a side with no public neighbour ends at
+ * the centre beach, with no filler shore past it.
  */
-export function renderIsoBeach(center: IsoPanel, left: IsoPanel | null, right: IsoPanel | null, opts: ImageOptions): Uint8Array {
+export function renderIsoBeach(
+  center: IsoPanel,
+  left: IsoPanel | null,
+  right: IsoPanel | null,
+  opts: ImageOptions,
+  dir: IsoDir,
+): Uint8Array {
   const { width: W, height: H } = opts;
   const panels: Panel[] = [toPanel(center.sand, center.location, 0)];
   // facing the sea, left is world +x (the game, and the top-down card)
   if (left) panels.push(toPanel(left.sand, left.location, left.linked ? WORLD : WORLD + ISO_GAP));
   if (right) panels.push(toPanel(right.sand, right.location, right.linked ? -WORLD : -(WORLD + ISO_GAP)));
-  const cam = isoCam(W, H);
+  const fx0 = Math.min(...panels.map((p) => p.start));
+  const fx1 = Math.max(...panels.map((p) => p.start + WORLD));
+  const cam = isoCam(W, H, fx0, fx1, dir);
   const out = new Uint8Array(W * H * 3);
 
   // sky: pale blue up top, warm haze at the horizon
@@ -1143,31 +1135,18 @@ export function renderIsoBeach(center: IsoPanel, left: IsoPanel | null, right: I
     return { h: restHeight(x, y), d: 0, look: panels[0].look };
   };
 
-  // heights on the grid
-  const cols = Math.round((ISO_X1 - ISO_X0) / ISO_CELL);
+  // heights on the grid, over exactly the beaches present
+  const cols = Math.round((fx1 - fx0) / ISO_CELL);
   const rows = Math.round(WORLD / ISO_CELL);
   const hn = new Float32Array((cols + 1) * (rows + 1));
   for (let j = 0; j <= rows; j++) {
     const y = j * ISO_CELL;
     const row = j * (cols + 1);
-    for (let i = 0; i <= cols; i++) hn[row + i] = sampleAt(ISO_X0 + i * ISO_CELL, y).h;
+    for (let i = 0; i <= cols; i++) hn[row + i] = sampleAt(fx0 + i * ISO_CELL, y).h;
   }
   // light from the upper left of the picture
   const L = norm3([0.5, 0.35, 0.79]);
   const shadeScale = 0.3 / (1 - L[2] + 1e-6);
-  const fogL = panels[0].look.fog;
-  const fog0 = fogL[0];
-  const fog1 = fogL[1];
-  const fog2 = fogL[2];
-  // The shore fades past the outer beaches: the fade starts at the far edge
-  // of the outermost panel on each side. The fog formula below measures how
-  // far a point sits past the strip's ends, so the low edge is the smallest
-  // x (the right panel's start) and the high edge the largest x (past the
-  // left panel's far end) — never inside a beach.
-  const leftPanel = left ? panels[1] : null;
-  const rightPanel = right ? panels[panels.length - 1] : null;
-  const edgeLo = rightPanel ? rightPanel.start : 0;
-  const edgeHi = leftPanel ? leftPanel.start + WORLD : WORLD;
 
   // things, bucketed by cell so they paint in the same back-to-front order
   interface Placed {
@@ -1182,18 +1161,26 @@ export function renderIsoBeach(center: IsoPanel, left: IsoPanel | null, right: I
       const gx = p.start + t.x;
       const ground = sampleAt(gx, t.y).h;
       const [bx, by] = isoPt(cam, gx, t.y, ground);
-      const i = Math.min(cols - 1, Math.max(0, Math.floor((gx - ISO_X0) / ISO_CELL)));
+      const i = Math.min(cols - 1, Math.max(0, Math.floor((gx - fx0) / ISO_CELL)));
       const j = Math.min(rows - 1, Math.max(0, Math.floor(t.y / ISO_CELL)));
       byCell[j * cols + i].push({ t, bx, by, look: p.look });
     }
   }
 
-  // painter's order: far rows first (high y), left to right within a row
-  for (let j = rows - 1; j >= 0; j--) {
+  // painter's order: far rows first, then across the row. From the sea the
+  // far side is the land (high y) and the row runs low x to high x; from
+  // the land it is the other way round (low y, high x to low x).
+  const jFirst = dir === 'ocean' ? rows - 1 : 0;
+  const jLast = dir === 'ocean' ? -1 : rows;
+  const jStep = dir === 'ocean' ? -1 : 1;
+  const iFirst = dir === 'ocean' ? 0 : cols - 1;
+  const iLast = dir === 'ocean' ? cols : -1;
+  const iStep = dir === 'ocean' ? 1 : -1;
+  for (let j = jFirst; j !== jLast; j += jStep) {
     const y0 = j * ISO_CELL;
     const y1 = y0 + ISO_CELL;
-    for (let i = 0; i < cols; i++) {
-      const x0 = ISO_X0 + i * ISO_CELL;
+    for (let i = iFirst; i !== iLast; i += iStep) {
+      const x0 = fx0 + i * ISO_CELL;
       const x1 = x0 + ISO_CELL;
       const k00 = j * (cols + 1) + i;
       const h00 = hn[k00];
@@ -1205,9 +1192,6 @@ export function renderIsoBeach(center: IsoPanel, left: IsoPanel | null, right: I
       const yc = y0 + ISO_CELL / 2;
       const mid = sampleAt(xc, yc);
       const look = mid.look;
-      // the shore fades past the outer beaches
-      const outside = Math.max(edgeLo - xc, xc - edgeHi, 0);
-      const fogT = outside > 0 ? 0.55 * smoothstep(0, ISO_MARGIN, outside) : 0;
       let r: number;
       let g: number;
       let b: number;
@@ -1275,11 +1259,6 @@ export function renderIsoBeach(center: IsoPanel, left: IsoPanel | null, right: I
           b += (look.foam[2] - b) * t4;
         }
         pts = [isoPt(cam, x0, y0, h00), isoPt(cam, x1, y0, h10), isoPt(cam, x1, y1, h11), isoPt(cam, x0, y1, h01)];
-      }
-      if (fogT > 0) {
-        r += (fog0 - r) * fogT;
-        g += (fog1 - g) * fogT;
-        b += (fog2 - b) * fogT;
       }
       fillQuad(out, W, H, pts, to8(r), to8(g), to8(b));
       for (const pl of byCell[j * cols + i]) drawIsoThing(out, W, H, pl);
@@ -1472,6 +1451,7 @@ export function beachIsoPng(
   left: { bytes: Uint8Array | null; location?: string | null; linked: boolean } | null,
   right: { bytes: Uint8Array | null; location?: string | null; linked: boolean } | null,
   opts: ImageOptions,
+  dir: IsoDir,
 ): Buffer {
   const dec = (b: { bytes: Uint8Array | null; location?: string | null; linked?: boolean } | null): IsoPanel | null => {
     if (!b) return null;
@@ -1486,7 +1466,7 @@ export function beachIsoPng(
     return { sand, location: b.location, linked: b.linked ?? false };
   };
   const c = dec(center);
-  return encodePng(renderIsoBeach(c ?? { sand: null, linked: false }, dec(left), dec(right), opts), opts.width, opts.height);
+  return encodePng(renderIsoBeach(c ?? { sand: null, linked: false }, dec(left), dec(right), opts, dir), opts.width, opts.height);
 }
 
 function footprint(t: Thing): number {

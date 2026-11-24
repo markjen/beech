@@ -248,8 +248,9 @@ export function createShoreSite(db: Db, cfg: ShoreSiteConfig): Hono<any, any, an
   app.get('/img/:file{[A-Za-z0-9]{6}\\.png}', (c) => image(c, c.req.param('file').slice(0, 6), 'card'));
   app.get('/img/:code{[A-Za-z0-9]{6}}/thumb.png', (c) => image(c, c.req.param('code'), 'thumb'));
   app.get('/img/:code{[A-Za-z0-9]{6}}/iso.png', (c) => image(c, c.req.param('code'), 'iso'));
+  app.get('/img/:code{[A-Za-z0-9]{6}}/iso-ocean.png', (c) => image(c, c.req.param('code'), 'iso-ocean'));
 
-  async function image(c: Context, raw: string, kind: 'card' | 'thumb' | 'iso') {
+  async function image(c: Context, raw: string, kind: 'card' | 'thumb' | 'iso' | 'iso-ocean') {
     const code = normalizeCode(raw);
     const rows = await db.query<NodeRow & { sand: unknown }>(
       `SELECT ${NODE}, b.sand FROM ${BEACH} WHERE b.code = $1 AND ${PUBLIC}`,
@@ -258,13 +259,13 @@ export function createShoreSite(db: Db, cfg: ShoreSiteConfig): Hono<any, any, an
     const row = rows[0];
     if (!row) return c.text('no such beach on the shore', 404);
     const v = String(row.updated_at ?? 0);
-    // The 3D view also shows the beaches either side, so its cache key
+    // The 3D views also show the beaches either side, so their cache key
     // carries their save times too: a neighbour rebuilding changes the
     // picture even though this beach did not.
     let version = v;
     let left: { bytes: Uint8Array; location: string | null; linked: boolean } | null = null;
     let right: { bytes: Uint8Array; location: string | null; linked: boolean } | null = null;
-    if (kind === 'iso') {
+    if (kind === 'iso' || kind === 'iso-ocean') {
       const { left: wl, right: wr } = await graph.walk(row, ['left', 'right'], 1, new Set([row.id]), isPublic);
       const fetchOne = async (s: Step | undefined) => {
         if (!s) return null;
@@ -297,8 +298,10 @@ export function createShoreSite(db: Db, cfg: ShoreSiteConfig): Hono<any, any, an
       const t0 = Date.now();
       png =
         kind === 'iso'
-          ? beachIsoPng({ bytes: toBytes(row.sand), location: row.location }, left, right, CARD)
-          : beachPng(toBytes(row.sand), { ...(kind === 'card' ? CARD : THUMB), location: row.location });
+          ? beachIsoPng({ bytes: toBytes(row.sand), location: row.location }, left, right, CARD, 'land')
+          : kind === 'iso-ocean'
+            ? beachIsoPng({ bytes: toBytes(row.sand), location: row.location }, left, right, CARD, 'ocean')
+            : beachPng(toBytes(row.sand), { ...(kind === 'card' ? CARD : THUMB), location: row.location });
       remember(key, png);
       logEvent('shore_image', { kind, ms: Date.now() - t0, bytes: png.length });
     }
@@ -739,6 +742,7 @@ ${
     const thumbHref = href(imgPath(b, 'thumb'));
     const isoVersion = `${b.updatedAt ?? 0}.${left[0]?.updatedAt ?? 0}.${right[0]?.updatedAt ?? 0}`;
     const isoHref = href(`/img/${b.code}/iso.png?v=${isoVersion}`);
+    const oceanHref = href(`/img/${b.code}/iso-ocean.png?v=${isoVersion}`);
     const n = now();
     const step = (s: Step | undefined, dir: 'left' | 'right') =>
       s
@@ -753,10 +757,11 @@ ${
     const main = `
 <article class="beach">
   <div class="pic">
-    <img src="${esc(cardHref)}" width="${CARD.width}" height="${CARD.height}" alt="${esc(`${title}, seen from above: the sand, the sea, and what's on it`)}" data-alt-card="${esc(`${title}, seen from above: the sand, the sea, and what's on it`)}" data-alt-iso="${esc(`${title}, seen in 3D from the sea, with the beaches either side`)}">
-    <div class="view-toggle" role="group" aria-label="Picture view" data-view-toggle data-card="${esc(cardHref)}" data-iso="${esc(isoHref)}">
-      <button type="button" data-view="card" aria-pressed="true">Top-down</button>
+    <img src="${esc(cardHref)}" width="${CARD.width}" height="${CARD.height}" alt="${esc(`${title}, seen from above: the sand, the sea, and what's on it`)}" data-alt-card="${esc(`${title}, seen from above: the sand, the sea, and what's on it`)}" data-alt-iso="${esc(`${title}, seen in 3D from the land, looking out toward the sea`)}" data-alt-ocean="${esc(`${title}, seen in 3D from the sea, with the beaches either side`)}">
+    <div class="view-toggle" role="group" aria-label="Picture view" data-view-toggle data-card="${esc(cardHref)}" data-iso="${esc(isoHref)}" data-ocean="${esc(oceanHref)}">
+      <button type="button" data-view="card" aria-pressed="true">Flat</button>
       <button type="button" data-view="iso" aria-pressed="false">3D</button>
+      <button type="button" data-view="ocean" aria-pressed="false">From the sea</button>
     </div>
     <div class="pic-pills">
       ${where ? `<a class="pic-pill" href="${href(`/at/${b.location}`)}">${ICONS.pin} ${esc(where)}</a>` : '<span></span>'}

@@ -511,15 +511,17 @@ document.addEventListener('keydown',e=>{
   if(a)location.href=a.href;
 });
 
-// Beach picture view: top-down / 3D (only on beach pages)
+// Beach picture view: Flat / 3D / From the sea (only on beach pages)
 const vt=document.querySelector('[data-view-toggle]');
 if(vt){
   const pic=vt.closest('.pic');const img=pic&&pic.querySelector('img');
+  const views={card:vt.dataset.card,iso:vt.dataset.iso,ocean:vt.dataset.ocean};
+  const alts={card:'altCard',iso:'altIso',ocean:'altOcean'};
   vt.addEventListener('click',e=>{
     const b=e.target.closest('[data-view]');if(!b||!img)return;
-    const iso=b.dataset.view==='iso';
-    img.src=iso?vt.dataset.iso:vt.dataset.card;
-    img.alt=iso?(img.dataset.altIso||img.alt):(img.dataset.altCard||img.alt);
+    const view=b.dataset.view;if(!views[view])return;
+    img.src=views[view];
+    img.alt=img.dataset[alts[view]]||img.alt;
     vt.querySelectorAll('[data-view]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));
   });
 }
