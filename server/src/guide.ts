@@ -120,7 +120,7 @@ export function guideHtml(now: number): string {
   const body = `
 <h2 id="start">Getting started</h2>
 <p>beech is a stretch of sand by the sea. Dig, build, and set things down, and watch the waves rework it. Tap or click the title screen to begin; sound starts then too.</p>
-<p>Sign in (settings, at the top) to keep your beach, have neighbors, and play the machines. Without signing in, your beach lives on this device only, though you can still pan along the shore beside it to see other people’s public beaches.</p>
+<p>Sign in (settings, at the top) to keep your beach, have neighbors, and play the machines. Without signing in, your beach isn’t saved — it only lives while you play, and closing the app loses it. Sign in and it’s saved, so you can keep it on any device. You can still pan along the shore beside it to see other people’s public beaches.</p>
 <p>The sea follows a real beach: its tide, sun and moon, at that place’s time of day, with waves growing stronger toward high tide and gentler toward low tide. Pick the beach in settings, or “near me” for the closest one.</p>
 
 <h2 id="controls">Controls</h2>
@@ -185,7 +185,7 @@ ${
 
 <h2 id="shore">Neighbors and the shore</h2>
 <p>Every beach has a code. To have a neighbor, put their code in “left” or “right” in settings and ask; it links when they accept. A new code stops your old one working; neighbors you already have keep you.</p>
-<p>Past your neighbors the shore carries on into everyone else’s beaches: pan along it, or walk it in the chair view. You can look at other beaches but only dig your own. Tap ☆ on a name tag or the bar at the top to keep a beach in your favorites; “⌂ my beach” takes you home. Visit any beach by its code from settings, or share a link to yours — opening it on beechshore.com lets you grab a Postcard, Square, Story, or Clean preview snapshot to post on social media.</p>
+<p>Past your neighbors the shore carries on into everyone else’s beaches: pan along it, or walk it in the chair view. Signed out, the public shore still runs past your beach: the beaches either side show, and you can scroll the whole public shore. You can look at other beaches but only dig your own. Tap ☆ on a name tag or the bar at the top to keep a beach in your favorites; “⌂ my beach” takes you home. Visit any beach by its code from settings, or share a link to yours — opening it on beechshore.com lets you grab a Postcard, Square, Story, or Clean preview snapshot to post on social media.</p>
 
 <h2 id="leaderboard">Leaderboard</h2>
 <p>The trophy button shows the most-starred beaches. <b>All time</b> counts every star a beach has now. <b>Rising</b> counts stars from the past week, and the newest count most (a star’s weight halves every 2 days). Visit or star a beach from its row. Signed in only.</p>

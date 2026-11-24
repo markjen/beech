@@ -10,6 +10,7 @@ import {
   neighborWaveEta,
   seamWeight,
   shoreLayout,
+  shoreRowOrder,
   windowBeachCenters,
 } from '../src/render/shoreSpacing';
 import { makeSwell, swellAt } from '../src/sim/waves';
@@ -150,6 +151,15 @@ describe('shore spacing', () => {
     expect(boundaryLinked(-1, linked)).toBe(true); // (-1, 0) governed by -1
     expect(boundaryLinked(0, linked)).toBe(true); // (0, +1) governed by +1
     expect(boundaryLinked(1, linked)).toBe(false); // (+1, +2) governed by +2
+  });
+});
+
+describe('the settings panel shore list', () => {
+  it('lists the panel rows nearest first, left then right at each step out', () => {
+    expect(shoreRowOrder(2, 2)).toEqual([1, -1, 2, -2]);
+    expect(shoreRowOrder(0, 3)).toEqual([-1, -2, -3]);
+    expect(shoreRowOrder(3, 0)).toEqual([1, 2, 3]);
+    expect(shoreRowOrder(0, 0)).toEqual([]);
   });
 });
 
