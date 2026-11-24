@@ -124,11 +124,24 @@ export class CheckpointsSection {
     return shortfall(cp.items, this.host.owned(), this.elsewhere(target));
   }
 
+  /** "Put it back as it was" (docs/LIVE_SIM.md): restore checkpoint `id` onto `target` without asking. */
+  async putBack(id: string, target: string): Promise<void> {
+    await this.load();
+    const cp = this.list?.checkpoints.find((c) => c.id === id);
+    if (!cp) {
+      this.host.toast('That copy of the beach is gone');
+      return;
+    }
+    await this.restore(cp, target, false);
+  }
+
   /** Put `cp` on beach `target`, asking first. */
   async restore(cp: Checkpoint, target: string, ask = true): Promise<void> {
     const name = this.beachName(target);
     let mode: 'strict' | 'drop-missing' = 'strict';
     const short = this.shortFor(cp, target);
+    // not asking (a tap that already meant "put it back"): leave out what the bag can't cover
+    if (!ask && short.length) mode = 'drop-missing';
     if (ask) {
       const keep = cp.kind === 'auto' ? '' : ` ${name} as it is now is kept as “Before restoring”, so you can go back.`;
       if (short.length) {
@@ -153,7 +166,11 @@ export class CheckpointsSection {
       const undoId = result.undo;
       const left = result.dropped ? ` (${result.dropped} left out)` : '';
       this.host.toast(
-        cp.kind === 'auto' ? `${name} is back as it was` : `Restored “${cp.name}” on ${name}${left}`,
+        cp.kind === 'auto'
+          ? `${name} is back as it was`
+          : cp.kind === 'tide'
+            ? `${name} is back as it was before the tide${left}`
+            : `Restored “${cp.name}” on ${name}${left}`,
         undoId && cp.kind !== 'auto' ? () => void this.undo(undoId, target) : undefined,
       );
     });
@@ -230,7 +247,7 @@ export class CheckpointsSection {
   private row(cp: Checkpoint): HTMLElement {
     const a = this.account;
     const row = document.createElement('div');
-    row.className = `cp-row${cp.kind === 'auto' ? ' auto' : ''}`;
+    row.className = `cp-row${cp.kind !== 'named' ? ' auto' : ''}`;
     row.dataset.id = cp.id;
     // a little top-down map of it, fetched and drawn on first sight
     const img = document.createElement('img');
@@ -267,7 +284,9 @@ export class CheckpointsSection {
           : cp.name.startsWith('Before import')
             ? 'kept before an import'
             : 'kept before a restore'
-        : cp.source === 'import'
+        : cp.kind === 'tide'
+          ? 'kept before the tide came in'
+          : cp.source === 'import'
           ? 'imported'
           : `from ${cp.fromBeach?.name || cp.fromName || (cp.fromBeach?.id === a.beaches.find((b) => b.home)?.id ? 'home' : 'a beach')}${cp.fromBeach ? '' : ' (removed)'}`;
     meta.textContent = `${from} · ${ago(cp.createdAt)}`;

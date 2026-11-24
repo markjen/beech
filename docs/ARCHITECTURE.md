@@ -61,6 +61,8 @@ simulated one.
 | `src/ui/checkpoints.ts` | Settings → checkpoints: save, list, restore here / onto another beach, undo, export, import (`CheckpointApi` in `src/net/account.ts`, the fit check in `src/world/checkpointFit.ts`) |
 | `server/src/guide.ts`, `releaseNotes.ts` | The user guide, help and release notes at `/guide` and `/guide/releases` (`/help`, `/releases` redirect), rendered per request from the server's own constants (odds, grab chances, the claw's rest, this week's vending set). The game shows no explanatory notes; it links here (`GUIDE_URL` in `src/config.ts`) |
 | `server/src/landingSite.ts`, `rootApp.ts` | The beech.games landing page: Host-header routing in `rootApp.ts` (`beech.games` + `www`, which 301s to the apex; no game API on those hosts), previewable under `/landing` on every other host. Numbers from the server's constants; "What's new" from `releaseNotes.ts`. See docs/LANDING_PAGE.md |
+| `src/world/catchupBeach.ts` | A saved beach caught up at its place (decode, `catchUp` at the real tide, encode). Bundled for the server by `scripts/bundle-server.mjs` into `server/src/generated/catchup.ts` |
+| `server/src/liveBeach.ts` | The server's catch-up on read: due or not, the owner's heartbeat, compare-and-set write with the "Before the tide" checkpoint and the event (docs/LIVE_SIM.md). Tested in `server/test/liveBeach.test.ts` |
 | `server/src/checkpoints.ts` | Reads a saved beach on the server (`inspectBlob`), the restore fit check, dropping what's short |
 | `src/ui/beachFileDialog.ts` | The import preview (map, items, warnings, shortfalls) and the file pick / download helpers |
 | `src/sim/profile.ts`, `waves.ts`, `undoStack.ts` | Rest beach shape, swell/tide functions, stroke-delta undo |

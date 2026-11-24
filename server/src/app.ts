@@ -122,6 +122,7 @@ import {
   ladderReward,
 } from './referrals.js';
 import { createRateLimiter, logEvent, parseClientEvent, routeLabel } from './observability.js';
+import { createLiveBeaches, liveConfig, type LiveConfig } from './liveBeach.js';
 import { createPaymentToken, payStationUrl, verifyWebhookSignature, xsollaError, type CreateToken, type XsollaConfig, type XsollaWebhook } from './xsolla.js';
 import { finalizeSteamTxn, initSteamTxn, type SteamStoreConfig } from './steamStore.js';
 
@@ -148,6 +149,8 @@ export interface AppConfig {
   rateLimit?: { perMinute?: number; signInsPerMinute?: number };
   /** the clock (tests move it forward) */
   now?: () => number;
+  /** live beaches (docs/LIVE_SIM.md); default from the environment (CATCHUP_MAX_GAP_DAYS) */
+  live?: LiveConfig;
   /** the dice (tests force a miss) */
   rand?: () => number;
   /** the iOS bundle id and Android package the store purchases are for */
@@ -182,7 +185,7 @@ type Env = { Variables: { user: User; tokenHash: string } };
 
 /** most beaches one person can have */
 export const BEACH_CAP = 8;
-const BEACH_HEADERS = ['X-Beach-Location', 'X-Beach-Nx', 'X-Beach-Ny', 'X-Beach-Version', 'X-Beach-Updated', 'X-Beach-Epoch'];
+const BEACH_HEADERS = ['X-Beach-Location', 'X-Beach-Nx', 'X-Beach-Ny', 'X-Beach-Version', 'X-Beach-Updated', 'X-Beach-Epoch', 'X-Beach-Simulated-Until'];
 /** request-only headers the app sends cross-origin (the phone apps) */
 const REQUEST_HEADERS = ['X-Beach-Items', 'X-Beach-Max', 'X-Checkpoint-Name', 'X-App-Build', 'X-Edit-Token'];
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O or 1/I
@@ -213,6 +216,9 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   const verifyApple = cfg.verifyApple ?? verifyAppleIdToken;
   const verifySteam = cfg.verifySteam ?? verifySteamTicket;
   const app = new Hono<Env>();
+  // the sea keeps working while nobody has a beach open (docs/LIVE_SIM.md)
+  const liveClock = () => cfg.now?.() ?? Date.now();
+  const live = createLiveBeaches(db, liveClock, cfg.live ?? liveConfig(), (e) => logEvent(String(e.event), e));
 
   // Request logging (httpLogger) is mounted once, on the root app in
   // server.ts, so it covers /api/* and the CORS preflight. Mounting it here
@@ -455,6 +461,17 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     return startSession(c, { provider: 'dev', sub: n, name: n });
   });
 
+  // local development and e2e tests only (DEV_AUTH): let time pass on one of
+  // your beaches (docs/LIVE_SIM.md), as if nobody had opened it for `hours`
+  app.post('/dev/age-beach', requireUser, async (c) => {
+    if (!cfg.devAuth) fail(404, 'not found');
+    const { hours, beach } = await body<{ hours?: number; beach?: string }>(c);
+    const h = Math.max(0, Math.min(24 * 60, Number(hours) || 0));
+    const id = await mine(c, beach);
+    await db.query('UPDATE beach SET simulated_until = $2, here_until = NULL WHERE id = $1', [id, liveClock() - h * 3600000]);
+    return c.body(null, 204);
+  });
+
   // local development and e2e tests only (DEV_AUTH): give yourself an item
   app.post('/dev/grant', requireUser, async (c) => {
     if (!cfg.devAuth) fail(404, 'not found');
@@ -641,10 +658,22 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   // A person owns one or more beaches (docs/MULTI_BEACH.md). Their home beach
   // has their user id as its id. /api/beach is the home beach, for older apps.
   const sendBeach = async (c: Context<Env>, beachId: string) => {
-    const rows = await db.query<{ location: string; nx: number; ny: number; version: number; updated_at: string; epoch: number; sand: unknown }>(
-      'SELECT location, nx, ny, version, updated_at, epoch, sand FROM beach WHERE id = $1 AND sand IS NOT NULL',
-      [beachId],
-    );
+    // the sea kept working while nobody had it open (docs/LIVE_SIM.md)
+    try {
+      await live.ensure(beachId);
+    } catch (e) {
+      logEvent('catchup_failed', { beach: beachId, error: String(e) }, 'ERROR');
+    }
+    const rows = await db.query<{
+      location: string;
+      nx: number;
+      ny: number;
+      version: number;
+      updated_at: string;
+      epoch: number;
+      simulated_until: string | null;
+      sand: unknown;
+    }>('SELECT location, nx, ny, version, updated_at, epoch, simulated_until, sand FROM beach WHERE id = $1 AND sand IS NOT NULL', [beachId]);
     const row = rows[0];
     if (!row) return c.json({ error: 'no saved beach yet' }, 404);
     const bytes = toBytes(row.sand);
@@ -658,6 +687,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
         'X-Beach-Version': String(row.version),
         'X-Beach-Updated': String(row.updated_at),
         'X-Beach-Epoch': String(row.epoch),
+        'X-Beach-Simulated-Until': String(row.simulated_until ?? row.updated_at),
       },
     });
   };
@@ -840,9 +870,9 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const big = await maybeLargeEditSave(beachId, c.get('user').id, now, bytes);
     if (!big.large) await maybeAutoSave(beachId, c.get('user').id, now);
     const rows = await db.query<{ version: number; epoch: number }>(
-      `UPDATE beach SET location = $2, nx = $3, ny = $4, version = version + 1, updated_at = $5, sand = $6, items = $7
+      `UPDATE beach SET location = $2, nx = $3, ny = $4, version = version + 1, updated_at = $5, sand = $6, items = $7, simulated_until = $9
         WHERE id = $1 AND ($8::int IS NULL OR epoch <= $8::int) RETURNING version, epoch`,
-      [beachId, location, nx, ny, now, bytes, JSON.stringify(parseItems(c.req.header('X-Beach-Items'))), epoch],
+      [beachId, location, nx, ny, now, bytes, JSON.stringify(parseItems(c.req.header('X-Beach-Items'))), epoch, liveClock()],
     );
     if (!rows[0]) {
       if ((await db.query('SELECT 1 FROM beach WHERE id = $1', [beachId])).length) fail(409, 'restored');
@@ -858,6 +888,59 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
 
   app.get('/beach', requireUser, async (c) => sendBeach(c, await homeOf(c.get('user').id)));
   app.put('/beach', requireUser, async (c) => saveBeach(c, await homeOf(c.get('user').id)));
+
+  // The owner's app has this beach open and is simulating it (docs/LIVE_SIM.md):
+  // a heartbeat every 20 s keeps the server's catch-up off it. The reply's
+  // epoch tells the app if the beach changed under it (a catch-up or restore
+  // that ran while it was in the background): it reloads.
+  const here = async (c: Context<Env>, beachId: string) => {
+    const r = await live.here(beachId);
+    if (!r) fail(404, 'no such beach');
+    return c.json(r);
+  };
+  app.post('/beach/here', requireUser, async (c) => here(c, await homeOf(c.get('user').id)));
+
+  // "While you were away" (docs/LIVE_SIM.md): what the sea did to one of your
+  // beaches since you last opened it, as one summary. `seen` marks it read.
+  const away = async (c: Context<Env>, beachId: string) => {
+    const rows = await db.query<{
+      from_at: string | null;
+      to_at: string | null;
+      tides: string | null;
+      lost: string | null;
+      brought: string | null;
+      n: string;
+      checkpoint: string | null;
+    }>(
+      `SELECT MIN(e.from_at) AS from_at, MAX(e.to_at) AS to_at, SUM(e.tides) AS tides, SUM(e.lost) AS lost, SUM(e.brought) AS brought,
+              COUNT(*) AS n,
+              (SELECT e2.checkpoint FROM beach_events e2 JOIN checkpoints k ON k.id = e2.checkpoint
+                WHERE e2.beach_id = $1 AND e2.created_at > COALESCE(b.owner_seen_at, 0) ORDER BY e2.id DESC LIMIT 1) AS checkpoint
+         FROM beach b JOIN beach_events e ON e.beach_id = b.id
+        WHERE b.id = $1 AND e.created_at > COALESCE(b.owner_seen_at, 0)
+        GROUP BY b.id, b.owner_seen_at`,
+      [beachId],
+    );
+    const r = rows[0];
+    if (!r || Number(r.n) === 0) return c.json({ away: null });
+    return c.json({
+      away: {
+        from: Number(r.from_at),
+        to: Number(r.to_at),
+        highTides: Number(r.tides),
+        lost: Number(r.lost),
+        broughtIn: Number(r.brought),
+        // "Before the tide": put it back as it was
+        checkpoint: r.checkpoint,
+      },
+    });
+  };
+  const seen = async (c: Context<Env>, beachId: string) => {
+    await db.query('UPDATE beach SET owner_seen_at = $2 WHERE id = $1', [beachId, liveClock()]);
+    return c.body(null, 204);
+  };
+  app.get('/beach/away', requireUser, async (c) => away(c, await homeOf(c.get('user').id)));
+  app.post('/beach/away/seen', requireUser, async (c) => seen(c, await homeOf(c.get('user').id)));
 
   /** how many beaches you may have: one, plus each extra beach you own */
   const allowance = async (user: string): Promise<number> => {
@@ -1030,6 +1113,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const side = parseSide(c);
     const n = await linked(await mine(c, c.req.query('beach')), side);
     if (!n) return c.json({ error: 'no neighbor on that side' }, 404);
+    await live.viewed(n.id);
     return sendBeach(c, n.id);
   });
 
@@ -1133,7 +1217,15 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   app.get('/public/beaches/:code', async (c) => {
     const who = await nodeByCode(c.req.param('code') ?? '');
     if (!who || !isPublic(who)) return c.json({ error: 'no public beach with that code' }, 404);
+    await live.viewed(who.id);
     return sendBeach(c, who.id);
+  });
+  // a viewer's poll (docs/LIVE_SIM.md): the beach's version, and whether its owner is on it now
+  app.get('/public/beaches/:code/live', async (c) => {
+    const who = await nodeByCode(c.req.param('code') ?? '');
+    if (!who || !isPublic(who)) return c.json({ error: 'no public beach with that code' }, 404);
+    const st = await live.status(who.id);
+    return st ? c.json(st) : c.json({ error: 'no saved beach yet' }, 404);
   });
 
   const byCode = nodeByCode;
@@ -1728,6 +1820,9 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
 
   app.get('/beaches/mine/:id/sand', requireUser, async (c) => sendBeach(c, await mine(c, c.req.param('id'))));
   app.put('/beaches/mine/:id/sand', requireUser, async (c) => saveBeach(c, await mine(c, c.req.param('id'))));
+  app.post('/beaches/mine/:id/here', requireUser, async (c) => here(c, await mine(c, c.req.param('id'))));
+  app.get('/beaches/mine/:id/away', requireUser, async (c) => away(c, await mine(c, c.req.param('id'))));
+  app.post('/beaches/mine/:id/away/seen', requireUser, async (c) => seen(c, await mine(c, c.req.param('id'))));
 
   // ---------------------------------------------------------------- checkpoints
   // Named copies of your beaches, restorable onto any of them if your bag
@@ -1736,7 +1831,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   interface CheckpointRow {
     id: string;
     name: string;
-    kind: 'named' | 'auto';
+    kind: 'named' | 'auto' | 'tide';
     source: 'beach' | 'import';
     from_beach: string | null;
     from_name: string;
@@ -1786,7 +1881,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   const checkpointLimit = async (user: string) => CHECKPOINTS_PER_BEACH * (await allowance(user));
   const checkpointUse = async (user: string) => {
     const rows = await db.query<{ named: string; bytes: string | null }>(
-      `SELECT COUNT(*) FILTER (WHERE kind = 'named') AS named, SUM(bytes) AS bytes FROM checkpoints WHERE owner_id = $1`,
+      `SELECT COUNT(*) FILTER (WHERE kind = 'named') AS named, SUM(bytes) FILTER (WHERE kind <> 'tide') AS bytes FROM checkpoints WHERE owner_id = $1`,
       [user],
     );
     return { named: Number(rows[0]?.named ?? 0), bytes: Number(rows[0]?.bytes ?? 0) };
@@ -2007,7 +2102,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
              sand = EXCLUDED.sand, bytes = EXCLUDED.bytes, items = EXCLUDED.items, objects = EXCLUDED.objects, created_at = EXCLUDED.created_at
            RETURNING id
          )
-         UPDATE beach SET sand = $7, nx = $8, ny = $9, items = $10, version = version + 1, updated_at = $5, epoch = epoch + 1
+         UPDATE beach SET sand = $7, nx = $8, ny = $9, items = $10, version = version + 1, updated_at = $5, epoch = epoch + 1,
+                simulated_until = $5
           WHERE id = $6
          RETURNING version, epoch, (SELECT id FROM snap) AS undo`,
         [
@@ -2662,7 +2758,15 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   app.get('/beaches/:code', requireUser, async (c) => {
     const who = await byCode(c.req.param('code') ?? '');
     if (!who) return c.json({ error: 'no beach with that code' }, 404);
+    if (who.owner_id !== c.get('user').id) await live.viewed(who.id);
     return sendBeach(c, who.id);
+  });
+  app.get('/beaches/:code/live', requireUser, async (c) => {
+    const who = await byCode(c.req.param('code') ?? '');
+    if (!who) return c.json({ error: 'no beach with that code' }, 404);
+    if (who.owner_id === c.get('user').id) return c.json({ error: 'your own beach' }, 400);
+    const st = await live.status(who.id);
+    return st ? c.json(st) : c.json({ error: 'no saved beach yet' }, 404);
   });
 
   // ---------------------------------------------------------------- gifts

@@ -34,6 +34,8 @@ const KEEP = 5;
 const POLL_MS = 30000;
 /** debounce before saving an edited adjacent beach */
 const EDIT_SAVE_MS = 4000;
+/** while a beach's owner is on it, a viewer asks about it this often (docs/LIVE_SIM.md) */
+const LIVE_POLL_MS = 5000;
 
 export interface OwnedPick {
   x: number;
@@ -53,6 +55,8 @@ interface Loaded {
   epoch?: number;
   objects: PlacedObject[];
   updatedAt: number | null;
+  /** the server's version when fetched (a viewer's poll fetches again when it moves on) */
+  version?: number;
 }
 
 interface Slot {
@@ -124,6 +128,9 @@ export class NeighborView {
   private generation = 0;
   private chairView = false;
   private pollTimer = 0;
+  private liveTimer = 0;
+  /** when to next ask about each beach (fast while its owner is on it) */
+  private liveNext = new Map<string, number>();
   private win: [number, number] = [0, 0];
   /** the viewing-mode info: the card tucked under the top-left header */
   private readonly shoreInfo: ShoreInfo;
@@ -438,7 +445,33 @@ export class NeighborView {
     for (const fn of this.favListeners) fn();
   }
 
+  /**
+   * Live viewers (docs/LIVE_SIM.md, L5): the beach in front of you, if it
+   * isn't yours, is asked about every 5 s while its owner is on it (every
+   * 30 s otherwise), and fetched again whenever its version moves on: the
+   * owner's saves (every 5 s while watched) and the server's catch-ups.
+   */
+  private scheduleLive(): void {
+    window.clearTimeout(this.liveTimer);
+    this.liveTimer = window.setTimeout(() => void this.livePoll().finally(() => this.scheduleLive()), LIVE_POLL_MS);
+  }
+
+  private async livePoll(): Promise<void> {
+    if (document.hidden) return;
+    const c = this.nearestIndex(this.cam.focusX);
+    const e = this.entries.get(c);
+    if (!e?.data || e.loading || (c === 0 && !this.visiting) || !e.beach.location) return;
+    const code = e.beach.code;
+    const now = Date.now();
+    if ((this.liveNext.get(code) ?? 0) > now) return;
+    const st = await this.api.beachLive(code).catch(() => null);
+    this.liveNext.set(code, now + (st?.live ? LIVE_POLL_MS : POLL_MS) - 100);
+    if (!st || this.entries.get(c) !== e || !e.data) return;
+    if (e.data.version !== undefined && st.version !== e.data.version) await this.fetch(e);
+  }
+
   private schedulePoll(): void {
+    if (!this.liveTimer) this.scheduleLive();
     window.clearTimeout(this.pollTimer);
     this.pollTimer = window.setTimeout(() => void this.poll().finally(() => this.schedulePoll()), POLL_MS);
   }
@@ -464,6 +497,9 @@ export class NeighborView {
     // first: close the info card, so its tags are back on the root before
     // their slots drop them
     this.shoreInfo.setVisible(false);
+    window.clearTimeout(this.liveTimer);
+    this.liveTimer = 0;
+    this.liveNext.clear();
     this.clearEntries();
     this.visiting = null;
     this.state = null;
@@ -616,6 +652,7 @@ export class NeighborView {
         ...(saved?.epoch !== undefined ? { epoch: saved.epoch } : mine ? { epoch: 0 } : {}),
         objects,
         updatedAt: saved?.updatedAt ?? e.beach.updatedAt,
+        version: saved?.version,
       };
       if (e.sim) e.sim.loadDelta(rawDelta ?? delta, objects, rawCover);
       if (e.slot) this.repaint(e);

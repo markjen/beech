@@ -733,6 +733,40 @@ const MIGRATIONS: string[] = [
     last_seen_at BIGINT NOT NULL
   );
   `,
+
+  // 26: live beaches (docs/LIVE_SIM.md). The sea keeps working while nobody
+  // has a beach open: the server catches it up when it's next read.
+  // simulated_until: the sand is as the sea left it up to then (a save, or
+  // the last catch-up). here_until: the owner's app has the beach open and
+  // is simulating it itself (a heartbeat), so no catch-up meanwhile.
+  // owner_seen_at: the owner last opened it ("while you were away").
+  // beach_events: one row per catch-up that changed something. A 'tide'
+  // checkpoint: the beach just before a long catch-up ("Before the tide"),
+  // one per beach, not counted toward the limits.
+  `
+  ALTER TABLE beach ADD COLUMN simulated_until BIGINT;
+  ALTER TABLE beach ADD COLUMN here_until BIGINT;
+  ALTER TABLE beach ADD COLUMN owner_seen_at BIGINT;
+  ALTER TABLE beach ADD COLUMN viewed_until BIGINT;    -- someone else is looking at it (the owner's app saves more often)
+
+  CREATE TABLE beach_events (
+    id BIGSERIAL PRIMARY KEY,
+    beach_id UUID NOT NULL REFERENCES beach (id) ON DELETE CASCADE,
+    from_at BIGINT NOT NULL,             -- the gap it covered (ms)
+    to_at BIGINT NOT NULL,
+    tides INTEGER NOT NULL,              -- high tides in the gap
+    sand_moved REAL NOT NULL,            -- m3
+    lost INTEGER NOT NULL DEFAULT 0,     -- owned things the sea took (back in the bag)
+    brought INTEGER NOT NULL DEFAULT 0,  -- strays it washed up
+    checkpoint UUID REFERENCES checkpoints (id) ON DELETE SET NULL,
+    created_at BIGINT NOT NULL
+  );
+  CREATE INDEX beach_events_beach ON beach_events (beach_id, created_at);
+
+  ALTER TABLE checkpoints DROP CONSTRAINT checkpoints_kind_check;
+  ALTER TABLE checkpoints ADD CONSTRAINT checkpoints_kind_check CHECK (kind IN ('named', 'auto', 'tide'));
+  CREATE UNIQUE INDEX checkpoints_one_tide ON checkpoints (from_beach) WHERE kind = 'tide';
+  `,
 ];
 
 /** Apply migrations up to `upTo` (default: all). Tests use `upTo` to check a migration on older data. */

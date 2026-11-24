@@ -1,6 +1,6 @@
 # Live beaches: the sea keeps working while you're away (design)
 
-Status: being built (L1 and L2 done 2026-11-23, see STATUS.md). The owner's decisions are settled (end of this
+Status: built (L1–L5, 2026-11-24; see STATUS.md for what differs from this plan). The owner's decisions are settled (end of this
 page). Milestones L1–L5 are at the end and in [BACKLOG.md](BACKLOG.md).
 
 ## Today
@@ -95,9 +95,9 @@ owner's decision 3) and
 `now − simulated_until > CATCHUP_MIN_GAP` (10 min), and no lease is live,
 the server catches it up before or while serving it:
 
-1. Take a per-beach lock (`pg_try_advisory_xact_lock(beach_id)`). If another
-   request holds it, serve the stored beach now; the caught-up one follows
-   (see "Serving" below).
+1. One catch-up per beach at a time in each server instance (an in-process
+   map); across instances the compare-and-set below settles it. (As built:
+   no advisory lock.)
 2. If the gap is over `CATCHUP.tideCheckpointGapH` (12 h), keep the beach as
    it is now as its **"Before the tide"** checkpoint (section 6), in the
    same transaction.
@@ -109,14 +109,19 @@ the server catches it up before or while serving it:
 5. Record what happened in `beach_events` (section 6) and return the lost
    items to the bag (section 5).
 
-**Serving.** The first viewer shouldn't wait for the catch-up:
+**Serving (as built).** A 14-day catch-up costs 30–50 ms (section 4), so
+it always runs inside the read, before the beach is sent. No
+`X-Beach-Catching-Up`, no background queue: the shore and neighbor lists
+don't carry sand, and each beach's sand is fetched (and so caught up) on its
+own read.
 
-- If the catch-up is small (gap under ~6 h), run it in the request. The
-  budget is ~150 ms of CPU (section 4).
-- Otherwise, serve the stored beach with `X-Beach-Catching-Up: 1`, run it
-  right after, and let the app fetch again (or get it on the SSE stream). The
-  app eases the sand to the new heights over a couple of seconds, so the
-  change reads as "the tide did this" rather than a pop.
+**The owner's app holds it off (as built, instead of L5's lease for now).**
+While the owner's app shows the beach it posts `/here` every 20 s; the
+server skips catch-ups for 45 s after each. The app saves when it goes to
+the background (as before), which sets `simulated_until`. Coming back after
+more than 10 minutes, it reloads the beach (and so gets the catch-up)
+rather than carry on from what it had. A heartbeat reply with a newer epoch
+also makes it reload.
 
 The `epoch` bump does what it does for a restore today: an owner device that
 still holds older sand gets 409 `restored` on its next save and reloads. So
@@ -133,12 +138,9 @@ way `scripts/beach-file.mjs` bundles `beachFile.ts`. One source, no copy.
 **Beaches nobody looks at cost nothing.** A beach unvisited for a month is
 caught up once, on the next read, with the gap capped (section 4).
 
-**Snapshots on the shore.** The shore and neighbor endpoints serve many
-beaches at once. They don't trigger catch-ups inline; they return what's
-stored, and queue a catch-up for any beach in view that's past the gap. The
-queue is a small in-process worker pool per instance, with at most 2 at a
-time. That's enough because only the beaches someone walks past need it. The
-next poll (every 30 s) shows them caught up.
+**Snapshots on the shore.** The shore endpoints list beaches without their
+sand; the app fetches each drawn beach's sand by code, and that read catches
+it up.
 
 ### 4. The catch-up model: coarse and bounded
 
@@ -312,6 +314,17 @@ CREATE UNIQUE INDEX checkpoints_one_tide ON checkpoints (from_beach) WHERE kind 
 
 ### 7. Viewers see it live
 
+
+As built (2026-11-24): polling only, no SSE yet. A read of someone else's
+beach marks it watched for 15 s (`beach.viewed_until`); the owner's
+heartbeat reply carries `watched`, and the owner's app then saves every
+5 s. Viewers poll `GET /api/beaches/:code/live` (`{ version, live }`) for
+the beach in front of them: every 5 s while its owner is on it, every 30 s
+otherwise, and refetch on a new version. The new sand replaces the old at
+once (no easing yet). No separate lease: the owner's `/here` heartbeat
+(section 3) does that job, and two of the owner's own devices still both
+save (last write wins, as before).
+
 - **Transport:** start with polling, then SSE.
   - **First:** viewers of a beach whose lease is live poll
     `GET /api/beach/:code/sand?since=<version>` every 5 s (304 when
@@ -405,9 +418,9 @@ Endpoints:
 | --- | --- | --- |
 | **L1** ✅ | **Lost to the sea, live.** Owned floaters and rollers can leave by the offshore edge; the worker reports `lost`; toast; the save drops them so they're back in the bag | sim tests; a bottle pushed out to sea ends up back in the bag after a save |
 | **L2** ✅ | **The catch-up model.** `src/sim/catchup.ts`, `CATCHUP` constants, fitted against the live sim; perf line | `tests/catchup.test.ts` passes; `catchup14d` within budget |
-| **L3** | **Server catch-up on read.** Bundle into the server, migrations (`simulated_until`, `beach_events`, `owner_seen_at`, `tide` checkpoints), configurable cap, lock + CAS + epoch, "Before the tide" checkpoint, background queue for the shore, items recount | server tests; e2e: 2 days on the test clock erodes a waterline castle and leaves a "Before the tide" checkpoint |
-| **L4** | **While you were away.** The summary card, `/away` endpoints, "Put it back as it was" | e2e sees the card once, then not again; putting it back restores the castle |
-| **L5** | **Live viewers.** Lease, faster saves while watched, viewer polling with blend, then SSE with `LISTEN/NOTIFY` | e2e: a viewer sees the owner's dig within 6 s; two owner tabs never both save |
+| **L3** ✅ | **Server catch-up on read.** Bundle into the server, migrations (`simulated_until`, `beach_events`, `owner_seen_at`, `tide` checkpoints), configurable cap, lock + CAS + epoch, "Before the tide" checkpoint, background queue for the shore, items recount | server tests; e2e: 2 days on the test clock erodes a waterline castle and leaves a "Before the tide" checkpoint |
+| **L4** ✅ | **While you were away.** The summary card, `/away` endpoints, "Put it back as it was" | e2e sees the card once, then not again; putting it back restores the castle |
+| **L5** ✅ (polling) | **Live viewers.** Lease, faster saves while watched, viewer polling with blend, then SSE with `LISTEN/NOTIFY` | e2e: a viewer sees the owner's dig within 6 s; two owner tabs never both save |
 
 L1–L4 are useful on their own (the sea works while you're away) and don't
 need L5. L5 is what makes visits live.

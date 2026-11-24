@@ -52,6 +52,10 @@ Migrations live in `src/migrations.ts` and are applied at startup.
 | `POST /api/checkpoints` | import a beach as a checkpoint: body = saved-beach bytes, `X-Checkpoint-Name` (URL-encoded), optional `X-Beach-Location`. The server reads and counts it itself |
 | `GET /api/checkpoints/:id/sand`, `PATCH /api/checkpoints/:id { name }`, `DELETE /api/checkpoints/:id` | its bytes; rename; delete |
 | `GET /api/checkpoints/:id/fit?beach=` | would it fit there: `{ ok, need, owned, elsewhere, short }` |
+| `POST /api/beach/here`, `POST /api/beaches/mine/:id/here` | the owner's app has that beach open (every 20 s while showing): no catch-up for 45 s. `{ epoch }`: if it moved on, the app reloads (docs/LIVE_SIM.md) |
+| `GET /api/beach/away`, `GET /api/beaches/mine/:id/away`; `POST …/away/seen` | what the sea did since you last looked: `{ away: { from, to, highTides, lost, broughtIn, checkpoint } \| null }` (unseen catch-ups, summed; `checkpoint` is the "Before the tide" one). `seen` marks them read |
+| `GET /api/beaches/:code/live`, `GET /api/public/beaches/:code/live` | a viewer's poll: `{ version, updatedAt, live }` (`live`: its owner's app is on it now); catches it up if due, and marks it watched for 15 s |
+| `POST /api/dev/age-beach { hours, beach? }` | `DEV_AUTH` only: as if nobody had opened that beach for `hours` (e2e tests) |
 | `POST /api/beaches/mine/:id/restore { checkpoint, mode: strict \| drop-missing }` | put it on that beach (one at a time per person). The beach as it was becomes its "before restoring" checkpoint (`undo`). Strict and short: 409 `{ error: 'short', short }`. Bumps the beach's epoch: a save sending an older `X-Beach-Epoch` gets 409 `restored`. Only the current editor's token restores (409 `fenced`) |
 | `POST /api/gifts { code, item }` | give one of your items to someone else, by their neighbor code — instant, one atomic statement, 20 an hour (see [SHARING_GIFTING.md](SHARING_GIFTING.md)). |
 | `GET /api/guide`, `POST /api/guide/:step` | the beach guide: steps done; mark one done (once, with its gift; claw, star and invite are checked on the server, 409 until true). See [INVITES_GUIDE.md](INVITES_GUIDE.md) |
@@ -134,6 +138,16 @@ only beaches that are on the shore (`on_shore`) and have been saved
 - **Cost:** one grouped query over `favorites` per request (index
   `favorites_beach`). Fine for now; if stars grow to millions, cache the
   board for a minute and look up the caller's `starred` flags separately.
+**Live beaches** ([LIVE_SIM.md](LIVE_SIM.md)). Every read of a beach's
+sand (yours, a neighbor's, a visit) first catches it up if nobody has
+simulated it for 10 minutes and its owner's app isn't holding it open: the
+catch-up model from `src/sim/catchup.ts`, bundled into
+`server/src/generated/catchup.ts` (`npm run bundle:server`; a test fails if
+it's stale), at the beach's real tide. It writes with a compare-and-set on
+`version`, bumps the epoch, records a `beach_events` row, and before a gap
+over 12 h keeps the beach as its "Before the tide" checkpoint (kind `tide`,
+one per beach, not counted). Reads carry `X-Beach-Simulated-Until`.
+
 **Sharing and gifting.** A share link is `?visit=<code>` on the site's own
 URL (`src/net/share.ts`); opening it visits that beach once you're signed
 in. The Cloud Run server injects Open Graph tags for the beach into
@@ -179,6 +193,7 @@ npm run e2e:shore                       # walk down a 3-beach shore, head home, 
 npm run e2e:leaderboard                 # fans star beaches; the board orders them; star and visit from it
 npm run e2e:invites                     # Fran joins through Ana's link, settles in; Ana is rewarded
 npm run e2e:inbox                       # Ben visits signed out, signs in, leaves a note and a gift; Ana's inbox
+npm run e2e:live                        # two days pass: the sea wears a castle down; "while you were away"; put it back
 ```
 
 CI runs the server tests on PGlite and on a Postgres 16 service, builds the

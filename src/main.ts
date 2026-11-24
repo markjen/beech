@@ -30,7 +30,8 @@ import { MAX_OBJECTS, decodeSand, encodeSand, fitWorld, resampleField } from './
 import { restHeight } from './sim/profile';
 import { Ambient, toggleFullscreen } from './ui/ambient';
 import { Hud, icon, type ToolDef } from './ui/hud';
-import { SettingsSheet, StartScreen, showActionToast, showToast } from './ui/overlays';
+import { SettingsSheet, StartScreen, showActionToast, showChoiceToast, showToast } from './ui/overlays';
+import { awayText } from './ui/away';
 import { CheckpointsSection } from './ui/checkpoints';
 import { InventoryTray, PlaceBar } from './ui/inventory';
 import { ClawMachine } from './ui/clawMachine';
@@ -2056,6 +2057,25 @@ async function boot() {
     };
     s.onState((st) => {
       if (st === 'saved') bigEditSnapshotAttempted = false;
+    });
+    // "while you were away" (docs/LIVE_SIM.md): each time a beach of yours
+    // loads here, what the sea did to it since you last looked, once
+    s.onLoaded(() => {
+      const here = acct.beachId;
+      void (async () => {
+        const away = await acct.away().catch(() => null);
+        if (!away || acct.beachId !== here) return;
+        void acct.awaySeen().catch(() => {});
+        const cp = away.checkpoint;
+        showChoiceToast(
+          uiRoot,
+          awayText(away),
+          cp && here
+            ? [{ label: 'Put it back as it was', onClick: () => void checkpoints.putBack(cp, here) }, { label: 'Keep' }]
+            : [{ label: 'OK' }],
+        );
+        void checkpoints.load();
+      })();
     });
     panel = new AccountPanel(
       {

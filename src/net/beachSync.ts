@@ -3,6 +3,12 @@ import type { PlacedObject } from '../sim/objects';
 import { ApiError, type Account } from './account';
 import { reportError } from './telemetry';
 import { itemById } from '../world/items';
+import { CATCHUP } from '../config';
+
+/** how often the app tells the server it has the beach open (the server waits 45 s) */
+const HERE_EVERY_MS = 20000;
+/** while someone else is looking at this beach, save this often so they see it live */
+const WATCHED_SAVE_MS = 5000;
 
 /**
  * How many of each non-free item are on a beach (so your bag can count across
@@ -72,6 +78,12 @@ export class BeachSync {
   dropped = 0;
   private droppedListeners: ((n: number) => void)[] = [];
   private largeEditUnprotectedListeners: (() => void)[] = [];
+  private changedListeners: (() => void)[] = [];
+  private loadedListeners: (() => void)[] = [];
+  /** when the app went to the background (0: it's showing) */
+  private hiddenAt = 0;
+  /** someone else is looking at this beach (the last heartbeat said so) */
+  watched = false;
 
   constructor(
     private readonly account: Account,
@@ -105,6 +117,68 @@ export class BeachSync {
         if (!active) this.enterFenced();
       }).catch(() => {});
     }, 30000);
+    // live beaches (docs/LIVE_SIM.md): while this app shows the beach it is
+    // the one simulating it, so it tells the server to hold off its catch-up
+    window.setInterval(() => void this.beat(), HERE_EVERY_MS);
+    // live viewers (L5): while watched, the waves' work reaches them every few seconds
+    window.setInterval(() => {
+      const hidden = typeof document !== 'undefined' && document.hidden;
+      if (this.watched && this.account.user && !this.fenced && !this.switching && !hidden && !this.inflight) void this.flush();
+    }, WATCHED_SAVE_MS);
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+          this.hiddenAt = Date.now();
+          return;
+        }
+        const away = this.hiddenAt ? Date.now() - this.hiddenAt : 0;
+        this.hiddenAt = 0;
+        // back after a while: the server's catch-up has the sea's work since the
+        // save made on the way out, so load that rather than carry on from here
+        if (away > CATCHUP.minGapMin * 60000) void this.reloadChanged();
+        else void this.beat();
+      });
+    }
+  }
+
+  /** A saved beach was loaded here (sign-in, another beach, a reload). */
+  onLoaded(fn: () => void): void {
+    this.loadedListeners.push(fn);
+  }
+
+  /** The beach changed on the server while this app wasn't simulating it (a catch-up or a restore), and has been reloaded. */
+  onChangedElsewhere(fn: () => void): void {
+    this.changedListeners.push(fn);
+  }
+
+  /** Tell the server this app has the beach open; reload it if it moved on meanwhile. */
+  private async beat(): Promise<void> {
+    if (!this.account.user || this.fenced || this.switching || (typeof document !== 'undefined' && document.hidden) || this.epoch === undefined) return;
+    let r: { epoch: number; watched?: boolean } | null;
+    try {
+      r = await this.account.here();
+    } catch {
+      return; // offline: the next beat tries again
+    }
+    this.watched = !!r?.watched;
+    if (r && r.epoch > (this.epoch ?? 0)) await this.reloadChanged();
+  }
+
+  private async reloadChanged(): Promise<void> {
+    if (this.switching || !this.account.user) return;
+    return this.runExclusive(async () => {
+      if (!this.account.user) return;
+      this.switching = true;
+      try {
+        await this.restoreOrCreate();
+      } catch {
+        return; /* offline: the next beat tries again */
+      } finally {
+        this.switching = false;
+      }
+      for (const fn of this.changedListeners) fn();
+      void this.beat();
+    });
   }
 
   onState(fn: (s: SyncState) => void): void {
@@ -301,6 +375,7 @@ export class BeachSync {
     this.savedAt = saved.updatedAt;
     this.dirty = false;
     this.set('saved');
+    for (const fn of this.loadedListeners) fn();
     return 'restored';
   }
 

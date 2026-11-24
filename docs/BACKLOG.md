@@ -74,16 +74,15 @@ The single list of what's left to do, for the owner and for agents.
 
 ## In progress
 
-- [ ] **Live beaches** (agent; L1, L2 done 2026-11-23) (the sea works while you're away): design in
-  [LIVE_SIM.md](LIVE_SIM.md). L1 owned items lost to the sea go back to the
-  bag; L2 coarse catch-up model in `src/sim/catchup.ts`; L3 server catch-up
-  on read (lock, CAS, epoch bump); L4 "while you were away" card; L5 owner
-  lease and live viewers (poll, then SSE). Owner decisions settled
-  2026-11-23: 14-day cap (configurable), "Before the tide" checkpoint,
-  visitors trigger catch-up, summary wording.
+_(nothing right now)_
 
 ## Up next (engineering)
 
+- [ ] **Live beaches, next**: ease a viewer's sand to each new save instead
+  of swapping it; SSE instead of polling if the 5 s polls show up in
+  Cloud Run costs; catch up the beechshore.com page pictures too; one
+  saving device per owner (a lease) if two devices fighting shows up. See
+  [LIVE_SIM.md](LIVE_SIM.md).
 - [ ] **Sandcastle mini-game: customize detailed sandcastles**: Rose
   asked for more sandcastle shapes (Discord #feedback, 2026-11-23);
   Mark (2026-11-24) chose a mini-game instead — let users build and
@@ -161,6 +160,12 @@ The single list of what's left to do, for the owner and for agents.
 
 ## Done (recent)
 
+- [x] **Live beaches L1–L5** (2026-11-24): the sea keeps working while
+  you're away. Owned things the sea carries out go back in the bag; the
+  server catches a beach up on read (half tide cycles at its real place,
+  14-day cap via `CATCHUP_MAX_GAP_DAYS`), keeps "Before the tide" first,
+  and the owner sees "while you were away" with "Put it back as it was".
+  Visitors see the owner's beach live (polling). [LIVE_SIM.md](LIVE_SIM.md).
 - [x] **HUD and mobile menus** (#48, #49): grouped right-side controls,
   a help panel, separate beach settings, and scrollable bag and shop.
 - [x] **Sandcastle molds** (#50): round and square towers shaped from the

@@ -29,6 +29,20 @@ export interface SavedBeach {
   updatedAt: number;
   /** your own beaches: goes up each time a checkpoint is restored onto it */
   epoch?: number;
+  /** the server's version of it (viewers fetch again when it moves on) */
+  version?: number;
+}
+
+/** "While you were away": what the sea did since the owner last opened the beach (docs/LIVE_SIM.md). */
+export interface AwaySummary {
+  from: number;
+  to: number;
+  highTides: number;
+  /** owned things the sea took (back in the bag) */
+  lost: number;
+  broughtIn: number;
+  /** the "Before the tide" checkpoint, to put it back as it was */
+  checkpoint: string | null;
 }
 
 export class ApiError extends Error {
@@ -325,6 +339,31 @@ export class Account {
     return id ? `/api/beaches/mine/${id}/sand` : '/api/beach';
   }
 
+  /**
+   * This app has the beach open and is simulating it (docs/LIVE_SIM.md): the
+   * server holds off its catch-up. Returns the beach's epoch now.
+   */
+  async here(): Promise<{ epoch: number; watched?: boolean } | null> {
+    const base = this.beachId ? `/api/beaches/mine/${this.beachId}` : '/api/beach';
+    const res = await this.call(`${base}/here`, { method: 'POST' });
+    if (!res.ok) return null;
+    return (await res.json()) as { epoch: number; watched?: boolean };
+  }
+
+  /** What the sea did to this beach since its owner last looked (docs/LIVE_SIM.md), or null. */
+  async away(): Promise<AwaySummary | null> {
+    const base = this.beachId ? `/api/beaches/mine/${this.beachId}` : '/api/beach';
+    const res = await this.call(`${base}/away`);
+    if (!res.ok) return null;
+    return ((await res.json()) as { away: AwaySummary | null }).away;
+  }
+
+  /** The owner has seen it: don't show it again. */
+  async awaySeen(): Promise<void> {
+    const base = this.beachId ? `/api/beaches/mine/${this.beachId}` : '/api/beach';
+    await this.call(`${base}/away/seen`, { method: 'POST' });
+  }
+
   async loadBeach(beachId?: string | null): Promise<SavedBeach | null> {
     const res = await this.call(this.sandPath(beachId));
     if (res.status === 404) return null;
@@ -399,7 +438,8 @@ export interface Checkpoint {
   id: string;
   name: string;
   /** auto: the beach as it was before a restore replaced it */
-  kind: 'named' | 'auto';
+  /** auto: kept before a restore or import; tide: kept before the sea's catch-up (docs/LIVE_SIM.md) */
+  kind: 'named' | 'auto' | 'tide';
   source: 'beach' | 'import';
   fromBeach: { id: string; name: string } | null;
   fromName: string;
@@ -653,8 +693,20 @@ export class NeighborApi {
       nx: Number(res.headers.get('X-Beach-Nx')),
       ny: Number(res.headers.get('X-Beach-Ny')),
       updatedAt: Number(res.headers.get('X-Beach-Updated')),
+      version: Number(res.headers.get('X-Beach-Version')) || undefined,
       bytes: new Uint8Array(await res.arrayBuffer()),
     };
+  }
+
+  /**
+   * A viewer's poll (docs/LIVE_SIM.md): the beach's version now (fetch its
+   * sand again when it changes) and whether its owner is on it right now.
+   */
+  async beachLive(code: string): Promise<{ version: number; live: boolean } | null> {
+    const prefix = this.account.user ? '/api/beaches' : '/api/public/beaches';
+    const res = await this.account.fetch(`${prefix}/${encodeURIComponent(code)}/live`);
+    if (!res.ok) return null;
+    return (await res.json()) as { version: number; live: boolean };
   }
 
   async newCode(beachId?: string): Promise<string> {

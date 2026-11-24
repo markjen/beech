@@ -814,8 +814,35 @@ here: it needs the service's URL on the web OAuth client.
   Constants in `CATCHUP` (`src/config.ts`), including `maxGapDays: 14`.
   14 days costs 30–45 ms (budgeted at 150 ms per tier in `npm run perf`).
   Not used by anything yet; the server runs it in L3.
-- Not built yet: L3 server catch-up, L4 "while you were away", L5 live
-  viewers.
+- **L3, the server catches beaches up (2026-11-23):** every read of a
+  beach's sand runs the catch-up first if it's due (10 min since it was last
+  simulated, and the owner's app isn't holding it open with its 20 s
+  `/here` heartbeat). Compare-and-set on `version`, epoch bump, a
+  `beach_events` row, and a "Before the tide" checkpoint before gaps over
+  12 h (migration 21). The catch-up is bundled from `src/` into
+  `server/src/generated/catchup.ts` (`npm run bundle:server`, checked by
+  `tests/bundleServer.test.ts`). Cap: `CATCHUP_MAX_GAP_DAYS` (default 14).
+  The app reloads its beach when it comes back after 10 minutes or a
+  heartbeat says the epoch moved on. Dev-only `/api/dev/age-beach` lets
+  e2e tests skip time.
+- **L4, "while you were away" (2026-11-24):** each time one of your beaches
+  loads, the app asks `/away` for what the sea did since you last looked
+  (unseen `beach_events`, summed) and shows one card: "While you were away
+  (2 days) · 4 high tides · the sea took 3 things (back in your bag)", with
+  **Put it back as it was** (restores the "Before the tide" checkpoint,
+  leaving out anything the bag no longer covers, with Undo) and **Keep**.
+  `/away/seen` marks it read, so it shows once. `npm run e2e:live` covers it
+  end to end. The public beechshore.com pages still draw the stored sand
+  (no catch-up on those reads).
+- **L5, live viewers (2026-11-24):** reading someone else's beach (a
+  visit, a neighbor, the public shore) marks it watched for 15 s
+  (`viewed_until`). The owner's heartbeat reply says so, and while watched
+  the owner's app saves every 5 s. The viewer asks `/beaches/:code/live`
+  about the beach in front of it: every 5 s while its owner is on it, every
+  30 s otherwise, and fetches the sand again when the version moves on (the
+  owner's saves and the server's catch-ups). `npm run e2e:live` checks a
+  dig reaches a visitor. Not done: the viewer's sand snaps to the new save
+  rather than easing in, and no SSE (polling only).
 
 ## beechshore.com (2026-11-23)
 
