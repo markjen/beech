@@ -68,6 +68,13 @@ export const WAVES = {
   bigSet: { amp: 0.55, period: 330, sharpness: 8 },
   /** amplitude multiplier while "calm waves" is on */
   calmFactor: 0.25,
+  /** wave strength swing along the tide schedule: weaker at low tide (1 - swing),
+   * stronger at high tide (1 + swing), skipped on near-tideless beaches */
+  tideWaveSwing: 0.28,
+  /** minimum tide excursion (m) before the tide modulates default wave strength */
+  tideWaveMinRange: 0.15,
+  /** upper clamp on waveScale passed into the sim */
+  maxScale: 1.4,
   /** tide amplitude (m) and period (s) */
   tideAmp: 0.18,
   tidePeriod: 600,

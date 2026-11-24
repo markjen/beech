@@ -19,6 +19,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     date: '2026-11-24',
     title: 'Linked beaches, shiny prizes, and rocks that stay put',
     changes: [
+      'Default wave strength now rises and falls with your beach’s tide schedule (stronger around high tide, gentler around low tide), and tapping away from the bag or picking another tool now closes the bag.',
       'Combined the sand tools (dig with a shovel, build up a sand dune, and blend with a rake) into one button like the bulldozer, put the bulldozer first in the clearing menu with an upright vacuum icon, added a hide-toolbars button (or H) for distraction-free panning, and moved other players’ name tags to float along the side edges so they don’t block the beach.',
       'Design an item for Beech and submit it on beechshore.com. Propose a price and availability, follow its review, and earn Beech shop credit when your approved item sells.',
       'beechshore.com has a refreshed look, a beach finder (by code or name), and a share studio on every beach page: grab a Postcard, Square, Story, or Clean preview snapshot to share directly, copy to your clipboard, or download for Instagram, X, Bluesky, Threads, Reddit, Discord, WhatsApp, Facebook, and Messages.',

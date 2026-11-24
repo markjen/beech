@@ -60,6 +60,16 @@ export class InventoryTray {
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && this.open) this.setOpen(false);
     });
+    window.addEventListener(
+      'pointerdown',
+      (e) => {
+        if (!this.open) return;
+        const t = e.target as Node | null;
+        if (t && (this.tray.contains(t) || this.button.contains(t))) return;
+        this.setOpen(false);
+      },
+      true,
+    );
   }
 
   setOwned(owned: Map<string, number>, foundBy: Map<string, string> = new Map()): void {
@@ -153,6 +163,7 @@ export class InventoryTray {
   deselect(): void {
     this.selected = null;
     this.button.innerHTML = icon('bag');
+    if (this.open) this.setOpen(false);
     this.render();
   }
 
