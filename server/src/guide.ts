@@ -21,7 +21,7 @@ import { CHECKPOINTS_PER_BEACH, FREE_ITEMS } from './checkpoints.js';
 import { DIG_FIND_CHANCE, DIG_FIND_DAILY_CAP, DIG_FIND_ROLL_COOLDOWN_MS } from './digFinds.js';
 import { COOLDOWN_MAX_MS, COOLDOWN_MIN_MS, GRAB_CHANCE, POOLS, type Rarity } from './pulls.js';
 import { RELEASE_NOTES } from './releaseNotes.js';
-import { GLOW_ITEMS, ITEM_RARITY, KIND_OVERRIDES, displayName } from './prizeNames.js';
+import { behaviourOfKind, displayName, itemGlows, itemKind, itemRarity, type ItemBehaviour } from './prizeNames.js';
 import { PRODUCTS } from './products.js';
 import { escapeHtml as esc } from './shareMeta.js';
 import { VENDING_SETS, currentSet, nextUtcMidnight, type VendingSet } from './vending.js';
@@ -51,75 +51,12 @@ function oddsTable(odds: Partial<Record<Rarity, number>>, items: Partial<Record<
 /** The free things the sea brings in on its own (washIn in src/sim/objects.ts): the loose light things, a few at a time. Rocks and flags never wash in, and neither do things you win or buy. Kept in step by tests/items.test.ts. */
 export const WASH_ASHORE_ITEMS: ReadonlySet<string> = new Set(['driftwood', 'shell', 'seaglass', 'trash', 'seaweed', 'cowrie']);
 
-type Behaviour = 'rock' | 'float' | 'tumble' | 'fixed';
-/** How the sea treats a kind (BEHAVIOUR in src/sim/objects.ts). */
-const KIND_BEHAVIOUR: Record<string, Behaviour> = {
-  rock: 'rock',
-  driftwood: 'float',
-  shell: 'tumble',
-  seaglass: 'tumble',
-  trash: 'tumble',
-  seaweed: 'tumble',
-  flag: 'fixed',
-  conch: 'tumble',
-  sanddollar: 'tumble',
-  starfish: 'tumble',
-  bottle: 'float',
-  nautilus: 'tumble',
-  beachball: 'float',
-  sandals: 'tumble',
-  bucket: 'fixed',
-  coral: 'tumble',
-  coconut: 'float',
-  deckchair: 'fixed',
-  parasol: 'fixed',
-  surfboard: 'fixed',
-  sandcastle: 'fixed',
-  beachhut: 'fixed',
-  lighthouse: 'fixed',
-  tikitorch: 'fixed',
-  palmtree: 'fixed',
-  lifeguardtower: 'fixed',
-  bonfire: 'fixed',
-  hammock: 'fixed',
-  towel: 'fixed',
-  // footprints (PR #81, not merged yet): a trail pressed into the sand, staying put
-  footprints: 'fixed',
-};
-const BEHAVIOUR_WORDS: Record<Behaviour, string> = {
+const BEHAVIOUR_WORDS: Record<ItemBehaviour, string> = {
   rock: 'Shapes how water flows and where sand settles.',
   float: 'Floats on the water, and strands when it drains.',
   tumble: 'Moves in fast water, then settles on the sand.',
   fixed: 'Stays where you put it.',
 };
-
-/** How the sea treats this kind, if the guide knows it. */
-export function behaviourOfKind(kind: string): Behaviour | undefined {
-  return KIND_BEHAVIOUR[kind];
-}
-
-/** The catalog kind of an item: most items are their own kind; the prizes that share a kind with a free item are listed in prizeNames.ts. */
-export function itemKind(id: string): string {
-  return KIND_OVERRIDES[id] ?? id;
-}
-
-/** The rarity of an item: the tier it is drawn at in the claw or a vending set, else the table in prizeNames.ts, else common for a free thing. */
-export function itemRarity(id: string): Rarity {
-  for (const pool of Object.values(POOLS))
-    for (const [rarity, ids] of Object.entries(pool.items)) if (ids.includes(id)) return rarity as Rarity;
-  for (const set of VENDING_SETS)
-    for (const [rarity, ids] of Object.entries(set.items)) if (ids.includes(id)) return rarity as Rarity;
-  if (ITEM_RARITY[id]) return ITEM_RARITY[id];
-  if (FREE_ITEMS.has(id)) return 'common';
-  // Every catalog item resolves above (tests/items.test.ts keeps the mirrors in step); anything else isn't something the guide lists.
-  return 'common';
-}
-
-/** Does it glow and sparkle on the sand? Rare, legendary and one-of-a-kind things do, and so does the golden sand dollar. */
-export function itemGlows(id: string): boolean {
-  const r = itemRarity(id);
-  return r === 'rare' || r === 'legendary' || r === 'unique' || GLOW_ITEMS.has(id);
-}
 
 const byName = (a: string, b: string) => displayName(a).localeCompare(displayName(b));
 const byTierThenName = (a: string, b: string) => ORDER.indexOf(itemRarity(a)) - ORDER.indexOf(itemRarity(b)) || byName(a, b);

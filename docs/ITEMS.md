@@ -223,16 +223,18 @@ shore-picture colours.
 8. **Guide mirrors** — the guide (`server/src/guide.ts`) can't import
    the catalog (the production image only copies `server/src`), so the
    per-item facts it can't derive live mirrored in
-   `server/src/prizeNames.ts`, and the guide's kind-to-behaviour map
-   covers new kinds. Only add what's missing, and only where the guide
-   can't derive it: a name in `PRIZE_NAMES` unless the id already reads
-   as the name (single-word ids do); a rarity in `ITEM_RARITY` unless
-   the item is drawn from a pool or set or is a common free item; a kind
-   in `KIND_OVERRIDES` unless the kind is the id; a glow in
-   `GLOW_ITEMS` only if `ITEM_LOOKS` gives it one; a wash-in in
-   `WASH_ASHORE_ITEMS` (`server/src/guide.ts`) only if the sea brings
-   it in. `tests/items.test.ts` keeps every mirror in step with the
-   catalog — a missing mirror fails the tests.
+   `server/src/prizeNames.ts`. Only add what's missing, and only where
+   the guide can't derive it: a name in `PRIZE_NAMES` unless the id
+   already reads as the name (single-word ids do); a rarity in
+   `ITEM_RARITY` unless the item is drawn from a pool or set or is a
+   common free item; a kind in `KIND_OVERRIDES` unless the kind is the
+   id; a glow in `GLOW_ITEMS` only if `ITEM_LOOKS` gives it one; a
+   behaviour in `KIND_BEHAVIOUR` only for a genuinely new kind; a
+   wash-in in `WASH_ASHORE_ITEMS` (`server/src/guide.ts`) only if the
+   sea brings it in. `tests/items.test.ts` keeps every mirror in step
+   with the catalog — a missing mirror fails the tests — and
+   `server/test/guide.test.ts` renders the guide and checks every item
+   is listed in its group.
 9. **Docs** — the tables above, `docs/BACKLOG.md` (move the line to
    Done with the PR number), `docs/STATUS.md`, the guide in
    `server/src/guide.ts` where behaviour changes, and a plain-words
