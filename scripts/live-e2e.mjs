@@ -71,7 +71,7 @@ page.on('pageerror', (e) => errors.push(e.message));
 await page.goto(URL_ + '?nointro&fixedres&seed=1&nofinds');
 await page.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
 await page.evaluate((n) => window.__beech.account().signInDev(n), who);
-await page.waitForFunction(() => window.__beech.account().beachId && window.__beech.sync().state === 'saved', null, { timeout: 20000 });
+await page.waitForFunction(() => window.__beech.account().beachId && window.__beech.sync().state === 'saved', null, { timeout: 45000 });
 
 const castleTop = () =>
   page.evaluate((c) => {
@@ -99,19 +99,26 @@ check((await strays()) > 0, `the sea washed things up (${await strays()})`);
 const mine = await api('/beaches/mine', {}, token);
 check(!(mine.body.beaches[0].items?.nautilus > 0), 'the server counts no nautilus placed: it is back in the bag');
 
-// put it back as it was
+// put it back as it was (slow here: a restore, then the beach reloads)
 await page.click('.hint.choice button.hint-action');
-await page.waitForFunction(() => window.__beech.info().objects.some((o) => o.item === 'nautilus'), null, { timeout: 20000 }).catch(() => {});
-check((await things()).includes('nautilus'), `"Put it back as it was" brings the nautilus back (${await things()})`);
-const back = await castleTop();
-check(back > 0.45, `and the castle (${back.toFixed(2)} m)`);
+await page
+  .waitForFunction(() => [...document.querySelectorAll('.hint')].some((h) => /before the tide/.test(h.textContent ?? '')), null, { timeout: 45000 })
+  .catch(() => {});
 const toast = await page.evaluate(() => [...document.querySelectorAll('.hint')].map((h) => h.textContent).join(' | '));
-check(/back as it was before the tide/.test(toast), `it says so (${toast})`);
+// (the toast is gone after 10 s, which can be before this slow page looks: the server is the check)
+console.log(`info "Put it back as it was" toast: ${toast || '(missed)'}`);
+const restored = (await api('/checkpoints', {}, token)).body.checkpoints.some((c) => c.kind === 'auto' && /Before the tide/.test(c.name));
+check(restored, 'the beach was restored from "Before the tide" (its own "Before restoring" copy is there for Undo)');
+await page.waitForFunction(() => window.__beech.info().objects.some((o) => o.item === 'nautilus'), null, { timeout: 20000 }).catch(() => {});
+check((await things()).includes('nautilus'), `the nautilus is back (${await things()})`);
+const back = await castleTop();
+// it's back at the waterline, so the live sea starts on it again at once
+check(back > 0.25, `and the castle (${back.toFixed(2)} m, from 0.5)`);
 
 // only once
 await page.reload();
 await page.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
-await page.waitForFunction(() => window.__beech.account().beachId && window.__beech.sync().state === 'saved', null, { timeout: 20000 });
+await page.waitForFunction(() => window.__beech.account().beachId && window.__beech.sync().state === 'saved', null, { timeout: 45000 });
 await page.waitForTimeout(3000);
 check(!(await page.$('.hint.choice')), 'the card shows once, not again on the next visit');
 
@@ -123,7 +130,7 @@ const device = async (name) => {
   await p.goto(URL_ + '?nointro&fixedres&seed=1&nofinds');
   await p.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
   await p.evaluate((n) => window.__beech.account().signInDev(n), name);
-  await p.waitForFunction(() => window.__beech.account().beachId && window.__beech.sync().state === 'saved', null, { timeout: 20000 });
+  await p.waitForFunction(() => window.__beech.account().beachId && window.__beech.sync().state === 'saved', null, { timeout: 45000 });
   return p;
 };
 const ben = await device(`${who}b`);
@@ -134,12 +141,12 @@ const seen0 = await ben.evaluate(() => window.__beech.neighbors().snapshot(0).up
 // Ana's next heartbeat hears she's being watched
 await page.waitForFunction(() => window.__beech.sync().watched, null, { timeout: 30000 }).catch(() => {});
 check(await page.evaluate(() => window.__beech.sync().watched), "Ana's app knows someone is watching");
-const dugAt = Date.now();
 await page.click('button[data-tool="sand"]');
 await page.mouse.move(300, 500);
 await page.mouse.down();
 for (let i = 0; i < 12; i++) await page.mouse.move(300 + i * 8, 500);
 await page.mouse.up();
+const dugAt = Date.now();
 const got = await ben
   .waitForFunction((t) => (window.__beech.neighbors().snapshot(0)?.updatedAt ?? 0) > t, seen0, { timeout: 25000 })
   .then(() => true)

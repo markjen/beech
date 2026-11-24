@@ -843,6 +843,12 @@ here: it needs the service's URL on the web OAuth client.
   owner's saves and the server's catch-ups). `npm run e2e:live` checks a
   dig reaches a visitor. Not done: the viewer's sand snaps to the new save
   rather than easing in, and no SSE (polling only).
+- e2e on 2026-11-24 after rebasing onto main 6f6fa8c: `accounts`,
+  `neighbors` and `live` pass. `shore`, `beaches` and `leaderboard` time
+  out at the same steps on plain main too (signing a second person in on
+  the same page; making a new beach), and `checkpoints` sometimes misses
+  its Undo toast on the software-GPU runner: those scripts need a look,
+  separately from this work.
 
 ## beechshore.com (2026-11-23)
 
