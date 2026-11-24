@@ -103,6 +103,25 @@ describe('placing is undoable', () => {
   });
 });
 
+it.each([
+  { kind: 'beachball', item: 'beach-ball', size: 0.5 },
+  { kind: 'coconut', item: 'coconut', size: 0.25 },
+] as const)('$item rests on dry sand and floats with its bottom below the waterline', (prop) => {
+  const sim = new BeachSim(g, 1);
+  const object = sim.placeObject({ ...prop, x: 16, y: 28, angle: 0, variant: 1 });
+  const state = () => sim.objects.states().find((o) => o.id === object.id)!;
+  const sand = sim.objects.sandAt(object.x, object.y);
+  sim.water.fill(0);
+  sim.objects.step(DT);
+  expect(state().floating).toBe(false);
+  expect(state().z).toBeCloseTo(sand, 5);
+
+  sim.water.fill(0.5);
+  sim.objects.step(DT);
+  expect(state().floating).toBe(true);
+  expect(state().z).toBeCloseTo(sand + 0.5 - prop.size * 0.3, 5);
+});
+
 describe('shells, sea glass and flags', () => {
   it('a shell in the swash is rolled about, then settles; a flag stays put', async () => {
     const sim = new BeachSim(g, 1);

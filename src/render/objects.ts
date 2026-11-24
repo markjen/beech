@@ -107,7 +107,7 @@ function woodMesh(scene: Scene, o: PlacedObject): Mesh {
 }
 
 /** A ribbed scallop, `size` metres across its fan. */
-function shellMesh(scene: Scene, o: PlacedObject): Mesh {
+function shellMesh(scene: Scene, o: PlacedObject, spotMaterial?: ShaderMaterial): Mesh {
   const r = rng(o.variant * 31 + 5);
   const rad = o.size;
   const ribs = 7 + (o.variant % 4);
@@ -126,7 +126,30 @@ function shellMesh(scene: Scene, o: PlacedObject): Mesh {
   const I: number[] = [];
   for (let k = 1; k <= ribs; k++) I.push(0, k, k + 1, base, base + k + 1, base + k, k, base + k, base + k + 1, k, base + k + 1, k + 1);
   orient(P, I, (x, y, z) => [x * 0.5, y > h * 0.3 ? -1 : 1, z * 0.5]);
-  return finish(scene, `shell${o.id}`, P, I);
+  const shell = finish(scene, `shell${o.id}`, P, I);
+  if (spotMaterial) {
+    const spots: number[] = [];
+    const faces: number[] = [];
+    // The first triangle in each group lies on top of the fan. Inset a
+    // patch on its plane so the pattern follows the shell's ridges.
+    for (let k = 0; k < I.length; k += 12) {
+      const a = I[k] * 3;
+      const b = I[k + 1] * 3;
+      const c = I[k + 2] * 3;
+      const center = [0, 1, 2].map((axis) => (P[a + axis] + P[b + axis] + P[c + axis]) / 3);
+      const scale = 0.34 + r() * 0.25;
+      const first = spots.length / 3;
+      for (const point of [a, b, c]) {
+        const [x, y, z] = center.map((v, axis) => v + (P[point + axis] - v) * scale);
+        spots.push(x, y + rad * 0.004, z);
+      }
+      faces.push(first, first + 1, first + 2);
+    }
+    const pattern = finish(scene, `shellSpots${o.id}`, spots, faces);
+    pattern.material = spotMaterial;
+    pattern.parent = shell;
+  }
+  return shell;
 }
 
 /** A crumpled plastic bottle: a squashed, dented lathe lying on its side, its axis at the given height. */
@@ -148,6 +171,9 @@ function trashMesh(scene: Scene, o: PlacedObject): Mesh {
     () => 0.72 + r() * 0.55,
   );
   orient(P, I, (x) => [x, 0, 0]);
+  let bottom = 0;
+  for (let i = 1; i < P.length; i += 3) bottom = Math.min(bottom, P[i]);
+  for (let i = 1; i < P.length; i += 3) P[i] -= bottom;
   return finish(scene, `trash${o.id}`, P, I);
 }
 
@@ -351,16 +377,13 @@ function bottleMesh(scene: Scene, o: PlacedObject): { body: Mesh; cork: Mesh } {
 }
 
 /**
- * A striped beach ball: six wedges of a sphere, parented to an empty
- * root, so the prop bank can give alternating wedges different
- * materials (bright / white — the build step picks the bright colour
- * from the variant). The sphere sits on the sand: its centre is one
- * radius up, its bottom point at y = 0.
+ * A striped beach ball: six wedges of a sphere in two meshes, one per
+ * material. Its centre is one radius up and its bottom point is at y = 0.
  */
 function beachballMesh(scene: Scene, o: PlacedObject): { root: Mesh; panels: Mesh[] } {
   const R = o.size;
   const root = new Mesh(`ball${o.id}`, scene);
-  const panels: Mesh[] = [];
+  const groups = [{ positions: [] as number[], indices: [] as number[] }, { positions: [] as number[], indices: [] as number[] }];
   const WEDGES = 6;
   const lats = [-90, -60, -30, 0, 30, 60, 90];
   const pt = (phi: number, lam: number): [number, number, number] => {
@@ -396,10 +419,16 @@ function beachballMesh(scene: Scene, o: PlacedObject): { root: Mesh; panels: Mes
       }
     }
     orient(P, I, () => [0, R, 0]);
-    const m = finish(scene, `ball${o.id}p${w}`, P, I);
-    m.parent = root;
-    panels.push(m);
+    const group = groups[w % 2];
+    const base = group.positions.length / 3;
+    group.positions.push(...P);
+    group.indices.push(...I.map((i) => base + i));
   }
+  const panels = groups.map(({ positions, indices }, i) => {
+    const panel = finish(scene, `ball${o.id}p${i}`, positions, indices);
+    panel.parent = root;
+    return panel;
+  });
   return { root, panels };
 }
 
@@ -480,7 +509,6 @@ function bucketMesh(scene: Scene, o: PlacedObject): { body: Mesh; handle: Mesh }
     b.P[n + 1] = x;
     b.P[n + 2] = z;
   }
-  orient(b.P, b.I, (_x, y) => [0, y, 0]);
   const body = finish(scene, `bucket${o.id}`, b.P, b.I);
   // the handle arches over the top in the y-z plane
   const S: number[] = [];
@@ -547,9 +575,9 @@ function coralMesh(scene: Scene, o: PlacedObject): Mesh {
     for (let k = 0; k < 4; k++) {
       const a0 = b + k;
       const a1 = b + ((k + 1) % 4);
-      I.push(a0, a1, a0 + 4, a1, a1 + 4, a0 + 4);
+      I.push(a0, a0 + 4, a1, a1, a0 + 4, a1 + 4);
     }
-    I.push(b + 4, b + 5, b + 6, b + 4, b + 6, b + 7);
+    I.push(b + 4, b + 6, b + 5, b + 4, b + 7, b + 6);
   };
   // one upright arm in the middle, then arms leaning out around it
   arm([0, 1, 0], S * (0.65 + r() * 0.25), S * 0.15, S * 0.05);
@@ -560,13 +588,13 @@ function coralMesh(scene: Scene, o: PlacedObject): Mesh {
     const dir: [number, number, number] = [Math.sin(tilt) * Math.cos(az), Math.cos(tilt), Math.sin(tilt) * Math.sin(az)];
     arm(dir, S * (0.55 + r() * 0.4), S * 0.13, S * 0.04);
   }
-  orient(P, I, (_x, y) => [0, y, 0]);
   return finish(scene, `coral${o.id}`, P, I);
 }
 
-/** A coconut: a round brown nut, squashed a little, its centre lifted so it rests on the sand rather than sinking into it. */
+/** A round brown nut, squashed a little, with its origin at the bottom. */
 function coconutMesh(scene: Scene, o: PlacedObject): Mesh {
   const R = o.size * 0.5;
+  const squash = 0.85;
   const { P, I } = lathe(
     [
       [-R, R * 0.15],
@@ -575,14 +603,11 @@ function coconutMesh(scene: Scene, o: PlacedObject): Mesh {
       [R * 0.7, R * 0.8],
       [R, R * 0.15],
     ],
-    9,
-    0.85,
+    12,
+    squash,
   );
-  // the nut's centre sits 0.375 of its size above the sand once the sim
-  // adds the stranded float height (0.7 × floatRadius, 0.3 × size) — its
-  // bottom just touches the sand
-  for (let n = 0; n < P.length; n += 3) P[n + 1] += o.size * 0.165;
   orient(P, I, (x) => [x, 0, 0]);
+  for (let n = 1; n < P.length; n += 3) P[n] += R * squash;
   return finish(scene, `coconut${o.id}`, P, I);
 }
 
@@ -732,7 +757,7 @@ function lookKey(o: PlacedObject): { key: string; base: number } {
   // Store items do not depend on variant at all (fixed geometry and palette)
   if (isStoreKind(o.kind)) return { key: `${o.kind}${item}`, base: 1 };
   // Geometry-invariant kinds only vary by colour (variant % colorCount)
-  if (o.kind === 'deckchair' || o.kind === 'sanddollar' || o.kind === 'bottle') {
+  if (o.kind === 'deckchair' || o.kind === 'sanddollar' || o.kind === 'bottle' || o.kind === 'coconut') {
     return { key: `${o.kind}${item}:${o.variant % colorCountFor(o)}`, base: 1 };
   }
   // Flags vary only by pole height (variant % 3) and cloth colour (variant % colorCount)
@@ -844,6 +869,8 @@ class PropBank {
   private build(key: string, o: PlacedObject, base: number): Look {
     const set = this.matsFor(o);
     const mat = set[o.variant % set.length];
+    // Placement rolls start at 1. Beach files also accept variant 0.
+    const vendingVariant = Math.max(0, Math.floor(o.variant) - 1);
     const item = ITEM_LOOKS[o.item] ? `:${o.item}` : '';
 
     // Shared-part kinds: reuse identical sub-part sources (pole, cloth, frame, cork)
@@ -948,21 +975,20 @@ class PropBank {
       root = bb.root;
       // panels alternate bright and white; the variant picks the bright
       // colour (red, blue, yellow — PROP_COLORS.beachball indices 0, 2, 3)
-      const bright = [0, 2, 3][(o.variant - 1) % 3];
-      bb.panels.forEach((p, i) => {
-        p.material = set[i % 2 === 0 ? bright : 1];
-      });
+      const bright = [0, 2, 3][vendingVariant % 3];
+      bb.panels[0].material = set[bright];
+      bb.panels[1].material = set[1];
     } else if (o.kind === 'sandals') {
       const sd = sandalsMesh(this.scene, o);
       root = sd.soles;
       // PROP_COLORS.sandals is [sole, strap] per variant
-      const pair = ((o.variant - 1) % 2) * 2;
+      const pair = (vendingVariant % 2) * 2;
       root.material = set[pair];
       sd.straps.material = set[pair + 1];
     } else if (o.kind === 'bucket') {
       const bk = bucketMesh(this.scene, o);
       root = bk.body;
-      root.material = mat;
+      root.material = set[vendingVariant % set.length];
       bk.handle.material = this.poleMat;
     } else if (o.kind === 'coral') {
       root = coralMesh(this.scene, o);
@@ -974,7 +1000,7 @@ class PropBank {
       root =
         o.kind === 'rock' ? rockMesh(this.scene, o)
         : o.kind === 'driftwood' ? woodMesh(this.scene, o)
-        : o.kind === 'shell' ? shellMesh(this.scene, o)
+        : o.kind === 'shell' ? shellMesh(this.scene, o, o.item === 'cowrie' ? set[(o.variant + 1) % set.length] : undefined)
         : o.kind === 'conch' ? conchMesh(this.scene, o)
         : o.kind === 'sanddollar' ? sanddollarMesh(this.scene, o)
         : o.kind === 'starfish' ? starfishMesh(this.scene, o)
@@ -1205,7 +1231,7 @@ export class ObjectView {
         z:
           o.kind === 'rock' && o.base !== undefined
             ? o.base
-            : heightAt(o.x, o.y) + (o.kind === 'driftwood' || o.kind === 'bottle' || o.kind === 'coconut' ? floatRadius(o) * 0.7 : 0),
+            : heightAt(o.x, o.y) + (o.kind === 'driftwood' || o.kind === 'bottle' ? floatRadius(o) * 0.7 : 0),
         floating: false,
       })),
     );

@@ -223,7 +223,11 @@ function tikitorch(scene: Scene, o: PlacedObject): Built {
 
 /** A palm tree: a leaning trunk, drooping fronds, and coconuts at the top. The tallest of the new pieces. */
 function palmtree(scene: Scene, o: PlacedObject): Built {
-  const trunk = part(scene, `palm${o.id}`, tower([[-0.25, 0.1], [2.3, 0.07], [2.6, 0.05]], 7));
+  const trunkShape = tower([[-0.25, 0.1], [2.3, 0.07], [2.6, 0.05]], 7);
+  const lean = (y: number) => -y * 0.13;
+  for (let n = 0; n < trunkShape.P.length; n += 3) trunkShape.P[n] += lean(trunkShape.P[n + 1]);
+  const trunk = part(scene, `palm${o.id}`, trunkShape);
+  const crown = lean(2.58);
   // six fronds fanning from the top: each a tapered leaf, wide at the
   // middle and drooping to its tip, built as two triangles a side
   const F: number[] = [];
@@ -233,9 +237,9 @@ function palmtree(scene: Scene, o: PlacedObject): Built {
     const ca = Math.cos(a);
     const sa = Math.sin(a);
     const b = F.length / 3;
-    F.push(0, 2.58, 0, ca * 0.55, 2.32, sa * 0.55, ca * 1.15, 1.92, sa * 1.15);
-    F.push(ca * 0.5 - sa * 0.17, 2.36, sa * 0.5 + ca * 0.17);
-    F.push(ca * 0.5 + sa * 0.17, 2.36, sa * 0.5 - ca * 0.17);
+    F.push(crown, 2.58, 0, crown + ca * 0.55, 2.32, sa * 0.55, crown + ca * 1.15, 1.92, sa * 1.15);
+    F.push(crown + ca * 0.5 - sa * 0.17, 2.36, sa * 0.5 + ca * 0.17);
+    F.push(crown + ca * 0.5 + sa * 0.17, 2.36, sa * 0.5 - ca * 0.17);
     FI.push(b, b + 1, b + 3, b + 1, b + 2, b + 3, b, b + 4, b + 1, b + 1, b + 4, b + 2);
   }
   orient(F, FI, () => [0, 2.0, 0]);
@@ -246,7 +250,7 @@ function palmtree(scene: Scene, o: PlacedObject): Built {
     const a = (k / 3) * Math.PI * 2 + 0.9;
     const ball = tower([[0, 0.01], [0.07, 0.07], [0.14, 0.01]], 6);
     const base = N.P.length / 3;
-    for (let n = 0; n < ball.P.length; n += 3) N.P.push(ball.P[n] + Math.cos(a) * 0.12, ball.P[n + 1] + 2.42, ball.P[n + 2] + Math.sin(a) * 0.12);
+    for (let n = 0; n < ball.P.length; n += 3) N.P.push(ball.P[n] + crown + Math.cos(a) * 0.12, ball.P[n + 1] + 2.42, ball.P[n + 2] + Math.sin(a) * 0.12);
     for (const i of ball.I) N.I.push(i + base);
   }
   const nuts = finish(scene, `nuts${o.id}`, N.P, N.I);
@@ -256,7 +260,6 @@ function palmtree(scene: Scene, o: PlacedObject): Built {
     { mesh: nuts, mat: 1 },
   ];
   assemble(trunk, parts);
-  trunk.rotation.z = 0.05;
   return { root: trunk, parts, lights: [] };
 }
 
@@ -264,8 +267,15 @@ function palmtree(scene: Scene, o: PlacedObject): Built {
 function lifeguardtower(scene: Scene, o: PlacedObject): Built {
   const P: number[] = [];
   const I: number[] = [];
-  for (const [x, z] of [[-0.45, -0.4], [0.45, -0.4], [0.45, 0.4], [-0.45, 0.4]] as const)
+  for (const [x, z] of [[-0.45, -0.4], [0.45, -0.4], [0.45, 0.4], [-0.45, 0.4]] as const) {
+    const start = P.length;
     box(P, I, x, 0.75, z, 0.07, 1.5, 0.07);
+    for (let n = start; n < P.length; n += 3) {
+      const spread = (1 - P[n + 1] / 1.5) * 0.35;
+      P[n] += x * spread;
+      P[n + 2] += z * spread;
+    }
+  }
   box(P, I, 0, 0.7, -0.42, 0.97, 0.06, 0.06);
   box(P, I, 0, 0.7, 0.42, 0.97, 0.06, 0.06);
   box(P, I, 0, 1.54, 0, 1.1, 0.08, 1.0);
@@ -384,8 +394,8 @@ export const STORE_REACH: Record<StoreKind, number> = {
   beachhut: 0.95,
   lighthouse: 0.6,
   tikitorch: 0.35,
-  palmtree: 1.2,
-  lifeguardtower: 1.2,
+  palmtree: 1.5,
+  lifeguardtower: 1.6,
   bonfire: 0.5,
   hammock: 1.0,
   towel: 0.7,

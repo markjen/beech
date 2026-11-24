@@ -200,7 +200,7 @@ export const ROCK_HEIGHT = 0.8; // height as a fraction of radius
 export const WOOD_RADIUS = (length: number) => 0.05 + length * 0.028;
 /** radius of something afloat (its draft is about this) */
 export const floatRadius = (o: { kind: ObjectKind; size: number }) =>
-  o.kind === 'bottle' ? o.size * 0.2 : o.kind === 'beachball' ? o.size * 0.3 : o.kind === 'coconut' ? o.size * 0.3 : WOOD_RADIUS(o.size);
+  o.kind === 'bottle' ? o.size * 0.2 : o.kind === 'beachball' || o.kind === 'coconut' ? o.size * 0.3 : WOOD_RADIUS(o.size);
 
 /** Floats per object in a packed positions buffer: x, y, z, angle, floating. */
 export const POS_STRIDE = 5;
@@ -714,6 +714,7 @@ export class BeachObjects {
       }
       // driftwood, bottles, beach balls and coconuts
       const r = floatRadius(o);
+      const bottomOrigin = o.kind === 'beachball' || o.kind === 'coconut';
       const k = this.cellAt(o.x, o.y);
       const d = water[k];
       if (d > r * 1.1) {
@@ -734,7 +735,7 @@ export class BeachObjects {
         const across = (vx[kb] - vx[ka]) * -sa + (vy[kb] - vy[ka]) * ca;
         l.spin += (across / (o.size > 0.5 ? o.size : 0.5)) * dt * 1.5;
         l.spin *= floatSpinDamp;
-        l.z = this.sandAt(o.x, o.y) + d - r * 0.6;
+        l.z = this.sandAt(o.x, o.y) + d - r * (bottomOrigin ? 1 : 0.6);
         o.x = Math.min(wMax, Math.max(0.3, o.x + l.vx * dt));
         o.y = Math.min(hMax, Math.max(0.3, o.y + l.vy * dt));
         o.angle += l.spin * dt;
@@ -752,7 +753,7 @@ export class BeachObjects {
           o.y = Math.min(hMax, Math.max(0.3, o.y + l.vy * dt));
           o.angle += l.spin * dt;
         }
-        l.z = this.sandAt(o.x, o.y) + r * 0.7;
+        l.z = this.sandAt(o.x, o.y) + (bottomOrigin ? 0 : r * 0.7);
       }
     }
   }
