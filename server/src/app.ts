@@ -258,17 +258,18 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   app.get('/health', (c) => c.json({ ok: true }));
 
   // ---------------------------------------------------------------- client events
-  // The web app reports unhandled errors and one page-load timing sample per
-  // visit, so phones (where nobody watches the console) are visible too.
-  // Unauthenticated by design: it only writes a log line, never the database.
-  // Validated, size-capped (2 KB) and rate-limited per IP (30/min); anything
-  // else is dropped with a 4xx and never reaches the logs.
-  const clientEvents = createRateLimiter(30);
+  // Web and native apps report unhandled + caught errors, load timing, and
+  // lightweight diagnostic telemetry, so phones (where nobody watches the
+  // console) are visible in Cloud Logging too. Unauthenticated by design: it
+  // only writes a structured log line, never the database. Validated,
+  // size-capped (4 KB) and rate-limited per IP (60/min); anything else is
+  // dropped with a 4xx and never reaches the logs.
+  const clientEvents = createRateLimiter(60);
   app.post('/client-events', async (c) => {
     const ip = (c.req.header('x-forwarded-for') ?? '').split(',')[0]?.trim() || 'unknown';
     if (!clientEvents(ip)) return c.json({ error: 'slow down' }, 429);
     const text = await c.req.text();
-    if (text.length > 2048) return c.json({ error: 'event too large' }, 413);
+    if (text.length > 4096) return c.json({ error: 'event too large' }, 413);
     let body: unknown;
     try {
       body = JSON.parse(text);
@@ -278,10 +279,39 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const parsed = parseClientEvent(body);
     if (!parsed.ok) return c.json({ error: parsed.reason }, 400);
     const e = parsed.event;
+    const ctx = {
+      ...(e.platform ? { platform: e.platform } : {}),
+      ...(e.version ? { version: e.version } : {}),
+      ...(e.build ? { build: e.build } : {}),
+    };
     if (e.kind === 'error') {
-      logEvent('client_error', { message: e.message, source: e.source ?? null, path: e.path ?? null }, 'WARNING');
+      logEvent(
+        'client_error',
+        {
+          message: e.message,
+          category: e.category ?? 'unhandled',
+          source: e.source ?? null,
+          path: e.path ?? null,
+          ...(e.stack ? { stack: e.stack } : {}),
+          ...ctx,
+          ...(e.meta ? { meta: e.meta } : {}),
+        },
+        'WARNING',
+      );
+    } else if (e.kind === 'perf') {
+      logEvent('client_perf', {
+        load_ms: e.load_ms,
+        dcl_ms: e.dcl_ms,
+        ...(e.tier ? { tier: e.tier } : {}),
+        ...(e.bench_ms !== undefined ? { bench_ms: e.bench_ms } : {}),
+        ...ctx,
+      });
     } else {
-      logEvent('client_perf', { load_ms: e.load_ms, dcl_ms: e.dcl_ms });
+      logEvent('client_event', {
+        name: e.name,
+        ...ctx,
+        ...(e.meta ? { meta: e.meta } : {}),
+      });
     }
     return c.body(null, 204);
   });

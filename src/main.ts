@@ -45,7 +45,7 @@ import { AccountPanel } from './ui/accountPanel';
 import { Leaderboard } from './ui/leaderboard';
 import { NeighborView } from './render/neighbors';
 import { loadSettings, saveSettings, type Settings } from './ui/settingsStore';
-import { initTelemetry } from './net/telemetry';
+import { initTelemetry, reportError, reportEvent } from './net/telemetry';
 import { loadLocalBeach, saveLocalBeach } from './net/localStore';
 import { LocalCheckpointsSection } from './ui/localCheckpoints';
 import { watchForNewVersion } from './platform/version';
@@ -108,6 +108,7 @@ async function boot() {
     preserveDrawingBuffer: true,
     powerPreference: 'high-performance',
   });
+  canvas.addEventListener('webglcontextlost', () => reportError('webgl', 'WebGL context lost', { source: 'canvas' }));
   // render scale: start at the device's pixel ratio (max 2) and back off if
   // frames get slow (dynamic resolution keeps phones smooth and cool)
   const maxScale = Math.min(window.devicePixelRatio || 1, 2);
@@ -120,6 +121,12 @@ async function boot() {
   scene.skipFrustumClipping = true;
 
   const worker = new Worker(new URL('./sim/sim.worker.ts', import.meta.url), { type: 'module' });
+  worker.addEventListener('error', (e) =>
+    reportError('worker', e.message || 'sim worker error', {
+      source: e.filename ? `${e.filename.split('?')[0]}:${e.lineno ?? 0}` : 'sim.worker',
+    }),
+  );
+  worker.addEventListener('messageerror', () => reportError('worker', 'sim worker messageerror', { source: 'sim.worker' }));
   const send = (m: ToWorker, transfer: Transferable[] = []) => {
     if (params.has('trace') && m.type !== 'return') console.log('send', JSON.stringify(m));
     worker.postMessage(m, transfer);
@@ -128,6 +135,11 @@ async function boot() {
   const chosen = await chooseTier(settings, worker);
   settings = chosen.settings;
   const tier = chosen.tier;
+  reportEvent('app_boot', {
+    tier,
+    dpr: Math.round((window.devicePixelRatio || 1) * 10) / 10,
+    touch: isTouch,
+  });
   const grid = GRID_TIERS[tier];
   const seed = Number(params.get('seed') ?? 1) || 1;
 
@@ -918,6 +930,7 @@ async function boot() {
   const right = new Vector3();
   let slowTime = 0;
   let fastTime = 0;
+  let reportedResDrop = false;
   const adaptResolution = (dt: number) => {
     const budget = settings.batterySaver ? 1 / 24 : 1 / 45;
     if (dt > budget) {
@@ -931,6 +944,10 @@ async function boot() {
       renderScale = Math.max(0.75, renderScale - 0.25);
       engine.setHardwareScalingLevel(1 / renderScale);
       slowTime = 0;
+      if (!reportedResDrop) {
+        reportedResDrop = true;
+        reportEvent('res_drop', { scale: renderScale, tier });
+      }
     } else if (fastTime > 8 && renderScale < maxScale) {
       renderScale = Math.min(maxScale, renderScale + 0.25);
       engine.setHardwareScalingLevel(1 / renderScale);
@@ -1478,6 +1495,7 @@ registerServiceWorker();
 
 boot().catch((err) => {
   console.error(err);
+  reportError('boot', err, { source: 'main:boot' });
   document.body.innerHTML = `<p style="font-family:sans-serif;padding:2em;color:#6b5a6e">Sorry — this device couldn't start the beach (${String(
     err?.message ?? err,
   )}).</p>`;

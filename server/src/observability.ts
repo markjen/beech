@@ -140,29 +140,108 @@ export function createDbStats(
 
 // ------------------------------------------------------------- client events
 
+export type ClientPlatform = 'web' | 'android' | 'ios';
+export type ClientMeta = Record<string, string | number | boolean>;
+
 export type ClientEvent =
-  | { kind: 'error'; message: string; source?: string; path?: string }
-  | { kind: 'perf'; load_ms: number; dcl_ms: number };
+  | {
+      kind: 'error';
+      message: string;
+      category?: string;
+      source?: string;
+      stack?: string;
+      path?: string;
+      platform?: ClientPlatform;
+      version?: string;
+      build?: string;
+      meta?: ClientMeta;
+    }
+  | {
+      kind: 'perf';
+      load_ms: number;
+      dcl_ms: number;
+      platform?: ClientPlatform;
+      version?: string;
+      build?: string;
+      tier?: 'low' | 'medium' | 'high';
+      bench_ms?: number;
+    }
+  | {
+      kind: 'event';
+      name: string;
+      platform?: ClientPlatform;
+      version?: string;
+      build?: string;
+      meta?: ClientMeta;
+    };
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const isFiniteNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const clampStr = (v: unknown, max: number): string | undefined =>
   typeof v === 'string' && v.length > 0 ? v.slice(0, max) : undefined;
 
+const TAG_RE = /^[a-z0-9_.-]+$/i;
+const META_KEY_RE = /^[a-z0-9_]+$/i;
+const PLATFORMS = new Set<ClientPlatform>(['web', 'android', 'ios']);
+const TIERS = new Set<'low' | 'medium' | 'high'>(['low', 'medium', 'high']);
+
+function parsePlatform(v: unknown): ClientPlatform | undefined {
+  return typeof v === 'string' && PLATFORMS.has(v as ClientPlatform) ? (v as ClientPlatform) : undefined;
+}
+
+function parseMeta(v: unknown): { ok: true; meta?: ClientMeta } | { ok: false; reason: string } {
+  if (v === undefined) return { ok: true };
+  if (!isRecord(v)) return { ok: false, reason: 'meta must be an object' };
+  const entries = Object.entries(v);
+  if (entries.length > 8) return { ok: false, reason: 'meta may have at most 8 keys' };
+  const out: ClientMeta = {};
+  for (const [k, raw] of entries) {
+    if (!k || k.length > 32 || !META_KEY_RE.test(k)) return { ok: false, reason: 'invalid meta key' };
+    if (typeof raw === 'string') out[k] = raw.slice(0, 120);
+    else if (typeof raw === 'number' && Number.isFinite(raw)) out[k] = raw;
+    else if (typeof raw === 'boolean') out[k] = raw;
+    else if (raw !== undefined && raw !== null) return { ok: false, reason: 'meta values must be string, number or boolean' };
+  }
+  return { ok: true, meta: Object.keys(out).length ? out : undefined };
+}
+
 /**
- * Validate an untrusted client-event body. Returns null when the event
- * isn't one we accept — wrong shape, oversized strings, impossible timings.
+ * Validate an untrusted client-event body. Returns ok: false when the event
+ * isn't one we accept — wrong shape, oversized fields, impossible timings.
  * The endpoint only ever writes a log line, never the database.
  */
 export function parseClientEvent(body: unknown): { ok: true; event: ClientEvent } | { ok: false; reason: string } {
   if (!isRecord(body)) return { ok: false, reason: 'event must be an object' };
+  const platform = parsePlatform(body.platform);
+  if (body.platform !== undefined && !platform) return { ok: false, reason: 'invalid platform' };
+  const version = clampStr(body.version, 32);
+  const build = clampStr(body.build, 64);
+  const ctx = { ...(platform ? { platform } : {}), ...(version ? { version } : {}), ...(build ? { build } : {}) };
+
   if (body.kind === 'error') {
     const message = clampStr(body.message, 500);
     if (!message) return { ok: false, reason: 'error needs a message' };
+    const category = clampStr(body.category, 40);
+    if (category !== undefined && !TAG_RE.test(category)) return { ok: false, reason: 'invalid category' };
     const source = clampStr(body.source, 200);
+    const stack = clampStr(body.stack, 1000);
     const path = clampStr(body.path, 200);
     if (path !== undefined && !path.startsWith('/')) return { ok: false, reason: 'path must start with /' };
-    return { ok: true, event: { kind: 'error', message, source, path } };
+    const m = parseMeta(body.meta);
+    if (!m.ok) return m;
+    return {
+      ok: true,
+      event: {
+        kind: 'error',
+        message,
+        ...(category ? { category } : {}),
+        ...(source ? { source } : {}),
+        ...(stack ? { stack } : {}),
+        ...(path ? { path } : {}),
+        ...ctx,
+        ...(m.meta ? { meta: m.meta } : {}),
+      },
+    };
   }
   if (body.kind === 'perf') {
     const load_ms = body.load_ms;
@@ -170,9 +249,41 @@ export function parseClientEvent(body: unknown): { ok: true; event: ClientEvent 
     if (!isFiniteNumber(load_ms) || !isFiniteNumber(dcl_ms) || load_ms < 0 || dcl_ms < 0 || load_ms > 3600000 || dcl_ms > 3600000) {
       return { ok: false, reason: 'perf needs load_ms and dcl_ms in milliseconds' };
     }
-    return { ok: true, event: { kind: 'perf', load_ms: Math.round(load_ms), dcl_ms: Math.round(dcl_ms) } };
+    const tier = typeof body.tier === 'string' && TIERS.has(body.tier as 'low' | 'medium' | 'high') ? (body.tier as 'low' | 'medium' | 'high') : undefined;
+    if (body.tier !== undefined && !tier) return { ok: false, reason: 'invalid tier' };
+    let bench_ms: number | undefined;
+    if (body.bench_ms !== undefined) {
+      if (!isFiniteNumber(body.bench_ms) || body.bench_ms < 0 || body.bench_ms > 60000) return { ok: false, reason: 'invalid bench_ms' };
+      bench_ms = Math.round(body.bench_ms * 10) / 10;
+    }
+    return {
+      ok: true,
+      event: {
+        kind: 'perf',
+        load_ms: Math.round(load_ms),
+        dcl_ms: Math.round(dcl_ms),
+        ...ctx,
+        ...(tier ? { tier } : {}),
+        ...(bench_ms !== undefined ? { bench_ms } : {}),
+      },
+    };
   }
-  return { ok: false, reason: 'kind must be error or perf' };
+  if (body.kind === 'event') {
+    const name = clampStr(body.name, 60);
+    if (!name || !TAG_RE.test(name)) return { ok: false, reason: 'event needs a valid name' };
+    const m = parseMeta(body.meta);
+    if (!m.ok) return m;
+    return {
+      ok: true,
+      event: {
+        kind: 'event',
+        name,
+        ...ctx,
+        ...(m.meta ? { meta: m.meta } : {}),
+      },
+    };
+  }
+  return { ok: false, reason: 'kind must be error, perf or event' };
 }
 
 /** In-memory per-key token bucket (best effort, per process). */

@@ -124,6 +124,33 @@ resource "google_logging_metric" "client_errors" {
   depends_on = [google_project_service.logging]
 }
 
+resource "google_logging_metric" "client_events" {
+  project = var.project_id
+  name    = "beech_client_events_total"
+  filter  = "${local.beech_log_filter} AND jsonPayload.event=\"client_event\""
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "INT64"
+    unit        = "1"
+    labels {
+      key         = "name"
+      value_type  = "STRING"
+      description = "Client telemetry event name"
+    }
+    labels {
+      key         = "platform"
+      value_type  = "STRING"
+      description = "Client platform (web, android, ios)"
+    }
+  }
+  label_extractors = {
+    name     = "EXTRACT(jsonPayload.name)"
+    platform = "EXTRACT(jsonPayload.platform)"
+  }
+
+  depends_on = [google_project_service.logging]
+}
+
 resource "google_logging_metric" "db_errors" {
   project = var.project_id
   name    = "beech_db_errors_total"
@@ -410,6 +437,32 @@ resource "google_monitoring_alert_policy" "server_errors" {
   depends_on = [google_project_service.monitoring]
 }
 
+resource "google_monitoring_alert_policy" "client_errors" {
+  project               = var.project_id
+  display_name          = "beech: client errors"
+  combiner              = "OR"
+  notification_channels = [google_monitoring_notification_channel.email.id]
+  documentation {
+    content   = "More than 3 client errors were reported in 10 minutes (web, Android, or iOS). Check Logs Explorer with: resource.type=\"cloud_run_revision\" resource.labels.service_name=\"beech\" jsonPayload.event=\"client_error\" — each line includes platform, version, build, category, source, message, and stack."
+    mime_type = "text/markdown"
+  }
+  conditions {
+    display_name = "more than 3 client errors in 10 minutes"
+    condition_threshold {
+      filter          = "metric.type=\"logging.googleapis.com/user/beech_client_errors_total\" AND resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"beech\""
+      duration        = "0s"
+      comparison      = "COMPARISON_GT"
+      threshold_value = 3
+      aggregations {
+        alignment_period   = "600s"
+        per_series_aligner = "ALIGN_SUM"
+      }
+    }
+  }
+
+  depends_on = [google_project_service.monitoring, google_logging_metric.client_errors]
+}
+
 resource "google_monitoring_alert_policy" "latency" {
   project               = var.project_id
   display_name          = "beech: slow responses (p95 latency)"
@@ -658,6 +711,25 @@ resource "google_monitoring_dashboard" "beech" {
               },
             ]
             yAxis        = { label = "errors/s", scale = "LINEAR" }
+            chartOptions = { mode = "COLOR" }
+          }
+        },
+        {
+          title = "Client telemetry events (by name & platform)"
+          xyChart = {
+            dataSets = [
+              {
+                timeSeriesQuery = {
+                  timeSeriesFilter = {
+                    filter      = "metric.type=\"logging.googleapis.com/user/beech_client_events_total\" AND resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"beech\""
+                    aggregation = { alignmentPeriod = "300s", perSeriesAligner = "ALIGN_SUM", crossSeriesReducer = "REDUCE_SUM", groupByFields = ["metric.label.name", "metric.label.platform"] }
+                  }
+                }
+                plotType   = "LINE"
+                targetAxis = "Y1"
+              },
+            ]
+            yAxis        = { label = "events / 5m", scale = "LINEAR" }
             chartOptions = { mode = "COLOR" }
           }
         },

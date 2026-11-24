@@ -452,15 +452,26 @@ accepted the repo's default branch, so the deploy job ran only there.
 
 - `src/net/nativeAuth.ts` wraps `@capgo/capacitor-social-login` 8.7.6. It is
   loaded only inside the apps, so the web bundle doesn't include it. Android
-  offers Google (Credential Manager, token for the web client ID). iOS
-  offers Sign in with Apple, plus Google when `VITE_GOOGLE_IOS_CLIENT_ID` is
-  set. A cancelled sheet shows no error. Signing out also signs out of the
-  provider.
+  offers Google (Credential Manager, token for the web client ID, with
+  `skipAuthOnlyAuthorizationAfterSignIn: true` so the plugin skips the unused
+  `AuthorizationClient` step on stock `BridgeActivity`). iOS offers Sign in
+  with Apple, plus Google when `VITE_GOOGLE_IOS_CLIENT_ID` is set. A cancelled
+  sheet shows no error. Signing out also signs out of the provider.
 - Facebook and Twitter are off in `capacitor.config.ts`. The merged Android
   manifest has no AD_ID permission.
 - iOS: `App.entitlements` (Sign in with Apple) is wired via
   `CODE_SIGN_ENTITLEMENTS`. `scripts/native-auth-config.mjs` writes the Google
   URL scheme into Info.plist.
+- **Client error & telemetry reporting (2026-11-24):** `src/net/telemetry.ts`
+  now posts to `${VITE_API_URL}/api/client-events` via CORS-safe `fetch` with
+  `keepalive: true` (previously a relative URL + `sendBeacon`, which failed in
+  native Android/iOS WebViews), tags every payload with `platform`, `version`,
+  and `build`, and adds `reportError` / `reportEvent` covering auth, shop/IAP,
+  beach sync, sim worker, WebGL context loss, boot failures, `app_boot`, and
+  `res_drop`. Server (`server/src/observability.ts`, `server/src/app.ts`)
+  validates and logs `client_error`, `client_perf`, and `client_event`;
+  `infra/monitoring.tf` adds `beech_client_events_total` and an email alert on
+  client error spikes (`beech: client errors`). See [OBSERVABILITY.md](OBSERVABILITY.md).
 - Not verified on devices yet: that needs the OAuth clients and the Apple
   capability (DevOps; see BACKEND.md, "Phone apps").
 

@@ -54,7 +54,11 @@ function plugin(): Promise<Plugin> {
       const { SocialLogin } = await import('@capgo/capacitor-social-login');
       const ios = platform() === 'ios';
       await SocialLogin.initialize({
-        google: WEB_CLIENT_ID ? (ios ? { iOSClientId: IOS_CLIENT_ID, iOSServerClientId: WEB_CLIENT_ID } : { webClientId: WEB_CLIENT_ID }) : undefined,
+        google: WEB_CLIENT_ID
+          ? ios
+            ? { iOSClientId: IOS_CLIENT_ID, iOSServerClientId: WEB_CLIENT_ID }
+            : { webClientId: WEB_CLIENT_ID, skipAuthOnlyAuthorizationAfterSignIn: true }
+          : undefined,
         apple: ios ? { clientId: 'app', redirectUrl: '' } : undefined,
       });
       return SocialLogin;

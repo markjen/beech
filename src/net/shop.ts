@@ -1,6 +1,7 @@
 import { Capacitor } from '@capacitor/core';
 
 import { DEV_AUTH, type Account } from './account';
+import { reportError, reportEvent } from './telemetry';
 
 // Buying from the shop. In the apps the purchase goes through Apple or Google
 // (StoreKit 2 / Google Play Billing, via @capgo/native-purchases); we never
@@ -141,7 +142,8 @@ export class ShopApi {
         }
         // only what the store actually offers here can be bought
         return list.filter((x) => x.price);
-      } catch {
+      } catch (e) {
+        reportError('shop', e, { source: 'shop:getProducts' });
         /* store unreachable: show US prices, buying will say why it can't */
       }
     }
@@ -171,12 +173,24 @@ export class ShopApi {
           isConsumable: true,
         });
       } catch (e) {
-        if (/cancel/i.test(String((e as Error)?.message ?? e))) return 'cancelled';
+        if (/cancel/i.test(String((e as Error)?.message ?? e))) {
+          reportEvent('purchase_cancel', { product: productId });
+          return 'cancelled';
+        }
+        reportError('shop', e, { source: 'shop:purchase', meta: { product: productId } });
         throw e;
       }
       const ios = Capacitor.getPlatform() === 'ios';
-      if (ios && !t.jwsRepresentation) throw new Error('the App Store did not return a signed purchase');
-      if (!ios && !t.purchaseToken) throw new Error('Google Play did not return a purchase token');
+      if (ios && !t.jwsRepresentation) {
+        const err = new Error('the App Store did not return a signed purchase');
+        reportError('shop', err, { source: 'shop:purchase', meta: { product: productId } });
+        throw err;
+      }
+      if (!ios && !t.purchaseToken) {
+        const err = new Error('Google Play did not return a purchase token');
+        reportError('shop', err, { source: 'shop:purchase', meta: { product: productId } });
+        throw err;
+      }
       pending = ios ? { platform: 'ios', productId, jws: t.jwsRepresentation } : { platform: 'android', productId, token: t.purchaseToken };
     } else if (mode === 'dev') {
       pending = { platform: 'dev', productId, token: `dev-${crypto.randomUUID()}` };
@@ -185,22 +199,31 @@ export class ShopApi {
     }
     writePending([...readPending(), pending]);
     await this.deliver(pending);
+    reportEvent('purchase_success', { product: productId, mode });
     return 'bought';
   }
 
   private async deliver(p: Pending): Promise<void> {
-    const res = await this.account.fetch('/api/store/purchase', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(p),
-    });
+    let res: Response;
+    try {
+      res = await this.account.fetch('/api/store/purchase', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(p),
+      });
+    } catch (e) {
+      reportError('shop', e, { source: 'shop:deliver', meta: { product: p.productId, platform: p.platform } });
+      throw e;
+    }
     // delivered (or never deliverable): stop retrying it
     if (res.ok || (res.status >= 400 && res.status < 500 && res.status !== 401 && res.status !== 408 && res.status !== 429)) {
       writePending(readPending().filter((x) => !(x.jws === p.jws && x.token === p.token)));
     }
     if (!res.ok) {
       const msg = ((await res.json().catch(() => ({}))) as { error?: string }).error;
-      throw new Error(msg ?? 'the purchase could not be added to your bag yet; it will be retried');
+      const err = new Error(msg ?? 'the purchase could not be added to your bag yet; it will be retried');
+      reportError('shop', err, { source: 'shop:deliver', meta: { product: p.productId, platform: p.platform, status: res.status } });
+      throw err;
     }
   }
 
@@ -234,7 +257,9 @@ export class ShopApi {
     });
     if (!res.ok) {
       const msg = ((await res.json().catch(() => ({}))) as { error?: string }).error;
-      throw new Error(msg ?? 'the checkout could not be opened');
+      const err = new Error(msg ?? 'the checkout could not be opened');
+      reportError('shop', err, { source: 'shop:webCheckout', meta: { product: productId, status: res.status } });
+      throw err;
     }
     const { order, url } = (await res.json()) as { order: string; url: string };
     writeWebOrders([...readWebOrders().filter((x) => x !== order), order]);
