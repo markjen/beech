@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createApp, normalizeCode } from '../src/app.js';
 import type { VerifiedPurchase } from '../src/store.js';
 import { createPgDb, createPgliteDb, type Db } from '../src/db.js';
@@ -503,14 +503,21 @@ describe('pulls', () => {
       // and nothing was won: only the two starter gifts are in the bag
       const inv = (await (await req('/inventory', {}, eve.token)).json()) as { items: { item: string }[] };
       expect(inv.items.map((i) => i.item).sort()).toEqual(['deckchair', 'starfish']);
-      // the next go, with a kind roll, can win again
+      // the next goes can win the new common and rare prizes
       waitOut(missed.nextFree);
-      const holds = [0.5, 0.5, 0.1, 0.5];
+      const holds = [0.5, 0.9, 0.1, 0.5];
       forcedRand = () => holds.shift() ?? 0.5;
       const kept = await go();
-      expect(kept).toMatchObject({ missed: false, item: 'sanddollar' });
+      expect(kept).toMatchObject({ missed: false, item: 'coconut', rarity: 'common' });
       // the same rest roll after a win skews long: 5 + 175 * 0.75 = 136.25 min
       expect(Math.round((kept.nextFree - (Date.now() + skew)) / 60000)).toBe(136);
+
+      waitOut(kept.nextFree);
+      const rare = [0.2, 0.9, 0.1, 0.5];
+      forcedRand = () => rare.shift() ?? 0.5;
+      expect(await go()).toMatchObject({ missed: false, item: 'coral', rarity: 'rare' });
+      const updated = (await (await req('/inventory', {}, eve.token)).json()) as { items: { item: string }[] };
+      expect(updated.items.map((i) => i.item)).toEqual(expect.arrayContaining(['coconut', 'coral']));
     } finally {
       forcedRand = null;
       skew = 0;
@@ -566,6 +573,13 @@ describe('vending machine', () => {
   const status = async (token: string) =>
     ((await (await req('/pulls', {}, token)).json()) as Pools).pools.find((p) => p.id === 'vending')!;
 
+  beforeEach(() => {
+    skew = Date.parse('2026-11-29T12:00:00Z') - Date.now();
+  });
+  afterEach(() => {
+    skew = 0;
+  });
+
   it('shows this week’s set and its odds; one free ball a day', async () => {
     const vera = await signIn('Vera');
     const first = await status(vera.token);
@@ -592,10 +606,10 @@ describe('vending machine', () => {
 
     // a second ball the same day is refused…
     expect((await req('/pulls/vending', { method: 'POST' }, vera.token)).status).toBe(409);
-    // …and tomorrow's ball is free again
+    // At midnight the next set starts and the daily ball is available again.
     skew += won.nextFree - (Date.now() + skew) + 1000;
+    expect(await status(vera.token)).toMatchObject({ set: { week: 2, name: 'Beach day' }, free: true });
     expect((await req('/pulls/vending', { method: 'POST' }, vera.token)).status).toBe(200);
-    skew = 0;
   });
 
   it('two at once: exactly one gets the ball', async () => {
