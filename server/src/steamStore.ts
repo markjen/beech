@@ -182,13 +182,16 @@ export async function syncSteamRefunds(
   const now = opts.now ?? Date.now();
   let revoked = 0;
   for (const tx of transIds) {
-    await revokeStorePurchase(db, 'steam', tx, now);
-    const res = await db.query<{ id: string }>(
-      `UPDATE steam_orders SET status = 'refunded'
-        WHERE trans_id = $1 AND status = 'paid'
-       RETURNING order_id::text AS id`,
-      [tx],
-    );
+    const res = await db.withTransaction(async (txDb) => {
+      const rows = await txDb.query<{ id: string }>(
+        `UPDATE steam_orders SET status = 'refunded'
+          WHERE trans_id = $1 AND status IN ('created', 'paid')
+         RETURNING order_id::text AS id`,
+        [tx],
+      );
+      await revokeStorePurchase(txDb, 'steam', tx, now);
+      return rows;
+    });
     if (res.length) revoked++;
   }
   return revoked;

@@ -8,6 +8,10 @@
 // attributes. A gift card code is rendered once, right after it is issued
 // (the server never returns codes again).
 
+import { BEHAVIORS, FREQUENCIES } from './itemSubmissions.js';
+
+const options = (values: readonly string[]) => values.map((value) => `<option>${value}</option>`).join('');
+
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 /** a value for an inline <script>: JSON that can't close the tag */
 const js = (v: unknown) => JSON.stringify(v).replace(/</g, '\\u003c');
@@ -30,7 +34,11 @@ const STYLE = `
   .stat b { display: block; font-size: 1.3rem; }
   .stat span { color: var(--muted); font-size: .85rem; }
   label { display: block; margin: .4rem 0; } label > span { display: inline-block; min-width: 7rem; }
-  input, select, button { font: inherit; padding: .35rem .55rem; border: 1px solid #c5ced3; border-radius: 6px; background: #fff; }
+  input, select, textarea, button { font: inherit; padding: .35rem .55rem; border: 1px solid #c5ced3; border-radius: 6px; background: #fff; }
+  .submission-review label { display:flex; align-items:baseline; gap:.5rem; flex-wrap:wrap; }
+  .submission-review :is(input:not([type=checkbox]), select, textarea) { width:min(100%, 27rem); }
+  .submission-review dt { font-weight:600; }
+  .submission-review dd { margin:0 0 .6rem; overflow-wrap:anywhere; }
   button { cursor: pointer; } button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
   button.danger { color: var(--bad); border-color: #e3b5b5; }
   .row { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
@@ -115,6 +123,7 @@ export function adminConsoleHtml(opts: { nonce: string; email: string; appUrl: s
   <h1>beech admin</h1>
   <nav role="tablist">
     <button type="button" role="tab" data-tab="beaches" aria-selected="true">Beaches</button>
+    <button type="button" role="tab" data-tab="submissions" aria-selected="false">Item submissions</button>
     <button type="button" role="tab" data-tab="gifts" aria-selected="false">Gift cards</button>
     <button type="button" role="tab" data-tab="promos" aria-selected="false">Promo codes</button>
     <button type="button" role="tab" data-tab="redemptions" aria-selected="false">Redemptions</button>
@@ -137,6 +146,48 @@ export function adminConsoleHtml(opts: { nonce: string; email: string; appUrl: s
       <div class="row"><button id="beach-more" type="button" hidden>More</button></div>
     </div>
     <div id="beach-detail" class="panel" hidden></div>
+  </section>
+
+  <section id="tab-submissions" hidden>
+    <div class="panel">
+      <h2>Item submissions</h2>
+      <label>Queue <select id="submission-filter">
+        <option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option>
+      </select></label>
+      <div id="submission-list"></div>
+      <div class="row">
+        <button id="submission-prev" type="button" hidden>Previous</button>
+        <button id="submission-next" type="button" hidden>Next</button>
+      </div>
+    </div>
+    <div class="panel submission-review" id="submission-review" hidden>
+      <h2 id="submission-title"></h2>
+      <dl id="submission-original"></dl>
+      <div class="row" id="submission-downloads"></div>
+      <h2>Editorial decision</h2>
+      <form id="submission-review-form">
+        <label><span>Name</span><input name="name" maxlength="80" required></label>
+        <label><span>Slug</span><input name="slug" maxlength="40" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" required></label>
+        <label><span>Description</span><textarea name="description" rows="3" maxlength="1500"></textarea></label>
+        <label><span>Behavior</span><select name="behavior">${options(BEHAVIORS)}</select></label>
+        <label><span>Minimum size (m)</span><input name="sizeMin" type="number" min=".01" max="8" step="any" required></label>
+        <label><span>Maximum size (m)</span><input name="sizeMax" type="number" min=".01" max="8" step="any" required></label>
+        <label><span>Fixed size</span><input name="fixedSize" type="checkbox" value="true"></label>
+        <label><span>Frequency</span><select name="frequency">${options(FREQUENCIES)}</select></label>
+        <label><span>Availability details</span><input name="frequencyNote" maxlength="500"></label>
+        <label><span>Price (USD)</span><input name="price" type="number" min="0" max="21474836.47" step=".01"></label>
+        <label><span>Replacement asset</span><input name="replacement" type="file" accept=".json,.glb,.gltf,.ts"></label>
+        <label><span>Product SKU</span><input name="productId" list="submission-products" maxlength="80" placeholder="e.g. item_tide_pool_pot"></label>
+        <datalist id="submission-products"></datalist>
+        <label><span>Catalog item ID</span><input name="itemId" maxlength="40" placeholder="e.g. tide-pool-pot"></label>
+        <p class="muted">Leave both IDs blank to approve before linking to the shop. A positive price lists the linked product when its item ships. Clear the price or enter 0 to take it out of the shop. Asset and availability changes ship through the game catalog.</p>
+        <label><span>Admin note</span><textarea name="adminNote" rows="3" maxlength="1500"></textarea></label>
+        <div class="row">
+          <button type="submit" value="approved" class="primary">Save approval</button>
+          <button type="submit" value="rejected" class="danger" formnovalidate>Reject</button>
+        </div>
+      </form>
+    </div>
   </section>
 
   <section id="tab-gifts" hidden>
@@ -203,7 +254,7 @@ const items = (m) => { const e = Object.entries(m || {}); return e.length ? e.ma
 
 // ---- tabs
 const loaded = {};
-const loaders = { beaches: loadBeachesTab, gifts: loadGifts, promos: loadPromos, redemptions: loadRedemptions, audit: loadAudit };
+const loaders = { beaches: loadBeachesTab, submissions: () => loadSubmissions(0), gifts: loadGifts, promos: loadPromos, redemptions: loadRedemptions, audit: loadAudit };
 function show(tab) {
   document.querySelectorAll('nav [data-tab]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === tab)));
   for (const t of Object.keys(loaders)) $('tab-' + t).hidden = t !== tab;
@@ -306,6 +357,130 @@ async function act(b, what, arg) {
     await Promise.all([openBeach(b.id), loadBeaches(false), loadStats()]);
   } catch (e) { say(e.message); }
 }
+
+// ---- item submissions
+let submissionOffset = 0;
+let selectedSubmission = null;
+let shownProducts = [];
+const reviewForm = $('submission-review-form');
+async function loadSubmissions(offset) {
+  const status = $('submission-filter').value;
+  const { submissions, more } = await api('/item-submissions?status=' + status + '&offset=' + offset);
+  if (status !== $('submission-filter').value) return;
+  submissionOffset = offset;
+  $('submission-prev').hidden = offset === 0;
+  $('submission-next').hidden = !more;
+  const list = $('submission-list');
+  list.innerHTML = submissions.length
+    ? '<table><thead><tr><th>Item</th><th>Creator beach</th><th>Proposed price</th><th>Frequency</th><th>Submitted</th></tr></thead><tbody>' +
+      submissions.map((s) => '<tr><td><button type="button" data-id="' + s.id + '">' + esc(s.name) + '</button></td><td>' +
+        esc(s.submitter_beach_code) + '</td><td>' + money(s.proposed_price_cents) + '</td><td>' +
+        esc(s.proposed_frequency) + '</td><td>' + when(Number(s.created_at)) + '</td></tr>').join('') + '</tbody></table>'
+    : '<p class="muted">No submissions in this queue.</p>';
+  list.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => {
+    openSubmission(b.dataset.id).catch((e) => say(e.message));
+  }));
+}
+$('submission-filter').addEventListener('change', () => {
+  selectedSubmission = null;
+  $('submission-review').hidden = true;
+  loadSubmissions(0).catch((e) => say(e.message));
+});
+$('submission-prev').addEventListener('click', () => loadSubmissions(submissionOffset - 25).catch((e) => say(e.message)));
+$('submission-next').addEventListener('click', () => loadSubmissions(submissionOffset + 25).catch((e) => say(e.message)));
+
+async function submissionDownload(id, file, filename) {
+  const res = await fetch('/api/item-submissions/' + id + '/files/' + file, { headers: { 'X-Beech-Admin': '1' } });
+  if (!res.ok) throw new Error('The upload could not be downloaded.');
+  const url = URL.createObjectURL(await res.blob());
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename || (res.headers.get('content-disposition') || '').split('"')[1] || 'preview';
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function openSubmission(id) {
+  selectedSubmission = id;
+  const { submission: row, products } = await api('/item-submissions/' + id);
+  if (id !== selectedSubmission) return;
+  shownProducts = products;
+  $('submission-title').textContent = row.name;
+  const assetSize = row.asset_size < 1024 ? row.asset_size + ' B' : kb(row.asset_size);
+  const assetSummary = row.asset_summary.parts ? ' · ' + row.asset_summary.parts + ' parts'
+    : row.asset_summary.meshes ? ' · ' + row.asset_summary.meshes + ' meshes' : '';
+  const details = [
+    ['Status', row.status],
+    ['Creator beach', row.submitter_beach_code],
+    ['Original item', row.slug + ' · ' + row.behavior + ' · ' + row.size_min + '–' + row.size_max + ' m'],
+    ['Original description', row.description],
+    ['Proposal', money(row.proposed_price_cents) + ' · ' + row.proposed_frequency + (row.frequency_note ? ' · ' + row.frequency_note : '')],
+    ['Asset', row.asset_format + ' · ' + assetSize + assetSummary],
+    ['Terms accepted', row.terms_version + ' · ' + when(Number(row.terms_accepted_at))],
+    ['Sales and credit', row.sales_count + ' sales · ' + money(row.total_credit_earned_cents)],
+    ['Last reviewed', row.reviewed_by ? row.reviewed_by + ' · ' + when(Number(row.reviewed_at)) : '—'],
+  ];
+  $('submission-original').innerHTML = details.map(([label, value]) => '<dt>' + label + '</dt><dd>' + esc(value || '—') + '</dd>').join('');
+  const downloads = [['original', 'Original asset', row.asset_filename]];
+  if (row.has_preview) downloads.push(['preview', 'Preview image']);
+  if (row.replacement_filename) downloads.push(['replacement', 'Replacement asset', row.replacement_filename]);
+  $('submission-downloads').replaceChildren(...downloads.map(([file, label, filename]) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = 'Download ' + label.toLowerCase();
+    button.addEventListener('click', () => submissionDownload(id, file, filename).catch((e) => say(e.message)));
+    return button;
+  }));
+  reviewForm.reset();
+  const approved = row.approved_item || {};
+  const fields = reviewForm.elements;
+  for (const [key, value] of Object.entries({
+    name: row.name, slug: row.slug, description: row.description, behavior: row.behavior,
+    sizeMin: row.size_min, sizeMax: row.size_max, frequencyNote: row.frequency_note, ...approved,
+    frequency: row.approved_frequency || row.proposed_frequency,
+    price: row.approved_item && row.approved_price_cents === null ? '' : (row.approved_price_cents ?? row.proposed_price_cents) / 100,
+    productId: row.product_id || '', itemId: row.item_id || '', adminNote: row.admin_note,
+  })) {
+    if (key !== 'fixedSize') fields[key].value = value;
+  }
+  fields.fixedSize.checked = approved.fixedSize ?? row.fixed_size;
+  fields.productId.readOnly = fields.itemId.readOnly = !!row.product_id;
+  $('submission-products').replaceChildren(...products.map((p) => new Option(p.itemId, p.id)));
+  $('submission-review').hidden = false;
+  $('submission-review').scrollIntoView({ block: 'nearest' });
+}
+reviewForm.elements.productId.addEventListener('change', () => {
+  const fields = reviewForm.elements;
+  const product = shownProducts.find((p) => p.id === fields.productId.value);
+  if (product) fields.itemId.value = product.itemId;
+});
+reviewForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const id = selectedSubmission;
+  if (!id || !e.submitter || e.submitter.disabled) return;
+  const f = new FormData(reviewForm);
+  f.set('status', e.submitter.value);
+  f.set('priceCents', f.get('price') ? String(Math.round(reviewForm.elements.price.valueAsNumber * 100)) : '');
+  f.delete('price');
+  if (!reviewForm.elements.replacement.files.length) f.delete('replacement');
+  const buttons = reviewForm.querySelectorAll('button');
+  buttons.forEach((b) => { b.disabled = true; });
+  try {
+    const res = await fetch('/api/item-submissions/' + id + '/review', {
+      method: 'POST', headers: { 'X-Beech-Admin': '1' }, body: f,
+    });
+    if (res.status === 401) { location.reload(); return; }
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'The decision could not be saved.');
+    say(result.status === 'approved' ? 'Approval saved.' : 'Submission rejected.', true);
+    await loadSubmissions(submissionOffset);
+    if (selectedSubmission === id) await openSubmission(id);
+  } catch (err) {
+    say(err.message);
+  } finally {
+    buttons.forEach((b) => { b.disabled = false; });
+  }
+});
 
 // ---- gift cards
 async function loadGifts() {

@@ -97,7 +97,7 @@ export class Shop {
   }
 
   private showCredit(): void {
-    this.creditLine.textContent = this.creditCents > 0 ? `Your credit: $${(this.creditCents / 100).toFixed(2)} (from gift cards)` : '';
+    this.creditLine.textContent = this.creditCents > 0 ? `Your credit: $${(this.creditCents / 100).toFixed(2)}` : '';
   }
 
   private promoCode(): string | undefined {

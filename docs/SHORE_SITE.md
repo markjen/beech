@@ -2,10 +2,10 @@
 
 Status: **built** (2026-11-23).
 
-A public, read-only website of every beach on the shore. No account, no
-JavaScript needed to read it, and every page previews well when its link is
-pasted into a text, WhatsApp, X, Slack or iMessage. It is the place people
-land from a shared link, and it sends them on into the game.
+A public website of every beach on the shore. Browse beaches without an
+account or JavaScript. Shared beach links preview in text messages,
+WhatsApp, X, Slack and iMessage. Beech players can also submit items for
+review from the shore.
 
 ## What's on it
 
@@ -20,6 +20,8 @@ land from a shared link, and it sends them on into the game.
 | `/img/K7F2QX.png` | The beach's 1200×630 card, used as `og:image` (also by the game's own `?visit=` links). |
 | `/img/K7F2QX/thumb.png` | 480×300 thumbnail. |
 | `/img/shore.png` | The site card (an untouched beach). |
+| `/submit` | Connect a Beech account, upload an item with a proposed price and frequency, and see your review status and creator credits. |
+| `/submit/spec` | Asset requirements, prompt example, JSON Schema and example file for creators and AI agents. |
 | `/robots.txt`, `/sitemap.xml` | For search engines (up to 5000 beach pages). |
 
 Beach links are the shortest thing that works: `beechshore.com/K7F2QX`, the
@@ -61,6 +63,8 @@ links it shares.
 Pages are cached for 60 s (`Cache-Control: public`). Image URLs carry the
 beach's save time (`?v=`), so they're cached for a year and change when the
 beach does; the server keeps the 64 most recent pictures in memory.
+
+See [Community item submissions](ITEM_SUBMISSIONS.md) for the review, catalog release, and credit workflow.
 
 ## The pictures
 

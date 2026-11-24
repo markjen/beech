@@ -45,6 +45,7 @@ import { toBytes, type Db } from './db.js';
 import { formatCents, hashesEqual, hashGiftCode, isAdminEmail, isPromoCodeShape, newGiftCardCode, normalizePromoCode } from './giftCards.js';
 import { createRateLimiter, logEvent, routeLabel } from './observability.js';
 import { PRODUCTS, productById } from './products.js';
+import { adminSubmission, adminSubmissions, eligibleProduct, limitUpload, multipart, reviewSubmission, UUID_PATTERN } from './itemSubmissions.js';
 
 export interface AdminConfig {
   /** the web OAuth client id (public): the sign-in button and the ID token's audience */
@@ -230,8 +231,8 @@ export function createAdminApp(db: Db, cfg: AdminConfig): Hono<Env> {
   });
 
   /** an admin audit line. `detail` must never hold a gift card code. */
-  const audit = async (actor: string, action: string, targetType: string, targetId: string, detail: Record<string, unknown>) => {
-    await db.query('INSERT INTO admin_audit (actor, action, target_type, target_id, detail, created_at) VALUES ($1, $2, $3, $4, $5, $6)', [
+  const audit = async (actor: string, action: string, targetType: string, targetId: string, detail: Record<string, unknown>, tx: Db = db) => {
+    await tx.query('INSERT INTO admin_audit (actor, action, target_type, target_id, detail, created_at) VALUES ($1, $2, $3, $4, $5, $6)', [
       actor,
       action,
       targetType,
@@ -250,6 +251,56 @@ export function createAdminApp(db: Db, cfg: AdminConfig): Hono<Env> {
   }
 
   api.get('/me', (c) => c.json({ admin: true, via: c.get('actor') === 'cli-token' ? 'token' : 'session', email: c.get('email') }));
+
+  api.get('/item-submissions', async (c) => {
+    const status = c.req.query('status') ?? 'pending';
+    const offset = Number(c.req.query('offset') ?? '0');
+    if (!['pending', 'approved', 'rejected'].includes(status) || !Number.isSafeInteger(offset) || offset < 0) {
+      return fail(400, 'Invalid submission filter.');
+    }
+    const rows = await adminSubmissions(db, status, offset);
+    return c.json({ submissions: rows.slice(0, 25), more: rows.length > 25 });
+  });
+
+  api.get('/item-submissions/:id', async (c) => {
+    const id = c.req.param('id');
+    if (!UUID_PATTERN.test(id)) return fail(404, 'No such submission.');
+    const submission = await adminSubmission(db, id);
+    if (!submission) return fail(404, 'No such submission.');
+    const products = PRODUCTS.filter((p) => eligibleProduct(p.id)).map((p) => ({ id: p.id, itemId: p.grants[0].item }));
+    return c.json({ submission, products });
+  });
+
+  api.get('/item-submissions/:id/files/:file', async (c) => {
+    const { id, file } = c.req.param();
+    if (!UUID_PATTERN.test(id) || !['original', 'preview', 'replacement'].includes(file)) {
+      return fail(404, 'No such upload.');
+    }
+    const [row] = await db.query<{ filename: string | null; bytes: unknown }>(
+      `SELECT CASE $2 WHEN 'original' THEN asset_filename WHEN 'replacement' THEN replacement_filename
+          ELSE CASE preview_mime WHEN 'image/png' THEN 'preview.png' ELSE 'preview.jpg' END END AS filename,
+          CASE $2 WHEN 'original' THEN asset_bytes WHEN 'replacement' THEN replacement_bytes ELSE preview_bytes END AS bytes
+       FROM item_submissions WHERE id = $1`, [id, file],
+    );
+    if (!row?.filename || !row.bytes) return fail(404, 'No such upload.');
+    return c.body(toBytes(row.bytes).slice(), 200, {
+      'Content-Type': 'application/octet-stream',
+      'Content-Disposition': `attachment; filename="${row.filename}"`,
+    });
+  });
+
+  api.post('/item-submissions/:id/review', limitUpload, async (c) => {
+    const id = c.req.param('id');
+    if (!UUID_PATTERN.test(id)) return fail(404, 'No such submission.');
+    const actor = c.get('actor');
+    const form = await multipart(c.req.raw);
+    const decision = await db.withTransaction(async (tx) => {
+      const result = await reviewSubmission(tx, id, form, actor, clock());
+      await audit(actor, 'review', 'item_submission', id, result, tx);
+      return result;
+    });
+    return c.json(decision);
+  });
 
   api.get('/products', (c) => c.json({ products: PRODUCTS.map((p) => ({ id: p.id, name: p.name, usd: p.usd })) }));
 
