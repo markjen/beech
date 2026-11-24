@@ -56,6 +56,7 @@ simulated one.
 | `src/sim/sandCodec.ts` | Saved-beach format: BCH1 (sand) and BCH2 (sand plus placed objects, validated on load) |
 | `src/world/beachFile.ts` | Beach files (`.beach.json`, spec in BEACH_FILE.md): read and write, shapes, `reconcileItems` (what of a beach your bag can build) |
 | `scripts/beach-file.mjs` | Offline beach-file tool: validate, rows/compact, heightmap PNG (`scripts/lib/png.mjs`) |
+| `src/net/localStore.ts`, `src/ui/localCheckpoints.ts` | The sandbox build's device storage (IndexedDB): the beach between visits, and checkpoints on the device |
 | `src/ui/checkpoints.ts` | Settings → checkpoints: save, list, restore here / onto another beach, undo, export, import (`CheckpointApi` in `src/net/account.ts`, the fit check in `src/world/checkpointFit.ts`) |
 | `server/src/guide.ts`, `releaseNotes.ts` | The user guide, help and release notes at `/guide` and `/guide/releases` (`/help`, `/releases` redirect), rendered per request from the server's own constants (odds, grab chances, the claw's rest, this week's vending set). The game shows no explanatory notes; it links here (`GUIDE_URL` in `src/config.ts`) |
 | `server/src/landingSite.ts`, `rootApp.ts` | The beech.games landing page: Host-header routing in `rootApp.ts` (`beech.games` + `www`, which 301s to the apex; no game API on those hosts), previewable under `/landing` on every other host. Numbers from the server's constants; "What's new" from `releaseNotes.ts`. See docs/LANDING_PAGE.md |

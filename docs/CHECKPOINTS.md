@@ -1,7 +1,8 @@
 # Checkpoints (design)
 
-Status: **built (C1 to C5)**, 2026-11-23. C6 (thumbnails, sandbox
-checkpoints) is optional and not built; it's in BACKLOG.md.
+Status: **built (C1 to C6)**. C6 (2026-11-24): thumbnails on each
+checkpoint, and in the sandbox build checkpoints kept on the device
+(IndexedDB, up to 20) along with the beach itself between visits.
 
 Built as designed, except: the migration is **13** (11 and 12 were taken by
 dig finds and gift cards), and the owner decisions at the end were taken as

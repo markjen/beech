@@ -24,7 +24,7 @@ import { DIG_FIND_ROLL_COOLDOWN_MS, qualifiesForFind } from './sim/digFinds';
 import { POS_STRIDE, type ObjectState, type PlacedObject } from './sim/objects';
 import type { FrameInfo, FromWorker, ToWorker } from './sim/protocol';
 import { makeSwell } from './sim/waves';
-import { MAX_OBJECTS, decodeSand, encodeSand, fitWorld } from './sim/sandCodec';
+import { MAX_OBJECTS, decodeSand, encodeSand, fitWorld, resampleField } from './sim/sandCodec';
 import { restHeight } from './sim/profile';
 import { Ambient, toggleFullscreen } from './ui/ambient';
 import { Hud, type ToolDef } from './ui/hud';
@@ -46,6 +46,8 @@ import { Leaderboard } from './ui/leaderboard';
 import { NEIGHBOR_OFFSET, NeighborView } from './render/neighbors';
 import { loadSettings, saveSettings, type Settings } from './ui/settingsStore';
 import { initTelemetry } from './net/telemetry';
+import { loadLocalBeach, saveLocalBeach } from './net/localStore';
+import { LocalCheckpointsSection } from './ui/localCheckpoints';
 import { watchForNewVersion } from './platform/version';
 import { Capacitor } from '@capacitor/core';
 import { BeachFileDialog, beachFileName, pickFile, saveText, type BeachFileHost } from './ui/beachFileDialog';
@@ -1361,6 +1363,68 @@ async function boot() {
   });
 
   // handle for automated tests and debugging
+  // ---------------------------------------------------------------- the sandbox keeps its beach
+  // No accounts here: the beach stays on this device between visits, and
+  // checkpoints are kept on the device too (IndexedDB; docs/CHECKPOINTS.md C6).
+  if (!ACCOUNTS_ENABLED) {
+    const restoreBytes = async (bytes: Uint8Array) => {
+      const b = fitWorld(await decodeSand(bytes));
+      return { delta: resampleField(b.delta, b.nx, b.ny, grid.nx, grid.ny), objects: b.objects };
+    };
+    const kept = await loadLocalBeach();
+    if (kept && !params.has('fresh')) {
+      try {
+        const b = await restoreBytes(kept.bytes);
+        send({ type: 'setSand', delta: b.delta, objects: b.objects }, [b.delta.buffer]);
+        const loc = beachById(kept.location);
+        if (loc && loc.id !== beach.id && !params.get('beach')) setBeach(loc);
+      } catch {
+        /* unreadable: start fresh */
+      }
+    }
+    let saveTimer = 0;
+    const saveHere = async () => {
+      window.clearTimeout(saveTimer);
+      const { delta, objects } = await getSand();
+      await saveLocalBeach({ bytes: await encodeSand(delta, grid.nx, grid.ny, objects), location: beach.id, savedAt: Date.now() });
+    };
+    markDirty = (delayMs = 4000) => {
+      window.clearTimeout(saveTimer);
+      saveTimer = window.setTimeout(() => void saveHere(), delayMs);
+    };
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') void saveHere();
+    });
+    new LocalCheckpointsSection(sheet.accountSlot, {
+      snapshot: async () => {
+        const { delta, objects } = await getSand();
+        return { bytes: await encodeSand(delta, grid.nx, grid.ny, objects), objects: objects.filter((o) => !o.wild).length, location: beach.id };
+      },
+      restore: async (bytes) => {
+        const b = await restoreBytes(bytes);
+        send({ type: 'importBeach', delta: b.delta, objects: b.objects }, [b.delta.buffer]);
+        markDirty(1500);
+      },
+      exportFile: async (name, bytes) => {
+        const b = fitWorld(await decodeSand(bytes));
+        await saveText(beachFileName(name), await writeBeachFile(b, { name, createdWith: `beech ${APP_VERSION}` }));
+      },
+      importFile: async () => {
+        const f = await pickFile();
+        if (!f) return null;
+        const r = await parseBeachFile(await f.text(), { nx: grid.nx, ny: grid.ny });
+        if (!r.ok) throw new Error(`${f.name} isn't a beach file (${r.errors[0].path || 'file'}: ${r.errors[0].message})`);
+        return {
+          name: r.beach.name || f.name.replace(/(\.beach)?\.json$/i, ''),
+          bytes: await encodeSand(r.beach.delta, grid.nx, grid.ny, r.beach.objects),
+          objects: r.beach.objects.length,
+          location: r.beach.location ?? beach.id,
+        };
+      },
+      toast: (text) => showToast(uiRoot, text),
+    });
+  }
+
   (window as unknown as Record<string, unknown>).__beech = {
     engine,
     scene,

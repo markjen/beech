@@ -6,6 +6,17 @@
 import { ShortError, type Account, type Checkpoint, type CheckpointApi, type CheckpointList } from '../net/account';
 import { shortfall, type Short } from '../world/checkpointFit';
 import { itemById } from '../world/items';
+import { decodeSand, fitWorld } from '../sim/sandCodec';
+import { drawMap } from './beachFileDialog';
+
+/** A checkpoint's thumbnail from its saved bytes (a small top-down map), as an image URL. */
+export async function thumbnailOf(bytes: Uint8Array, size = 72): Promise<string> {
+  const b = fitWorld(await decodeSand(bytes));
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  drawMap(c, b, b.objects);
+  return c.toDataURL('image/png');
+}
 
 export interface CheckpointHost {
   /** what you own (non-free items) */
@@ -51,6 +62,9 @@ export class CheckpointsSection {
   private error = '';
   private busy = false;
   private confirmDelete: { id: string; at: number } | null = null;
+  /** thumbnails drawn so far (by checkpoint id and size); drawn one at a time */
+  private thumbs = new Map<string, string>();
+  private thumbQueue: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly api: CheckpointApi,
@@ -216,6 +230,28 @@ export class CheckpointsSection {
     const row = document.createElement('div');
     row.className = `cp-row${cp.kind === 'auto' ? ' auto' : ''}`;
     row.dataset.id = cp.id;
+    // a little top-down map of it, fetched and drawn on first sight
+    const img = document.createElement('img');
+    img.className = 'cp-thumb';
+    img.alt = '';
+    const key = `${cp.id}:${cp.bytes}:${cp.createdAt}`;
+    const cached = this.thumbs.get(key);
+    if (cached) img.src = cached;
+    else {
+      this.thumbQueue = this.thumbQueue.then(async () => {
+        if (this.thumbs.has(key)) return;
+        try {
+          const url = await thumbnailOf((await this.api.sand(cp.id)).bytes);
+          this.thumbs.set(key, url);
+          // the panel may have re-rendered meanwhile: find the row again
+          const live = document.querySelector<HTMLImageElement>(`.cp-row[data-id="${cp.id}"] .cp-thumb`);
+          if (live) live.src = url;
+        } catch {
+          /* no thumbnail: it's only a picture */
+        }
+      });
+    }
+    row.appendChild(img);
     const title = document.createElement('div');
     title.className = 'cp-title';
     const name = document.createElement('b');
