@@ -18,7 +18,7 @@
 // item PR adds renders for its own items with --only.
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -199,16 +199,17 @@ try {
     console.log(`${p.id}.png  ${p.name} (${p.group}, ${p.kind})`);
   }
   if (errors.length) console.error('page errors:\n' + errors.slice(0, 10).join('\n'));
+  await page.close();
 
   if (!ONLY) {
     // ---------------------------------------------------------- contact sheet
-    const cells = placed
+    const cells = (imageUrl) => placed
       .map(
         (p) =>
-          `<figure><img src="${p.id}.png" alt="${p.name}"><figcaption><b>${p.name}</b><br>${p.id} · ${p.group} · ${p.kind}</figcaption></figure>`,
+          `<figure><img src="${imageUrl(p.id)}" alt="${p.name}"><figcaption><b>${p.name}</b><br>${p.id} · ${p.group} · ${p.kind}</figcaption></figure>`,
       )
       .join('\n');
-    const sheetHtml = `<!doctype html><meta charset="utf-8"><title>beech items — contact sheet</title>
+    const sheetHtml = (imageUrl) => `<!doctype html><meta charset="utf-8"><title>beech items — contact sheet</title>
 <style>body{margin:0;background:#f6e3c3;font:14px system-ui,sans-serif;color:#3c2f2a}
 h1{margin:16px 20px 4px;font-size:20px}p{margin:0 20px 12px;color:#6b5a54}
 .grid{display:grid;grid-template-columns:repeat(4,300px);gap:12px;padding:0 20px 20px}
@@ -216,11 +217,14 @@ figure{margin:0;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1
 img{display:block;width:300px;height:300px;object-fit:cover}
 figcaption{padding:8px 10px;line-height:1.35}</style>
 <h1>Beech items — contact sheet</h1><p>Every catalog item on dry sand, day light, seed 1. See docs/ITEMS.md for the catalog.</p>
-<div class="grid">${cells}</div>`;
+<div class="grid">${cells(imageUrl)}</div>`;
     const sheetFile = path.join(OUT, 'contact-sheet.html');
-    writeFileSync(sheetFile, sheetHtml);
+    writeFileSync(sheetFile, sheetHtml((id) => `${id}.png`));
     const sheet = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-    await sheet.goto(pathToFileURL(sheetFile).href);
+    await sheet.setContent(sheetHtml((id) => {
+      const png = readFileSync(path.join(OUT, `${id}.png`), 'base64');
+      return `data:image/png;base64,${png}`;
+    }));
     await sheet.screenshot({ path: path.join(OUT, 'contact-sheet.png'), fullPage: true, timeout: 120000 });
     await sheet.close();
     console.log('contact-sheet.png');
