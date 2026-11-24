@@ -285,13 +285,14 @@ export class Account {
     await this.loadBeaches();
   }
 
-  /** the sand endpoint for this device's beach (the home beach before they've loaded) */
-  private sandPath(): string {
-    return this.beachId ? `/api/beaches/mine/${this.beachId}/sand` : '/api/beach';
+  /** the sand endpoint for a beach (this device's beach by default, or home before they've loaded) */
+  private sandPath(beachId?: string | null): string {
+    const id = beachId ?? this.beachId;
+    return id ? `/api/beaches/mine/${id}/sand` : '/api/beach';
   }
 
-  async loadBeach(): Promise<SavedBeach | null> {
-    const res = await this.call(this.sandPath());
+  async loadBeach(beachId?: string): Promise<SavedBeach | null> {
+    const res = await this.call(this.sandPath(beachId));
     if (res.status === 404) return null;
     if (!res.ok) throw new ApiError(res.status, 'could not load your beach');
     return {
@@ -314,8 +315,10 @@ export class Account {
     items: Record<string, number> = {},
     /** the epoch the sand was loaded at: a restore since then refuses the save (409) */
     epoch?: number,
+    /** which of your beaches to save (defaults to this device's active beach) */
+    beachId?: string,
   ): Promise<number> {
-    const res = await this.call(this.sandPath(), {
+    const res = await this.call(this.sandPath(beachId), {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/octet-stream',
@@ -533,20 +536,21 @@ async function errorOf(res: Response, fallback: string): Promise<ApiError> {
 export class NeighborApi {
   constructor(private readonly account: Account) {}
 
-  /** `?beach=<id>` for this device's beach ('' before beaches load: the server uses home) */
-  private q(sep = '?'): string {
-    return this.account.beachId ? `${sep}beach=${encodeURIComponent(this.account.beachId)}` : '';
+  /** `?beach=<id>` for a beach (defaults to this device's beach; '' before beaches load: the server uses home) */
+  private q(sep = '?', beachId?: string | null): string {
+    const id = beachId ?? this.account.beachId;
+    return id ? `${sep}beach=${encodeURIComponent(id)}` : '';
   }
 
-  async get(): Promise<Neighbors> {
-    const res = await this.account.fetch(`/api/neighbors${this.q()}`);
+  async get(beachId?: string): Promise<Neighbors> {
+    const res = await this.account.fetch(`/api/neighbors${this.q('?', beachId)}`);
     if (!res.ok) throw await errorOf(res, 'could not load your neighbors');
     return (await res.json()) as Neighbors;
   }
 
   /** Ask someone to be on your `side`. 'linked' if they had already asked for the same. */
-  async set(side: Side, code: string): Promise<{ status: 'asked' | 'linked'; neighbor: Neighbor }> {
-    const res = await this.account.fetch(`/api/neighbors/${side}${this.q()}`, {
+  async set(side: Side, code: string, beachId?: string): Promise<{ status: 'asked' | 'linked'; neighbor: Neighbor }> {
+    const res = await this.account.fetch(`/api/neighbors/${side}${this.q('?', beachId)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code }),
@@ -556,18 +560,18 @@ export class NeighborApi {
   }
 
   /** Move away from your `side` neighbor (both ends), or take back your request for that side. */
-  async remove(side: Side): Promise<void> {
-    const res = await this.account.fetch(`/api/neighbors/${side}${this.q()}`, { method: 'DELETE' });
+  async remove(side: Side, beachId?: string): Promise<void> {
+    const res = await this.account.fetch(`/api/neighbors/${side}${this.q('?', beachId)}`, { method: 'DELETE' });
     if (!res.ok) throw await errorOf(res, 'could not remove that neighbor');
   }
 
-  async accept(code: string): Promise<void> {
-    const res = await this.account.fetch(`/api/neighbors/requests/${encodeURIComponent(code)}/accept${this.q()}`, { method: 'POST' });
+  async accept(code: string, beachId?: string): Promise<void> {
+    const res = await this.account.fetch(`/api/neighbors/requests/${encodeURIComponent(code)}/accept${this.q('?', beachId)}`, { method: 'POST' });
     if (!res.ok) throw await errorOf(res, 'could not accept');
   }
 
-  async decline(code: string): Promise<void> {
-    const res = await this.account.fetch(`/api/neighbors/requests/${encodeURIComponent(code)}${this.q()}`, { method: 'DELETE' });
+  async decline(code: string, beachId?: string): Promise<void> {
+    const res = await this.account.fetch(`/api/neighbors/requests/${encodeURIComponent(code)}${this.q('?', beachId)}`, { method: 'DELETE' });
     if (!res.ok) throw await errorOf(res, 'could not decline');
   }
 
@@ -593,8 +597,8 @@ export class NeighborApi {
     };
   }
 
-  async newCode(): Promise<string> {
-    const res = await this.account.fetch(`/api/neighbors/code${this.q()}`, { method: 'POST' });
+  async newCode(beachId?: string): Promise<string> {
+    const res = await this.account.fetch(`/api/neighbors/code${this.q('?', beachId)}`, { method: 'POST' });
     if (!res.ok) throw await errorOf(res, 'could not make a new code');
     return ((await res.json()) as { code: string }).code;
   }

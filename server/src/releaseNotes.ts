@@ -19,6 +19,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     date: '2026-11-24',
     title: 'Linked beaches, shiny prizes, and rocks that stay put',
     changes: [
+      'You can now edit any of your own beaches visible in view — dig, build, clear, place, and drag things right across adjacent beaches, and each beach saves automatically without needing to switch first. Settings is now organized into tabs (Beach, Shore, Display, Account), with a one-click Shore connector to snap your own beaches side by side without copying codes.',
       'Beach animals are now much easier to spot: sand crabs are bigger and visit far more often (the first one usually turns up within a minute), and dolphins are bigger and swim closer to the surf.',
       'Wild dolphins now occasionally cruise through the deeper water in front of your beach and leap across the waves.',
       'Visitors can now feed your beach’s pet (one free snack per beach each day, or anytime using their own beach snacks), and you’ll see a note when someone feeds yours.',

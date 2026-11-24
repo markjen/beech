@@ -180,12 +180,13 @@ ${
 <p>Past sets’ items stay yours, and stay placeable, after the week ends.</p>
 
 <h2 id="beaches">Your beaches</h2>
-<p>You start with one beach. Each extra beach you own (from the shop or the claw machine) lets you make one more, up to ${BEACH_CAP}. Settings → “your beaches” lets you open one on this device, rename it, make it home, or remove it.</p>
-<p>Each device shows one of your beaches and remembers which, so your phone and your TV can show different ones at the same time. Put one of your own beach codes next to another of yours and they link straight away, without asking.</p>
+<p>You start with one beach. Each extra beach you own (from the shop or the claw machine) lets you make one more, up to ${BEACH_CAP}. Open Settings → <b>Beach</b> to pick which beach you’re configuring (its name, real-world place, code, checkpoints, or to jump to it), or make a new one.</p>
+<p>Any of your beaches visible on the shore can be edited directly — dig, build, clear, place, or drag things right across adjacent beaches, and each beach saves on its own automatically regardless of which beach is selected in Settings. Each device still remembers where it opens, so your phone and your TV can watch different beaches at the same time.</p>
 
 <h2 id="shore">Neighbors and the shore</h2>
-<p>Every beach has a code. To have a neighbor, put their code in “left” or “right” in settings and ask; it links when they accept. A new code stops your old one working; neighbors you already have keep you.</p>
-<p>Past your neighbors the shore carries on into everyone else’s beaches: pan along it, or walk it in the chair view. Signed out, the public shore still runs past your beach: the beaches either side show, and you can scroll the whole public shore. You can look at other beaches but only dig your own. Tap ☆ on a name tag or the bar at the top to keep a beach in your favorites; “⌂ my beach” takes you home. Visit any beach by its code from settings, or share a link to yours — opening it on beechshore.com lets you grab a Postcard, Square, Story, or Clean preview snapshot to post on social media.</p>
+<p>Open Settings → <b>Shore</b> to arrange your beaches and neighbors. When you own more than one beach, your stretches appear at the top so you can snap your own beaches side by side (or disconnect them) in one tap, with no codes to copy.</p>
+<p>Every beach also has a code (under Settings → <b>Beach</b>). To invite someone else as a neighbor, put their code in “left” or “right” under <b>Shore</b> and ask; it links when they accept. A new code stops your old one working; neighbors you already have keep you.</p>
+<p>Past your neighbors the shore carries on into everyone else’s beaches: pan along it, or walk it in the chair view. Signed out, the public shore still runs past your beach: the beaches either side show, and you can scroll the whole public shore. You can look at other beaches but only dig your own. Tap ☆ on a name tag or the bar at the top to keep a beach in your favorites; “⌂ my beach” takes you home. Visit any beach by its code from Settings → <b>Shore</b>, or share a link to yours — opening it on beechshore.com lets you grab a Postcard, Square, Story, or Clean preview snapshot to post on social media.</p>
 
 <h2 id="leaderboard">Leaderboard</h2>
 <p>The trophy button shows the most-starred beaches. <b>All time</b> counts every star a beach has now. <b>Rising</b> counts stars from the past week, and the newest count most (a star’s weight halves every 2 days). Visit or star a beach from its row. Signed in only.</p>
@@ -194,7 +195,7 @@ ${
 <p>A checkpoint keeps a beach as it is now — its sand and its things — to come back to later or to put on another of your beaches. Up to ${CHECKPOINTS_PER_BEACH} per beach. Restoring needs your bag to cover the things on it; if it can’t, you can restore without them. The beach as it was is kept as a “before restoring” checkpoint, and Undo brings it back. Other devices showing that beach reload.</p>
 
 <h2 id="files">Beach files</h2>
-<p>Settings → “export beach” saves your beach as a <code>.beach.json</code> file; “import beach” opens one. Before importing you see a preview: a map, the things on it, anything that was fixed while reading, and anything your bag can’t cover (import without them, or get them in the shop). Importing replaces the beach you’re on; when signed in the old one is kept as a “Before import” checkpoint, and Undo brings it back. Without an account, only free things come in.</p>
+<p>Settings → <b>Beach</b> → “export beach” saves your beach as a <code>.beach.json</code> file; “import beach” opens one. Before importing you see a preview: a map, the things on it, anything that was fixed while reading, and anything your bag can’t cover (import without them, or get them in the shop). Importing replaces the beach you’re on; when signed in the old one is kept as a “Before import” checkpoint, and Undo brings it back. Without an account, only free things come in.</p>
 <p>The file format is documented for anyone who wants to design beaches by hand or with a script.</p>
 
 <h2 id="shop">Shop</h2>
@@ -207,13 +208,10 @@ ${
 
 <h2 id="settings">Settings</h2>
 <ul>
-  <li><b>beach</b>: which real beach your sea follows; “near me” uses your location once, on the device.</li>
-  <li><b>sound, music, haptics</b>: on or off.</li>
-  <li><b>battery saver</b>: draws every other frame.</li>
-  <li><b>ambient (for a TV)</b>: hides the controls when idle and keeps the screen on. “watch on TV” sets it up in one tap.</li>
-  <li><b>light</b>: follow the real sun, or keep one mood.</li>
-  <li><b>detail</b>: changes take effect the next time the game starts.</li>
-  <li><b>save a picture</b>, <b>smooth the beach</b>, <b>export</b> and <b>import</b>, and <b>full screen</b>.</li>
+  <li><b>Beach</b>: choose which of your beaches to configure, its real-world <b>place</b> (“near me” uses your location once), code and share links, <b>save a picture</b>, <b>smooth the beach</b>, <b>export</b> / <b>import</b>, and <b>checkpoints</b>.</li>
+  <li><b>Shore</b>: snap your own beaches side by side in one tap, manage left/right neighbors and requests, visit by code, and open favorite beaches.</li>
+  <li><b>Display</b>: <b>sound, music, haptics</b>, <b>battery saver</b> (draws every other frame), <b>ambient (for a TV)</b>, <b>light</b>, <b>detail</b> (takes effect next start), <b>watch on TV</b>, and <b>full screen</b>.</li>
+  <li><b>Account</b>: sign in or out, save status, link another device, and delete account.</li>
 </ul>
 
 <h2 id="limits">Limits</h2>

@@ -350,27 +350,75 @@ async function boot() {
   let digStrokeStart = 0;
   /** last time the app asked the server for a digging roll (the server enforces the same gap) */
   let lastDigFindAttempt = 0;
-  type Hit = { x: number; y: number; z: number };
+  type EditTarget = { kind: 'live' } | { kind: 'neighbor'; index: number; beachId: string; offsetX: number };
+  type Hit = { x: number; y: number; z: number; target: EditTarget };
+  const LIVE_TARGET: EditTarget = { kind: 'live' };
+  const sameTarget = (a: EditTarget, b: EditTarget) =>
+    a.kind === b.kind && (a.kind === 'live' || (b.kind === 'neighbor' && a.beachId === b.beachId && a.index === b.index));
+  let strokeTarget: EditTarget | null = null;
+  /** which beach each undo/redo step belongs to ('live' or a neighbor's beachId) */
+  const undoTargets: ('live' | string)[] = [];
+  const redoTargets: ('live' | string)[] = [];
+  const recordEditTarget = (t: EditTarget) => {
+    undoTargets.push(t.kind === 'live' ? 'live' : t.beachId);
+    if (undoTargets.length > 64) undoTargets.shift();
+    redoTargets.length = 0;
+  };
   let lastHit: Hit | null = null;
   let hover: Hit | null = null;
   let ringAlpha = 0;
-  let lastRing: Hit = { x: 0, y: 0, z: 0 };
+  let lastRing: Hit = { x: 0, y: 0, z: 0, target: LIVE_TARGET };
 
-  const pickAt = (sx: number, sy: number): Hit | null => picker.pick(cam.ray(sx, sy));
-  const toSim = (p: { x: number; z: number }) => ({ x: p.x - ORIGIN_X, y: p.z - ORIGIN_Z });
+  const pickAt = (sx: number, sy: number): Hit | null => {
+    const ray = cam.ray(sx, sy);
+    const liveHit = !neighbors || neighbors.ownVisible ? picker.pick(ray) : null;
+    const ownedHit = neighbors ? neighbors.pickOwned(ray) : null;
+    if (liveHit && ownedHit) {
+      const o = ray.origin;
+      const dLive = (liveHit.x - o.x) ** 2 + (liveHit.y - o.y) ** 2 + (liveHit.z - o.z) ** 2;
+      const dOwned = (ownedHit.x - o.x) ** 2 + (ownedHit.y - o.y) ** 2 + (ownedHit.z - o.z) ** 2;
+      if (dOwned < dLive) {
+        return {
+          x: ownedHit.x,
+          y: ownedHit.y,
+          z: ownedHit.z,
+          target: { kind: 'neighbor', index: ownedHit.index, beachId: ownedHit.beachId, offsetX: ownedHit.offsetX },
+        };
+      }
+      return { ...liveHit, target: LIVE_TARGET };
+    }
+    if (liveHit) return { ...liveHit, target: LIVE_TARGET };
+    if (ownedHit) {
+      return {
+        x: ownedHit.x,
+        y: ownedHit.y,
+        z: ownedHit.z,
+        target: { kind: 'neighbor', index: ownedHit.index, beachId: ownedHit.beachId, offsetX: ownedHit.offsetX },
+      };
+    }
+    return null;
+  };
+  const toSim = (p: Hit) => ({
+    x: p.x - (p.target.kind === 'neighbor' ? p.target.offsetX + ORIGIN_X : ORIGIN_X),
+    y: p.z - ORIGIN_Z,
+  });
 
   // ---------------------------------------------------------------- picking things up
   // Long-press on a thing picks it up; drag it, and it goes down where you let
   // go (one undo step). While held, its drawn position follows the finger.
   let press: { sx: number; sy: number; timer: number } | null = null;
-  let dragging: { id: number; x: number; y: number } | null = null;
+  let dragging: { id: number; x: number; y: number; source: EditTarget; current: EditTarget; obj: PlacedObject } | null = null;
   /** just let go: keep drawing it there until the worker's next frame has it */
   let settling: { id: number; x: number; y: number; until: number } | null = null;
   /** the thing under the pointer, if any (its footprint, roughly) */
-  const thingAt = (sx: number, sy: number): ObjectState | null => {
+  const thingAt = (sx: number, sy: number): { obj: PlacedObject; target: EditTarget } | null => {
     const hit = pickAt(sx, sy);
     if (!hit) return null;
     const p = toSim(hit);
+    if (hit.target.kind === 'neighbor') {
+      const obj = neighbors?.ownedObjectAt(hit.target.index, p.x, p.y) ?? null;
+      return obj ? { obj, target: hit.target } : null;
+    }
     let best: ObjectState | null = null;
     let bestD = Infinity;
     for (const o of objectStates) {
@@ -381,24 +429,50 @@ async function boot() {
         bestD = d;
       }
     }
-    return best;
+    return best ? { obj: best, target: LIVE_TARGET } : null;
   };
   /** draw the held thing at the finger (after the worker's positions are applied) */
   const applyDrag = () => {
-    const d = dragging ?? settling;
-    if (!d) return;
-    const s = objectStates.find((o) => o.id === d.id);
-    if (!s) return;
-    s.x = d.x;
-    s.y = d.y;
-    s.z = picker.heightAt(d.x + ORIGIN_X, d.y + ORIGIN_Z) + (dragging ? 0.12 : 0);
-    s.floating = false;
-    objectView.touch();
+    if (dragging && dragging.source.kind === 'live' && dragging.current.kind === 'live') {
+      const s = objectStates.find((o) => o.id === dragging!.id);
+      if (!s) return;
+      s.x = dragging.x;
+      s.y = dragging.y;
+      s.z = picker.heightAt(dragging.x + ORIGIN_X, dragging.y + ORIGIN_Z) + 0.12;
+      s.floating = false;
+      objectView.touch();
+      return;
+    }
+    if (!dragging && settling) {
+      const s = objectStates.find((o) => o.id === settling!.id);
+      if (!s) return;
+      s.x = settling.x;
+      s.y = settling.y;
+      s.z = picker.heightAt(settling.x + ORIGIN_X, settling.y + ORIGIN_Z);
+      s.floating = false;
+      objectView.touch();
+    }
+  };
+
+  const finishStrokeTarget = (t: EditTarget) => {
+    if (t.kind === 'live') {
+      send({ type: 'brush', phase: 'end' });
+      markDirty();
+    } else {
+      neighbors?.endStroke(t.index);
+    }
+    recordEditTarget(t);
+  };
+
+  const cancelStrokeTarget = (t: EditTarget) => {
+    if (t.kind === 'live') send({ type: 'brush', phase: 'cancel' });
+    else neighbors?.cancelStroke(t.index);
   };
 
   const startDig = (sx: number, sy: number) => {
     digging = true;
     strokeOpen = false;
+    strokeTarget = null;
     digPathM = 0;
     digStrokeStart = performance.now();
     hover = null;
@@ -415,7 +489,21 @@ async function boot() {
     lastHit = hit;
     const r = cam.brushRadius(hit);
     const s = toSim(hit);
-    send({ type: 'brush', phase: strokeOpen ? 'move' : 'start', x: s.x, y: s.y, r, mode: brushMode });
+    // Crossing a linked seam between two of your beaches: finish the stroke
+    // on the beach you left and begin one seamlessly on the beach you entered.
+    if (strokeOpen && strokeTarget && !sameTarget(strokeTarget, hit.target)) {
+      finishStrokeTarget(strokeTarget);
+      strokeOpen = false;
+      strokeTarget = null;
+    }
+    if (hit.target.kind === 'live') {
+      send({ type: 'brush', phase: strokeOpen ? 'move' : 'start', x: s.x, y: s.y, r, mode: brushMode });
+    } else if (strokeOpen) {
+      neighbors?.moveStroke(hit.target.index, s.x, s.y, r);
+    } else {
+      neighbors?.beginStroke(hit.target.index, s.x, s.y, r, brushMode);
+    }
+    strokeTarget = hit.target;
     strokeOpen = true;
   };
 
@@ -449,14 +537,32 @@ async function boot() {
   };
 
   const undo = () => {
-    markDirty();
-    send({ type: 'undo' });
+    const target = undoTargets.pop() ?? 'live';
+    if (target === 'live') {
+      markDirty();
+      send({ type: 'undo' });
+      redoTargets.push('live');
+    } else if (neighbors?.undo(target)) {
+      redoTargets.push(target);
+    } else {
+      markDirty();
+      send({ type: 'undo' });
+    }
     audio.whoosh(true);
     haptics.impact('medium');
   };
   const redo = () => {
-    markDirty();
-    send({ type: 'redo' });
+    const target = redoTargets.pop() ?? 'live';
+    if (target === 'live') {
+      markDirty();
+      send({ type: 'redo' });
+      undoTargets.push('live');
+    } else if (neighbors?.redo(target)) {
+      undoTargets.push(target);
+    } else {
+      markDirty();
+      send({ type: 'redo' });
+    }
     audio.whoosh(false);
     haptics.impact('medium');
   };
@@ -513,59 +619,70 @@ async function boot() {
     updatePlace(true);
     updateSteamRichPresence(b.name, cam.mode);
   };
-  const sheet = new SettingsSheet(uiRoot, settings, {
-    nearMe: () => {
-      if (!('geolocation' in navigator)) return;
-      navigator.geolocation.getCurrentPosition(
-        (pos) => setBeach(nearestBeach(pos.coords.latitude, pos.coords.longitude)),
-        () => {
-          /* denied or unavailable: keep the current beach */
-        },
-        { maximumAge: 3600000, timeout: 10000 },
-      );
+  // The beach selected *for settings* (set by AccountPanel in production builds).
+  let settingsBeachId: () => string | null = () => null;
+  let applyPlaceToBeach = (b: Beach) => setBeach(b);
+  let smoothSelectedBeach = () => {
+    markDirty(1500);
+    send({ type: 'reset' });
+    recordEditTarget(LIVE_TARGET);
+    audio.whoosh(false);
+  };
+  const sheet = new SettingsSheet(
+    uiRoot,
+    settings,
+    {
+      nearMe: () => {
+        if (!('geolocation' in navigator)) return;
+        navigator.geolocation.getCurrentPosition(
+          (pos) => applyPlaceToBeach(nearestBeach(pos.coords.latitude, pos.coords.longitude)),
+          () => {
+            /* denied or unavailable: keep the current beach */
+          },
+          { maximumAge: 3600000, timeout: 10000 },
+        );
+      },
+      change: (s, key) => {
+        if (key === 'beach') {
+          const b = beachById(s.beach);
+          if (b) applyPlaceToBeach(b);
+          return;
+        }
+        settings = s;
+        saveSettings(settings);
+        if (key === 'sound') audio.setSound(s.sound);
+        if (key === 'music') audio.setMusic(s.music);
+        if (key === 'haptics') haptics.enabled = s.haptics;
+        if (key === 'ambient') ambient.setEnabled(s.ambient);
+      },
+      smooth: () => smoothSelectedBeach(),
+      share: () => void share(),
+      exportBeach: () => void exportBeach(),
+      importBeach: () => void beachFiles.pick(),
+      fullscreen: () => void toggleFullscreen(),
+      tv: () => {
+        // one tap for the TV: idle controls + wake lock, seated on the sand,
+        // fullscreen. (Fullscreen needs the tap; that is why it is a button.)
+        settings = { ...settings, ambient: true };
+        saveSettings(settings);
+        ambient.setEnabled(true);
+        sheet.setSettings(settings);
+        cam.setMode('chair', false);
+        void toggleFullscreen();
+      },
     },
-    change: (s, key) => {
-      if (key === 'beach') {
-        const b = beachById(s.beach);
-        if (b) setBeach(b);
-        return;
-      }
-      settings = s;
-      saveSettings(settings);
-      if (key === 'sound') audio.setSound(s.sound);
-      if (key === 'music') audio.setMusic(s.music);
-      if (key === 'haptics') haptics.enabled = s.haptics;
-      if (key === 'ambient') ambient.setEnabled(s.ambient);
-    },
-    smooth: () => {
-      markDirty(1500);
-      send({ type: 'reset' });
-      audio.whoosh(false);
-    },
-    share: () => void share(),
-    exportBeach: () => void exportBeach(),
-    importBeach: () => void beachFiles.pick(),
-    fullscreen: () => void toggleFullscreen(),
-    tv: () => {
-      // one tap for the TV: idle controls + wake lock, seated on the sand,
-      // fullscreen. (Fullscreen needs the tap; that is why it is a button.)
-      settings = { ...settings, ambient: true };
-      saveSettings(settings);
-      ambient.setEnabled(true);
-      sheet.setSettings(settings);
-      cam.setMode('chair', false);
-      void toggleFullscreen();
-    },
-  }, BEACHES);
+    BEACHES,
+    { accounts: ACCOUNTS_ENABLED },
+  );
   sheet.setSettings({ ...settings, beach: beach.id });
 
-  // place + time + tide, top left; tapping it opens the beach picker
+  // place + time + tide, top left; tapping it opens the Beach settings tab
   const place = document.createElement('button');
   place.type = 'button';
   place.className = 'place';
   place.setAttribute('aria-label', 'Choose a beach');
   uiRoot.appendChild(place);
-  place.addEventListener('click', () => sheet.show());
+  place.addEventListener('click', () => sheet.show('beach'));
   let placeText = '';
   let placeAt = 0;
   const updatePlace = (force = false) => {
@@ -722,7 +839,11 @@ async function boot() {
       haptics.impact('light');
       return;
     }
-    if (info.objects.filter((o) => !o.wild).length >= MAX_OBJECTS) {
+    const count =
+      hit.target.kind === 'live'
+        ? info.objects.filter((o) => !o.wild).length
+        : (neighbors?.ownedCount(hit.target.index) ?? 0);
+    if (count >= MAX_OBJECTS) {
       // a beach saves this many things at most: more would be lost on the next save
       haptics.impact('light');
       if (performance.now() - fullToastAt > 4000) {
@@ -732,10 +853,15 @@ async function boot() {
       return;
     }
     const r = rollPlacement(placing, sizeOf(placing.id));
-    send({ type: 'placeObject', obj: { kind: placing.kind, item: placing.id, x: p.x, y: p.y, ...r } });
+    if (hit.target.kind === 'live') {
+      send({ type: 'placeObject', obj: { kind: placing.kind, item: placing.id, x: p.x, y: p.y, ...r } });
+      markDirty();
+    } else {
+      neighbors?.placeObject(hit.target.index, { kind: placing.kind, item: placing.id, x: p.x, y: p.y, ...r });
+    }
+    recordEditTarget(hit.target);
     if (placing.kind === 'rock' || placing.kind === 'driftwood') audio.thunk(placing.kind === 'rock');
     haptics.impact(placing.kind === 'rock' ? 'medium' : 'light');
-    markDirty();
   };
 
   const menuBtn = hud.button('menu', 'Settings');
@@ -844,7 +970,7 @@ async function boot() {
     shoreBar.classList.toggle('shown', away && !viewing);
     const place = b?.location ? beachById(b.location) : undefined;
     sbWhere.textContent = b ? `${neighbors?.visiting ? 'Visiting ' : ''}${b.name || 'a beach'}${place ? ` · ${place.name}` : ''}` : 'Down the shore';
-    sbFav.hidden = !b || !signedIn;
+    sbFav.hidden = !b || !signedIn || !!neighbors?.ownedBeach(b);
     sbFav.textContent = fav ? '★' : '☆';
     sbFav.classList.toggle('on', fav);
     sbFav.setAttribute('aria-label', fav ? 'Remove from favorites' : 'Add to favorites');
@@ -915,9 +1041,9 @@ async function boot() {
   const gestures = new Gestures(canvas, cam, {
     digStart: (sx, sy) => {
       if (cam.animating) return;
-      if (neighbors && neighbors.viewing) {
-        // someone else's beach: look, don't touch
-        neighbors.nudgeInfo();
+      const hit = pickAt(sx, sy);
+      if (!hit) {
+        if (neighbors && neighbors.viewing) neighbors.nudgeInfo();
         return;
       }
       inventory.setOpen(false);
@@ -926,17 +1052,16 @@ async function boot() {
         return;
       }
       // pressing on a thing: hold still to pick it up (a move or a quick tap digs)
-      const thing = thingAt(sx, sy);
-      if (thing) {
-        const id = thing.id;
+      const found = thingAt(sx, sy);
+      if (found) {
+        const { obj, target } = found;
         press = {
           sx,
           sy,
           timer: window.setTimeout(() => {
             press = null;
-            const t = objectStates.find((o) => o.id === id);
-            if (!t) return;
-            dragging = { id, x: t.x, y: t.y };
+            dragging = { id: obj.id, x: obj.x, y: obj.y, source: target, current: target, obj };
+            if (target.kind === 'neighbor') neighbors?.previewDrag(target.index, obj.id, obj.x, obj.y);
             haptics.impact('medium');
           }, LONG_PRESS_MS),
         };
@@ -962,7 +1087,12 @@ async function boot() {
           const p = toSim(hit);
           dragging.x = p.x;
           dragging.y = p.y;
-          applyDrag();
+          dragging.current = hit.target;
+          if (dragging.source.kind === 'neighbor' && sameTarget(dragging.source, hit.target)) {
+            neighbors?.previewDrag(dragging.source.index, dragging.id, p.x, p.y);
+          } else {
+            applyDrag();
+          }
         }
         return;
       }
@@ -979,33 +1109,67 @@ async function boot() {
       if (dragging) {
         const d = dragging;
         dragging = null;
-        // (a few frames at most: the worker's own position takes over)
-        settling = { ...d, until: performance.now() + 400 };
-        send({ type: 'moveObject', id: d.id, x: d.x, y: d.y });
+        if (d.source.kind === 'neighbor') neighbors?.previewDrag(d.source.index, null);
+        if (sameTarget(d.source, d.current)) {
+          if (d.source.kind === 'live') {
+            // (a few frames at most: the worker's own position takes over)
+            settling = { id: d.id, x: d.x, y: d.y, until: performance.now() + 400 };
+            send({ type: 'moveObject', id: d.id, x: d.x, y: d.y });
+            markDirty();
+          } else {
+            neighbors?.moveObject(d.source.index, d.id, d.x, d.y);
+          }
+          recordEditTarget(d.source);
+        } else {
+          // dragged across a seam onto another of your beaches: remove from source, place on destination
+          if (d.source.kind === 'live') {
+            send({ type: 'removeObject', id: d.id });
+            markDirty();
+          } else {
+            neighbors?.removeObject(d.source.index, d.id);
+          }
+          const placedObj: Omit<PlacedObject, 'id'> = {
+            kind: d.obj.kind,
+            item: d.obj.item,
+            x: d.x,
+            y: d.y,
+            size: d.obj.size,
+            angle: d.obj.angle,
+            variant: d.obj.variant,
+            ...(d.obj.found || d.obj.wild ? { found: true } : {}),
+          };
+          if (d.current.kind === 'live') {
+            send({ type: 'placeObject', obj: placedObj });
+            markDirty();
+          } else {
+            neighbors?.placeObject(d.current.index, placedObj);
+          }
+          recordEditTarget(d.current);
+        }
         haptics.impact('light');
-        markDirty();
         return;
       }
       const wasDig = strokeOpen && brushMode === 'dig';
       const pathM = digPathM;
       const durationMs = performance.now() - digStrokeStart;
-      if (strokeOpen) {
-        send({ type: 'brush', phase: 'end' });
-        markDirty();
+      if (strokeOpen && strokeTarget) {
+        finishStrokeTarget(strokeTarget);
       }
       digging = false;
       strokeOpen = false;
+      strokeTarget = null;
       if (wasDig) {
         unlockSteamAchievement('FIRST_DIG');
         void tryDigFind(pathM, durationMs);
       }
     },
     grabAt: (sx, sy) => {
-      // look mode: a long-press on a thing picks it up
-      if (neighbors && (neighbors.visiting || !neighbors.ownVisible)) return false;
-      const t = thingAt(sx, sy);
-      if (!t) return false;
-      dragging = { id: t.id, x: t.x, y: t.y };
+      // look mode: a long-press on a thing picks it up (on any of your visible beaches)
+      const found = thingAt(sx, sy);
+      if (!found) return false;
+      const { obj, target } = found;
+      dragging = { id: obj.id, x: obj.x, y: obj.y, source: target, current: target, obj };
+      if (target.kind === 'neighbor') neighbors?.previewDrag(target.index, obj.id, obj.x, obj.y);
       haptics.impact('medium');
       return true;
     },
@@ -1015,10 +1179,12 @@ async function boot() {
         press = null;
       }
       // a second finger mid-drag: put it back where it was
+      if (dragging && dragging.source.kind === 'neighbor') neighbors?.previewDrag(dragging.source.index, null);
       dragging = null;
-      if (strokeOpen) send({ type: 'brush', phase: 'cancel' });
+      if (strokeOpen && strokeTarget) cancelStrokeTarget(strokeTarget);
       digging = false;
       strokeOpen = false;
+      strokeTarget = null;
     },
     hover: (sx, sy) => {
       hover = pickAt(sx, sy);
@@ -1044,7 +1210,7 @@ async function boot() {
   const gamepad = new GamepadController(canvas, cam, {
     digStart: (sx, sy) => {
       if (cam.animating) return;
-      if (neighbors && (neighbors.visiting || !neighbors.ownVisible)) return;
+      if (!pickAt(sx, sy)) return;
       if (placing) {
         putDown(sx, sy);
         return;
@@ -1058,12 +1224,12 @@ async function boot() {
       const wasDig = strokeOpen && brushMode === 'dig';
       const pathM = digPathM;
       const durationMs = performance.now() - digStrokeStart;
-      if (strokeOpen) {
-        send({ type: 'brush', phase: 'end' });
-        markDirty();
+      if (strokeOpen && strokeTarget) {
+        finishStrokeTarget(strokeTarget);
       }
       digging = false;
       strokeOpen = false;
+      strokeTarget = null;
       if (wasDig) {
         unlockSteamAchievement('FIRST_DIG');
         void tryDigFind(pathM, durationMs);
@@ -1107,7 +1273,14 @@ async function boot() {
     }
     ringAlpha += (target - ringAlpha) * Math.min(1, dt * 14);
     if (at) lastRing = at;
-    renderer.setBrush(lastRing.x, lastRing.z, cam.brushRadius(lastRing), ringAlpha, palette.foam);
+    const radius = cam.brushRadius(lastRing);
+    if (lastRing.target.kind === 'live') {
+      renderer.setBrush(lastRing.x, lastRing.z, radius, ringAlpha, palette.foam);
+      neighbors?.setBrush(null, 0, 0, 1, 0, palette.foam);
+    } else {
+      renderer.setBrush(0, 0, 1, 0, palette.foam);
+      neighbors?.setBrush(lastRing.target.index, lastRing.x, lastRing.z, radius, ringAlpha, palette.foam);
+    }
   };
 
   // ---------------------------------------------------------------- palette / day cycle
@@ -1214,7 +1387,7 @@ async function boot() {
     if (cam.mode === 'chair') unlockSteamAchievement('CHAIR_VIEW');
     if (liveState.sky.night > 0.5) unlockSteamAchievement('NIGHT_BEACH');
     if (neighbors && !neighbors.ownVisible) unlockSteamAchievement('WALK_SHORE');
-    hud.setUndoState(info.undoCount, info.redoCount);
+    hud.setUndoState(info.undoCount + (neighbors?.totalUndoCount() ?? 0), info.redoCount + (neighbors?.totalRedoCount() ?? 0));
     applyUiColors(palette);
 
     if (pendingBuf) {
@@ -1414,9 +1587,17 @@ async function boot() {
       if (st === 'tooBig' && !toldTooBig) showToast(uiRoot, 'This beach is too big to save. Smooth some of the sand and it will save again.');
       toldTooBig = st === 'tooBig';
     });
-    neighbors = new NeighborView(scene, grid, ready.rest, swell, cam, uiRoot, account, renderer);
+    neighbors = new NeighborView(scene, grid, ready.rest, swell, cam, uiRoot, account, renderer, seed);
     const nv = neighbors;
     nv.onHome = () => void goHome();
+    nv.onSaveError = (kind) => {
+      if (kind === 'outdated') offerReload();
+      else if (kind === 'tooBig') showToast(uiRoot, 'This beach is too big to save. Smooth some of the sand and it will save again.');
+      else if (kind === 'restored') {
+        showToast(uiRoot, 'This beach was restored from a checkpoint on another device');
+        void checkpoints.load();
+      }
+    };
     const acct = account;
     // a share link (?visit=CODE) waits for sign-in, then lands on that beach
     let pendingVisit: string | null = visitCode;
@@ -1462,18 +1643,23 @@ async function boot() {
       shownBeach = id;
       updateElsewhere();
     });
-    // your bag counts what's on your other beaches too
+    // your bag counts what's on your other beaches too (including live local edits on adjacent beaches)
     const updateElsewhere = () => {
       const other = new Map<string, number>();
-      for (const b of acct.beaches)
-        if (b.id !== acct.beachId) for (const [k, v] of Object.entries(b.items ?? {})) other.set(k, (other.get(k) ?? 0) + v);
+      for (const b of acct.beaches) {
+        if (b.id === acct.beachId) continue;
+        const items = nv.itemsOn(b.id) ?? b.items ?? {};
+        for (const [k, v] of Object.entries(items)) other.set(k, (other.get(k) ?? 0) + v);
+      }
       inventory.setElsewhere(other);
     };
-    // a dot on the settings button when someone has asked to move in next to you
+    nv.onOwnedChanged = () => updateElsewhere();
+    // a dot on the settings button and Shore tab when someone has asked to move in next to you
     nv.onChange((n) => {
       const asking = n?.requests.length ?? 0;
       menuBtn.classList.toggle('badge', asking > 0);
       menuBtn.setAttribute('aria-label', asking ? `Settings (${asking} neighbor request${asking > 1 ? 's' : ''})` : 'Settings');
+      sheet.setShoreBadge(asking);
     });
     // checkpoints (docs/CHECKPOINTS.md): saved copies of your beaches
     let panel: AccountPanel | null = null;
@@ -1519,10 +1705,15 @@ async function boot() {
           await keepAsCheckpoint(r.beach, f.name.replace(/(\.beach)?\.json$/i, ''));
         },
         owned: () => inventory.ownedItems(),
-        // the beach on this device: what's on it this moment; the others: as last saved
-        itemsOn: (id) => (id === acct.beachId ? countItems(info.objects) : (acct.beaches.find((b) => b.id === id)?.items ?? {})),
-        saveNow: () => s.flush(),
+        // the beach on this device or an edited adjacent one: what's on it right now; others: as last saved
+        itemsOn: (id) =>
+          id === acct.beachId ? countItems(info.objects) : (nv.itemsOn(id) ?? acct.beaches.find((b) => b.id === id)?.items ?? {}),
+        saveNow: async () => {
+          await s.flush();
+          await nv.flushAll();
+        },
         replaceHere: async (change) => {
+          await nv.flushAll();
           await s.replaceHere(change);
           cam.goTo(0, true);
         },
@@ -1545,7 +1736,12 @@ async function boot() {
       void checkpoints.load();
     });
     panel = new AccountPanel(
-      sheet.accountSlot,
+      {
+        beach: sheet.beachSlot,
+        checkpoints: sheet.checkpointsSlot,
+        shore: sheet.shoreSlot!,
+        account: sheet.accountSlot,
+      },
       account,
       s,
       () => {},
@@ -1556,8 +1752,15 @@ async function boot() {
         sheet.hide();
       },
       {
-        // open one of your beaches on this device
+        // go to one of your beaches: smoothly glide if it's already on this shore, else open it
         open: async (id) => {
+          const idx = nv.indexOfBeach(id);
+          if (idx !== null && !nv.visiting) {
+            cam.goTo(nv.xFor(idx));
+            sheet.hide();
+            return;
+          }
+          await nv.flushAll();
           await s.switchTo(id);
           if (nv.visiting) await nv.visit(null);
           cam.goTo(0, true);
@@ -1571,9 +1774,40 @@ async function boot() {
           void shopDialog?.open();
         },
         changed: () => updateElsewhere(),
+        onSelect: (sel) => {
+          if (sel?.location) sheet.setBeachLocation(sel.location);
+          else sheet.setBeachLocation(beach.id);
+        },
+        onAuthChange: (signedIn) => {
+          sheet.setTab(signedIn ? 'beach' : 'account');
+        },
       },
       checkpoints,
     );
+    settingsBeachId = () => panel?.selectedBeach?.id ?? acct.beachId;
+    applyPlaceToBeach = (b) => {
+      const targetId = settingsBeachId();
+      if (acct.user && targetId && targetId !== acct.beachId) {
+        sheet.setBeachLocation(b.id);
+        void acct.updateBeach(targetId, { location: b.id }).then(() => nv.refresh()).catch(() => {});
+        return;
+      }
+      setBeach(b);
+    };
+    smoothSelectedBeach = () => {
+      const targetId = settingsBeachId();
+      if (acct.user && targetId && targetId !== acct.beachId) {
+        if (nv.resetOwned(targetId)) {
+          recordEditTarget({ kind: 'neighbor', index: nv.indexOfBeach(targetId) ?? 0, beachId: targetId, offsetX: 0 });
+          audio.whoosh(false);
+          return;
+        }
+      }
+      markDirty(1500);
+      send({ type: 'reset' });
+      recordEditTarget(LIVE_TARGET);
+      audio.whoosh(false);
+    };
 
     // the leaderboard: the most-starred beaches, to visit and star
     const boardBtn = hud.button('trophy', 'Most-starred beaches');
@@ -1764,7 +1998,10 @@ async function boot() {
   }
 
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) void sync?.flush(true);
+    if (document.hidden) {
+      void sync?.flush(true);
+      void neighbors?.flushAll(true);
+    }
     send({ type: 'pause', paused: document.hidden });
     audio.suspend(document.hidden);
   });

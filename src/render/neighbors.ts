@@ -1,13 +1,18 @@
+import type { Ray } from '@babylonjs/core/Culling/ray';
 import { Matrix, Vector3 } from '@babylonjs/core/Maths/math.vector';
 import type { Scene } from '@babylonjs/core/scene';
 
-import { WORLD_SIZE_X, type GridSpec } from '../config';
+import { SIM_HZ, WORLD_SIZE_X, type GridSpec } from '../config';
 import type { CameraController } from '../input/cameraController';
-import type { Account, Neighbors, ShoreBeach, Side } from '../net/account';
-import { NeighborApi } from '../net/account';
+import { pickHeightfield } from '../input/sandPicker';
+import type { Account, MyBeach, Neighbors, ShoreBeach, Side } from '../net/account';
+import { ApiError, NeighborApi } from '../net/account';
+import { countItems } from '../net/beachSync';
+import { reportError } from '../net/telemetry';
 import type { Palette } from '../palette';
+import { BeachSim, type BrushMode } from '../sim/beachSim';
 import { applyRockCover, type PlacedObject } from '../sim/objects';
-import { decodeSand, fitWorld, resampleField } from '../sim/sandCodec';
+import { decodeSand, encodeSand, fitWorld, resampleField } from '../sim/sandCodec';
 import type { Swell } from '../sim/waves';
 import { beachById } from '../world/locations';
 import { BeachRenderer, ORIGIN_Z } from './beachRenderer';
@@ -27,9 +32,25 @@ const RENDER = 2;
 const KEEP = 5;
 /** how often to look for new saves along the shore */
 const POLL_MS = 30000;
+/** debounce before saving an edited adjacent beach */
+const EDIT_SAVE_MS = 4000;
+
+export interface OwnedPick {
+  x: number;
+  y: number;
+  z: number;
+  index: number;
+  beachId: string;
+  offsetX: number;
+}
 
 interface Loaded {
+  /** display delta (sand minus rest, with rock cover baked in) */
   delta: Float32Array;
+  /** un-baked delta and cover kept for owned beaches so BeachSim can edit them losslessly */
+  rawDelta?: Float32Array;
+  rawCover?: Float32Array;
+  epoch?: number;
   objects: PlacedObject[];
   updatedAt: number | null;
 }
@@ -38,6 +59,7 @@ interface Slot {
   renderer: BeachRenderer;
   objects: ObjectView;
   label: HTMLDivElement;
+  yours: HTMLSpanElement;
   star: HTMLButtonElement;
   /** "ask to be neighbors", on beaches at the end of a stretch */
   ask: HTMLButtonElement;
@@ -51,6 +73,14 @@ interface Entry {
   /** a load is in flight */
   loading?: Promise<void>;
   slot?: Slot;
+  /** lazy simulation for editing an owned beach directly in the shore view */
+  sim?: BeachSim;
+  dirty?: boolean;
+  saveTimer?: number;
+  saving?: Promise<void> | null;
+  editAcc?: number;
+  /** live drag preview override for one object on this beach */
+  dragPreview?: { id: number; x: number; y: number } | null;
 }
 
 /**
@@ -59,6 +89,9 @@ interface Entry {
  * neighbor), as far as anyone has linked up. Walk or pan along it; the
  * beaches near the view are drawn as snapshots of their last save (their
  * sand and things, your sky, sea and tide), the rest load as you get close.
+ *
+ * Any of your own beaches visible along the shore can be edited directly:
+ * writes are simulated locally and saved automatically to that beach's ID.
  *
  * You can also visit anyone's beach by code: their beach takes the middle,
  * with their shore either side, until you head home.
@@ -73,6 +106,10 @@ export class NeighborView {
   visiting: ShoreBeach | null = null;
   /** "⌂ my beach" from the viewing-mode info card */
   onHome?: () => void;
+  /** fired when an edited owned neighbor's items or save state change */
+  onOwnedChanged?: () => void;
+  /** fired when saving an edited owned neighbor hits a terminal error or external restore */
+  onSaveError?: (kind: 'tooBig' | 'outdated' | 'restored') => void;
   readonly favorites = new Map<string, ShoreBeach>();
   private entries = new Map<number, Entry>();
   /** world-X centre of each entry (linked neighbours touch, the rest keep the diorama gap) */
@@ -90,6 +127,9 @@ export class NeighborView {
   /** a direction where the whole world has been walked (the shore came round) */
   private exhausted = new Set<Side>();
   private paging = new Set<Side>();
+  private lastUpdateAt = 0;
+  private brushIndex: number | null = null;
+  private paintBuf: Float32Array | null = null;
 
   constructor(
     private readonly scene: Scene,
@@ -100,6 +140,7 @@ export class NeighborView {
     private readonly uiRoot: HTMLElement,
     private readonly account: Account,
     private readonly ownRenderer?: BeachRenderer,
+    private readonly seed = 1,
   ) {
     this.api = new NeighborApi(account);
     this.shoreInfo = new ShoreInfo(uiRoot, { onHome: () => this.onHome?.() });
@@ -158,14 +199,37 @@ export class NeighborView {
     return this.win;
   }
 
+  /** If this shore beach belongs to the signed-in player, return their MyBeach record. */
+  ownedBeach(b: ShoreBeach): MyBeach | undefined {
+    return this.account.beaches.find((m) => m.code === b.code);
+  }
+
   /** Is your own (live) beach in view? False while visiting or far down the shore. */
   get ownVisible(): boolean {
     return !this.visiting && this.win[0] <= 0 && this.win[1] >= 0;
   }
 
+  /** Is *any* of your own beaches currently drawn in the window? */
+  get anyOwnVisible(): boolean {
+    if (this.ownVisible) return true;
+    for (const e of this.entries.values()) {
+      if (e.slot && this.ownedBeach(e.beach)) return true;
+    }
+    return false;
+  }
+
+  /** Shore index of one of your beaches if it's on the current shore (0 = live center), else null. */
+  indexOfBeach(beachId: string): number | null {
+    if (!this.visiting && this.account.beachId === beachId) return 0;
+    for (const e of this.entries.values()) {
+      if (this.ownedBeach(e.beach)?.id === beachId) return e.index;
+    }
+    return null;
+  }
+
   /** Viewing mode: looking at someone else's stretch of shore. No floating name tags. */
   get viewing(): boolean {
-    return isViewingMode(!!this.visiting, this.ownVisible);
+    return isViewingMode(!!this.visiting, this.anyOwnVisible);
   }
 
   /** Point at the "i" button: the viewer tried to dig on someone else's beach. */
@@ -241,8 +305,10 @@ export class NeighborView {
       const e = this.entries.get(i);
       if (e) {
         e.beach = b;
-        // a newer save: fetch it again when it's near the view
-        if (e.data && e.data.updatedAt !== b.updatedAt) e.data = { ...e.data, updatedAt: -1 };
+        // a newer save: fetch it again when it's near the view (never clobber unsaved local edits)
+        if (e.data && e.data.updatedAt !== b.updatedAt && !e.dirty && !e.saving) {
+          e.data = { ...e.data, updatedAt: -1 };
+        }
         if (e.slot) e.slot.label.querySelector('.name')!.textContent = this.title(b);
       } else {
         this.entries.set(i, { index: i, beach: b });
@@ -399,6 +465,11 @@ export class NeighborView {
   private forget(i: number): void {
     const e = this.entries.get(i);
     if (!e) return;
+    if (e.saveTimer) {
+      window.clearTimeout(e.saveTimer);
+      e.saveTimer = 0;
+    }
+    if (e.dirty && e.sim) void this.saveEntry(e, false);
     this.dropSlot(e);
     this.entries.delete(i);
   }
@@ -433,7 +504,10 @@ export class NeighborView {
         else if (!e.slot) this.makeSlot(e);
       } else {
         this.dropSlot(e);
-        if (d > KEEP) e.data = undefined;
+        if (d > KEEP && !e.dirty && !e.saving) {
+          e.data = undefined;
+          e.sim = undefined;
+        }
       }
     }
     if (wait) await Promise.all(pending);
@@ -442,31 +516,51 @@ export class NeighborView {
   private load(e: Entry): Promise<void> {
     // already fetching: if that turns out older than the newest save we know
     // of, fetch once more when it lands
-    if (e.loading) return e.loading.then(() => (e.data && e.data.updatedAt !== e.beach.updatedAt ? this.fetch(e) : undefined));
+    if (e.loading) return e.loading.then(() => (e.data && e.data.updatedAt !== e.beach.updatedAt && !e.dirty ? this.fetch(e) : undefined));
     return this.fetch(e);
   }
 
   private fetch(e: Entry): Promise<void> {
     if (e.loading) return e.loading;
+    if (e.dirty || e.saving) return Promise.resolve();
     e.loading = (async () => {
-      const saved = e.beach.location ? await this.api.beachByCode(e.beach.code).catch(() => null) : null;
+      const mine = this.ownedBeach(e.beach);
+      const saved = mine
+        ? await this.account.loadBeach(mine.id).catch(() => null)
+        : e.beach.location
+          ? await this.api.beachByCode(e.beach.code).catch(() => null)
+          : null;
       let delta: Float32Array = new Float32Array(this.grid.nx * this.grid.ny);
+      let rawDelta: Float32Array | undefined;
+      let rawCover: Float32Array | undefined;
       let objects: PlacedObject[] = [];
       if (saved) {
         try {
           const d = fitWorld(await decodeSand(saved.bytes));
           delta = resampleField(d.delta, d.nx, d.ny, this.grid.nx, this.grid.ny);
           objects = d.objects;
+          if (mine) rawDelta = delta.slice();
           if (d.cover) {
             const cover = resampleField(d.cover, d.nx, d.ny, this.grid.nx, this.grid.ny);
+            if (mine) rawCover = cover.slice();
             applyRockCover(delta, this.rest, this.grid.nx, this.grid.ny, this.grid.dx, objects, cover);
           }
         } catch {
           /* unreadable save: show their beach untouched */
         }
+      } else if (mine) {
+        rawDelta = delta.slice();
       }
-      if (this.entries.get(e.index) !== e) return; // the shore changed meanwhile
-      e.data = { delta, objects, updatedAt: saved?.updatedAt ?? e.beach.updatedAt };
+      if (this.entries.get(e.index) !== e || e.dirty || e.saving) return; // the shore changed or user started editing
+      e.data = {
+        delta,
+        ...(rawDelta ? { rawDelta } : {}),
+        ...(rawCover ? { rawCover } : {}),
+        ...(saved?.epoch !== undefined ? { epoch: saved.epoch } : mine ? { epoch: 0 } : {}),
+        objects,
+        updatedAt: saved?.updatedAt ?? e.beach.updatedAt,
+      };
+      if (e.sim) e.sim.loadDelta(rawDelta ?? delta, objects, rawCover);
       if (e.slot) this.repaint(e);
       else if (e.index >= this.win[0] && e.index <= this.win[1]) this.makeSlot(e);
     })().finally(() => (e.loading = undefined));
@@ -483,6 +577,11 @@ export class NeighborView {
     label.className = 'neighbor-tag';
     label.innerHTML = `<span class="name"></span>`;
     label.querySelector('.name')!.textContent = this.title(e.beach);
+    const yours = document.createElement('span');
+    yours.className = 'yours';
+    yours.textContent = 'yours';
+    yours.hidden = true;
+    label.appendChild(yours);
     const star = document.createElement('button');
     star.type = 'button';
     star.className = 'fav';
@@ -495,7 +594,7 @@ export class NeighborView {
     ask.addEventListener('click', () => void this.askFromTag(e));
     label.appendChild(ask);
     this.uiRoot.appendChild(label);
-    e.slot = { renderer, objects, label, star, ask };
+    e.slot = { renderer, objects, label, yours, star, ask };
     this.paintStar(e);
     this.paintAsk(e);
     this.repaint(e);
@@ -504,7 +603,9 @@ export class NeighborView {
 
   private paintStar(e: Entry): void {
     if (!e.slot) return;
-    e.slot.star.hidden = !this.account.user;
+    const mine = !!this.ownedBeach(e.beach);
+    e.slot.yours.hidden = !mine;
+    e.slot.star.hidden = !this.account.user || mine;
     const on = this.favorites.has(e.beach.code);
     e.slot.star.textContent = on ? '★' : '☆';
     e.slot.star.classList.toggle('on', on);
@@ -581,8 +682,350 @@ export class NeighborView {
     const s = e.slot;
     const d = e.data;
     if (!s || !d) return;
-    s.objects.setStatic(d.objects, (x, y) => this.heightAt(d.delta, x, y));
+    const preview = e.dragPreview;
+    const objs = preview
+      ? d.objects.map((o) => (o.id === preview.id ? { ...o, x: preview.x, y: preview.y } : o))
+      : d.objects;
+    s.objects.setStatic(objs, (x, y) => this.heightAt(d.delta, x, y) + (preview && Math.abs(x - preview.x) < 1e-4 && Math.abs(y - preview.y) < 1e-4 ? 0.12 : 0));
     this.paint(s.renderer, d.delta);
+  }
+
+  /** Sync an entry's display `data` from its active local `BeachSim` and redraw its slot. */
+  private syncFromSim(e: Entry): void {
+    const sim = e.sim;
+    if (!sim || !e.data) return;
+    const n = this.grid.nx * this.grid.ny;
+    if (e.data.delta.length !== n) e.data.delta = new Float32Array(n);
+    const delta = e.data.delta;
+    const sand = sim.sand;
+    const rest = this.rest;
+    for (let k = 0; k < n; k++) delta[k] = sand[k] - rest[k];
+    e.data.objects = sim.objects.persisted();
+    if (e.slot) this.repaint(e);
+  }
+
+  /** Lazily spin up a local BeachSim for an owned neighbor entry so it can be edited directly. */
+  private ensureSim(e: Entry): BeachSim | null {
+    if (!this.ownedBeach(e.beach)) return null;
+    if (!e.data) {
+      const z = new Float32Array(this.grid.nx * this.grid.ny);
+      e.data = { delta: z, rawDelta: z.slice(), epoch: 0, objects: [], updatedAt: e.beach.updatedAt };
+    }
+    if (!e.sim) {
+      e.sim = new BeachSim(this.grid, this.seed, {
+        waves: false,
+        tide: false,
+        erosion: false,
+        healing: false,
+        seep: false,
+      });
+      e.sim.loadDelta(e.data.rawDelta ?? e.data.delta, e.data.objects, e.data.rawCover);
+      e.editAcc = 0;
+    }
+    return e.sim;
+  }
+
+  private entryByBeachId(beachId: string): Entry | null {
+    for (const e of this.entries.values()) {
+      if (this.ownedBeach(e.beach)?.id === beachId) return e;
+    }
+    return null;
+  }
+
+  /** Raycast against all currently drawn *owned* neighbor beaches; returns the closest hit. */
+  pickOwned(ray: Ray): OwnedPick | null {
+    let best: OwnedPick | null = null;
+    let bestD2 = Infinity;
+    const o = ray.origin;
+    const maxZ = this.grid.ny * this.grid.dx;
+    for (const e of this.entries.values()) {
+      if (!e.slot || !e.data) continue;
+      if (e.index === 0 && !this.visiting) continue;
+      const mine = this.ownedBeach(e.beach);
+      if (!mine) continue;
+      const ox = this.xFor(e.index);
+      const delta = e.data.delta;
+      const hit = pickHeightfield(ray, this.grid.dx, (x, z) => {
+        const sx = x - ox + WORLD_SIZE_X / 2;
+        const sy = z - ORIGIN_Z;
+        if (sx < 0 || sx > WORLD_SIZE_X || sy < 0 || sy > maxZ) return NaN;
+        return this.heightAt(delta, sx, sy);
+      });
+      if (!hit) continue;
+      const d2 = (hit.x - o.x) ** 2 + (hit.y - o.y) ** 2 + (hit.z - o.z) ** 2;
+      if (d2 < bestD2) {
+        bestD2 = d2;
+        best = { ...hit, index: e.index, beachId: mine.id, offsetX: ox };
+      }
+    }
+    return best;
+  }
+
+  /** Object under sim coordinates (sx, sy) on an owned neighbor entry. */
+  ownedObjectAt(index: number, sx: number, sy: number): PlacedObject | null {
+    const e = this.entries.get(index);
+    if (!e?.data || !this.ownedBeach(e.beach)) return null;
+    let best: PlacedObject | null = null;
+    let bestD = Infinity;
+    for (const o of e.data.objects) {
+      const reach = o.kind === 'driftwood' ? o.size * 0.5 : Math.max(0.22, Math.min(1, o.size) * 0.9);
+      const d = Math.hypot(o.x - sx, o.y - sy);
+      if (d < reach && d < bestD) {
+        best = o;
+        bestD = d;
+      }
+    }
+    return best;
+  }
+
+  /** Non-wild object count on an owned neighbor entry (for MAX_OBJECTS check). */
+  ownedCount(index: number): number {
+    const e = this.entries.get(index);
+    if (!e?.data) return 0;
+    return e.data.objects.filter((o) => !o.wild).length;
+  }
+
+  /** Live item counts for an edited owned neighbor (null if not locally edited). */
+  itemsOn(beachId: string): Record<string, number> | null {
+    const e = this.entryByBeachId(beachId);
+    if (!e?.sim) return null;
+    return countItems(e.sim.objects.persisted());
+  }
+
+  /** Live brush stroke on an owned neighbor beach. */
+  beginStroke(index: number, sx: number, sy: number, r: number, mode: BrushMode): void {
+    const e = this.entries.get(index);
+    if (!e) return;
+    const sim = this.ensureSim(e);
+    if (!sim) return;
+    sim.beginStroke(sx, sy, r, mode);
+    sim.stepEdit(1 / SIM_HZ);
+    this.syncFromSim(e);
+  }
+
+  moveStroke(index: number, sx: number, sy: number, r: number): void {
+    const e = this.entries.get(index);
+    if (!e?.sim) return;
+    e.sim.moveStroke(sx, sy, r);
+  }
+
+  endStroke(index: number): void {
+    const e = this.entries.get(index);
+    if (!e?.sim) return;
+    e.sim.endStroke();
+    this.syncFromSim(e);
+    this.markOwnedDirty(e);
+  }
+
+  cancelStroke(index: number): void {
+    const e = this.entries.get(index);
+    if (!e?.sim) return;
+    e.sim.cancelStroke();
+    this.syncFromSim(e);
+  }
+
+  placeObject(index: number, obj: Omit<PlacedObject, 'id'>): PlacedObject | null {
+    const e = this.entries.get(index);
+    if (!e) return null;
+    const sim = this.ensureSim(e);
+    if (!sim) return null;
+    const placed = sim.placeObject(obj);
+    sim.stepEdit(1 / SIM_HZ);
+    this.syncFromSim(e);
+    this.markOwnedDirty(e);
+    return placed;
+  }
+
+  moveObject(index: number, id: number, sx: number, sy: number): PlacedObject | null {
+    const e = this.entries.get(index);
+    if (!e) return null;
+    const sim = this.ensureSim(e);
+    if (!sim) return null;
+    e.dragPreview = null;
+    const moved = sim.moveObject(id, sx, sy);
+    sim.stepEdit(1 / SIM_HZ);
+    this.syncFromSim(e);
+    this.markOwnedDirty(e);
+    return moved;
+  }
+
+  removeObject(index: number, id: number): PlacedObject | null {
+    const e = this.entries.get(index);
+    if (!e) return null;
+    const sim = this.ensureSim(e);
+    if (!sim) return null;
+    e.dragPreview = null;
+    const removed = sim.removeObject(id);
+    if (removed) {
+      sim.stepEdit(1 / SIM_HZ);
+      this.syncFromSim(e);
+      this.markOwnedDirty(e);
+    }
+    return removed;
+  }
+
+  previewDrag(index: number, id: number | null, sx = 0, sy = 0): void {
+    const e = this.entries.get(index);
+    if (!e) return;
+    e.dragPreview = id === null ? null : { id, x: sx, y: sy };
+    if (e.slot) this.repaint(e);
+  }
+
+  undo(beachId: string): boolean {
+    const e = this.entryByBeachId(beachId);
+    if (!e?.sim) return false;
+    const ok = e.sim.undoStroke(true);
+    if (ok) {
+      e.sim.stepEdit(1 / SIM_HZ);
+      this.syncFromSim(e);
+      this.markOwnedDirty(e);
+    }
+    return ok;
+  }
+
+  redo(beachId: string): boolean {
+    const e = this.entryByBeachId(beachId);
+    if (!e?.sim) return false;
+    const ok = e.sim.redoStroke(true);
+    if (ok) {
+      e.sim.stepEdit(1 / SIM_HZ);
+      this.syncFromSim(e);
+      this.markOwnedDirty(e);
+    }
+    return ok;
+  }
+
+  /** Smooth (reset) one of your visible neighbor beaches. */
+  resetOwned(beachId: string): boolean {
+    const e = this.entryByBeachId(beachId);
+    if (!e) return false;
+    const sim = this.ensureSim(e);
+    if (!sim) return false;
+    sim.resetBeach();
+    this.syncFromSim(e);
+    this.markOwnedDirty(e, 1500);
+    return true;
+  }
+
+  totalUndoCount(): number {
+    let n = 0;
+    for (const e of this.entries.values()) if (e.sim) n += e.sim.undo.undoCount;
+    return n;
+  }
+
+  totalRedoCount(): number {
+    let n = 0;
+    for (const e of this.entries.values()) if (e.sim) n += e.sim.undo.redoCount;
+    return n;
+  }
+
+  /** Show the brush hover/active ring on one owned neighbor slot (or clear all with index = null). */
+  setBrush(index: number | null, x: number, z: number, r: number, alpha: number, color: [number, number, number]): void {
+    if (this.brushIndex !== null && this.brushIndex !== index) {
+      this.entries.get(this.brushIndex)?.slot?.renderer.setBrush(0, 0, 1, 0, color);
+    }
+    this.brushIndex = index;
+    if (index !== null) {
+      this.entries.get(index)?.slot?.renderer.setBrush(x, z, r, alpha, color);
+    }
+  }
+
+  /** Whether any edited owned neighbor beach has unsaved changes or an in-flight save. */
+  hasPendingSaves(): boolean {
+    for (const e of this.entries.values()) if (e.dirty || e.saving) return true;
+    return false;
+  }
+
+  private markOwnedDirty(e: Entry, delayMs = EDIT_SAVE_MS): void {
+    if (!this.account.user) return;
+    e.dirty = true;
+    this.onOwnedChanged?.();
+    if (e.saveTimer) window.clearTimeout(e.saveTimer);
+    e.saveTimer = window.setTimeout(() => void this.saveEntry(e, false), delayMs);
+  }
+
+  /** Flush all dirty edited owned neighbor beaches to the server. */
+  async flushAll(keepalive = false): Promise<void> {
+    const tasks: Promise<void>[] = [];
+    for (const e of this.entries.values()) {
+      if (e.dirty || e.saving) tasks.push(this.saveEntry(e, keepalive));
+    }
+    if (tasks.length) await Promise.all(tasks);
+  }
+
+  private async saveEntry(e: Entry, keepalive: boolean): Promise<void> {
+    if (!this.account.user || !e.sim) return;
+    const mine = this.ownedBeach(e.beach);
+    if (!mine) return;
+    if (e.saveTimer) {
+      window.clearTimeout(e.saveTimer);
+      e.saveTimer = 0;
+    }
+    while (e.saving) await e.saving;
+    if (!e.dirty) return;
+    const forUser = this.account.user.id;
+    const sim = e.sim;
+    const p = (async () => {
+      try {
+        const delta = sim.sandDelta();
+        const cover = sim.sandCover();
+        const objects = sim.objects.persisted();
+        const bytes = await encodeSand(delta, this.grid.nx, this.grid.ny, objects, cover);
+        if (this.account.user?.id !== forUser) return;
+        const items = countItems(objects);
+        const loc = mine.location || e.beach.location || 'santa-monica';
+        const updatedAt = await this.account.saveBeach(
+          bytes,
+          loc,
+          this.grid.nx,
+          this.grid.ny,
+          keepalive,
+          items,
+          e.data?.epoch,
+          mine.id,
+        );
+        e.dirty = false;
+        if (e.data) {
+          e.data.updatedAt = updatedAt;
+          e.data.rawDelta = delta;
+          e.data.rawCover = cover;
+        }
+        e.beach.updatedAt = updatedAt;
+        mine.updatedAt = updatedAt;
+        mine.items = items;
+        this.onOwnedChanged?.();
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 409) {
+          e.dirty = false;
+          e.sim = undefined;
+          e.data = undefined;
+          void this.fetch(e);
+          this.onSaveError?.('restored');
+          return;
+        }
+        if (err instanceof ApiError && err.status === 426) {
+          reportError('sync', err, { source: 'neighborEdit:save', meta: { status: 426 } });
+          this.onSaveError?.('outdated');
+          return;
+        }
+        if (err instanceof ApiError && err.status === 413) {
+          reportError('sync', err, { source: 'neighborEdit:save', meta: { status: 413 } });
+          this.onSaveError?.('tooBig');
+          return;
+        }
+        reportError('sync', err, {
+          source: 'neighborEdit:save',
+          meta: err instanceof ApiError ? { status: err.status } : undefined,
+        });
+        e.saveTimer = window.setTimeout(() => void this.saveEntry(e, false), 30000);
+      }
+    })();
+    e.saving = p;
+    try {
+      await p;
+    } finally {
+      e.saving = null;
+    }
   }
 
   /** Sand height at a world point on a drawn beach along the shore, or NaN if it isn't on one. */
@@ -623,7 +1066,8 @@ export class NeighborView {
   /** Pack their sand with still water at the current tide into a field frame. */
   private paint(r: BeachRenderer, delta: Float32Array): void {
     const n = this.grid.nx * this.grid.ny;
-    const buf = new Float32Array(n * 4);
+    if (!this.paintBuf || this.paintBuf.length !== n * 4) this.paintBuf = new Float32Array(n * 4);
+    const buf = this.paintBuf;
     for (let k = 0, o = 0; k < n; k++, o += 4) {
       const sand = this.rest[k] + delta[k];
       const water = Math.max(0, this.tide - sand);
@@ -643,6 +1087,25 @@ export class NeighborView {
   /** Per frame: which beaches to draw, shared lighting/sea, animated neighbor waves, name tags. */
   update(p: Palette, camForward: Vector3, time: number, simTime: number, tide: number, amp: number): void {
     this.tide = tide;
+    const now = performance.now();
+    const dt = this.lastUpdateAt ? Math.min(0.1, (now - this.lastUpdateAt) / 1000) : 1 / 60;
+    this.lastUpdateAt = now;
+    // Step any owned neighbor currently being stroked or easing an undo/redo
+    const stepDt = 1 / SIM_HZ;
+    for (const e of this.entries.values()) {
+      if (!e.sim || (!e.sim.strokeActive && !e.sim.easingActive)) continue;
+      e.editAcc = (e.editAcc ?? 0) + dt;
+      let stepped = false;
+      let n = 0;
+      while (e.editAcc >= stepDt && n < 2) {
+        e.sim.stepEdit(stepDt);
+        e.editAcc -= stepDt;
+        n++;
+        stepped = true;
+      }
+      if (n === 2) e.editAcc = 0;
+      if (stepped) this.syncFromSim(e);
+    }
     if (!this.entries.size) {
       this.win = [0, 0];
       this.syncSeams();
@@ -681,7 +1144,6 @@ export class NeighborView {
     // restore button stays visible; otherwise avoid the place card, shore bar,
     // and both bottom HUD clusters. Measure at most every 250 ms to avoid
     // per-frame reflow.
-    const now = performance.now();
     if (now - this.keepOutAt > 250) {
       this.keepOutAt = now;
       const sel = this.uiRoot.classList.contains('ui-collapsed')

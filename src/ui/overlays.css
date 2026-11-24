@@ -315,28 +315,104 @@ a.action {
   touch-action: pan-y;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
+  padding-top: 0;
+}
+
+.sheet-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  margin: 0 -22px 10px;
+  padding: 10px 16px 10px 22px;
+  background: var(--ui-bg);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+}
+
+.sheet-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sheet-tabs {
+  display: flex;
+  flex: 1;
+  gap: 4px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.sheet-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.sheet-tabs button[role='tab'] {
+  position: relative;
+  flex: 1 0 auto;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  color: inherit;
+  background: transparent;
+  border: none;
+  border-radius: 999px;
+  padding: 7px 12px;
+  min-height: 36px;
+  opacity: 0.65;
+  cursor: pointer;
+  white-space: nowrap;
+  touch-action: manipulation;
+}
+
+.sheet-tabs button[role='tab'].on {
+  opacity: 1;
+  background: var(--ui-fg);
+  color: var(--ui-bg);
+}
+
+.sheet-tabs button[role='tab']:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+.sheet-tabs .tab-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #e06a4a;
+  margin-left: 5px;
+  vertical-align: middle;
+}
+
+.sheet-tabs .tab-dot[hidden] {
+  display: none;
 }
 
 .sheet-close {
-  position: sticky;
-  top: 0;
-  float: right;
-  width: 40px;
-  height: 40px;
-  margin: -6px -12px 0 0;
+  flex: none;
+  width: 38px;
+  height: 38px;
   border: none;
   border-radius: 50%;
-  background: var(--ui-bg);
+  background: transparent;
   color: inherit;
   font-size: 26px;
   line-height: 1;
   cursor: pointer;
-  z-index: 1;
   touch-action: manipulation;
 }
 
 .sheet-close:focus-visible {
   outline: 2px solid currentColor;
+}
+
+.sheet-pane[hidden] {
+  display: none;
 }
 
 .chips button.near {
@@ -972,3 +1048,177 @@ body.ambient-idle .shore-info {
 .checkpoints .cp-thumb:not([src]) {
   visibility: visible;
 }
+
+/* ---------------------------------------------------------- beach picker & card */
+
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 8px;
+}
+
+.settings-section .status {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.settings-section .err {
+  font-size: 12px;
+  color: #b0414a;
+}
+
+.beach-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.beach-picker.compact {
+  gap: 5px;
+}
+
+.beach-pill {
+  font: inherit;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  color: inherit;
+  background: transparent;
+  border: 1.5px solid color-mix(in srgb, currentColor 45%, transparent);
+  border-radius: 999px;
+  padding: 5px 12px;
+  min-height: 34px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.beach-pill.on {
+  background: var(--ui-fg);
+  color: var(--ui-bg);
+  border-color: var(--ui-fg);
+}
+
+.beach-pill.add {
+  border-style: dashed;
+  opacity: 0.8;
+}
+
+.beach-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: color-mix(in srgb, currentColor 6%, transparent);
+}
+
+.beach-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.beach-card-title {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.beach-card-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 0;
+}
+
+.beach-card-acts .action {
+  flex: 0 1 auto;
+}
+
+.code-block {
+  padding-top: 2px;
+}
+
+/* ---------------------------------------------------------- visual shore connector */
+
+.shore-connect {
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: color-mix(in srgb, currentColor 6%, transparent);
+}
+
+.stretch-chain {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.stretch-chip {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: inherit;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  border: 1.5px solid color-mix(in srgb, currentColor 30%, transparent);
+  border-radius: 10px;
+  padding: 5px 10px;
+  min-height: 34px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.stretch-chip.on {
+  background: var(--ui-fg);
+  color: var(--ui-bg);
+  border-color: var(--ui-fg);
+}
+
+.stretch-unlink {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1.5px solid color-mix(in srgb, currentColor 35%, transparent);
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.stretch-unlink:hover {
+  opacity: 1;
+}
+
+.connect-select {
+  font: inherit;
+  font-size: 12px;
+  color: inherit;
+  background: transparent;
+  border: 1.5px dashed color-mix(in srgb, currentColor 45%, transparent);
+  border-radius: 999px;
+  padding: 4px 8px;
+  min-height: 32px;
+  max-width: 110px;
+  cursor: pointer;
+  opacity: 0.85;
+}
+
+/* ---------------------------------------------------------- owned neighbor badge */
+
+.neighbor-tag .yours {
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 14%, transparent);
+  opacity: 0.8;
+}
+
+.neighbor-tag .yours[hidden] {
+  display: none;
+}
+

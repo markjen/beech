@@ -91,14 +91,42 @@ const sands = await b.evaluate(async (ids) => {
 check(aNow > secondDug && bNow > bDug, `both devices dug at the same time (A ${secondDug.toFixed(0)}->${aNow.toFixed(0)}, B ${bDug.toFixed(0)}->${bNow.toFixed(0)})`);
 check(sands[0] > 0 && sands[1] > 0, 'each beach saved separately');
 
-// each beach has its own code and neighbors; connect the two (yours: no asking)
+// each beach has its own code and neighbors; connect the two in 1 click on the Shore tab (no code copying)
 const codes = await a.evaluate(() => window.__beech.account().beaches.map((x) => ({ id: x.id, code: x.code })));
 const secondCode = codes.find((c) => c.id === second).code;
 check((await a.evaluate(() => window.__beech.neighbors().state?.code)) === secondCode, "A's neighbor panel is for the second beach");
-const r = await b.evaluate((c) => window.__beech.neighbors().api.set('left', c), secondCode);
-check(r.status === 'linked', 'B links the home beach to the second one at once');
-await b.evaluate(() => window.__beech.neighbors().refresh());
-check((await b.evaluate(() => window.__beech.neighbors().beachAt(1)?.code)) === secondCode, 'on B the second beach is next door');
+await b.evaluate(() => window.__beech.sheet.show('shore'));
+await b.waitForSelector(`select[data-connect-beach="${home}"][data-connect-side="left"]`, { timeout: 8000 });
+await b.selectOption(`select[data-connect-beach="${home}"][data-connect-side="left"]`, secondCode);
+await b.waitForFunction((c) => window.__beech.neighbors().beachAt(1)?.code === c, secondCode, { timeout: 15000 });
+check((await b.evaluate(() => window.__beech.neighbors().beachAt(1)?.code)) === secondCode, 'on B the second beach is next door via 1-click connect');
+await b.evaluate(() => window.__beech.sheet.hide());
+
+// on B (where home is selected/active), pan over to the adjacent second beach and dig directly on it:
+// writes must save automatically into the second beach, not home!
+const beforeSecondUpdated = await b.evaluate((id) => window.__beech.account().beaches.find((x) => x.id === id)?.updatedAt ?? 0, second);
+await b.evaluate(() => {
+  const nv = window.__beech.neighbors();
+  window.__beech.cam.goTo(nv.xFor(1), true);
+});
+await b.waitForFunction(() => window.__beech.neighbors().snapshot('left') !== null, null, { timeout: 15000 });
+await b.waitForTimeout(400);
+await b.click('button[data-tool="sand"]');
+await b.mouse.move(420, 460);
+await b.mouse.down();
+for (let i = 0; i < 18; i++) {
+  await b.mouse.move(420 + i * 8, 460);
+  await b.waitForTimeout(25);
+}
+await b.mouse.up();
+await b.waitForTimeout(400);
+await b.evaluate(() => window.__beech.neighbors().flushAll());
+const afterSecondUpdated = await b.evaluate(async (id) => {
+  await window.__beech.account().loadBeaches();
+  return window.__beech.account().beaches.find((x) => x.id === id)?.updatedAt ?? 0;
+}, second);
+check((await b.evaluate(() => window.__beech.account().beachId)) === home, 'B still has home selected while editing the adjacent beach');
+check(afterSecondUpdated > beforeSecondUpdated, `editing the adjacent beach saved automatically into the second beach (${beforeSecondUpdated} -> ${afterSecondUpdated})`);
 
 // device A remembers its choice after a reload
 await a.reload();

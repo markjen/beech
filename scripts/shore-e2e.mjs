@@ -116,7 +116,7 @@ check(await page.evaluate(() => window.__beech.neighbors().ownVisible), 'home ag
 }
 
 // visit Dot by code
-await page.evaluate(() => window.__beech.sheet.show());
+await page.evaluate(() => window.__beech.sheet.show('shore'));
 await page.fill('#visit-code', codes.dot.toLowerCase());
 await page.click('button[data-act="visit"]');
 await page.waitForFunction(() => window.__beech.neighbors().visiting !== null, null, { timeout: 15000 });
@@ -136,7 +136,7 @@ check((await page.evaluate(() => window.__beech.info().undoCount)) === d0, "digg
 await page.click('.shore-bar .sb-fav');
 await page.waitForFunction((c) => window.__beech.neighbors().favorites.has(c), codes.dot, { timeout: 5000 });
 // favorites list in the sheet
-await page.evaluate(() => window.__beech.sheet.show());
+await page.evaluate(() => window.__beech.sheet.show('shore'));
 await page.waitForSelector(`button[data-act="visit-${codes.cleo}"]`, { timeout: 5000 });
 check(await page.isVisible(`button[data-act="visit-${codes.dot}"]`), 'both starred beaches are in the favorites list');
 await page.click(`button[data-act="visit-${codes.cleo}"]`);
