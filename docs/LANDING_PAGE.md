@@ -10,10 +10,10 @@ and it sends them on into the game.
 
 | URL | What |
 |---|---|
-| `/` (on `beech.games`) | The landing page: a full-width hero splash illustration (`public/hero-beach.jpg`, 2048×1152) above the headline ("Shape the sand, stay for the tide."), **Play now on web** → `https://play.beech.games`, **Google Play** → `https://play.google.com/store/apps/details?id=app.beech.beach`, **iOS coming soon** badge, How to play → `/guide`, "What you do", "Where to play", "What's new", "Talk to us" (Discord), footer. |
+| `/` (on `beech.games`) | The landing page: a full-width hero splash illustration (`public/hero-beach.jpg`, 2048×1152) above the headline ("Shape the sand, stay for the tide."), **Play now on web** → `https://play.beech.games`, **Google Play** → `https://play.google.com/store/apps/details?id=app.beech.beach`, **iOS coming soon** badge, How to play → `/guide`, "What you do", "What's new", a live Dawn/Day/Golden/Dusk diorama preview ("A beach that follows the day.") lower on the page, "Where to play", "Talk to us" (Discord), footer. |
 | `/landing` (every other host) | The same page, for preview before the domain flips — e.g. `https://play.beech.games/landing`, or `http://localhost:8787/landing` in development. |
 | `/hero-beach.jpg` | The hero splash (JPEG, quality 83, ~172 KB): a sunny illustrated beach — red-and-white lighthouse, beach hut, striped parasol, sandcastle, shells — drawn as a fancy version of a beach you could actually build in the game. An illustration, not a screenshot or an in-game render. It is also the `og:image` / `twitter:image`. |
-| `/landing-assets/*` | Clean UI-free 3D beach diorama renders (`hero-day.webp`, `hero-golden.webp`, `hero-dawn.webp`, `hero-dusk.webp`, `og-card.jpg`) captured directly from the beech engine with no test account or HUD. No longer referenced by the landing page since the hero splash replaced the time-of-day diorama showcase; kept for now, remove in a follow-up if nothing else uses them. |
+| `/landing-assets/*` | Clean UI-free 3D beach diorama renders (`hero-day.webp`, `hero-golden.webp`, `hero-dawn.webp`, `hero-dusk.webp`, `og-card.jpg`) captured directly from the beech engine with no test account or HUD. The four `hero-*.webp` renders are the lower-page diorama preview ("A beach that follows the day.", after "What's new", before "Where to play") with the Dawn/Day/Golden/Dusk mood picker; its sky tint follows the picked mood. |
 | `/guide`, `/guide/releases` | The user guide and release notes; they keep working on the landing hosts too, and the landing page links to them. |
 | `/privacy.html` (`/privacy` → 301) | The privacy policy (`public/privacy.html`); it answers on the landing hosts too, and on every other host as a static file. The footer links it. |
 
@@ -68,7 +68,9 @@ Environment (server.ts): `LANDING_URL` (default `https://beech.games`),
 Server tests: `server/test/rootApp.test.ts`, "the landing page and host
 routing" — landing host serves the page, www 301s, no game API on a landing
 host, `/healthz` and `/guide` still work there, `/hero-beach.jpg` serves on
-a landing host (200, image/jpeg) and the landing HTML shows it, `/landing`
+a landing host (200, image/jpeg) and the landing HTML shows it, the
+landing HTML still contains the time-of-day diorama after "What's new"
+and before "Where to play", `/landing`
 previews on the game host, the game host still serves the game at `/`.
 
 ## Turning on the domain (owner)

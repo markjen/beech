@@ -177,9 +177,18 @@ describe('the landing page and host routing', () => {
     const html = await (await on('/', 'beech.games')).text();
     expect(html).toContain('<img src="/hero-beach.jpg"');
     expect(html).toContain('https://beech.games/hero-beach.jpg');
-    // the old time-of-day diorama is gone: no mood picker, no diorama frames
-    expect(html).not.toContain('data-set-mood');
-    expect(html).not.toContain('hero-day.webp');
+    // the time-of-day diorama is still there, lower on the page: after
+    // What's new, before Where to play
+    expect(html).toContain('id="diorama"');
+    expect(html).toContain('data-set-mood');
+    expect(html).toContain('hero-day.webp');
+    expect(html).toContain('A beach that follows the day.');
+    const updatesAt = html.indexOf('id="updates-heading"');
+    const dioramaAt = html.indexOf('id="diorama"');
+    const playAt = html.indexOf('id="play-heading"');
+    expect(updatesAt).toBeGreaterThan(-1);
+    expect(dioramaAt).toBeGreaterThan(updatesAt);
+    expect(playAt).toBeGreaterThan(dioramaAt);
   });
 
   it('the privacy policy answers on a landing host, and /privacy redirects to it', async () => {

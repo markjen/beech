@@ -2,7 +2,7 @@
 // every other host, so it works before the domain does).
 //
 // Server-rendered HTML with inline CSS and a tiny progressive-enhancement
-// script for the hero time-of-day showcase. Numbers that the server decides
+// script for the time-of-day diorama showcase, lower on the page. Numbers that the server decides
 // are read from the same constants the server and the guide use, so the page
 // can't drift from the game.
 //
@@ -445,6 +445,124 @@ body::before {
 }
 .hero-sublinks a:hover { color: var(--sea); text-decoration: underline; }
 
+/* Time-of-day atmosphere for the diorama section (matched to src/palette.ts) */
+.diorama-section {
+  --diorama-sky-top: #b8e0ee;
+  --diorama-sky-mid: #e6f2f1;
+  --diorama-sky-bottom: #fbf4e7;
+  background: linear-gradient(180deg, var(--diorama-sky-top) 0%, var(--diorama-sky-mid) 48%, var(--diorama-sky-bottom) 100%);
+  transition: background 450ms ease;
+  border-radius: 26px;
+}
+.diorama-section[data-mood="dawn"] {
+  --diorama-sky-top: #c2cce8;
+  --diorama-sky-mid: #f5d8ce;
+}
+.diorama-section[data-mood="golden"] {
+  --diorama-sky-top: #f2be9d;
+  --diorama-sky-mid: #fce5be;
+}
+.diorama-section[data-mood="dusk"] {
+  --diorama-sky-top: #8f95bd;
+  --diorama-sky-mid: #e8bcb8;
+}
+@media (prefers-color-scheme: dark) {
+  .diorama-section {
+    --diorama-sky-top: #1b364a;
+    --diorama-sky-mid: #1a2a3b;
+    --diorama-sky-bottom: #131b26;
+  }
+  .diorama-section[data-mood="dawn"] { --diorama-sky-top: #26314c; --diorama-sky-mid: #312c3c; }
+  .diorama-section[data-mood="golden"] { --diorama-sky-top: #46322b; --diorama-sky-mid: #2a2427; }
+  .diorama-section[data-mood="dusk"] { --diorama-sky-top: #1d2742; --diorama-sky-mid: #282436; }
+}
+.diorama-section .hero-stage {
+  max-width: 880px;
+  margin: 0 auto;
+}
+
+/* Hero 3D Diorama Stage */
+.hero-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.diorama-frame {
+  position: relative;
+  aspect-ratio: 3 / 2;
+  border-radius: 26px;
+  overflow: hidden;
+  background: var(--bg-deep);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  box-shadow: var(--shadow-lg);
+}
+@media (prefers-color-scheme: dark) {
+  .diorama-frame { border-color: rgba(255, 255, 255, 0.12); }
+}
+.diorama-frame img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 550ms ease;
+}
+.diorama-frame img.is-active { opacity: 1; }
+
+.stage-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  padding: 0 4px;
+}
+.stage-caption {
+  font-size: 13px;
+  color: var(--ink-soft);
+  margin: 0;
+  white-space: nowrap;
+}
+.mood-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-sm);
+}
+.mood-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-soft);
+  font: 600 12px/1 var(--font-sans);
+  cursor: pointer;
+  transition: background 180ms ease, color 180ms ease;
+}
+.mood-btn:hover { color: var(--ink); }
+.mood-btn[aria-pressed="true"] {
+  background: var(--bg-deep);
+  color: var(--ink);
+}
+.mood-swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.mood-swatch.dawn { background: linear-gradient(135deg, #a9b8e0, #f7d2c4); }
+.mood-swatch.day { background: linear-gradient(135deg, #8fd0e6, #f6e3c3); }
+.mood-swatch.golden { background: linear-gradient(135deg, #f0a98f, #fde3b3); }
+.mood-swatch.dusk { background: linear-gradient(135deg, #4a4f85, #e59a9a); }
+
 /* Animated coastal shoreline divider at the base of the hero */
 .hero-waves {
   position: absolute;
@@ -474,7 +592,7 @@ body::before {
 }
 @media (prefers-reduced-motion: reduce) {
   .wave-back, .wave-front { animation: none; }
-  .btn-primary, .store-btn { transition: none; }
+  .diorama-frame img, .btn-primary, .store-btn { transition: none; }
 }
 
 /* ---------- Main Sections ---------- */
@@ -912,6 +1030,45 @@ footer nav a:hover { color: var(--sea); text-decoration: underline; }
     </div>
   </section>
 
+  <section class="section" id="updates" aria-labelledby="updates-heading">
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">Fresh off the tide</p>
+        <h2 id="updates-heading">What’s new</h2>
+      </div>
+      <a class="section-link" href="/guide/releases">All release notes →</a>
+    </div>
+    <div class="releases">
+      ${whatsNew}
+    </div>
+  </section>
+
+  <section class="section diorama-section" id="diorama" data-mood="day" aria-labelledby="diorama-heading">
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">Live preview</p>
+        <h2 id="diorama-heading">A beach that follows the day.</h2>
+        <p class="section-sub">The same beach, under a real sky — pick a time of day and watch the light change.</p>
+      </div>
+    </div>
+    <div class="hero-stage">
+      <div class="diorama-frame">
+        <img data-mood="day" class="is-active" src="/landing-assets/hero-day.webp" alt="beech 3D beach diorama in daylight with a lighthouse, beach hut, striped parasol, sandcastle, golden sand dollar, and turquoise waves" width="1200" height="800" fetchpriority="high" decoding="async">
+        <img data-mood="golden" src="/landing-assets/hero-golden.webp" alt="beech 3D beach diorama in warm golden hour sunlight" width="1200" height="800" loading="lazy" decoding="async">
+        <img data-mood="dawn" src="/landing-assets/hero-dawn.webp" alt="beech 3D beach diorama in soft pastel dawn light" width="1200" height="800" loading="lazy" decoding="async">
+        <img data-mood="dusk" src="/landing-assets/hero-dusk.webp" alt="beech 3D beach diorama in rose and indigo dusk light" width="1200" height="800" loading="lazy" decoding="async">
+      </div>
+      <div class="stage-bar">
+        <p class="stage-caption">In-game · live sky &amp; tide</p>
+        <div class="mood-picker" role="group" aria-label="Preview time of day">
+          <button id="mood-dawn" type="button" class="mood-btn" data-set-mood="dawn" aria-pressed="false"><span class="mood-swatch dawn" aria-hidden="true"></span>Dawn</button>
+          <button id="mood-day" type="button" class="mood-btn" data-set-mood="day" aria-pressed="true"><span class="mood-swatch day" aria-hidden="true"></span>Day</button>
+          <button id="mood-golden" type="button" class="mood-btn" data-set-mood="golden" aria-pressed="false"><span class="mood-swatch golden" aria-hidden="true"></span>Golden</button>
+          <button id="mood-dusk" type="button" class="mood-btn" data-set-mood="dusk" aria-pressed="false"><span class="mood-swatch dusk" aria-hidden="true"></span>Dusk</button>
+        </div>
+      </div>
+  </section>
+
   <section class="section" id="play" aria-labelledby="play-heading">
     <div class="play-band">
       <div class="play-band-head">
@@ -972,19 +1129,6 @@ footer nav a:hover { color: var(--sea); text-decoration: underline; }
     </div>
   </section>
 
-  <section class="section" id="updates" aria-labelledby="updates-heading">
-    <div class="section-head">
-      <div>
-        <p class="eyebrow">Fresh off the tide</p>
-        <h2 id="updates-heading">What’s new</h2>
-      </div>
-      <a class="section-link" href="/guide/releases">All release notes →</a>
-    </div>
-    <div class="releases">
-      ${whatsNew}
-    </div>
-  </section>
-
   <section class="section" aria-labelledby="community-heading">
     <div class="community">
       <div>
@@ -1020,6 +1164,21 @@ footer nav a:hover { color: var(--sea); text-decoration: underline; }
   </nav>
 </footer>
 
+
+<script>
+(() => {
+  const diorama = document.getElementById('diorama');
+  if (!diorama) return;
+  const imgs = diorama.querySelectorAll('.diorama-frame img[data-mood]');
+  const btns = diorama.querySelectorAll('[data-set-mood]');
+  const setMood = (mood) => {
+    diorama.dataset.mood = mood;
+    imgs.forEach((img) => img.classList.toggle('is-active', img.dataset.mood === mood));
+    btns.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.setMood === mood)));
+  };
+  btns.forEach((b) => b.addEventListener('click', () => setMood(b.dataset.setMood)));
+})();
+</script>
 </body>
 </html>`;
 }
