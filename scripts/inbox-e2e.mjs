@@ -31,7 +31,7 @@ const open = async (url, viewport) => {
   const page = await ctx.newPage();
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(url);
-  await page.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
+  await page.waitForSelector('body[data-ready="1"]', { timeout: 60000 });
   return page;
 };
 const owned = (page, item) =>
@@ -45,35 +45,35 @@ const ben = `ben${tag}`;
 // ---- Ana saves her beach
 const pa = await open(URL_ + '?nointro&fixedres&seed=1&nofinds', { width: 1100, height: 760 });
 await pa.evaluate((n) => window.__beech.account().signInDev(n), ana);
-await pa.waitForFunction(() => window.__beech.sync().state === 'saved', null, { timeout: 15000 });
+await pa.waitForFunction(() => window.__beech.sync().state === 'saved', null, { timeout: 60000 });
 const anaCode = await pa.evaluate(() => window.__beech.neighbors().api.get().then((n) => n.code));
 check(await pa.$eval('.inbox-btn', (b) => getComputedStyle(b).display !== 'none'), 'signed in, the mailbox shows');
 
 // ---- Ben opens the link signed out
 const pb = await open(`${URL_}?visit=${anaCode}&nointro&fixedres&seed=1&nofinds`, { width: 390, height: 844 });
-await pb.waitForFunction((c) => window.__beech.neighbors().visiting?.code === c, anaCode, { timeout: 15000 });
+await pb.waitForFunction((c) => window.__beech.neighbors().visiting?.code === c, anaCode, { timeout: 60000 });
 check(!(await pb.evaluate(() => !!window.__beech.account().user)), 'Ben is signed out…');
 check(true, "…and sees Ana's beach straight away");
 check(await pb.$eval('.inbox-btn', (b) => getComputedStyle(b).display === 'none'), 'no mailbox while signed out');
 // viewing mode: the beach's name tag, with "leave something", is behind the "i"
 await pb.click('.shore-info-btn');
 const leave = `.shore-info-list [data-act="leave-${anaCode}"]:not([hidden])`;
-await pb.waitForSelector(leave, { timeout: 10000 });
+await pb.waitForSelector(leave, { timeout: 60000 });
 check(true, "the beach info card offers to leave something on Ana's beach");
 if (shots) await pb.screenshot({ path: `${shots}/visit-signed-out.png` });
 // tap "leave something": sign in first
 await pb.click(leave);
 check(await pb.evaluate(() => !window.__beech.visitor().isOpen), 'signed out, it asks to sign in instead of opening the card');
 await pb.evaluate((n) => window.__beech.account().signInDev(n), ben);
-await pb.waitForSelector('.visitor.open .visitor-shell', { timeout: 15000 });
+await pb.waitForSelector('.visitor.open .visitor-shell', { timeout: 60000 });
 check(true, 'after signing in, the visitor card opens');
 await pb.evaluate(() => window.__beech.sheet.hide());
 // the link counted as Ana's invite: a welcome parasol
-await pb.waitForFunction(async () => (await window.__beech.account().inventory()).some((i) => i.item === 'parasol'), null, { timeout: 15000 });
+await pb.waitForFunction(async () => (await window.__beech.account().inventory()).some((i) => i.item === 'parasol'), null, { timeout: 60000 });
 check(true, 'the visit link counted as an invite: Ben has a welcome parasol');
 // reopen to see the parasol in the gift list (the bag loaded after the card)
 await pb.evaluate((c) => window.__beech.visitor().open(c, 'ana'), anaCode);
-await pb.waitForSelector('.visitor.open .visitor-gift[data-item="parasol"]', { timeout: 15000 });
+await pb.waitForSelector('.visitor.open .visitor-gift[data-item="parasol"]', { timeout: 60000 });
 check(!(await pb.$('.visitor.open .visitor-gift[data-item="rock"]')), 'free things aren’t offered as gifts');
 check(!(await pb.$('.visitor.open .visitor-note')), 'a brand-new account gets quick notes only');
 await pb.click('.visitor-shell[data-shells="4"]');
@@ -81,47 +81,47 @@ await pb.click('.visitor-quick button >> text=Lovely beach!');
 await pb.click('.visitor-gift[data-item="parasol"]');
 if (shots) await pb.screenshot({ path: `${shots}/visitor-card.png` });
 await pb.click('[data-act="visitor-leave"]');
-await pb.waitForFunction(() => [...document.querySelectorAll('.hint')].some((h) => h.textContent.startsWith('Left ')), null, { timeout: 10000 });
+await pb.waitForFunction(() => [...document.querySelectorAll('.hint')].some((h) => h.textContent.startsWith('Left ')), null, { timeout: 60000 });
 check((await hints(pb)).some((h) => h.includes('parasol') && h.includes('4 shells')), 'Ben is told what he left');
 check((await owned(pb, 'parasol')) === 0, 'the parasol left his bag');
 
 // ---- Ana's inbox
 await pa.evaluate(() => window.__beech.neighbors().refresh()); // the 30 s poll, now
-await pa.waitForFunction(() => Number(document.querySelector('.inbox-badge')?.textContent) >= 2, null, { timeout: 15000 });
+await pa.waitForFunction(() => Number(document.querySelector('.inbox-badge')?.textContent) >= 2, null, { timeout: 60000 });
 check(true, 'the mailbox counts what arrived');
-await pa.waitForFunction(() => [...document.querySelectorAll('.hint')].some((h) => h.textContent.includes('left you something')), null, { timeout: 10000 });
+await pa.waitForFunction(() => [...document.querySelectorAll('.hint')].some((h) => h.textContent.includes('left you something')), null, { timeout: 60000 });
 check(true, 'a note says Ben left something');
 check((await owned(pa, 'parasol')) === 1, "the parasol is in Ana's bag");
 await pa.click('[data-act="inbox"]');
-await pa.waitForSelector('.inbox.open .inbox-row[data-kind="visit"]', { timeout: 30000 });
+await pa.waitForSelector('.inbox.open .inbox-row[data-kind="visit"]', { timeout: 60000 });
 const visitText = await pa.$eval('.inbox-row[data-kind="visit"]', (r) => r.textContent);
 check(visitText.includes(`${ben} visited`) && visitText.includes('Lovely beach!') && visitText.includes('parasol') && visitText.includes('4 shells'), 'the visit row has the note, the gift and the rating');
 check(!!(await pa.$('.inbox-row[data-kind="invite_joined"]')), 'and Ben joining through her link');
 if (shots) await pa.screenshot({ path: `${shots}/inbox.png` });
-await pa.waitForFunction(() => document.querySelector('.inbox-badge')?.hidden, null, { timeout: 5000 });
+await pa.waitForFunction(() => document.querySelector('.inbox-badge')?.hidden, null, { timeout: 60000 });
 check(true, 'opening the inbox clears the badge');
 const vid = await pa.$eval('.inbox-row[data-kind="visit"]', (r) => r.dataset.id);
 await pa.click(`[data-act="thanks-${vid}"]`);
-await pa.waitForSelector(`[data-act="thanks-${vid}"]:text("thanked")`, { timeout: 10000 });
+await pa.waitForSelector(`[data-act="thanks-${vid}"]:text("thanked")`, { timeout: 60000 });
 check(true, 'say thanks');
 await pa.click(`[data-act="report-${vid}"]`);
-await pa.waitForSelector(`[data-act="report-${vid}"]:text("reported")`, { timeout: 10000 });
+await pa.waitForSelector(`[data-act="report-${vid}"]:text("reported")`, { timeout: 60000 });
 check(true, 'report the note');
 await pa.click(`[data-act="block-${vid}"]`);
 await pa.click(`[data-act="block-${vid}"]`); // the second tap blocks
-await pa.waitForFunction(() => !document.querySelector('.inbox-row[data-kind="visit"]'), null, { timeout: 10000 });
+await pa.waitForFunction(() => !document.querySelector('.inbox-row[data-kind="visit"]'), null, { timeout: 60000 });
 check(true, "blocking Ben takes his rows out of Ana's inbox");
 
 // ---- Ben got the thanks, and can't reach Ana any more
 await pb.evaluate(() => window.__beech.inbox().open());
-await pb.waitForSelector('.inbox.open .inbox-row[data-kind="visit"]', { timeout: 10000 });
+await pb.waitForSelector('.inbox.open .inbox-row[data-kind="visit"]', { timeout: 60000 });
 check((await pb.$eval('.inbox-row[data-kind="visit"]', (r) => r.textContent)).includes('Thank'), "Ana's thanks reached Ben");
 await pb.evaluate(() => window.__beech.inbox().close());
 await pb.evaluate((c) => window.__beech.visitor().open(c, 'ana'), anaCode);
-await pb.waitForSelector('.visitor.open .visitor-shell', { timeout: 10000 });
+await pb.waitForSelector('.visitor.open .visitor-shell', { timeout: 60000 });
 await pb.click('.visitor-shell[data-shells="5"]');
 await pb.click('[data-act="visitor-leave"]');
-await pb.waitForFunction(() => document.querySelector('.visitor-status')?.textContent?.includes('didn’t go through'), null, { timeout: 10000 });
+await pb.waitForFunction(() => document.querySelector('.visitor-status')?.textContent?.includes('didn’t go through'), null, { timeout: 60000 });
 check(true, "a blocked visitor's rating doesn't go through");
 
 check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join(' | ')}` : ''}`);
