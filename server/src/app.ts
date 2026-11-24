@@ -23,6 +23,11 @@
 //   POST   /api/store/web-checkout { productId }           -> { order, url }  (web only; Xsolla Pay Station)
 //   GET    /api/store/web-orders/:id                       -> { order }
 //   POST   /api/store/xsolla/webhook                       Xsolla's signed webhooks (no session)
+//   GET    /api/guide                                      -> { done: [{ step, at }] }
+//   POST   /api/guide/:step                                -> { step, new, gift, bonus }
+//   GET    /api/invites/:code    (no session)              -> { name, welcomeGift }
+//   POST   /api/referrals/claim  { code }                  -> { inviter: { name, code }, gift }
+//   GET    /api/referrals                                  -> { code, joined, settled, friends, ladder, ... }
 //
 // Auth: `Authorization: Bearer <token>`; only the token's SHA-256 is stored.
 
@@ -85,6 +90,18 @@ import {
   inspectBlob,
   shortfall,
 } from './checkpoints.js';
+import {
+  BONUS_STEPS,
+  CLAIM_WINDOW_MS,
+  GUIDE_BONUS,
+  GUIDE_STEPS,
+  REWARD_CAP,
+  SETTLE_STEPS,
+  WELCOME_GIFT,
+  guideStep,
+  ladder,
+  ladderReward,
+} from './referrals.js';
 import { createRateLimiter, logEvent, parseClientEvent, routeLabel } from './observability.js';
 import { createPaymentToken, payStationUrl, verifyWebhookSignature, xsollaError, type CreateToken, type XsollaConfig, type XsollaWebhook } from './xsolla.js';
 import { finalizeSteamTxn, initSteamTxn, type SteamStoreConfig } from './steamStore.js';
@@ -2476,6 +2493,178 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     );
     if (Number(rows[0].moved) === 0) fail(409, "you don't have one of those to give");
     return c.json({ item, to: { name: them!.name, code: them!.code } });
+  });
+
+  // ---------------------------------------------------------------- the beach guide
+  // A checklist that teaches the game one mechanic at a time (docs/INVITES_GUIDE.md).
+  // Each step is done once: the row and its gift go in one statement, so a
+  // retry or a second device can't double a gift. Steps the server can see
+  // for itself (a claw go, a star, a friend who joined) are checked here.
+  /** the steps that count toward the bonus and settling in (not `invite`, not the bonus marker) */
+  const COUNTED = `step NOT IN ('invite', 'bonus')`;
+  const serverCheck: Record<string, (user: string) => Promise<boolean>> = {
+    claw: async (u) => (await db.query(`SELECT 1 FROM pulls WHERE user_id = $1 AND pool = 'daily' LIMIT 1`, [u])).length > 0,
+    star: async (u) => (await db.query('SELECT 1 FROM star_first WHERE user_id = $1 LIMIT 1', [u])).length > 0,
+    invite: async (u) => (await db.query('SELECT 1 FROM referrals WHERE inviter_id = $1 LIMIT 1', [u])).length > 0,
+  };
+  /** one reward row */
+  const REWARD_ROW = `INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at)`;
+
+  /**
+   * If `invitee` came through an invite and has now done enough of the guide,
+   * mark them settled in and give their inviter the next rung of the ladder.
+   * The rank is unique per inviter: two friends settling at the same moment
+   * can't take the same rung (the loser's statement fails and it retries).
+   */
+  const settle = async (invitee: string): Promise<void> => {
+    const r = (
+      await db.query<{ inviter_id: string; n: string }>(
+        `SELECT inviter_id, (SELECT COUNT(*) FROM guide_steps WHERE user_id = $1 AND ${COUNTED}) AS n
+           FROM referrals WHERE invitee_id = $1 AND qualified_at IS NULL`,
+        [invitee],
+      )
+    )[0];
+    if (!r || Number(r.n) < SETTLE_STEPS) return;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const top = await db.query<{ m: number | null }>('SELECT MAX(reward_rank) AS m FROM referrals WHERE inviter_id = $1', [r.inviter_id]);
+      const rank = Number(top[0]?.m ?? 0) + 1;
+      const item = ladderReward(rank);
+      try {
+        await db.query(
+          `WITH q AS (
+             UPDATE referrals SET qualified_at = $2, reward_rank = $3, reward_item = $4
+              WHERE invitee_id = $1 AND qualified_at IS NULL
+             RETURNING inviter_id
+           ), g AS (
+             ${REWARD_ROW} SELECT inviter_id, $4, 1, 'reward', $2 FROM q WHERE $4::text IS NOT NULL RETURNING 1
+           )
+           SELECT (SELECT COUNT(*) FROM q) AS n`,
+          [invitee, clock(), rank, item],
+        );
+        return;
+      } catch (e) {
+        if ((e as { code?: string }).code !== '23505') throw e; // someone else took that rank: try the next
+      }
+    }
+  };
+
+  app.get('/guide', requireUser, async (c) => {
+    const rows = await db.query<{ step: string; done_at: string }>(
+      'SELECT step, done_at FROM guide_steps WHERE user_id = $1 ORDER BY done_at',
+      [c.get('user').id],
+    );
+    return c.json({ done: rows.map((r) => ({ step: r.step, at: Number(r.done_at) })) });
+  });
+
+  app.post('/guide/:step', requireUser, async (c) => {
+    const step = guideStep(c.req.param('step') ?? '');
+    if (!step) fail(400, 'no such step in the guide');
+    const me = c.get('user').id;
+    if (step!.serverChecked && !(await serverCheck[step!.id](me))) fail(409, 'not yet');
+    const now = clock();
+    const rows = await db.query<{ n: string }>(
+      `WITH s AS (
+         INSERT INTO guide_steps (user_id, step, done_at) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING RETURNING step
+       ), g AS (
+         ${REWARD_ROW} SELECT $1, $4, 1, 'reward', $3 FROM s WHERE $4::text IS NOT NULL RETURNING 1
+       )
+       SELECT (SELECT COUNT(*) FROM s) AS n`,
+      [me, step!.id, now, step!.gift],
+    );
+    const fresh = Number(rows[0].n) > 0;
+    let bonus: string | null = null;
+    if (fresh && step!.id !== 'invite') {
+      // every counted step done: the bonus, once (its own marker row)
+      const b = await db.query<{ n: string }>(
+        `WITH have AS (
+           SELECT COUNT(*) AS n FROM guide_steps WHERE user_id = $1 AND ${COUNTED}
+         ), b AS (
+           INSERT INTO guide_steps (user_id, step, done_at) SELECT $1, 'bonus', $2 FROM have WHERE n >= $3
+           ON CONFLICT DO NOTHING RETURNING 1
+         ), g AS (
+           ${REWARD_ROW} SELECT $1, $4, 1, 'reward', $2 FROM b RETURNING 1
+         )
+         SELECT (SELECT COUNT(*) FROM b) AS n`,
+        [me, now, BONUS_STEPS.length, GUIDE_BONUS],
+      );
+      if (Number(b[0].n) > 0) bonus = GUIDE_BONUS;
+      await settle(me);
+    }
+    return c.json({ step: step!.id, new: fresh, gift: fresh ? step!.gift : null, bonus });
+  });
+
+  // ---------------------------------------------------------------- invites
+  // An invite link is ?invite=CODE (the inviter's beach code). The start
+  // screen asks who it's from before anyone signs in, so this one needs no
+  // session; it says no more than a visit link's preview already does.
+  const inviteLookups = createRateLimiter(30);
+  app.get('/invites/:code', async (c) => {
+    const ip = (c.req.header('x-forwarded-for') ?? '').split(',')[0]?.trim() || 'unknown';
+    if (!inviteLookups(ip)) return c.json({ error: 'slow down' }, 429);
+    const them = await nodeByCode(c.req.param('code') ?? '');
+    if (!them) return c.json({ error: 'no beach has that code' }, 404);
+    return c.json({ name: them.name?.trim() || 'Someone', welcomeGift: WELCOME_GIFT });
+  });
+
+  // A new player who came through a link claims it once: they get the welcome
+  // gift now; the inviter's reward waits until they settle in (settle()).
+  app.post('/referrals/claim', requireUser, async (c) => {
+    const { code } = await body<{ code?: string }>(c);
+    if (normalizeCode(code ?? '').length !== 6) fail(400, 'invite codes are 6 letters and numbers');
+    const me = c.get('user').id;
+    const them = await nodeByCode(code!);
+    if (!them) fail(404, 'no beach has that code');
+    if (them!.owner_id === me) fail(400, "that's your own invite");
+    const now = clock();
+    const created = Number((await db.query<{ created_at: string }>('SELECT created_at FROM users WHERE id = $1', [me]))[0]?.created_at ?? 0);
+    if (now - created > CLAIM_WINDOW_MS) fail(409, 'invites are for new players');
+    const rows = await db.query<{ n: string }>(
+      `WITH r AS (
+         INSERT INTO referrals (invitee_id, inviter_id, code, created_at) VALUES ($1, $2, $3, $4)
+         ON CONFLICT (invitee_id) DO NOTHING RETURNING inviter_id
+       ), g AS (
+         ${REWARD_ROW} SELECT $1, $5, 1, 'reward', $4 FROM r RETURNING 1
+       ), s AS (
+         -- the inviter's guide: a friend joined
+         INSERT INTO guide_steps (user_id, step, done_at) SELECT inviter_id, 'invite', $4 FROM r
+         ON CONFLICT DO NOTHING RETURNING 1
+       )
+       SELECT (SELECT COUNT(*) FROM r) AS n`,
+      [me, them!.owner_id, them!.code, now, WELCOME_GIFT],
+    );
+    if (Number(rows[0].n) === 0) fail(409, 'you already joined through an invite');
+    // guide steps done before the claim (signed out, then synced) count too
+    await settle(me);
+    return c.json({ inviter: { name: them!.name?.trim() || 'Someone', code: them!.code }, gift: WELCOME_GIFT });
+  });
+
+  // Your invites: your link's code, who joined, who settled in, and the ladder.
+  app.get('/referrals', requireUser, async (c) => {
+    const me = c.get('user').id;
+    const code = (await db.query<{ code: string }>('SELECT code FROM beach WHERE id = $1', [await homeOf(me)]))[0]?.code ?? '';
+    const rows = await db.query<{ name: string; qualified_at: string | null; reward_item: string | null; created_at: string }>(
+      `SELECT u.name, r.qualified_at, r.reward_item, r.created_at
+         FROM referrals r JOIN users u ON u.id = r.invitee_id
+        WHERE r.inviter_id = $1 ORDER BY r.created_at`,
+      [me],
+    );
+    const friends = rows.map((r) => ({
+      name: r.name?.trim() || 'Someone',
+      joinedAt: Number(r.created_at),
+      settled: r.qualified_at !== null,
+      reward: r.reward_item,
+    }));
+    return c.json({
+      code,
+      joined: friends.length,
+      settled: friends.filter((f) => f.settled).length,
+      friends,
+      ladder: ladder(),
+      cap: REWARD_CAP,
+      settleSteps: SETTLE_STEPS,
+      welcomeGift: WELCOME_GIFT,
+      steps: GUIDE_STEPS.length,
+    });
   });
 
   return app;

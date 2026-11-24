@@ -11,7 +11,8 @@ Read these first:
 4. [docs/BACKLOG.md](docs/BACKLOG.md): the to-do list (owner tasks,
    engineering queue, ideas). Take work from here, and update it in the same
    commit as the work.
-5. Feature designs not built yet, e.g. [docs/MULTI_BEACH.md](docs/MULTI_BEACH.md) and
+5. Feature designs not built yet, e.g. [docs/MULTI_BEACH.md](docs/MULTI_BEACH.md),
+   [docs/INBOX_NOTIFICATIONS.md](docs/INBOX_NOTIFICATIONS.md) and
    [docs/BEACH_FILE.md](docs/BEACH_FILE.md) (export/import file spec).
    The public shore site (beechshore.com) is in [docs/SHORE_SITE.md](docs/SHORE_SITE.md).
 
@@ -57,8 +58,8 @@ Read these first:
 - Server changes: `cd server && npm run typecheck && npm test` (PGlite; set
   `TEST_DATABASE_URL` to also run against real Postgres), then
   `npm run server:dev` with `npm run e2e:accounts`, `npm run e2e:neighbors`,
-  `npm run e2e:shore`, `npm run e2e:beaches`, `npm run e2e:leaderboard` and
-  `npm run e2e:checkpoints`.
+  `npm run e2e:shore`, `npm run e2e:beaches`, `npm run e2e:leaderboard`,
+  `npm run e2e:checkpoints` and `npm run e2e:invites`.
   Schema changes are new entries appended to `server/src/migrations.ts`, never
   edits to applied ones. Never enable `DEV_AUTH` outside local development.
 - Android builds here need an SDK: install the command-line tools to a scratch

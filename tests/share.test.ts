@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SHORE_URL, beachShareText, shareUrl, shoreBeachUrl, visitCodeFromUrl, withoutVisitParam } from '../src/net/share';
+import { SHORE_URL, beachShareText, inviteCodeFromUrl, inviteText, inviteUrl, shareUrl, shoreBeachUrl, visitCodeFromUrl, withoutInviteParam, withoutVisitParam } from '../src/net/share';
 
 describe('share links', () => {
   it('builds a link with the beach code on any host and path', () => {
@@ -23,6 +23,18 @@ describe('share links', () => {
     expect(withoutVisitParam('?visit=K7F2QX&seed=1')).toBe('?seed=1');
     expect(withoutVisitParam('?seed=1')).toBe('?seed=1');
     expect(withoutVisitParam('')).toBe('');
+  });
+
+  it('builds and reads invite links', () => {
+    expect(inviteUrl('https://beech.markjen.com', '/', 'K7F2QX')).toBe('https://beech.markjen.com/?invite=K7F2QX');
+    expect(inviteUrl('https://markjen.com', '/beech', 'K7F2QX')).toBe('https://markjen.com/beech/?invite=K7F2QX');
+    expect(inviteCodeFromUrl('?invite=k7f-2qx')).toBe('K7F2QX');
+    expect(inviteCodeFromUrl('?visit=K7F2QX')).toBeNull();
+    expect(inviteCodeFromUrl('?invite=nope')).toBeNull();
+    expect(withoutInviteParam('?invite=K7F2QX&seed=1')).toBe('?seed=1');
+    expect(withoutInviteParam('?invite=K7F2QX')).toBe('');
+    expect(inviteText('Ana')).toContain('Ana invited you');
+    expect(inviteText('')).toContain('welcome gift');
   });
 });
 

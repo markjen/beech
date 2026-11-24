@@ -1,8 +1,8 @@
 // Link previews for shared beaches.
 //
 // Crawlers don't run JavaScript, so the preview has to come from the
-// server: when a page request carries a `?visit=` code that names a beach
-// with a save, the Open Graph tags for that beach are injected into
+// server: when a page request carries a `?visit=` (or `?invite=`) code that
+// names a beach with a save, the Open Graph tags for that beach are injected into
 // index.html. Anything else gets the plain page (the app itself then says
 // "no beach has that code" if the code is bad). The name is the owner's
 // first name, HTML-escaped before it goes into the page.
@@ -26,18 +26,27 @@ export function shareMetaTags({
   location,
   url,
   image,
+  invite = false,
 }: {
   name: string;
   beachName?: string;
   location?: string | null;
   url: string;
   image?: string;
+  /** an invite link (docs/INVITES_GUIDE.md): says who it's from and that a gift waits */
+  invite?: boolean;
 }): string {
   const custom = beachName?.trim();
   const place = placeById(location);
-  const title = custom ? `Visit ${custom} (${name}'s beach) on beech` : `Visit ${name}'s beach on beech`;
   const where = place ? ` at ${place.name}, ${place.place}` : '';
-  const description = `Walk the shore${where}, dig in the sand, and see what ${name} built.`;
+  const title = invite
+    ? `${name} invited you to beech`
+    : custom
+      ? `Visit ${custom} (${name}'s beach) on beech`
+      : `Visit ${name}'s beach on beech`;
+  const description = invite
+    ? 'Dig in the sand, watch the waves wash it away, and get a welcome gift.'
+    : `Walk the shore${where}, dig in the sand, and see what ${name} built.`;
   const imageAlt = custom ? `${custom}, ${name}'s beach seen from above` : `${name}'s beach, seen from above`;
   // a picture of the beach (shoreSite.ts draws it) only for beaches on the
   // shore, which anyone can already see on beechshore.com
@@ -79,7 +88,8 @@ export function injectShareMeta(html: string, tags: string): string {
  */
 export function createSharePageHandler(db: Db, indexHtmlPath: string) {
   return async (c: Context, next: Next) => {
-    const code = normalizeCode(c.req.query('visit') ?? '');
+    const invite = !c.req.query('visit') && !!c.req.query('invite');
+    const code = normalizeCode(c.req.query(invite ? 'invite' : 'visit') ?? '');
     if (code.length !== 6) return next();
     // A code names a beach now (multi-beach), and the preview names its
     // owner; only a beach with a save gets tags.
@@ -96,6 +106,6 @@ export function createSharePageHandler(db: Db, indexHtmlPath: string) {
     const origin = `${proto}://${c.req.header('host') ?? u.host}`;
     const image = rows[0].on_shore ? `${origin}/shore/img/${code}.png?v=${rows[0].updated_at ?? 0}` : undefined;
     c.header('Cache-Control', 'no-cache');
-    return c.html(injectShareMeta(html, shareMetaTags({ name, beachName, location: rows[0].location, url: c.req.url, image })));
+    return c.html(injectShareMeta(html, shareMetaTags({ name, beachName, location: rows[0].location, url: c.req.url, image, invite })));
   };
 }

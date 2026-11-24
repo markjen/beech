@@ -515,7 +515,7 @@ export interface OwnedItem {
   /** catalog id (src/world/items.ts) */
   item: string;
   quantity: number;
-  source: 'shop' | 'event' | 'pull' | 'gift';
+  source: 'shop' | 'event' | 'pull' | 'gift' | 'reward';
   acquiredAt: number;
   /** null: yours for good */
   expiresAt: number | null;
@@ -744,6 +744,76 @@ export class PullApi {
   }> {
     const res = await this.account.fetch(`/api/pulls/${encodeURIComponent(pool)}`, { method: 'POST' });
     if (!res.ok) throw await errorOf(res, 'The claw machine is out of order');
+    return res.json();
+  }
+}
+
+/** The beach guide (docs/INVITES_GUIDE.md): which steps are done, and finishing one. */
+export interface GuideStepResult {
+  step: string;
+  /** false: it was already done (no gift the second time) */
+  new: boolean;
+  /** what finishing it gave (an item id), if anything */
+  gift: string | null;
+  /** the bonus for finishing the whole guide, if this was the last step */
+  bonus: string | null;
+}
+
+export class GuideApi {
+  constructor(private readonly account: Account) {}
+
+  async done(): Promise<string[]> {
+    const res = await this.account.fetch('/api/guide');
+    if (!res.ok) throw await errorOf(res, 'could not load the guide');
+    return ((await res.json()) as { done: { step: string }[] }).done.map((d) => d.step);
+  }
+
+  /** Mark a step done. A 409 means the server can't see it yet (a claw go, a star…). */
+  async complete(step: string): Promise<GuideStepResult> {
+    const res = await this.account.fetch(`/api/guide/${encodeURIComponent(step)}`, { method: 'POST' });
+    if (!res.ok) throw await errorOf(res, 'not yet');
+    return (await res.json()) as GuideStepResult;
+  }
+}
+
+/** Invites (docs/INVITES_GUIDE.md). */
+export interface Referrals {
+  /** your invite code (your home beach's code) */
+  code: string;
+  joined: number;
+  settled: number;
+  friends: { name: string; joinedAt: number; settled: boolean; reward: string | null }[];
+  ladder: { rank: number; item: string }[];
+  cap: number;
+  settleSteps: number;
+  welcomeGift: string;
+}
+
+export class ReferralApi {
+  constructor(private readonly account: Account) {}
+
+  /** Who an invite is from (works signed out). null: no beach has that code. */
+  async lookup(code: string): Promise<{ name: string; welcomeGift: string } | null> {
+    const res = await this.account.fetch(`/api/invites/${encodeURIComponent(code)}`);
+    if (res.status === 404) return null;
+    if (!res.ok) throw await errorOf(res, 'could not look up that invite');
+    return res.json();
+  }
+
+  /** A new player claims the invite they came through: the welcome gift. */
+  async claim(code: string): Promise<{ inviter: { name: string; code: string }; gift: string }> {
+    const res = await this.account.fetch('/api/referrals/claim', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
+    });
+    if (!res.ok) throw await errorOf(res, 'could not use that invite');
+    return res.json();
+  }
+
+  async status(): Promise<Referrals> {
+    const res = await this.account.fetch('/api/referrals');
+    if (!res.ok) throw await errorOf(res, 'could not load your invites');
     return res.json();
   }
 }

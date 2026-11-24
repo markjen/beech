@@ -1200,7 +1200,8 @@
   text-align: center;
 }
 
-.board-close {
+.board-close,
+.dlg-close {
   position: absolute;
   top: 8px;
   right: 10px;
@@ -1396,6 +1397,269 @@
   .board-count {
     min-width: 48px;
   }
+}
+
+/* ---- the beach guide and invites (docs/INVITES_GUIDE.md) ---- */
+.guide-btn {
+  position: relative;
+}
+
+.guide-badge {
+  position: absolute;
+  right: -6px;
+  top: -6px;
+  min-width: 22px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 18px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ui-bg);
+  background: var(--ui-fg);
+  pointer-events: none;
+}
+
+.guide-btn.finished .guide-badge {
+  background: #3f8f6a;
+  color: #fff;
+}
+
+.guide-coach {
+  position: absolute;
+  left: calc(var(--pad) + env(safe-area-inset-left));
+  bottom: calc(var(--pad) + 60px + env(safe-area-inset-bottom));
+  display: flex;
+  align-items: stretch;
+  max-width: min(320px, calc(100vw - 2 * var(--pad) - 76px));
+  border-radius: 16px;
+  color: var(--ui-fg);
+  background: var(--ui-bg);
+  box-shadow: 0 6px 18px var(--ui-shadow);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  opacity: 0;
+  transform: translateY(6px);
+  transition:
+    opacity 0.4s ease,
+    transform 0.4s ease;
+  pointer-events: none;
+}
+
+.guide-coach.shown {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+
+.guide-coach.cheer {
+  padding: 10px 14px 10px 10px;
+  gap: 10px;
+  align-items: center;
+}
+
+.guide-coach-open {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 9px 4px 9px 10px;
+  border: none;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  background: none;
+  cursor: pointer;
+}
+
+.guide-coach-icon {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--ui-bg);
+  background: var(--ui-fg);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.guide-coach.cheer .guide-coach-icon {
+  background: #3f8f6a;
+  color: #fff;
+}
+
+.guide-coach-icon svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.guide-coach-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.35;
+}
+
+.guide-coach-text b {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.guide-coach-text small {
+  font-size: 11.5px;
+  opacity: 0.75;
+}
+
+.guide-coach-hide {
+  flex: none;
+  width: 34px;
+  border: none;
+  font-size: 18px;
+  color: inherit;
+  background: none;
+  opacity: 0.55;
+  cursor: pointer;
+}
+
+.hud.chair .guide-coach {
+  bottom: calc(var(--pad) + 124px + env(safe-area-inset-bottom));
+}
+
+.guide-mark {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1.5px solid color-mix(in srgb, currentColor 35%, transparent);
+}
+
+.guide-row.done .guide-mark,
+.invite-rung.done .guide-mark {
+  border-color: #3f8f6a;
+  color: #fff;
+  background: #3f8f6a;
+}
+
+.guide-row.next,
+.invite-rung.next {
+  border-radius: 12px;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+}
+
+.guide-row.next .guide-mark,
+.invite-rung.next .guide-mark {
+  border-color: currentColor;
+}
+
+.guide-row.done .guide-who {
+  opacity: 0.6;
+}
+
+.guide-who small {
+  white-space: normal;
+}
+
+.guide-gift {
+  flex: none;
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+.invite-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+.invite .board-list {
+  flex: none;
+  overflow: visible;
+}
+
+.invite-blurb {
+  margin-top: 0;
+}
+
+.invite-link {
+  display: flex;
+  gap: 6px;
+  margin: 6px 0 4px;
+}
+
+.invite-link input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1.5px solid color-mix(in srgb, currentColor 35%, transparent);
+  font: inherit;
+  font-size: 12px;
+  color: inherit;
+  background: color-mix(in srgb, currentColor 6%, transparent);
+}
+
+.invite-link .action {
+  flex: none;
+}
+
+.invite-link .invite-share {
+  opacity: 1;
+  color: var(--ui-bg);
+  background: var(--ui-fg);
+  border-color: var(--ui-fg);
+}
+
+.invite-h {
+  margin: 14px 0 2px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.invite-friends {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.invite-friends li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 2px;
+  font-size: 13px;
+  border-top: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+}
+
+.invite-friends li:first-child {
+  border-top: none;
+}
+
+.invite-friends small,
+.invite-empty {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+/* the start screen: who invited you */
+.start-invite {
+  margin-top: 18px;
+  font-size: 14px;
+  letter-spacing: 0.04em;
 }
 
 /* beach files: the import preview */
