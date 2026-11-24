@@ -67,6 +67,18 @@ describe('animals feeding (A2)', () => {
     expect(third.status).toBe(409);
   });
 
+  it('does not spend a snack when feeding on a beach the player does not own', async () => {
+    const owner = await signIn('SnackOwner');
+    const other = await signIn('SnackThief');
+    const ownerBeach = owner.user.id; // a home beach's id is its owner's id
+    await req('/dev/grant', json('POST', { item: TREAT_ITEM_ID, quantity: 1 }), other.token);
+    const bad = await req('/animals/feed', json('POST', { beachId: ownerBeach }), other.token);
+    expect(bad.status).toBe(404);
+    const ok = await req('/animals/feed', { method: 'POST' }, other.token);
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toMatchObject({ ok: true, remaining: 0 });
+  });
+
   it('grants a free bonus beach snack when a dig find hits and the roll succeeds', async () => {
     const u = await signIn('SnackDigger');
     const dig = await req('/dig-finds', json('POST', { pathM: 4, durationMs: 2000 }), u.token);

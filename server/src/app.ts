@@ -1281,10 +1281,11 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const now = clock();
     const b = await body<{ beachId?: string; species?: string }>(c).catch(() => ({} as { beachId?: string; species?: string }));
     const species = b.species === 'crab' || !b.species ? 'crab' : fail(400, 'unknown species');
+    // resolve the beach first, so a foreign or bad beach id never spends a snack
+    const beachId = await mine(c, b.beachId ?? c.req.query('beach'));
     const res = await consumeTreat(db, user.id, now);
     if (!res.ok) return c.json({ error: 'no beach snacks left', remaining: 0 }, 409);
 
-    const beachId = await mine(c, b.beachId ?? c.req.query('beach'));
     const existingPet = await getBeachPet(db, beachId, now);
     if (existingPet) {
       const pet = await feedBeachPet(db, beachId, user.id, user.name, now);
