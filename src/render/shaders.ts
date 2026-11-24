@@ -392,11 +392,19 @@ void main() {
 
   float d = f.g;
   float y = f.r + d;
+  // blend the outermost 3 offshore rows smoothly to oceanVertex's exact swell
+  // elevation and slope so j = 0 meets the far ocean with continuous normals
+  if (d >= 0.003 && cy < 3.5) {
+    float offBlend = 1.0 - smoothstep(0.0, 3.0, cy);
+    float ttOff = simTime - (wz - zEdge) / 3.6;
+    float oceanY = tide + dot(swellA, sin(swellW * ttOff + swellP - swellK * wx)) * swellEnv;
+    y = mix(y, oceanY, offBlend);
+  }
   // dry cells tuck just under the sand so the waterline sits close to the true edge
   if (d < 0.003) y = f.r - 0.012;
   vec4 wp = world * vec4(position.x, y, position.z, 1.0);
   float rip = (sin(wp.x * 2.3 + time * 1.7) + sin(wp.z * 2.9 - time * 1.3 + wp.x * 0.8)) * 0.006;
-  wp.y += rip * clamp(d * 4.0, 0.0, 1.0);
+  wp.y += rip * clamp(d * 4.0, 0.0, 1.0) * smoothstep(0.0, 3.5, wp.z - zEdge);
   // softened depth/foam for colour and alpha (geometry keeps the exact depth)
   vDepth = d * 0.4 + (l.g + r.g + dn.g + up.g) * 0.15;
   vFoam = f.a * 0.4 + (l.a + r.a + dn.a + up.a) * 0.15;
@@ -433,7 +441,10 @@ void main() {
   float foam = max(lace * 0.85, core);
   float edge = 1.0 - smoothstep(0.0, 0.03, vDepth);
   col = mix(col, foamCol, max(foam * 0.9, edge * 0.25));
-  float a = smoothstep(0.0, 0.03, vDepth) * mix(0.45, 0.9, dt);
+  // keep shallow water see-through, then reach full opacity offshore so the
+  // underwater slab cutoff disappears and the far ocean can tuck underneath cleanly
+  float deepOpacity = smoothstep(1.15, 2.05, vDepth);
+  float a = smoothstep(0.0, 0.03, vDepth) * mix(mix(0.45, 0.9, dt), 1.0, deepOpacity);
   a = max(a, foam * 0.9 * smoothstep(0.0, 0.008, vDepth));
   gl_FragColor = vec4(col, a);
 }
@@ -500,19 +511,22 @@ uniform vec4 slabB;
 uniform float slabHalf;
 ${FACET}
 void main() {
-  if (apron < 0.5 && vWorld.z > zEdge + 0.02) {
+  if (apron < 0.5 && vWorld.z > zEdge + 0.35) {
     vec4 da = abs(vec4(vWorld.x) - slabA);
     vec4 db = abs(vec4(vWorld.x) - slabB);
     if (min(min(min(da.x, da.y), min(da.z, da.w)), min(min(db.x, db.y), min(db.z, db.w))) < slabHalf) discard;
   }
   vec3 N = facetNormal(vWorld);
   float ndl = dot(N, -sunDir);
-  float ramp = 0.7 + 0.3 * smoothstep(0.3, 0.7, ndl);
   float dist = zEdge - vWorld.z;
+  // match waterFragment lighting/spec/crest identically at dist = 0, then ease into far-ocean look
+  float farT = smoothstep(0.0, 10.0, dist);
+  float rampBase = mix(0.65, 0.70, farT);
+  float ramp = rampBase + (1.0 - rampBase) * smoothstep(0.3, 0.7, ndl);
   vec3 col = mix(deepCol, oceanCol, smoothstep(0.0, 25.0, dist)) * mix(shadowCol * 1.1, sunCol, ramp);
-  col = mix(col, foamCol, smoothstep(0.55, 1.0, vCrest) * 0.18);
-  float spec = pow(max(dot(reflect(sunDir, N), -cameraDir), 0.0), 40.0);
-  col += sunCol * spec * 0.25;
+  col = mix(col, foamCol, smoothstep(0.55, 1.0, vCrest) * 0.18 * smoothstep(0.0, 6.0, dist));
+  float spec = pow(max(dot(reflect(sunDir, N), -cameraDir), 0.0), mix(50.0, 40.0, farT));
+  col += sunCol * spec * mix(0.3, 0.25, farT);
   float f = smoothstep(fadeNear, fadeFar, dist);
   float a;
   if (apron > 0.5) {
@@ -526,11 +540,11 @@ void main() {
     }
     f = max(f, sideFade * smoothstep(0.0, 6.0, dist));
     col = mix(col, fogCol, f * 0.55);
-    a = (1.0 - f) * 0.95;
+    a = 1.0 - f;
   } else {
-    // open sea: haze toward the horizon, see-through in the shallows
+    // open sea: haze toward the horizon, see-through in the shallows, opaque & seamless at zEdge
     col = mix(col, fogCol, f * 0.85);
-    a = mix(0.82, 1.0, smoothstep(-2.0, 30.0, dist));
+    a = mix(0.82, 1.0, smoothstep(-8.0, -0.5, dist));
   }
   gl_FragColor = vec4(col, a);
 }

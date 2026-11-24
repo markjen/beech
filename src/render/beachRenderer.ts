@@ -64,7 +64,7 @@ export class BeachRenderer {
     readonly offsetX = 0,
   ) {
     this.grid = grid;
-    this.edgeZ = ORIGIN_Z + grid.dx * 1.5;
+    this.edgeZ = ORIGIN_Z + grid.dx * 0.5;
     const { nx, ny } = grid;
     const empty = new Float32Array(nx * ny * 4);
     this.texPrev = this.makeFieldTexture(empty, 'fieldA');
@@ -418,16 +418,16 @@ export class BeachRenderer {
     wskirt.material = this.waterSkirtMat;
     wskirt.alphaIndex = 3;
 
-    // overlap the simulated water by one cell so no hairline crack shows at the seam
+    // tuck half a cell under the opaque deep offshore edge of water to seal T-junction pinholes
     const edgeZ = this.edgeZ;
-    const ocean = this.planeMesh('ocean', -hx, hx, edgeZ - 34, edgeZ, 96, 48);
+    const ocean = this.planeMesh('ocean', -hx, hx, edgeZ - 34, edgeZ + this.grid.dx * 0.5, 96, 48);
     ocean.material = this.oceanMat;
     ocean.alphaIndex = 1;
     this.oceanMat.setFloat('zEdge', edgeZ);
     this.oceanMat.setFloat('halfX', hx);
     this.oceanMat.setFloat('centerX', this.offsetX);
-    this.oceanMat.setFloat('fadeNear', 2);
-    this.oceanMat.setFloat('fadeFar', 17);
+    this.oceanMat.setFloat('fadeNear', 1);
+    this.oceanMat.setFloat('fadeFar', 18);
     this.oceanMat.setFloat('apron', 1);
     this.oceanMat.setVector2('linkedSides', new Vector2(0, 0));
     this.oceanMat.setVector4('slabA', new Vector4(1e7, 1e7, 1e7, 1e7));

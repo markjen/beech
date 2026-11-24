@@ -335,7 +335,10 @@ accepted the repo's default branch, so the deploy job ran only there.
   fades are suppressed, neighbor beaches animate rolling waves, swash and
   foam on the GPU in sync with the live swell, and sand, normals, wetness,
   water depth and foam blend smoothly across 1.75 m on each side
-  (`BeachRenderer.setNeighbors`, `src/render/shaders.ts`). Only the beaches
+  (`BeachRenderer.setNeighbors`, `src/render/shaders.ts`). Offshore, the
+  simulated water meets the far ocean apron/open sea flush at row `j = 0` with
+  matched swell height, lighting, specular, crest fade and deep-water opacity
+  so there is no visible boundary line. Only the beaches
   within 2 of the one under the view are drawn (`RENDER`). Beaches within 5
   stay decoded in memory, and the rest load as you approach. Your own live
   beach is hidden once it's outside that window, and digging is off.
