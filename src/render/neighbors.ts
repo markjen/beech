@@ -186,17 +186,14 @@ export class NeighborView {
 
   private async doRefresh(gen: number, mine: Promise<void>): Promise<void> {
     const signedIn = !!this.account.user;
-    if (!signedIn && !this.visiting) {
-      this.clear();
-      return;
-    }
     const [n, shore] = await Promise.all([
       signedIn ? this.api.get().catch(() => null) : Promise.resolve(null),
       this.api.shore(this.visiting?.code ?? null, DEPTH).catch(() => null),
     ]);
     if (gen !== this.generation) return this.latest === mine ? undefined : this.latest;
+    if (signedIn !== !!this.account.user) return;
     // signed into the account that owns the beach you were visiting: hand back control of it
-    if (signedIn && this.visiting && shore?.center.you) {
+    if (signedIn && this.visiting && shore?.center?.you) {
       this.visiting = null;
       this.clearEntries();
       await this.doRefresh(gen, mine);
@@ -205,7 +202,7 @@ export class NeighborView {
     this.state = n;
     const next = new Map<number, ShoreBeach>();
     if (shore) {
-      if (this.visiting) {
+      if (this.visiting && shore.center) {
         next.set(0, shore.center);
         this.visiting = shore.center;
       }
@@ -256,6 +253,7 @@ export class NeighborView {
   async visit(code: string | null): Promise<void> {
     if (code) {
       const shore = await this.api.shore(code, 0); // check it exists first
+      if (!shore.center) throw new Error('could not find that beach');
       if (shore.center.you) code = null;
       else {
         this.clearEntries();
@@ -265,10 +263,6 @@ export class NeighborView {
     if (!code) {
       if (!this.visiting) return;
       this.visiting = null;
-      if (!this.account.user) {
-        this.clear();
-        return;
-      }
       this.clearEntries();
     }
     await this.refresh();

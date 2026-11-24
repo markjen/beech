@@ -844,17 +844,37 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     return c.json({ beaches: (await walk(from, [dir], count, new Set([from.id])))[dir] });
   });
 
-  // Read-only 3D visit for signed-out visitors (from beechshore.com or a shared
-  // ?visit= link): strictly `isPublic` (on the shore and saved), walking the
-  // same public shore order as beechshore.com. Off-shore or unsaved beaches
+  // Read-only 3D shore for signed-out visitors: with `code` (from beechshore.com
+  // or a shared ?visit= link), centers on that public beach and walks each way;
+  // without `code`, picks a public section of the shore to render on either side
+  // of a signed-out player's empty beach (`center: null`, unlinked at the edges).
+  // Strictly `isPublic` (on the shore and saved); off-shore or unsaved codes
   // answer 404 (leaking nothing) and still require sign-in via /shore + /beaches/:code.
   app.get('/public/shore', async (c) => {
     const depth = Math.min(12, Math.max(0, Number(c.req.query('depth') ?? 6) | 0));
-    const code = c.req.query('code') ?? '';
-    const center = await nodeByCode(code);
-    if (!center || !isPublic(center)) return c.json({ error: 'no public beach with that code' }, 404);
-    const { left, right } = await walk(center, ['left', 'right'], depth, new Set([center.id]), isPublic);
-    return c.json({ center: { ...beachJson(center), you: false }, left, right });
+    const code = c.req.query('code');
+    if (code !== undefined) {
+      const center = await nodeByCode(code);
+      if (!center || !isPublic(center)) return c.json({ error: 'no public beach with that code' }, 404);
+      const { left, right } = await walk(center, ['left', 'right'], depth, new Set([center.id]), isPublic);
+      return c.json({ center: { ...beachJson(center), you: false }, left, right });
+    }
+    if (depth === 0) return c.json({ center: null, left: [], right: [] });
+    const anchor = (
+      await db.query<NodeRow>(
+        `SELECT ${NODE}
+           FROM ${BEACH}
+           LEFT JOIN (SELECT beach_id, COUNT(*)::int AS stars FROM favorites GROUP BY beach_id) sc ON sc.beach_id = b.id
+          WHERE b.on_shore AND b.sand IS NOT NULL
+          ORDER BY COALESCE(sc.stars, 0) DESC, b.updated_at DESC NULLS LAST, b.id
+          LIMIT 1`,
+      )
+    )[0];
+    if (!anchor) return c.json({ center: null, left: [], right: [] });
+    const walked = await walk(anchor, ['right', 'left'], depth, new Set([anchor.id]), isPublic);
+    const left = [{ ...beachJson(anchor), linked: false }, ...walked.left.slice(0, depth - 1)];
+    const right = walked.right.map((b, i) => (i === 0 ? { ...b, linked: false } : b));
+    return c.json({ center: null, left, right });
   });
 
   app.get('/public/shore/more', async (c) => {

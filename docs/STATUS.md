@@ -776,6 +776,13 @@ here: it needs the service's URL on the web OAuth client.
   catalog on dry sand. The payment-provider setup uses the product
   IDs in `server/src/products.ts` and the Steam IDs in `docs/STEAM.md`.
 
+- **Signed-out public shore** (2026-11-24): when signed out (and not visiting a
+  `?visit=` code), `GET /api/public/shore` without `code` anchors on the top
+  public beach and walks both directions (`center: null`, unlinked at the edges
+  beside index 0), so `NeighborView` renders public sections of the beechshore
+  next to the player's empty beach for inspiration and supports infinite scroll
+  and returning home from a visit.
+
 ## Verification
 
 - `npm test`: unit tests for the sim (water/sand conservation, run-up range,

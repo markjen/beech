@@ -19,6 +19,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     date: '2026-11-24',
     title: 'Linked beaches, shiny prizes, and rocks that stay put',
     changes: [
+      'Even when you aren’t signed in, other players’ public beaches now appear along the shore beside your empty beach so you can pan down the coast for ideas.',
       'You can now zoom out further to see more beaches along the shore at once.',
       'Default wave strength now rises and falls with your beach’s tide schedule (stronger around high tide, gentler around low tide), and tapping away from the bag or picking another tool now closes the bag.',
       'Combined the sand tools (dig with a shovel, build up a sand dune, and blend with a rake) into one button like the bulldozer, put the bulldozer first in the clearing menu with an upright vacuum icon, added a hide-toolbars button (or H) for distraction-free panning, and moved other players’ name tags to float along the side edges so they don’t block the beach.',

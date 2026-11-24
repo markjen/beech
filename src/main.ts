@@ -1267,6 +1267,7 @@ async function boot() {
         void applyPendingVisit();
       } else if (!u) {
         nv.clear();
+        if (signedInAs) void nv.refresh();
       }
       signedInAs = u?.id ?? null;
     });
@@ -1557,7 +1558,11 @@ async function boot() {
           }
         }
       }
-      if (u || !visitCode) return;
+      if (u) return;
+      if (!visitCode) {
+        void nv.refresh();
+        return;
+      }
       const code = visitCode;
       try {
         await nv.visit(code);
@@ -1566,6 +1571,7 @@ async function boot() {
         cam.goTo(0, true);
       } catch {
         showToast(uiRoot, 'Sign in (settings) to visit this beach');
+        void nv.refresh();
       }
     });
   }

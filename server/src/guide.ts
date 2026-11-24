@@ -118,7 +118,7 @@ export function guideHtml(now: number): string {
   const body = `
 <h2 id="start">Getting started</h2>
 <p>beech is a stretch of sand by the sea. Dig, build, and set things down, and watch the waves rework it. Tap or click the title screen to begin; sound starts then too.</p>
-<p>Sign in (settings, at the top) to keep your beach, have neighbors, and play the machines. Without signing in, the beach lives on this device only.</p>
+<p>Sign in (settings, at the top) to keep your beach, have neighbors, and play the machines. Without signing in, your beach lives on this device only, though you can still pan along the shore beside it to see other people’s public beaches.</p>
 <p>The sea follows a real beach: its tide, sun and moon, at that place’s time of day, with waves growing stronger toward high tide and gentler toward low tide. Pick the beach in settings, or “near me” for the closest one.</p>
 
 <h2 id="controls">Controls</h2>

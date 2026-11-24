@@ -603,7 +603,7 @@ export class NeighborApi {
   async shore(code: string | null, depth: number): Promise<Shore> {
     const q = new URLSearchParams({ depth: String(depth) });
     if (code) q.set('code', code);
-    else if (this.account.beachId) q.set('beach', this.account.beachId);
+    else if (this.account.user && this.account.beachId) q.set('beach', this.account.beachId);
     const prefix = this.account.user ? '/api/shore' : '/api/public/shore';
     const res = await this.account.fetch(`${prefix}?${q}`);
     if (!res.ok) throw await errorOf(res, 'could not find that beach');
@@ -675,7 +675,7 @@ export interface ShoreBeach {
 }
 
 export interface Shore {
-  center: ShoreBeach & { you: boolean };
+  center: (ShoreBeach & { you: boolean }) | null;
   /** nearest first */
   left: ShoreBeach[];
   right: ShoreBeach[];

@@ -329,11 +329,39 @@ describe('the shore site', () => {
     expect((await sand.arrayBuffer()).byteLength).toBeGreaterThan(8);
 
     // off-shore, unsaved and missing codes are all 404 (no existence leak)
-    for (const code of [people.Bob.code, people.Cy.code, 'ZZZZZZ']) {
+    for (const code of [people.Bob.code, people.Cy.code, 'ZZZZZZ', '']) {
       expect((await root.request(`/api/public/shore?code=${code}`)).status).toBe(404);
-      expect((await root.request(`/api/public/shore/more?from=${code}&dir=left`)).status).toBe(404);
-      expect((await root.request(`/api/public/beaches/${code}`)).status).toBe(404);
+      if (code) {
+        expect((await root.request(`/api/public/shore/more?from=${code}&dir=left`)).status).toBe(404);
+        expect((await root.request(`/api/public/beaches/${code}`)).status).toBe(404);
+      }
     }
+  });
+
+  it('serves public shore sections around an empty beach when no code is given', async () => {
+    const r = await root.request('/api/public/shore?depth=6');
+    expect(r.status).toBe(200);
+    const shore = (await r.json()) as {
+      center: null;
+      left: { code: string; linked: boolean }[];
+      right: { code: string; linked: boolean }[];
+    };
+    expect(shore.center).toBeNull();
+    expect(shore.left.length).toBeGreaterThan(0);
+    expect(shore.right.length).toBeGreaterThan(0);
+    // inner edges sit across the diorama gap from the signed-out player's empty beach
+    expect(shore.left[0].linked).toBe(false);
+    expect(shore.right[0].linked).toBe(false);
+    const codes = [...shore.left.map((b) => b.code), ...shore.right.map((b) => b.code)];
+    expect(new Set(codes).size).toBe(codes.length); // no duplicates
+    expect(codes).toContain(people.Ana.code);
+    expect(codes).toContain(people.Dee.code);
+    expect(codes).not.toContain(people.Bob.code); // off-shore
+    expect(codes).not.toContain(people.Cy.code); // unsaved
+
+    const zero = await root.request('/api/public/shore?depth=0');
+    expect(zero.status).toBe(200);
+    expect(await zero.json()).toEqual({ center: null, left: [], right: [] });
   });
 
   it('creates partial indexes for public shore lists', async () => {
