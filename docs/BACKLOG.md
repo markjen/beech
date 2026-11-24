@@ -63,9 +63,6 @@ _(nothing right now)_
   customize a detailed sandcastle (towers, walls, moat, decorations)
   rather than adding more preset shapes. The shop sandcastle ($1.99,
   legendary) stays as is.
-- [ ] **Claw prizes: coral and coconut**: Rose, Discord #feedback
-  2026-11-23. New claw-machine prizes (catalog entry, kind, mesh and
-  icon each).
 - [ ] **Store items: palm tree, beach towel, bonfire, hammock,
   lifeguard tower**: Rose, Discord #feedback 2026-11-23. Five new shop
   items (catalog entry, kind, mesh, icon and product each; pricing per
@@ -116,6 +113,12 @@ _(nothing right now)_
 
 ## Done (recent)
 
+- [x] **Claw prizes: coral and coconut** (2026-11-24, PR #65): two new
+  claw-machine prizes — a branching coral fragment (rare, tumbles like
+  a shell) and a coconut (common, floats like a bottle, riding high).
+  Each is the only item of its kind, so the kind palette is its look.
+  Daily pool: common [conch, sanddollar, coconut], rare [starfish,
+  coral]; odds and grab chances unchanged.
 - [x] **Vending Week 2 "Beach day": beach ball, sandals, bucket**
   (2026-11-24, PR #62): Week 2 of the vending machine, from Mon
   2026-11-30 — a beach ball (common, floats), sandals (uncommon,
