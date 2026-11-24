@@ -27,6 +27,14 @@ Unlimited, yours from the start. Place as many as you like.
 | Seaweed | `seaweed` | common | 0.15–0.6 | 3 | tumble | `src/render/objects.ts` |
 | Cowrie | `shell` | rare | 0.05–0.2 | 3 | tumble | `src/render/objects.ts` |
 | Flag | `flag` | common | 0.4 fixed | 4 | fixed | `src/render/objects.ts` |
+| Footprints | `footprints` | common | 0.5–2.0 | 3 | fixed | `src/render/objects.ts` |
+
+Footprints are a trail of prints pressed into the sand — darker than
+the dry sand around them, so they read as dips. The little figure
+walking the waterline from the same backlog line did not ship with
+them: there is no character mesh, walk animation, or fading-decal
+system in the app, so it would need a new render subsystem rather
+than an item — it stays a backlog to-do (`docs/BACKLOG.md`).
 
 ## Wash-ashore finds
 
@@ -154,14 +162,6 @@ entry.
 
 Things you own that aren't placed on the sand: **Extra beach**
 (`EXTRAS` in `src/world/items.ts`) — a whole second beach of your own.
-
-## Coming next
-
-Rose's Discord #feedback (2026-11-23), approved by Mark (2026-11-24).
-Each lands as its own PR; the tables above grow with it.
-
-- **Free footprints** (`feat/footprints`): `footprints`, plus a little
-  figure walking the waterline if it fits cleanly.
 
 Not here: the sandcastle mini-game stays a backlog to-do
 (`docs/BACKLOG.md`) — it is not an item.

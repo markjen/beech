@@ -657,6 +657,13 @@ const star = (cx: number, cy: number, r: number, a: number): Pt[] =>
     const t = a + (i / 10) * Math.PI * 2;
     return [cx + Math.cos(t) * rr, cy + Math.sin(t) * rr] as Pt;
   });
+const ellipse = (cx: number, cy: number, rx: number, ry: number, a: number): Pt[] =>
+  Array.from({ length: 12 }, (_, i) => {
+    const t = (i / 12) * Math.PI * 2;
+    const ex = Math.cos(t) * rx;
+    const ey = Math.sin(t) * ry;
+    return [cx + ex * Math.cos(a) - ey * Math.sin(a), cy + ex * Math.sin(a) + ey * Math.cos(a)] as Pt;
+  });
 
 const C = (h: string) => hex(h);
 // Free shells are warm cream, tan and peach — no pink anywhere (pink is
@@ -674,6 +681,9 @@ const BUCKET_RIMS = ['#d8473b', '#2f8fd0'].map(C);
 const BUCKET_INSIDE = ['#8a2f28', '#1f5a8a'].map(C);
 const CORAL = ['#c73e2e', '#a82e28', '#d95a3a'].map(C);
 const NUT = ['#6b4a2f', '#7d5a38'].map(C);
+// footprints pressed into the sand: darker than dry sand (a copy of
+// src/palette.ts PROP_COLORS.footprints)
+const PRINTS = ['#b08d68', '#a5825f', '#c09a72'].map(C);
 
 /** Prize items draw in their own colours (a copy of src/palette.ts ITEM_LOOKS). */
 export const ITEM_COLORS: Record<string, string[]> = {
@@ -760,6 +770,24 @@ function drawThings(img: Uint8Array, W: number, H: number, things: Thing[], look
         for (let k = 0; k < 3; k++) {
           const aa = a + (k / 3) * Math.PI * 2;
           parts.push([rect(px + Math.cos(aa) * m(0.16, 2), py - Math.sin(aa) * m(0.16, 2), m(0.18, 2.5), m(0.035, 0.8), aa), c]);
+        }
+        break;
+      }
+      case 'footprints': {
+        // a trail of prints pressed into the sand, alternating left and
+        // right along the trail, darker than the sand around them
+        const c = PRINTS[v % PRINTS.length];
+        const steps = 5 + (v % 3);
+        const stride = m((t.size * 0.85) / (steps - 1), 1.5);
+        const len = m(t.size * 0.17, 1.5);
+        const wid = m(t.size * 0.075, 0.8);
+        const lat = m(t.size * 0.055, 0.8);
+        for (let k = 0; k < steps; k++) {
+          const side = k % 2 === 0 ? -1 : 1;
+          const along = (k - (steps - 1) / 2) * stride;
+          const cx = px + Math.cos(a) * along - Math.sin(a) * side * lat;
+          const cy = py + Math.sin(a) * along + Math.cos(a) * side * lat;
+          parts.push([ellipse(cx, cy, len / 2, wid / 2, a + side * 0.18), c]);
         }
         break;
       }

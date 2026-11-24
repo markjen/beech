@@ -229,6 +229,9 @@ export const PROP_COLORS = {
   hammock: [hex('#e86a5a')] as RGB[],
   /** a striped towel: teal cloth, white stripes */
   towel: [hex('#2f8f7a'), hex('#fbf3e4')] as RGB[],
+  /** footprints pressed into the sand: darker than dry sand, so the
+      trail reads as a dip rather than something sitting on it */
+  footprints: [hex('#b08d68'), hex('#a5825f'), hex('#c09a72')] as RGB[],
   pole: hex('#d8c7ae'),
   /** the rolled-up message inside a bottle */
   paper: hex('#f7efd9'),

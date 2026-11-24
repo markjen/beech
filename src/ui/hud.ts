@@ -20,6 +20,8 @@ const ICONS = {
   seaweed: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21c-2-3.5-2-7 0-10.5S14 4 12 3" /><path d="M7 20.5c-1.5-3-1-6.5 1-9.5M17 20.5c1.5-3 1-6.5-1-9.5" opacity=".55"/><path d="M12 10.5c-1-1.5-1-3 0-4.5" opacity=".55"/></svg>`,
   cowrie: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19.5L4 10a8.5 8.5 0 0 1 16 0z" /><path d="M12 19.5L8.2 6.3M12 19.5l3.8-13.2M12 19.5V5.2" opacity=".55"/><path d="M10 19.5h4" /></svg>`,
   flag: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 21V3.5" /><path d="M7 4l11 3.5L7 11" /><path d="M4 21h6" opacity=".55"/></svg>`,
+  // footprints: a trail of prints, alternating left and right down the path
+  footprints: `<svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="9" cy="6" rx="2.2" ry="3.2" transform="rotate(-12 9 6)" /><ellipse cx="15" cy="11" rx="2.2" ry="3.2" transform="rotate(12 15 11)" /><ellipse cx="9" cy="16.5" rx="2.2" ry="3.2" transform="rotate(-12 9 16.5)" /><ellipse cx="15" cy="21" rx="2.2" ry="3.2" transform="rotate(12 15 21)" opacity=".55"/></svg>`,
   left: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6" /></svg>`,
   right: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 6l6 6-6 6" /></svg>`,
   claw: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h16" /><path d="M12 3v6" /><path d="M12 9l-4 3.5 1 3M12 9l4 3.5-1 3" /><circle cx="12" cy="18.5" r="2.5" /></svg>`,

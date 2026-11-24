@@ -33,6 +33,8 @@
 //  bonfire,   cabin and a ramp, a stone-ringed fire, a slung cloth
 //  hammock,   between two posts, and a striped towel lying flat.
 //  towel
+//  footprints  A trail of prints pressed into the sand: it stays
+//             where you put it, even when the water comes up.
 export type ObjectKind =
   | 'rock'
   | 'driftwood'
@@ -63,11 +65,13 @@ export type ObjectKind =
   | 'lifeguardtower'
   | 'bonfire'
   | 'hammock'
-  | 'towel';
+  | 'towel'
+  | 'footprints';
 export const OBJECT_KINDS: ObjectKind[] = [
   'rock', 'driftwood', 'shell', 'seaglass', 'trash', 'seaweed', 'flag', 'conch', 'sanddollar', 'starfish', 'bottle', 'nautilus', 'beachball', 'sandals', 'bucket', 'coral', 'coconut', 'deckchair',
   'parasol', 'surfboard', 'sandcastle', 'beachhut', 'lighthouse', 'tikitorch',
   'palmtree', 'lifeguardtower', 'bonfire', 'hammock', 'towel',
+  'footprints',
 ];
 
 type Behaviour = 'rock' | 'float' | 'tumble' | 'fixed';
@@ -112,6 +116,8 @@ const BEHAVIOUR: Record<ObjectKind, Behaviour> = {
   bonfire: 'fixed',
   hammock: 'fixed',
   towel: 'fixed',
+  // a trail of prints pressed into the sand: it stays where you put it
+  footprints: 'fixed',
 };
 
 /** What is saved with a beach. Coordinates are sim metres (x alongshore, y from the offshore edge). */
