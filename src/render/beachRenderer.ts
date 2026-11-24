@@ -120,6 +120,9 @@ export class BeachRenderer {
         'fadeNear',
         'fadeFar',
         'apron',
+        'slabA',
+        'slabB',
+        'slabHalf',
       ],
       samplers: [],
     });
@@ -395,6 +398,9 @@ export class BeachRenderer {
     this.oceanMat.setFloat('fadeNear', 2);
     this.oceanMat.setFloat('fadeFar', 17);
     this.oceanMat.setFloat('apron', 1);
+    this.oceanMat.setVector4('slabA', new Vector4(1e7, 1e7, 1e7, 1e7));
+    this.oceanMat.setVector4('slabB', new Vector4(1e7, 1e7, 1e7, 1e7));
+    this.oceanMat.setFloat('slabHalf', 0);
     this.apronMesh = ocean;
     this.waterSkirt = wskirt;
     this.oceanMat.setFloat('waveSpeed', WAVES.farSpeed);

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { WORLD_SIZE_X } from '../src/config';
-import { boundaryStep, shoreLayout } from '../src/render/shoreSpacing';
+import { boundaryStep, nearestShoreIndex, shoreLayout, windowBeachCenters } from '../src/render/shoreSpacing';
 
 // a slab spans [centre - 16, centre + 16]; the edge-to-edge gap between two
 // neighbours is their centre distance minus one slab width
@@ -17,6 +17,22 @@ describe('shore spacing', () => {
     expect(pos.get(1)).toBe(WORLD_SIZE_X);
     expect(edgeGap(pos.get(0)!, pos.get(1)!)).toBeCloseTo(0, 9);
     expect(boundaryStep(true)).toBe(WORLD_SIZE_X);
+  });
+
+  it('anchors index 0 at 0 even when entries omits index 0 (standing on your own beach)', () => {
+    // NeighborView.entries omits index 0 while at home (!visiting); direct
+    // linked neighbours at +1 and -1 must still touch index 0 with zero gap.
+    const pos = shoreLayout([
+      { index: 1, linked: true },
+      { index: 2, linked: false },
+      { index: -1, linked: true },
+    ]);
+    expect(pos.get(0)).toBe(0);
+    expect(pos.get(1)).toBe(WORLD_SIZE_X);
+    expect(pos.get(-1)).toBe(-WORLD_SIZE_X);
+    expect(edgeGap(0, pos.get(1)!)).toBeCloseTo(0, 9);
+    expect(edgeGap(0, pos.get(-1)!)).toBeCloseTo(0, 9);
+    expect(edgeGap(pos.get(1)!, pos.get(2)!)).toBeCloseTo(1.6, 9);
   });
 
   it('unlinked beaches keep the diorama gap', () => {
@@ -86,5 +102,28 @@ describe('shore spacing', () => {
     for (let i = 1; i < centres.length; i++) {
       expect(centres[i] - centres[i - 1]).toBeGreaterThanOrEqual(WORLD_SIZE_X);
     }
+  });
+
+  it('nearestShoreIndex returns 0 at home even when index 0 is not in entries', () => {
+    const pos = shoreLayout([
+      { index: 1, linked: true },
+      { index: -1, linked: false },
+    ]);
+    const keys = [1, -1];
+    expect(nearestShoreIndex(0, keys, pos)).toBe(0);
+    expect(nearestShoreIndex(15.5, keys, pos)).toBe(0);
+    expect(nearestShoreIndex(16.5, keys, pos)).toBe(1);
+    expect(nearestShoreIndex(-17, keys, pos)).toBe(-1);
+  });
+
+  it('windowBeachCenters includes index 0 at home and stays ordered left to right', () => {
+    const pos = shoreLayout([
+      { index: 1, linked: true },
+      { index: -1, linked: false },
+    ]);
+    const has = (i: number) => i === 1 || i === -1;
+    expect(windowBeachCenters([-1, 1], has, pos)).toEqual([-(WORLD_SIZE_X + 1.6), 0, WORLD_SIZE_X]);
+    // when index 0 is outside the window, only the drawn entries are returned
+    expect(windowBeachCenters([1, 2], has, pos)).toEqual([WORLD_SIZE_X]);
   });
 });

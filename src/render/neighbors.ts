@@ -12,7 +12,7 @@ import type { Swell } from '../sim/waves';
 import { beachById } from '../world/locations';
 import { BeachRenderer, ORIGIN_Z } from './beachRenderer';
 import { ObjectView } from './objects';
-import { shoreLayout, UNLINKED_STEP } from './shoreSpacing';
+import { nearestShoreIndex, shoreLayout, UNLINKED_STEP, windowBeachCenters } from './shoreSpacing';
 import { placeTag } from '../ui/tagPlace';
 /** how far down the shore to load at first, each way */
 const DEPTH = 6;
@@ -112,36 +112,22 @@ export class NeighborView {
     return this.pos.get(index) ?? index * UNLINKED_STEP;
   }
 
-  /** The shore index whose beach is nearest to a world-X point, if any. */
-  nearestIndex(x: number): number | null {
-    let best: number | null = null;
-    let bestD = Infinity;
-    for (const i of this.entries.keys()) {
-      const d = Math.abs(this.xFor(i) - x);
-      if (d < bestD) {
-        bestD = d;
-        best = i;
-      }
-    }
-    return best;
+  /** The shore index whose beach is nearest to a world-X point (0 is always at x = 0). */
+  nearestIndex(x: number): number {
+    return nearestShoreIndex(x, this.entries.keys(), this.pos);
   }
 
-  /** World-X [min, max] of the drawn window's beaches, slab edges included. */
-  windowExtent(): [number, number] {
-    const half = WORLD_SIZE_X / 2;
-    return [this.xFor(this.win[0]) - half, this.xFor(this.win[1]) + half];
-  }
-
-  /** World-X centres of the drawn beaches, nearest the middle first. */
+  /** World-X centres of the drawn beaches, left to right (includes index 0 when in view). */
   windowCenters(): number[] {
-    const out: number[] = [];
-    for (let i = this.win[0]; i <= this.win[1]; i++) if (this.entries.has(i)) out.push(this.xFor(i));
-    return out;
+    return windowBeachCenters(this.win, (i) => this.entries.has(i), this.pos);
   }
 
-  /** Recompute every entry's centre from the entries' `linked` flags. */
+  /** Recompute every entry's centre from the entries' `linked` flags, rebuilding any slot that moved. */
   private relayout(): void {
     this.pos = shoreLayout([...this.entries.values()].map((e) => ({ index: e.index, linked: e.beach.linked })));
+    for (const e of this.entries.values()) {
+      if (e.slot && e.slot.renderer.offsetX !== this.xFor(e.index)) this.dropSlot(e);
+    }
   }
 
   /** The beaches currently drawn, as shore indices [from, to] (0 = the middle one). */
@@ -385,7 +371,7 @@ export class NeighborView {
 
   /** Draw the beaches near the view, load the ones about to come into view, let go of far ones. */
   private async fillWindow(wait = false): Promise<void> {
-    const c = this.nearestIndex(this.cam.focusX) ?? 0;
+    const c = this.nearestIndex(this.cam.focusX);
     const { left, right } = this.extent;
     const lo = Math.max(-right, c - RENDER);
     const hi = Math.min(left, c + RENDER);
@@ -601,7 +587,7 @@ export class NeighborView {
     }
     void this.fillWindow();
     // infinite scroll: keep the shore loaded a few beaches past the view
-    const c = this.nearestIndex(this.cam.focusX) ?? 0;
+    const c = this.nearestIndex(this.cam.focusX);
     const ext = this.extent;
     if (ext.left - c < AHEAD) void this.more('left');
     if (ext.right + c < AHEAD) void this.more('right');

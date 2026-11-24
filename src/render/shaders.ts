@@ -249,13 +249,18 @@ uniform float fadeNear;
 uniform float fadeFar;
 /** 1 = diorama apron (soft cut sides, fades out); 0 = open sea to the horizon */
 uniform float apron;
-/** open sea only: the drawn beaches' window along the shore (min, max) —
- * leave the sea out from under them, so it never shows through the sand */
-uniform vec2 slabWindow;
+/** open sea only: up to 8 drawn beach centres (unused slots = 1e7) and each
+ * slab's half-width — leave the sea out from under drawn beaches so it never
+ * shows through their sand, while keeping open sea over unlinked gaps */
+uniform vec4 slabA;
+uniform vec4 slabB;
+uniform float slabHalf;
 ${FACET}
 void main() {
-  if (apron < 0.5) {
-    if (vWorld.z > zEdge + 0.02 && vWorld.x > slabWindow.x && vWorld.x < slabWindow.y) discard;
+  if (apron < 0.5 && vWorld.z > zEdge + 0.02) {
+    vec4 da = abs(vec4(vWorld.x) - slabA);
+    vec4 db = abs(vec4(vWorld.x) - slabB);
+    if (min(min(min(da.x, da.y), min(da.z, da.w)), min(min(db.x, db.y), min(db.z, db.w))) < slabHalf) discard;
   }
   vec3 N = facetNormal(vWorld);
   float ndl = dot(N, -sunDir);

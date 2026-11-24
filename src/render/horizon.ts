@@ -2,8 +2,7 @@ import { Constants } from '@babylonjs/core/Engines/constants';
 import { Effect } from '@babylonjs/core/Materials/effect';
 import { ShaderMaterial } from '@babylonjs/core/Materials/shaderMaterial';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
-import { Vector2 } from '@babylonjs/core/Maths/math.vector';
-import { Vector3 } from '@babylonjs/core/Maths/math.vector';
+import { Vector3, Vector4 } from '@babylonjs/core/Maths/math.vector';
 import { Mesh } from '@babylonjs/core/Meshes/mesh';
 import { VertexData } from '@babylonjs/core/Meshes/mesh.vertexData';
 import type { Scene } from '@babylonjs/core/scene';
@@ -19,6 +18,8 @@ const c3 = (c: RGB) => new Color3(c[0], c[1], c[2]);
 const LIGHT = ['sunDir', 'sunCol', 'ambCol', 'shadowCol', 'cameraDir'];
 /** how far the static beach runs along the shore on each side (m) */
 const SHORE_LENGTH = 420;
+/** sentinel centre for unused slab hole slots in the open-sea shader */
+const NO_SLAB = 1e7;
 
 /**
  * Scenery for the chair view (seated, looking out to sea): an open sea to a
@@ -46,7 +47,7 @@ export class Horizon {
     this.seaMat = new ShaderMaterial('openSea', scene, 'beachOcean', {
       attributes: ['position'],
       uniforms: ['world', 'viewProjection', ...LIGHT, 'swellA', 'swellW', 'swellP', 'swellK', 'swellEnv', 'simTime', 'tide', 'zEdge', 'waveSpeed',
-        'oceanCol', 'deepCol', 'foamCol', 'fogCol', 'halfX', 'centerX', 'fadeNear', 'fadeFar', 'apron', 'slabWindow'],
+        'oceanCol', 'deepCol', 'foamCol', 'fogCol', 'halfX', 'centerX', 'fadeNear', 'fadeFar', 'apron', 'slabA', 'slabB', 'slabHalf'],
       samplers: [],
     });
     this.seaMat.needAlphaBlending = () => true;
@@ -54,6 +55,8 @@ export class Horizon {
     this.seaMat.backFaceCulling = false;
     // meet the simulated water exactly at its outermost row (no overlap band)
     const edgeZ = ORIGIN_Z + dx * 0.5;
+    const edge = WORLD_SIZE_X / 2 - dx * 0.5;
+    this.extent = { minX: -edge, maxX: edge };
     this.seaMat.setFloat('zEdge', edgeZ);
     this.seaMat.setFloat('waveSpeed', WAVES.farSpeed);
     this.seaMat.setFloat('fadeNear', 40);
@@ -61,6 +64,7 @@ export class Horizon {
     this.seaMat.setFloat('apron', 0);
     this.seaMat.setFloat('halfX', 1e6);
     this.seaMat.setFloat('centerX', 0);
+    this.seaMat.setFloat('slabHalf', edge);
 
     Effect.ShadersStore['beachShoreVertexShader'] = flatVertex;
     Effect.ShadersStore['beachShoreFragmentShader'] = shoreFragment;
@@ -82,23 +86,19 @@ export class Horizon {
   }
 
   /**
-   * The drawn beaches span [minX, maxX] along the shore, with centres
-   * `centers` (linked neighbours touch, so a gap between two of them can be
-   * zero). The static shore runs on from both ends, and the open sea leaves
-   * a hole under the drawn beaches.
+   * The drawn beaches have world-X centres `centers` (linked neighbours touch,
+   * so a gap between two of them can be zero). The static shore runs on from
+   * both ends, fills any gap between unlinked drawn beaches, and the open sea
+   * leaves a hole under each drawn beach.
    */
-  setExtent(minX: number, maxX: number, centers: number[]): void {
-    const sorted = [...centers].sort((a, b) => a - b);
-    if (
-      minX === this.extent.minX &&
-      maxX === this.extent.maxX &&
-      sorted.length === this.centers.length &&
-      sorted.every((c, i) => c === this.centers[i])
-    ) {
+  setExtent(centers: number[]): void {
+    const sorted = (centers.length ? [...centers] : [0]).sort((a, b) => a - b);
+    if (sorted.length === this.centers.length && sorted.every((c, i) => c === this.centers[i])) {
       return;
     }
-    this.extent = { minX, maxX };
+    const edge = WORLD_SIZE_X / 2 - this.dx * 0.5;
     this.centers = sorted;
+    this.extent = { minX: sorted[0] - edge, maxX: sorted[sorted.length - 1] + edge };
     this.buildShores();
     this.setEnabled(this.enabled);
   }
@@ -186,7 +186,9 @@ export class Horizon {
       const len = this.centers[k + 1] - edge - x0;
       if (len > 0.05) this.shores.push(this.shore(x0, 1, len, 3, 1));
     }
-    this.seaMat.setVector2('slabWindow', new Vector2(this.extent.minX, this.extent.maxX));
+    const c = (i: number) => this.centers[i] ?? NO_SLAB;
+    this.seaMat.setVector4('slabA', new Vector4(c(0), c(1), c(2), c(3)));
+    this.seaMat.setVector4('slabB', new Vector4(c(4), c(5), c(6), c(7)));
   }
 
   update(p: Palette, cameraDir: Vector3, simTime: number, tide: number, ampScale: number): void {

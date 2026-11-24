@@ -659,7 +659,7 @@ async function boot() {
   const beachHere = () => {
     if (!neighbors) return null;
     const i = neighbors.nearestIndex(cam.focusX);
-    return i === null || (i === 0 && !neighbors.visiting) ? null : neighbors.beachAt(i);
+    return i === 0 && !neighbors.visiting ? null : neighbors.beachAt(i);
   };
   const goHome = async () => {
     if (neighbors?.visiting) {
@@ -974,8 +974,7 @@ async function boot() {
     updateShoreBar();
     if (cam.mode === 'chair') {
       // the static shore starts where the drawn beaches end
-      const [hx0, hx1] = neighbors?.windowExtent() ?? [-WORLD_SIZE_X / 2, WORLD_SIZE_X / 2];
-      horizon.setExtent(hx0, hx1, neighbors?.windowCenters() ?? [0]);
+      horizon.setExtent(neighbors?.windowCenters() ?? [0]);
       horizon.update(palette, cam.forward(), simTime, info.tide, amp);
     }
     const sk = liveState.sky;
