@@ -259,20 +259,25 @@ body::before {
   position: relative;
   overflow: hidden;
   background: var(--bg);
-  padding: 40px 24px 104px;
+  padding: 0 0 104px;
 }
-/* Full-width hero splash: an illustration of a beach you could build in
-   the game, with no text on top of it. */
+/* Full-bleed hero splash: an illustration of a beach you could build in
+   the game, with no text on top of it. It spans edge to edge of the
+   viewport — no side margins, no rounded corners, no shadow — and scales
+   with the viewport: object-fit: cover over a viewport-relative height,
+   so it zooms in and out with screen size instead of sitting at a fixed
+   size. The image is never stretched, and below a 2048px viewport it is
+   never upscaled. The 100% width (not 100vw) keeps it inside the
+   scrollbar, so it cannot cause horizontal overflow. */
 .hero-splash {
-  max-width: 1180px;
-  margin: 0 auto 40px;
+  margin: 0 0 40px;
 }
 .hero-splash img {
   width: 100%;
-  aspect-ratio: 16 / 9;
+  height: clamp(240px, 42vw, 640px);
   object-fit: cover;
-  border-radius: 26px;
-  box-shadow: var(--shadow-lg);
+  object-position: center 58%;
+  border-radius: 0;
 }
 .hero-inner {
   position: relative;
@@ -882,7 +887,7 @@ footer nav a:hover { color: var(--sea); text-decoration: underline; }
 
 /* ---------- Responsive ---------- */
 @media (max-width: 980px) {
-  .hero { padding: 32px 20px 88px; }
+  .hero { padding: 0 0 88px; }
   .hero-splash { margin-bottom: 32px; }
   .hero-lead { max-width: 580px; }
   .pillars, .platforms { grid-template-columns: 1fr; }
@@ -892,9 +897,8 @@ footer nav a:hover { color: var(--sea); text-decoration: underline; }
   .topbar-inner { padding: 11px 16px; }
   .nav-links .nav-hide-sm { display: none; }
   .nav-links { gap: 14px; }
-  .hero { padding: 20px 16px 76px; }
+  .hero { padding: 0 0 76px; }
   .hero-splash { margin-bottom: 24px; }
-  .hero-splash img { border-radius: 18px; }
   .hero-lead { margin: 14px auto 22px; font-size: 16.5px; }
   .details-grid { grid-template-columns: 1fr; gap: 22px; }
   .play-band, .community { padding: 28px 20px; border-radius: 22px; }

@@ -177,6 +177,15 @@ describe('the landing page and host routing', () => {
     const html = await (await on('/', 'beech.games')).text();
     expect(html).toContain('<img src="/hero-beach.jpg"');
     expect(html).toContain('https://beech.games/hero-beach.jpg');
+    // the hero splash is full-bleed, not boxed in the centred column:
+    // the img comes before the centred hero-inner, the hero has no side
+    // padding, and the splash scales with the viewport via cover over a
+    // viewport-relative height (zooming in/out with screen size)
+    expect(html.indexOf('<img src="/hero-beach.jpg"')).toBeLessThan(html.indexOf('<div class="hero-inner">'));
+    expect(html).toContain('padding: 0 0 104px;');
+    expect(html).toContain('height: clamp(240px, 42vw, 640px);');
+    expect(html).toContain('object-fit: cover;');
+    expect(html).not.toContain('max-width: 1180px;\n  margin: 0 auto 40px;');
     // the time-of-day diorama is still there, lower on the page: after
     // What's new, before Where to play
     expect(html).toContain('id="diorama"');

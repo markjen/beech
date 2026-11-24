@@ -10,7 +10,7 @@ and it sends them on into the game.
 
 | URL | What |
 |---|---|
-| `/` (on `beech.games`) | The landing page: a full-width hero splash illustration (`public/hero-beach.jpg`, 2048×1152) above the headline ("Shape the sand, stay for the tide."), **Play now on web** → `https://play.beech.games`, **Google Play** → `https://play.google.com/store/apps/details?id=app.beech.beach`, **iOS coming soon** badge, How to play → `/guide`, "What you do", "What's new", a live Dawn/Day/Golden/Dusk diorama preview ("A beach that follows the day.") lower on the page, "Where to play", "Talk to us" (Discord), footer. |
+| `/` (on `beech.games`) | The landing page: a full-bleed hero splash illustration (`public/hero-beach.jpg`, 2048×1152) spanning edge to edge above the headline ("Shape the sand, stay for the tide."), **Play now on web** → `https://play.beech.games`, **Google Play** → `https://play.google.com/store/apps/details?id=app.beech.beach`, **iOS coming soon** badge, How to play → `/guide`, "What you do", "What's new", a live Dawn/Day/Golden/Dusk diorama preview ("A beach that follows the day.") lower on the page, "Where to play", "Talk to us" (Discord), footer. |
 | `/landing` (every other host) | The same page, for preview before the domain flips — e.g. `https://play.beech.games/landing`, or `http://localhost:8787/landing` in development. |
 | `/hero-beach.jpg` | The hero splash (JPEG, quality 83, ~172 KB): a sunny illustrated beach — red-and-white lighthouse, beach hut, striped parasol, sandcastle, shells — drawn as a fancy version of a beach you could actually build in the game. An illustration, not a screenshot or an in-game render. It is also the `og:image` / `twitter:image`. |
 | `/landing-assets/*` | Clean UI-free 3D beach diorama renders (`hero-day.webp`, `hero-golden.webp`, `hero-dawn.webp`, `hero-dusk.webp`, `og-card.jpg`) captured directly from the beech engine with no test account or HUD. The four `hero-*.webp` renders are the lower-page diorama preview ("A beach that follows the day.", after "What's new", before "Where to play") with the Dawn/Day/Golden/Dusk mood picker; its sky tint follows the picked mood. |
@@ -36,7 +36,11 @@ Store links & claims:
 - **Android**: "Get it on Google Play" links to `https://play.google.com/store/apps/details?id=app.beech.beach` (`GOOGLE_PLAY_URL`).
 - **iOS**: clearly marked **iOS coming soon** with no App Store link yet.
 - **Artwork**: the hero splash is an illustration (`public/hero-beach.jpg`),
-  not a screenshot or an in-game render — never call it one. The older
+  not a screenshot or an in-game render — never call it one. It is
+  full-bleed: it spans edge to edge of the viewport (no side margins, no
+  rounded corners) and scales with the viewport via `object-fit: cover`
+  over a `clamp(240px, 42vw, 640px)` height, so it zooms in/out with
+  screen size without stretching. The older
   clean UI-free in-game 3D renders live under `public/landing-assets/` (no
   test account or beach code).
 - **Privacy**: linked in the footer → `/privacy.html` (the approved text,
