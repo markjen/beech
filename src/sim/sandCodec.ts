@@ -151,6 +151,7 @@ export function sanitizeObjects(raw: unknown): PlacedObject[] {
       size: p.size as number,
       variant: p.variant as number,
       ...(p.wild === true ? { wild: true } : {}),
+      ...(p.found === true ? { found: true } : {}),
     });
   }
   return out;

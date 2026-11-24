@@ -66,8 +66,6 @@ _(nothing right now)_
 - [ ] **Store privacy forms** (DevOps): the wording is in MOBILE.md.
 - [ ] **More free items**: a bucket that stamps sand castles, and a beach
   umbrella that casts a shadow (needs a shadow decal in the sand shader).
-- [ ] **A "found" collection**: count what the sea brought in that you kept,
-  and show rare finds (it could drop items here later).
 - [ ] **Promo codes on web card payments**: mirror codes into Xsolla and
   accept `order.promocodes` on `order_paid` (WEB_PAYMENTS.md, "Promo
   codes"). Only if Mark wants it (open question 2).
@@ -102,6 +100,11 @@ _(nothing right now)_
 
 ## Done (recent)
 
+- [x] **A "found" collection** (2026-11-24): pick up something the sea
+  brought in (hold on it) and put it down, and it's yours: no longer wild,
+  marked `found`, saved, never taken back. The bag's "Found" section lists
+  what you've kept from the sea and what you've dug up (`GET
+  /api/dig-finds`), with how many were rare or better.
 - [x] **Ask from the shore** (2026-11-24): a beach at the end of a stretch
   (the walk shows a free side) whose matching side of yours is free has
   "ask to be neighbors" on its name tag; it sends the usual request

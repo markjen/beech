@@ -205,6 +205,12 @@ async function boot() {
   type SandReply = { delta: Float32Array; objects: PlacedObject[] };
   /** what's on the beach now (the worker sends the roster when it changes, positions every frame) */
   let objectStates: ObjectState[] = [];
+  /** the strays from the sea you've kept, by item (the bag's "found" list) */
+  const countFound = () => {
+    const kept = new Map<string, number>();
+    for (const o of objectStates) if (o.found) kept.set(o.item, (kept.get(o.item) ?? 0) + 1);
+    return kept;
+  };
   const sandWaiters = new Map<number, (d: SandReply) => void>();
   let sandReq = 0;
   const getSand = () =>
@@ -231,6 +237,8 @@ async function boot() {
       const placed = new Map<string, number>();
       for (const o of objectStates) if (!o.wild) placed.set(o.item, (placed.get(o.item) ?? 0) + 1);
       inventory.setPlaced(placed);
+      // kept from the sea: strays you picked up and put down
+      inventory.setFound(countFound());
     }
     // everything's position this frame, in roster order (no objects made per frame)
     const pos = m.objPos;
@@ -1249,6 +1257,9 @@ async function boot() {
           if (it.foundBy !== undefined) foundBy.set(it.item, it.foundBy);
         }
         inventory.setOwned(owned, foundBy);
+        // what you've dug up, for the bag's "found" list
+        const dug = await new DigFindApi(acct).list().catch(() => null);
+        if (dug) inventory.setFound(countFound(), dug);
       } catch {
         /* offline: keep what we had */
       }

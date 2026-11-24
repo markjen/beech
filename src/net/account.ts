@@ -734,6 +734,13 @@ export class DigFindApi {
     return !!this.account.user;
   }
 
+  /** What you've dug up so far, newest first (the "found" collection). */
+  async list(): Promise<{ item: string; rarity: string; at: number }[]> {
+    const res = await this.account.fetch('/api/dig-finds');
+    if (!res.ok) throw await errorOf(res, 'could not load your finds');
+    return ((await res.json()) as { finds: { item: string; rarity: string; at: number }[] }).finds;
+  }
+
   /** One roll for a finished dig stroke: `found` false is a normal miss. */
   async find(pathM: number, durationMs: number): Promise<DigFindResult> {
     const res = await this.account.fetch('/api/dig-finds', {

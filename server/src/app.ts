@@ -921,6 +921,15 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   // The app reports the stroke (brush travel in metres, duration in ms);
   // the roll needs a real dig, at most one roll every 30 s, and at most 3
   // finds a day (UTC). A miss still records the roll, so the next one waits.
+  // what you've dug up so far (the "found" collection), newest first
+  app.get('/dig-finds', requireUser, async (c) => {
+    const rows = await db.query<{ item_id: string; rarity: string; created_at: string }>(
+      `SELECT item_id, rarity, created_at FROM pulls WHERE user_id = $1 AND pool = 'dig' ORDER BY created_at DESC LIMIT 200`,
+      [c.get('user').id],
+    );
+    return c.json({ finds: rows.map((r) => ({ item: r.item_id, rarity: r.rarity, at: Number(r.created_at) })) });
+  });
+
   app.post('/dig-finds', requireUser, async (c) => {
     const me = c.get('user').id;
     const now = clock();

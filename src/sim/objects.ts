@@ -88,6 +88,8 @@ export interface PlacedObject {
   variant: number;
   /** brought in by the sea rather than put there by you */
   wild?: boolean;
+  /** brought in by the sea, and kept: you picked it up and put it down (the "found" collection) */
+  found?: boolean;
 }
 
 /** What the renderer needs each frame. */

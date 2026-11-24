@@ -200,3 +200,20 @@ describe('moving a thing (long-press and drag)', () => {
     expect(sim.moveObject(12345, 1, 1)).toBe(null);
   });
 });
+
+describe('keeping what the sea brings', () => {
+  it('a stray picked up and put down is yours: no longer wild, marked found, and saved', async () => {
+    const { encodeSand, decodeSand } = await import('../src/sim/sandCodec');
+    const sim = new BeachSim(GRID_TIERS.low, 1, { waves: false, erosion: false, healing: false, seep: false });
+    const shell = sim.objects.add({ kind: 'shell', item: 'shell', x: 12, y: 20, angle: 0, size: 0.1, variant: 2, wild: true });
+    const kept = sim.moveObject(shell.id, 14, 24)!;
+    expect(kept.wild).toBeUndefined();
+    expect(kept.found).toBe(true);
+    const back = await decodeSand(await encodeSand(new Float32Array(sim.n), sim.nx, sim.ny, sim.objects.persisted()));
+    expect(back.objects[0]).toMatchObject({ item: 'shell', found: true });
+    expect(back.objects[0].wild).toBeUndefined();
+    // undo: a stray again
+    sim.undoStroke(false);
+    expect(sim.objects.persisted()[0]).toMatchObject({ wild: true });
+  });
+});

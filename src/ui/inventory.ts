@@ -22,6 +22,9 @@ export class InventoryTray {
   private open = false;
   /** how many of each non-free item you own, and how many are on the beach */
   private owned = new Map<string, number>();
+  /** the "found" collection: kept from the sea (by item, on this beach), and dug up (newest first) */
+  private keptFromSea = new Map<string, number>();
+  private dugUp: { item: string; rarity: string }[] = [];
   /** one-of-a-kind things you own: who found each first */
   private foundBy = new Map<string, string>();
   private placed = new Map<string, number>();
@@ -71,6 +74,14 @@ export class InventoryTray {
     if (key(placed) === key(this.placed)) return;
     this.placed = placed;
     this.render();
+  }
+
+  /** What you've found: things the sea brought in that you kept, and what you've dug up. */
+  setFound(keptFromSea: Map<string, number>, dugUp?: { item: string; rarity: string }[]): void {
+    const same = [...keptFromSea].sort().join() === [...this.keptFromSea].sort().join();
+    this.keptFromSea = keptFromSea;
+    if (dugUp) this.dugUp = dugUp;
+    if (!same || dugUp) this.render();
   }
 
   setElsewhere(m: Map<string, number>): void {
@@ -151,6 +162,22 @@ export class InventoryTray {
     this.button.innerHTML = icon(item ? (item.id as IconName) : 'bag');
     this.render();
     this.pick(item);
+  }
+
+  /** "Found": what the sea brought that you kept (pick a stray up and put it down), and what you've dug up. */
+  private foundSection(): HTMLElement {
+    const sec = document.createElement('div');
+    sec.className = 'inv-found-list';
+    const name = (id: string, n: number) => `${this.items.find((x) => x.id === id)?.name ?? id}${n > 1 ? ` × ${n}` : ''}`;
+    const sea = [...this.keptFromSea].map(([id, n]) => name(id, n));
+    const dug = new Map<string, number>();
+    for (const d of this.dugUp) dug.set(d.item, (dug.get(d.item) ?? 0) + 1);
+    const rare = this.dugUp.filter((d) => d.rarity !== 'common').length;
+    const lines: string[] = [];
+    lines.push(sea.length ? `<b>Kept from the sea</b> ${sea.join(' · ')}` : '<b>Kept from the sea</b> nothing yet: pick up something the waves bring in (hold on it) and put it down to keep it');
+    if (this.dugUp.length) lines.push(`<b>Dug up</b> ${[...dug].map(([id, n]) => name(id, n)).join(' · ')}${rare ? ` <i>(${rare} rare or better)</i>` : ''}`);
+    sec.innerHTML = `<div class="inv-title">Found</div>${lines.map((l) => `<p>${l}</p>`).join('')}`;
+    return sec;
   }
 
   private render(): void {
@@ -247,6 +274,7 @@ export class InventoryTray {
       grid.appendChild(d);
     }
     this.tray.appendChild(grid);
+    this.tray.appendChild(this.foundSection());
     // things you own that don't go on the sand (an extra beach)
     for (const x of EXTRAS) {
       const n = this.ownedOf(x.id);

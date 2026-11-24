@@ -1013,6 +1013,12 @@ export class BeachSim {
     const H = this.ny * this.dx;
     const moved: PlacedObject = { ...prev, x: Math.min(W - 0.3, Math.max(0.3, x)), y: Math.min(H - 0.3, Math.max(0.3, y)) };
     delete moved.base; // a rock sits on the sand where it lands
+    // something the sea brought in, picked up and put down: it's yours now,
+    // and the sea won't take it back (the "found" collection)
+    if (moved.wild) {
+      delete moved.wild;
+      moved.found = true;
+    }
     const data = this.objects.add(moved);
     this.undo.push({ i0: 0, j0: 0, w: 0, h: 0, delta: new Float32Array(0), obj: { op: 'move', data: { ...data }, prev } });
     return data;

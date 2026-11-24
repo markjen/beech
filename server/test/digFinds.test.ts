@@ -104,6 +104,9 @@ describe('digging finds', () => {
       expect(await owned(token, 'sunset-starfish')).toBe(1);
       const logged = await db.query<{ pool: string; item_id: string }>('SELECT pool, item_id FROM pulls WHERE user_id = $1', [user.id]);
       expect(logged).toEqual([{ pool: 'dig', item_id: 'sunset-starfish' }]);
+      // the bag's "found" list
+      const list = (await (await req('/dig-finds', {}, token)).json()) as { finds: { item: string; rarity: string; at: number }[] };
+      expect(list.finds.map((f) => [f.item, f.rarity])).toEqual([['sunset-starfish', 'rare']]);
     } finally {
       forcedRand = null;
     }
