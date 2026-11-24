@@ -41,6 +41,8 @@ interface Slot {
   objects: ObjectView;
   label: HTMLDivElement;
   star: HTMLButtonElement;
+  /** "ask to be neighbors", on beaches at the end of a stretch */
+  ask: HTMLButtonElement;
 }
 
 /** One beach along the shore. Index 0 is yours (or the one you're visiting); +1 is the next one on the left, and so on. */
@@ -93,7 +95,7 @@ export class NeighborView {
     private readonly swell: Swell,
     private readonly cam: CameraController,
     private readonly uiRoot: HTMLElement,
-    account: Account,
+    private readonly account: Account,
   ) {
     this.api = new NeighborApi(account);
   }
@@ -187,6 +189,7 @@ export class NeighborView {
       }
     }
     this.updateBounds();
+    for (const en of this.entries.values()) this.paintAsk(en);
     for (const fn of this.listeners) fn(n);
     this.schedulePoll();
     await this.fillWindow(true);
@@ -413,9 +416,16 @@ export class NeighborView {
     star.className = 'fav';
     star.addEventListener('click', () => void this.toggleFavorite(e.beach).catch(() => {}));
     label.appendChild(star);
+    const ask = document.createElement('button');
+    ask.type = 'button';
+    ask.className = 'ask';
+    ask.hidden = true;
+    ask.addEventListener('click', () => void this.askFromTag(e));
+    label.appendChild(ask);
     this.uiRoot.appendChild(label);
-    e.slot = { renderer, objects, label, star };
+    e.slot = { renderer, objects, label, star, ask };
     this.paintStar(e);
+    this.paintAsk(e);
     this.repaint(e);
   }
 
@@ -426,6 +436,62 @@ export class NeighborView {
     e.slot.star.classList.toggle('on', on);
     e.slot.star.setAttribute('aria-label', on ? 'Remove from favorites' : 'Add to favorites');
     e.slot.star.title = e.slot.star.getAttribute('aria-label')!;
+  }
+
+  /**
+   * Which side of *your* beach this beach could join, if it's at the end of a
+   * stretch of shore (a free side, as the walk shows it) and your matching
+   * side is free too. Index > 0 runs left from the middle, < 0 right; `linked`
+   * is a beach's link to the one before it (nearer the middle).
+   */
+  askSide(e: Entry): Side | null {
+    if (this.visiting || !this.state || e.index === 0) return null;
+    if (this.account.beaches.some((b) => b.code === e.beach.code)) return null;
+    const i = e.index;
+    const unlinked = (j: number) => {
+      const x = this.entries.get(j);
+      return !!x && x.beach.linked === false;
+    };
+    // their free sides, from the gaps either side of them
+    const free: Side[] = [];
+    if (i > 0) {
+      if (unlinked(i)) free.push('right');
+      if (unlinked(i + 1)) free.push('left');
+    } else {
+      if (unlinked(i)) free.push('left');
+      if (unlinked(i - 1)) free.push('right');
+    }
+    for (const theirs of free) {
+      // their free left means you'd sit on their left: they'd be on your right
+      const mine: Side = theirs === 'left' ? 'right' : 'left';
+      if (!this.state[mine] && !this.state.asked[mine]) return mine;
+    }
+    return null;
+  }
+
+  private paintAsk(e: Entry): void {
+    if (!e.slot) return;
+    const side = this.askSide(e);
+    e.slot.ask.hidden = !side;
+    if (side) {
+      e.slot.ask.textContent = 'ask to be neighbors';
+      e.slot.ask.disabled = false;
+      e.slot.ask.title = `Ask ${e.beach.name || 'them'} to move in on your ${side}`;
+    }
+  }
+
+  private async askFromTag(e: Entry): Promise<void> {
+    const side = this.askSide(e);
+    const s = e.slot;
+    if (!side || !s) return;
+    s.ask.disabled = true;
+    try {
+      const r = await this.api.set(side, e.beach.code);
+      s.ask.textContent = r.status === 'linked' ? 'neighbors now' : 'asked ✓';
+      await this.refresh();
+    } catch (err) {
+      s.ask.textContent = (err as Error).message || 'could not ask';
+    }
   }
 
   private dropSlot(e: Entry): void {

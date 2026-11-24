@@ -59,6 +59,26 @@ const ext = await page.evaluate(() => window.__beech.neighbors().extent);
 check(ext.left > 2 || ext.right > 0, `the shore carries on past them into other beaches (${JSON.stringify(ext)})`);
 check(!(await page.isVisible('.shore-bar.shown')), 'no home button at home');
 
+// ask from the shore: Ben's right side is free, so the beach just to his right
+// (the end of another stretch) offers "ask to be neighbors" on its tag; Ana,
+// already his neighbor, doesn't
+await page.waitForFunction(() => document.querySelectorAll('.neighbor-tag .ask:not([hidden])').length > 0, null, { timeout: 15000 }).catch(() => {});
+const offers = await page.evaluate(() =>
+  [...document.querySelectorAll('.neighbor-tag')].map((t) => ({ name: t.querySelector('.name')?.textContent ?? '', ask: !t.querySelector('.ask')?.hidden })),
+);
+check(offers.some((o) => o.ask), `a beach at the end of a stretch offers "ask to be neighbors" (${offers.filter((o) => o.ask).map((o) => o.name).join(', ')})`);
+check(!offers.some((o) => o.ask && o.name.startsWith(names.ana)), 'Ana (already his neighbor) does not');
+const asked = await page.evaluate(async () => {
+  const b = [...document.querySelectorAll('.neighbor-tag .ask')].find((x) => !x.hidden);
+  b.click();
+  for (let i = 0; i < 50 && !window.__beech.neighbors().state?.asked.right; i++) await new Promise((r) => setTimeout(r, 200));
+  return { asked: window.__beech.neighbors().state?.asked.right?.name ?? null, label: b.textContent };
+});
+check(!!asked.asked, `asking from the tag sent the request (${asked.asked}, "${asked.label}")`);
+// take it back, so the rest of the walk is as before
+await page.evaluate(() => window.__beech.neighbors().api.remove('right'));
+await page.evaluate(() => window.__beech.neighbors().refresh());
+
 // walk (pan) down the shore to Cleo
 await page.evaluate(() => {
   const b = window.__beech;

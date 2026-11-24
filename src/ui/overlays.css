@@ -570,6 +570,22 @@ body.ambient-idle {
   cursor: pointer;
 }
 
+.neighbor-tag .ask {
+  pointer-events: auto;
+  border: 1.5px solid currentColor;
+  border-radius: 999px;
+  padding: 2px 9px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.neighbor-tag .ask[hidden] {
+  display: none;
+}
+
 .neighbor-tag .fav.on,
 .shore-bar .sb-fav.on {
   color: #e0a43a;

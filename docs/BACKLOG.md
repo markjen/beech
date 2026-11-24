@@ -84,8 +84,6 @@ _(nothing right now)_
 - [ ] **beechshore follow-ups**: a read-only 3D visit for signed-out
   people, an index for the lists at scale, rate limits on image drawing
   (SHORE_SITE.md, "Not done yet").
-- [ ] **Ask from the shore**: when walking past a beach at the end of a
-  stretch, offer "ask to be neighbors" right on its name tag.
 - [ ] **Push for neighbor requests**: today you see them the next time the
   app polls (30 s) or opens.
 
@@ -104,6 +102,10 @@ _(nothing right now)_
 
 ## Done (recent)
 
+- [x] **Ask from the shore** (2026-11-24): a beach at the end of a stretch
+  (the walk shows a free side) whose matching side of yours is free has
+  "ask to be neighbors" on its name tag; it sends the usual request
+  (`NeighborView.askSide`, checked in `npm run e2e:shore`).
 - [x] **Long-press to pick up and drag** (2026-11-24): hold still on a thing
   for 0.42 s (any tool, the look tool included) to pick it up, drag it, let
   go to put it down: one undo step (`BeachSim.moveObject`; rocks lift out
