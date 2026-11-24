@@ -28,6 +28,11 @@
 //             it along like a shell, then leave it on the sand.
 //  coconut    Round and buoyant: it floats like a bottle, riding high
 //             in the water, and the swash rolls it up the beach.
+//  palmtree,  Set up on the sand and staying there, like everything
+//  lifeguardtower, else from the shop: a tall palm, a tower with a
+//  bonfire,   cabin and a ramp, a stone-ringed fire, a slung cloth
+//  hammock,   between two posts, and a striped towel lying flat.
+//  towel
 export type ObjectKind =
   | 'rock'
   | 'driftwood'
@@ -53,10 +58,16 @@ export type ObjectKind =
   | 'sandcastle'
   | 'beachhut'
   | 'lighthouse'
-  | 'tikitorch';
+  | 'tikitorch'
+  | 'palmtree'
+  | 'lifeguardtower'
+  | 'bonfire'
+  | 'hammock'
+  | 'towel';
 export const OBJECT_KINDS: ObjectKind[] = [
   'rock', 'driftwood', 'shell', 'seaglass', 'trash', 'seaweed', 'flag', 'conch', 'sanddollar', 'starfish', 'bottle', 'nautilus', 'beachball', 'sandals', 'bucket', 'coral', 'coconut', 'deckchair',
   'parasol', 'surfboard', 'sandcastle', 'beachhut', 'lighthouse', 'tikitorch',
+  'palmtree', 'lifeguardtower', 'bonfire', 'hammock', 'towel',
 ];
 
 type Behaviour = 'rock' | 'float' | 'tumble' | 'fixed';
@@ -95,6 +106,12 @@ const BEHAVIOUR: Record<ObjectKind, Behaviour> = {
   beachhut: 'fixed',
   lighthouse: 'fixed',
   tikitorch: 'fixed',
+  // the five new shop centrepieces: set up on the sand, staying put
+  palmtree: 'fixed',
+  lifeguardtower: 'fixed',
+  bonfire: 'fixed',
+  hammock: 'fixed',
+  towel: 'fixed',
 };
 
 /** What is saved with a beach. Coordinates are sim metres (x alongshore, y from the offshore edge). */

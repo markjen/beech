@@ -833,6 +833,48 @@ function drawThings(img: Uint8Array, W: number, H: number, things: Thing[], look
         parts.push([circle(px, py, m(0.12, 2), 8), C('#7a5a3a')]);
         parts.push([circle(px, py, m(0.07, 1.2), 8), C('#ffb347')]);
         break;
+      case 'palmtree': {
+        // seen from above: a fan of green fronds around the trunk
+        const r = m(1, 7);
+        for (let i = 0; i < 6; i++) {
+          const t0 = (i / 6) * Math.PI * 2 + a;
+          const t1 = ((i + 1) / 6) * Math.PI * 2 + a;
+          parts.push([[[px, py], [px + Math.cos(t0) * r, py + Math.sin(t0) * r], [px + Math.cos(t1) * r, py + Math.sin(t1) * r]], i % 2 ? C('#4a9e5c') : C('#3f8f4f')]);
+        }
+        parts.push([circle(px, py, m(0.1, 1.5), 8), C('#6b4a2f')]);
+        break;
+      }
+      case 'lifeguardtower': {
+        // a cabin on legs, with the ramp running down toward the sea
+        parts.push([rect(px, py, m(0.9, 6), m(0.75, 5), a), C('#f2f0e8')]);
+        parts.push([rect(px, py, m(0.6, 4), m(0.5, 3.5), a), C('#d8473b')]);
+        const off = m(0.65, 4.5);
+        parts.push([rect(px + Math.sin(a) * off, py + Math.cos(a) * off, m(0.35, 2.5), m(0.55, 4), a), C('#d8d2c4')]);
+        break;
+      }
+      case 'bonfire': {
+        // a ring of stones with a flame in the middle
+        parts.push([circle(px, py, m(0.42, 3.5), 12), C('#9aa0a8')]);
+        parts.push([circle(px, py, m(0.3, 2.5), 10), C('#3d2716')]);
+        parts.push([circle(px, py, m(0.14, 1.8), 8), C('#ff8c2e')]);
+        break;
+      }
+      case 'hammock': {
+        // two posts and the slung cloth between them
+        const off = m(0.85, 6);
+        const ox = Math.cos(a) * off;
+        const oy = -Math.sin(a) * off;
+        parts.push([circle(px - ox, py - oy, m(0.07, 1.2), 6), C('#8a6b4a')]);
+        parts.push([circle(px + ox, py + oy, m(0.07, 1.2), 6), C('#8a6b4a')]);
+        parts.push([rect(px, py, m(1.5, 8), m(0.4, 3), a), C('#e86a5a')]);
+        break;
+      }
+      case 'towel': {
+        // a striped towel lying flat
+        parts.push([rect(px, py, m(1.1, 7), m(0.55, 4), a), C('#2f8f7a')]);
+        parts.push([rect(px, py, m(1.1, 7), m(0.09, 1.2), a), C('#fbf3e4')]);
+        break;
+      }
       case 'beachball': {
         // a striped ball, seen from above: a white disc with bright wedges
         const r = m(t.size, 2.5);
@@ -887,10 +929,18 @@ function footprint(t: Thing): number {
     case 'beachhut':
     case 'surfboard':
       return 4;
+    case 'palmtree':
+    case 'lifeguardtower':
+      return 4;
     case 'sandcastle':
     case 'lighthouse':
     case 'deckchair':
       return 2;
+    case 'bonfire':
+    case 'hammock':
+      return 2;
+    case 'towel':
+      return 1;
     case 'rock':
     case 'driftwood':
     case 'sanddollar':

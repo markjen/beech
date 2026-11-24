@@ -219,6 +219,16 @@ export const PROP_COLORS = {
   beachhut: [hex('#6cc3d5'), hex('#f2f0e8'), hex('#e46f5a')] as RGB[],
   lighthouse: [hex('#f4f1ea'), hex('#d8473b'), hex('#3c4652'), hex('#ffe6a8')] as RGB[],
   tikitorch: [hex('#8a5a33'), hex('#ffb347')] as RGB[],
+  /** a palm: fronds, then the coconuts at the top (the trunk uses `pole`) */
+  palmtree: [hex('#3f8f4f'), hex('#6b4a2f')] as RGB[],
+  /** a lifeguard tower: white frame, red cabin, navy roof */
+  lifeguardtower: [hex('#f2f0e8'), hex('#d8473b'), hex('#2f4a6b')] as RGB[],
+  /** a bonfire: grey stones, then the flame (the logs use `pole`) */
+  bonfire: [hex('#9aa0a8'), hex('#ff8c2e')] as RGB[],
+  /** a hammock: the slung cloth (the posts use `pole`) */
+  hammock: [hex('#e86a5a')] as RGB[],
+  /** a striped towel: teal cloth, white stripes */
+  towel: [hex('#2f8f7a'), hex('#fbf3e4')] as RGB[],
   pole: hex('#d8c7ae'),
   /** the rolled-up message inside a bottle */
   paper: hex('#f7efd9'),

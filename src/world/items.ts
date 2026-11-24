@@ -61,6 +61,15 @@ export const ITEMS: Item[] = [
   { id: 'sandcastle', name: 'Sandcastle', kind: 'sandcastle', rarity: 'legendary', source: 'shop', unlimited: false, size: [1, 1], variants: 1, fixedSize: true, product: 'item_sandcastle' },
   { id: 'beachhut', name: 'Beach hut', kind: 'beachhut', rarity: 'legendary', source: 'shop', unlimited: false, size: [1, 1], variants: 1, fixedSize: true, product: 'item_beachhut' },
   { id: 'lighthouse', name: 'Lighthouse', kind: 'lighthouse', rarity: 'legendary', source: 'shop', unlimited: false, size: [1, 1], variants: 1, fixedSize: true, product: 'item_lighthouse' },
+  // Shop centrepieces (2026-11-24): five more big pieces. Each is the
+  // only item of its kind, so the kind palette is its look
+  // (src/palette.ts) — no ITEM_LOOKS needed. The palm is the tallest
+  // of the five; the bonfire's flame glows like the tiki torch's.
+  { id: 'palmtree', name: 'Palm tree', kind: 'palmtree', rarity: 'legendary', source: 'shop', unlimited: false, size: [1, 1], variants: 1, fixedSize: true, product: 'item_palmtree' },
+  { id: 'lifeguardtower', name: 'Lifeguard tower', kind: 'lifeguardtower', rarity: 'legendary', source: 'shop', unlimited: false, size: [1, 1], variants: 1, fixedSize: true, product: 'item_lifeguardtower' },
+  { id: 'bonfire', name: 'Bonfire', kind: 'bonfire', rarity: 'rare', source: 'shop', unlimited: false, size: [1, 1], variants: 1, fixedSize: true, product: 'item_bonfire' },
+  { id: 'hammock', name: 'Hammock', kind: 'hammock', rarity: 'rare', source: 'shop', unlimited: false, size: [1, 1], variants: 1, fixedSize: true, product: 'item_hammock' },
+  { id: 'towel', name: 'Beach towel', kind: 'towel', rarity: 'rare', source: 'shop', unlimited: false, size: [1, 1], variants: 1, fixedSize: true, product: 'item_towel' },
   { id: 'bottle', name: 'Message in a bottle', kind: 'bottle', rarity: 'legendary', source: 'pull', unlimited: false, size: [0.22, 0.45], variants: 2 },
   // Week 1 of the vending machine ("First light", server/src/vending.ts).
   // New ids on familiar kinds: they behave like the kind, but each has its

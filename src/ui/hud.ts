@@ -59,6 +59,13 @@ const ICONS = {
   beachhut: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10l9-6 9 6" /><path d="M5 9v10h14V9" /><path d="M10 19v-6h4v6" /><path d="M5 21v-2M19 21v-2" opacity=".55"/></svg>`,
   lighthouse: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 21l1-12h3l1 12z" /><path d="M10 7h4v2h-4zM11 5l1-1.5L13 5" /><path d="M4 6l4 1.5M20 6l-4 1.5" opacity=".55"/><path d="M10.2 14h3.6" opacity=".55"/></svg>`,
   tikitorch: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22V10" /><path d="M9.5 10h5l-.8-2.5h-3.4z" /><path d="M12 7.5c-1.8-1.5-.6-3.5 0-5 .6 1.5 1.8 3.5 0 5z" /></svg>`,
+  // Shop centrepieces: each is the only item of its kind, so the icon
+  // is the kind's drawing; the tint (itemIcon, below) sets it apart.
+  palmtree: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 21V10" /><path d="M11 10C7 8.5 4.5 6 4 3.5c3 0 5.5 1.5 7 4M11 10c1-3.5 3.5-6 7-6.5-.5 3-2.5 5.5-6 6.5M11 10c-2.5-1-5-1-7.5.5 2 1.5 5 2 7.5.5M11 10c2.5-1 5.5-.5 8 1.5-2.5 1-5.5.5-8-1.5" opacity=".55"/></svg>`,
+  lifeguardtower: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 21l1.5-9M17 21l-1.5-9" /><path d="M7 12h10" /><path d="M8.5 12V6h7v6" /><path d="M7 6h10l-1-2.5h-8z" /><path d="M10.5 12l-3 4.5M13.5 12l3 4.5" opacity=".55"/></svg>`,
+  bonfire: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 13c-2.5-2-1-5 0-7 .8 2 2.5 4.5 0 7z" /><path d="M5 17.5h14" /><path d="M7 17.5l5-4 5 4" opacity=".55"/><path d="M4 20.5h16" /></svg>`,
+  hammock: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4v16M19 4v16" /><path d="M5 8c2 4 12 4 14 0" /><path d="M5 8c2 6 12 6 14 0" opacity=".55"/></svg>`,
+  towel: `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="7" width="18" height="10" rx="1.5" /><path d="M7 7v10M17 7v10" opacity=".55"/></svg>`,
   share: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5v11" /><path d="M7.5 8 12 3.5 16.5 8" /><path d="M5 12.5v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" /></svg>`,
   trophy: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 4h9v5a4.5 4.5 0 0 1-9 0z" /><path d="M7.5 6H4.5c0 3 1.3 4.5 3.4 4.8M16.5 6h3c0 3-1.3 4.5-3.4 4.8" opacity=".55"/><path d="M12 13.5V17M8.5 20.5h7M9.5 20.5l.6-3.5h3.8l.6 3.5" /></svg>`,
   menu: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2" /><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1" /></svg>`,
@@ -81,6 +88,11 @@ export const ITEM_ICON_TINT: Record<string, string> = {
   bucket: '#2f8fd0',
   coral: '#c73e2e',
   coconut: '#6b4a2f',
+  palmtree: '#3f8f4f',
+  lifeguardtower: '#d8473b',
+  bonfire: '#ff8c2e',
+  hammock: '#e86a5a',
+  towel: '#2f8f7a',
 };
 
 export function icon(name: IconName, tint?: string): string {

@@ -131,6 +131,16 @@ mesh in `src/render/storeMeshes.ts`.
 | Sandcastle | `sandcastle` | legendary | `item_sandcastle` | $1.99 |
 | Beach hut | `beachhut` | legendary | `item_beachhut` | $2.99 |
 | Lighthouse | `lighthouse` | legendary | `item_lighthouse` | $2.99 |
+| Palm tree | `palmtree` | legendary | `item_palmtree` | $2.99 |
+| Lifeguard tower | `lifeguardtower` | legendary | `item_lifeguardtower` | $2.99 |
+| Bonfire | `bonfire` | rare | `item_bonfire` | $1.49 |
+| Hammock | `hammock` | rare | `item_hammock` | $1.49 |
+| Beach towel | `towel` | rare | `item_towel` | $0.99 |
+
+The palm tree is the tallest of the five new centrepieces; the
+bonfire's flame glows at night like the tiki torch's. Each is the only
+item of its kind, so the kind palette is its look — no `ITEM_LOOKS`
+entry.
 
 ## Extras
 
@@ -142,8 +152,6 @@ Things you own that aren't placed on the sand: **Extra beach**
 Rose's Discord #feedback (2026-11-23), approved by Mark (2026-11-24).
 Each lands as its own PR; the tables above grow with it.
 
-- **Shop centrepieces** (`feat/shop-centrepieces`): `palmtree`,
-  `lifeguardtower`, `bonfire`, `hammock`, `towel`.
 - **Free footprints** (`feat/footprints`): `footprints`, plus a little
   figure walking the waterline if it fits cleanly.
 

@@ -92,6 +92,7 @@ const HALF_H = {
   driftwood: 1.5, flag: 1.7,
   deckchair: 1.9, parasol: 2.7, surfboard: 2.5, tikitorch: 2.0,
   sandcastle: 2.2, beachhut: 2.6, lighthouse: 3.4,
+  palmtree: 3.4, lifeguardtower: 3.0, bonfire: 1.6, hammock: 1.8, towel: 1.6,
 };
 const halfHFor = (it) => HALF_H[it.kind] ?? Math.min(1.6, Math.max(0.55, Math.sqrt(it.size[0] * it.size[1]) * 2.2));
 

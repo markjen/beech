@@ -740,6 +740,14 @@ here: it needs the service's URL on the web OAuth client.
   spiral conch, green bottle, nautilus) and keep the 3/2/2/1 shape;
   sunset starfish sits the week out. Renders in
   `docs/items/renders/` were regenerated with the full harness.
+- **Shop centrepieces** (2026-11-24): five new shop items — a palm
+  tree (legendary, $2.99, the tallest of the five), a lifeguard tower
+  (legendary, $2.99, with a cabin and a ramp), a bonfire (rare,
+  $1.49, its flame glows like the tiki torch's), a hammock (rare,
+  $1.49) and a beach towel (rare, $0.99) — five new kinds
+  (`palmtree`, `lifeguardtower`, `bonfire`, `hammock`, `towel`), each
+  the only item of its kind. Renders in `docs/items/renders/` were
+  regenerated with the full harness.
 
 ## Verification
 

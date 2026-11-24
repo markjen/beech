@@ -632,7 +632,18 @@ function deckchairMesh(scene: Scene, o: PlacedObject): { frame: Mesh; canvas: Me
 }
 
 function extent(o: PlacedObject): { reach: number; height: number } {
-  if (isStoreKind(o.kind)) return { reach: STORE_REACH[o.kind], height: o.kind === 'lighthouse' ? 2.9 : o.kind === 'parasol' || o.kind === 'surfboard' ? 2 : 1.4 };
+  if (isStoreKind(o.kind)) {
+    const height =
+      o.kind === 'lighthouse' ? 2.9
+      : o.kind === 'palmtree' ? 3.0
+      : o.kind === 'lifeguardtower' ? 2.6
+      : o.kind === 'parasol' || o.kind === 'surfboard' ? 2
+      : o.kind === 'bonfire' ? 0.9
+      : o.kind === 'hammock' ? 1.1
+      : o.kind === 'towel' ? 0.3
+      : 1.4;
+    return { reach: STORE_REACH[o.kind], height };
+  }
   switch (o.kind) {
     case 'deckchair':
       return { reach: 0.6, height: 0.8 };
