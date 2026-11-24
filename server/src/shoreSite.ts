@@ -29,7 +29,7 @@ import { beachPng, placeById, PLACES } from './beachImage.js';
 import { DISCORD_INVITE_URL } from './community.js';
 import { toBytes, type Db } from './db.js';
 import { BEACH, NODE, isPublic, normalizeCode, shoreGraph, type NodeRow, type Step } from './shore.js';
-import { logEvent } from './observability.js';
+import { createRateLimiter, logEvent } from './observability.js';
 
 export interface ShoreSiteConfig {
   /** path the site is mounted at: '' on beechshore.com, '/shore' elsewhere */
@@ -38,6 +38,10 @@ export interface ShoreSiteConfig {
   gameUrl: string;
   /** the site's public origin for links people share (https://beechshore.com); unset: from the request */
   publicUrl?: string;
+  /** uncached image draws per minute per client IP (default 60) */
+  imageDrawsPerMinute?: number;
+  /** optional shared limiter across host/path mounts */
+  imageLimiter?: (ip: string) => boolean;
   now?: () => number;
 }
 
@@ -184,9 +188,12 @@ export function createShoreSite(db: Db, cfg: ShoreSiteConfig): Hono<any, any, an
   // ------------------------------------------------------------ images
   // Drawing a card takes tens of milliseconds, so recent ones are kept.
   // Image URLs carry the beach's save time (?v=), so a cached picture is
-  // never stale for long and the URL can be cached for good.
+  // never stale for long and the URL can be cached for good. Uncached draws
+  // are rate-limited per client IP so a crawler walking every code can't burn
+  // the CPU (cache hits are free).
   const imageCache = new Map<string, Buffer>();
   const IMAGE_CACHE = 64;
+  const imageDrawLimiter = cfg.imageLimiter ?? createRateLimiter(cfg.imageDrawsPerMinute ?? 60);
   const remember = (k: string, v: Buffer) => {
     imageCache.set(k, v);
     while (imageCache.size > IMAGE_CACHE) imageCache.delete(imageCache.keys().next().value as string);
@@ -222,6 +229,11 @@ export function createShoreSite(db: Db, cfg: ShoreSiteConfig): Hono<any, any, an
     const key = `${code}:${v}:${kind}`;
     let png = imageCache.get(key);
     if (!png) {
+      const ip = (c.req.header('x-forwarded-for') ?? '').split(',')[0]?.trim();
+      if (ip && !imageDrawLimiter(ip)) {
+        logEvent('shore_image_rate_limited', { kind }, 'WARNING');
+        return c.text('too many image requests: slow down a little', 429, { 'Retry-After': '60' });
+      }
       const t0 = Date.now();
       png = beachPng(toBytes(row.sand), { ...(kind === 'card' ? CARD : THUMB), location: row.location });
       remember(key, png);

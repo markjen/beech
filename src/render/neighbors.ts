@@ -168,11 +168,23 @@ export class NeighborView {
   private latest: Promise<void> = Promise.resolve();
 
   private async doRefresh(gen: number, mine: Promise<void>): Promise<void> {
+    const signedIn = !!this.account.user;
+    if (!signedIn && !this.visiting) {
+      this.clear();
+      return;
+    }
     const [n, shore] = await Promise.all([
-      this.api.get().catch(() => null),
+      signedIn ? this.api.get().catch(() => null) : Promise.resolve(null),
       this.api.shore(this.visiting?.code ?? null, DEPTH).catch(() => null),
     ]);
     if (gen !== this.generation) return this.latest === mine ? undefined : this.latest;
+    // signed into the account that owns the beach you were visiting: hand back control of it
+    if (signedIn && this.visiting && shore?.center.you) {
+      this.visiting = null;
+      this.clearEntries();
+      await this.doRefresh(gen, mine);
+      return;
+    }
     this.state = n;
     const next = new Map<number, ShoreBeach>();
     if (shore) {
@@ -207,7 +219,10 @@ export class NeighborView {
       }
     }
     this.updateBounds();
-    for (const en of this.entries.values()) this.paintAsk(en);
+    for (const en of this.entries.values()) {
+      this.paintStar(en);
+      this.paintAsk(en);
+    }
     for (const fn of this.listeners) fn(n);
     this.schedulePoll();
     await this.fillWindow(true);
@@ -233,6 +248,10 @@ export class NeighborView {
     if (!code) {
       if (!this.visiting) return;
       this.visiting = null;
+      if (!this.account.user) {
+        this.clear();
+        return;
+      }
       this.clearEntries();
     }
     await this.refresh();
@@ -450,6 +469,7 @@ export class NeighborView {
 
   private paintStar(e: Entry): void {
     if (!e.slot) return;
+    e.slot.star.hidden = !this.account.user;
     const on = this.favorites.has(e.beach.code);
     e.slot.star.textContent = on ? '★' : '☆';
     e.slot.star.classList.toggle('on', on);

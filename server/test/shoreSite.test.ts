@@ -219,6 +219,63 @@ describe('the shore site', () => {
     expect(map).toContain(`<loc>https://beechshore.com/${people.Ana.code}</loc>`);
     expect(map).not.toContain(people.Bob.code);
   });
+
+  it('rate-limits uncached image draws per IP while keeping cache hits free', async () => {
+    const app = createApp(db, { googleClientIds: [], appleClientIds: [], allowedOrigins: [], devAuth: true });
+    const limited = createRootApp(db, app, '/no-public-dir', {
+      shore: { hosts: ['beechshore.com', 'www.beechshore.com'], url: 'https://beechshore.com', gameUrl: 'https://play.example.test', imageDrawsPerMinute: 2 },
+    });
+    const ip1 = { headers: { 'X-Forwarded-For': '203.0.113.10' } };
+    const ip2 = { headers: { 'X-Forwarded-For': '203.0.113.11' } };
+    // two uncached draws succeed
+    expect((await limited.request(`/shore/img/${people.Ana.code}/thumb.png`, ip1)).status).toBe(200);
+    expect((await limited.request(`/shore/img/${people.Dee.code}/thumb.png`, ip1)).status).toBe(200);
+    // cache hit is not rate-limited
+    expect((await limited.request(`/shore/img/${people.Ana.code}/thumb.png`, ip1)).status).toBe(200);
+    // third uncached draw from the same IP is 429 with Retry-After
+    const blocked = await limited.request(`/shore/img/${people['<b>Eve</b>'].code}/thumb.png`, ip1);
+    expect(blocked.status).toBe(429);
+    expect(blocked.headers.get('Retry-After')).toBe('60');
+    // another IP still draws fine
+    expect((await limited.request(`/shore/img/${people['<b>Eve</b>'].code}/thumb.png`, ip2)).status).toBe(200);
+  });
+
+  it('serves public beaches read-only without sign-in, and hides off-shore and unsaved ones', async () => {
+    const r = await root.request(`/api/public/shore?code=${people.Ana.code}&depth=6`);
+    expect(r.status).toBe(200);
+    const shore = (await r.json()) as { center: { code: string; you: boolean }; left: { code: string }[]; right: { code: string }[] };
+    expect(shore.center).toMatchObject({ code: people.Ana.code, you: false });
+    const seen = [shore.center.code, ...shore.left.map((b) => b.code), ...shore.right.map((b) => b.code)];
+    expect(seen).toContain(people.Dee.code);
+    expect(seen).not.toContain(people.Bob.code); // off-shore
+    expect(seen).not.toContain(people.Cy.code); // unsaved
+
+    const more = await root.request(`/api/public/shore/more?from=${people.Ana.code}&dir=left&count=6`);
+    expect(more.status).toBe(200);
+    const moreCodes = ((await more.json()) as { beaches: { code: string }[] }).beaches.map((b) => b.code);
+    expect(moreCodes).not.toContain(people.Bob.code);
+    expect(moreCodes).not.toContain(people.Cy.code);
+    expect((await root.request(`/api/public/shore/more?from=${people.Ana.code}&dir=up`)).status).toBe(400);
+
+    const sand = await root.request(`/api/public/beaches/${people.Ana.code}`);
+    expect(sand.status).toBe(200);
+    expect(sand.headers.get('X-Beach-Location')).toBe('waikiki');
+    expect((await sand.arrayBuffer()).byteLength).toBeGreaterThan(8);
+
+    // off-shore, unsaved and missing codes are all 404 (no existence leak)
+    for (const code of [people.Bob.code, people.Cy.code, 'ZZZZZZ']) {
+      expect((await root.request(`/api/public/shore?code=${code}`)).status).toBe(404);
+      expect((await root.request(`/api/public/shore/more?from=${code}&dir=left`)).status).toBe(404);
+      expect((await root.request(`/api/public/beaches/${code}`)).status).toBe(404);
+    }
+  });
+
+  it('creates partial indexes for public shore lists', async () => {
+    const idx = await db.query<{ indexname: string }>(
+      `SELECT indexname FROM pg_indexes WHERE tablename = 'beach' AND indexname IN ('beach_public_updated', 'beach_public_location') ORDER BY indexname`,
+    );
+    expect(idx.map((r) => r.indexname)).toEqual(['beach_public_location', 'beach_public_updated']);
+  });
 });
 
 describe('shore site helpers', () => {

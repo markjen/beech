@@ -108,10 +108,17 @@ Nothing else changes: the server already answers to those hosts.
 - PR #40 (Discord links) is a draft until the invite is confirmed: it now
   carries the server's permanent invite
   (`https://discord.gg/y7EGw2yg2d`) in `server/src/community.ts`.
-- An index on `beach (updated_at) WHERE on_shore AND sand IS NOT NULL` once
-  there are many thousands of beaches; the lists scan today.
 - Stars on the site itself (it has no accounts; starring stays in the game).
-- A 3D view in the browser without signing in (the game could open a beach
-  read-only for visitors).
-- Rate limiting for image drawing (shared with "API rate limiting" in the
-  backlog). Pictures are cached, but a crawler walking every code draws each once.
+
+## Follow-ups built (2026-11-24)
+
+- **Read-only 3D visit without signing in:** opening `?visit=CODE` signed out
+  opens a public beach directly in 3D via `/api/public/shore`,
+  `/api/public/shore/more` and `/api/public/beaches/:code` (strictly
+  `isPublic`; off-shore beaches still return 404 and wait for sign-in).
+- **Indexes at scale:** migration 17 adds partial indexes on
+  `beach (updated_at DESC, id)` and `beach (location, updated_at DESC, id)`
+  `WHERE on_shore AND sand IS NOT NULL`.
+- **Image drawing rate limits:** uncached PNG draws on `/img/:CODE.png` and
+  `/img/:CODE/thumb.png` are limited to 60 per minute per client IP
+  (`429` with `Retry-After: 60`); cache hits are not limited.

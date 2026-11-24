@@ -82,9 +82,6 @@ _(nothing right now)_
   (an in-app cast button needs a custom Cast receiver app — $5 console
   registration; tab casting from Chrome works today, see
   [CHROME_TV_CAST.md](CHROME_TV_CAST.md)).
-- [ ] **beechshore follow-ups**: a read-only 3D visit for signed-out
-  people, an index for the lists at scale, rate limits on image drawing
-  (SHORE_SITE.md, "Not done yet").
 - [ ] **Push for neighbor requests**: today you see them the next time the
   app polls (30 s) or opens.
 
@@ -102,6 +99,14 @@ _(nothing right now)_
 
 ## Done (recent)
 
+- [x] **beechshore follow-ups** (2026-11-24): read-only 3D visits for
+  signed-out visitors (opening `?visit=CODE` for any public beach loads it and
+  the public shore in 3D via `/api/public/shore`, `/api/public/shore/more` and
+  `/api/public/beaches/:code`, strictly `isPublic`; off-shore beaches still
+  require sign-in), migration 17 partial indexes (`beach_public_updated`,
+  `beach_public_location`) for the lists and counts at scale, and per-IP rate
+  limiting on uncached image draws (`60/min`, 429 with `Retry-After`, cache
+  hits free). [SHORE_SITE.md](SHORE_SITE.md).
 - [x] **Checkpoints C6, and the sandbox keeps its beach** (2026-11-24):
   each checkpoint has a small top-down thumbnail drawn on the device from
   its sand. The sandbox build (no accounts) now keeps the beach between

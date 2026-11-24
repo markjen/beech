@@ -12,7 +12,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { guideHtml, releaseNotesHtml } from './guide.js';
-import { httpLogger } from './observability.js';
+import { createRateLimiter, httpLogger } from './observability.js';
 import { landingHtml } from './landingSite.js';
 import { createSharePageHandler } from './shareMeta.js';
 import { createShoreSite } from './shoreSite.js';
@@ -25,6 +25,8 @@ export interface ShoreOptions {
   url: string;
   /** the game, for the shore's "visit" and "build" links */
   gameUrl: string;
+  /** uncached image draws per minute per client IP (default 60) */
+  imageDrawsPerMinute?: number;
 }
 
 export const DEFAULT_SHORE: ShoreOptions = {
@@ -71,8 +73,9 @@ export function createRootApp(db: Db, api: Hono<any, any, any>, publicDir: strin
   root.get('/healthz', (c) => c.text('ok'));
   const shoreHosts = new Set(shore.hosts.map((h) => h.toLowerCase()));
   const apex = new URL(shore.url).host.toLowerCase();
-  const shoreHere = createShoreSite(db, { base: '', gameUrl: shore.gameUrl, publicUrl: shore.url });
-  const shoreUnder = createShoreSite(db, { base: '/shore', gameUrl: shore.gameUrl });
+  const imageLimiter = createRateLimiter(shore.imageDrawsPerMinute ?? 60);
+  const shoreHere = createShoreSite(db, { base: '', gameUrl: shore.gameUrl, publicUrl: shore.url, imageLimiter });
+  const shoreUnder = createShoreSite(db, { base: '/shore', gameUrl: shore.gameUrl, imageLimiter });
   root.use('*', async (c, next) => {
     const host = (c.req.header('host') ?? '').toLowerCase().replace(/:\d+$/, '');
     if (!shoreHosts.has(host)) return next();

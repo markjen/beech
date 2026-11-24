@@ -19,6 +19,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     date: '2026-11-24',
     title: 'Linked beaches, shiny prizes, and rocks that stay put',
     changes: [
+      'Visit any public beach in 3D and walk the shore without signing in (from beechshore.com or a shared link).',
       'Linked neighbors now touch edge to edge as one continuous stretch of sand, with no gap between them. Unlinked beaches along the shore keep their space.',
       'Prizes from the claw and vending machines now look the part on your beach: the pink shell is properly pink, the golden sand dollar is shiny gold, and the rest of the week’s set stands out from the free shells and sea glass.',
       'The golden sand dollar is now giant: it starts at twice the size of the largest regular sand dollar and scales up from there.',

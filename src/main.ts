@@ -679,13 +679,14 @@ async function boot() {
     const away = !!neighbors && (!!neighbors.visiting || Math.abs(cam.focusX) > WORLD_SIZE_X / 2 + 2);
     const b = away ? beachHere() : null;
     const fav = !!b && !!neighbors?.favorites.has(b.code);
-    const key = `${away}|${b?.code}|${b?.name}|${fav}|${!!neighbors?.visiting}`;
+    const signedIn = !!account?.user;
+    const key = `${away}|${b?.code}|${b?.name}|${fav}|${!!neighbors?.visiting}|${signedIn}`;
     if (key === shoreKey) return;
     shoreKey = key;
     shoreBar.classList.toggle('shown', away);
     const place = b?.location ? beachById(b.location) : undefined;
     sbWhere.textContent = b ? `${neighbors?.visiting ? 'Visiting ' : ''}${b.name || 'a beach'}${place ? ` · ${place.name}` : ''}` : 'Down the shore';
-    sbFav.hidden = !b;
+    sbFav.hidden = !b || !signedIn;
     sbFav.textContent = fav ? '★' : '☆';
     sbFav.classList.toggle('on', fav);
     sbFav.setAttribute('aria-label', fav ? 'Remove from favorites' : 'Add to favorites');
@@ -1344,14 +1345,20 @@ async function boot() {
       inventory.setVending(u ? 'play' : 'signin');
       void loadOwned();
     });
-    // a share link opened signed out: the visit waits for sign-in, so say
-    // so, and offer the picture on beechshore, which needs no account
-    void account.restore().then((u) => {
+    // a share link opened signed out: open the beach read-only in 3D if it's
+    // public on the shore (and let them walk the public shore); an off-shore
+    // beach still waits for sign-in
+    void account.restore().then(async (u) => {
       if (u || !visitCode) return;
       const code = visitCode;
-      showActionToast(uiRoot, 'Sign in (settings) to visit this beach and walk the shore', 'see it now', () => {
-        window.open(shoreBeachUrl(code), '_blank', 'noopener');
-      }, 14000);
+      try {
+        await nv.visit(code);
+        pendingVisit = null;
+        history.replaceState(null, '', location.pathname + withoutVisitParam(location.search) + location.hash);
+        cam.goTo(0, true);
+      } catch {
+        showToast(uiRoot, 'Sign in (settings) to visit this beach');
+      }
     });
   }
 

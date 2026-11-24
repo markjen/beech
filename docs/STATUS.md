@@ -607,7 +607,13 @@ here: it needs the service's URL on the web OAuth client.
   site; the site skips non-public beaches without changing the order.
 - In the game: a share button (bottom left) and "share" in settings send the
   beechshore link; the leaderboard links to the site; a `?visit=` link
-  opened signed out offers the beechshore page.
+  opened signed out opens public beaches directly in read-only 3D (via
+  `/api/public/shore`, `/api/public/shore/more` and `/api/public/beaches/:code`,
+  strictly `isPublic`), while off-shore beaches still ask for sign-in.
+- Scale & protection (2026-11-24): migration 17 adds partial indexes
+  (`beach_public_updated`, `beach_public_location`) for the lists and counts,
+  and uncached PNG draws on `/img/*` are rate-limited (60/min per IP, 429 with
+  `Retry-After`; cache hits are free).
 - **Decision:** shared links point at beechshore, not the game, because
   they work for anyone, signed in or not, and preview with a picture. The
   game link is still one tap away ("game link" in settings).
