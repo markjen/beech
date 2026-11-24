@@ -231,4 +231,78 @@ describe('old stacked saves heal on load', () => {
     for (let k = 0; k < sim2.n; k++) maxDiff = Math.max(maxDiff, Math.abs(sim2.sand[k] - sandBefore[k]));
     expect(maxDiff).toBeLessThan(1e-4);
   });
+
+  /** save `sim` and load it into a fresh sim: the max sand change, and both rosters */
+  function reload(sim: BeachSim): { diff: number; before: (number | undefined)[]; after: (number | undefined)[] } {
+    const sandBefore = sim.sand.slice();
+    const objects = sim.objects.persisted();
+    const sim2 = new BeachSim(grid, 1, FLAGS);
+    sim2.loadDelta(sim.sandDelta(), objects);
+    let diff = 0;
+    for (let k = 0; k < sim2.n; k++) diff = Math.max(diff, Math.abs(sim2.sand[k] - sandBefore[k]));
+    return { diff, before: objects.map((o) => o.base), after: sim2.objects.persisted().map((o) => o.base) };
+  }
+
+  it('a rock on a sand pile loads exactly as saved', () => {
+    for (const stamps of [2, 4]) {
+      const sim = new BeachSim(grid, 1, FLAGS);
+      for (let s = 0; s < stamps; s++) sim.stamp('pile', 16, y, 0.8, 0.5);
+      sim.placeObject({ kind: 'rock', item: 'rock', x: 16, y, angle: 0, size: 0.5, variant: 1 });
+      const r = reload(sim);
+      expect(r.after).toEqual(r.before);
+      expect(r.diff).toBeLessThan(1e-4);
+    }
+  });
+
+  /** the load repair's verdict on a save of `sim`: null when it does nothing */
+  function repairOf(sim: BeachSim): Float32Array | null {
+    const objects = sim.objects.persisted();
+    const sim2 = new BeachSim(grid, 1, FLAGS);
+    sim2.loadDelta(sim.sandDelta(), []);
+    const r = sim2.objects.repairLoaded(objects);
+    expect(r.objects).toBe(objects);
+    return r.noRock;
+  }
+
+  // (buried rocks lose some cover on any reload, a separate round-trip
+  // issue that predates this fix: see BACKLOG. These check the repair
+  // leaves them alone.)
+  it('the repair leaves a rock buried under sand alone', () => {
+    for (const stamps of [2, 6]) {
+      const sim = new BeachSim(grid, 1, FLAGS);
+      sim.placeObject({ kind: 'rock', item: 'rock', x: 16, y, angle: 0, size: 0.5, variant: 1 });
+      for (let s = 0; s < stamps; s++) sim.stamp('pile', 16, y, 0.8, 0.5);
+      expect(repairOf(sim)).toBeNull();
+    }
+  });
+
+  it('the repair leaves a wall with sand piled over it alone', () => {
+    const sim = new BeachSim(grid, 1, FLAGS);
+    placeWall(sim);
+    for (let s = 0; s < 3; s++) sim.stamp('pile', 17.3, y, 0.8, 0.5);
+    expect(repairOf(sim)).toBeNull();
+  });
+
+  it('repairing a stacked corral leaves the rest of the beach alone', () => {
+    const sim = new BeachSim(grid, 1, FLAGS);
+    const rest = restAt(sim, 16, y);
+    // elsewhere on the beach: a rock on a big pile, saved by the new code
+    const far = 28;
+    for (let s = 0; s < 4; s++) sim.stamp('pile', far, y, 0.8, 0.5);
+    const piled = sim.placeObject({ kind: 'rock', item: 'rock', x: far, y, angle: 0, size: 0.5, variant: 1 });
+    const delta = sim.sandDelta();
+    const farSand = sim.sand.slice();
+    // plus an old stacked pair
+    const objects = [
+      ...sim.objects.persisted(),
+      { id: 10, kind: 'rock' as const, item: 'rock', x: 16, y, angle: 0, size: 1.3, variant: 1, base: rest },
+      { id: 11, kind: 'rock' as const, item: 'rock', x: 16.9, y, angle: 0, size: 1.3, variant: 2, base: rest + 0.78 },
+    ];
+    const sim2 = new BeachSim(grid, 1, FLAGS);
+    sim2.loadDelta(delta, objects);
+    const loaded = sim2.objects.persisted();
+    expect(loaded.find((o) => o.id === piled.id)!.base).toBe(piled.base);
+    expect(loaded.find((o) => o.id === 11)!.base!).toBeLessThanOrEqual(rest + 0.15);
+    expect(sandDiff(sim2, farSand, far, 1.5)).toBeLessThan(1e-4);
+  });
 });

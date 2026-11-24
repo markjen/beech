@@ -438,27 +438,39 @@ export class BeachObjects {
    * Repair rocks from an old save (or an imported beach) before they are
    * embedded. Old saves can hold rocks whose bases were sampled from
    * sand already lifted by earlier rocks, so a wall of overlapping rocks
-   * stacks higher and higher and its sand is a pillar. Re-bases every
-   * rock to the sand around it, replaces the stacked lift under the wall
-   * with the terrain estimate (keeping real piles, pits and the terrain
-   * itself), and returns the fixed objects plus the no-rock sand field
-   * to embed them on. Idempotent: a healthy beach comes back unchanged
-   * (a rock is only re-based when its saved base sits more than 5 cm
-   * above the sand around it, and sand is only replaced when it stands
-   * more than 25 cm above what the re-based rocks justify), in which
-   * case `noRock` is null and the exact strip is used instead.
+   * stacks higher and higher and its sand is a pillar.
+   *
+   * The repair only runs when it finds that stacking: a rock whose centre
+   * sits on another rock's dome, at (or above) the height of that dome
+   * (see `stackedRocks`). The current code never saves that — a new
+   * rock's base is the terrain under the dome — so a healthy beach,
+   * including rocks on piles and rocks buried under sand, loads exactly
+   * as saved (`noRock` null: the exact strip is used instead).
+   *
+   * When it does run, it only touches the stacked rocks and the rocks
+   * they sit on: the stacked ones are re-based to the sand around them,
+   * and sand inside that cluster's footprints standing more than 25 cm
+   * above what the re-based rocks justify is replaced with the terrain
+   * estimate plus that margin. Everything else on the beach is left
+   * alone. Idempotent: a repaired beach is no longer stacked.
    */
   repairLoaded(objects: PlacedObject[]): { objects: PlacedObject[]; noRock: Float32Array | null } {
-    if (!objects.some((o) => o.kind === 'rock')) return { objects, noRock: null };
+    const { stacked, cluster } = this.stackedRocks(objects);
+    if (stacked.size === 0) return { objects, noRock: null };
     const { nx, ny, sand } = this.h;
     const n = nx * ny;
-    // union of rock footprints
+    // union of all rock footprints (the terrain estimate samples outside
+    // every rock), and the cluster's footprints (the only cells repaired)
     const inU = new Uint8Array(n);
-    for (const o of objects) {
-      if (o.kind !== 'rock') continue;
+    const inC = new Uint8Array(n);
+    objects.forEach((o, idx) => {
+      if (o.kind !== 'rock') return;
       const fp = this.rockFootprint(o, 0);
-      for (let m = 0; m < fp.cells.length; m++) inU[fp.cells[m]] = 1;
-    }
+      for (let m = 0; m < fp.cells.length; m++) {
+        inU[fp.cells[m]] = 1;
+        if (cluster.has(idx)) inC[fp.cells[m]] = 1;
+      }
+    });
     // terrain estimate: the sand outside the footprints, filled inward so
     // every cell under a rock takes the nearest sand outside the wall
     const terrain = new Float32Array(n);
@@ -483,57 +495,89 @@ export class BeachObjects {
       if (j > 0 && !filled[k - nx]) { filled[k - nx] = 1; terrain[k - nx] = v; queue[qt++] = k - nx; }
       if (j < ny - 1 && !filled[k + nx]) { filled[k + nx] = 1; terrain[k + nx] = v; queue[qt++] = k + nx; }
     }
-    // re-base: a rock sits on the terrain around it, never on lifted sand.
-    // Sample the terrain in the rock's own row, where the rest profile
-    // is flat: the BFS fill's nearest outside cell can be rows away, and
-    // on the sloping beach that reads the terrain low by the slope.
-    let changed = false;
+    // re-base the stacked rocks: a rock sits on the terrain around it,
+    // never on lifted sand. Sample the terrain in the rock's own row,
+    // where the rest profile is flat: the BFS fill's nearest outside cell
+    // can be rows away, and on the sloping beach that reads the terrain
+    // low by the slope.
     const newTops = new Float32Array(n);
-    const fixed = objects.map((o) => {
+    const fixed = objects.map((o, idx) => {
       if (o.kind !== 'rock') return { ...o };
-      let around = this.sampleField(terrain, o.x, o.y);
-      const ci = Math.min(nx - 1, Math.max(0, Math.floor(o.x / this.h.dx)));
-      const cj = Math.min(ny - 1, Math.max(0, Math.floor(o.y / this.h.dx)));
-      for (let d = 0; d < nx; d++) {
-        if (ci - d >= 0 && !inU[cj * nx + ci - d]) { around = terrain[cj * nx + ci - d]; break; }
-        if (ci + d < nx && !inU[cj * nx + ci + d]) { around = terrain[cj * nx + ci + d]; break; }
+      let base = o.base;
+      if (stacked.has(idx)) {
+        let around = this.sampleField(terrain, o.x, o.y);
+        const ci = Math.min(nx - 1, Math.max(0, Math.floor(o.x / this.h.dx)));
+        const cj = Math.min(ny - 1, Math.max(0, Math.floor(o.y / this.h.dx)));
+        for (let d = 0; d < nx; d++) {
+          if (ci - d >= 0 && !inU[cj * nx + ci - d]) { around = terrain[cj * nx + ci - d]; break; }
+          if (ci + d < nx && !inU[cj * nx + ci + d]) { around = terrain[cj * nx + ci + d]; break; }
+        }
+        if (base === undefined || around < base) base = around;
       }
-      const saved = o.base;
-      const base = saved === undefined || saved - around > 0.05 ? around : saved;
-      if (base !== saved) changed = true;
-      const fp = this.rockFootprint(o, base);
-      for (let m = 0; m < fp.cells.length; m++) {
-        const k = fp.cells[m];
-        if (fp.top[m] > newTops[k]) newTops[k] = fp.top[m];
+      if (cluster.has(idx) && base !== undefined) {
+        const fp = this.rockFootprint(o, base);
+        for (let m = 0; m < fp.cells.length; m++) {
+          const k = fp.cells[m];
+          if (fp.top[m] > newTops[k]) newTops[k] = fp.top[m];
+        }
       }
       return { ...o, base };
     });
-    // The pre-rock sand under the wall: what the sand would be if the
-    // re-based rocks were not there. Sand standing at most 25 cm above
-    // the re-based tops (or the terrain) is kept as it is — a real pile,
-    // a pit, or the terrain itself. Anything higher is stacked lift from
-    // the old saves, not terrain: it is replaced by the terrain plus the
-    // same 25 cm margin, so a real pile poking just above a top survives
-    // while a spire does not. This mutates the host sand in place,
-    // before the rocks are embedded, so `under` is the estimate and
-    // taking a rock off later gives the estimate back exactly.
-    const noRock = new Float32Array(n);
+    // The pre-rock sand under the cluster: sand standing at most 25 cm
+    // above the re-based tops (or the terrain) is kept as it is. Anything
+    // higher is stacked lift from the old saves: it is replaced by the
+    // terrain plus the same 25 cm margin. This mutates the host sand in
+    // place, before the rocks are embedded, so `under` is the estimate
+    // and taking a rock off later gives the estimate back exactly.
+    const noRock = sand.slice();
     for (let k = 0; k < n; k++) {
-      if (!inU[k]) {
-        noRock[k] = sand[k];
-        continue;
-      }
+      if (!inC[k]) continue;
       const excess = sand[k] - Math.max(newTops[k], terrain[k]);
       if (excess > 0.25) {
         noRock[k] = terrain[k] + 0.25;
         sand[k] = noRock[k];
-        changed = true;
-      } else {
-        noRock[k] = sand[k];
       }
     }
-    if (!changed) return { objects: fixed, noRock: null };
     return { objects: fixed, noRock };
+  }
+
+  /**
+   * Which saved rocks were stacked by the old code. Rock B is stacked when
+   * its centre lies on rock A's dome where the dome rises at least 10 cm,
+   * and B's saved base is at (or above, within 5 cm) the dome's height
+   * there: the old code sampled B's base from the sand A had lifted. The
+   * current code samples the terrain under the dome, so B's base is the
+   * sand under A plus whatever is piled on A — it only reaches A's dome
+   * height if A is buried by about its own height first, which is rare.
+   * `cluster` is the stacked rocks plus the rocks they sit on (indices
+   * into `objects`).
+   */
+  private stackedRocks(objects: PlacedObject[]): { stacked: Set<number>; cluster: Set<number> } {
+    const stacked = new Set<number>();
+    const cluster = new Set<number>();
+    const rocks: { idx: number; o: PlacedObject; fp: ReturnType<BeachObjects['rockFootprint']> }[] = [];
+    objects.forEach((o, idx) => {
+      if (o.kind === 'rock' && o.base !== undefined) rocks.push({ idx, o, fp: this.rockFootprint(o, o.base) });
+    });
+    const { nx } = this.h;
+    for (const b of rocks) {
+      const kb = this.cellAt(b.o.x, b.o.y);
+      const ib = kb % nx;
+      const jb = (kb / nx) | 0;
+      for (const a of rocks) {
+        if (a === b) continue;
+        if (ib < a.fp.i0 || ib > a.fp.i1 || jb < a.fp.j0 || jb > a.fp.j1) continue;
+        const m = a.fp.cells.indexOf(kb);
+        if (m < 0) continue;
+        const lift = a.fp.top[m] - a.o.base!;
+        if (lift >= 0.1 && b.o.base! >= a.fp.top[m] - 0.05) {
+          stacked.add(b.idx);
+          cluster.add(b.idx);
+          cluster.add(a.idx);
+        }
+      }
+    }
+    return { stacked, cluster };
   }
 
   /** For tests: the sea brings the next thing in on the next step. */
