@@ -29,6 +29,7 @@ const errors = [];
 const open = async (url, viewport) => {
   const ctx = await browser.newContext({ viewport });
   const page = await ctx.newPage();
+  page.setDefaultTimeout(60000); // the software-rendered page is slow here
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(url);
   await page.waitForSelector('body[data-ready="1"]', { timeout: 60000 });
@@ -61,8 +62,9 @@ const leave = `.shore-info-list [data-act="leave-${anaCode}"]:not([hidden])`;
 await pb.waitForSelector(leave, { timeout: 60000 });
 check(true, "the beach info card offers to leave something on Ana's beach");
 if (shots) await pb.screenshot({ path: `${shots}/visit-signed-out.png` });
-// tap "leave something": sign in first
-await pb.click(leave);
+// tap "leave something": sign in first. (Pressed in the page: the info card
+// re-appends its rows every frame, so Playwright rarely sees the button "stable".)
+await pb.$eval(leave, (b) => b.click());
 check(await pb.evaluate(() => !window.__beech.visitor().isOpen), 'signed out, it asks to sign in instead of opening the card');
 await pb.evaluate((n) => window.__beech.account().signInDev(n), ben);
 await pb.waitForSelector('.visitor.open .visitor-shell', { timeout: 60000 });
