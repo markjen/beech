@@ -65,6 +65,13 @@ The single list of what's left to do, for the owner and for agents.
   owner"; also keep or drop the beach guide's coach card under the
   no-notes rule (it shows only the next step's name now).
 
+- [ ] **Push notifications: keys and consoles** (2026-11-24): VAPID keys
+  in Secret Manager and two Actions variables (web), Firebase on
+  `beech-prod`, the APNs key uploaded to Firebase, the iOS capability and
+  the FCM role (apps). Step by step in
+  [INBOX_NOTIFICATIONS.md](INBOX_NOTIFICATIONS.md), "Turning on push:
+  owner steps". Then an agent builds V5 / V6.
+
 ## In progress
 
 _(nothing right now)_

@@ -186,6 +186,94 @@ Each one is a phase.
   the hourly limit and quiet hours. Failed endpoints (410 Gone) are
   removed.
 
+### Turning on push: owner steps
+
+Push needs keys and console setup that only the owner can do. None of it
+goes in the repo. Do these, then hand back to an agent to build V5/V6 (the
+engineering side is in BACKLOG.md). Everything here is free.
+
+**The plan:** web push uses VAPID keys (a key pair we make ourselves; the
+browsers' push services need no account). The iOS and Android apps both go
+through **Firebase Cloud Messaging (FCM)**, added to the existing
+`beech-prod` project: Apple's push key is uploaded to Firebase, and the
+server sends with its own Cloud Run identity, so no Firebase key file
+exists anywhere.
+
+**A. Web push (V5)**
+
+1. Make the key pair (on your machine, not in the repo):
+   ```bash
+   npx web-push generate-vapid-keys --json > /tmp/vapid.json
+   ```
+2. Keep the private key in Secret Manager, readable by the game server
+   (same pattern as GCP.md, "One-time setup"):
+   ```bash
+   PROJECT=beech-prod; REGION=us-central1
+   RUN_SA=beech-run@$PROJECT.iam.gserviceaccount.com
+   node -e "process.stdout.write(require('/tmp/vapid.json').privateKey)" \
+     | gcloud secrets create beech-vapid-private-key --data-file=-
+   gcloud secrets add-iam-policy-binding beech-vapid-private-key \
+     --member=serviceAccount:$RUN_SA --role=roles/secretmanager.secretAccessor
+   rm /tmp/vapid.json   # after copying the public key (next step)
+   ```
+3. GitHub → Settings → Secrets and variables → Actions → **Variables**:
+   `VAPID_PUBLIC_KEY` = the public key (it's public: the web app needs it
+   to subscribe), and `VAPID_SUBJECT` = `mailto:` plus an address the push
+   services can write to (a support address, not a personal one).
+4. A once-a-minute tick for the send queue (hourly limit, quiet hours):
+   ```bash
+   gcloud services enable cloudscheduler.googleapis.com
+   gcloud iam service-accounts create beech-scheduler
+   SCHED_SA=beech-scheduler@$PROJECT.iam.gserviceaccount.com
+   gcloud run services add-iam-policy-binding beech --region=$REGION \
+     --member=serviceAccount:$SCHED_SA --role=roles/run.invoker
+   ```
+   (The job itself, `gcloud scheduler jobs create http beech-push-tick …`,
+   comes with the V5 change, because it needs the endpoint to exist first.)
+
+Note: on iPhone, web push only works once the site is **added to the Home
+Screen** (iOS 16.4 and later). The app store apps use native push (B).
+
+**B. Native push in the apps (V6)**
+
+1. **Firebase on the existing project.** https://console.firebase.google.com
+   → Add project → pick **beech-prod** (not a new project), so billing and
+   IAM stay in one place. Analytics can be off.
+2. **Android app in Firebase:** package `app.beech.beach`. Download
+   `google-services.json`. Don't commit it: add it as a GitHub Actions
+   **secret** `GOOGLE_SERVICES_JSON` (base64: `base64 -w0 google-services.json`)
+   for the mobile CI, and put it at `android/app/google-services.json`
+   for local builds (the Android build already applies the plugin when the
+   file is there).
+3. **iOS app in Firebase:** bundle ID `app.beech.beach`. Download
+   `GoogleService-Info.plist` and add it as the secret
+   `GOOGLE_SERVICE_INFO_PLIST` (base64), the same way.
+4. **Apple push key.** developer.apple.com → Certificates, IDs & Profiles →
+   **Keys** → + → tick **Apple Push Notifications service (APNs)** →
+   download the `.p8` (Apple lets you download it **once**; keep it in your
+   password manager). Note its **Key ID** and your **Team ID**.
+5. **Give the key to Firebase:** Firebase → Project settings → Cloud
+   Messaging → Apple app configuration → APNs Authentication Key → upload
+   the `.p8` with the Key ID and Team ID. (It lives in Firebase, not in our
+   Secret Manager or the repo.)
+6. **Turn on the capability:** developer.apple.com → Identifiers →
+   `app.beech.beach` → **Push Notifications** on. If you use manual
+   provisioning profiles, regenerate them.
+7. **Let the server send:**
+   ```bash
+   gcloud services enable fcm.googleapis.com
+   gcloud projects add-iam-policy-binding $PROJECT \
+     --member=serviceAccount:$RUN_SA --role=roles/firebasecloudmessaging.admin
+   ```
+8. **Store forms** (MOBILE.md, "Store forms"): Play's Data safety form gains
+   "Device or other IDs: collected, for app functionality, not shared"
+   (the push token). Apple's privacy label needs no new data type for push
+   tokens, but the review notes should say push is opt-in and only for
+   gifts, notes, neighbors and invites.
+
+When both are done, tell the agent which of A and B is ready; each phase
+ships on its own.
+
 ## 4. Safety (user-generated content)
 
 Free-text notes from strangers are user-generated content. Both stores
