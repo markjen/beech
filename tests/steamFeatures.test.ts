@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { applyDeadzone } from '../src/input/gamepad';
 import type { BeechSteamBridge } from '../src/platform/runtime';
-import { resetSteamFeatureState, unlockSteamAchievement, updateSteamRichPresence } from '../src/platform/steamFeatures';
+import {
+  resetSteamFeatureState,
+  unlockSteamAchievement,
+  updateSteamRichPresence,
+  type SteamAchievementId,
+} from '../src/platform/steamFeatures';
 
 afterEach(() => {
   delete (globalThis as { window?: { beechSteam?: BeechSteamBridge } }).window;
@@ -36,6 +41,28 @@ describe('Steam achievements & Rich Presence', () => {
   it('is a safe no-op outside Steam', () => {
     expect(() => unlockSteamAchievement('FIRST_DIG')).not.toThrow();
     expect(() => updateSteamRichPresence('Waikiki', 'diorama')).not.toThrow();
+  });
+
+  it('every defined achievement ID unlocks through the bridge', () => {
+    const unlockAchievement = vi.fn();
+    (globalThis as unknown as { window: { beechSteam?: Partial<BeechSteamBridge> } }).window = {
+      beechSteam: { unlockAchievement },
+    };
+    const all: SteamAchievementId[] = [
+      'FIRST_DIG',
+      'CHAIR_VIEW',
+      'NIGHT_BEACH',
+      'WALK_SHORE',
+      'FIRST_NEIGHBOR',
+      'CLAW_WIN',
+      'VENDING_PULL',
+      'BURIED_FIND',
+      'CHECKPOINT_SAVED',
+      'FIVE_BEACHES',
+    ];
+    for (const id of all) unlockSteamAchievement(id);
+    expect(unlockAchievement).toHaveBeenCalledTimes(all.length);
+    for (const id of all) expect(unlockAchievement).toHaveBeenCalledWith(id);
   });
 });
 

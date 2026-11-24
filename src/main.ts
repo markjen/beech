@@ -893,7 +893,6 @@ async function boot() {
   });
   gestures.lookOnly = true;
 
-  let gamepadToolIndex = 0;
   const gamepad = new GamepadController(canvas, cam, {
     digStart: (sx, sy) => {
       if (cam.animating) return;
@@ -927,8 +926,12 @@ async function boot() {
     },
     undo,
     cycleTool: (delta) => {
-      gamepadToolIndex = (gamepadToolIndex + delta + TOOLS.length) % TOOLS.length;
-      if (TOOLS[gamepadToolIndex]) pickTool(TOOLS[gamepadToolIndex].id);
+      // Derive the index from the current tool on each press: the mouse /
+      // touch UI can change it, so a stored index would drift and LB/RB
+      // would jump to the wrong tool.
+      const current = Math.max(0, TOOLS.findIndex((t) => t.id === tool));
+      const next = (current + delta + TOOLS.length) % TOOLS.length;
+      if (TOOLS[next]) pickTool(TOOLS[next].id);
     },
     toggleView: () => cam.toggleMode(),
     toggleSettings: () => sheet.toggleOpen(),
@@ -1232,6 +1235,7 @@ async function boot() {
       const bytes = await encodeSand(b.delta, b.nx, b.ny, b.objects, b.cover);
       const cp = await cpApi.import(bytes, (b.name || fallback || 'Imported beach').slice(0, 40), b.location);
       showToast(uiRoot, `Kept “${cp.name}” as a checkpoint`);
+      unlockSteamAchievement('CHECKPOINT_SAVED');
       await checkpoints.load();
     };
     // beach files and checkpoints (BEACH_FILE.md, E5)
@@ -1401,6 +1405,7 @@ async function boot() {
       },
     });
     const claw = new ClawMachine(uiRoot, new PullApi(acct), (item, place) => {
+      unlockSteamAchievement('CLAW_WIN');
       void loadOwned().then(() => {
         if (place) inventory.select(item);
       });
@@ -1446,6 +1451,7 @@ async function boot() {
     });
     inventory.setClaw(acct.user ? 'play' : 'signin');
     const vending = new VendingMachine(uiRoot, new PullApi(acct), (item, place) => {
+      unlockSteamAchievement('VENDING_PULL');
       void loadOwned().then(() => {
         if (place) inventory.select(item);
       });

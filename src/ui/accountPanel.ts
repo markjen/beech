@@ -6,6 +6,7 @@ import { beachShareText, shareUrl, shoreBeachUrl } from '../net/share';
 import { DISCORD_INVITE_URL } from '../../server/src/community';
 import { copyText, shareLink } from './shareSheet';
 import { isSteam, steamBridge } from '../platform/runtime';
+import { unlockSteamAchievement } from '../platform/steamFeatures';
 import { nativeProviders, nativeSignIn, SignInCancelled, type NativeProvider } from '../net/nativeAuth';
 import { reportError, reportEvent } from '../net/telemetry';
 
@@ -299,6 +300,7 @@ export class AccountPanel {
       if (taken) yes.title = `Move your ${r.side} neighbor away first`;
       yes.addEventListener('click', () => void this.guard(async () => {
         await nv.api.accept(r.code);
+        unlockSteamAchievement('FIRST_NEIGHBOR');
         await nv.refresh();
       }));
       const no = document.createElement('button');
@@ -427,6 +429,8 @@ export class AccountPanel {
         act('+ new beach', 'new-beach', async () => {
           const name = window.prompt('Name your new beach', '') ?? '';
           const b = await a.createBeach(name.trim(), mine.location());
+          // createBeach reloads a.beaches, so this is the count after adding
+          if (a.beaches.length >= 5) unlockSteamAchievement('FIVE_BEACHES');
           await mine.open(b.id);
         }),
       );
