@@ -545,7 +545,8 @@ export class NeighborApi {
   /** Keep walking the shore from `from` (infinite scroll), nearest first. */
   async shoreMore(from: string, dir: Side, count: number): Promise<ShoreBeach[]> {
     const q = new URLSearchParams({ from, dir, count: String(count) });
-    const res = await this.account.fetch(`/api/shore/more?${q}`);
+    const prefix = this.account.user ? '/api/shore/more' : '/api/public/shore/more';
+    const res = await this.account.fetch(`${prefix}?${q}`);
     if (!res.ok) throw await errorOf(res, 'could not load more of the shore');
     return ((await res.json()) as { beaches: ShoreBeach[] }).beaches;
   }
@@ -574,14 +575,16 @@ export class NeighborApi {
     const q = new URLSearchParams({ depth: String(depth) });
     if (code) q.set('code', code);
     else if (this.account.beachId) q.set('beach', this.account.beachId);
-    const res = await this.account.fetch(`/api/shore?${q}`);
+    const prefix = this.account.user ? '/api/shore' : '/api/public/shore';
+    const res = await this.account.fetch(`${prefix}?${q}`);
     if (!res.ok) throw await errorOf(res, 'could not find that beach');
     return (await res.json()) as Shore;
   }
 
   /** Anyone's saved beach, by their code (null if they haven't saved one). */
   async beachByCode(code: string): Promise<SavedBeach | null> {
-    const res = await this.account.fetch(`/api/beaches/${encodeURIComponent(code)}`);
+    const prefix = this.account.user ? '/api/beaches' : '/api/public/beaches';
+    const res = await this.account.fetch(`${prefix}/${encodeURIComponent(code)}`);
     if (res.status === 404) return null;
     if (!res.ok) throw await errorOf(res, 'could not load their beach');
     return {

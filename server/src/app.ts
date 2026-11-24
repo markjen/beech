@@ -46,7 +46,7 @@ import { currentSet, drawVending, nextUtcMidnight } from './vending.js';
 import { DIG_FIND_DAILY_CAP, DIG_FIND_ROLL_COOLDOWN_MS, digDraw, qualifiesForFind } from './digFinds.js';
 import { hashToken, newSessionToken, SESSION_DAYS, verifyAppleIdToken, verifyGoogleIdToken, type VerifiedIdentity } from './auth.js';
 import { toBytes, type Db } from './db.js';
-import { BEACH, NODE, SIDES, beachJson, normalizeCode, shoreGraph, type NodeRow, type Side } from './shore.js';
+import { BEACH, NODE, SIDES, beachJson, isPublic, normalizeCode, shoreGraph, type NodeRow, type Side } from './shore.js';
 import {
   BadBlob,
   CHECKPOINT_BYTES_PER_USER,
@@ -640,6 +640,34 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const from = await nodeByCode(c.req.query('from') ?? '');
     if (!from) return c.json({ error: 'no beach with that code' }, 404);
     return c.json({ beaches: (await walk(from, [dir], count, new Set([from.id])))[dir] });
+  });
+
+  // Read-only 3D visit for signed-out visitors (from beechshore.com or a shared
+  // ?visit= link): strictly `isPublic` (on the shore and saved), walking the
+  // same public shore order as beechshore.com. Off-shore or unsaved beaches
+  // answer 404 (leaking nothing) and still require sign-in via /shore + /beaches/:code.
+  app.get('/public/shore', async (c) => {
+    const depth = Math.min(12, Math.max(0, Number(c.req.query('depth') ?? 6) | 0));
+    const code = c.req.query('code') ?? '';
+    const center = await nodeByCode(code);
+    if (!center || !isPublic(center)) return c.json({ error: 'no public beach with that code' }, 404);
+    const { left, right } = await walk(center, ['left', 'right'], depth, new Set([center.id]), isPublic);
+    return c.json({ center: { ...beachJson(center), you: false }, left, right });
+  });
+
+  app.get('/public/shore/more', async (c) => {
+    const dir = c.req.query('dir') as Side;
+    if (!SIDES.includes(dir)) fail(400, 'dir must be left or right');
+    const count = Math.min(12, Math.max(1, Number(c.req.query('count') ?? 6) | 0));
+    const from = await nodeByCode(c.req.query('from') ?? '');
+    if (!from || !isPublic(from)) return c.json({ error: 'no public beach with that code' }, 404);
+    return c.json({ beaches: (await walk(from, [dir], count, new Set([from.id]), isPublic))[dir] });
+  });
+
+  app.get('/public/beaches/:code', async (c) => {
+    const who = await nodeByCode(c.req.param('code') ?? '');
+    if (!who || !isPublic(who)) return c.json({ error: 'no public beach with that code' }, 404);
+    return sendBeach(c, who.id);
   });
 
   const byCode = nodeByCode;

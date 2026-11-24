@@ -396,6 +396,17 @@ const MIGRATIONS: string[] = [
    WHERE i.item_id IN ('nautilus') AND i.quantity > 0
    ORDER BY i.item_id, i.acquired_at;
   `,
+
+  // 17: partial indexes for beechshore.com lists, place pages, counts and
+  // sitemap at scale (docs/SHORE_SITE.md, "Not done yet").
+  `
+  CREATE INDEX IF NOT EXISTS beach_public_updated
+    ON beach (updated_at DESC, id)
+    WHERE on_shore AND sand IS NOT NULL;
+  CREATE INDEX IF NOT EXISTS beach_public_location
+    ON beach (location, updated_at DESC, id)
+    WHERE on_shore AND sand IS NOT NULL;
+  `,
 ];
 
 /** Apply migrations up to `upTo` (default: all). Tests use `upTo` to check a migration on older data. */
