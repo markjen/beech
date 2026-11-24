@@ -51,6 +51,14 @@ _(nothing right now)_
 
 ## Up next (engineering)
 
+- [ ] **Buried rocks lose cover on reload** (predates the spire fix): a
+  save strips each rock's lift from the sand, so sand piled on a rock is
+  saved as `under + deposit`; on load the rock is embedded with that as
+  its `under`, and the sand comes back at `under + deposit` rather than
+  `top + deposit` — the rock pokes up through its cover by up to its
+  height. Fix: save the deposit separately (or the lifted sand) for cells
+  under rocks, a save-format change (docs/BEACH_FILE.md).
+
 - [ ] **Release setup for native sign-in** (DevOps): Android and iOS OAuth
   clients, build env vars, the Info.plist URL scheme, the Apple capability,
   and server client IDs. Steps are in BACKEND.md, "Phone apps". Then test on
@@ -133,6 +141,20 @@ _(nothing right now)_
   beach (MULTI_BEACH.md), the shop with App Store / Play billing and web
   checkout (PRICING.md, WEB_PAYMENTS.md), and keeping a beach off the shore
   (the on/off-shore switch on each beach).
+- [x] **Spire spike on Riley's beach** (2026-11-23): a wall of overlapping
+  rocks stacked its sand lifts without bound (each new rock's base was
+  sampled from sand already lifted by earlier rocks) and taking the rocks
+  off left the floor raised, so the leftover column — about 3.6 m on
+  Riley's beach (GJPUDD) — was permanent and survived save/load. Fixed in
+  `src/sim/objects.ts` (rock bases and `under` now come from the terrain
+  with lifts stripped; removal rebuilds the floor from the untouched floor
+  plus the rocks still there; `withoutRocks` peels exactly) and
+  `src/sim/beachSim.ts` (loading an old save that holds stacked rocks — a
+  rock whose centre sits at the height of another rock's dome — re-bases
+  just those rocks and replaces the stacked lift in that cluster with the
+  terrain estimate, so Riley's spire heals the next time her beach is
+  opened; beaches without stacking, including rocks on piles and buried
+  rocks, load exactly as saved). Regression tests in `tests/spike.test.ts`.
 - [x] **Discord links** (2026-11-23, PR #40 draft): the Discord server is
   the feedback channel — "Talk to us" section + footer link on the
   landing page, footer link on the shore site, "Join our Discord" at the
