@@ -1,4 +1,5 @@
 import { execSync } from 'node:child_process';
+import fs from 'node:fs';
 import { defineConfig, type Plugin } from 'vite';
 
 /**
@@ -17,6 +18,11 @@ function buildId(): string {
   }
 }
 const BUILD = buildId();
+// The marketing version (package.json "version", set by scripts/set-version.mjs
+// together with the native build numbers). The native shells report their own
+// version/build at runtime (src/platform/version.ts); the web build only has
+// what Vite stamps in, so it gets the version the same way.
+const APP_VERSION = (JSON.parse(fs.readFileSync('package.json', 'utf8')) as { version: string }).version;
 
 const versionFile = (): Plugin => ({
   name: 'beech-version',
@@ -32,6 +38,7 @@ export default defineConfig({
   base: './',
   define: {
     __APP_BUILD__: JSON.stringify(BUILD),
+    __APP_VERSION__: JSON.stringify(APP_VERSION),
   },
   plugins: [versionFile()],
   build: {

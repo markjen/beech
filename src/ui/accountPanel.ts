@@ -6,6 +6,7 @@ import { beachShareText, shareUrl, shoreBeachUrl } from '../net/share';
 import { DISCORD_INVITE_URL } from '../../server/src/community';
 import { copyText, shareLink } from './shareSheet';
 import { isSteam, steamBridge } from '../platform/runtime';
+import { appInfo, formatAppVersion, syncAppInfo } from '../platform/version';
 import { unlockSteamAchievement } from '../platform/steamFeatures';
 import { nativeProviders, nativeSignIn, SignInCancelled, type NativeProvider } from '../net/nativeAuth';
 import { reportError, reportEvent } from '../net/telemetry';
@@ -185,6 +186,17 @@ export class AccountPanel {
     }
     community.appendChild(discord);
     box.appendChild(community);
+    // One quiet line, so a bug report can say exactly which build this is.
+    // It shows without signing in: this sheet is where the sign-in errors are.
+    // The native shell's store build number arrives a beat later; until then
+    // the line shows the bundle's own ids, which are never wrong.
+    const ver = document.createElement('div');
+    ver.className = 'status';
+    ver.textContent = formatAppVersion(syncAppInfo());
+    box.appendChild(ver);
+    void appInfo().then((info) => {
+      if (ver.isConnected) ver.textContent = formatAppVersion(info);
+    });
     this.el.appendChild(box);
     this.renderStatus();
   }
