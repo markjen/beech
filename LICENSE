@@ -1,0 +1,196 @@
+Beech Shared Shore & Revenue-Share License
+Version 1.0 — November 23, 2026
+
+Copyright (c) 2026 Mark Jen (Jenerator Labs)
+Original repository: https://github.com/markjen/beech
+Contact: markjen@gmail.com
+
+================================================================================
+Plain-Language Summary (for convenience only; the terms below govern)
+================================================================================
+
+You may fork, modify, host, and run this code, and you may collect money from
+it. In return, you must:
+
+  1. Pay 30% of your Gross Revenue back to Mark Jen, the original author.
+  2. Keep public beaches on your host connectable, shareable, and browsable
+     into Beechshore (https://beechshore.com) and interoperable with beaches
+     on other hosts.
+  3. Keep this license and copyright notice intact on all copies and forks.
+
+Non-commercial use that collects no revenue is free (30% of $0 is $0).
+
+================================================================================
+License Terms and Conditions
+================================================================================
+
+1. Definitions
+
+   "Author" or "Licensor" means Mark Jen (Jenerator Labs), the original author
+   of beech, and his designated successors or assigns.
+
+   "Software" means the beech source code, assets, shaders, scripts, server
+   code, documentation, and related files distributed under this License.
+
+   "Derivative Work" means any fork, modification, adaptation, translation,
+   port, hosted service, mobile application, or other work based upon or
+   incorporating all or any substantial portion of the Software.
+
+   "You" or "Licensee" means any individual, company, or other legal entity
+   exercising permissions granted by this License.
+
+   "Host" means any server, instance, application, or service operated by You
+   that hosts, stores, or serves player beaches using the Software or a
+   Derivative Work.
+
+   "Beechshore" means the public shore directory, discovery, and browsing
+   service operated by the Licensor at https://beechshore.com (including any
+   successor domain or federation network designated by the Licensor).
+
+   "Public Beach" means any beach on a Host that its player has chosen to make
+   public or place on the shore (as distinct from beaches explicitly kept
+   private or off-shore by the player, or removed for moderation/safety).
+
+   "Gross Revenue" means all money and monetary value collected, received, or
+   earned by You (or by any affiliate, partner, or payment intermediary on Your
+   behalf) arising from or connected to the Software or a Derivative Work. This
+   includes, without limitation, in-app purchases, web checkout payments,
+   virtual goods, subscriptions, access fees, sponsorships, advertising revenue,
+   donations or tips tied to access or in-game benefits, white-label or
+   sublicensing fees, and platform payouts. Gross Revenue is calculated before
+   deducting hosting, infrastructure, development, marketing, support, or other
+   operating expenses, and excludes only sales taxes, VAT, or similar
+   transaction taxes actually collected from users and remitted to a taxing
+   authority, and bona fide customer refunds or chargebacks actually returned.
+
+2. Grant of Rights
+
+   Subject to Your strict compliance with all conditions in this License, the
+   Licensor hereby grants You a worldwide, non-exclusive, revocable (upon
+   breach), royalty-bearing license to:
+
+   (a) Copy, fork, study, modify, and create Derivative Works of the Software;
+   (b) Build, distribute, and publish the Software and Derivative Works on web,
+       mobile, desktop, TV, or other platforms;
+   (c) Host and operate the Software and Derivative Works as a public or
+       private service; and
+   (d) Monetize and collect revenue from the Software and Derivative Works.
+
+3. Condition 1 — 30% Gross Revenue Share
+
+   (a) Revenue Share Obligation. If You collect any Gross Revenue from the
+       Software or a Derivative Work, You must pay thirty percent (30%) of all
+       Gross Revenue to the Licensor.
+
+   (b) Zero-Revenue Use. If Your use generates no Gross Revenue, no payment is
+       due under this Section.
+
+   (c) Reporting and Payment Schedule. Within thirty (30) days after the end of
+       each calendar quarter in which You collect Gross Revenue, You must:
+       (i)  Send a clear revenue statement to the Licensor at markjen@gmail.com
+            (or another reporting channel designated by the Licensor) detailing
+            total Gross Revenue by source, applicable tax exclusions and
+            refunds, and the 30% amount due; and
+       (ii) Remit the full 30% payment in USD (or another currency agreed in
+            writing by the Licensor) via a payment method designated by the
+            Licensor.
+
+   (d) No Circumvention. You may not structure pricing, bundles, affiliated
+       entities, companion apps, or off-platform payments to avoid or reduce
+       the Gross Revenue subject to this License.
+
+   (e) Records and Verification. You must keep accurate books and records
+       sufficient to verify Gross Revenue for at least three (3) years after
+       each reporting period and provide reasonable supporting documentation
+       (such as payment processor or app store payout statements) upon the
+       Licensor's reasonable written request.
+
+4. Condition 2 — Beechshore Interoperability and Federation
+
+   A core purpose of beech is a shared, open shore across independent Hosts.
+   If You operate a Host serving player beaches, You must ensure that Public
+   Beaches on Your Host remain connectable, shareable, and browsable into
+   Beechshore:
+
+   (a) Connectable. Public Beaches on Your Host must be able to connect with
+       beaches on Beechshore and on other compliant Hosts—including neighbor
+       linking, direct visiting by code or URL, and cross-host shore adjacency
+       as supported by the Software and Beechshore federation protocols.
+
+   (b) Shareable. Share links, beach codes, previews, and beach exports for
+       Public Beaches on Your Host must remain compatible with Beechshore and
+       shareable into Beechshore without artificial technical barriers.
+
+   (c) Browsable. Public Beaches on Your Host must be exposed for discovery,
+       indexing, preview rendering, and browsing in Beechshore (for example,
+       through the Software's public shore endpoints and any federation APIs
+       published by the Licensor). You must not wall off Public Beaches behind
+       anti-interoperability blocks, exclusive lock-in, or paywalls that
+       prevent Beechshore from listing, previewing, or linking to them.
+
+   (d) Player Privacy Respected. This requirement applies only to Public
+       Beaches. Hosts must continue to respect a player's choice to keep a
+       beach private / off-shore, as well as reasonable moderation, safety, and
+       anti-abuse measures.
+
+   (e) Protocol Updates. As the Licensor publishes or updates open federation
+       and Beechshore integration specifications in the official repository,
+       active Hosts must adopt and maintain reasonable compatibility within
+       ninety (90) days of publication, unless granted a written extension or
+       waiver by the Licensor.
+
+5. Condition 3 — Attribution, Notices, and Share-Alike Propagation
+
+   (a) Keep Notices Intact. You must retain this License file and the original
+       copyright notice in all copies, forks, and substantial portions of the
+       Software and any Derivative Work.
+
+   (b) License Propagation. Any fork or Derivative Work that You distribute or
+       host must be licensed under this same License (with all conditions,
+       including the 30% Gross Revenue share flowing to the original Author and
+       the Beechshore interoperability requirement, preserved intact). You may
+       not re-license the Software or a Derivative Work to remove or weaken
+       these obligations.
+
+   (c) Clear Attribution and No Impersonation. You must credit "beech by Mark
+       Jen" with a link to https://beech.games or https://github.com/markjen/beech
+       in your repository and app/site about or credits screen. This License
+       does not grant You permission to use the Licensor's trademarks, logos,
+       or domain names (including "beech.games" and "beechshore.com") to imply
+       that Your Host is operated or officially endorsed by the Licensor.
+
+6. Third-Party Components and Data
+
+   Third-party libraries, dependencies, and datasets included or referenced by
+   the Software (such as TICON-3 tide harmonic data, licensed under CC-BY 4.0)
+   remain governed by their own respective licenses. Nothing in this License
+   restricts rights granted to You under those third-party licenses.
+
+7. Termination
+
+   Your rights under this License terminate automatically if You materially
+   breach Section 3 (Revenue Share), Section 4 (Beechshore Interoperability),
+   or Section 5 (Attribution and Propagation) and fail to cure the breach within
+   thirty (30) days after receiving written notice from the Licensor (or
+   immediately in the case of willful evasion of revenue reporting or payment).
+   Termination does not relieve You of any revenue-share payments already
+   accrued prior to termination.
+
+8. Disclaimer of Warranty
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE, TITLE, AND NON-INFRINGEMENT.
+
+9. Limitation of Liability
+
+   IN NO EVENT SHALL THE AUTHOR OR LICENSOR BE LIABLE FOR ANY CLAIM, DAMAGES,
+   OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE,
+   ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE,
+   HOSTING, MONETIZATION, OR OTHER DEALINGS IN THE SOFTWARE.
+
+10. Separate Agreements
+
+    If You wish to use the Software under different commercial terms or request
+    a written waiver of any condition above, contact Mark Jen at
+    markjen@gmail.com.

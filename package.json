@@ -3,6 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "license": "SEE LICENSE IN LICENSE",
   "description": "A calm beach sand-and-waves toy for web and mobile, built with Babylon.js.",
   "scripts": {
     "dev": "vite",

@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.2.0",
   "type": "module",
+  "license": "SEE LICENSE IN ../LICENSE",
   "description": "beech backend: serves the web app and /api (accounts, saved beaches, neighbors). Node + Hono + Postgres; runs on Cloud Run.",
   "scripts": {
     "build": "tsc -p tsconfig.json",

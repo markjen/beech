@@ -89,3 +89,11 @@ URL parameters for development: `?quality=low|medium|high`, `?seed=N`,
   app also installs on Android TV.
 
 Work queue and ideas: [docs/BACKLOG.md](docs/BACKLOG.md).
+
+## License
+
+[Beech Shared Shore & Revenue-Share License](LICENSE): anyone can fork, host,
+and run this code and collect money, provided that **30% of gross revenue**
+flows back to the original author (Mark Jen) and public beaches on different
+hosts remain **connectable, shareable, and browsable into Beechshore**
+(https://beechshore.com).
