@@ -77,7 +77,7 @@ simulated one.
 | `src/render/neighbors.ts` | The shore: beaches down the chain of neighbor links as snapshot dioramas (drawn near the view), visiting by code, favorites, name tags |
 | `Dockerfile` | Production image: web app (accounts on) + API server |
 | `src/audio/ambience.ts` | Procedural Web Audio soundscape |
-| `src/platform/*` | Haptics (Capacitor or vibrate), PWA registration, quality tier from benchmark |
+| `src/platform/*` | Haptics (Capacitor or vibrate), PWA registration, quality tier from benchmark, new-version check (`update.ts`) |
 | `src/ui/*` | HUD buttons and tools, start screen, hint, settings sheet, debug panel, settings storage |
 | `scripts/` | `shot.mjs` (screenshots), `smoke.mjs` (end-to-end), `make-icons.mjs`, `set-version.mjs`, `extract-tides.mjs` (rebuild tide constants from TICON-3), `artifact-page.mjs` (claude.ai preview), `actions/*` (scripted interactions for screenshots) |
 | `android/`, `ios/` | Capacitor native shells (see docs/MOBILE.md) |

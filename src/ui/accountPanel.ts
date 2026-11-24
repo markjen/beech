@@ -61,6 +61,8 @@ export class AccountPanel {
           ? 'offline: your beach will save when you reconnect'
           : s === 'tooBig'
             ? 'too big to save: smooth some of the sand to save again'
+          : s === 'outdated'
+            ? 'a new version is ready: reload to save'
           : this.sync.dropped
             ? `saved, but ${this.sync.dropped} of your things didn't fit (${MAX_OBJECTS} at most)`
             : this.sync.savedAt

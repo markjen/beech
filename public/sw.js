@@ -32,6 +32,8 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return;
   // the API is live, per-user data: never serve it from a cache
   if (url.pathname.includes('/api/')) return;
+  // the live build id: an open tab asks it whether a new version is out
+  if (url.pathname.endsWith('/version.json')) return;
 
   if (req.mode === 'navigate') {
     event.respondWith(

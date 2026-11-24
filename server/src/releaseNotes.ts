@@ -16,6 +16,13 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    date: '2026-11-24',
+    title: 'Fresh versions',
+    changes: [
+      'When a new version of beech comes out while you have it open in a browser, a note offers to reload: your beach saves first.',
+    ],
+  },
+  {
     date: '2026-11-23',
     title: 'A quieter screen, and a guide',
     changes: [

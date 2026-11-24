@@ -11,6 +11,7 @@ import { SandPicker } from './input/sandPicker';
 import { rgbToCss, type Palette } from './palette';
 import { Haptics } from './platform/haptics';
 import { registerServiceWorker } from './platform/pwa';
+import { watchForUpdates } from './platform/update';
 import { tierFromBench } from './platform/quality';
 import { BeachRenderer, ORIGIN_X, ORIGIN_Z } from './render/beachRenderer';
 import { ObjectView } from './render/objects';
@@ -1202,6 +1203,24 @@ async function boot() {
       }, 14000);
     });
   }
+
+  // a new version went live while this tab was open (or the server stopped
+  // taking this version's saves): offer a reload, saving first. Stays up
+  // until tapped; shown once.
+  let toldNewVersion = false;
+  const offerReload = () => {
+    if (toldNewVersion) return;
+    toldNewVersion = true;
+    showActionToast(uiRoot, 'A new version of beech is ready', 'reload', () => {
+      const s = sync;
+      const flushed = s && s.state !== 'outdated' ? s.flush().catch(() => {}) : Promise.resolve();
+      void flushed.then(() => location.reload());
+    }, 0);
+  };
+  if (ACCOUNTS_ENABLED) watchForUpdates(offerReload);
+  sync?.onState((st) => {
+    if (st === 'outdated') offerReload();
+  });
 
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) void sync?.flush(true);

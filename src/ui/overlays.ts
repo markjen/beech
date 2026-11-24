@@ -49,7 +49,7 @@ export function showToast(parent: HTMLElement, text: string): () => void {
   return hide;
 }
 
-/** A note with one button ("Restored 'Moat' · Undo"), gone after `ms`. */
+/** A note with one button ("Restored 'Moat' · Undo"), gone after `ms` (0: stays until tapped). */
 export function showActionToast(parent: HTMLElement, text: string, label: string, onClick: () => void, ms = 10000): () => void {
   const { el, hide } = showNote(parent, ms);
   el.classList.add('with-action');
@@ -67,7 +67,7 @@ export function showActionToast(parent: HTMLElement, text: string, label: string
   return hide;
 }
 
-/** A `.hint` element that shows itself, then removes itself after `ms`. */
+/** A `.hint` element that shows itself, then removes itself after `ms` (0: never by itself). */
 function showNote(parent: HTMLElement, ms: number): { el: HTMLDivElement; hide: () => void } {
   const el = document.createElement('div');
   el.className = 'hint';
@@ -80,7 +80,7 @@ function showNote(parent: HTMLElement, ms: number): { el: HTMLDivElement; hide: 
     el.classList.remove('show');
     window.setTimeout(() => el.remove(), 800);
   };
-  window.setTimeout(hide, ms);
+  if (ms > 0) window.setTimeout(hide, ms);
   return { el, hide };
 }
 

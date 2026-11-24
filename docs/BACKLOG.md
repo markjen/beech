@@ -51,10 +51,6 @@ _(nothing right now)_
 
 ## Up next (engineering)
 
-- [ ] **Reload stale tabs**: send the build id with saves (or poll a
-  `/version`), and when the server says the app is out of date (426) show
-  "a new version is ready · reload" instead of a silent save failure. A tab
-  left open across a world change corrupted Rose's beach (2026-11-23).
 - [ ] **More than one beach**: design in [MULTI_BEACH.md](MULTI_BEACH.md),
   four phases (data model and API → beaches list → connected beaches →
   shop). Owner decisions are listed at the end of that doc. People can
@@ -126,6 +122,10 @@ _(nothing right now)_
 
 ## Done (recent)
 
+- [x] **Reload stale tabs** (2026-11-24): builds stamp an id into
+  `index.html` and `version.json`; open web tabs check it every 5 minutes
+  (and on focus / online) and on a 426 save, and show "A new version of
+  beech is ready · reload" (saves first). See STATUS → New-version prompt.
 - [x] **Discord links** (2026-11-23, PR #40 draft): the Discord server is
   the feedback channel — "Talk to us" section + footer link on the
   landing page, footer link on the shore site, "Join our Discord" at the

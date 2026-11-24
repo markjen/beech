@@ -106,6 +106,14 @@
   smoke and screenshot scripts pass `?fixedres` to turn this off.
 - **PWA:** hand-written `public/sw.js`, network-first for page loads and
   cache-first for hashed assets. Not registered in dev or in the native shells.
+- **New-version prompt:** the build stamps an id (a hash of the built file
+  names) into `index.html` (`<meta name="beech-build">`) and `version.json`
+  (`vite.config.ts`). An open production web tab fetches `version.json`
+  every 5 minutes while visible and when it comes back into view or online
+  (`src/platform/update.ts`; the service worker never caches it), and a
+  426 on save ("this app is out of date") does the same: a toast that
+  stays until tapped offers "reload", which saves first. Not in the
+  sandbox build or the native apps.
 - **Capacitor 8 with SPM for iOS** (no CocoaPods), appId `app.beech.beach`
   (a placeholder: choose the final one before the first store upload, see
   docs/MOBILE.md). Android release signing reads `BEECH_KEYSTORE_*` env vars,

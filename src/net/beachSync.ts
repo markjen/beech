@@ -18,7 +18,7 @@ export function countItems(objects: PlacedObject[]): Record<string, number> {
 }
 
 /** `tooBig`: the server refused the save as too large (it keeps the last one that fit) */
-export type SyncState = 'idle' | 'saving' | 'saved' | 'offline' | 'tooBig';
+export type SyncState = 'idle' | 'saving' | 'saved' | 'offline' | 'tooBig' | 'outdated';
 
 export interface SyncHost {
   /** current sand minus the rest beach, at the live grid size, plus what's on it */
@@ -149,6 +149,13 @@ export class BeachSync {
         this.dirty = false;
         this.set('idle');
         window.setTimeout(() => void this.reloadRestored(), 0);
+        return;
+      }
+      if (e instanceof ApiError && e.status === 426) {
+        // the server won't take saves from this version of the app: only
+        // a reload helps, so don't retry (the change stays dirty, and the
+        // reloaded app loads the last save)
+        this.set('outdated');
         return;
       }
       if (e instanceof ApiError && e.status === 413) {
