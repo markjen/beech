@@ -24,6 +24,10 @@
 //             like shells, then leaves them.
 //  bucket     A pail, upright and heavy enough to stay put: it sits
 //             where you put it, even when the water comes up.
+//  coral      A branching fragment: light enough for the swash to roll
+//             it along like a shell, then leave it on the sand.
+//  coconut    Round and buoyant: it floats like a bottle, riding high
+//             in the water, and the swash rolls it up the beach.
 export type ObjectKind =
   | 'rock'
   | 'driftwood'
@@ -40,6 +44,8 @@ export type ObjectKind =
   | 'beachball'
   | 'sandals'
   | 'bucket'
+  | 'coral'
+  | 'coconut'
   | 'deckchair'
   // from the shop
   | 'parasol'
@@ -49,7 +55,7 @@ export type ObjectKind =
   | 'lighthouse'
   | 'tikitorch';
 export const OBJECT_KINDS: ObjectKind[] = [
-  'rock', 'driftwood', 'shell', 'seaglass', 'trash', 'seaweed', 'flag', 'conch', 'sanddollar', 'starfish', 'bottle', 'nautilus', 'beachball', 'sandals', 'bucket', 'deckchair',
+  'rock', 'driftwood', 'shell', 'seaglass', 'trash', 'seaweed', 'flag', 'conch', 'sanddollar', 'starfish', 'bottle', 'nautilus', 'beachball', 'sandals', 'bucket', 'coral', 'coconut', 'deckchair',
   'parasol', 'surfboard', 'sandcastle', 'beachhut', 'lighthouse', 'tikitorch',
 ];
 
@@ -77,6 +83,10 @@ const BEHAVIOUR: Record<ObjectKind, Behaviour> = {
   sandals: 'tumble',
   // a bucket sits upright where you put it, even when the water comes up
   bucket: 'fixed',
+  // a coral fragment tumbles like a shell: the swash rolls it along, then leaves it
+  coral: 'tumble',
+  // a coconut floats like a bottle — round and buoyant, so it rides high
+  coconut: 'float',
   // a deckchair (and everything from the shop) is set up on the sand and stays there
   deckchair: 'fixed',
   parasol: 'fixed',
@@ -173,7 +183,7 @@ export const ROCK_HEIGHT = 0.8; // height as a fraction of radius
 export const WOOD_RADIUS = (length: number) => 0.05 + length * 0.028;
 /** radius of something afloat (its draft is about this) */
 export const floatRadius = (o: { kind: ObjectKind; size: number }) =>
-  o.kind === 'bottle' ? o.size * 0.2 : o.kind === 'beachball' ? o.size * 0.3 : WOOD_RADIUS(o.size);
+  o.kind === 'bottle' ? o.size * 0.2 : o.kind === 'beachball' ? o.size * 0.3 : o.kind === 'coconut' ? o.size * 0.3 : WOOD_RADIUS(o.size);
 
 /** Floats per object in a packed positions buffer: x, y, z, angle, floating. */
 export const POS_STRIDE = 5;
@@ -685,7 +695,7 @@ export class BeachObjects {
         l.z = this.sandAt(o.x, o.y);
         continue;
       }
-      // driftwood, bottles and beach balls
+      // driftwood, bottles, beach balls and coconuts
       const r = floatRadius(o);
       const k = this.cellAt(o.x, o.y);
       const d = water[k];

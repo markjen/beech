@@ -34,9 +34,9 @@ export const POOLS: Record<string, Pool> = {
     name: 'Claw machine',
     odds: { common: 0.7, uncommon: 0, rare: 0.25, legendary: 0.05, unique: 0 },
     items: {
-      common: ['conch', 'sanddollar'],
+      common: ['conch', 'sanddollar', 'coconut'],
       uncommon: [],
-      rare: ['starfish'],
+      rare: ['starfish', 'coral'],
       legendary: ['bottle'],
       unique: [],
     },

@@ -441,7 +441,9 @@ accepted the repo's default branch, so the deploy job ran only there.
   ones. Conch, sand dollar and starfish roll like shells; the bottle floats
   like driftwood. The Week 1 vending Golden sand dollar (`gold-sanddollar`)
   is giant: its size starts at 0.32 m (twice the largest regular sand dollar,
-  0.16 m) and scales up to 0.85 m.
+  0.16 m) and scales up to 0.85 m. The claw also gives a branching coral
+  fragment (rare, tumbles like a shell) and a coconut (common, floats like
+  a bottle, riding high in the water).
 - **Prizes look like prizes** (2026-11-23): a prize that shares a kind with
   a free or cheaper item has its own look in `ITEM_LOOKS`
   (`src/palette.ts`) — its own colours and a specular finish (glass and

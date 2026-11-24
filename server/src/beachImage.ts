@@ -767,6 +767,27 @@ function drawThings(img: Uint8Array, W: number, H: number, things: Thing[], look
       case 'starfish':
         parts.push([star(px, py, m(Math.max(0.12, t.size * 0.6), 3), a), itemColor(t.item, v) ?? C('#f08a4b')]);
         break;
+      case 'coral': {
+        // a branching fragment: a few short arms fanning out from the base, brick red
+        const CORAL = ['#c73e2e', '#a82e28', '#d95a3a'].map(C);
+        const c = CORAL[v % CORAL.length];
+        const baseR = m(0.05, 1);
+        parts.push([circle(px, py, baseR, 8), c]);
+        for (let k = 0; k < 3; k++) {
+          const aa = a + (k / 3) * Math.PI * 2 - Math.PI / 2;
+          parts.push([rect(px + Math.cos(aa) * m(0.12, 2), py - Math.sin(aa) * m(0.12, 2), m(0.14, 2.2), m(0.04, 0.9), aa), c]);
+        }
+        break;
+      }
+      case 'coconut': {
+        // a brown nut with its three dark pores
+        const NUT = ['#6b4a2f', '#7d5a38'].map(C);
+        const r = m(Math.max(0.12, t.size * 0.5), 2.2);
+        parts.push([circle(px, py, r, 14), NUT[v % NUT.length]]);
+        for (const [ox, oy] of [[-0.3, -0.2], [0.3, -0.25], [0, 0.3]] as Pt[])
+          parts.push([circle(px + ox * r, py + oy * r, Math.max(1, r * 0.12), 6), C('#3d2716')]);
+        break;
+      }
       case 'bottle':
         parts.push([rect(px, py, m(0.18, 3), m(0.06, 1.3), a), itemColor(t.item, v) ?? C('#5fa67a')]);
         break;

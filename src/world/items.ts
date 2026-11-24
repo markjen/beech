@@ -48,6 +48,11 @@ export const ITEMS: Item[] = [
   { id: 'conch', name: 'Conch', kind: 'conch', rarity: 'common', source: 'pull', unlimited: false, size: [0.1, 0.35], variants: 3 },
   { id: 'sanddollar', name: 'Sand dollar', kind: 'sanddollar', rarity: 'common', source: 'pull', unlimited: false, size: [0.06, 0.16], variants: 2 },
   { id: 'starfish', name: 'Starfish', kind: 'starfish', rarity: 'rare', source: 'pull', unlimited: false, size: [0.08, 0.26], variants: 3 },
+  // a branching coral fragment (rare) and a brown coconut (common):
+  // the claw's two new prizes, each the only item of its kind, so the
+  // kind palette is its look (src/palette.ts) — no ITEM_LOOKS needed
+  { id: 'coral', name: 'Coral', kind: 'coral', rarity: 'rare', source: 'pull', unlimited: false, size: [0.08, 0.3], variants: 3 },
+  { id: 'coconut', name: 'Coconut', kind: 'coconut', rarity: 'common', source: 'pull', unlimited: false, size: [0.15, 0.35], variants: 2 },
   // from the shop (the claw machine gives everyone one as a starter gift)
   { id: 'deckchair', name: 'Deckchair', kind: 'deckchair', rarity: 'rare', source: 'shop', unlimited: false, size: [1, 1], variants: 3, fixedSize: true, product: 'item_deckchair' },
   { id: 'parasol', name: 'Parasol', kind: 'parasol', rarity: 'rare', source: 'shop', unlimited: false, size: [1, 1], variants: 1, fixedSize: true, product: 'item_parasol' },

@@ -205,6 +205,11 @@ export const PROP_COLORS = {
   sandals: [hex('#2f8f7a'), hex('#f08a4b'), hex('#e86a5a'), hex('#2f4a6b')] as RGB[],
   /** a pail: red or blue, by variant */
   bucket: [hex('#d8473b'), hex('#2f8fd0')] as RGB[],
+  /** a branching coral fragment: deep brick reds — darker and redder than
+      the starfish's orange, and never the sunset starfish's magenta */
+  coral: [hex('#c73e2e'), hex('#a82e28'), hex('#d95a3a')] as RGB[],
+  /** a coconut: dark browns, a shade darker than driftwood */
+  coconut: [hex('#6b4a2f'), hex('#7d5a38')] as RGB[],
   /** deckchair canvas stripes (frame uses `pole`) */
   deckchair: [hex('#4f86c6'), hex('#e46f5a'), hex('#3fa58f')] as RGB[],
   // the shop: [main, accent, trim, lamp]

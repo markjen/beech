@@ -498,6 +498,94 @@ function bucketMesh(scene: Scene, o: PlacedObject): { body: Mesh; handle: Mesh }
   return { body, handle };
 }
 
+/**
+ * A branching coral fragment: a low base with a few tapered arms rising
+ * from it, each a 4-sided prism along its own direction.
+ */
+function coralMesh(scene: Scene, o: PlacedObject): Mesh {
+  const r = rng(o.variant * 167 + 21);
+  const S = o.size;
+  const P: number[] = [];
+  const I: number[] = [];
+  // a low base the arms grow from — small and half-buried, so it reads
+  // as the fragment's foot, not a tile
+  box(P, I, 0, 0, 0, S * 0.35, S * 0.06, S * 0.35);
+  const arm = (dir: [number, number, number], len: number, w0: number, w1: number) => {
+    const [dx, dy, dz] = dir;
+    const ax = Math.abs(dy) < 0.9 ? 0 : 1;
+    const ay = Math.abs(dy) < 0.9 ? 1 : 0;
+    // u = dir x a, v = dir x u (a = (ax, ay, 0))
+    let ux = -dz * ay;
+    let uy = dz * ax;
+    let uz = dx * ay - dy * ax;
+    const ul = Math.hypot(ux, uy, uz) || 1;
+    ux /= ul;
+    uy /= ul;
+    uz /= ul;
+    const vx = dy * uz - dz * uy;
+    const vy = dz * ux - dx * uz;
+    const vz = dx * uy - dy * ux;
+    const b = P.length / 3;
+    const cy = S * 0.02; // arms start at the top of the base
+    for (const [s, w] of [
+      [0, w0],
+      [len, w1],
+    ] as const) {
+      const cx = dx * s;
+      const cyy = cy + dy * s;
+      const cz = dz * s;
+      for (const [su, sv] of [
+        [-1, -1],
+        [1, -1],
+        [1, 1],
+        [-1, 1],
+      ] as const) {
+        P.push(cx + (ux * su * w) / 2 + (vx * sv * w) / 2, cyy + (uy * su * w) / 2 + (vy * sv * w) / 2, cz + (uz * su * w) / 2 + (vz * sv * w) / 2);
+      }
+    }
+    // four sides, plus the tip cap (the base is buried in the mound)
+    for (let k = 0; k < 4; k++) {
+      const a0 = b + k;
+      const a1 = b + ((k + 1) % 4);
+      I.push(a0, a1, a0 + 4, a1, a1 + 4, a0 + 4);
+    }
+    I.push(b + 4, b + 5, b + 6, b + 4, b + 6, b + 7);
+  };
+  // one upright arm in the middle, then arms leaning out around it
+  arm([0, 1, 0], S * (0.65 + r() * 0.25), S * 0.15, S * 0.05);
+  const n = 3 + (o.variant % 2);
+  for (let k = 0; k < n; k++) {
+    const az = (k / n) * Math.PI * 2 + r() * 0.6;
+    const tilt = 0.35 + r() * 0.45; // from vertical
+    const dir: [number, number, number] = [Math.sin(tilt) * Math.cos(az), Math.cos(tilt), Math.sin(tilt) * Math.sin(az)];
+    arm(dir, S * (0.55 + r() * 0.4), S * 0.13, S * 0.04);
+  }
+  orient(P, I, (_x, y) => [0, y, 0]);
+  return finish(scene, `coral${o.id}`, P, I);
+}
+
+/** A coconut: a round brown nut, squashed a little, its centre lifted so it rests on the sand rather than sinking into it. */
+function coconutMesh(scene: Scene, o: PlacedObject): Mesh {
+  const R = o.size * 0.5;
+  const { P, I } = lathe(
+    [
+      [-R, R * 0.15],
+      [-R * 0.7, R * 0.8],
+      [0, R],
+      [R * 0.7, R * 0.8],
+      [R, R * 0.15],
+    ],
+    9,
+    0.85,
+  );
+  // the nut's centre sits 0.375 of its size above the sand once the sim
+  // adds the stranded float height (0.7 × floatRadius, 0.3 × size) — its
+  // bottom just touches the sand
+  for (let n = 0; n < P.length; n += 3) P[n + 1] += o.size * 0.165;
+  orient(P, I, (x) => [x, 0, 0]);
+  return finish(scene, `coconut${o.id}`, P, I);
+}
+
 /** A striped deckchair: a wooden frame and a canvas sling (child mesh), facing the sea. */
 function deckchairMesh(scene: Scene, o: PlacedObject): { frame: Mesh; canvas: Mesh } {
   const P: number[] = [];
@@ -580,7 +668,7 @@ function extent(o: PlacedObject): { reach: number; height: number } {
 // The other kinds are built at size 1 and scaled, or are a fixed size.
 
 /** kinds whose every dimension is proportional to `size` */
-const LINEAR = new Set<ObjectKind>(['rock', 'shell', 'seaglass', 'trash', 'seaweed', 'conch', 'sanddollar', 'starfish', 'nautilus', 'bottle', 'beachball', 'sandals', 'bucket']);
+const LINEAR = new Set<ObjectKind>(['rock', 'shell', 'seaglass', 'trash', 'seaweed', 'conch', 'sanddollar', 'starfish', 'nautilus', 'bottle', 'beachball', 'sandals', 'bucket', 'coral', 'coconut']);
 /**
  * Driftwood's thickness isn't proportional to its length: it's built in
  * size buckets and stretched to the exact length along the log and to
@@ -865,6 +953,12 @@ class PropBank {
       root = bk.body;
       root.material = mat;
       bk.handle.material = this.poleMat;
+    } else if (o.kind === 'coral') {
+      root = coralMesh(this.scene, o);
+      root.material = mat;
+    } else if (o.kind === 'coconut') {
+      root = coconutMesh(this.scene, o);
+      root.material = mat;
     } else {
       root =
         o.kind === 'rock' ? rockMesh(this.scene, o)
@@ -1100,7 +1194,7 @@ export class ObjectView {
         z:
           o.kind === 'rock' && o.base !== undefined
             ? o.base
-            : heightAt(o.x, o.y) + (o.kind === 'driftwood' || o.kind === 'bottle' ? floatRadius(o) * 0.7 : 0),
+            : heightAt(o.x, o.y) + (o.kind === 'driftwood' || o.kind === 'bottle' || o.kind === 'coconut' ? floatRadius(o) * 0.7 : 0),
         floating: false,
       })),
     );
