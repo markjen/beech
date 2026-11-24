@@ -58,10 +58,6 @@ _(nothing right now)_
   `top + deposit` — the rock pokes up through its cover by up to its
   height. Fix: save the deposit separately (or the lifted sand) for cells
   under rocks, a save-format change (docs/BEACH_FILE.md).
-- [ ] **Checkpoints C6** (optional): a small top-down thumbnail on each
-  checkpoint, drawn on the client from its sand; local checkpoints in the
-  sandbox, together with "keep the sandbox beach on the device". See
-  [CHECKPOINTS.md](CHECKPOINTS.md).
 
 - [ ] **Release setup for native sign-in** (DevOps): Android and iOS OAuth
   clients, build env vars, the Info.plist URL scheme, the Apple capability,
@@ -97,7 +93,6 @@ _(nothing right now)_
 - [ ] Tide-pool life: tiny crabs that scurry away from your finger.
 - [ ] Footprints and a little figure walking the waterline.
 - [ ] Sand-castle bucket stamps as a fourth tool.
-- [ ] Keep the sandbox beach on the device (IndexedDB) between visits.
 - [ ] More real beaches (Reynisfjara, Whitehaven, Navagio…), maybe with
   per-beach slope and sand-grain colour.
 - [ ] Weather: overcast, drizzle and wind, from a live forecast for the beach.
@@ -107,6 +102,14 @@ _(nothing right now)_
 
 ## Done (recent)
 
+- [x] **Checkpoints C6, and the sandbox keeps its beach** (2026-11-24):
+  each checkpoint has a small top-down thumbnail drawn on the device from
+  its sand. The sandbox build (no accounts) now keeps the beach between
+  visits (IndexedDB: saved a few seconds after a change and when the tab
+  goes to the back) and has checkpoints on the device: save, restore (one
+  undo step), rename, delete, export and import beach files
+  (`src/net/localStore.ts`, `src/ui/localCheckpoints.ts`,
+  `npm run e2e:sandbox`).
 - [x] **A "found" collection** (2026-11-24): pick up something the sea
   brought in (hold on it) and put it down, and it's yours: no longer wild,
   marked `found`, saved, never taken back. The bag's "Found" section lists

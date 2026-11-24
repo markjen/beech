@@ -133,6 +133,29 @@ describe('the shore site', () => {
     expect(html).not.toContain(people.Bob.code);
   });
 
+  it('tiles touch edge to edge: no gap between beach cards', async () => {
+    // the grid (home, lists, by place) and the "Along the shore" strip on a
+    // beach page both render contiguously; the stylesheet is shared, so one
+    // page's <style> covers both, but check both pages serve it.
+    const rule = (css: string, sel: string) => {
+      const m = css.match(new RegExp(`\\${sel}\\{[^}]*\\}`));
+      expect(m, `${sel} rule present`).not.toBeNull();
+      return m![0];
+    };
+    for (const r of [await root.request('/', shoreHost), await root.request(`/shore/${people.Ana.code}`)]) {
+      expect(r.status).toBe(200);
+      const style = (await r.text()).match(/<style>([\s\S]*?)<\/style>/)?.[1] ?? '';
+      expect(style).not.toBe('');
+      expect(rule(style, '.grid')).toContain('gap:0');
+      expect(rule(style, '.strip')).toContain('gap:0');
+      expect(rule(style, '.grid')).not.toMatch(/gap:(12|16)px/);
+      expect(rule(style, '.strip')).not.toMatch(/gap:(12|16)px/);
+      // gaps that are not between beach tiles stay as they were
+      expect(rule(style, '.top')).toContain('gap:16px');
+      expect(rule(style, '.chips')).toContain('gap:8px');
+    }
+  });
+
   it('codes are forgiving, and the short link is canonical', async () => {
     const r = await root.request(`/${people.Ana.code.toLowerCase()}`, shoreHost);
     expect(r.status).toBe(301);
