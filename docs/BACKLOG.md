@@ -63,9 +63,6 @@ _(nothing right now)_
   customize a detailed sandcastle (towers, walls, moat, decorations)
   rather than adding more preset shapes. The shop sandcastle ($1.99,
   legendary) stays as is.
-- [ ] **Free item: footprints**: Rose, Discord #feedback 2026-11-23.
-  Footprints left in the sand, plus a little figure walking the
-  waterline (promoted from Ideas).
 - [ ] **Little figure walking the waterline**: from the footprints
   line (Rose, Discord #feedback 2026-11-23). A small ambient figure
   strolling the waterline in chair view, leaving fading footprints
@@ -114,6 +111,14 @@ _(nothing right now)_
 
 ## Done (recent)
 
+- [x] **Free item: footprints** (2026-11-24, PR #81): a trail of
+  footprints pressed into the sand — free and unlimited, kind
+  `footprints`, behaviour `fixed`, 0.5–2.0 m, 3 variants, darker
+  than dry sand so the trail reads as dips, with a matching trail
+  in the shore pictures. The little figure walking the waterline
+  from the same line did not ship with it (needs a character mesh,
+  walk animation and fading footprints — a new render subsystem,
+  not an item) and stays a to-do above.
 - [x] **Beechshore item submissions** (2026-11-24): signed-in uploads with
   versioned terms, an admin review queue, and 30% non-cashable credit on
   linked item sales. [Asset spec and publishing workflow](ITEM_SUBMISSIONS.md).
