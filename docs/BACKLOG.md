@@ -145,6 +145,15 @@ _(nothing right now)_
   from the same line did not ship with it (needs a character mesh,
   walk animation and fading footprints — a new render subsystem,
   not an item) and stays a to-do above.
+- [x] **Guide: full item catalog** (2026-11-24, PR #86): the user guide
+  (beech.games/guide#catalog) lists everything you can place, grouped
+  by how you get it — free, washed ashore, claw, vending (this week's
+  set and past sets), shop with prices, extras — with rarity and a line
+  on how each thing behaves. Groups are built at runtime from the claw
+  pool, vending sets, shop products and free items; names, rarities and
+  kinds the server can't derive live mirrored in
+  `server/src/prizeNames.ts`, kept in step by `tests/items.test.ts`.
+  Footprints (PR #81) is in the free list.
 - [x] **Beechshore item submissions** (2026-11-24): signed-in uploads with
   versioned terms, an admin review queue, and 30% non-cashable credit on
   linked item sales. [Asset spec and publishing workflow](ITEM_SUBMISSIONS.md).

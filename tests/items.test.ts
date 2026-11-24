@@ -3,10 +3,11 @@ import fs from 'node:fs';
 import { POOLS, STARTER } from '../server/src/pulls';
 import { VENDING_SETS, currentSet } from '../server/src/vending';
 import { PRODUCTS } from '../server/src/products';
-import { PRIZE_NAMES } from '../server/src/prizeNames';
+import { PRIZE_NAMES, behaviourOfKind, displayName, itemGlows, itemKind, itemRarity } from '../server/src/prizeNames';
 import { RELEASE_NOTES } from '../server/src/releaseNotes';
-import { ITEMS, extraById, itemById, rollPlacement } from '../src/world/items';
-import { OBJECT_KINDS } from '../src/sim/objects';
+import { EXTRAS, ITEMS, extraById, itemById, rollPlacement } from '../src/world/items';
+import { BEHAVIOUR, OBJECT_KINDS } from '../src/sim/objects';
+import { ITEM_LOOKS } from '../src/palette';
 
 describe('vending sets', () => {
   it('every item in every set is a catalog item of the same rarity, won by pulling', () => {
@@ -123,5 +124,26 @@ describe('the guide on the website', () => {
     for (const d of dates) expect(d).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect([...dates].sort().reverse()).toEqual(dates);
     for (const r of RELEASE_NOTES) expect(r.changes.length).toBeGreaterThan(0);
+  });
+
+  // The full catalog also lives in the guide (server/src/guide.ts,
+  // #catalog), rendered from the pools, sets, products and free items;
+  // server/test/guide.test.ts renders it and checks every item is
+  // listed in its group. What this file checks is the mirrors the
+  // guide reads (server/src/prizeNames.ts): a new item joins its group
+  // on its own — footprints (PR #81, free) needs no change here when it
+  // merges.
+  it('shows the guide mirrors match the catalog: names, rarities, kinds, behaviours and glows', () => {
+    for (const item of ITEMS) {
+      expect(displayName(item.id), item.id).toBe(item.name);
+      expect(itemRarity(item.id), item.id).toBe(item.rarity);
+      expect(itemKind(item.id), item.id).toBe(item.kind);
+      expect(behaviourOfKind(itemKind(item.id)), item.id).toBe(BEHAVIOUR[item.kind]);
+      expect(itemGlows(item.id), item.id).toBe(['rare', 'legendary', 'unique'].includes(item.rarity) || ITEM_LOOKS[item.id]?.glow !== undefined);
+    }
+    for (const extra of EXTRAS) {
+      expect(displayName(extra.id), extra.id).toBe(extra.name);
+      expect(itemRarity(extra.id), extra.id).toBe(extra.rarity);
+    }
   });
 });

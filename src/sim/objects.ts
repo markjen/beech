@@ -75,7 +75,7 @@ export const OBJECT_KINDS: ObjectKind[] = [
 ];
 
 type Behaviour = 'rock' | 'float' | 'tumble' | 'fixed';
-const BEHAVIOUR: Record<ObjectKind, Behaviour> = {
+export const BEHAVIOUR: Record<ObjectKind, Behaviour> = {
   rock: 'rock',
   driftwood: 'float',
   shell: 'tumble',
