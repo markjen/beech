@@ -74,9 +74,9 @@ export function createRootApp(db: Db, api: Hono<any, any, any>, publicDir: strin
   const shoreHosts = new Set(shore.hosts.map((h) => h.toLowerCase()));
   const apex = new URL(shore.url).host.toLowerCase();
   const imageLimiter = createRateLimiter(shore.imageDrawsPerMinute ?? 60);
-  const shoreHere = createShoreSite(db, { base: '', gameUrl: shore.gameUrl, publicUrl: shore.url, imageLimiter });
+  const shoreHere = createShoreSite(db, { base: '', gameUrl: shore.gameUrl, publicUrl: shore.url, imageLimiter, publicDir });
   const shoreUnder = createShoreSite(db, {
-    base: '/shore', gameUrl: shore.gameUrl, imageLimiter, submissionOrigin: new URL(shore.url).origin,
+    base: '/shore', gameUrl: shore.gameUrl, imageLimiter, submissionOrigin: new URL(shore.url).origin, publicDir,
   });
   root.use('*', async (c, next) => {
     const host = (c.req.header('host') ?? '').toLowerCase().replace(/:\d+$/, '');

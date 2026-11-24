@@ -6,7 +6,12 @@ it — what each thing is, where it comes from, what it looks like, and how
 to add the next one.
 
 Renders of every item are in [`items/renders/`](items/renders/) (see
-[Renders](#renders) below).
+[Renders](#renders) below). The renders are also what players see: copies
+live in `public/items/<item-id>.png` and are served on beechshore.com as
+`/items/img/<item-id>.png` (the item catalog at `/items`, one page per
+item with votes and comments — `server/src/itemCatalog.ts`). Copy a render
+into `public/items/` in the same commit as a new or changed render; a test
+in `tests/items.test.ts` checks every catalog item has both copies.
 
 ## Free (bag)
 

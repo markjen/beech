@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import fs from 'node:fs';
+import { CATALOG_ITEMS, catalogGroup } from '../server/src/itemCatalog';
 import { POOLS, STARTER } from '../server/src/pulls';
 import { VENDING_SETS, currentSet } from '../server/src/vending';
 import { PRODUCTS } from '../server/src/products';
@@ -98,6 +100,34 @@ describe('item catalog', () => {
     }
     for (const it of ITEMS.filter((i) => i.source === 'shop')) {
       expect(PRODUCTS.find((p) => p.id === it.product), `${it.id} is sold by ${it.product}`).toBeTruthy();
+    }
+  });
+
+  it('the beechshore mirror lists every catalog item, field for field', () => {
+    expect(CATALOG_ITEMS.map((i) => i.id)).toEqual(ITEMS.map((i) => i.id));
+    for (const it of ITEMS) {
+      const mirror = CATALOG_ITEMS.find((m) => m.id === it.id)!;
+      expect(mirror.name, it.id).toBe(it.name);
+      expect(mirror.rarity, it.id).toBe(it.rarity);
+      expect(mirror.source, it.id).toBe(it.source);
+      expect(mirror.size, it.id).toEqual(it.size);
+      expect(mirror.variants, it.id).toBe(it.variants);
+      expect(mirror.fixedSize ?? false, it.id).toBe(it.fixedSize ?? false);
+      expect(mirror.product, it.id).toBe(it.product);
+    }
+  });
+
+  it('every catalog item has a render, and a copy served by the shore', () => {
+    for (const it of ITEMS) {
+      expect(fs.existsSync(`docs/items/renders/${it.id}.png`), it.id).toBe(true);
+      expect(fs.existsSync(`public/items/${it.id}.png`), it.id).toBe(true);
+    }
+  });
+
+  it('every pull item is in the claw pool or a vending set, never both', () => {
+    for (const it of ITEMS.filter((i) => i.source === 'pull')) {
+      const mirror = CATALOG_ITEMS.find((m) => m.id === it.id)!;
+      expect(['claw', 'vending']).toContain(catalogGroup(mirror));
     }
   });
 });

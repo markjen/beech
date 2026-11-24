@@ -28,10 +28,31 @@
 
 import { Hono, type Context } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 
 import { beachIsoPng, beachPng, placeById, PLACES } from './beachImage.js';
 import { DISCORD_INVITE_URL } from './community.js';
 import { toBytes, type Db } from './db.js';
+import {
+  CATALOG_ITEMS,
+  catalogDetailHtml,
+  catalogDetailScript,
+  catalogIndexHtml,
+  catalogItemById,
+  catalogItemsByGroup,
+  commentBody,
+  addComment,
+  creatorForItem,
+  deleteComment,
+  howToGet,
+  listComments,
+  myVote,
+  RARITY_LABEL,
+  toggleVote,
+  voteCount,
+  voteCounts,
+} from './itemCatalog.js';
 import { createRateLimiter, logEvent } from './observability.js';
 import { BEACH, NODE, isPublic, normalizeCode, shoreGraph, type NodeRow, type Step } from './shore.js';
 import { createItemSubmission, creatorSubmissions, limitUpload, multipart, requireSubmissionSession } from './itemSubmissions.js';
@@ -48,6 +69,8 @@ export interface ShoreSiteConfig {
   publicUrl?: string;
   /** canonical shore origin, used only by the game's account connection window */
   submissionOrigin?: string;
+  /** built web app dir (public/): where item renders live (public/items/<id>.png) */
+  publicDir?: string;
   /** uncached image draws per minute per client IP (default 60) */
   imageDrawsPerMinute?: number;
   /** optional shared limiter across host/path mounts */
@@ -62,7 +85,7 @@ const CARD = { width: 1200, height: 630 };
 const THUMB = { width: 480, height: 300 };
 
 type Sort = 'top' | 'rising' | 'new';
-type NavKey = 'home' | 'top' | 'rising' | 'new' | 'submit' | 'other';
+type NavKey = 'home' | 'top' | 'rising' | 'new' | 'items' | 'submit' | 'other';
 interface ListRow extends NodeRow {
   stars: string | number;
   recent: string | number;
@@ -327,16 +350,19 @@ export function createShoreSite(db: Db, cfg: ShoreSiteConfig): Hono<any, any, an
       `<a href="${href('/submit')}"${active === 'submit' ? ' aria-current="page"' : ''}>Submit an item</a>`,
       `<a href="${href('/rising')}"${active === 'rising' ? ' aria-current="page"' : ''}>Rising</a>`,
       `<a href="${href('/new')}"${active === 'new' ? ' aria-current="page"' : ''}>Just built</a>`,
+      `<a href="${href('/items')}"${active === 'items' ? ' aria-current="page"' : ''}>Items</a>`,
       `<a href="${href('/random')}" rel="nofollow">Surprise me</a>`,
     ].join('');
 
   const layout = (
     m: Meta,
     main: string,
-    opts: { share?: { url: string; text: string; title: string }; active?: NavKey; query?: string } = {},
+    opts: { share?: { url: string; text: string; title: string }; active?: NavKey; query?: string; imageWidth?: number; imageHeight?: number } = {},
   ) => {
     const active = opts.active ?? 'other';
     const links = navLinks(active);
+    const imgW = opts.imageWidth ?? CARD.width;
+    const imgH = opts.imageHeight ?? CARD.height;
     return `<!doctype html>
 <html lang="en">
 <head>
@@ -357,8 +383,8 @@ export function createShoreSite(db: Db, cfg: ShoreSiteConfig): Hono<any, any, an
 <meta property="og:url" content="${esc(m.url)}">
 <meta property="og:image" content="${esc(m.image)}">
 <meta property="og:image:type" content="image/png">
-<meta property="og:image:width" content="${CARD.width}">
-<meta property="og:image:height" content="${CARD.height}">
+<meta property="og:image:width" content="${imgW}">
+<meta property="og:image:height" content="${imgH}">
 <meta property="og:image:alt" content="${esc(m.imageAlt)}">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="${esc(m.title)}">
@@ -391,6 +417,7 @@ ${main}
     <a href="${href('/rising')}">Rising</a>
     <a href="${href('/new')}">Just built</a>
     <a href="${href('/find')}">Find a beach</a>
+    <a href="${href('/items')}">Item catalog</a>
     <a href="${href('/submit')}">Submit an item</a>
     <a href="${esc(DISCORD_INVITE_URL)}">Discord</a>${
       opts.share
@@ -659,6 +686,8 @@ ${
     const urls = [
       `<url><loc>${esc(abs(c, '/'))}</loc></url>`,
       ...(['top', 'rising', 'new'] as const).map((s) => `<url><loc>${esc(abs(c, `/${s}`))}</loc></url>`),
+      `<url><loc>${esc(abs(c, '/items'))}</loc></url>`,
+      ...CATALOG_ITEMS.map((i) => `<url><loc>${esc(abs(c, `/items/${i.id}`))}</loc></url>`),
       ...PLACES.filter((p) => n.places[p.id]).map((p) => `<url><loc>${esc(abs(c, `/at/${p.id}`))}</loc></url>`),
       ...rows.map((r) => `<url><loc>${esc(abs(c, `/${r.code}`))}</loc>${r.updated_at ? `<lastmod>${new Date(Number(r.updated_at)).toISOString()}</lastmod>` : ''}</url>`),
     ];
@@ -697,6 +726,11 @@ ${
 
   const submissionSession = requireSubmissionSession(db);
   const uploads = createRateLimiter(5);
+  // votes and comments reuse the beechshore account connection from the
+  // submission flow (submissionPage.ts): the same popup posts the same
+  // session token back, and the same session authorises these calls.
+  const voteLimiter = createRateLimiter(30);
+  const commentLimiter = createRateLimiter(10);
   app.get('/submit/items', submissionSession, async (c) => {
     const user = c.get('submitter');
     const [submissions, credit] = await Promise.all([
@@ -710,6 +744,135 @@ ${
     if (!uploads(user.id)) return c.json({ error: 'Too many attempts. Try again in a minute.' }, 429, { 'Retry-After': '60' });
     const id = await createItemSubmission(db, user.id, await multipart(c.req.raw), now());
     return c.json({ id, status: 'pending' }, 201);
+  });
+
+  // ------------------------------------------------------------ item catalog
+  // Every item in the game (/items), one page per item (/items/:id), with a
+  // vote and comments on each page. Renders live in public/items/<id>.png
+  // (copied from docs/items/renders/) and are served here — the shore
+  // middleware answers every path on beechshore.com, so the static
+  // middleware never sees them there.
+  const itemConnectUrl = cfg.publicUrl ? `${game}/shore/submit/connect?destination=shore` : '/shore/submit/connect';
+  const itemImageCache = new Map<string, Buffer>();
+  app.get('/items/img/:id{[a-z0-9-]+\\.png}', async (c) => {
+    const id = c.req.param('id').slice(0, -4); // the ".png" is part of the param, as in /img/:file above
+    if (!catalogItemById(id)) return c.text('no such item', 404);
+    const etag = `"item-${id}"`;
+    if (c.req.header('if-none-match') === etag) return c.body(null, 304, { ETag: etag });
+    let png = itemImageCache.get(id);
+    if (!png) {
+      if (!cfg.publicDir) return c.text('no such item', 404);
+      try {
+        png = await readFile(path.join(cfg.publicDir, 'items', `${id}.png`));
+      } catch {
+        return c.text('no such item', 404);
+      }
+      itemImageCache.set(id, png);
+      while (itemImageCache.size > 64) itemImageCache.delete(itemImageCache.keys().next().value as string);
+    }
+    return c.body(new Uint8Array(png), 200, { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400', ETag: etag });
+  });
+
+  const itemLinks = { href, img: (id: string) => href(`/items/img/${id}.png`) };
+
+  app.get('/items', async (c) => {
+    const counts = await voteCounts(db);
+    const url = abs(c, '/items');
+    return html(
+      c,
+      layout(
+        {
+          title: 'Every item in beech · beechshore',
+          description: 'Every item in beech, grouped by how you get it: free in your bag, claw and vending prizes, and the shop. Open one to vote and comment.',
+          url,
+          image: abs(c, '/img/shore.png'),
+          imageAlt: 'An untouched beach',
+        },
+        catalogIndexHtml(catalogItemsByGroup(), counts, itemLinks),
+        { share: { url, text: 'Every item in beech 🏖️', title: 'Item catalog' }, active: 'items' },
+      ),
+    );
+  });
+
+  const itemNotFound = (c: Context) =>
+    html(
+      c,
+      layout(
+        {
+          title: 'No such item · beechshore',
+          description: 'That item is not in beech.',
+          url: abs(c, '/items'),
+          image: abs(c, '/img/shore.png'),
+          imageAlt: 'An untouched beach',
+        },
+        `<section class="head"><h1>No such item</h1><p>Nothing in beech has that name. It may have been renamed, or the link is wrong.</p>
+<div class="cta"><a class="btn" href="${href('/items')}">See all items</a></div></section>`,
+        { active: 'items' },
+      ),
+      404,
+    );
+
+  app.get('/items/:id{[a-z0-9-]+}', async (c) => {
+    const item = catalogItemById(c.req.param('id'));
+    if (!item) return itemNotFound(c);
+    const [votes, creator, comments] = await Promise.all([voteCount(db, item.id), creatorForItem(db, item.id), listComments(db, item.id)]);
+    const url = abs(c, `/items/${item.id}`);
+    const main =
+      catalogDetailHtml({ item, votes, creator, comments }, itemLinks, game) +
+      catalogDetailScript({
+        connectUrl: itemConnectUrl,
+        itemId: item.id,
+        voteUrl: href(`/items/${item.id}/vote`),
+        commentsUrl: href(`/items/${item.id}/comments`),
+      });
+    return html(
+      c,
+      layout(
+        {
+          title: `${item.name} · beechshore`,
+          description: `${item.name} — ${RARITY_LABEL[item.rarity]}. ${howToGet(item)[0]}`,
+          url,
+          image: abs(c, itemLinks.img(item.id)),
+          imageAlt: item.name,
+        },
+        main,
+        { share: { url, text: `${item.name} in beech 🏖️`, title: item.name }, active: 'items', imageWidth: 400, imageHeight: 400 },
+      ),
+    );
+  });
+
+  app.get('/items/:id{[a-z0-9-]+}/vote', submissionSession, async (c) => {
+    const item = catalogItemById(c.req.param('id'));
+    if (!item) return c.json({ error: 'No such item.' }, 404);
+    const user = c.get('submitter');
+    const [voted, votes] = await Promise.all([myVote(db, item.id, user.id), voteCount(db, item.id)]);
+    return c.json({ voted, votes });
+  });
+  app.post('/items/:id{[a-z0-9-]+}/vote', submissionSession, async (c) => {
+    const item = catalogItemById(c.req.param('id'));
+    if (!item) return c.json({ error: 'No such item.' }, 404);
+    const user = c.get('submitter');
+    if (!voteLimiter(user.id)) return c.json({ error: 'Slow down a little.' }, 429, { 'Retry-After': '60' });
+    const voted = await toggleVote(db, item.id, user.id, now());
+    return c.json({ voted, votes: await voteCount(db, item.id) });
+  });
+  app.post('/items/:id{[a-z0-9-]+}/comments', submissionSession, async (c) => {
+    const item = catalogItemById(c.req.param('id'));
+    if (!item) return c.json({ error: 'No such item.' }, 404);
+    const user = c.get('submitter');
+    if (!commentLimiter(user.id)) return c.json({ error: 'Slow down a little.' }, 429, { 'Retry-After': '60' });
+    const body = (await c.req.json().catch(() => null)) as { text?: unknown } | null;
+    const text = commentBody(body?.text);
+    const comment = await addComment(db, item.id, user.id, user.name, text, now());
+    return c.json({ comment }, 201);
+  });
+  app.delete('/items/:id{[a-z0-9-]+}/comments/:commentId', submissionSession, async (c) => {
+    const item = catalogItemById(c.req.param('id'));
+    if (!item) return c.json({ error: 'No such item.' }, 404);
+    const user = c.get('submitter');
+    const ok = await deleteComment(db, c.req.param('commentId'), user.id);
+    if (!ok) return c.json({ error: 'No such comment.' }, 404);
+    return c.json({ deleted: true });
   });
 
   app.get('/:code{[A-Za-z0-9]{6}}', async (c) => {
