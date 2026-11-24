@@ -1,4 +1,5 @@
 import { Capacitor } from '@capacitor/core';
+import { isMobileApp } from '../platform/runtime';
 
 // Sign-in inside the phone apps. Google refuses its web sign-in inside app
 // WebViews, so the apps use the system sign-in sheets instead (Credential
@@ -30,9 +31,9 @@ export interface NativeIdentity {
 
 const platform = () => Capacitor.getPlatform();
 
-/** Which native sign-ins this app build offers. Empty on the web. */
+/** Which native sign-ins this app build offers. Empty on the web and Steam. */
 export function nativeProviders(): NativeProvider[] {
-  if (!Capacitor.isNativePlatform()) return [];
+  if (!isMobileApp()) return [];
   const out: NativeProvider[] = [];
   if (platform() === 'ios') {
     // App Store guideline 4.8: offer Apple wherever Google is offered
@@ -99,7 +100,7 @@ export async function nativeSignIn(provider: NativeProvider): Promise<NativeIden
 
 /** Forget the provider's own session too, so the next sign-in can pick another account. */
 export async function nativeSignOut(): Promise<void> {
-  if (!Capacitor.isNativePlatform() || !ready) return;
+  if (!isMobileApp() || !ready) return;
   const SocialLogin = await ready;
   for (const provider of nativeProviders()) await SocialLogin.logout({ provider }).catch(() => {});
 }

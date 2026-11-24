@@ -1,4 +1,4 @@
-import { Capacitor } from '@capacitor/core';
+import { isMobileApp } from './runtime';
 
 type Impact = 'light' | 'medium';
 
@@ -13,7 +13,7 @@ export class Haptics {
   private lastTick = 0;
 
   constructor() {
-    if (Capacitor.isNativePlatform()) {
+    if (isMobileApp()) {
       import('@capacitor/haptics')
         .then((m) => (this.native = m))
         .catch(() => {});

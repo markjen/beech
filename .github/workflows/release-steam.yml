@@ -1,0 +1,97 @@
+name: Release Steam
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: SteamPipe branch to set live (keep 'staging' until Valve review / launch)
+        required: true
+        default: staging
+      description:
+        description: Build description shown in Steamworks
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: win
+            os: windows-latest
+            pack_cmd: npm run pack:win
+            out_dir: desktop/release/win-unpacked
+          - platform: linux
+            os: ubuntu-latest
+            pack_cmd: npm run pack:linux
+            out_dir: desktop/release/linux-unpacked
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install and build web app for Steam
+        env:
+          VITE_ACCOUNTS: '1'
+          VITE_PLATFORM: steam
+          VITE_API_URL: https://play.beech.games
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build Electron desktop shell
+        working-directory: desktop
+        env:
+          # Consumed by the afterPack hook (desktop/scripts/after-pack.cjs),
+          # which writes steam_appid.txt next to the packaged executable so
+          # Steamworks can init when the game is launched outside Steam.
+          STEAM_APP_ID: ${{ vars.STEAM_APP_ID }}
+        run: |
+          npm ci
+          ${{ matrix.pack_cmd }}
+
+      - name: Upload unpacked depot artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: steam-depot-${{ matrix.platform }}
+          path: ${{ matrix.out_dir }}
+          retention-days: 7
+
+  upload:
+    name: Upload to SteamPipe
+    needs: build
+    if: ${{ vars.STEAM_ENABLED == '1' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: steam-depot-win
+          path: steam-content/win
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: steam-depot-linux
+          path: steam-content/linux
+
+      - name: Deploy depots via SteamPipe
+        uses: game-ci/steam-deploy@v3
+        with:
+          username: ${{ secrets.STEAM_BUILD_USERNAME }}
+          password: ${{ secrets.STEAM_BUILD_PASSWORD }}
+          configVdf: ${{ secrets.STEAM_CONFIG_VDF }}
+          appId: ${{ vars.STEAM_APP_ID }}
+          buildDescription: ${{ inputs.description || format('beech {0}', github.sha) }}
+          releaseBranch: ${{ inputs.branch }}
+          rootPath: steam-content
+          depot1Path: win
+          depot2Path: linux

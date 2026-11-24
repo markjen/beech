@@ -49,7 +49,7 @@ import { initTelemetry, reportError, reportEvent } from './net/telemetry';
 import { loadLocalBeach, saveLocalBeach } from './net/localStore';
 import { LocalCheckpointsSection } from './ui/localCheckpoints';
 import { watchForNewVersion } from './platform/version';
-import { Capacitor } from '@capacitor/core';
+import { isPackagedApp, isSteam } from './platform/runtime';
 import { BeachFileDialog, beachFileName, pickFile, saveText, type BeachFileHost } from './ui/beachFileDialog';
 import { parseBeachFile, writeBeachFile } from './world/beachFile';
 import { version as APP_VERSION } from '../package.json';
@@ -91,7 +91,7 @@ async function chooseTier(s: Settings, worker: Worker): Promise<{ tier: QualityT
   if (s.quality !== 'auto') return { tier: s.quality, settings: s };
   if (s.benchTier) return { tier: s.benchTier, settings: s };
   const ms = await benchmark(worker);
-  const tier = tierFromBench(ms, isTouch);
+  const tier = tierFromBench(ms, isTouch, isSteam());
   const next = { ...s, benchTier: tier };
   saveSettings(next);
   return { tier, settings: next };
@@ -193,10 +193,11 @@ async function boot() {
   const offerReload = () => {
     if (reloadOffered) return;
     reloadOffered = true;
-    if (Capacitor.isNativePlatform()) showToast(uiRoot, 'A newer beech is out: update it from the store to keep saving.');
+    if (isSteam()) showToast(uiRoot, 'A newer beech is out: update it on Steam to keep saving.');
+    else if (isPackagedApp()) showToast(uiRoot, 'A newer beech is out: update it from the store to keep saving.');
     else showActionToast(uiRoot, 'A new version of beech is ready.', 'Reload', () => location.reload(), 24 * 3600 * 1000);
   };
-  if (!Capacitor.isNativePlatform()) watchForNewVersion(offerReload);
+  if (!isPackagedApp()) watchForNewVersion(offerReload);
 
   // ---------------------------------------------------------------- sim frames
   let info: FrameInfo = {

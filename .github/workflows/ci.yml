@@ -17,6 +17,9 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      - name: Desktop (Steam) typecheck
+        working-directory: desktop
+        run: npm ci && npm run typecheck
 
   server:
     runs-on: ubuntu-latest

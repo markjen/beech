@@ -2,7 +2,7 @@
 // apps through @capacitor/share, browsers through navigator.share), and
 // copying it everywhere else.
 
-import { Capacitor } from '@capacitor/core';
+import { isMobileApp, isSteam } from '../platform/runtime';
 
 export interface ShareData {
   url: string;
@@ -36,7 +36,7 @@ export async function copyText(text: string): Promise<boolean> {
 }
 
 export async function shareLink(d: ShareData): Promise<ShareResult> {
-  if (Capacitor.isNativePlatform()) {
+  if (isMobileApp()) {
     try {
       const { Share } = await import('@capacitor/share');
       await Share.share({ title: d.title, text: d.text, url: d.url, dialogTitle: d.title });
@@ -45,7 +45,7 @@ export async function shareLink(d: ShareData): Promise<ShareResult> {
       if (/cancel/i.test(String((e as Error)?.message ?? e))) return 'cancelled';
       // fall through to copying
     }
-  } else if (typeof navigator.share === 'function') {
+  } else if (!isSteam() && typeof navigator.share === 'function') {
     try {
       await navigator.share(d);
       return 'shared';

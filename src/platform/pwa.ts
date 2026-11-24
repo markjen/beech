@@ -1,9 +1,9 @@
-import { Capacitor } from '@capacitor/core';
+import { isPackagedApp } from './runtime';
 
-/** Register the offline service worker for the web build (not in dev, not in the native shells). */
+/** Register the offline service worker for the web build (not in dev, not in packaged shells). */
 export function registerServiceWorker(): void {
   if (!import.meta.env.PROD) return;
-  if (Capacitor.isNativePlatform()) return;
+  if (isPackagedApp()) return;
   if (!('serviceWorker' in navigator)) return;
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js').catch(() => {

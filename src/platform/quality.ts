@@ -6,8 +6,8 @@ import type { QualityTier } from '../config';
  * a tick must stay well under the 33 ms budget even on a busy phone. The high
  * tier is desktop-only (touch devices would spend the battery for little gain).
  */
-export function tierFromBench(msPerTickLow: number, touch: boolean): QualityTier {
-  if (msPerTickLow < 1.6 && !touch) return 'high';
+export function tierFromBench(msPerTickLow: number, touch: boolean, allowTouchHigh = false): QualityTier {
+  if (msPerTickLow < 1.6 && (!touch || allowTouchHigh)) return 'high';
   if (msPerTickLow < 4.5) return 'medium';
   return 'low';
 }

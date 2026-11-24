@@ -94,7 +94,7 @@ dbSummary.unref();
 const api = createApp(db, {
   googleClientIds: list(env.GOOGLE_CLIENT_IDS),
   appleClientIds: list(env.APPLE_CLIENT_IDS),
-  allowedOrigins: list(env.ALLOWED_ORIGINS ?? 'capacitor://localhost,https://localhost'),
+  allowedOrigins: list(env.ALLOWED_ORIGINS ?? 'capacitor://localhost,https://localhost,app://beech'),
   devAuth,
   appleBundleId: env.APPLE_BUNDLE_ID || undefined,
   androidPackage: env.ANDROID_PACKAGE || undefined,

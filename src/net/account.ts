@@ -1,4 +1,4 @@
-import { Capacitor } from '@capacitor/core';
+import { isPackagedApp } from '../platform/runtime';
 import { nativeSignOut } from './nativeAuth';
 import { MAX_OBJECTS } from '../sim/sandCodec';
 import { APP_BUILD } from '../platform/version';
@@ -782,9 +782,9 @@ function loadGis(): Promise<GoogleId> {
   return gisLoading;
 }
 
-/** Can this build/platform offer Google sign-in? (Google blocks it inside app WebViews.) */
+/** Can this build/platform offer Google sign-in? (Google blocks it inside app WebViews; Steam uses Steamworks.) */
 export function googleSignInAvailable(): boolean {
-  return ACCOUNTS_ENABLED && !!GOOGLE_CLIENT_ID && !Capacitor.isNativePlatform();
+  return ACCOUNTS_ENABLED && !!GOOGLE_CLIENT_ID && !isPackagedApp();
 }
 
 /** Render Google's own sign-in button into `el`; calls back with an ID token. */
