@@ -22,8 +22,8 @@ export interface GuideStepDef {
 }
 
 export const GUIDE_STEPS: GuideStepDef[] = [
-  { id: 'dig', title: 'Dig in the sand', how: 'Pick the shovel and drag on the sand. Hold still to dig deeper.', gift: 'conch', serverChecked: false },
-  { id: 'pile', title: 'Build a mound', how: 'Pick the build tool and drag to heap the sand up. The waves will wear it down.', gift: 'sanddollar', serverChecked: false },
+  { id: 'dig', title: 'Dig in the sand', how: 'Pick the Sand tool in dig mode (the shovel) and drag on the sand. Hold still to dig deeper.', gift: 'conch', serverChecked: false },
+  { id: 'pile', title: 'Build a mound', how: 'Switch the Sand tool to build (the sand dune) and drag to heap the sand up. The waves will wear it down.', gift: 'sanddollar', serverChecked: false },
   { id: 'undo', title: 'Take it back', how: 'Tap undo to take back your last stroke.', gift: 'conch', serverChecked: false },
   { id: 'place', title: 'Put something on the sand', how: 'Open the bag, pick a rock or a shell, and tap the sand.', gift: 'sanddollar', serverChecked: false },
   { id: 'chair', title: 'Sit on the beach', how: 'Tap the chair to sit and look out to sea. Hold ‹ › to walk along the shore.', gift: 'conch', serverChecked: false },
