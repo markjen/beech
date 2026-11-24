@@ -204,6 +204,72 @@ describe('the shore site', () => {
     expect((await root.request('/img/shore.png', shoreHost)).status).toBe(200);
   });
 
+  it('draws the 3D views: land and ocean iso images, cached with the neighbour save times', async () => {
+    const page = await (await root.request(`/shore/${people.Ana.code}`)).text();
+    // the page offers a three-way Flat / 3D / From the sea switch on the hero picture…
+    expect(page).toContain('data-view-toggle');
+    expect(page).toContain('>Flat<');
+    expect(page).toContain('>3D<');
+    expect(page).toContain('>From the sea<');
+    // …while the share image stays the top-down card
+    expect(page).toContain(`<meta property="og:image" content="http://localhost/shore/img/${people.Ana.code}.png?v=`);
+    for (const kind of ['iso', 'iso-ocean'] as const) {
+      const src = page.match(new RegExp(`data-${kind === 'iso' ? 'iso' : 'ocean'}="([^"]*?\\/img\\/[A-Z0-9]{6}\\/${kind}\\.png\\?v=[^"]+)"`))![1];
+      const res = await root.request(src);
+      expect(res.status).toBe(200);
+      expect(res.headers.get('Content-Type')).toBe('image/png');
+      expect(res.headers.get('Cache-Control')).toContain('immutable');
+      const png = new Uint8Array(await res.arrayBuffer());
+      expect([...png.subarray(1, 4)]).toEqual([0x50, 0x4e, 0x47]);
+      const dv = new DataView(png.buffer);
+      expect(dv.getUint32(16)).toBe(1200);
+      expect(dv.getUint32(20)).toBe(630);
+      const again = await root.request(src, { headers: { 'If-None-Match': res.headers.get('ETag')! } });
+      expect(again.status).toBe(304);
+      // hidden and unsaved beaches have no 3D view either
+      expect((await root.request(`/shore/img/${people.Bob.code}/${kind}.png`)).status).toBe(404);
+      expect((await root.request(`/shore/img/${people.Cy.code}/${kind}.png`)).status).toBe(404);
+    }
+  });
+
+  it('only ever shows a public neighbour in the 3D views', async () => {
+    const eve = people['<b>Eve</b>'];
+    try {
+      // Link Ana's left side to Dee, a public beach with a mound.
+      await db.query('INSERT INTO neighbors (beach_id, side, neighbor_beach_id, created_at) VALUES ($1, $2, $3, $4)', [
+        people.Ana.beachId,
+        'left',
+        people.Dee.beachId,
+        Date.now(),
+      ]);
+      for (const kind of ['iso', 'iso-ocean'] as const) {
+        const url = `/shore/img/${people.Ana.code}/${kind}.png`;
+        const withDee = new Uint8Array(await (await root.request(url)).arrayBuffer());
+        // Take Dee — and Eve, the next public beach past her — off the shore:
+        // the walk past Dee must find no public beach, so Ana's 3D view goes
+        // back to untouched shore on that side. Dee's sand never appears.
+        await db.query('UPDATE beach SET on_shore = false WHERE id IN ($1, $2)', [people.Dee.beachId, eve.beachId]);
+        const withoutDee = new Uint8Array(await (await root.request(url)).arrayBuffer());
+        expect(Buffer.from(withDee).equals(Buffer.from(withoutDee))).toBe(false);
+        // And it is the same picture as if Dee had never been linked at all.
+        await db.query('DELETE FROM neighbors WHERE beach_id = $1', [people.Ana.beachId]);
+        const neverLinked = new Uint8Array(await (await root.request(url)).arrayBuffer());
+        expect(Buffer.from(withoutDee).equals(Buffer.from(neverLinked))).toBe(true);
+        // Put Dee back for the next view.
+        await db.query('UPDATE beach SET on_shore = true WHERE id IN ($1, $2)', [people.Dee.beachId, eve.beachId]);
+        await db.query('INSERT INTO neighbors (beach_id, side, neighbor_beach_id, created_at) VALUES ($1, $2, $3, $4)', [
+          people.Ana.beachId,
+          'left',
+          people.Dee.beachId,
+          Date.now(),
+        ]);
+      }
+    } finally {
+      await db.query('UPDATE beach SET on_shore = true WHERE id IN ($1, $2)', [people.Dee.beachId, eve.beachId]);
+      await db.query('DELETE FROM neighbors WHERE beach_id = $1', [people.Ana.beachId]);
+    }
+  });
+
   it('lists, places, random, robots and the sitemap', async () => {
     const top = await (await root.request('/shore/top')).text();
     expect(top.indexOf(people.Ana.code)).toBeLessThan(top.indexOf(people.Dee.code)); // a star beats none
