@@ -807,6 +807,17 @@ here: it needs the service's URL on the web OAuth client.
   next to the player's empty beach for inspiration and supports infinite scroll
   and returning home from a visit.
 
+- **Free footprints** (2026-11-24): a trail of prints pressed into
+  the sand (`footprints`, common, free and unlimited, 0.5–2.0 m,
+  behaviour `fixed`), darker than the dry sand around them so they
+  read as dips, with a matching trail in the shore pictures. The
+  little figure walking the waterline from the same backlog line did
+  not ship with it — there is no character mesh, walk animation, or
+  fading-decal system in the app, so it would need a new render
+  subsystem rather than an item, and stays a backlog to-do. Renders
+  are in `docs/items/renders/` (footprints, full beach, contact
+  sheet).
+
 ## Verification
 
 - `npm test`: unit tests for the sim (water/sand conservation, run-up range,

@@ -66,6 +66,12 @@ _(nothing right now)_
 - [ ] **Free item: footprints**: Rose, Discord #feedback 2026-11-23.
   Footprints left in the sand, plus a little figure walking the
   waterline (promoted from Ideas).
+- [ ] **Little figure walking the waterline**: from the footprints
+  line (Rose, Discord #feedback 2026-11-23). A small ambient figure
+  strolling the waterline in chair view, leaving fading footprints
+  behind it. Did not ship with the free footprints item: there is no
+  character mesh, walk animation, or fading-decal system in the app,
+  so it needs a new render subsystem rather than an item.
 - [ ] **Steam S6 (Storefront & launch)**: 2024+ Steam capsule & library
   assets, 1080p screenshots/trailer, Coming Soon page (≥14 days), and Valve
   Build Review (`public/privacy.html` already updated). See

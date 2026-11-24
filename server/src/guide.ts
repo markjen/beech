@@ -150,8 +150,8 @@ export function guideHtml(now: number): string {
 <p>Every stroke can be undone. Waves wear down what you build, and the sea fills holes near the water.</p>
 
 <h2 id="bag">Your bag</h2>
-<p>The bag (top of the tool column) holds things to set on the sand. Rocks, driftwood, shells, sea glass, flags, trash, seaweed and cowries are free and never run out. Pick one, choose its size with the slider, then tap the sand to set it down. Use the vacuum or bulldozer to pick things back up; they go back in your bag.</p>
-<p>Rocks shape how water flows and where sand settles. Driftwood floats when the water is deep enough and strands when it drains. Shells, sea glass, trash and seaweed move in fast water. The sea washes things in now and then, including the occasional cowrie, and only a few strays stay at once. Hold one to pick it up, then put it down to keep it. Your bag lists what you've kept under Found.</p>
+<p>The bag (top of the tool column) holds things to set on the sand. Rocks, driftwood, shells, sea glass, flags, trash, seaweed, cowries and footprints are free and never run out. Pick one, choose its size with the slider, then tap the sand to set it down. Use the vacuum or bulldozer to pick things back up; they go back in your bag.</p>
+<p>Rocks shape how water flows and where sand settles. Driftwood floats when the water is deep enough and strands when it drains. Shells, sea glass, trash and seaweed move in fast water. Footprints stay where you put them. The sea washes things in now and then, including the occasional cowrie, and only a few strays stay at once. Hold one to pick it up, then put it down to keep it. Your bag lists what you've kept under Found.</p>
 <p>Things you won or bought show how many you have left to place. You can gift an owned thing to the owner of another beach from the bar that shows while it’s in hand.</p>
 
 <h2 id="finds">Digging finds</h2>
