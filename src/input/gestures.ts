@@ -18,7 +18,17 @@ export interface GestureHandlers {
   view?(): void;
   /** any user input at all (used to unlock audio, hide hints) */
   interacted(): void;
+  /**
+   * Look mode: the pointer has held still on (sx, sy) for a long-press. Return
+   * true if that picked something up: the gesture then carries on as a drag
+   * (digMove / digEnd / digCancel) instead of panning.
+   */
+  grabAt?(sx: number, sy: number): boolean;
 }
+
+/** how long to hold still for a long-press, and how still (CSS px) */
+export const LONG_PRESS_MS = 420;
+export const HOLD_SLOP_PX = 9;
 
 type Mode = 'idle' | 'dig' | 'camera' | 'mousePan' | 'mouseRotate' | 'onePan';
 
@@ -121,6 +131,29 @@ export class Gestures {
     return { x: e.clientX - r.left, y: e.clientY - r.top };
   }
 
+  /** look mode: a long-press on a thing turns a pan into a drag */
+  private hold: { timer: number; x: number; y: number; id: number } | null = null;
+
+  private startHold(p: { x: number; y: number }, id: number): void {
+    this.endHold();
+    if (!this.h.grabAt) return;
+    const hold = { x: p.x, y: p.y, id, timer: 0 };
+    hold.timer = window.setTimeout(() => {
+      this.hold = null;
+      if ((this.mode !== 'onePan' && this.mode !== 'mousePan') || !this.h.grabAt!(hold.x, hold.y)) return;
+      this.cam.releasePan();
+      this.mode = 'dig';
+      this.digPointer = id;
+      this.digStartAt = 0; // a second finger now cancels the drag, not a dig
+    }, LONG_PRESS_MS);
+    this.hold = hold;
+  }
+
+  private endHold(): void {
+    if (this.hold) window.clearTimeout(this.hold.timer);
+    this.hold = null;
+  }
+
   private onDown = (e: PointerEvent) => {
     this.h.interacted();
     if (!this.enabled) return;
@@ -137,6 +170,7 @@ export class Gestures {
       if (e.button === 0 && this.lookOnly) {
         this.mode = 'mousePan';
         this.cam.stopGlide();
+        this.startHold(p, e.pointerId);
       } else if (e.button === 0 && !this.space) {
         this.mode = 'dig';
         this.digPointer = e.pointerId;
@@ -155,6 +189,7 @@ export class Gestures {
       this.mode = 'onePan';
       this.last = p;
       this.cam.stopGlide();
+      this.startHold(p, e.pointerId);
     } else if (this.pointers.size === 1 && this.mode === 'idle') {
       this.mode = 'dig';
       this.digPointer = e.pointerId;
@@ -162,6 +197,7 @@ export class Gestures {
       this.cam.stopGlide();
       this.h.digStart(p.x, p.y);
     } else if (this.pointers.size === 2) {
+      this.endHold();
       if (this.mode === 'onePan') this.cam.releasePan();
       if (this.mode === 'dig') {
         if (performance.now() - this.digStartAt < CANCEL_WINDOW_MS) this.h.digCancel();
@@ -188,6 +224,8 @@ export class Gestures {
 
   private onMove = (e: PointerEvent) => {
     const p = this.pos(e);
+    // moved before the long-press: it's a pan after all
+    if (this.hold && Math.hypot(p.x - this.hold.x, p.y - this.hold.y) > HOLD_SLOP_PX) this.endHold();
     if (e.pointerType === 'mouse') {
       switch (this.mode) {
         case 'dig':
@@ -237,6 +275,7 @@ export class Gestures {
   };
 
   private onUp = (e: PointerEvent) => {
+    this.endHold();
     if (e.pointerType === 'mouse') {
       if (this.mode === 'dig') this.h.digEnd();
       if (this.mode === 'mouseRotate') this.cam.snapRotation();

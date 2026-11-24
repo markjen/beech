@@ -28,6 +28,8 @@ export type ToWorker =
   | { type: 'placeObject'; obj: Omit<PlacedObject, 'id'> }
   /** take one off again (undoable) */
   | { type: 'removeObject'; id: number }
+  /** pick one up and put it down at (x, y) (undoable) */
+  | { type: 'moveObject'; id: number; x: number; y: number }
   /** real-world sea state: diorama tide level (m) and swell multiplier */
   | { type: 'sea'; tide: number; waves: number };
 

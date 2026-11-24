@@ -58,15 +58,6 @@ _(nothing right now)_
   `top + deposit` — the rock pokes up through its cover by up to its
   height. Fix: save the deposit separately (or the lifted sand) for cells
   under rocks, a save-format change (docs/BEACH_FILE.md).
-- [ ] **Reload stale tabs**: send the build id with saves (or poll a
-  `/version`), and when the server says the app is out of date (426) show
-  "a new version is ready · reload" instead of a silent save failure. A tab
-  left open across a world change corrupted Rose's beach (2026-11-23).
-- [ ] **More than one beach**: design in [MULTI_BEACH.md](MULTI_BEACH.md),
-  four phases (data model and API → beaches list → connected beaches →
-  shop). Owner decisions are listed at the end of that doc. People can
-  already win an extra beach from the claw machine.
-
 - [ ] **Checkpoints C6** (optional): a small top-down thumbnail on each
   checkpoint, drawn on the client from its sand; local checkpoints in the
   sandbox, together with "keep the sandbox beach on the device". See
@@ -84,19 +75,12 @@ _(nothing right now)_
   umbrella that casts a shadow (needs a shadow decal in the sand shader).
 - [ ] **A "found" collection**: count what the sea brought in that you kept,
   and show rare finds (it could drop items here later).
-- [ ] **Shop (paid items)**: App Store / Play billing (both stores require
-  their own in-app purchase for digital goods); on the web, Xsolla
-  ([WEB_PAYMENTS.md](WEB_PAYMENTS.md), built). Purchases are verified on
-  the server, which writes `inventory` rows. Limited items use
-  `available.until` and `expires_at`.
 - [ ] **Promo codes on web card payments**: mirror codes into Xsolla and
   accept `order.promocodes` on `order_paid` (WEB_PAYMENTS.md, "Promo
   codes"). Only if Mark wants it (open question 2).
 - [ ] **Mystery boxes (paid pulls)**: reuse `draw()` and the pulls table
   once billing exists. Before shipping, check the odds-disclosure rules and
   country restrictions for paid random items.
-- [ ] **Unique items**: one owner only, enforced with a partial unique index
-  on `inventory`, and a "found by …" note.
 - [ ] **More prizes**: each pool item needs a catalog entry, a kind, a mesh
   and an icon; `tests/items.test.ts` keeps the pools and catalog in step.
 - [ ] **TV**: test on a real Android TV (D-pad focus on the settings sheet,
@@ -104,10 +88,6 @@ _(nothing right now)_
   (an in-app cast button needs a custom Cast receiver app — $5 console
   registration; tab casting from Chrome works today, see
   [CHROME_TV_CAST.md](CHROME_TV_CAST.md)).
-- [ ] **API rate limiting**: a per-IP limit in the server, or Cloud Armor in
-  front.
-- [ ] **Keep my beach off the shore**: a setting to leave the global beachfront
-  (and only be visited by code or as someone's neighbor).
 - [ ] **beechshore follow-ups**: a read-only 3D visit for signed-out
   people, an index for the lists at scale, rate limits on image drawing
   (SHORE_SITE.md, "Not done yet").
@@ -115,8 +95,6 @@ _(nothing right now)_
   stretch, offer "ask to be neighbors" right on its name tag.
 - [ ] **Push for neighbor requests**: today you see them the next time the
   app polls (30 s) or opens.
-- [ ] **Long-press to pick up and drag items**: long-press on an item picks
-  it up, then drag it somewhere else and release to put it down.
 
 ## Ideas
 
@@ -133,6 +111,28 @@ _(nothing right now)_
 
 ## Done (recent)
 
+- [x] **Long-press to pick up and drag** (2026-11-24): hold still on a thing
+  for 0.42 s (any tool, the look tool included) to pick it up, drag it, let
+  go to put it down: one undo step (`BeachSim.moveObject`; rocks lift out
+  of the floor and settle where they land). Moving first, or a quick tap,
+  digs as before.
+- [x] **Reload stale tabs** (2026-11-24): the build writes `version.json`
+  and the app knows its own build; a web tab checks every 10 minutes and
+  when it comes back to the front, and offers "a new version is ready ·
+  Reload". A save refused as out of date (426) offers the same (in the
+  phone apps: "update from the store"). Saves send `X-App-Build`, and the
+  server logs which build was refused (`stale_app_save`).
+- [x] **API rate limiting** (2026-11-24): per client IP, 300 requests a
+  minute on the API and 20 sign-ins; the stores' webhooks are exempt. 429
+  with `Retry-After`.
+- [x] **Unique items** (2026-11-24): one owner in the whole game
+  (`unique_items`, migration 16). A draw of one that's taken gives a rare
+  instead; a gift moves the owner; an owner who deletes their account frees
+  it. The bag shows "one of a kind · found by …".
+- [x] **Already built, tidied from the queue** (2026-11-24): more than one
+  beach (MULTI_BEACH.md), the shop with App Store / Play billing and web
+  checkout (PRICING.md, WEB_PAYMENTS.md), and keeping a beach off the shore
+  (the on/off-shore switch on each beach).
 - [x] **Spire spike on Riley's beach** (2026-11-23): a wall of overlapping
   rocks stacked its sand lifts without bound (each new rock's base was
   sampled from sand already lifted by earlier rocks) and taking the rocks
@@ -215,7 +215,6 @@ _(nothing right now)_
   [GIFT_CARDS_PROMOS.md](GIFT_CARDS_PROMOS.md#admin-console). **Owner:**
   add the `beech-admin` URL (printed by the deploy's smoke test) to the web
   OAuth client's Authorized JavaScript origins.
-
 
 - [x] **QA pass of main** (2026-11-23): neighbor name tags kept on screen
   and off the place card and tool column (`src/ui/tagPlace.ts`, tested);

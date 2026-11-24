@@ -1,6 +1,7 @@
 import { Capacitor } from '@capacitor/core';
 import { nativeSignOut } from './nativeAuth';
 import { MAX_OBJECTS } from '../sim/sandCodec';
+import { APP_BUILD } from '../platform/version';
 
 // Accounts are a build-time feature. The sandbox build (default
 // `npm run build`) has no sign-in and saves nothing; the production build sets:
@@ -298,6 +299,7 @@ export class Account {
         ...(epoch === undefined ? {} : { 'X-Beach-Epoch': String(epoch) }),
         // how many things this app keeps (the server refuses saves from apps that keep fewer than a beach holds)
         'X-Beach-Max': String(MAX_OBJECTS),
+        'X-App-Build': APP_BUILD,
       },
       body: bytes as BodyInit,
       // keepalive lets a save finish while the page is closing (64 KB limit)
@@ -488,6 +490,9 @@ export interface OwnedItem {
   acquiredAt: number;
   /** null: yours for good */
   expiresAt: number | null;
+  /** one of a kind: who found it first */
+  foundBy?: string;
+  foundAt?: number;
 }
 
 async function errorOf(res: Response, fallback: string): Promise<ApiError> {

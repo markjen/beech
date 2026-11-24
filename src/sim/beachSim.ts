@@ -1001,7 +1001,32 @@ export class BeachSim {
     return data;
   }
 
+  /**
+   * Pick a thing up and put it down somewhere else (long-press and drag), as
+   * one undo step. A rock lifts out of the floor where it was and settles
+   * into the sand where it lands.
+   */
+  moveObject(id: number, x: number, y: number): PlacedObject | null {
+    const prev = this.objects.remove(id);
+    if (!prev) return null;
+    const W = this.nx * this.dx;
+    const H = this.ny * this.dx;
+    const moved: PlacedObject = { ...prev, x: Math.min(W - 0.3, Math.max(0.3, x)), y: Math.min(H - 0.3, Math.max(0.3, y)) };
+    delete moved.base; // a rock sits on the sand where it lands
+    const data = this.objects.add(moved);
+    this.undo.push({ i0: 0, j0: 0, w: 0, h: 0, delta: new Float32Array(0), obj: { op: 'move', data: { ...data }, prev } });
+    return data;
+  }
+
   private applyObject(obj: NonNullable<UndoEntry['obj']>, sign: number): void {
+    if (obj.op === 'move') {
+      // undo: back where it was; redo: where it was put
+      const from = sign < 0 ? obj.data : obj.prev!;
+      const to = sign < 0 ? obj.prev! : obj.data;
+      this.objects.remove(from.id);
+      this.objects.add({ ...to });
+      return;
+    }
     // undo of an add / redo of a remove takes it away; the others put it back
     const putBack = (obj.op === 'add') === sign > 0;
     if (putBack) this.objects.add({ ...obj.data });

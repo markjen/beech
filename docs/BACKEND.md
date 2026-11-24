@@ -53,6 +53,12 @@ Migrations live in `src/migrations.ts` and are applied at startup.
 | `POST /api/beaches/mine/:id/restore { checkpoint, mode: strict \| drop-missing }` | put it on that beach (one at a time per person). The beach as it was becomes its "before restoring" checkpoint (`undo`). Strict and short: 409 `{ error: 'short', short }`. Bumps the beach's epoch: a save sending an older `X-Beach-Epoch` gets 409 `restored` |
 | `POST /api/gifts { code, item }` | give one of your items to someone else, by their neighbor code — instant, one atomic statement, 20 an hour (see [SHARING_GIFTING.md](SHARING_GIFTING.md)). |
 
+Every request from a client IP (Cloud Run's `x-forwarded-for`) is rate
+limited: 300 a minute on the API, 20 sign-ins a minute; the stores'
+webhooks are exempt (429 with `Retry-After: 60`, logged as `rate_limited`).
+Saves from an app too old for the data (426) are logged as `stale_app_save`
+with the app's `X-App-Build`.
+
 Sessions are 60-day random bearer tokens, and only their SHA-256 is stored.
 We keep the provider's user id, a first name (neighbors see it), your neighbor
 code, and your beach. No email or photo. Every API response is

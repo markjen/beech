@@ -72,6 +72,8 @@ export interface AppConfig {
   /** injectable for tests */
   verifyGoogle?: typeof verifyGoogleIdToken;
   verifyApple?: typeof verifyAppleIdToken;
+  /** requests a minute per client IP (default 300), and sign-ins (default 20) */
+  rateLimit?: { perMinute?: number; signInsPerMinute?: number };
   /** the clock (tests move it forward) */
   now?: () => number;
   /** the dice (tests force a miss) */
@@ -110,7 +112,7 @@ type Env = { Variables: { user: User; tokenHash: string } };
 export const BEACH_CAP = 8;
 const BEACH_HEADERS = ['X-Beach-Location', 'X-Beach-Nx', 'X-Beach-Ny', 'X-Beach-Version', 'X-Beach-Updated', 'X-Beach-Epoch'];
 /** request-only headers the app sends cross-origin (the phone apps) */
-const REQUEST_HEADERS = ['X-Beach-Items', 'X-Beach-Max', 'X-Checkpoint-Name'];
+const REQUEST_HEADERS = ['X-Beach-Items', 'X-Beach-Max', 'X-Checkpoint-Name', 'X-App-Build'];
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O or 1/I
 
 const fail = (status: 400 | 401 | 403 | 404 | 409 | 413 | 426 | 429 | 500, message: string): never => {
@@ -149,6 +151,26 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     // per-user answers: never let a browser or proxy reuse one for someone else
     c.res.headers.set('Cache-Control', 'no-store');
     c.res.headers.append('Vary', 'Authorization');
+  });
+
+  // ---------------------------------------------------------------- rate limits
+  // Per client IP (Cloud Run's x-forwarded-for): a generous limit on the whole
+  // API, a tight one on signing in. The stores' webhooks are exempt (they come
+  // in bursts from a few IPs, and are signature-checked). Requests with no
+  // forwarded IP (tests, local development) aren't limited.
+  const perIp = createRateLimiter(cfg.rateLimit?.perMinute ?? 300);
+  const signIns = createRateLimiter(cfg.rateLimit?.signInsPerMinute ?? 20);
+  const WEBHOOKS = ['/store/apple/notifications', '/store/google/rtdn', '/store/xsolla/webhook'];
+  app.use('*', async (c, next) => {
+    const ip = (c.req.header('x-forwarded-for') ?? '').split(',')[0]?.trim();
+    if (ip && c.req.method !== 'OPTIONS' && !WEBHOOKS.some((w) => c.req.path.endsWith(w))) {
+      const signIn = c.req.method === 'POST' && c.req.path.includes('/auth/');
+      if (!perIp(ip) || (signIn && !signIns(ip))) {
+        logEvent('rate_limited', { route: routeLabel(c), sign_in: signIn }, 'WARNING');
+        return c.json({ error: 'too many requests: slow down a little' }, 429, { 'Retry-After': '60' });
+      }
+    }
+    await next();
   });
 
   app.onError((err, c) => {
@@ -357,6 +379,12 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     return out;
   };
 
+  /** An out-of-date app tried to save: refuse (426, the app offers a reload), and log which build it was. */
+  const outdated = (c: Context<Env>, why: string): never => {
+    logEvent('stale_app_save', { why, build: (c.req.header('X-App-Build') ?? 'unknown').slice(0, 40) }, 'WARNING');
+    return fail(426, 'this app is out of date: reload to save');
+  };
+
   const saveBeach = async (c: Context<Env>, beachId: string) => {
     const location = (c.req.header('X-Beach-Location') ?? '').slice(0, 40);
     const nx = Number(c.req.header('X-Beach-Nx'));
@@ -366,7 +394,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     // the world is square (32 m x 32 m). A non-square grid is an out-of-date app
     // (the old 32 x 24 world): its save would squeeze the sand and shift the
     // things on it, so refuse it until the app reloads.
-    if (nx !== ny) fail(426, 'this app is out of date: reload to save');
+    if (nx !== ny) outdated(c, 'non-square grid');
     if (Number(c.req.header('Content-Length') ?? 0) > MAX_BEACH_BYTES) fail(413, 'beach too large');
     const bytes = new Uint8Array(await c.req.arrayBuffer());
     if (bytes.byteLength === 0 || bytes.byteLength > MAX_BEACH_BYTES) fail(413, 'beach too large');
@@ -378,7 +406,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     // 400, so their save would drop the rest for good: refuse it ("reload").
     if (!c.req.header('X-Beach-Max')) {
       const cur = (await db.query<{ sand: unknown }>('SELECT sand FROM beach WHERE id = $1 AND sand IS NOT NULL', [beachId]))[0];
-      if (cur && countObjects(toBytes(cur.sand)) > OLD_MAX_OBJECTS) fail(426, 'this app is out of date: reload to save');
+      if (cur && countObjects(toBytes(cur.sand)) > OLD_MAX_OBJECTS) outdated(c, 'no X-Beach-Max');
     }
     const epochHeader = c.req.header('X-Beach-Epoch');
     const epoch = epochHeader === undefined || epochHeader === '' ? null : Number(epochHeader);
@@ -561,10 +589,19 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
 
   // what you own beyond the free items (empty until the shop and pulls exist)
   app.get('/inventory', requireUser, async (c) => {
-    const rows = await db.query<{ item_id: string; quantity: number; source: string; acquired_at: string; expires_at: string | null }>(
-      `SELECT item_id, quantity, source, acquired_at, expires_at FROM inventory
-        WHERE user_id = $1 AND quantity > 0 AND (expires_at IS NULL OR expires_at > $2)
-        ORDER BY acquired_at`,
+    const rows = await db.query<{
+      item_id: string;
+      quantity: number;
+      source: string;
+      acquired_at: string;
+      expires_at: string | null;
+      found_by: string | null;
+      found_at: string | null;
+    }>(
+      `SELECT i.item_id, i.quantity, i.source, i.acquired_at, i.expires_at, u.found_by, u.found_at
+         FROM inventory i LEFT JOIN unique_items u ON u.item_id = i.item_id
+        WHERE i.user_id = $1 AND i.quantity > 0 AND (i.expires_at IS NULL OR i.expires_at > $2)
+        ORDER BY i.acquired_at`,
       [c.get('user').id, Date.now()],
     );
     return c.json({
@@ -574,6 +611,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
         source: r.source,
         acquiredAt: Number(r.acquired_at),
         expiresAt: r.expires_at === null ? null : Number(r.expires_at),
+        // one of a kind: who found it first
+        ...(r.found_by !== null ? { foundBy: r.found_by, foundAt: Number(r.found_at) } : {}),
       })),
     });
   });
@@ -776,6 +815,37 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   // The wait before the next go is random, 5 minutes to 3 hours: shorter
   // after a miss, longer after a win. A ball from the vending machine is one a day instead
   // (next UTC midnight) and is always a draw from this week's set.
+  /**
+   * A unique item has one owner in the whole game: claim it for `me` before
+   * granting. Taken already: the draw gives a rare item from the set instead.
+   * `release` undoes the claim if the grant then doesn't happen (a lost race).
+   */
+  const claimUnique = async <T extends { item: string; rarity: string }>(
+    me: string,
+    got: T,
+    now: number,
+    fallback: () => T,
+  ): Promise<{ got: T; release: () => Promise<void> }> => {
+    if (got.rarity !== 'unique') return { got, release: async () => {} };
+    const name = (await db.query<{ name: string }>('SELECT name FROM users WHERE id = $1', [me]))[0]?.name ?? '';
+    const won = await db.query(
+      `INSERT INTO unique_items (item_id, owner_id, found_by, found_at) VALUES ($1, $2, $3, $4)
+       ON CONFLICT (item_id) DO UPDATE SET owner_id = EXCLUDED.owner_id, found_by = EXCLUDED.found_by, found_at = EXCLUDED.found_at
+        WHERE unique_items.owner_id IS NULL
+       RETURNING item_id`,
+      [got.item, me, name, now],
+    );
+    if (!won[0]) return { got: fallback(), release: async () => {} };
+    return {
+      got,
+      release: async () => {
+        await db.query('UPDATE unique_items SET owner_id = NULL WHERE item_id = $1 AND owner_id = $2 AND found_at = $3', [got.item, me, now]);
+      },
+    };
+  };
+  const rareFrom = (set: { items: { rare: string[] } }) => () =>
+    ({ item: set.items.rare[Math.min(set.items.rare.length - 1, Math.floor(rand() * set.items.rare.length))], rarity: 'rare' }) as never;
+
   app.post('/pulls/:pool', requireUser, async (c) => {
     const id = c.req.param('pool') ?? '';
     const pool = Object.hasOwn(POOLS, id) ? POOLS[id] : undefined;
@@ -808,6 +878,9 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       missed = !starter && !grab(drawn.rarity, rand);
       got = drawn;
     }
+    // one of a kind: claim it first (someone else has it: a rare instead)
+    const unique = !missed && set ? await claimUnique(me, got, now, rareFrom(set)) : { got, release: async () => {} };
+    got = unique.got;
     const wait = set ? nextUtcMidnight(now) - now : cooldownAfter(missed, rand);
     // one statement: claim the go (only if it's free and nobody claimed it
     // meanwhile); on a win, log it and give the prize. On a miss nothing is
@@ -834,6 +907,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
            SELECT user_id, $4, 1, 'pull', $6, NULL FROM logged RETURNING item_id`,
           [me, poolId, pullDay(now), got.item, got.rarity, now, wait, count],
         );
+    if (!rows[0]) await unique.release();
     const st = (await freeAt(me)).get(poolId);
     if (!rows[0])
       return c.json({ error: set ? 'not yet: your next ball is tomorrow' : 'not yet: the claw is resting', nextFree: st?.at ?? now }, 409);
@@ -885,6 +959,10 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       if (!rows[0]) return c.json({ error: 'slow down', nextRollAt: now + DIG_FIND_ROLL_COOLDOWN_MS }, 409);
       return c.json({ found: false });
     }
+    // one of a kind: claim it first (someone else has it: a rare instead)
+    const unique = await claimUnique(me, { item: drawn.item!, rarity: drawn.rarity! as string }, now, rareFrom(set));
+    drawn.item = unique.got.item;
+    drawn.rarity = unique.got.rarity as typeof drawn.rarity;
     // one statement: claim the find (only if still under the cap and the
     // cooldown has passed) and grant it — a racing second roll claims nothing
     const rows = await db.query<{ item_id: string }>(
@@ -905,7 +983,10 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
        SELECT user_id, $6, 1, 'pull', $5, NULL FROM logged RETURNING item_id`,
       [me, today, DIG_FIND_DAILY_CAP, DIG_FIND_ROLL_COOLDOWN_MS, now, drawn.item, drawn.rarity],
     );
-    if (!rows[0]) return c.json({ error: 'slow down', nextRollAt: now + DIG_FIND_ROLL_COOLDOWN_MS }, 409);
+    if (!rows[0]) {
+      await unique.release();
+      return c.json({ error: 'slow down', nextRollAt: now + DIG_FIND_ROLL_COOLDOWN_MS }, 409);
+    }
     const after = Number(
       (await db.query<{ finds: number }>('SELECT finds FROM dig_state WHERE user_id = $1', [me]))[0]?.finds ?? 1,
     );
@@ -1822,6 +1903,10 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
        ), logged AS (
          INSERT INTO gifts (from_id, to_id, item_id, created_at)
          SELECT $1, $4, item_id, $3 FROM giver
+         RETURNING item_id
+       ), passed_on AS (
+         -- a one-of-a-kind item changes owner with it
+         UPDATE unique_items SET owner_id = $4 WHERE item_id = $2 AND owner_id = $1 AND EXISTS (SELECT 1 FROM giver)
          RETURNING item_id
        )
        SELECT (SELECT COUNT(*) FROM giver) AS moved`,

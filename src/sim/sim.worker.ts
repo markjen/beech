@@ -112,6 +112,9 @@ self.onmessage = (ev: MessageEvent<ToWorker>) => {
     case 'removeObject':
       sim?.removeObject(m.id);
       break;
+    case 'moveObject':
+      sim?.moveObject(m.id, m.x, m.y);
+      break;
     case 'sea':
       sim?.setSea(m.tide, m.waves);
       break;

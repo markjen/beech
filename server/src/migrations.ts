@@ -377,6 +377,25 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX web_orders_user ON web_orders (user_id, created_at DESC);
   `,
+
+  // 16: unique items: one owner in the whole game (BACKLOG "Unique items").
+  // A draw claims the item here first; if someone already owns it, the draw
+  // gives something else. Gifting moves the owner. found_by is the first
+  // finder's name, shown on the item. Existing ones are recorded earliest
+  // first (anyone who already has one keeps it).
+  `
+  CREATE TABLE unique_items (
+    item_id TEXT PRIMARY KEY,
+    owner_id UUID REFERENCES users (id) ON DELETE SET NULL,  -- NULL: findable again
+    found_by TEXT NOT NULL,
+    found_at BIGINT NOT NULL
+  );
+  INSERT INTO unique_items (item_id, owner_id, found_by, found_at)
+  SELECT DISTINCT ON (i.item_id) i.item_id, i.user_id, u.name, i.acquired_at
+    FROM inventory i JOIN users u ON u.id = i.user_id
+   WHERE i.item_id IN ('nautilus') AND i.quantity > 0
+   ORDER BY i.item_id, i.acquired_at;
+  `,
 ];
 
 /** Apply migrations up to `upTo` (default: all). Tests use `upTo` to check a migration on older data. */
