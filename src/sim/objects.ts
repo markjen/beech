@@ -707,7 +707,8 @@ export class BeachObjects {
         const across = (vx[kb] - vx[ka]) * -sa + (vy[kb] - vy[ka]) * ca;
         l.spin += (across / (o.size > 0.5 ? o.size : 0.5)) * dt * 1.5;
         l.spin *= floatSpinDamp;
-        l.z = this.sandAt(o.x, o.y) + d - r * 0.6;
+        // The ball's origin is at its bottom. Logs and bottles use their axes.
+        l.z = this.sandAt(o.x, o.y) + d - r * (o.kind === 'beachball' ? 1 : 0.6);
         o.x = Math.min(wMax, Math.max(0.3, o.x + l.vx * dt));
         o.y = Math.min(hMax, Math.max(0.3, o.y + l.vy * dt));
         o.angle += l.spin * dt;
@@ -725,7 +726,7 @@ export class BeachObjects {
           o.y = Math.min(hMax, Math.max(0.3, o.y + l.vy * dt));
           o.angle += l.spin * dt;
         }
-        l.z = this.sandAt(o.x, o.y) + r * 0.7;
+        l.z = this.sandAt(o.x, o.y) + (o.kind === 'beachball' ? 0 : r * 0.7);
       }
     }
   }

@@ -714,15 +714,14 @@ here: it needs the service's URL on the web OAuth client.
   script bundles the app's own catalog, places every item in rows on
   dry sand, pauses the sea, and screenshots the whole beach plus a
   close-up of each item, then composes a labelled contact sheet.
-  Regenerate with `--only <id,...>` when an item's look changes.
+  Regenerate individual shots with `--only <id,...>` and run without
+  that option to refresh the full beach and contact sheet.
   Needs playwright (`npm install --no-save playwright@1.63.0`, as in
-  CI) and a dev server (or `--url`). With `--only` the script shoots
-  only the requested per-item PNGs and skips the full-beach shot and
-  the contact sheet, so a partial run can't overwrite them.
+  CI). The script starts its own dev server unless `--url` is set.
 - **Wash-ashore finds** (2026-11-24): the sea now brings in trash (a
   crumpled bright bottle or can), seaweed, and spotted cowries, new
   kinds `trash` and `seaweed` (both tumble in the swash) and a rare
-  free `cowrie` on kind `shell` with its own brown colours. Wash-in
+  free `cowrie` on kind `shell` with a spotted brown finish. Wash-in
   weights: driftwood 35%, shell 22%, sea glass 15%, seaweed 12%,
   cowrie 8%, trash 8% — trash stays rarer than shells. All three are
   free and unlimited, and keeping one works through the generic found
@@ -736,8 +735,10 @@ here: it needs the service's URL on the web OAuth client.
   kind. Week 2 is a mixed set: three new items can't fill all four
   tiers, so Week 1 items fill the gaps (blue sea glass and pebble,
   spiral conch, green bottle, nautilus) and keep the 3/2/2/1 shape;
-  sunset starfish sits the week out. Renders in
-  `docs/items/renders/` were regenerated with the full harness.
+  sunset starfish sits the week out. The ball sits on dry sand and
+  floats with its bottom submerged. Imported variant 0 uses the first
+  colour scheme, and the shore pictures use the same variant colours
+  as the game. Renders are in `docs/items/renders/`.
 
 ## Verification
 

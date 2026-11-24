@@ -683,6 +683,13 @@ const C = (h: string) => hex(h);
 export const SHELLS = ['#f7ead8', '#efe4d2', '#e8d9c0', '#f5e1cf', '#e6cfa8', '#f2e3c2', '#dfc49a', '#efe0c0'].map(C);
 const GLASS = ['#9fd8c1', '#8cc7de', '#b7e0a8', '#d3eef0'].map(C);
 const FLAGS = ['#e2574c', '#f2b134', '#4a90d9', '#55b27a'].map(C);
+const TRASH = ['#e63329', '#1f8fff', '#22b573', '#ffcf00'].map(C);
+const WEED = ['#4a5d23', '#3d4a1f', '#5d6b2a', '#6b5e2f'].map(C);
+const BALL_PANELS = ['#e8443a', '#2f8fd0', '#f5c542'].map(C);
+const SANDAL_SOLES = ['#2f8f7a', '#e86a5a'].map(C);
+const SANDAL_STRAPS = ['#f08a4b', '#2f4a6b'].map(C);
+const BUCKET_RIMS = ['#d8473b', '#2f8fd0'].map(C);
+const BUCKET_INSIDE = ['#8a2f28', '#1f5a8a'].map(C);
 
 /** Prize items draw in their own colours (a copy of src/palette.ts ITEM_LOOKS). */
 export const ITEM_COLORS: Record<string, string[]> = {
@@ -714,6 +721,7 @@ function drawThings(img: Uint8Array, W: number, H: number, things: Thing[], look
     const a = -t.angle; // mirrored alongshore
     const m = (r: number, min: number) => Math.max(min, r * s);
     const v = Math.abs(Math.floor(t.variant));
+    const vendingVariant = Math.max(0, v - 1);
     const parts: [Pt[], RGB][] = [];
     switch (t.kind) {
       case 'rock': {
@@ -734,9 +742,18 @@ function drawThings(img: Uint8Array, W: number, H: number, things: Thing[], look
         parts.push([rect(px, py, m(t.size / 2, 4), m(0.07 + t.size * 0.02, 1.3), a), C('#a08566')]);
         break;
       case 'shell':
-      case 'conch':
-        parts.push([circle(px, py, m(Math.max(0.1, t.size * 0.5), 3), 10), itemColor(t.item, v) ?? SHELLS[v % SHELLS.length]]);
+      case 'conch': {
+        const r = m(Math.max(0.1, t.size * 0.5), 3);
+        parts.push([circle(px, py, r, 10), itemColor(t.item, v) ?? SHELLS[v % SHELLS.length]]);
+        if (t.item === 'cowrie') {
+          const spot = itemColor(t.item, v + 1)!;
+          for (let k = 0; k < 5; k++) {
+            const angle = a + (k / 5) * Math.PI * 2;
+            parts.push([circle(px + Math.cos(angle) * r * 0.55, py + Math.sin(angle) * r * 0.55, r * 0.17, 6), spot]);
+          }
+        }
         break;
+      }
       case 'sanddollar':
         parts.push([circle(px, py, m(Math.max(0.08, t.size * 0.5), 2), 12), itemColor(t.item, v) ?? C('#eee6d4')]);
         break;
@@ -748,7 +765,6 @@ function drawThings(img: Uint8Array, W: number, H: number, things: Thing[], look
         break;
       case 'trash': {
         // a crumpled bright bottle: a short body with a neck, in vivid plastic colours
-        const TRASH = ['#e63329', '#1f8fff', '#22b573', '#ffcf00'].map(C);
         const c = TRASH[v % TRASH.length];
         parts.push([rect(px, py, m(0.13, 2.5), m(0.055, 1.2), a), c]);
         parts.push([rect(px + Math.cos(a) * m(0.15, 2.5), py - Math.sin(a) * m(0.15, 2.5), m(0.05, 1), m(0.04, 0.8), a), lighten(c, 0.3)]);
@@ -756,7 +772,6 @@ function drawThings(img: Uint8Array, W: number, H: number, things: Thing[], look
       }
       case 'seaweed': {
         // a dark green strand: three thin arms radiating from the middle
-        const WEED = ['#4a5d23', '#3d4a1f', '#5d6b2a', '#6b5e2f'].map(C);
         const c = WEED[v % WEED.length];
         for (let k = 0; k < 3; k++) {
           const aa = a + (k / 3) * Math.PI * 2;
@@ -815,8 +830,7 @@ function drawThings(img: Uint8Array, W: number, H: number, things: Thing[], look
       case 'beachball': {
         // a striped ball, seen from above: a white disc with bright wedges
         const r = m(t.size, 2.5);
-        const BRIGHT = ['#e8443a', '#2f8fd0', '#f5c542'].map(C);
-        const bright = BRIGHT[v % BRIGHT.length];
+        const bright = BALL_PANELS[vendingVariant % BALL_PANELS.length];
         parts.push([circle(px, py, r, 16), C('#fbf3e4')]);
         for (let i = 0; i < 6; i += 2) {
           const t0 = a + (i / 6) * Math.PI * 2;
@@ -827,28 +841,26 @@ function drawThings(img: Uint8Array, W: number, H: number, things: Thing[], look
       }
       case 'sandals': {
         // a pair of flat soles side by side, each with a strap across it
-        const SOLE = ['#2f8f7a', '#e86a5a'].map(C);
-        const STRAP = ['#f08a4b', '#2f4a6b'].map(C);
-        const c = SOLE[v % SOLE.length];
-        const st = STRAP[v % STRAP.length];
-        const off = m(0.09, 1.5);
+        const c = SANDAL_SOLES[vendingVariant % SANDAL_SOLES.length];
+        const st = SANDAL_STRAPS[vendingVariant % SANDAL_STRAPS.length];
+        const off = m(t.size * 0.3, 1.5);
         const ox = Math.sin(a) * off;
         const oy = Math.cos(a) * off;
         for (const sgn of [1, -1]) {
           const cx = px + sgn * ox;
           const cy = py + sgn * oy;
-          parts.push([rect(cx, cy, m(t.size * 0.5, 2.5), m(0.05, 1.2), a), c]);
-          parts.push([rect(cx + Math.cos(a) * m(0.08, 1.5), cy - Math.sin(a) * m(0.08, 1.5), m(0.04, 0.8), m(0.05, 1.2), a), st]);
+          const halfWidth = m(t.size * 0.24, 1.2);
+          const strapOffset = m(t.size * 0.12, 0.5);
+          parts.push([rect(cx, cy, m(t.size * 0.5, 2.5), halfWidth, a), c]);
+          parts.push([rect(cx + Math.cos(a) * strapOffset, cy + Math.sin(a) * strapOffset, m(t.size * 0.045, 0.8), halfWidth, a), st]);
         }
         break;
       }
       case 'bucket': {
         // a pail, seen from above: a coloured rim with its darker inside
-        const PAIL = ['#d8473b', '#2f8fd0'].map(C);
-        const INSIDE = ['#8a2f28', '#1f5a8a'].map(C);
         const r = m(t.size * 0.5, 2.5);
-        parts.push([circle(px, py, r, 16), PAIL[v % PAIL.length]]);
-        parts.push([circle(px, py, r * 0.72, 14), INSIDE[v % INSIDE.length]]);
+        parts.push([circle(px, py, r, 16), BUCKET_RIMS[vendingVariant % BUCKET_RIMS.length]]);
+        parts.push([circle(px, py, r * 0.72, 14), BUCKET_INSIDE[vendingVariant % BUCKET_INSIDE.length]]);
         break;
       }
       default:
