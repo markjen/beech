@@ -67,6 +67,7 @@ const GROUPS = [
   { name: 'Free', match: (it) => it.source === 'free' },
   { name: 'Claw', match: (it) => POOLS.daily.items[it.rarity]?.includes(it.id) },
   { name: 'Vending · Week 1', match: (it) => VENDING_SETS[0]?.items[it.rarity]?.includes(it.id) },
+  { name: 'Vending · Week 2', match: (it) => VENDING_SETS[1]?.items[it.rarity]?.includes(it.id) },
   { name: 'Shop', match: (it) => it.source === 'shop' },
 ];
 const groupOf = (it) => GROUPS.find((g) => g.match(it))?.name ?? 'Other';

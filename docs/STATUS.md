@@ -729,6 +729,15 @@ here: it needs the service's URL on the web OAuth client.
   mechanism (pick it up, put it down, it shows in the bag's "Found"
   section). Renders in `docs/items/renders/` (trash, seaweed, cowrie)
   were regenerated with the full harness.
+- **Vending Week 2 "Beach day"** (2026-11-24): from Mon 2026-11-30
+  the machine gives a beach ball (common, floats), sandals (uncommon,
+  tumble in the swash) and a bucket (rare, stands upright) — three new
+  kinds (`beachball`, `sandals`, `bucket`), each the only item of its
+  kind. Week 2 is a mixed set: three new items can't fill all four
+  tiers, so Week 1 items fill the gaps (blue sea glass and pebble,
+  spiral conch, green bottle, nautilus) and keep the 3/2/2/1 shape;
+  sunset starfish sits the week out. Renders in
+  `docs/items/renders/` were regenerated with the full harness.
 
 ## Verification
 

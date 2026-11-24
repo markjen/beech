@@ -34,6 +34,11 @@ const ICONS = {
   'sunset-starfish': `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.4 6.2 6.6.4-5.1 4.2 1.7 6.4L12 16.4 6.4 20l1.7-6.4L3 9.4l6.6-.4z" /></svg>`,
   'green-bottle': `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 15.5l9-9 2.5.5 2-2 2 2-2 2 .5 2.5-9 9a2 2 0 0 1-2.8 0l-2.2-2.2a2 2 0 0 1 0-2.8z" /><path d="M8 13l3 3" opacity=".55"/></svg>`,
   nautilus: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M12 12m-5.5 0a5.5 5.5 0 1 1 5.5 5.5 3.5 3.5 0 1 1-3.5-3.5 2 2 0 1 1 2 2" opacity=".6"/></svg>`,
+  // Week 2 vending set: each is the only item of its kind, so the icon
+  // is the kind's drawing; the tint (itemIcon, below) sets it apart.
+  'beach-ball': `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M12 3.5c-3.5 3-3.5 14 0 17M12 3.5c3.5 3 3.5 14 0 17" opacity=".55"/></svg>`,
+  sandals: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4.5c-2.2 0-3.2 2.5-3.2 7.5s1 7.5 3.2 7.5 3.2-2.5 3.2-7.5-1-7.5-3.2-7.5z" /><path d="M16 4.5c-2.2 0-3.2 2.5-3.2 7.5s1 7.5 3.2 7.5 3.2-2.5 3.2-7.5-1-7.5-3.2-7.5z" /><path d="M5 10.5h6M13 10.5h6" opacity=".55"/></svg>`,
+  bucket: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9h12l-1.2 10.2a1.5 1.5 0 0 1-1.5 1.3H8.7a1.5 1.5 0 0 1-1.5-1.3z" /><path d="M6.5 9a5.5 5.5 0 0 1 11 0" /></svg>`,
   conch: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 13.5c3-5 9-7.5 17-6.5-1.5 5.5-6 10-12.5 10.5-2.5.2-4.5-1.5-4.5-4z" /><path d="M8 11.5c2 .5 3 2.5 2.5 5M12.5 9.5c1.5 1 2 3 1.5 5.5" opacity=".55"/></svg>`,
   sanddollar: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M12 6.5v3.5M12 12l3.5-2M12 12l-3.5-2M12 12l2.2 3.6M12 12l-2.2 3.6" opacity=".6"/></svg>`,
   starfish: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.8l2.4 6.2 6.6.4-5.1 4.2 1.7 6.4L12 16.4 6.4 20l1.7-6.4L3 9.4l6.6-.4z" /></svg>`,
@@ -67,6 +72,9 @@ export const ITEM_ICON_TINT: Record<string, string> = {
   'sunset-starfish': '#e84a7a',
   'green-bottle': '#0f7a4d',
   nautilus: '#c97e5a',
+  'beach-ball': '#e8443a',
+  sandals: '#2f8f7a',
+  bucket: '#2f8fd0',
 };
 
 export function icon(name: IconName, tint?: string): string {

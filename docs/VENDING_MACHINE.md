@@ -65,6 +65,24 @@ in `src/palette.ts`, a mesh in `src/render/objects.ts`, and an icon in
 | Rare | 12% | Sunset starfish, Green bottle |
 | Unique | 3% | Nautilus |
 
+### Week 2 — "Beach day" (from Mon 2026-11-30)
+
+A **mixed set**: three new items can't fill all four tiers on their
+own, and every tier must be non-empty or the draw breaks — so Week 1
+items fill the gaps, and the set keeps Week 1's 3/2/2/1 shape exactly.
+The new items are the beach ball (common), sandals (uncommon) and
+bucket (rare); the unique is the nautilus again, and sunset starfish
+sits this week out. A later week can swap the borrowed items for
+pure-new ones as they land — nothing in the machine assumes a set is
+all new.
+
+| Tier | Chance | Items |
+|---|---|---|
+| Common | 60% | Beach ball, Blue sea glass, Pebble |
+| Uncommon | 25% | Sandals, Spiral conch |
+| Rare | 12% | Bucket, Green bottle |
+| Unique | 3% | Nautilus |
+
 ## Adding next week's set
 
 1. Pick the theme and the items (one unique, two rare, two uncommon, three

@@ -812,6 +812,45 @@ function drawThings(img: Uint8Array, W: number, H: number, things: Thing[], look
         parts.push([circle(px, py, m(0.12, 2), 8), C('#7a5a3a')]);
         parts.push([circle(px, py, m(0.07, 1.2), 8), C('#ffb347')]);
         break;
+      case 'beachball': {
+        // a striped ball, seen from above: a white disc with bright wedges
+        const r = m(t.size, 2.5);
+        const BRIGHT = ['#e8443a', '#2f8fd0', '#f5c542'].map(C);
+        const bright = BRIGHT[v % BRIGHT.length];
+        parts.push([circle(px, py, r, 16), C('#fbf3e4')]);
+        for (let i = 0; i < 6; i += 2) {
+          const t0 = a + (i / 6) * Math.PI * 2;
+          const t1 = a + ((i + 1) / 6) * Math.PI * 2;
+          parts.push([[[px, py], [px + Math.cos(t0) * r, py + Math.sin(t0) * r], [px + Math.cos(t1) * r, py + Math.sin(t1) * r]], bright]);
+        }
+        break;
+      }
+      case 'sandals': {
+        // a pair of flat soles side by side, each with a strap across it
+        const SOLE = ['#2f8f7a', '#e86a5a'].map(C);
+        const STRAP = ['#f08a4b', '#2f4a6b'].map(C);
+        const c = SOLE[v % SOLE.length];
+        const st = STRAP[v % STRAP.length];
+        const off = m(0.09, 1.5);
+        const ox = Math.sin(a) * off;
+        const oy = Math.cos(a) * off;
+        for (const sgn of [1, -1]) {
+          const cx = px + sgn * ox;
+          const cy = py + sgn * oy;
+          parts.push([rect(cx, cy, m(t.size * 0.5, 2.5), m(0.05, 1.2), a), c]);
+          parts.push([rect(cx + Math.cos(a) * m(0.08, 1.5), cy - Math.sin(a) * m(0.08, 1.5), m(0.04, 0.8), m(0.05, 1.2), a), st]);
+        }
+        break;
+      }
+      case 'bucket': {
+        // a pail, seen from above: a coloured rim with its darker inside
+        const PAIL = ['#d8473b', '#2f8fd0'].map(C);
+        const INSIDE = ['#8a2f28', '#1f5a8a'].map(C);
+        const r = m(t.size * 0.5, 2.5);
+        parts.push([circle(px, py, r, 16), PAIL[v % PAIL.length]]);
+        parts.push([circle(px, py, r * 0.72, 14), INSIDE[v % INSIDE.length]]);
+        break;
+      }
       default:
         parts.push([circle(px, py, m(0.12, 2), 8), C('#d9c7a8')]);
     }

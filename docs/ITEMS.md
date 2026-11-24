@@ -82,11 +82,31 @@ what you won stays yours.
 The Golden sand dollar is giant: it starts at twice the largest regular
 sand dollar (0.32 m) and scales up from there.
 
-### Week 2 — "Beach day" (planned, from Mon 2026-11-30)
+### Week 2 — "Beach day" (from Mon 2026-11-30)
 
-Three new items — Beach ball, Sandals, Bucket — plus Week 1 items
-filling the tiers the new items can't (see
-[Coming next](#coming-next)). The full table lands with that PR.
+A mixed set: three new items can't fill all four tiers, so Week 1 items
+fill the gaps — the 3/2/2/1 shape is the same as Week 1 (see
+[docs/VENDING_MACHINE.md](VENDING_MACHINE.md)). Sunset starfish sits
+this week out.
+
+| Tier | Items |
+|---|---|
+| Common | Beach ball, Blue sea glass, Pebble |
+| Uncommon | Sandals, Spiral conch |
+| Rare | Bucket, Green bottle |
+| Unique | Nautilus |
+
+| Item | Kind | Rarity | Size (m) | Variants | Behaviour | Mesh |
+|---|---|---|---|---|---|---|
+| Beach ball | `beachball` | common | 0.25–0.6 | 3 | float | `src/render/objects.ts` |
+| Sandals | `sandals` | uncommon | 0.15–0.35 | 2 | tumble | `src/render/objects.ts` |
+| Bucket | `bucket` | rare | 0.2–0.4 | 2 | fixed | `src/render/objects.ts` |
+
+The beach ball floats like driftwood (its draft is about a third of its
+radius); the sandals tumble in the swash like shells; the bucket stands
+upright where you put it. Each is the only item of its kind, so the kind
+palette is its look — no `ITEM_LOOKS` entry — and the ball's stripes
+alternate a bright colour (red, blue or yellow by variant) with white.
 
 ## Shop
 
@@ -114,9 +134,6 @@ Things you own that aren't placed on the sand: **Extra beach**
 Rose's Discord #feedback (2026-11-23), approved by Mark (2026-11-24).
 Each lands as its own PR; the tables above grow with it.
 
-- **Vending Week 2 "Beach day"** (`feat/vending-week2-beach-day`):
-  `beach-ball`, `sandals`, `bucket` — a mixed set with Week 1 items,
-  because three new items can't fill all four tiers.
 - **Claw prizes** (`feat/claw-coral-coconut`): `coral`, `coconut`.
 - **Shop centrepieces** (`feat/shop-centrepieces`): `palmtree`,
   `lifeguardtower`, `bonfire`, `hammock`, `towel`.

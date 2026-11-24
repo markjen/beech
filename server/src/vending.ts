@@ -47,6 +47,21 @@ export const VENDING_SETS: VendingSet[] = [
       unique: ['nautilus'],
     },
   },
+  {
+    week: 2,
+    name: 'Beach day',
+    starts: '2026-11-30',
+    odds: VENDING_ODDS,
+    items: {
+      // a mixed set: three new items can't fill all four tiers, so Week 1
+      // items fill the gaps (sunset-starfish sits this week out). The
+      // 3/2/2/1 shape is the same as Week 1 — see docs/VENDING_MACHINE.md.
+      common: ['beach-ball', 'blue-seaglass', 'pebble'],
+      uncommon: ['sandals', 'spiral-conch'],
+      rare: ['bucket', 'green-bottle'],
+      unique: ['nautilus'],
+    },
+  },
 ];
 
 /**
