@@ -1342,7 +1342,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
 
   app.post('/beaches/:code/pet/feed', requireUser, async (c) => {
     const user = c.get('user');
-    const code = normalizeCode(c.req.param('code'));
+    const code = normalizeCode(c.req.param('code') ?? '');
     const now = clock();
     const b = await body<{ useFood?: boolean }>(c).catch(() => ({} as { useFood?: boolean }));
     const rows = await db.query<{ id: string; owner_id: string; on_shore: boolean }>(
