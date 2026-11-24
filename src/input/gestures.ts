@@ -16,6 +16,10 @@ export interface GestureHandlers {
   tool?(index: number): void;
   /** V: switch between the diorama and the chair view */
   view?(): void;
+  /** H: collapse/expand the toolbars for minimal-overlay panning */
+  toggleCollapse?(): void;
+  /** Escape: restore collapsed toolbars */
+  exitCollapse?(): void;
   /** any user input at all (used to unlock audio, hide hints) */
   interacted(): void;
   /**
@@ -346,6 +350,8 @@ export class Gestures {
       e.preventDefault();
     } else if (k >= '1' && k <= '5' && k.length === 1) this.h.tool?.(Number(k) - 1);
     else if (k === 'v') this.h.view?.();
+    else if (k === 'h') this.h.toggleCollapse?.();
+    else if (k === 'escape') this.h.exitCollapse?.();
     else if (k === 'r' || k === 'f') this.cam.held.add(k);
     else if ((k === 'q' || k === 'e') && this.cam.mode === 'chair') this.cam.held.add(k); // walk along the beach
     else if (k === 'q') this.cam.snapRotation(-1);

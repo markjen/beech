@@ -656,16 +656,21 @@ export class NeighborView {
     const scale = engine.getHardwareScalingLevel();
     const transform = this.scene.getTransformMatrix();
     const identity = Matrix.IdentityReadOnly;
-    // the HUD the name tags must not cover: the place card (top left) and
-    // the tool column (right); measure at most every 250 ms to avoid per-frame reflow
+    // the HUD the name tags must not cover: when collapsed, only the subtle
+    // restore button stays visible; otherwise avoid the place card, shore bar,
+    // and both bottom HUD clusters. Measure at most every 250 ms to avoid
+    // per-frame reflow.
     const now = performance.now();
     if (now - this.keepOutAt > 250) {
       this.keepOutAt = now;
-      this.keepOutCache = [...this.uiRoot.querySelectorAll<HTMLElement>('.place, .hud-right')]
+      const sel = this.uiRoot.classList.contains('ui-collapsed')
+        ? '.hud-collapse'
+        : '.place, .shore-bar.shown, .hud-right, .hud-left';
+      this.keepOutCache = [...this.uiRoot.querySelectorAll<HTMLElement>(sel)]
         .map((el) => el.getBoundingClientRect())
-        .filter((r) => r.width > 0);
+        .filter((r) => r.width > 0 && r.height > 0);
     }
-    const keepOut = this.keepOutCache;
+    const keepOut: { left: number; top: number; right: number; bottom: number }[] = [...this.keepOutCache];
     const winW = window.innerWidth;
     const winH = window.innerHeight;
     for (const e of this.entries.values()) {
@@ -680,7 +685,10 @@ export class NeighborView {
       const disp = visible ? 'flex' : 'none';
       if (s.label.style.display !== disp) s.label.style.display = disp;
       if (!visible) continue;
-      const at2 = placeTag(x, y, s.label.offsetWidth, s.label.offsetHeight, winW, winH, keepOut);
+      const w = s.label.offsetWidth;
+      const h = s.label.offsetHeight;
+      const at2 = placeTag(x, y, w, h, winW, winH, keepOut);
+      keepOut.push({ left: at2.left, top: at2.top, right: at2.left + w, bottom: at2.top + h });
       const tf = `translate(${Math.round(at2.left)}px, ${Math.round(at2.top)}px)`;
       if (s.label.style.transform !== tf) s.label.style.transform = tf;
     }
