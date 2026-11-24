@@ -214,6 +214,41 @@ it('uses the approved price at native purchase time and reverses a refund once',
   expect(await db.query('SELECT creator_credit_debt_cents FROM users WHERE id = $1', [creator.id])).toEqual([{ creator_credit_debt_cents: 39 }]);
 });
 
+it('pays no credit for a purchase verified after the submission was rejected', async () => {
+  const creator = await user('Rejected creator');
+  const buyer = await user('Rejected buyer');
+  const id = await submit(creator.scoped);
+  await approve(id, 'parasol', '500');
+  // The receipt predates the rejection: bought while the item was approved.
+  nativeBoughtAt = now;
+  now += 1;
+  expect((await adminApi('/' + id + '/review', form({ status: 'rejected' }))).status).toBe(200);
+  const payment = { productId: 'item_parasol', platform: 'android', token: 'google-order-rejected' };
+  expect((await json('/store/purchase', payment, buyer.token)).status).toBe(200);
+  // The item itself is still granted (the store receipt verifies); only the
+  // creator credit is withheld.
+  expect(await db.query('SELECT item_id FROM inventory WHERE user_id = $1', [buyer.id])).toHaveLength(1);
+  expect(await credit(creator.token)).toBe(0);
+  expect(await db.query('SELECT id FROM creator_royalties WHERE submission_id = $1', [id])).toHaveLength(0);
+  expect(await (await shoreRequest('/submit/items', creator.scoped)).json()).toMatchObject({
+    submissions: [{ id, sales_count: 0, total_credit_earned_cents: 0 }],
+  });
+});
+
+it('pays no credit when a creator buys their own item', async () => {
+  const creator = await user('Self creator');
+  const id = await submit(creator.scoped);
+  await approve(id, 'beachhut', '250');
+  await db.query('UPDATE users SET credit_cents = 1000 WHERE id = $1', [creator.id]);
+  const res = await json('/store/credit-purchase', { productId: 'item_beachhut', requestId: crypto.randomUUID() }, creator.token);
+  expect(res.status, await res.clone().text()).toBe(200);
+  expect(await res.json()).toMatchObject({ paidCents: 250, creditCents: 750 });
+  expect(await db.query('SELECT id FROM creator_royalties WHERE submission_id = $1', [id])).toHaveLength(0);
+  expect(await (await shoreRequest('/submit/items', creator.scoped)).json()).toMatchObject({
+    submissions: [{ id, sales_count: 0, total_credit_earned_cents: 0 }],
+  });
+});
+
 it('honors the amount recorded at Steam and Xsolla checkout after an admin changes the price', async () => {
   const creator = await user('Checkout creator');
   const buyer = await user('Steam buyer', true);

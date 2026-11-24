@@ -72,6 +72,12 @@ export async function awardCreatorCredit(db: Db, args: {
 }) {
   const { offer, buyer, purchaseRef, storePurchaseId, paidCents, now } = args;
   if (paidCents <= 0) return;
+  // Only an approved item earns credit, and never on the creator's own
+  // purchase. A rejected submission keeps its product link (rejection only
+  // changes the status), so a still-listed store receipt would otherwise
+  // keep paying out; and a creator buying their own item would get 30%
+  // back on every purchase, including ones paid for with credit.
+  if (offer.status !== 'approved' || buyer === offer.submitter_user_id) return;
   const cents = Math.round(paidCents * 0.3);
   const [royalty] = await db.query<{ id: string }>(
     `INSERT INTO creator_royalties
