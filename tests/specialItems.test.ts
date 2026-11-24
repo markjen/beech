@@ -143,8 +143,11 @@ describe('shore pictures draw prizes in their own colours', () => {
   it('a pink shell, a golden sand dollar and the rest read as prizes, not free kinds', () => {
     const W = 1200;
     const H = 630;
-    const scale = H / (WORLD - 11.5); // px per metre, as in renderBeach
-    const at = (x: number, y: number): [number, number] => [W / 2 - (x - WORLD / 2) * scale, (y - 11.5) * scale];
+    // px per metre, as in renderBeach: the card stretches the 32 m beach
+    // alongshore to fill the width, so x and y have different scales
+    const scaleX = W / WORLD;
+    const scaleY = H / (WORLD - 11.5);
+    const at = (x: number, y: number): [number, number] => [W / 2 - (x - WORLD / 2) * scaleX, (y - 11.5) * scaleY];
     const sand: SavedSand = {
       nx: 256,
       ny: 256,
