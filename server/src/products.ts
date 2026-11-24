@@ -12,6 +12,8 @@
 
 export interface Product {
   id: string;
+  /** stable integer itemid sent to Steam ISteamMicroTxn/InitTxn */
+  steamItemId: number;
   name: string;
   /** what you get */
   grants: { item: string; quantity: number }[];
@@ -26,6 +28,7 @@ export interface Product {
 export const PRODUCTS: Product[] = [
   {
     id: 'pack_founder',
+    steamItemId: 1001,
     name: "Founder's pack",
     grants: [
       { item: 'beach', quantity: 2 },
@@ -38,15 +41,15 @@ export const PRODUCTS: Product[] = [
     blurb: 'Two extra beaches, a lighthouse, a beach hut, a parasol and two tiki torches',
     featured: true,
   },
-  { id: 'beach_1', name: 'Extra beach', grants: [{ item: 'beach', quantity: 1 }], usd: 2.99, blurb: 'A whole new beach of your own, anywhere on the shore' },
-  { id: 'beach_3', name: 'Three extra beaches', grants: [{ item: 'beach', quantity: 3 }], usd: 6.99, blurb: 'Three new beaches (save 22%)' },
-  { id: 'item_lighthouse', name: 'Lighthouse', grants: [{ item: 'lighthouse', quantity: 1 }], usd: 2.99, blurb: 'A striped lighthouse whose lamp shines at night' },
-  { id: 'item_beachhut', name: 'Beach hut', grants: [{ item: 'beachhut', quantity: 1 }], usd: 2.99, blurb: 'A painted hut on stilts' },
-  { id: 'item_sandcastle', name: 'Sandcastle', grants: [{ item: 'sandcastle', quantity: 1 }], usd: 1.99, blurb: 'Turrets, battlements and a flag' },
-  { id: 'item_surfboard', name: 'Surfboard', grants: [{ item: 'surfboard', quantity: 1 }], usd: 1.49, blurb: 'Stuck upright in the sand' },
-  { id: 'item_tikitorch', name: 'Tiki torches', grants: [{ item: 'tikitorch', quantity: 2 }], usd: 1.49, blurb: 'A pair, with flames that flicker' },
-  { id: 'item_parasol', name: 'Parasol', grants: [{ item: 'parasol', quantity: 1 }], usd: 0.99, blurb: 'Red and white stripes' },
-  { id: 'item_deckchair', name: 'Deckchair', grants: [{ item: 'deckchair', quantity: 1 }], usd: 0.99, blurb: 'Striped canvas, facing the sea' },
+  { id: 'beach_1', steamItemId: 1002, name: 'Extra beach', grants: [{ item: 'beach', quantity: 1 }], usd: 2.99, blurb: 'A whole new beach of your own, anywhere on the shore' },
+  { id: 'beach_3', steamItemId: 1003, name: 'Three extra beaches', grants: [{ item: 'beach', quantity: 3 }], usd: 6.99, blurb: 'Three new beaches (save 22%)' },
+  { id: 'item_lighthouse', steamItemId: 1004, name: 'Lighthouse', grants: [{ item: 'lighthouse', quantity: 1 }], usd: 2.99, blurb: 'A striped lighthouse whose lamp shines at night' },
+  { id: 'item_beachhut', steamItemId: 1005, name: 'Beach hut', grants: [{ item: 'beachhut', quantity: 1 }], usd: 2.99, blurb: 'A painted hut on stilts' },
+  { id: 'item_sandcastle', steamItemId: 1006, name: 'Sandcastle', grants: [{ item: 'sandcastle', quantity: 1 }], usd: 1.99, blurb: 'Turrets, battlements and a flag' },
+  { id: 'item_surfboard', steamItemId: 1007, name: 'Surfboard', grants: [{ item: 'surfboard', quantity: 1 }], usd: 1.49, blurb: 'Stuck upright in the sand' },
+  { id: 'item_tikitorch', steamItemId: 1008, name: 'Tiki torches', grants: [{ item: 'tikitorch', quantity: 2 }], usd: 1.49, blurb: 'A pair, with flames that flicker' },
+  { id: 'item_parasol', steamItemId: 1009, name: 'Parasol', grants: [{ item: 'parasol', quantity: 1 }], usd: 0.99, blurb: 'Red and white stripes' },
+  { id: 'item_deckchair', steamItemId: 1010, name: 'Deckchair', grants: [{ item: 'deckchair', quantity: 1 }], usd: 0.99, blurb: 'Striped canvas, facing the sea' },
 ];
 
 export const productById = (id: string): Product | undefined => PRODUCTS.find((p) => p.id === id);

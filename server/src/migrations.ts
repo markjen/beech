@@ -432,6 +432,29 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX account_link_codes_user ON account_link_codes (user_id);
   `,
+
+  // 19: Steam Wallet microtransactions (ISteamMicroTxn, docs/STEAM.md).
+  // Steam InitTxn requires a numeric 64-bit orderid (BIGSERIAL). Fulfilment
+  // reuses purchases (store = 'steam', transaction_id = trans_id) + inventory.
+  `
+  ALTER TABLE purchases DROP CONSTRAINT purchases_store_check;
+  ALTER TABLE purchases ADD CONSTRAINT purchases_store_check CHECK (store IN ('apple', 'google', 'dev', 'xsolla', 'steam'));
+
+  CREATE TABLE steam_orders (
+    order_id BIGSERIAL PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    steam_id TEXT NOT NULL,
+    product_id TEXT NOT NULL,
+    amount_cents INTEGER NOT NULL CHECK (amount_cents > 0),
+    currency TEXT NOT NULL DEFAULT 'USD',
+    trans_id TEXT UNIQUE,
+    sandbox BOOLEAN NOT NULL DEFAULT false,
+    status TEXT NOT NULL DEFAULT 'created' CHECK (status IN ('created', 'paid', 'refunded', 'canceled')),
+    created_at BIGINT NOT NULL,
+    paid_at BIGINT
+  );
+  CREATE INDEX steam_orders_user ON steam_orders (user_id, created_at DESC);
+  `,
 ];
 
 /** Apply migrations up to `upTo` (default: all). Tests use `upTo` to check a migration on older data. */

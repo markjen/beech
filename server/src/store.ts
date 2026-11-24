@@ -15,6 +15,8 @@
 import { X509Certificate } from 'node:crypto';
 import { compactVerify, createRemoteJWKSet, decodeProtectedHeader, jwtVerify, SignJWT, importPKCS8 } from 'jose';
 
+import type { Db } from './db.js';
+
 import { APPLE_ROOT_CA_G3_DER_BASE64 } from './appleRoot.js';
 
 export interface VerifiedPurchase {
@@ -184,4 +186,23 @@ export async function googleVoided(
   const data = body.message?.data ? JSON.parse(Buffer.from(body.message.data, 'base64').toString('utf8')) : null;
   const v = data?.voidedPurchaseNotification as { orderId?: string; purchaseToken?: string } | undefined;
   return v?.orderId ?? null;
+}
+
+/**
+ * A refund, from any store: the purchase is marked, and what it granted
+ * expires now. Shared by the Apple/Google notification handlers (via
+ * `refund()` in app.ts) and the Steam `GetReport/v5` sync
+ * (`syncSteamRefunds` in steamStore.ts) so every store revokes the same way.
+ */
+export async function revokeStorePurchase(
+  db: Db,
+  store: 'apple' | 'google' | 'xsolla' | 'steam',
+  transactionId: string,
+  now: number,
+): Promise<void> {
+  await db.query(
+    `WITH p AS (UPDATE purchases SET refunded_at = $3 WHERE store = $1 AND transaction_id = $2 AND refunded_at IS NULL RETURNING id)
+     UPDATE inventory SET expires_at = $3 WHERE purchase_id IN (SELECT id FROM p)`,
+    [store, transactionId, now],
+  );
 }
