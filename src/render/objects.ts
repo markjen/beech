@@ -415,18 +415,16 @@ interface Look {
 }
 
 function lookKey(o: PlacedObject): { key: string; base: number } {
-  if (LINEAR.has(o.kind)) {
-    // a prize item shares its kind's shape but not its look — pink-shell is
-    // kind shell — so the look key carries the item too (src/palette.ts)
-    const item = ITEM_LOOKS[o.item] ? `:${o.item}` : '';
-    return { key: `${o.kind}${item}:${o.variant}`, base: 1 };
-  }
+  // a prize item shares its kind's shape but not its look — pink-shell is
+  // kind shell — so the look key carries the item too (src/palette.ts)
+  const item = ITEM_LOOKS[o.item] ? `:${o.item}` : '';
+  if (LINEAR.has(o.kind)) return { key: `${o.kind}${item}:${o.variant}`, base: 1 };
   if (o.kind === 'driftwood') {
     const b = Math.round(Math.log(Math.max(0.05, o.size)) / WOOD_STEP);
-    return { key: `driftwood:${o.variant}:${b}`, base: Math.exp(b * WOOD_STEP) };
+    return { key: `driftwood${item}:${o.variant}:${b}`, base: Math.exp(b * WOOD_STEP) };
   }
   // flags, deckchairs and the shop's things are one size
-  return { key: `${o.kind}:${o.variant}`, base: 1 };
+  return { key: `${o.kind}${item}:${o.variant}`, base: 1 };
 }
 
 class PropBank {

@@ -423,7 +423,7 @@ const star = (cx: number, cy: number, r: number, a: number): Pt[] =>
 const C = (h: string) => hex(h);
 // Free shells are warm cream, tan and peach — no pink anywhere (pink is
 // reserved for the pink shell, a prize). A copy of the app's free shell
-// palette (src/palette.ts); tests/beachImage.test.ts keeps them in step.
+// palette (src/palette.ts); tests/specialItems.test.ts keeps them in step.
 export const SHELLS = ['#f7ead8', '#efe4d2', '#e8d9c0', '#f5e1cf', '#e6cfa8', '#f2e3c2', '#dfc49a', '#efe0c0'].map(C);
 const GLASS = ['#9fd8c1', '#8cc7de', '#b7e0a8', '#d3eef0'].map(C);
 const FLAGS = ['#e2574c', '#f2b134', '#4a90d9', '#55b27a'].map(C);

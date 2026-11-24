@@ -17,8 +17,9 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: '2026-11-24',
-    title: 'Rocks stay put',
+    title: 'Rocks stay put, and prizes stand out',
     changes: [
+      'Prizes from the claw and vending machines now look the part on your beach: the pink shell is properly pink, the golden sand dollar is shiny gold, and the rest of the week’s set stands out from the free shells and sea glass.',
       'Rocks placed against each other no longer pile sand up into a tall spike. Beaches that grew one smooth it away the next time they’re opened.',
     ],
   },
@@ -35,7 +36,6 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       'A beach holds 2000 things (it was 400).',
       'The Clearing tool brings the bulldozer, flatten and a vacuum together; the bulldozer and vacuum can now pick up rocks too.',
       'The vending machine: one free ball a day, from a set that changes every week.',
-      'Prizes from the claw and vending machines now look the part on your beach: the pink shell is properly pink, the golden sand dollar is shiny gold, and the rest of the week’s set stands out from the free shells and sea glass.',
       'The leaderboard: the most-starred beaches of all time, and the ones rising this week.',
       'The shop: a deckchair, parasol, surfboard, tiki torches, sandcastle, beach hut and lighthouse, plus extra beaches. Gift cards and promo codes on the web.',
       'More than one beach of your own, each open on a different device at once, and a map of where they are.',

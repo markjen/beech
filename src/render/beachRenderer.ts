@@ -172,12 +172,13 @@ export class BeachRenderer {
 
     this.rockMat = this.material('beachFlat', {
       attributes: ['position', 'normal'],
-      uniforms: [...light, 'baseCol', 'fogCol', 'fadeTop', 'fadeBottom'],
+      uniforms: [...light, 'baseCol', 'fogCol', 'fadeTop', 'fadeBottom', 'shine'],
       samplers: [],
     });
     this.rockMat.backFaceCulling = false;
     this.rockMat.setFloat('fadeTop', -2.8);
     this.rockMat.setFloat('fadeBottom', -7.5);
+    this.rockMat.setFloat('shine', 0);
 
     this.buildMeshes();
     this.bindFieldTextures();
