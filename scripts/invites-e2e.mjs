@@ -72,8 +72,14 @@ check((await owned(pf, 'parasol')) === 1, 'the parasol is in her bag');
 await pf.waitForFunction((c) => window.__beech.neighbors().visiting?.code === c, anaCode, { timeout: 15000 });
 check(true, "she lands on Ana's beach");
 if (shots) await pf.screenshot({ path: `${shots}/invite-welcome.png` });
-// ask to be neighbors from the note
-await pf.click('.hint .hint-action');
+// ask to be neighbors from the note (clicked in the page: the note only
+// lives a few seconds, and a slow software-rendered page can outlast it)
+const asked = await pf.evaluate(() => {
+  const b = [...document.querySelectorAll('.hint .hint-action')].find((x) => x.textContent.includes('neighbor'));
+  b?.click();
+  return !!b;
+});
+check(asked, 'the welcome note has a "be her neighbor" button');
 await pf.waitForFunction(() => [...document.querySelectorAll('.hint')].some((h) => h.textContent.includes('your neighbor')), null, { timeout: 10000 });
 check(true, 'the note asks Ana to be her neighbor');
 await pf.waitForFunction(() => window.__beech.guide.done.has('visit'), null, { timeout: 10000 });
