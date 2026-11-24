@@ -19,6 +19,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     date: '2026-11-24',
     title: 'Linked beaches, shiny prizes, and rocks that stay put',
     changes: [
+      'Beach animals are now much easier to spot: sand crabs are bigger and visit far more often (the first one usually turns up within a minute), and dolphins are bigger and swim closer to the surf.',
       'Wild dolphins now occasionally cruise through the deeper water in front of your beach and leap across the waves.',
       'Visitors can now feed your beach’s pet (one free snack per beach each day, or anytime using their own beach snacks), and you’ll see a note when someone feeds yours.',
       'Adopt a resident sand crab for your beach — either by feeding wild crabs enough times to befriend one or straight from the shop. Pets stay on your beach, cozy up in a burrow to nap if unfed for a couple of days, and wake right up when you feed them.',

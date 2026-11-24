@@ -67,7 +67,7 @@ production builds, with zero server changes.
 
 ### Presence & pacing
 
-- **Empty most of the time.** Target roughly **10–15% uptime** during an
+- **Empty most of the time.** *(Superseded 2026-11-24: now ~50% uptime, see STATUS.md.)* Target roughly **10–15% uptime** during an
   unbaited session:
   - After boot (or after a visitor leaves), roll a quiet wait of **4–12 minutes**
     (uniform or triangular distribution, tuned in `src/config.ts`).

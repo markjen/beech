@@ -144,7 +144,7 @@ export class AnimalController {
 
   constructor(rand: () => number = Math.random) {
     this.rand = rand;
-    this.waitTimer = this.rollWait();
+    this.waitTimer = ANIMALS.firstWaitMin + this.rand() * (ANIMALS.firstWaitMax - ANIMALS.firstWaitMin);
     this.snap = {
       species: 'crab',
       active: false,
@@ -280,8 +280,12 @@ export class AnimalController {
     // Find a deep-water offshore lane
     if (!pos) {
       let found = false;
-      for (let i = 0; i < 12; i++) {
-        const cz = -HALF_Z + 2.5 + this.rand() * Math.max(2, PROFILE.shoreline - 6.0);
+      // prefer a lane just past the surf (easy to see), falling back further out
+      for (let i = 0; i < 16; i++) {
+        const near = i < 8;
+        const cz = near
+          ? -HALF_Z + PROFILE.shoreline - 2.5 - this.rand() * 4.0
+          : -HALF_Z + 2.5 + this.rand() * Math.max(2, PROFILE.shoreline - 6.0);
         if (env.waterAt(startX, cz) >= ANIMALS.dolphinMinDepth) {
           z = cz;
           found = true;
@@ -617,7 +621,8 @@ export class AnimalController {
     }
 
     s.speed = moveDist / step;
-    s.scuttlePhase += s.speed * step * 26;
+    // leg cycle per metre travelled shrinks as the crab grows, so a big crab strides rather than buzzes
+    s.scuttlePhase += (s.speed * step * 26 * 0.32) / Math.max(0.1, s.size);
     s.clawWave = 0;
 
     // Sideways crab gait: face perpendicular to movement direction
@@ -720,7 +725,8 @@ export class AnimalController {
     const zLo = Math.max(-HALF_Z + ANIMALS.edgeMargin, SHORELINE_Z + 1.0);
     const zHi = HALF_Z - ANIMALS.edgeMargin - 1.0;
     for (let attempt = 0; attempt < 24; attempt++) {
-      const x = -HALF_X + ANIMALS.edgeMargin + this.rand() * (WORLD_SIZE_X - ANIMALS.edgeMargin * 2);
+      // middle of the beach, so it's in view on narrow (phone) screens that crop the sides
+      const x = (this.rand() * 2 - 1) * HALF_X * ANIMALS.spawnSpreadX;
       const z = zLo + this.rand() * Math.max(0.5, zHi - zLo);
       if (env.waterAt(x, z) > 0.02) continue;
       if (this.insideObstacle(x, z, env.obstacles)) continue;

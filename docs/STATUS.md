@@ -830,6 +830,14 @@ prompt, JSON Schema and sample asset.
 
 ## Animals — A1 wild sand crab (2026-11-24)
 
+- **Tuning change (2026-11-24, differs from ANIMALS.md):** animals were too
+  small and rare to notice, so the crab is now 0.8 m across (was 0.32), the
+  dolphin 2.2 m (was 1.55) and swims a lane just past the surf. Crabs spawn in
+  the middle 45% of the beach width so narrow phone views show them. Visits now
+  come every 1–3 min (85% chance; first one 20–60 s after boot) and last
+  1.5–3 min, so an animal is around about half the time (was ~10–15%). The
+  crab's leg cycle scales with its size.
+
 - **Rare wild visitor** ([ANIMALS.md](ANIMALS.md)): a single sand crab
   occasionally emerges from the sand (4–12 min quiet wait, 65% roll, 45–120 s
   visit, empty most of the time), scurries sideways in short bursts, pauses to
