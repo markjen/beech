@@ -91,9 +91,16 @@ const dbSummary = setInterval(() => {
 }, 60000);
 dbSummary.unref();
 
+const steamAuth =
+  env.STEAM_APP_ID && env.STEAM_WEB_API_KEY
+    ? { appId: env.STEAM_APP_ID, webApiKey: env.STEAM_WEB_API_KEY }
+    : undefined;
+logEvent('steam_auth_config', { enabled: !!steamAuth });
+
 const api = createApp(db, {
   googleClientIds: list(env.GOOGLE_CLIENT_IDS),
   appleClientIds: list(env.APPLE_CLIENT_IDS),
+  steamAuth,
   allowedOrigins: list(env.ALLOWED_ORIGINS ?? 'capacitor://localhost,https://localhost,app://beech'),
   devAuth,
   appleBundleId: env.APPLE_BUNDLE_ID || undefined,

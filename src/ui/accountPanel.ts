@@ -5,6 +5,7 @@ import { DEV_AUTH, googleSignInAvailable, renderGoogleButton, type Account } fro
 import { beachShareText, shareUrl, shoreBeachUrl } from '../net/share';
 import { DISCORD_INVITE_URL } from '../../server/src/community';
 import { copyText, shareLink } from './shareSheet';
+import { isSteam, steamBridge } from '../platform/runtime';
 import { nativeProviders, nativeSignIn, SignInCancelled, type NativeProvider } from '../net/nativeAuth';
 import { reportError, reportEvent } from '../net/telemetry';
 
@@ -89,6 +90,7 @@ export class AccountPanel {
       if (this.checkpoints) box.appendChild(this.checkpoints.element());
       if (this.neighbors) box.appendChild(this.neighborSection(this.neighbors));
       if (this.neighbors && this.onVisit) box.appendChild(this.visitSection(this.neighbors, this.onVisit));
+      box.appendChild(this.linkSection());
       box.querySelector('[data-act="signout"]')!.addEventListener('click', () => void this.account.signOut());
       const del = box.querySelector<HTMLButtonElement>('[data-act="delete"]')!;
       del.addEventListener('click', async () => {
@@ -112,7 +114,26 @@ export class AccountPanel {
       buttons.className = 'buttons';
       const native = nativeProviders();
       for (const p of native) buttons.appendChild(this.nativeButton(p));
-      if (native.length) {
+      if (isSteam()) {
+        const steamBtn = document.createElement('button');
+        steamBtn.type = 'button';
+        steamBtn.className = 'action';
+        steamBtn.dataset.act = 'steam';
+        steamBtn.textContent = 'sign in with Steam';
+        steamBtn.addEventListener('click', () => {
+          const steam = steamBridge();
+          if (!steam) {
+            this.error = 'Steam is not running';
+            this.render();
+            return;
+          }
+          void this.signIn(async () => {
+            const t = await steam.getAuthTicket();
+            return this.account.signInWithSteam(t.ticketHex, t.personaName);
+          });
+        });
+        buttons.appendChild(steamBtn);
+      } else if (native.length) {
         /* the app's own sign-in sheets */
       } else if (googleSignInAvailable()) {
         const gis = document.createElement('div');
@@ -154,6 +175,13 @@ export class AccountPanel {
     discord.target = '_blank';
     discord.rel = 'noopener';
     discord.textContent = 'Join our Discord — feedback, bug reports and ideas ↗';
+    const steam = steamBridge();
+    if (steam) {
+      discord.addEventListener('click', (e) => {
+        e.preventDefault();
+        steam.openExternal(DISCORD_INVITE_URL);
+      });
+    }
     community.appendChild(discord);
     box.appendChild(community);
     this.el.appendChild(box);
@@ -463,6 +491,40 @@ export class AccountPanel {
       r.append(name, v, x);
       wrap.appendChild(r);
     }
+    return wrap;
+  }
+
+  private linkSection(): HTMLElement {
+    const wrap = document.createElement('div');
+    wrap.className = 'neighbors';
+    wrap.innerHTML = `
+      <div class="code-row">
+        <span>link device</span>
+        <button type="button" class="action" data-act="link-gen">get code</button>
+      </div>
+      <form class="slot link-form">
+        <input type="text" maxlength="9" placeholder="XXXX-XXXX" autocomplete="off" spellcheck="false" aria-label="Link code"/>
+        <button type="submit" class="action">link</button>
+      </form>`;
+    const gen = wrap.querySelector<HTMLButtonElement>('[data-act="link-gen"]')!;
+    gen.addEventListener('click', () =>
+      void this.guard(async () => {
+        const { code } = await this.account.createLinkCode();
+        gen.textContent = code;
+        void copyText(code);
+      }),
+    );
+    const form = wrap.querySelector<HTMLFormElement>('.link-form')!;
+    const input = form.querySelector<HTMLInputElement>('input')!;
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const code = input.value.trim();
+      if (!code) return;
+      void this.signIn(async () => {
+        await this.account.redeemLinkCode(code);
+        await this.account.loadBeaches();
+      });
+    });
     return wrap;
   }
 

@@ -407,6 +407,31 @@ const MIGRATIONS: string[] = [
     ON beach (location, updated_at DESC, id)
     WHERE on_shore AND sand IS NOT NULL;
   `,
+
+  // 18: multi-provider identities and one-time account link codes (docs/STEAM.md).
+  // One beech user can hold Google, Apple, and Steam identities so beaches,
+  // inventory, purchases, and neighbors sync across web, mobile, and Steam.
+  `
+  CREATE TABLE user_identities (
+    provider TEXT NOT NULL,
+    provider_sub TEXT NOT NULL,
+    user_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    created_at BIGINT NOT NULL,
+    PRIMARY KEY (provider, provider_sub)
+  );
+  CREATE INDEX user_identities_user ON user_identities (user_id);
+  INSERT INTO user_identities (provider, provider_sub, user_id, created_at)
+    SELECT provider, provider_sub, id, created_at FROM users
+    ON CONFLICT DO NOTHING;
+
+  CREATE TABLE account_link_codes (
+    code_hash TEXT PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    created_at BIGINT NOT NULL,
+    expires_at BIGINT NOT NULL
+  );
+  CREATE INDEX account_link_codes_user ON account_link_codes (user_id);
+  `,
 ];
 
 /** Apply migrations up to `upTo` (default: all). Tests use `upTo` to check a migration on older data. */

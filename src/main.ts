@@ -49,7 +49,7 @@ import { initTelemetry, reportError, reportEvent } from './net/telemetry';
 import { loadLocalBeach, saveLocalBeach } from './net/localStore';
 import { LocalCheckpointsSection } from './ui/localCheckpoints';
 import { watchForNewVersion } from './platform/version';
-import { isPackagedApp, isSteam } from './platform/runtime';
+import { isPackagedApp, isSteam, steamBridge } from './platform/runtime';
 import { BeachFileDialog, beachFileName, pickFile, saveText, type BeachFileHost } from './ui/beachFileDialog';
 import { parseBeachFile, writeBeachFile } from './world/beachFile';
 import { version as APP_VERSION } from '../package.json';
@@ -1376,6 +1376,17 @@ async function boot() {
     // public on the shore (and let them walk the public shore); an off-shore
     // beach still waits for sign-in
     void account.restore().then(async (u) => {
+      if (!u && isSteam()) {
+        const steam = steamBridge();
+        if (steam) {
+          try {
+            const t = await steam.getAuthTicket();
+            u = await account.signInWithSteam(t.ticketHex, t.personaName);
+          } catch {
+            /* offline or Steam unavailable: stay playable locally */
+          }
+        }
+      }
       if (u || !visitCode) return;
       const code = visitCode;
       try {
