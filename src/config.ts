@@ -201,5 +201,17 @@ export const ANIMALS = {
   crabMaxStartles: 3,
   /** margin (m) kept inside the 32x32 slab edges */
   edgeMargin: 1.5,
+  /** how long an uneaten dropped snack lasts before expiring (seconds) */
+  foodDuration: 900,
+  /** spawn-wait speedup while dropped food is acting as bait */
+  foodBaitMultiplier: 4,
+  /** distance (m) at which an active crab smells and seeks dropped food */
+  foodNoticeRadius: 12,
+  /** extra visit time (seconds) added when a wild crab eats a treat */
+  foodExtendSec: 240,
+  /** cap on remaining visit time (seconds) after feeding */
+  foodMaxVisit: 420,
+  /** seconds after eating during which the crab is calm around the brush */
+  foodCalmSec: 60,
 };
 

@@ -133,4 +133,43 @@ describe('AnimalController (wild sand crab)', () => {
     const s = ctrl.snapshot();
     expect(Math.hypot(s.x - obstacles[0].x, s.z - obstacles[0].z)).toBeGreaterThanOrEqual(obstacles[0].radius);
   });
+
+  it('uses dropped food as bait to bring a wild crab out much sooner', () => {
+    const ctrl = new AnimalController(() => 0.2);
+    const env = flatBeach();
+    expect(ctrl.snapshot().active).toBe(false);
+    expect(ctrl.dropFood(env, { x: 0, z: 6 })).toBe(true);
+    expect(ctrl.snapshot().food.active).toBe(true);
+
+    // Bait caps wait <= 90 s and speeds it up 4x, so a crab should appear well within 30 s
+    advance(ctrl, env, 30);
+    expect(ctrl.snapshot().active).toBe(true);
+  });
+
+  it('draws an active crab over to eat dropped food, extending its visit and calming it', () => {
+    const ctrl = new AnimalController(seeded(21));
+    const env = flatBeach();
+    let fedCount = 0;
+    ctrl.onWildFed = () => fedCount++;
+
+    ctrl.spawnNow(env, { x: 0, z: 6 });
+    advance(ctrl, env, 1.2); // finish emerging
+    const visitBefore = ctrl.snapshot().visitLeft;
+
+    expect(ctrl.dropFood(env, { x: 2.0, z: 6 })).toBe(true);
+    advance(ctrl, env, 8);
+
+    expect(fedCount).toBe(1);
+    expect(ctrl.snapshot().food.active).toBe(false);
+    expect(ctrl.snapshot().visitLeft).toBeGreaterThan(visitBefore);
+    expect(ctrl.snapshot().calmTimer).toBeGreaterThan(0);
+  });
+
+  it('washes dropped food away if a big wave covers it', () => {
+    const ctrl = new AnimalController(seeded(5));
+    const env = flatBeach({ waterAt: () => 0.15 });
+    expect(ctrl.dropFood(env, { x: 0, z: 6 })).toBe(true);
+    advance(ctrl, env, 2);
+    expect(ctrl.snapshot().food.active).toBe(false);
+  });
 });

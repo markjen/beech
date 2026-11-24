@@ -160,6 +160,7 @@ export function guideHtml(now: number): string {
 
 <h2 id="animals">Animals</h2>
 <p>Now and then a wild sand crab pops out of the sand, scurries sideways across the beach, dodges incoming waves and your digging brush, and burrows back down after a minute or two. Most of the time the beach is quiet with no animal around.</p>
+<p><b>Beach snacks:</b> toss a snack from your bag onto the sand to draw a visiting crab over and keep it around longer, or leave one out as bait so a crab visits sooner. You can buy snack packs in the shop, and digging up buried finds occasionally turns up a free snack too.</p>
 
 <h2 id="claw">Claw machine</h2>
 <p>Free to play when you’re signed in: open the bag and tap the claw machine. Hold the button to steer, let go to drop.</p>

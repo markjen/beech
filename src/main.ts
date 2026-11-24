@@ -39,7 +39,7 @@ import { Shop } from './ui/shop';
 import { ShopApi, webOrderFromUrl, withoutWebOrderParams } from './net/shop';
 import { VendingMachine } from './ui/vendingMachine';
 import { DEFAULT_SIZE, ITEMS, rollPlacement, type Item } from './world/items';
-import { ACCOUNTS_ENABLED, Account, CheckpointApi, DigFindApi, GiftApi, PullApi } from './net/account';
+import { ACCOUNTS_ENABLED, Account, AnimalsApi, CheckpointApi, DigFindApi, GiftApi, PullApi } from './net/account';
 import { beachShareText, shoreBeachUrl, SHORE_URL, visitCodeFromUrl, withoutVisitParam } from './net/share';
 import { shareLink } from './ui/shareSheet';
 import { BeachSync, countItems } from './net/beachSync';
@@ -1160,7 +1160,7 @@ async function boot() {
     if (animals.snapshot().active) syncAnimalObstacles();
     animals.update(dt, animalEnv);
     const animalSnap = animals.snapshot();
-    if (animalSnap.active) ensureAnimalView();
+    if (animalSnap.active || animalSnap.food.active) ensureAnimalView();
     animalView?.update(animalSnap, ownShown);
     if (digging) haptics.dig(info.digIntensity);
     cam.camera.getDirectionToRef(Vector3.Right(), right);
@@ -1185,8 +1185,33 @@ async function boot() {
   // ---------------------------------------------------------------- accounts
   let account: Account | null = null;
   let sync: BeachSync | null = null;
+  let animalsApi: AnimalsApi | null = null;
   if (ACCOUNTS_ENABLED) {
     account = new Account();
+    animalsApi = new AnimalsApi(account);
+    inventory.onUseExtra = (id) => {
+      if (id !== 'crab-treat') return;
+      if (!animalsApi?.signedIn) {
+        showToast(uiRoot, 'Sign in to feed animals.');
+        return;
+      }
+      if (neighbors && !neighbors.ownVisible) {
+        showToast(uiRoot, 'Head back to your beach to toss a snack.');
+        return;
+      }
+      void animalsApi
+        .feed()
+        .then(() => {
+          syncAnimalObstacles();
+          animals.dropFood(animalEnv);
+          refreshOwned();
+          haptics.impact('light');
+          showToast(uiRoot, 'Beach snack tossed on the sand.');
+        })
+        .catch((err: unknown) => {
+          showToast(uiRoot, err instanceof Error ? err.message : 'No beach snacks left.');
+        });
+    };
     sync = new BeachSync(account, {
       getSand,
       setSand: (delta, objects, cover) => {
@@ -1652,10 +1677,14 @@ async function boot() {
     vending: () => vendingMachine,
     objectView,
     animals: {
-      snapshot: () => ({ ...animals.snapshot() }),
+      snapshot: () => ({ ...animals.snapshot(), food: { ...animals.snapshot().food } }),
       spawn: (pos?: { x: number; z: number }) => {
         syncAnimalObstacles();
         return animals.spawnNow(animalEnv, pos);
+      },
+      dropFood: (pos?: { x: number; z: number }) => {
+        syncAnimalObstacles();
+        return animals.dropFood(animalEnv, pos);
       },
       despawn: () => animals.despawnNow(),
     },
@@ -1680,12 +1709,19 @@ async function boot() {
         syncAnimalObstacles();
         return animals.spawnNow(animalEnv);
       },
+      dropFood: () => {
+        syncAnimalObstacles();
+        return animals.dropFood(animalEnv);
+      },
       despawn: () => animals.despawnNow(),
       status: () => {
         const s = animals.snapshot();
-        return s.active
-          ? `${s.species} ${s.phase} (${s.x.toFixed(1)}, ${s.z.toFixed(1)}) left ${s.visitLeft.toFixed(0)}s`
-          : `absent (next roll ${s.nextSpawnIn.toFixed(0)}s)`;
+        const foodTag = s.food.active ? ` · food ${s.food.timeLeft.toFixed(0)}s` : '';
+        return (
+          (s.active
+            ? `${s.species} ${s.phase} (${s.x.toFixed(1)}, ${s.z.toFixed(1)}) left ${s.visitLeft.toFixed(0)}s`
+            : `absent (next roll ${s.nextSpawnIn.toFixed(0)}s)`) + foodTag
+        );
       },
     });
   }

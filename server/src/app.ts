@@ -46,6 +46,7 @@ import { appleRefund, googleVoided, revokeStorePurchase, verifyAppleTransaction,
 import { POOLS, GRAB_CHANCE, COOLDOWN_MAX_MS, COOLDOWN_MIN_MS, cooldownAfter, cryptoRandom, draw, grab, pullDay, starterPrize, STARTER, type Rarity } from './pulls.js';
 import { currentSet, drawVending, nextUtcMidnight } from './vending.js';
 import { DIG_FIND_DAILY_CAP, DIG_FIND_ROLL_COOLDOWN_MS, digDraw, qualifiesForFind } from './digFinds.js';
+import { consumeTreat, maybeGrantBonusTreat } from './animals.js';
 import {
   hashToken,
   newSessionToken,
@@ -1229,6 +1230,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const after = Number(
       (await db.query<{ finds: number }>('SELECT finds FROM dig_state WHERE user_id = $1', [me]))[0]?.finds ?? 1,
     );
+    const bonusTreat = await maybeGrantBonusTreat(db, me, now, rand);
     return c.json({
       found: true,
       item: drawn.item,
@@ -1236,7 +1238,16 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       findsToday: after,
       findsLeft: DIG_FIND_DAILY_CAP - after,
       nextFindsAt: after >= DIG_FIND_DAILY_CAP ? nextUtcMidnight(now) : null,
+      ...(bonusTreat ? { bonusTreat: true } : {}),
     });
+  });
+
+  // ---------------------------------------------------------------- animals (A2: food & feeding)
+  app.post('/animals/feed', requireUser, async (c) => {
+    const me = c.get('user').id;
+    const res = await consumeTreat(db, me, clock());
+    if (!res.ok) return c.json({ error: 'no beach snacks left', remaining: 0 }, 409);
+    return c.json({ ok: true, remaining: res.remaining });
   });
 
   app.post('/neighbors/code', requireUser, async (c) => {

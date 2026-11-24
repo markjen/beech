@@ -1,16 +1,26 @@
-// Wild beach visitors — pure TypeScript state machine & steering (no DOM or
-// Babylon imports, so it runs cleanly in Vitest and on the main thread).
+// Wild beach visitors & feeding — pure TypeScript state machine & steering
+// (no DOM or Babylon imports, so it runs cleanly in Vitest and on the main thread).
 //
-// Phase 1 (A1, docs/ANIMALS.md): a single sand crab that occasionally emerges
-// from the sand, scurries sideways in short bursts, pauses to wave its claws,
-// dodges incoming waves and the player's brush, and burrows back into the sand.
-// Most of the time, the beach has no animal at all.
+// Phase 1 (A1): a single wild sand crab occasionally emerges from the sand,
+// scurries sideways in short bursts, pauses to wave its claws, dodges incoming
+// waves and the player's brush, and burrows back into the sand.
+// Phase 2 (A2): dropping a beach snack (`dropFood`) either baits a wild crab
+// to appear sooner (4x faster wait) or draws an active crab over to nibble,
+// extending its visit and calming it around the brush.
 
 import { ANIMALS, PROFILE, WORLD_SIZE_X, WORLD_SIZE_Z } from '../config';
 
 export type AnimalSpecies = 'crab';
 
-export type AnimalPhase = 'absent' | 'emerging' | 'wandering' | 'pausing' | 'fleeing' | 'burrowing';
+export type AnimalPhase =
+  | 'absent'
+  | 'emerging'
+  | 'wandering'
+  | 'pausing'
+  | 'fleeing'
+  | 'seeking_food'
+  | 'eating'
+  | 'burrowing';
 
 export interface AnimalObstacle {
   x: number;
@@ -29,6 +39,14 @@ export interface AnimalEnv {
   obstacles?: readonly AnimalObstacle[];
 }
 
+export interface FoodSnapshot {
+  active: boolean;
+  x: number;
+  y: number;
+  z: number;
+  timeLeft: number;
+}
+
 export interface AnimalSnapshot {
   species: AnimalSpecies;
   active: boolean;
@@ -45,7 +63,7 @@ export interface AnimalSnapshot {
   scuttlePhase: number;
   /** 0 = underground/burrowed, 1 = fully on top of the sand */
   emerge: number;
-  /** 0..1 claw wave animation intensity while pausing */
+  /** 0..1 claw wave animation intensity while pausing or eating */
   clawWave: number;
   /** carapace width (m) */
   size: number;
@@ -55,6 +73,12 @@ export interface AnimalSnapshot {
   visitLeft: number;
   /** how many times the brush startled this visitor */
   startles: number;
+  /** > 0 right after eating a treat (drives happy bounce) */
+  happyTimer: number;
+  /** > 0 after eating a treat (crab is calm around the brush) */
+  calmTimer: number;
+  /** currently dropped treat on the sand, if any */
+  food: FoodSnapshot;
 }
 
 const HALF_X = WORLD_SIZE_X / 2;
@@ -62,6 +86,7 @@ const HALF_Z = WORLD_SIZE_Z / 2;
 const SHORELINE_Z = -HALF_Z + PROFILE.shoreline; // ~0.5 m in world Z
 const EMERGE_DURATION = 0.85;
 const BURROW_DURATION = 0.95;
+const EAT_DURATION = 2.2;
 
 function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v;
@@ -78,9 +103,7 @@ function lerpAngle(cur: number, target: number, t: number): number {
 }
 
 /**
- * Controls rare wild animal visits on the player's beach.
- * Designed around a species-agnostic snapshot so future species (dolphins,
- * birds) and Phase 2/3 (food, resident pets) plug into the same seam.
+ * Controls rare wild animal visits and dropped food on the player's beach.
  */
 export class AnimalController {
   private readonly rand: () => number;
@@ -89,10 +112,13 @@ export class AnimalController {
   private waitTimer = 0;
   private phaseTimer = 0;
   private startleCooldown = 0;
+  private foodWetTimer = 0;
   private targetX = 0;
   private targetZ = 4;
   /** +1 or -1: which side the crab faces relative to its travel direction */
   private sideSign = 1;
+  /** Optional callback fired whenever a wild animal finishes eating a treat. */
+  onWildFed?: (species: AnimalSpecies) => void;
 
   constructor(rand: () => number = Math.random) {
     this.rand = rand;
@@ -113,12 +139,37 @@ export class AnimalController {
       nextSpawnIn: this.waitTimer,
       visitLeft: 0,
       startles: 0,
+      happyTimer: 0,
+      calmTimer: 0,
+      food: { active: false, x: 0, y: 0, z: 5, timeLeft: 0 },
     };
   }
 
-  /** Read-only view of the current animal state (reused object — zero allocations per frame). */
+  /** Read-only view of the current animal & food state (reused object — zero allocations per frame). */
   snapshot(): Readonly<AnimalSnapshot> {
     return this.snap;
+  }
+
+  /**
+   * Drop a beach snack on dry sand. While active, it speeds up wild spawns
+   * (bait) and draws any nearby active crab over to eat it.
+   */
+  dropFood(env: AnimalEnv, pos?: { x: number; z: number }): boolean {
+    const spot = pos ? this.validateSpot(pos.x, pos.z, env) : this.pickSpawnSpot(env);
+    if (!spot) return false;
+    const f = this.snap.food;
+    f.active = true;
+    f.x = spot.x;
+    f.y = spot.y;
+    f.z = spot.z;
+    f.timeLeft = ANIMALS.foodDuration;
+    this.foodWetTimer = 0;
+    // If absent and waiting a long time, cap the remaining wait so bait feels responsive
+    if (!this.snap.active && this.waitTimer > 90) {
+      this.waitTimer = 30 + this.rand() * 60;
+      this.snap.nextSpawnIn = this.waitTimer;
+    }
+    return true;
   }
 
   /** Immediately spawn a sand crab on dry/damp sand (used by ?debug=1 and tests). */
@@ -142,6 +193,8 @@ export class AnimalController {
     s.visitLeft = ANIMALS.visitMin + this.rand() * (ANIMALS.visitMax - ANIMALS.visitMin);
     s.nextSpawnIn = 0;
     s.startles = 0;
+    s.happyTimer = 0;
+    s.calmTimer = 0;
     this.phaseTimer = EMERGE_DURATION;
     this.startleCooldown = 0;
     this.sideSign = this.rand() < 0.5 ? 1 : -1;
@@ -160,6 +213,8 @@ export class AnimalController {
     s.clawWave = 0;
     s.visitLeft = 0;
     s.startles = 0;
+    s.happyTimer = 0;
+    s.calmTimer = 0;
     this.waitTimer = this.rollWait();
     s.nextSpawnIn = this.waitTimer;
   }
@@ -170,16 +225,40 @@ export class AnimalController {
     const step = Math.min(dt, 0.1);
     const s = this.snap;
 
+    // Tick dropped food (hugs sand height, expires over time, washes away in big waves)
+    const f = s.food;
+    if (f.active) {
+      f.timeLeft -= step;
+      const fh = env.heightAt(f.x, f.z);
+      if (Number.isFinite(fh)) f.y = fh;
+      if (env.waterAt(f.x, f.z) > 0.08) {
+        this.foodWetTimer += step;
+      } else {
+        this.foodWetTimer = Math.max(0, this.foodWetTimer - step * 2);
+      }
+      if (f.timeLeft <= 0 || this.foodWetTimer >= 1.2) {
+        f.active = false;
+        f.timeLeft = 0;
+      }
+    }
+
+    if (s.happyTimer > 0) s.happyTimer = Math.max(0, s.happyTimer - step);
+    if (s.calmTimer > 0) s.calmTimer = Math.max(0, s.calmTimer - step);
+
     if (s.phase === 'absent') {
-      this.waitTimer -= step;
-      s.nextSpawnIn = Math.max(0, this.waitTimer);
+      const rate = f.active ? ANIMALS.foodBaitMultiplier : 1;
+      this.waitTimer -= step * rate;
+      s.nextSpawnIn = Math.max(0, this.waitTimer / rate);
       if (this.waitTimer <= 0) {
-        if (this.rand() < ANIMALS.visitChance && this.spawnNow(env)) {
-          return;
+        const chance = f.active ? Math.min(0.95, ANIMALS.visitChance + 0.25) : ANIMALS.visitChance;
+        if (this.rand() < chance) {
+          // If food is out, spawn somewhere nearby so the crab can smell it
+          const nearFood = f.active ? this.pickSpotNear(f.x, f.z, 3.5, 7.5, env) : null;
+          if (this.spawnNow(env, nearFood ?? undefined)) return;
         }
         // quiet miss — wait another interval so the beach stays empty most of the time
         this.waitTimer = this.rollWait();
-        s.nextSpawnIn = this.waitTimer;
+        s.nextSpawnIn = this.waitTimer / rate;
       }
       return;
     }
@@ -213,15 +292,15 @@ export class AnimalController {
       return;
     }
 
-    // Active surface phases: pausing, wandering, fleeing
+    // Active surface phases: pausing, wandering, fleeing, seeking_food, eating
     s.visitLeft = Math.max(0, s.visitLeft - step);
-    if (s.visitLeft <= 0 && env.waterAt(s.x, s.z) < ANIMALS.crabWetDepth) {
+    if (s.visitLeft <= 0 && s.phase !== 'eating' && env.waterAt(s.x, s.z) < ANIMALS.crabWetDepth) {
       this.enterBurrow();
       return;
     }
 
-    // React to player brush
-    if (env.brush?.active) {
+    // React to player brush (unless calmed by a recent treat)
+    if (env.brush?.active && s.calmTimer <= 0) {
       const dx = s.x - env.brush.x;
       const dz = s.z - env.brush.z;
       const d = Math.hypot(dx, dz);
@@ -249,6 +328,41 @@ export class AnimalController {
       this.enterFlee(sideX, upslopeZ);
     }
 
+    // Eating a treat
+    if (s.phase === 'eating') {
+      this.phaseTimer -= step;
+      s.speed = 0;
+      s.scuttlePhase += step * 8;
+      s.clawWave = 0.85;
+      this.syncHeight(env);
+      if (!f.active) {
+        this.enterPause(0.8);
+        return;
+      }
+      if (this.phaseTimer <= 0) {
+        f.active = false;
+        f.timeLeft = 0;
+        s.visitLeft = Math.min(ANIMALS.foodMaxVisit, s.visitLeft + ANIMALS.foodExtendSec);
+        s.happyTimer = 3.0;
+        s.calmTimer = ANIMALS.foodCalmSec;
+        s.startles = 0;
+        this.onWildFed?.(s.species);
+        this.enterPause(1.5 + this.rand());
+      }
+      return;
+    }
+
+    // Notice dropped food nearby when pausing or wandering
+    if (f.active && (s.phase === 'pausing' || s.phase === 'wandering')) {
+      const fd = Math.hypot(f.x - s.x, f.z - s.z);
+      if (fd <= ANIMALS.foodNoticeRadius) {
+        s.phase = 'seeking_food';
+        this.targetX = f.x;
+        this.targetZ = f.z;
+        this.phaseTimer = fd / ANIMALS.crabSpeed + 3.0;
+      }
+    }
+
     if (s.phase === 'pausing') {
       this.phaseTimer -= step;
       s.speed = 0;
@@ -265,13 +379,36 @@ export class AnimalController {
       return;
     }
 
-    // Moving: wandering or fleeing
-    const maxSpeed = s.phase === 'fleeing' ? ANIMALS.crabFleeSpeed : ANIMALS.crabSpeed;
+    // Moving: wandering, fleeing, or seeking_food
+    if (s.phase === 'seeking_food') {
+      if (!f.active) {
+        this.enterPause(0.8);
+        return;
+      }
+      this.targetX = f.x;
+      this.targetZ = f.z;
+    }
+
+    const maxSpeed =
+      s.phase === 'fleeing'
+        ? ANIMALS.crabFleeSpeed
+        : s.phase === 'seeking_food'
+          ? ANIMALS.crabSpeed * 1.2
+          : ANIMALS.crabSpeed;
     const dx = this.targetX - s.x;
     const dz = this.targetZ - s.z;
     const dist = Math.hypot(dx, dz);
 
-    if (dist < 0.14 || this.phaseTimer <= 0) {
+    const stopDist = s.phase === 'seeking_food' ? 0.35 : 0.14;
+    if (dist < stopDist || this.phaseTimer <= 0) {
+      if (s.phase === 'seeking_food' && f.active && dist < 0.5) {
+        s.phase = 'eating';
+        s.speed = 0;
+        // turn to face the snack
+        s.facing = Math.atan2(f.x - s.x, f.z - s.z);
+        this.phaseTimer = EAT_DURATION;
+        return;
+      }
       if (s.visitLeft <= 0 && env.waterAt(s.x, s.z) < ANIMALS.crabWetDepth) {
         this.enterBurrow();
       } else {
@@ -398,6 +535,25 @@ export class AnimalController {
     this.targetX = this.clampX(s.x + (this.rand() - 0.5) * 2.0);
     this.targetZ = this.clampZ(s.z + 2.0);
     this.phaseTimer = 2.5;
+  }
+
+  private pickSpotNear(
+    cx: number,
+    cz: number,
+    rMin: number,
+    rMax: number,
+    env: AnimalEnv,
+  ): { x: number; z: number } | null {
+    for (let i = 0; i < 12; i++) {
+      const a = this.rand() * Math.PI * 2;
+      const r = rMin + this.rand() * (rMax - rMin);
+      const x = this.clampX(cx + Math.cos(a) * r);
+      const z = this.clampZ(cz + Math.sin(a) * r);
+      if (env.waterAt(x, z) > 0.02) continue;
+      if (this.insideObstacle(x, z, env.obstacles)) continue;
+      if (Number.isFinite(env.heightAt(x, z))) return { x, z };
+    }
+    return null;
   }
 
   private validateSpot(x: number, z: number, env: AnimalEnv): { x: number; y: number; z: number } | null {

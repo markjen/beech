@@ -788,3 +788,10 @@ prompt, JSON Schema and sample asset.
   unchanged). `?debug=1` adds **Spawn sand crab** / **Despawn** and a status
   readout.
 
+- **Food & feeding (A2)** (2026-11-24): `crab-treat` ("Beach snacks") added to
+  `EXTRAS` and the shop (`food_pack_10` $0.99, `food_pack_35` $2.99) plus a
+  25% free bonus treat trickle on digging finds. Tossing a snack from the bag
+  calls `POST /api/animals/feed` (atomic server decrement), drops a visible
+  treat pile on the sand, speeds up wild spawns 4× while empty, and draws an
+  active crab over to eat (extending its visit and calming it around the
+  brush).

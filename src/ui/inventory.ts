@@ -38,6 +38,8 @@ export class InventoryTray {
   onVending: () => void = () => {};
   /** opens the shop (or the sign-in sheet) */
   onShop: () => void = () => {};
+  /** uses an actionable extra from the bag (e.g. tossing a beach snack) */
+  onUseExtra: (id: string) => void = () => {};
 
   constructor(
     hudButton: (name: IconName, label: string, cls?: string) => HTMLButtonElement,
@@ -275,15 +277,28 @@ export class InventoryTray {
     }
     this.tray.appendChild(grid);
     this.tray.appendChild(this.foundSection());
-    // things you own that don't go on the sand (an extra beach)
+    // things you own that don't go on the sand (an extra beach, beach snacks)
     for (const x of EXTRAS) {
       const n = this.ownedOf(x.id);
       if (!n) continue;
-      const b = document.createElement('div');
-      b.className = `inv-item extra rarity-${x.rarity}`;
-      b.dataset.extra = x.id;
-      b.innerHTML = `${icon(x.id as IconName)}<b>${x.name}</b><span>${n > 1 ? `${n} owned` : 'yours'}</span>`;
-      grid.insertBefore(b, grid.querySelector('.claw-tile, .soon'));
+      if (x.id === 'crab-treat') {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = `inv-item extra rarity-${x.rarity}`;
+        b.dataset.extra = x.id;
+        b.innerHTML = `${icon(x.id as IconName)}<b>${x.name}</b><span>${n} left</span>`;
+        b.addEventListener('click', () => {
+          this.setOpen(false);
+          this.onUseExtra(x.id);
+        });
+        grid.insertBefore(b, grid.querySelector('.claw-tile, .soon'));
+      } else {
+        const b = document.createElement('div');
+        b.className = `inv-item extra rarity-${x.rarity}`;
+        b.dataset.extra = x.id;
+        b.innerHTML = `${icon(x.id as IconName)}<b>${x.name}</b><span>${n > 1 ? `${n} owned` : 'yours'}</span>`;
+        grid.insertBefore(b, grid.querySelector('.claw-tile, .soon'));
+      }
     }
   }
 }

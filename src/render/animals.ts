@@ -178,22 +178,62 @@ function buildCrabMesh(scene: Scene): Mesh {
   return mesh;
 }
 
+/** A small pile of golden crumbs, shrimp bits, and kelp on the sand (1 draw call, hidden when absent). */
+function buildTreatMesh(scene: Scene): Mesh {
+  const b = makeBuilder();
+  const c = ANIMAL_COLORS.treat;
+  addBox(b, -0.05, 0.03, 0.02, 0.08, 0.06, 0.07, c.crumb, 0, 0, 0.1, 0.4, 0.1);
+  addBox(b, 0.05, 0.035, -0.03, 0.09, 0.07, 0.08, c.shrimp, 0, 0, -0.1, 1.1, 0.15);
+  addBox(b, 0.0, 0.025, 0.05, 0.07, 0.05, 0.06, c.crumb, 0, 0, 0.2, 0.8, 0);
+  addBox(b, 0.02, 0.015, -0.01, 0.16, 0.025, 0.05, c.kelp, 0, 0, 0, 0.5, 0);
+
+  const vd = new VertexData();
+  vd.positions = b.P;
+  vd.indices = b.I;
+  vd.colors = b.C;
+  vd.uvs = b.UV;
+  const normals: number[] = [];
+  VertexData.ComputeNormals(b.P, b.I, normals);
+  vd.normals = normals;
+
+  const mesh = new Mesh('animalTreat', scene);
+  vd.applyToMesh(mesh, false);
+  mesh.convertToFlatShadedMesh();
+  mesh.isPickable = false;
+  mesh.alwaysSelectAsActiveMesh = true;
+  mesh.setEnabled(false);
+  return mesh;
+}
+
 /**
- * Owns the single-draw-call crab mesh and syncs its transform and shader
- * animation uniforms from `AnimalController.snapshot()`.
+ * Owns the single-draw-call crab mesh and dropped treat mesh, syncing their
+ * transforms and shader animation uniforms from `AnimalController.snapshot()`.
  */
 export class AnimalView {
   readonly mesh: Mesh;
+  readonly treatMesh: Mesh;
   readonly mat: ShaderMaterial;
   private visible = false;
+  private treatVisible = false;
 
   constructor(scene: Scene, renderer: BeachRenderer) {
     this.mat = renderer.createAnimalMaterial(0.25);
     this.mesh = buildCrabMesh(scene);
     this.mesh.material = this.mat;
+    this.treatMesh = buildTreatMesh(scene);
+    this.treatMesh.material = this.mat;
   }
 
   update(snap: Readonly<AnimalSnapshot>, beachVisible: boolean): void {
+    const showTreat = snap.food.active && beachVisible;
+    if (showTreat !== this.treatVisible) {
+      this.treatVisible = showTreat;
+      this.treatMesh.setEnabled(showTreat);
+    }
+    if (showTreat) {
+      this.treatMesh.position.set(snap.food.x, snap.food.y, snap.food.z);
+    }
+
     const show = snap.active && beachVisible;
     if (show !== this.visible) {
       this.visible = show;
@@ -202,9 +242,10 @@ export class AnimalView {
     if (!show) return;
 
     const s = snap.size;
-    // Sink smoothly below the sand during emerging / burrowing
+    // Sink smoothly below the sand during emerging / burrowing; gentle hop when freshly fed
     const sink = (1 - snap.emerge) * s * 0.55;
-    this.mesh.position.set(snap.x, snap.y - sink, snap.z);
+    const hop = snap.happyTimer > 0 ? Math.abs(Math.sin(snap.happyTimer * 8)) * s * 0.25 : 0;
+    this.mesh.position.set(snap.x, snap.y - sink + hop, snap.z);
     this.mesh.scaling.set(s, s, s);
     this.mesh.rotation.y = snap.facing;
 
@@ -216,11 +257,12 @@ export class AnimalView {
 
     this.mat.setFloat('scuttlePhase', snap.scuttlePhase);
     this.mat.setFloat('scuttleAmp', moving ? Math.min(1.2, snap.speed) : burrowing ? 0.85 : 0);
-    this.mat.setFloat('clawWave', snap.clawWave);
+    this.mat.setFloat('clawWave', snap.happyTimer > 0 ? 1 : snap.clawWave);
   }
 
   dispose(): void {
     this.mesh.dispose();
+    this.treatMesh.dispose();
     this.mat.dispose();
   }
 }

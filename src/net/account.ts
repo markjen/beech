@@ -827,3 +827,19 @@ export async function renderGoogleButton(el: HTMLElement, onCredential: (credent
   });
   google.accounts.id.renderButton(el, { theme: 'outline', size: 'large', shape: 'pill', text: 'signin_with', width: 260 });
 }
+
+/** Animal food & feeding API (POST /api/animals/feed). */
+export class AnimalsApi {
+  constructor(private readonly account: Account) {}
+
+  get signedIn(): boolean {
+    return this.account.user !== null;
+  }
+
+  async feed(): Promise<{ ok: boolean; remaining: number }> {
+    const res = await this.account.fetch('/api/animals/feed', { method: 'POST' });
+    if (!res.ok) throw await errorOf(res, 'no beach snacks left');
+    return (await res.json()) as { ok: boolean; remaining: number };
+  }
+}
+

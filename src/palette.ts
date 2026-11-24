@@ -294,5 +294,10 @@ export const ANIMAL_COLORS = {
     belly: hex('#f2cbb0'),
     eyes: hex('#231e24'),
   },
+  treat: {
+    crumb: hex('#e6b96c'),
+    shrimp: hex('#f28c6b'),
+    kelp: hex('#5b7a3a'),
+  },
 };
 
