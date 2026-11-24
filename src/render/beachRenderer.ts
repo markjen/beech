@@ -1,6 +1,7 @@
 import '@babylonjs/core/Shaders/ShadersInclude/instancesDeclaration';
 import '@babylonjs/core/Shaders/ShadersInclude/instancesVertex';
 import { Constants } from '@babylonjs/core/Engines/constants';
+import type { Engine } from '@babylonjs/core/Engines/engine';
 import { Effect } from '@babylonjs/core/Materials/effect';
 import { ShaderMaterial } from '@babylonjs/core/Materials/shaderMaterial';
 import { RawTexture } from '@babylonjs/core/Materials/Textures/rawTexture';
@@ -49,11 +50,44 @@ export class BeachRenderer {
   private apronMesh!: Mesh;
   private waterSkirt!: Mesh;
   private brush = new Vector4(0, 0, 0.3, 0);
+  private brushCol = new Color3(1, 1, 1);
   private isStatic = false;
   private negNeighbor: BeachRenderer | null = null;
   private posNeighbor: BeachRenderer | null = null;
   private readonly edgeZ: number;
   private readonly fieldMats: ShaderMaterial[];
+
+  // Reusable scratch objects & change tracking to avoid per-frame allocations
+  // and redundant uniform pushes across all ~85 prop materials.
+  private readonly _sun = new Vector3(0.35, -0.8, 0.5).normalize();
+  private readonly _sunCol = new Color3(1, 1, 1);
+  private readonly _ambCol = new Color3(0.5, 0.5, 0.5);
+  private readonly _shadowCol = new Color3(0.5, 0.5, 0.5);
+  private readonly _camDir = new Vector3(0, -1, 0);
+  private readonly _swellA = new Vector3();
+  private readonly _sandDry = new Color3();
+  private readonly _sandWet = new Color3();
+  private readonly _sandDeep = new Color3();
+  private readonly _shallowCol = new Color3();
+  private readonly _deepCol = new Color3();
+  private readonly _foamCol = new Color3();
+  private readonly _strataA = new Color3();
+  private readonly _strataB = new Color3();
+  private readonly _rock = new Color3();
+  private readonly _oceanCol = new Color3();
+  private readonly _fogCol = new Color3();
+  private readonly _linked = new Vector2(0, 0);
+  private lastPalette: Palette | null = null;
+  private lastAmpScale = NaN;
+  private lastBrushR = -1;
+  private lastBrushG = -1;
+  private lastBrushB = -1;
+  private hasLitState = false;
+  private texGen = 0;
+  private lastNegGen = -1;
+  private lastPosGen = -1;
+  private lastNegRef: BeachRenderer | null | undefined = undefined;
+  private lastPosRef: BeachRenderer | null | undefined = undefined;
 
   constructor(
     private readonly scene: Scene,
@@ -184,48 +218,69 @@ export class BeachRenderer {
     this.waterSkirtMat.backFaceCulling = false;
     this.makeTransparent(this.waterSkirtMat);
 
+    const gs = new Vector2(grid.nx, grid.ny);
+    const swellW = new Vector3(swell[0].omega, swell[1].omega, swell[2].omega);
+    const swellP = new Vector3(swell[0].phase, swell[1].phase, swell[2].phase);
+    const swellK = new Vector3(swell[0].k, swell[1].k, swell[2].k);
+
     this.fieldMats = [this.sandMat, this.waterMat, this.skirtMat, this.waterSkirtMat];
     for (const m of this.fieldMats) {
+      m.setVector2('gridSize', gs);
       m.setFloat('cellSize', grid.dx);
       m.setFloat('centerX', this.offsetX);
       m.setFloat('originZ', ORIGIN_Z);
       m.setFloat('staticWater', 0);
       m.setFloat('zEdge', this.edgeZ);
-      m.setVector2('linkedSides', new Vector2(0, 0));
+      m.setVector2('linkedSides', this._linked);
       m.setFloat('negMix', 1);
       m.setFloat('negStatic', 0);
       m.setFloat('posMix', 1);
       m.setFloat('posStatic', 0);
+      m.setVector3('swellW', swellW);
+      m.setVector3('swellP', swellP);
+      m.setVector3('swellK', swellK);
     }
+    this.oceanMat.setVector3('swellW', swellW);
+    this.oceanMat.setVector3('swellP', swellP);
+    this.oceanMat.setVector3('swellK', swellK);
 
     this.rockMat = this.material('beachFlat', {
       attributes: ['position', 'normal'],
-      uniforms: [...light, 'baseCol', 'fogCol', 'fadeTop', 'fadeBottom', 'shine'],
+      uniforms: [...light, 'windTime', 'baseCol', 'fogCol', 'fadeTop', 'fadeBottom', 'shine'],
       samplers: [],
     });
     this.rockMat.backFaceCulling = false;
+    this.rockMat.setFloat('windTime', 0);
     this.rockMat.setFloat('fadeTop', -2.8);
     this.rockMat.setFloat('fadeBottom', -7.5);
     this.rockMat.setFloat('shine', 0);
 
     this.buildMeshes();
     this.bindFieldTextures();
-    this.syncNeighborUniforms();
+    this.syncNeighborUniforms(true);
   }
 
   /** A flat-shaded lit material with a fixed colour (props such as shells). `shine` is its specular strength, 0 for matte. */
   createPropMaterial(color: RGB, shine = 0): ShaderMaterial {
     const m = this.material('beachFlat', {
       attributes: ['position', 'normal'],
-      uniforms: ['sunDir', 'sunCol', 'ambCol', 'shadowCol', 'cameraDir', 'baseCol', 'fogCol', 'fadeTop', 'fadeBottom', 'shine'],
+      uniforms: ['sunDir', 'sunCol', 'ambCol', 'shadowCol', 'cameraDir', 'windTime', 'baseCol', 'fogCol', 'fadeTop', 'fadeBottom', 'shine'],
       samplers: [],
     });
+    m.setFloat('windTime', 0);
     m.setColor3('baseCol', c3(color));
     m.setColor3('fogCol', c3(color));
     m.setFloat('fadeTop', -40);
     m.setFloat('fadeBottom', -50);
     m.setFloat('shine', shine);
     m.backFaceCulling = false;
+    if (this.hasLitState) {
+      m.setVector3('sunDir', this._sun);
+      m.setColor3('sunCol', this._sunCol);
+      m.setColor3('ambCol', this._ambCol);
+      m.setColor3('shadowCol', this._shadowCol);
+      m.setVector3('cameraDir', this._camDir);
+    }
     return m;
   }
 
@@ -456,11 +511,9 @@ export class BeachRenderer {
   }
 
   private bindFieldTextures(): void {
-    const gs = new Vector2(this.grid.nx, this.grid.ny);
     for (const m of this.fieldMats) {
       m.setTexture('fieldPrev', this.texPrev);
       m.setTexture('fieldCur', this.texCur);
-      m.setVector2('gridSize', gs);
     }
   }
 
@@ -474,24 +527,53 @@ export class BeachRenderer {
     if (this.negNeighbor === negX && this.posNeighbor === posX) return;
     this.negNeighbor = negX;
     this.posNeighbor = posX;
-    this.syncNeighborUniforms();
+    this.syncNeighborUniforms(true);
   }
 
-  private syncNeighborUniforms(): void {
+  private syncNeighborUniforms(force = false): void {
     const neg = this.negNeighbor;
     const pos = this.posNeighbor;
-    const linked = new Vector2(neg ? 1 : 0, pos ? 1 : 0);
-    this.oceanMat.setVector2('linkedSides', linked);
-    for (const m of this.fieldMats) {
-      m.setVector2('linkedSides', linked);
-      m.setTexture('negFieldPrev', neg ? neg.texPrev : this.texPrev);
-      m.setTexture('negFieldCur', neg ? neg.texCur : this.texCur);
-      m.setFloat('negMix', neg ? neg.frameMix : 1);
-      m.setFloat('negStatic', neg?.isStatic ? 1 : 0);
-      m.setTexture('posFieldPrev', pos ? pos.texPrev : this.texPrev);
-      m.setTexture('posFieldCur', pos ? pos.texCur : this.texCur);
-      m.setFloat('posMix', pos ? pos.frameMix : 1);
-      m.setFloat('posStatic', pos?.isStatic ? 1 : 0);
+    const negGen = neg ? neg.texGen : this.texGen;
+    const posGen = pos ? pos.texGen : this.texGen;
+    const refsChanged = force || neg !== this.lastNegRef || pos !== this.lastPosRef;
+    const negChanged = refsChanged || negGen !== this.lastNegGen;
+    const posChanged = refsChanged || posGen !== this.lastPosGen;
+    if (refsChanged) {
+      this.lastNegRef = neg;
+      this.lastPosRef = pos;
+      this._linked.set(neg ? 1 : 0, pos ? 1 : 0);
+      this.oceanMat.setVector2('linkedSides', this._linked);
+      for (const m of this.fieldMats) {
+        m.setVector2('linkedSides', this._linked);
+        m.setFloat('negStatic', neg?.isStatic ? 1 : 0);
+        m.setFloat('posStatic', pos?.isStatic ? 1 : 0);
+      }
+    }
+    if (negChanged) {
+      this.lastNegGen = negGen;
+      const np = neg ? neg.texPrev : this.texPrev;
+      const nc = neg ? neg.texCur : this.texCur;
+      for (const m of this.fieldMats) {
+        m.setTexture('negFieldPrev', np);
+        m.setTexture('negFieldCur', nc);
+      }
+    }
+    if (posChanged) {
+      this.lastPosGen = posGen;
+      const pp = pos ? pos.texPrev : this.texPrev;
+      const pc = pos ? pos.texCur : this.texCur;
+      for (const m of this.fieldMats) {
+        m.setTexture('posFieldPrev', pp);
+        m.setTexture('posFieldCur', pc);
+      }
+    }
+    if (neg || refsChanged) {
+      const nm = neg ? neg.frameMix : 1;
+      for (const m of this.fieldMats) m.setFloat('negMix', nm);
+    }
+    if (pos || refsChanged) {
+      const pm = pos ? pos.frameMix : 1;
+      for (const m of this.fieldMats) m.setFloat('posMix', pm);
     }
   }
 
@@ -552,7 +634,14 @@ export class BeachRenderer {
     const t = this.texPrev;
     this.texPrev = this.texCur;
     this.texCur = t;
-    this.texCur.update(buf);
+    const it = this.texCur.getInternalTexture();
+    const eng = this.scene.getEngine() as Engine;
+    if (it && typeof eng.updateTextureData === 'function') {
+      eng.updateTextureData(it, buf, 0, 0, this.grid.nx, this.grid.ny);
+    } else {
+      this.texCur.update(buf);
+    }
+    this.texGen++;
     this.bindFieldTextures();
     this.frameMix = 0;
   }
@@ -563,33 +652,52 @@ export class BeachRenderer {
 
   /** Brush ring under the finger. x,z world; r metres; alpha 0..1 */
   setBrush(x: number, z: number, r: number, alpha: number, color: RGB): void {
-    this.brush.set(x, z, r, alpha);
-    this.sandMat.setVector4('brush', this.brush);
-    this.sandMat.setColor3('brushCol', c3(color));
+    if (this.brush.x !== x || this.brush.y !== z || this.brush.z !== r || this.brush.w !== alpha) {
+      this.brush.set(x, z, r, alpha);
+      this.sandMat.setVector4('brush', this.brush);
+    }
+    if (this.lastBrushR !== color[0] || this.lastBrushG !== color[1] || this.lastBrushB !== color[2]) {
+      this.lastBrushR = color[0];
+      this.lastBrushG = color[1];
+      this.lastBrushB = color[2];
+      this.brushCol.set(color[0], color[1], color[2]);
+      this.sandMat.setColor3('brushCol', this.brushCol);
+    }
   }
 
   update(p: Palette, cameraDir: Vector3, time: number, simTime: number, tide: number, ampScale: number): void {
-    const sun = new Vector3(p.sunDir[0], p.sunDir[1], p.sunDir[2]).normalize();
-    for (const { mat } of this.lit) {
-      mat.setVector3('sunDir', sun);
-      mat.setColor3('sunCol', c3(p.sun));
-      mat.setColor3('ambCol', c3(p.ambient));
-      mat.setColor3('shadowCol', c3(p.shadow));
-      mat.setVector3('cameraDir', cameraDir);
+    const palChanged = p !== this.lastPalette;
+    const camChanged = !this.hasLitState || this._camDir.x !== cameraDir.x || this._camDir.y !== cameraDir.y || this._camDir.z !== cameraDir.z;
+    if (palChanged || camChanged) {
+      this.hasLitState = true;
+      if (palChanged) {
+        this._sun.set(p.sunDir[0], p.sunDir[1], p.sunDir[2]).normalize();
+        this._sunCol.set(p.sun[0], p.sun[1], p.sun[2]);
+        this._ambCol.set(p.ambient[0], p.ambient[1], p.ambient[2]);
+        this._shadowCol.set(p.shadow[0], p.shadow[1], p.shadow[2]);
+      }
+      if (camChanged) this._camDir.copyFrom(cameraDir);
+      for (const { mat } of this.lit) {
+        if (palChanged) {
+          mat.setVector3('sunDir', this._sun);
+          mat.setColor3('sunCol', this._sunCol);
+          mat.setColor3('ambCol', this._ambCol);
+          mat.setColor3('shadowCol', this._shadowCol);
+        }
+        if (camChanged) mat.setVector3('cameraDir', this._camDir);
+      }
     }
     const sw = this.swell;
-    const swellA = new Vector3(sw[0].amp * ampScale, sw[1].amp * ampScale, sw[2].amp * ampScale);
-    const swellW = new Vector3(sw[0].omega, sw[1].omega, sw[2].omega);
-    const swellP = new Vector3(sw[0].phase, sw[1].phase, sw[2].phase);
-    const swellK = new Vector3(sw[0].k, sw[1].k, sw[2].k);
+    const ampChanged = ampScale !== this.lastAmpScale;
+    if (ampChanged) {
+      this.lastAmpScale = ampScale;
+      this._swellA.set(sw[0].amp * ampScale, sw[1].amp * ampScale, sw[2].amp * ampScale);
+    }
     const swellEnv = swellEnvelope(simTime, sw);
 
     for (const m of this.fieldMats) {
       m.setFloat('frameMix', this.frameMix);
-      m.setVector3('swellA', swellA);
-      m.setVector3('swellW', swellW);
-      m.setVector3('swellP', swellP);
-      m.setVector3('swellK', swellK);
+      if (ampChanged) m.setVector3('swellA', this._swellA);
       m.setFloat('swellEnv', swellEnv);
       m.setFloat('simTime', simTime);
       m.setFloat('tide', tide);
@@ -597,39 +705,52 @@ export class BeachRenderer {
     // keep linked neighbor texture swaps & frameMix in sync every frame
     if (this.negNeighbor || this.posNeighbor) this.syncNeighborUniforms();
 
-    this.sandMat.setColor3('sandDry', c3(p.sandDry));
-    this.sandMat.setColor3('sandWet', c3(p.sandWet));
-    this.sandMat.setColor3('sandDeep', c3(p.sandDeep));
-    this.sandMat.setVector4('brush', this.brush);
-
-    this.waterMat.setColor3('shallowCol', c3(p.waterShallow));
-    this.waterMat.setColor3('deepCol', c3(p.waterDeep));
-    this.waterMat.setColor3('foamCol', c3(p.foam));
     this.waterMat.setFloat('time', time);
 
-    for (const m of [this.skirtMat, this.waterSkirtMat]) {
-      m.setColor3('sandDry', c3(p.sandDry));
-      m.setColor3('sandWet', c3(p.sandWet));
-      m.setColor3('strataA', c3(p.strataA));
-      m.setColor3('strataB', c3(p.strataB));
-      m.setColor3('rock', c3(p.rock));
-      m.setColor3('shallowCol', c3(p.waterShallow));
-      m.setColor3('deepCol', c3(p.waterDeep));
-    }
-
-    this.oceanMat.setVector3('swellA', swellA);
-    this.oceanMat.setVector3('swellW', swellW);
-    this.oceanMat.setVector3('swellP', swellP);
-    this.oceanMat.setVector3('swellK', swellK);
+    if (ampChanged) this.oceanMat.setVector3('swellA', this._swellA);
     this.oceanMat.setFloat('swellEnv', swellEnv);
     this.oceanMat.setFloat('simTime', simTime);
     this.oceanMat.setFloat('tide', tide);
-    this.oceanMat.setColor3('oceanCol', c3(p.farOcean));
-    this.oceanMat.setColor3('deepCol', c3(p.waterDeep));
-    this.oceanMat.setColor3('foamCol', c3(p.foam));
-    this.oceanMat.setColor3('fogCol', c3(p.fog));
 
-    this.rockMat.setColor3('baseCol', c3(p.rock));
-    this.rockMat.setColor3('fogCol', c3(p.fog));
+    if (palChanged) {
+      this.lastPalette = p;
+      this._sandDry.set(p.sandDry[0], p.sandDry[1], p.sandDry[2]);
+      this._sandWet.set(p.sandWet[0], p.sandWet[1], p.sandWet[2]);
+      this._sandDeep.set(p.sandDeep[0], p.sandDeep[1], p.sandDeep[2]);
+      this._shallowCol.set(p.waterShallow[0], p.waterShallow[1], p.waterShallow[2]);
+      this._deepCol.set(p.waterDeep[0], p.waterDeep[1], p.waterDeep[2]);
+      this._foamCol.set(p.foam[0], p.foam[1], p.foam[2]);
+      this._strataA.set(p.strataA[0], p.strataA[1], p.strataA[2]);
+      this._strataB.set(p.strataB[0], p.strataB[1], p.strataB[2]);
+      this._rock.set(p.rock[0], p.rock[1], p.rock[2]);
+      this._oceanCol.set(p.farOcean[0], p.farOcean[1], p.farOcean[2]);
+      this._fogCol.set(p.fog[0], p.fog[1], p.fog[2]);
+
+      this.sandMat.setColor3('sandDry', this._sandDry);
+      this.sandMat.setColor3('sandWet', this._sandWet);
+      this.sandMat.setColor3('sandDeep', this._sandDeep);
+
+      this.waterMat.setColor3('shallowCol', this._shallowCol);
+      this.waterMat.setColor3('deepCol', this._deepCol);
+      this.waterMat.setColor3('foamCol', this._foamCol);
+
+      for (const m of [this.skirtMat, this.waterSkirtMat]) {
+        m.setColor3('sandDry', this._sandDry);
+        m.setColor3('sandWet', this._sandWet);
+        m.setColor3('strataA', this._strataA);
+        m.setColor3('strataB', this._strataB);
+        m.setColor3('rock', this._rock);
+        m.setColor3('shallowCol', this._shallowCol);
+        m.setColor3('deepCol', this._deepCol);
+      }
+
+      this.oceanMat.setColor3('oceanCol', this._oceanCol);
+      this.oceanMat.setColor3('deepCol', this._deepCol);
+      this.oceanMat.setColor3('foamCol', this._foamCol);
+      this.oceanMat.setColor3('fogCol', this._fogCol);
+
+      this.rockMat.setColor3('baseCol', this._rock);
+      this.rockMat.setColor3('fogCol', this._fogCol);
+    }
   }
 }

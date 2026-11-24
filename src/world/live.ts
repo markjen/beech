@@ -72,7 +72,11 @@ const clampElevation = (d: [number, number, number], minDeg: number): [number, n
 };
 
 const timeFormats = new Map<string, Intl.DateTimeFormat>();
+const timeCache = new Map<string, { min: number; text: string }>();
 export function formatLocalTime(date: Date, timeZone: string): string {
+  const min = Math.floor(date.getTime() / 60000);
+  const hit = timeCache.get(timeZone);
+  if (hit && hit.min === min) return hit.text;
   let f = timeFormats.get(timeZone);
   if (!f) {
     try {
@@ -82,7 +86,9 @@ export function formatLocalTime(date: Date, timeZone: string): string {
     }
     timeFormats.set(timeZone, f);
   }
-  return f.format(date);
+  const text = f.format(date);
+  timeCache.set(timeZone, { min, text });
+  return text;
 }
 
 /** Everything about "right now at this beach". Cheap enough to call every frame. */

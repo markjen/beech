@@ -12,6 +12,7 @@ declare const self: DedicatedWorkerGlobalScope;
 
 let sim: BeachSim | null = null;
 const pool: Float32Array[] = [];
+const posPool: Float32Array[] = [];
 let paused = false;
 let lastTime = 0;
 let acc = 0;
@@ -53,7 +54,7 @@ function loop() {
       const objs = sim.objects;
       const roster = objs.version !== rosterSent ? objs.persisted() : undefined;
       rosterSent = objs.version;
-      const objPos = objs.packPositions();
+      const objPos = objs.packPositions(posPool.pop());
       post(
         {
           type: 'frame',
@@ -87,6 +88,7 @@ self.onmessage = (ev: MessageEvent<ToWorker>) => {
       sim = new BeachSim(m.grid, m.seed, m.flags);
       rosterSent = -1;
       pool.length = 0;
+      posPool.length = 0;
       for (let i = 0; i < 3; i++) pool.push(new Float32Array(sim.n * 4));
       const rest = sim.rest.slice();
       post({ type: 'ready', grid: m.grid, rest, seed: m.seed }, [rest.buffer]);
@@ -132,7 +134,8 @@ self.onmessage = (ev: MessageEvent<ToWorker>) => {
       break;
     }
     case 'return':
-      if (sim && m.buf.length === sim.n * 4) pool.push(m.buf);
+      if (sim && m.buf && m.buf.length === sim.n * 4) pool.push(m.buf);
+      if (m.objPos && posPool.length < 3) posPool.push(m.objPos);
       break;
     case 'brush':
       if (!sim) break;

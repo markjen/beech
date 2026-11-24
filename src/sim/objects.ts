@@ -245,14 +245,19 @@ export class BeachObjects {
   add(o: Omit<PlacedObject, 'id'> & { id?: number }, noRock?: Float32Array): PlacedObject {
     const data: PlacedObject = { ...o, id: o.id ?? this.nextId++ };
     this.nextId = Math.max(this.nextId, data.id + 1);
-    const terrain = noRock ?? this.stripLifts(this.h.sand);
-    if (data.kind === 'rock' && data.base === undefined) data.base = this.sampleField(terrain, data.x, data.y);
-    // a rock sits at its base, not at the lifted sand under it (a rock
-    // re-added on top of another rock's dome would otherwise report the
-    // dome height until the next step corrects it)
-    const l: Live = { data, z: data.kind === 'rock' ? data.base! : this.sandAt(data.x, data.y), floating: false, vx: 0, vy: 0, spin: 0 };
-    if (data.kind === 'rock') l.rock = this.embedRock(data, terrain);
-    this.live.set(data.id, l);
+    if (data.kind === 'rock') {
+      const terrain = noRock ?? this.stripLifts(this.h.sand);
+      if (data.base === undefined) data.base = this.sampleField(terrain, data.x, data.y);
+      // a rock sits at its base, not at the lifted sand under it (a rock
+      // re-added on top of another rock's dome would otherwise report the
+      // dome height until the next step corrects it)
+      const l: Live = { data, z: data.base, floating: false, vx: 0, vy: 0, spin: 0 };
+      l.rock = this.embedRock(data, terrain);
+      this.live.set(data.id, l);
+    } else {
+      const l: Live = { data, z: this.sandAt(data.x, data.y), floating: false, vx: 0, vy: 0, spin: 0 };
+      this.live.set(data.id, l);
+    }
     this.version++;
     return data;
   }
@@ -603,11 +608,21 @@ export class BeachObjects {
     const W = nx * dx;
     const Hh = ny * dx;
     if (sea) this.washIn(dt);
+    if (this.live.size === 0) return;
+    const tumbleGrip = Math.min(1, dt * 4);
+    const tumbleDamp = Math.exp(-dt * 8);
+    const tumbleSpinDamp = Math.exp(-dt * 3);
+    const floatGrip = Math.min(1, dt * 2.2);
+    const floatSpinDamp = Math.exp(-dt * 1.5);
+    const strandDamp = Math.exp(-dt * 6);
+    const tumbleSp2 = TUMBLE_SPEED * TUMBLE_SPEED;
+    const wMax = W - 0.3;
+    const hMax = Hh - 0.3;
     for (const l of this.live.values()) {
       const o = l.data;
       const b = BEHAVIOUR[o.kind];
       if (b === 'rock') {
-        l.z = this.sandAtRockBase(l);
+        l.z = l.rock!.base;
         continue;
       }
       if (b === 'fixed') {
@@ -617,23 +632,31 @@ export class BeachObjects {
       if (b === 'tumble') {
         const k = this.cellAt(o.x, o.y);
         const d = water[k];
-        const speed = Math.sqrt(vx[k] * vx[k] + vy[k] * vy[k]);
-        const rolling = d > o.size * 0.25 && speed > TUMBLE_SPEED;
+        const rolling = d > o.size * 0.25 && vx[k] * vx[k] + vy[k] * vy[k] > tumbleSp2;
         if (rolling) {
           // rolled along at a fraction of the flow, nudged landward by the waves
-          const grip = Math.min(1, dt * 4);
-          l.vx += (vx[k] * 0.45 - l.vx) * grip;
-          l.vy += (vy[k] * 0.45 + STOKES_DRIFT * 0.5 - l.vy) * grip;
+          l.vx += (vx[k] * 0.45 - l.vx) * tumbleGrip;
+          l.vy += (vy[k] * 0.45 + STOKES_DRIFT * 0.5 - l.vy) * tumbleGrip;
           l.spin += (this.rand() - 0.5) * dt * 6;
+          l.spin *= tumbleSpinDamp;
+          l.floating = true;
+          o.x = Math.min(wMax, Math.max(0.3, o.x + l.vx * dt));
+          o.y = Math.min(hMax, Math.max(0.3, o.y + l.vy * dt));
+          o.angle += l.spin * dt;
         } else {
-          l.vx *= Math.exp(-dt * 8);
-          l.vy *= Math.exp(-dt * 8);
+          l.floating = false;
+          if (l.vx !== 0 || l.vy !== 0 || l.spin !== 0) {
+            l.vx *= tumbleDamp;
+            l.vy *= tumbleDamp;
+            l.spin *= tumbleSpinDamp;
+            if (Math.abs(l.vx) < 1e-6) l.vx = 0;
+            if (Math.abs(l.vy) < 1e-6) l.vy = 0;
+            if (Math.abs(l.spin) < 1e-6) l.spin = 0;
+            o.x = Math.min(wMax, Math.max(0.3, o.x + l.vx * dt));
+            o.y = Math.min(hMax, Math.max(0.3, o.y + l.vy * dt));
+            o.angle += l.spin * dt;
+          }
         }
-        l.spin *= Math.exp(-dt * 3);
-        l.floating = rolling;
-        o.x = Math.min(W - 0.3, Math.max(0.3, o.x + l.vx * dt));
-        o.y = Math.min(Hh - 0.3, Math.max(0.3, o.y + l.vy * dt));
-        o.angle += l.spin * dt;
         l.z = this.sandAt(o.x, o.y);
         continue;
       }
@@ -641,37 +664,44 @@ export class BeachObjects {
       const r = floatRadius(o);
       const k = this.cellAt(o.x, o.y);
       const d = water[k];
-      const ca = Math.cos(o.angle);
-      const sa = Math.sin(o.angle);
-      const half = o.size / 2;
-      const ka = this.cellAt(o.x - ca * half, o.y - sa * half);
-      const kb = this.cellAt(o.x + ca * half, o.y + sa * half);
       if (d > r * 1.1) {
+        const ca = Math.cos(o.angle);
+        const sa = Math.sin(o.angle);
+        const half = o.size * 0.5;
+        const ka = this.cellAt(o.x - ca * half, o.y - sa * half);
+        const kb = this.cellAt(o.x + ca * half, o.y + sa * half);
         l.floating = true;
         // pushed by the average current along its length
-        const wx = (vx[k] * 2 + vx[ka] + vx[kb]) / 4;
+        const wx = (vx[k] * 2 + vx[ka] + vx[kb]) * 0.25;
         // plus a gentle landward drift: waves carry floating things toward
         // the shore (Stokes drift), so wood ends up on the beach, not out at sea
-        const wy = (vy[k] * 2 + vy[ka] + vy[kb]) / 4 + STOKES_DRIFT;
-        const grip = Math.min(1, dt * 2.2);
-        l.vx += (wx - l.vx) * grip;
-        l.vy += (wy - l.vy) * grip;
+        const wy = (vy[k] * 2 + vy[ka] + vy[kb]) * 0.25 + STOKES_DRIFT;
+        l.vx += (wx - l.vx) * floatGrip;
+        l.vy += (wy - l.vy) * floatGrip;
         // the ends feel different flow: that turns it
         const across = (vx[kb] - vx[ka]) * -sa + (vy[kb] - vy[ka]) * ca;
-        l.spin += (across / Math.max(0.5, o.size)) * dt * 1.5;
-        l.spin *= Math.exp(-dt * 1.5);
+        l.spin += (across / (o.size > 0.5 ? o.size : 0.5)) * dt * 1.5;
+        l.spin *= floatSpinDamp;
         l.z = this.sandAt(o.x, o.y) + d - r * 0.6;
+        o.x = Math.min(wMax, Math.max(0.3, o.x + l.vx * dt));
+        o.y = Math.min(hMax, Math.max(0.3, o.y + l.vy * dt));
+        o.angle += l.spin * dt;
       } else {
         // stranded: sand friction stops it quickly
         l.floating = false;
-        l.vx *= Math.exp(-dt * 6);
-        l.vy *= Math.exp(-dt * 6);
-        l.spin *= Math.exp(-dt * 6);
+        if (l.vx !== 0 || l.vy !== 0 || l.spin !== 0) {
+          l.vx *= strandDamp;
+          l.vy *= strandDamp;
+          l.spin *= strandDamp;
+          if (Math.abs(l.vx) < 1e-6) l.vx = 0;
+          if (Math.abs(l.vy) < 1e-6) l.vy = 0;
+          if (Math.abs(l.spin) < 1e-6) l.spin = 0;
+          o.x = Math.min(wMax, Math.max(0.3, o.x + l.vx * dt));
+          o.y = Math.min(hMax, Math.max(0.3, o.y + l.vy * dt));
+          o.angle += l.spin * dt;
+        }
         l.z = this.sandAt(o.x, o.y) + r * 0.7;
       }
-      o.x = Math.min(W - 0.3, Math.max(0.3, o.x + l.vx * dt));
-      o.y = Math.min(Hh - 0.3, Math.max(0.3, o.y + l.vy * dt));
-      o.angle += l.spin * dt;
     }
   }
 
@@ -709,11 +739,6 @@ export class BeachObjects {
     if (wild.length > MAX_WILD) this.remove(Math.min(...wild));
   }
 
-  private sandAtRockBase(l: Live): number {
-    // rocks sit where they were placed
-    return l.rock!.base;
-  }
-
   /** Saved form (positions as they are now). */
   persisted(): PlacedObject[] {
     return [...this.live.values()].map((l) => ({ ...l.data }));
@@ -724,8 +749,9 @@ export class BeachObjects {
    * POS_STRIDE floats each. Sent every frame instead of the objects
    * themselves, which only go across when the roster changes.
    */
-  packPositions(): Float32Array {
-    const out = new Float32Array(this.live.size * POS_STRIDE);
+  packPositions(buf?: Float32Array): Float32Array {
+    const need = this.live.size * POS_STRIDE;
+    const out = buf && buf.length === need ? buf : new Float32Array(need);
     let o = 0;
     for (const l of this.live.values()) {
       out[o] = l.data.x;

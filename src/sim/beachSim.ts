@@ -92,7 +92,11 @@ export class BeachSim {
   private readonly fD: Float32Array;
   private readonly fU: Float32Array;
   private readonly tmp: Float32Array;
-  private readonly tanMax: Float32Array;
+  private readonly slumpDelta: Float32Array;
+  private readonly slumpRowA: Uint8Array;
+  private readonly slumpRowB: Uint8Array;
+  private readonly restRowMin: Float32Array;
+  private readonly restRowMax: Float32Array;
 
   flags: SimFlags;
   time = 0;
@@ -108,7 +112,11 @@ export class BeachSim {
   readonly seed: number;
 
   /** the highest row the water step covered last time (see flow) */
-  private flowTop = Number.MAX_SAFE_INTEGER;
+  private flowTop: number;
+  /** the highest row that may hold suspended sediment (see erode) */
+  private sedTop = -1;
+  /** the highest row that may still be wet or foamy (see updateWetFoam / heal) */
+  private wetTop: number;
   readonly undo = new UndoStack(UNDO_DEPTH);
   /** rocks, driftwood and future items on the sand */
   readonly objects: BeachObjects;
@@ -168,7 +176,24 @@ export class BeachSim {
     this.fD = new Float32Array(n);
     this.fU = new Float32Array(n);
     this.tmp = new Float32Array(n);
-    this.tanMax = new Float32Array(n);
+    this.slumpDelta = new Float32Array(n);
+    this.slumpRowA = new Uint8Array(g.ny);
+    this.slumpRowB = new Uint8Array(g.ny);
+    this.restRowMin = new Float32Array(g.ny);
+    this.restRowMax = new Float32Array(g.ny);
+    for (let j = 0; j < g.ny; j++) {
+      let lo = Infinity;
+      let hi = -Infinity;
+      for (let k = j * g.nx, e = k + g.nx; k < e; k++) {
+        const v = this.rest[k];
+        if (v < lo) lo = v;
+        if (v > hi) hi = v;
+      }
+      this.restRowMin[j] = lo;
+      this.restRowMax[j] = hi;
+    }
+    this.flowTop = g.ny - 1;
+    this.wetTop = g.ny - 1;
     this.swell = makeSwell(seed);
     this.objects = new BeachObjects(this, seed);
     const eta = this.seaLevel(0);
@@ -244,50 +269,66 @@ export class BeachSim {
   }
 
   private measureSwash(): void {
-    const { rest, water } = this;
+    const { nx, rest, water, restRowMax } = this;
     const level = this.meanLevel() - 0.05;
+    const top = this.flowTop;
     let v = 0;
-    for (let k = 0; k < this.n; k++) if (rest[k] > level) v += water[k];
+    for (let j = 0; j <= top; j++) {
+      if (restRowMax[j] <= level) continue;
+      for (let k = j * nx, e = k + nx; k < e; k++) {
+        if (rest[k] > level) v += water[k];
+      }
+    }
     this.swashVolume = v * this.dx * this.dx;
   }
 
   /** Offshore boundary: hard-set the first row, relax a sponge layer behind it. */
   private force(dt: number): void {
-    const { nx, sand, water } = this;
+    const { nx, sand, water, fL, fR } = this;
     if (this.flags.closed) return;
     const row = (this.etaRow ??= new Float32Array(nx));
     this.seaRow(row);
     const rows = Math.min(WAVES.spongeRows, this.ny - 1);
     for (let j = 0; j < rows; j++) {
-      const w = j === 0 ? 1 : Math.min(1, dt * 6 * Math.pow(1 - j / rows, 2));
-      const damp = 1 - Math.min(1, dt * 3 * Math.pow(1 - j / rows, 2));
-      for (let i = 0; i < nx; i++) {
-        const k = j * nx + i;
-        const target = Math.max(0, row[i] - sand[k]);
+      const f = 1 - j / rows;
+      const f2 = f * f;
+      const w = j === 0 ? 1 : Math.min(1, dt * 6 * f2);
+      const damp = 1 - Math.min(1, dt * 3 * f2);
+      for (let i = 0, k = j * nx; i < nx; i++, k++) {
+        const diff = row[i] - sand[k];
+        const target = diff > 0 ? diff : 0;
         water[k] += (target - water[k]) * w;
-        this.fL[k] *= damp;
-        this.fR[k] *= damp;
+        fL[k] *= damp;
+        fR[k] *= damp;
       }
     }
   }
 
   /** Virtual-pipes shallow water step (Mei et al. 2007). */
   private flow(dt: number): void {
-    const { nx, ny, dx, sand, water, fL, fR, fD, fU, vx, vy } = this;
-    const g = WATER.gravity;
+    const { nx, ny, dx, sand, water, fL, fR, fD, fU, vx, vy, tmp } = this;
+    const dtG = dt * WATER.gravity;
     const maxD = WATER.maxFluxDepth;
-    const cf = WATER.friction;
+    const dtCfDx = (dt * WATER.friction) / dx;
     const lin0 = WATER.linearDamping;
     const linDeep = WATER.deepDamping;
+    const linSlope = (linDeep - lin0) / 0.4;
+    const dtLin0 = 1 + dt * lin0;
+    const dtLinDeep = 1 + dt * linDeep;
     const sponge = WAVES.spongeRows;
     const area = dx * dx;
+    const areaOverDt = area / dt;
+    const dtOverArea = dt / area;
+    const halfInvDx = 0.5 / dx;
+    const nx1 = nx - 1;
+    const ny1 = ny - 1;
 
     // Rows above the highest wet one can't change this step (water moves at
     // most one cell per substep), so both passes stop one row above it. Rows
     // that drop out of that range get their fluxes and velocities zeroed, so
     // what's skipped is always exactly "dry and still".
     let wetTop = -1;
-    for (let j = ny - 1; j >= 0 && wetTop < 0; j--) {
+    for (let j = ny1; j >= 0 && wetTop < 0; j--) {
       for (let k = j * nx, e = k + nx; k < e; k++) {
         if (water[k] > 0) {
           wetTop = j;
@@ -295,7 +336,7 @@ export class BeachSim {
         }
       }
     }
-    const top = Math.min(ny - 1, wetTop + 1);
+    const top = wetTop < 0 ? -1 : wetTop + 1 < ny1 ? wetTop + 1 : ny1;
     if (top < this.flowTop) {
       const from = (top + 1) * nx;
       const to = (this.flowTop + 1) * nx;
@@ -307,60 +348,100 @@ export class BeachSim {
       vy.fill(0, from, to);
     }
     this.flowTop = top;
+    if (top < 0) return;
+
+    // Precompute surface elevation (sand + water) once for the active region so
+    // each 4-neighbor head difference does 1 array read instead of 2.
+    const etaEnd = (top + 1 < ny ? top + 2 : ny) * nx;
+    for (let k = 0; k < etaEnd; k++) tmp[k] = sand[k] + water[k];
 
     for (let j = 0; j <= top; j++) {
-      for (let i = 0; i < nx; i++) {
-        const k = j * nx + i;
+      const inSponge = j < sponge;
+      const hasD = j > 0;
+      const hasU = j < ny1;
+      for (let i = 0, k = j * nx; i < nx; i++, k++) {
         const d = water[k];
         if (d <= 0) {
-          fL[k] = fR[k] = fD[k] = fU[k] = 0;
+          fL[k] = 0;
+          fR[k] = 0;
+          fD[k] = 0;
+          fU[k] = 0;
           continue;
         }
-        const hk = sand[k] + d;
+        const hk = tmp[k];
         // full damping in the shallows (where the checkerboard mode lives),
         // much less out in deep water so waves keep their height on the way in
         // (and full damping in the sponge at the forced edge, which smooths the
         // step between the hard-set first row and the free water behind it)
-        const lin = j < sponge || d < 0.7 ? lin0 : d > 1.1 ? linDeep : lin0 + (linDeep - lin0) * ((d - 0.7) / 0.4);
+        const dtLin = inSponge || d < 0.7 ? dtLin0 : d > 1.1 ? dtLinDeep : 1 + dt * (lin0 + linSlope * (d - 0.7));
         let l = 0;
         let r = 0;
         let dn = 0;
         let up = 0;
         if (i > 0) {
           const kn = k - 1;
-          const dh = hk - sand[kn] - water[kn];
-          const da = Math.max(0.002, Math.min(maxD, 0.5 * (d + water[kn])));
-          l = fL[k] + dt * g * da * dh;
-          if (l > 0) l /= 1 + dt * (lin + (cf * l) / (dx * da * da));
-          else l = 0;
+          const dh = hk - tmp[kn];
+          const prev = fL[k];
+          if (dh > 0 || prev > 0) {
+            let da = 0.5 * (d + water[kn]);
+            if (da < 0.002) da = 0.002;
+            else if (da > maxD) da = maxD;
+            l = prev + dtG * da * dh;
+            if (l > 0) {
+              const da2 = da * da;
+              l = (l * da2) / (dtLin * da2 + dtCfDx * l);
+            } else l = 0;
+          }
         }
-        if (i < nx - 1) {
+        if (i < nx1) {
           const kn = k + 1;
-          const dh = hk - sand[kn] - water[kn];
-          const da = Math.max(0.002, Math.min(maxD, 0.5 * (d + water[kn])));
-          r = fR[k] + dt * g * da * dh;
-          if (r > 0) r /= 1 + dt * (lin + (cf * r) / (dx * da * da));
-          else r = 0;
+          const dh = hk - tmp[kn];
+          const prev = fR[k];
+          if (dh > 0 || prev > 0) {
+            let da = 0.5 * (d + water[kn]);
+            if (da < 0.002) da = 0.002;
+            else if (da > maxD) da = maxD;
+            r = prev + dtG * da * dh;
+            if (r > 0) {
+              const da2 = da * da;
+              r = (r * da2) / (dtLin * da2 + dtCfDx * r);
+            } else r = 0;
+          }
         }
-        if (j > 0) {
+        if (hasD) {
           const kn = k - nx;
-          const dh = hk - sand[kn] - water[kn];
-          const da = Math.max(0.002, Math.min(maxD, 0.5 * (d + water[kn])));
-          dn = fD[k] + dt * g * da * dh;
-          if (dn > 0) dn /= 1 + dt * (lin + (cf * dn) / (dx * da * da));
-          else dn = 0;
+          const dh = hk - tmp[kn];
+          const prev = fD[k];
+          if (dh > 0 || prev > 0) {
+            let da = 0.5 * (d + water[kn]);
+            if (da < 0.002) da = 0.002;
+            else if (da > maxD) da = maxD;
+            dn = prev + dtG * da * dh;
+            if (dn > 0) {
+              const da2 = da * da;
+              dn = (dn * da2) / (dtLin * da2 + dtCfDx * dn);
+            } else dn = 0;
+          }
         }
-        if (j < ny - 1) {
+        if (hasU) {
           const kn = k + nx;
-          const dh = hk - sand[kn] - water[kn];
-          const da = Math.max(0.002, Math.min(maxD, 0.5 * (d + water[kn])));
-          up = fU[k] + dt * g * da * dh;
-          if (up > 0) up /= 1 + dt * (lin + (cf * up) / (dx * da * da));
-          else up = 0;
+          const dh = hk - tmp[kn];
+          const prev = fU[k];
+          if (dh > 0 || prev > 0) {
+            let da = 0.5 * (d + water[kn]);
+            if (da < 0.002) da = 0.002;
+            else if (da > maxD) da = maxD;
+            up = prev + dtG * da * dh;
+            if (up > 0) {
+              const da2 = da * da;
+              up = (up * da2) / (dtLin * da2 + dtCfDx * up);
+            } else up = 0;
+          }
         }
         const sum = l + r + dn + up;
-        if (sum > 0) {
-          const K = Math.min(1, (d * area) / (sum * dt));
+        const maxSum = d * areaOverDt;
+        if (sum > maxSum) {
+          const K = maxSum / sum;
           l *= K;
           r *= K;
           dn *= K;
@@ -374,25 +455,34 @@ export class BeachSim {
     }
 
     for (let j = 0; j <= top; j++) {
-      for (let i = 0; i < nx; i++) {
-        const k = j * nx + i;
+      const hasD = j > 0;
+      const hasU = j < ny1;
+      for (let i = 0, k = j * nx; i < nx; i++, k++) {
         const inL = i > 0 ? fR[k - 1] : 0;
-        const inR = i < nx - 1 ? fL[k + 1] : 0;
-        const inD = j > 0 ? fU[k - nx] : 0;
-        const inU = j < ny - 1 ? fD[k + nx] : 0;
-        const out = fL[k] + fR[k] + fD[k] + fU[k];
+        const inR = i < nx1 ? fL[k + 1] : 0;
+        const inD = hasD ? fU[k - nx] : 0;
+        const inU = hasU ? fD[k + nx] : 0;
+        const inSum = inL + inR + inD + inU;
         const d0 = water[k];
-        let d1 = d0 + (dt * (inL + inR + inD + inU - out)) / area;
+        if (d0 === 0 && inSum === 0) {
+          vx[k] = 0;
+          vy[k] = 0;
+          continue;
+        }
+        const oL = fL[k];
+        const oR = fR[k];
+        const oD = fD[k];
+        const oU = fU[k];
+        let d1 = d0 + dtOverArea * (inSum - (oL + oR + oD + oU));
         if (d1 < 0) d1 = 0;
         water[k] = d1;
         const db = 0.5 * (d0 + d1);
         if (db > 1e-3) {
           // thin films get a floor on depth so their velocity stays sane
           const dv = db < 0.02 ? 0.02 : db;
-          const wx = 0.5 * (inL - fL[k] + fR[k] - inR);
-          const wy = 0.5 * (inD - fD[k] + fU[k] - inU);
-          let ux = wx / (dx * dv);
-          let uy = wy / (dx * dv);
+          const inv = halfInvDx / dv;
+          let ux = (inL - oL + oR - inR) * inv;
+          let uy = (inD - oD + oU - inU) * inv;
           const sp2 = ux * ux + uy * uy;
           if (sp2 > 16) {
             const f = 4 / Math.sqrt(sp2);
@@ -411,18 +501,23 @@ export class BeachSim {
 
   /** Holes dug below the water table near the sea slowly fill with seep water. */
   private seep(dt: number): void {
-    const { nx, ny, sand, water, rest } = this;
+    const { nx, ny, sand, water, rest, restRowMin, restRowMax } = this;
     const level = this.meanLevel();
+    const rate = dt / 6 < 1 ? dt / 6 : 1;
+    const maxLevel = level + 0.9;
     for (let j = 1; j < ny; j++) {
-      for (let i = 0; i < nx; i++) {
-        const k = j * nx + i;
+      if (restRowMax[j] <= level || restRowMin[j] > maxLevel) continue;
+      for (let k = j * nx, e = k + nx; k < e; k++) {
         // water table: sea level at the shoreline, rising slightly then
         // falling away under the dry beach
         const above = rest[k] - level;
         if (above <= 0 || above > 0.9) continue;
         const table = level + 0.05 - above * 0.35;
         const target = table - sand[k];
-        if (target > water[k]) water[k] += (target - water[k]) * Math.min(1, dt / 6);
+        if (target > water[k]) {
+          water[k] += (target - water[k]) * rate;
+          if (j > this.flowTop) this.flowTop = j;
+        }
       }
     }
   }
@@ -432,14 +527,22 @@ export class BeachSim {
     const { nx, ny, dx, sand, water, sediment, vx, vy, bottom, tmp, rest } = this;
     // (tmp is reused below for the transport step)
     const Kc = EROSION.capacity;
-    const Ks = EROSION.dissolve;
-    const Kd = EROSION.deposit;
+    const KsDt = EROSION.dissolve * dt;
+    const KdDt = EROSION.deposit * dt;
     const minS = EROSION.minSlope;
     const dry = WATER.dryDepth * 2;
+    const inv2dx = 1 / (2 * dx);
+    const inv005 = 20; // 1 / 0.05
+    const inv06 = 1 / 0.6;
+    const ny1 = ny - 1;
+    const nx1 = nx - 1;
 
-    for (let j = 1; j < ny - 1; j++) {
-      for (let i = 1; i < nx - 1; i++) {
-        const k = j * nx + i;
+    const scanTop = Math.min(ny - 2, Math.max(this.flowTop, this.sedTop));
+    let nextSedTop = -1;
+
+    for (let j = 1; j <= scanTop; j++) {
+      let rowHasSed = false;
+      for (let i = 1, k = j * nx + 1; i < nx1; i++, k++) {
         const d = water[k];
         let s = sediment[k];
         if (d < dry) {
@@ -449,137 +552,254 @@ export class BeachSim {
           }
           continue;
         }
+        // deep water (d >= 0.95 => depthF === 0) carries nothing: skip slope and speed
+        if (d >= 0.95) {
+          if (s > 0) {
+            const amt = KdDt * s;
+            sand[k] += amt;
+            s -= amt;
+            sediment[k] = s;
+            if (s > 0) rowHasSed = true;
+          }
+          continue;
+        }
         // The rest profile is in equilibrium with the waves, so capacity is
         // driven by the slope of the *disturbance* (what the player made).
         // That keeps the natural beach stable while castles and pits erode.
-        const depthF = Math.min(1, d / 0.05) * Math.max(0, Math.min(1, 1 - (d - 0.35) / 0.6));
         let C = 0;
-        // deep water (depthF 0) carries nothing: skip the slope and speed
-        if (depthF > 0) {
-          const gx = (sand[k + 1] - rest[k + 1] - sand[k - 1] + rest[k - 1]) / (2 * dx);
-          const gy = (sand[k + nx] - rest[k + nx] - sand[k - nx] + rest[k - nx]) / (2 * dx);
+        const ux = vx[k];
+        const uy = vy[k];
+        const sp2 = ux * ux + uy * uy;
+        if (sp2 > 0) {
+          const f1 = d < 0.05 ? d * inv005 : 1;
+          const f2 = d <= 0.35 ? 1 : 1 - (d - 0.35) * inv06;
+          const depthF = f1 * f2;
+          const gx = (sand[k + 1] - rest[k + 1] - sand[k - 1] + rest[k - 1]) * inv2dx;
+          const gy = (sand[k + nx] - rest[k + nx] - sand[k - nx] + rest[k - nx]) * inv2dx;
           const g2 = gx * gx + gy * gy;
-          const sinA = Math.max(minS, Math.sqrt(g2 / (1 + g2)));
-          const speed = Math.sqrt(vx[k] * vx[k] + vy[k] * vy[k]);
-          C = Kc * sinA * speed * depthF;
+          let sinA = Math.sqrt(g2 / (1 + g2));
+          if (sinA < minS) sinA = minS;
+          C = Kc * sinA * Math.sqrt(sp2) * depthF;
         }
         if (C > s) {
-          const amt = Math.min(Ks * (C - s) * dt, Math.max(0, sand[k] - bottom[k]));
-          sand[k] -= amt;
-          s += amt;
-        } else {
-          const amt = Kd * (s - C) * dt;
+          const avail = sand[k] - bottom[k];
+          if (avail > 0) {
+            const raw = KsDt * (C - s);
+            const amt = raw < avail ? raw : avail;
+            sand[k] -= amt;
+            s += amt;
+          }
+        } else if (s > C) {
+          const amt = KdDt * (s - C);
           sand[k] += amt;
           s -= amt;
         }
         sediment[k] = s;
+        if (s > 0) rowHasSed = true;
       }
+      if (rowHasSed) nextSedTop = j;
+    }
+
+    if (nextSedTop < 0) {
+      this.sedTop = -1;
+      return;
     }
 
     // Conservative transport: suspended sand rides along the same pipe fluxes
     // as the water (donor cell), so no sand is created or lost in transit.
     const { fL, fR, fD, fU } = this;
-    const area = dx * dx;
-    tmp.set(sediment);
-    for (let j = 0; j < ny; j++) {
-      for (let i = 0; i < nx; i++) {
-        const k = j * nx + i;
+    const dtOverArea = dt / (dx * dx);
+    const transTop = nextSedTop < ny1 ? nextSedTop + 1 : ny1;
+    const sliceEnd = (transTop + 1) * nx;
+    tmp.set(sediment.subarray(0, sliceEnd));
+    let outSedTop = -1;
+    for (let j = 0; j <= nextSedTop; j++) {
+      const hasD = j > 0;
+      const hasU = j < ny1;
+      for (let i = 0, k = j * nx; i < nx; i++, k++) {
         const s0 = sediment[k];
         if (s0 <= 0) continue;
+        if (j > outSedTop) outSedTop = j;
         const d = water[k];
-        const sum = fL[k] + fR[k] + fD[k] + fU[k];
-        if (d < 1e-4 || sum <= 0) continue;
-        const frac = Math.min(1, (sum * dt) / (d * area));
+        if (d < 1e-4) continue;
+        const fl = fL[k];
+        const fr = fR[k];
+        const fd = fD[k];
+        const fu = fU[k];
+        const sum = fl + fr + fd + fu;
+        if (sum <= 0) continue;
+        const rawFrac = (sum * dtOverArea) / d;
+        const frac = rawFrac < 1 ? rawFrac : 1;
         const moved = s0 * frac;
         const per = moved / sum;
         tmp[k] -= moved;
-        if (i > 0) tmp[k - 1] += fL[k] * per;
-        else tmp[k] += fL[k] * per;
-        if (i < nx - 1) tmp[k + 1] += fR[k] * per;
-        else tmp[k] += fR[k] * per;
-        if (j > 0) tmp[k - nx] += fD[k] * per;
-        else tmp[k] += fD[k] * per;
-        if (j < ny - 1) tmp[k + nx] += fU[k] * per;
-        else tmp[k] += fU[k] * per;
+        if (i > 0) tmp[k - 1] += fl * per;
+        else tmp[k] += fl * per;
+        if (i < nx1) tmp[k + 1] += fr * per;
+        else tmp[k] += fr * per;
+        if (hasD) tmp[k - nx] += fd * per;
+        else tmp[k] += fd * per;
+        if (hasU) {
+          tmp[k + nx] += fu * per;
+          if (fu > 0 && j + 1 > outSedTop) outSedTop = j + 1;
+        } else tmp[k] += fu * per;
       }
     }
-    sediment.set(tmp);
+    sediment.set(tmp.subarray(0, sliceEnd));
+    this.sedTop = outSedTop;
   }
 
   /** Move sand down slopes steeper than the (wetness dependent) angle of repose. */
   private slump(): void {
-    const { nx, ny, dx, sand, water, wet, bottom, tanMax, tmp } = this;
+    const { nx, ny, dx, sand, water, wet, bottom, slumpDelta } = this;
     const tDry = Math.tan(SAND.reposeDry * DEG) * dx;
     const tDamp = Math.tan(SAND.reposeDamp * DEG) * dx;
     const tSat = Math.tan(SAND.reposeSaturated * DEG) * dx;
+    const tDiff = tDamp - tDry;
+    const tMin = tSat < tDry ? (tSat < tDamp ? tSat : tDamp) : (tDry < tDamp ? tDry : tDamp);
     const sub = WATER.dryDepth * 3;
+    const rate = SAND.slumpRate * 0.5;
+    const nx1 = nx - 1;
+    const ny1 = ny - 1;
+
     // Saturated sand (under water, or right next to moving water) gives way at
     // a low angle: this is what lets waves undercut walls and castles.
-    for (let j = 0; j < ny; j++) {
-      for (let i = 0; i < nx; i++) {
-        const k = j * nx + i;
-        let wetHere = water[k] > sub;
-        if (!wetHere) {
-          const near =
-            (i > 0 && water[k - 1] > sub) ||
-            (i < nx - 1 && water[k + 1] > sub) ||
-            (j > 0 && water[k - nx] > sub) ||
-            (j < ny - 1 && water[k + nx] > sub);
-          wetHere = near;
-        }
-        tanMax[k] = wetHere ? tSat : tDry + (tDamp - tDry) * Math.min(1, wet[k] * 1.25);
+    // Evaluated lazily only on cells beside an edge steeper than tMin.
+    const tanAt = (k: number, i: number, j: number): number => {
+      if (
+        water[k] > sub ||
+        (i > 0 && water[k - 1] > sub) ||
+        (i < nx1 && water[k + 1] > sub) ||
+        (j > 0 && water[k - nx] > sub) ||
+        (j < ny1 && water[k + nx] > sub)
+      ) {
+        return tSat;
       }
-    }
-    const rate = SAND.slumpRate * 0.5;
+      const w = wet[k] * 1.25;
+      return tDry + tDiff * (w > 1 ? 1 : w);
+    };
+
+    let prevDirty = this.slumpRowA;
+    let nextDirty = this.slumpRowB;
+
     for (let it = 0; it < SAND.slumpIterations; it++) {
-      tmp.fill(0);
+      let anyMoved = false;
+      nextDirty.fill(0);
       for (let j = 0; j < ny; j++) {
-        for (let i = 0; i < nx; i++) {
-          const k = j * nx + i;
+        if (it > 0 && !(prevDirty[j] || (j > 0 && prevDirty[j - 1]) || (j < ny1 && prevDirty[j + 1]))) continue;
+        const hasU = j < ny1;
+        for (let i = 0, k = j * nx; i < nx; i++, k++) {
           const hk = sand[k];
-          if (i < nx - 1) {
+          if (i < nx1) {
             const kn = k + 1;
-            const dh = hk - sand[kn];
-            const t = Math.min(tanMax[k], tanMax[kn]);
-            if (dh > t) {
-              const m = Math.min((dh - t) * rate, Math.max(0, hk - bottom[k]) * 0.25);
-              tmp[k] -= m;
-              tmp[kn] += m;
-            } else if (-dh > t) {
-              const m = Math.min((-dh - t) * rate, Math.max(0, sand[kn] - bottom[kn]) * 0.25);
-              tmp[k] += m;
-              tmp[kn] -= m;
+            const hkn = sand[kn];
+            const dh = hk - hkn;
+            if (dh > tMin) {
+              const tk = tanAt(k, i, j);
+              const tkn = tanAt(kn, i + 1, j);
+              const t = tk < tkn ? tk : tkn;
+              if (dh > t) {
+                const avail = (hk - bottom[k]) * 0.25;
+                if (avail > 0) {
+                  const raw = (dh - t) * rate;
+                  const m = raw < avail ? raw : avail;
+                  slumpDelta[k] -= m;
+                  slumpDelta[kn] += m;
+                  nextDirty[j] = 1;
+                  anyMoved = true;
+                }
+              }
+            } else if (-dh > tMin) {
+              const tk = tanAt(k, i, j);
+              const tkn = tanAt(kn, i + 1, j);
+              const t = tk < tkn ? tk : tkn;
+              if (-dh > t) {
+                const avail = (hkn - bottom[kn]) * 0.25;
+                if (avail > 0) {
+                  const raw = (-dh - t) * rate;
+                  const m = raw < avail ? raw : avail;
+                  slumpDelta[k] += m;
+                  slumpDelta[kn] -= m;
+                  nextDirty[j] = 1;
+                  anyMoved = true;
+                }
+              }
             }
           }
-          if (j < ny - 1) {
+          if (hasU) {
             const kn = k + nx;
-            const dh = hk - sand[kn];
-            const t = Math.min(tanMax[k], tanMax[kn]);
-            if (dh > t) {
-              const m = Math.min((dh - t) * rate, Math.max(0, hk - bottom[k]) * 0.25);
-              tmp[k] -= m;
-              tmp[kn] += m;
-            } else if (-dh > t) {
-              const m = Math.min((-dh - t) * rate, Math.max(0, sand[kn] - bottom[kn]) * 0.25);
-              tmp[k] += m;
-              tmp[kn] -= m;
+            const hkn = sand[kn];
+            const dh = hk - hkn;
+            if (dh > tMin) {
+              const tk = tanAt(k, i, j);
+              const tkn = tanAt(kn, i, j + 1);
+              const t = tk < tkn ? tk : tkn;
+              if (dh > t) {
+                const avail = (hk - bottom[k]) * 0.25;
+                if (avail > 0) {
+                  const raw = (dh - t) * rate;
+                  const m = raw < avail ? raw : avail;
+                  slumpDelta[k] -= m;
+                  slumpDelta[kn] += m;
+                  nextDirty[j] = 1;
+                  nextDirty[j + 1] = 1;
+                  anyMoved = true;
+                }
+              }
+            } else if (-dh > tMin) {
+              const tk = tanAt(k, i, j);
+              const tkn = tanAt(kn, i, j + 1);
+              const t = tk < tkn ? tk : tkn;
+              if (-dh > t) {
+                const avail = (hkn - bottom[kn]) * 0.25;
+                if (avail > 0) {
+                  const raw = (-dh - t) * rate;
+                  const m = raw < avail ? raw : avail;
+                  slumpDelta[k] += m;
+                  slumpDelta[kn] -= m;
+                  nextDirty[j] = 1;
+                  nextDirty[j + 1] = 1;
+                  anyMoved = true;
+                }
+              }
             }
           }
         }
       }
-      for (let k = 0; k < this.n; k++) sand[k] += tmp[k];
+      if (!anyMoved) break;
+      for (let j = 0; j < ny; j++) {
+        if (!nextDirty[j]) continue;
+        for (let k = j * nx, e = k + nx; k < e; k++) {
+          const d = slumpDelta[k];
+          if (d !== 0) {
+            sand[k] += d;
+            slumpDelta[k] = 0;
+          }
+        }
+      }
+      const swap = prevDirty;
+      prevDirty = nextDirty;
+      nextDirty = swap;
     }
   }
 
   /** Very slow pull back to the rest profile wherever the sea reaches. */
   private heal(dt: number): void {
-    const { sand, rest, water, wet, bottom } = this;
+    const { nx, sand, rest, water, wet, bottom } = this;
     const a = dt / EROSION.healingTime;
     const dry = WATER.dryDepth;
-    for (let k = 0; k < this.n; k++) {
+    const top = Math.max(this.flowTop, this.wetTop);
+    if (top < 0) return;
+    const end = (top + 1) * nx;
+    for (let k = 0; k < end; k++) {
       if (water[k] > dry || wet[k] > 0.97) {
-        const v = sand[k] + (rest[k] - sand[k]) * a;
-        sand[k] = v < bottom[k] ? bottom[k] : v; // never through a rock
+        const sk = sand[k];
+        const rk = rest[k];
+        if (sk !== rk) {
+          const v = sk + (rk - sk) * a;
+          const b = bottom[k];
+          sand[k] = v < b ? b : v; // never through a rock
+        }
       }
     }
   }
@@ -591,40 +811,111 @@ export class BeachSim {
     const foamDryK = Math.exp(-dt / 0.5);
     const level = this.meanLevel();
     const capH = SAND.capillaryHeight;
+    const capLevel = level + capH;
+    const invCapH = 1 / capH;
     const dry = WATER.dryDepth;
-    const sponge = WAVES.spongeRows;
-    for (let j = 0; j < ny; j++) {
-      for (let i = 0; i < nx; i++) {
-        const k = j * nx + i;
+    const sponge = Math.min(WAVES.spongeRows, ny);
+    const inv2dx = 1 / (2 * dx);
+    const boreThresh = 0.06 * 2 * dx;
+    const boreThresh2 = boreThresh * boreThresh;
+    const nx1 = nx - 1;
+    const ny1 = ny - 1;
+
+    // the forced boundary rows would otherwise sprout a line of foam
+    for (let j = 0; j < sponge; j++) {
+      for (let k = j * nx, e = k + nx; k < e; k++) {
+        if (water[k] > dry && wet[k] !== 1) wet[k] = 1;
+        if (foam[k] !== 0) foam[k] = 0;
+      }
+    }
+
+    const activeTop = Math.min(ny1, Math.max(this.flowTop, sponge - 1));
+    let nextWetTop = sponge - 1;
+
+    for (let j = sponge; j <= activeTop; j++) {
+      let rowWet = false;
+      const inY = j > 0 && j < ny1;
+      for (let i = 0, k = j * nx; i < nx; i++, k++) {
         const d = water[k];
-        if (j < sponge) {
-          // the forced boundary rows would otherwise sprout a line of foam
-          wet[k] = d > dry ? 1 : wet[k];
-          foam[k] = 0;
-          continue;
-        }
         if (d > dry) {
-          wet[k] = 1;
+          if (wet[k] !== 1) wet[k] = 1;
+          rowWet = true;
           // foam forms where the wave front runs up the sand (thin, fast,
           // moving landward) and on steep incoming bores
           const up = vy[k];
-          let f = smoothstep(0.25, 0.9, up) * (1 - smoothstep(0.03, 0.12, d));
-          f = Math.max(f, smoothstep(0.6, 1.8, Math.sqrt(vx[k] * vx[k] + up * up)) * (1 - smoothstep(0.02, 0.3, d)) * 0.6);
-          if (i > 0 && i < nx - 1 && j > 0 && j < ny - 1 && d > 0.015 && up > 0.05) {
-            const ex = (sand[k + 1] + water[k + 1] - sand[k - 1] - water[k - 1]) / (2 * dx);
-            const ey = (sand[k + nx] + water[k + nx] - sand[k - nx] - water[k - nx]) / (2 * dx);
-            f = Math.max(f, smoothstep(0.06, 0.2, Math.sqrt(ex * ex + ey * ey)) * 0.85);
+          let f = 0;
+          if (d < 0.12 && up > 0.25) {
+            f = smoothstep(0.25, 0.9, up) * (1 - smoothstep(0.03, 0.12, d));
           }
-          const fo = foam[k] * foamK;
-          foam[k] = fo > f ? fo : f;
+          if (d < 0.3) {
+            const ux = vx[k];
+            const sp2 = ux * ux + up * up;
+            if (sp2 > 0.36) {
+              const f2 = smoothstep(0.6, 1.8, Math.sqrt(sp2)) * (1 - smoothstep(0.02, 0.3, d)) * 0.6;
+              if (f2 > f) f = f2;
+            }
+          }
+          if (inY && i > 0 && i < nx1 && d > 0.015 && up > 0.05) {
+            const dex = sand[k + 1] + water[k + 1] - sand[k - 1] - water[k - 1];
+            const dey = sand[k + nx] + water[k + nx] - sand[k - nx] - water[k - nx];
+            const de2 = dex * dex + dey * dey;
+            if (de2 > boreThresh2) {
+              const f3 = smoothstep(0.06, 0.2, Math.sqrt(de2) * inv2dx) * 0.85;
+              if (f3 > f) f = f3;
+            }
+          }
+          const fk = foam[k];
+          if (f > 0 || fk > 0) {
+            const fo = fk * foamK;
+            const nf = fo > f ? fo : f;
+            foam[k] = nf < 1e-6 ? 0 : nf;
+          }
         } else {
-          const cap = Math.max(0, Math.min(1, 1 - (sand[k] - level) / capH)) * 0.8;
-          const w = wet[k] * dryK;
-          wet[k] = w > cap ? w : cap;
-          foam[k] *= foamDryK;
+          const sk = sand[k];
+          const wk = wet[k];
+          if (sk < capLevel || wk > 0) {
+            const cap = sk >= capLevel ? 0 : sk <= level ? 0.8 : (1 - (sk - level) * invCapH) * 0.8;
+            let w = wk * dryK;
+            if (w < 1e-6) w = 0;
+            const nw = w > cap ? w : cap;
+            wet[k] = nw;
+            if (nw > 0) rowWet = true;
+          }
+          const fk = foam[k];
+          if (fk > 0) {
+            const nf = fk * foamDryK;
+            foam[k] = nf < 1e-6 ? 0 : nf;
+            if (nf >= 1e-6) rowWet = true;
+          }
         }
       }
+      if (rowWet) nextWetTop = j;
     }
+
+    // Above flowTop water is guaranteed 0: dry-only pass (no water/vx/vy reads)
+    for (let j = activeTop + 1; j < ny; j++) {
+      let rowWet = false;
+      for (let k = j * nx, e = k + nx; k < e; k++) {
+        const sk = sand[k];
+        const wk = wet[k];
+        if (sk < capLevel || wk > 0) {
+          const cap = sk >= capLevel ? 0 : sk <= level ? 0.8 : (1 - (sk - level) * invCapH) * 0.8;
+          let w = wk * dryK;
+          if (w < 1e-6) w = 0;
+          const nw = w > cap ? w : cap;
+          wet[k] = nw;
+          if (nw > 0) rowWet = true;
+        }
+        const fk = foam[k];
+        if (fk > 0) {
+          const nf = fk * foamDryK;
+          foam[k] = nf < 1e-6 ? 0 : nf;
+          if (nf >= 1e-6) rowWet = true;
+        }
+      }
+      if (rowWet) nextWetTop = j;
+    }
+    this.wetTop = nextWetTop;
   }
 
   // ---------------------------------------------------------------- brush
@@ -1074,6 +1365,7 @@ export class BeachSim {
     }
     const afterCover = this.applyTerrain(delta, cover);
     this.sediment.fill(0);
+    this.sedTop = -1;
     this.easing = [];
     // an imported beach may carry the old stacked-rock saves: repair
     // the rocks before embedding them (see loadDelta)
@@ -1082,7 +1374,8 @@ export class BeachSim {
     // lifts and cover are re-applied by embedding on undo/redo
     const change = new Float32Array(this.n);
     for (let k = 0; k < this.n; k++) change[k] = this.sand[k] - beforeSand[k];
-    const after = fixed.objects.map((o) => this.objects.add({ ...o, id: undefined }, fixed.noRock ?? undefined));
+    const terrain = fixed.noRock ?? this.sand.slice();
+    const after = fixed.objects.map((o) => this.objects.add({ ...o, id: undefined }, terrain));
     if (afterCover) {
       for (let k = 0; k < this.n; k++) if (afterCover[k] > 0) this.sand[k] += afterCover[k];
     }
@@ -1106,6 +1399,7 @@ export class BeachSim {
       this.sand[k] = v < this.bottom[k] ? this.bottom[k] : v;
     }
     this.sediment.fill(0);
+    this.sedTop = -1;
     this.easing = [];
     const terrain = this.sand.slice();
     for (const o of sign < 0 ? before : after) this.objects.add({ ...o }, terrain);
@@ -1145,6 +1439,7 @@ export class BeachSim {
     // back to the rest shape, but rocks stay where they are
     for (let k = 0; k < this.n; k++) this.sand[k] = Math.max(this.rest[k], this.bottom[k]);
     this.sediment.fill(0);
+    this.sedTop = -1;
     const e = this.diffRegion(before, 0, 0, this.nx - 1, this.ny - 1);
     if (e) this.undo.push(e);
   }
@@ -1172,11 +1467,13 @@ export class BeachSim {
     this.objects.clear();
     const appliedCover = this.applyTerrain(delta, cover);
     this.sediment.fill(0);
+    this.sedTop = -1;
     // old saves can hold rocks stacked on each other's lifted sand:
     // repair them before embedding, or the stack (and its sand pillar)
     // comes back with the load
     const fixed = this.objects.repairLoaded(objects);
-    for (const o of fixed.objects) this.objects.add(o, fixed.noRock ?? undefined);
+    const terrain = fixed.noRock ?? this.sand.slice();
+    for (const o of fixed.objects) this.objects.add(o, terrain);
     if (appliedCover) {
       for (let k = 0; k < this.n; k++) if (appliedCover[k] > 0) this.sand[k] += appliedCover[k];
     }
@@ -1188,8 +1485,29 @@ export class BeachSim {
 
   /** Pack sand/water/wet/foam into an RGBA float buffer (for one texture upload). */
   pack(out: Float32Array): void {
-    const { sand, water, wet, foam } = this;
-    for (let k = 0, o = 0; k < this.n; k++, o += 4) {
+    const { sand, water, wet, foam, n } = this;
+    let k = 0;
+    let o = 0;
+    const n4 = n & ~3;
+    for (; k < n4; k += 4, o += 16) {
+      out[o] = sand[k];
+      out[o + 1] = water[k];
+      out[o + 2] = wet[k];
+      out[o + 3] = foam[k];
+      out[o + 4] = sand[k + 1];
+      out[o + 5] = water[k + 1];
+      out[o + 6] = wet[k + 1];
+      out[o + 7] = foam[k + 1];
+      out[o + 8] = sand[k + 2];
+      out[o + 9] = water[k + 2];
+      out[o + 10] = wet[k + 2];
+      out[o + 11] = foam[k + 2];
+      out[o + 12] = sand[k + 3];
+      out[o + 13] = water[k + 3];
+      out[o + 14] = wet[k + 3];
+      out[o + 15] = foam[k + 3];
+    }
+    for (; k < n; k++, o += 4) {
       out[o] = sand[k];
       out[o + 1] = water[k];
       out[o + 2] = wet[k];

@@ -666,13 +666,25 @@ attribute vec3 position;
 attribute vec3 normal;
 #include<instancesDeclaration>
 uniform mat4 viewProjection;
+/** > 0 only for flag cloths: flutters the pennant in local Y on the GPU */
+uniform float windTime;
 varying vec3 vNormal;
 varying vec3 vWorld;
 void main() {
   #include<instancesVertex>
-  vec4 wp = finalWorld * vec4(position, 1.0);
+  vec3 pos = position;
+  vec3 nrm = normal;
+  if (windTime > 0.0) {
+    float ph = finalWorld[3].x * 1.7 + finalWorld[3].z * 2.3;
+    float a = sin(windTime * 3.1 + ph) * 0.35 + sin(windTime * 7.3 + ph) * 0.1;
+    float c = cos(a);
+    float s = sin(a);
+    pos = vec3(pos.x * c + pos.z * s, pos.y, -pos.x * s + pos.z * c);
+    nrm = vec3(nrm.x * c + nrm.z * s, nrm.y, -nrm.x * s + nrm.z * c);
+  }
+  vec4 wp = finalWorld * vec4(pos, 1.0);
   vWorld = wp.xyz;
-  vNormal = normalize(mat3(finalWorld) * normal);
+  vNormal = normalize(mat3(finalWorld) * nrm);
   gl_Position = viewProjection * wp;
 }
 `;

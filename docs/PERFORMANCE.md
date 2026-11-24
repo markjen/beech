@@ -88,12 +88,25 @@ much a beach holds"):
   `Math.sqrt` everywhere in the sim. Medium grid: 10.5 → 6.1 ms a tick (in
   Chromium 8.8 → 6.1 ms).
 
+- **2026-11-24 profile & optimization pass**:
+  - **Sim tick, another −41 %** (`src/sim/beachSim.ts`, `src/sim/objects.ts`, `src/sim/sim.worker.ts`):
+    - `slump()` now evaluates `tanMax` lazily only where `|dh|` exceeds the wet repose floor, and tracks dirty rows across iterations (stopping after 1 scan when nothing slumped, −84 % on medium: 3.42 → 0.54 ms).
+    - `flow()` precomputes surface elevation `sand + water`, skips dry/inactive pipes, algebraically eliminates the second division in flux damping, and skips `K` scaling when total outflow doesn't exceed cell depth (−24 %: 8.18 → 6.26 ms).
+    - `updateWetFoam()` splits sponge rows out of the main loop, short-circuits `smoothstep`/`Math.sqrt` outside active thresholds, flushes `< 1e-6` to `0` (avoiding subnormal float decay), skips redundant writes, and runs a dry-only pass above `flowTop` (−52 %: 2.22 → 1.07 ms).
+    - `erode()` tracks `sedTop` so Pass 2 is skipped when no sediment is suspended and copies only active rows (−38 %: 1.83 → 1.13 ms); `seep()`, `measureSwash()`, and `heal()` bound their row scans.
+    - `loadDelta()` / `importBeach()` compute the stripped terrain once instead of once per object (eliminating ~512 MB of temporary copies on 2000-object loads), and `objPos` buffers are pooled back to the worker.
+  - **Draw calls −47 % and main-thread work −94 %** (`src/render/objects.ts`, `src/render/shaders.ts`, `src/render/storeMeshes.ts`, `src/render/beachRenderer.ts`, `src/main.ts`):
+    - Flag pennants now flutter in the vertex shader (`windTime` uniform), so flags settle and `touchedPerFrame` at 2000 things dropped **95 → 0** (−100 %); `ObjectView` maintains an `active` set for O(active) per-frame updates and snaps reused IDs consistently on bulk beach loads.
+    - `PropBank` deduplicates unused variant keys, widens driftwood size buckets, merges same-material lighthouse bands (8 → 4 draws), and shares invariant sub-part sources (flag poles/cloths, deckchair frames, bottle corks): 2000 things dropped **171 → 91 draw calls** (**161 → 81** for things + glows).
+    - `BeachRenderer.uploadFrame()` uses `engine.updateTextureData` (`texSubImage2D`) instead of reallocating textures with `texImage2D`, and `src/main.ts` coalesces texture uploads, `SandPicker.updateFromFrame`, and `ObjectView.touch()` to at most once per render frame — eliminating a 4.5–9 s `texImage2D` bottleneck on software GPUs and cutting `mainThingsMsPerFrame` at 2000 things **1.55 → 0.10 ms** (400 things: **1.97 → 0.00 ms**).
+    - `BeachRenderer.update()`, `Horizon.update()`, `NeighborView.update()`, `Hud`, `LiveConditions`, and `main.ts` reuse scratch vectors/colours and dirty-check palette/lighting/DOM updates.
+  - **Server OG image rendering −66 %** (`server/src/beachImage.ts`): hoisted constant `Math.pow` terms and per-column/per-row bilinear coordinates and removed per-pixel `[r, g, b]` allocations (~460 → ~157 ms for a 1200×630 card).
+
 ## Ideas, if a budget gets tight
 
 - Far neighbor beaches could skip their smallest things (shells, sea glass,
   pebbles).
-- The tick is now water 45 %, slump 20 %, wet/foam 13 %, erosion 13 %.
-  Slump and wet/foam visit every cell every tick; tracking which tiles
-  changed (a dirty mask) would let them skip still, dry sand, but every
-  writer of `sand` would have to mark it.
-- The grid tiers in `src/config.ts` set the sim's cost overall.
+- The tick is now water ~61 %, erosion ~11 %, wet/foam ~11 %, pack ~6 %,
+  slump ~5 %. Further water gains would likely mean a WebAssembly/SIMD kernel
+  or coarsening the grid tier in `src/config.ts`.
+

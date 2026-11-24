@@ -49,17 +49,21 @@ function smoothstep(e0: number, e1: number, x: number): number {
   return t * t * (3 - 2 * t);
 }
 
-/** Height (m, sea level 0) of the untouched beach: src/sim/profile.ts restHeight. */
-export function restHeight(x: number, y: number, seed = 1): number {
+const REST_C = 2;
+const REST_C_POW = Math.pow(REST_C, 2 / 3);
+const REST_A = PROFILE.offshoreDepth / (Math.pow(PROFILE.shoreline + REST_C, 2 / 3) - REST_C_POW);
+
+function wobbleAt(x: number, seed = 1): number {
   const P = PROFILE;
-  const wobble =
-    P.cuspAmp * Math.sin((2 * Math.PI * x) / P.cuspLength + 0.7) * 0.6 + (noise1(x / 9, seed) - 0.5) * P.cuspAmp * 1.6;
+  return P.cuspAmp * Math.sin((2 * Math.PI * x) / P.cuspLength + 0.7) * 0.6 + (noise1(x / 9, seed) - 0.5) * P.cuspAmp * 1.6;
+}
+
+function restHeightW(x: number, y: number, wobble: number, seed = 1): number {
+  const P = PROFILE;
   const s = y - (P.shoreline + wobble);
   let h: number;
   if (s < 0) {
-    const c = 2;
-    const A = P.offshoreDepth / (Math.pow(P.shoreline + c, 2 / 3) - Math.pow(c, 2 / 3));
-    h = -A * (Math.pow(-s + c, 2 / 3) - Math.pow(c, 2 / 3));
+    h = -REST_A * (Math.pow(-s + REST_C, 2 / 3) - REST_C_POW);
   } else {
     const swash = s * P.swashSlope;
     const bermStart = P.bermHeight / P.swashSlope;
@@ -75,6 +79,11 @@ export function restHeight(x: number, y: number, seed = 1): number {
   }
   const ripple = (hash2(Math.floor(x * 3), Math.floor(y * 3), seed + 7) - 0.5) * 0.004;
   return h + ripple * smoothstep(0, 3, s);
+}
+
+/** Height (m, sea level 0) of the untouched beach: src/sim/profile.ts restHeight. */
+export function restHeight(x: number, y: number, seed = 1): number {
+  return restHeightW(x, y, wobbleAt(x, seed), seed);
 }
 
 // ---------------------------------------------------------------- colours (copies of the app's)
@@ -343,77 +352,243 @@ export function renderBeach(sand: SavedSand | null, opts: ImageOptions): Uint8Ar
       }
     }
   }
+  const gridWob = new Float64Array(gx);
+  for (let i = -1; i <= nx; i++) gridWob[i + 1] = wobbleAt((i + 0.5) * dx);
   for (let j = -1; j <= ny; j++) {
+    const y = (j + 0.5) * dy;
+    const row = (j + 1) * gx;
+    const insideY = j >= 0 && j < ny;
+    const dRow = j * nx;
     for (let i = -1; i <= nx; i++) {
       const x = (i + 0.5) * dx;
-      const y = (j + 0.5) * dy;
-      const inside = i >= 0 && j >= 0 && i < nx && j < ny;
-      const d = inside && effDelta ? effDelta[j * nx + i] : 0;
-      hgt[(j + 1) * gx + (i + 1)] = restHeight(x, y) + d;
-      dug[(j + 1) * gx + (i + 1)] = d;
+      const d = insideY && i >= 0 && i < nx && effDelta ? effDelta[dRow + i] : 0;
+      const k = row + (i + 1);
+      hgt[k] = restHeightW(x, y, gridWob[i + 1]) + d;
+      dug[k] = d;
     }
   }
+  const invDx = 1 / dx;
+  const invDy = 1 / dy;
+  const maxGx = gx - 1.001;
+  const maxGy = gy - 1.001;
   const sample = (f: Float32Array, x: number, y: number) => {
-    const fx = Math.min(gx - 1.001, Math.max(0, x / dx + 0.5));
-    const fy = Math.min(gy - 1.001, Math.max(0, y / dy + 0.5));
-    const i = Math.floor(fx);
-    const j = Math.floor(fy);
+    let fx = x * invDx + 0.5;
+    if (fx < 0) fx = 0;
+    else if (fx > maxGx) fx = maxGx;
+    let fy = y * invDy + 0.5;
+    if (fy < 0) fy = 0;
+    else if (fy > maxGy) fy = maxGy;
+    const i = fx | 0;
+    const j = fy | 0;
     const tx = fx - i;
     const ty = fy - j;
-    const a = f[j * gx + i];
-    const b = f[j * gx + i + 1];
-    const c = f[(j + 1) * gx + i];
-    const e = f[(j + 1) * gx + i + 1];
-    return (a + (b - a) * tx) * (1 - ty) + (c + (e - c) * tx) * ty;
+    const k = j * gx + i;
+    const a = f[k];
+    const c = f[k + gx];
+    return (a + (f[k + 1] - a) * tx) * (1 - ty) + (c + (f[k + gx + 1] - c) * tx) * ty;
   };
   const scale = H / (VIEW_Y1 - VIEW_Y0); // px per metre
   const cx = W / 2;
-  // facing the sea, left is +x: the picture is mirrored alongshore
-  const toWorldX = (px: number) => WORLD / 2 - (px + 0.5 - cx) / scale;
-  const toWorldY = (py: number) => VIEW_Y0 + (py + 0.5) / scale;
+  const invScale = 1 / scale;
   const out = new Uint8Array(W * H * 3);
   // light from the top left of the picture (offshore, +x)
   const L = norm3([-0.55, -0.55, 0.63]);
+  const L0 = L[0];
+  const L1 = L[1];
+  const L2 = L[2];
+  const shadeScale = 0.3 / (1 - L2 + 1e-6);
   const e = 0.6 * Math.min(dx, dy);
+  const inv2e = 1 / (2 * e);
+
+  // Unpack palette colours once to avoid per-pixel array allocations
+  const ws0 = look.waterShallow[0], ws1 = look.waterShallow[1], ws2 = look.waterShallow[2];
+  const wd0 = look.waterDeep[0], wd1 = look.waterDeep[1], wd2 = look.waterDeep[2];
+  const sw0 = look.sandWet[0], sw1 = look.sandWet[1], sw2 = look.sandWet[2];
+  const sd0 = look.sandDry[0], sd1 = look.sandDry[1], sd2 = look.sandDry[2];
+  const sp0 = look.sandDeep[0], sp1 = look.sandDeep[1], sp2 = look.sandDeep[2];
+  const sl = lighten(look.sandDry, 0.15);
+  const sl0 = sl[0], sl1 = sl[1], sl2 = sl[2];
+  const fm0 = look.foam[0], fm1 = look.foam[1], fm2 = look.foam[2];
+  const fg0 = look.fog[0], fg1 = look.fog[1], fg2 = look.fog[2];
+
+  // Precompute per-column values and bilinear x indices (independent of py)
+  const colX = new Float64Array(W);
+  const colOff = new Uint8Array(W);
+  const colWave = new Float64Array(W);
+  const colFog = new Float64Array(W);
+  const colWob = new Float64Array(W);
+  const colWobP = new Float64Array(W);
+  const colWobM = new Float64Array(W);
+  const colI = new Int32Array(W);
+  const colTx = new Float64Array(W);
+  const colIp = new Int32Array(W);
+  const colTxp = new Float64Array(W);
+  const colIm = new Int32Array(W);
+  const colTxm = new Float64Array(W);
+  for (let px = 0; px < W; px++) {
+    // facing the sea, left is +x: the picture is mirrored alongshore
+    const x = WORLD / 2 - (px + 0.5 - cx) * invScale;
+    colX[px] = x;
+    const isOff = x < 0 || x > WORLD ? 1 : 0;
+    colOff[px] = isOff;
+    colWave[px] = Math.sin(x * 0.35) * 0.9 + noise1(x * 0.6, 3) * 2;
+    const edge = Math.max(-x, x - WORLD);
+    colFog[px] = edge > -0.6 ? 0.5 * smoothstep(-0.6, 5, edge) : 0;
+    if (isOff) {
+      colWob[px] = wobbleAt(x);
+      colWobP[px] = wobbleAt(x + e);
+      colWobM[px] = wobbleAt(x - e);
+    } else {
+      let fx = x * invDx + 0.5;
+      if (fx < 0) fx = 0; else if (fx > maxGx) fx = maxGx;
+      colI[px] = fx | 0;
+      colTx[px] = fx - (fx | 0);
+      let fxp = (x + e) * invDx + 0.5;
+      if (fxp < 0) fxp = 0; else if (fxp > maxGx) fxp = maxGx;
+      colIp[px] = fxp | 0;
+      colTxp[px] = fxp - (fxp | 0);
+      let fxm = (x - e) * invDx + 0.5;
+      if (fxm < 0) fxm = 0; else if (fxm > maxGx) fxm = maxGx;
+      colIm[px] = fxm | 0;
+      colTxm[px] = fxm - (fxm | 0);
+    }
+  }
+
+  let kOut = 0;
   for (let py = 0; py < H; py++) {
-    const y = toWorldY(py);
+    const y = VIEW_Y0 + (py + 0.5) * invScale;
+    const waveY = (y - PROFILE.shoreline) * 2.2;
+    let fy = y * invDy + 0.5;
+    if (fy < 0) fy = 0; else if (fy > maxGy) fy = maxGy;
+    const j0 = fy | 0;
+    const ty0 = fy - j0;
+    const ity0 = 1 - ty0;
+    const r0 = j0 * gx;
+
+    let fyp = (y + e) * invDy + 0.5;
+    if (fyp < 0) fyp = 0; else if (fyp > maxGy) fyp = maxGy;
+    const jp = fyp | 0;
+    const typ = fyp - jp;
+    const ityp = 1 - typ;
+    const rp = jp * gx;
+
+    let fym = (y - e) * invDy + 0.5;
+    if (fym < 0) fym = 0; else if (fym > maxGy) fym = maxGy;
+    const jm = fym | 0;
+    const tym = fym - jm;
+    const itym = 1 - tym;
+    const rm = jm * gx;
+
     for (let px = 0; px < W; px++) {
-      const x = toWorldX(px);
-      // outside the beach (or past the shore): the untouched shore, faded
-      const off = x < 0 ? -x : x > WORLD ? x - WORLD : 0;
-      const h = off ? restHeight(x, y) : sample(hgt, x, y);
-      let col: RGB;
+      const off = colOff[px];
+      let h: number;
+      if (off) {
+        h = restHeightW(colX[px], y, colWob[px]);
+      } else {
+        const k = r0 + colI[px];
+        const tx = colTx[px];
+        const a = hgt[k];
+        const c = hgt[k + gx];
+        h = (a + (hgt[k + 1] - a) * tx) * ity0 + (c + (hgt[k + gx + 1] - c) * tx) * ty0;
+      }
+      let r: number;
+      let g: number;
+      let b: number;
       if (h < 0) {
         const depth = -h;
-        col = lerp3(look.waterShallow, look.waterDeep, smoothstep(0.02, 1.1, depth));
+        const t1 = smoothstep(0.02, 1.1, depth);
+        r = ws0 + (wd0 - ws0) * t1;
+        g = ws1 + (wd1 - ws1) * t1;
+        b = ws2 + (wd2 - ws2) * t1;
         // the sand shows through the shallows
-        col = lerp3(look.sandWet, col, smoothstep(0, 0.12, depth) * 0.75 + 0.25);
+        const t2 = smoothstep(0, 0.12, depth) * 0.75 + 0.25;
+        r = sw0 + (r - sw0) * t2;
+        g = sw1 + (g - sw1) * t2;
+        b = sw2 + (b - sw2) * t2;
         // long, gentle swell lines
-        const wave = Math.sin((y - PROFILE.shoreline) * 2.2 + Math.sin(x * 0.35) * 0.9 + noise1(x * 0.6, 3) * 2);
-        col = lerp3(col, look.foam, Math.max(0, wave - 0.82) * 0.9 * smoothstep(0.15, 0.6, depth));
+        if (depth > 0.15) {
+          const wave = Math.sin(waveY + colWave[px]);
+          if (wave > 0.82) {
+            const t3 = (wave - 0.82) * 0.9 * smoothstep(0.15, 0.6, depth);
+            r += (fm0 - r) * t3;
+            g += (fm1 - g) * t3;
+            b += (fm2 - b) * t3;
+          }
+        }
         // lace at the waterline
-        col = lerp3(col, look.foam, (1 - smoothstep(0, 0.035, depth)) * 0.75);
+        if (depth < 0.035) {
+          const t4 = (1 - smoothstep(0, 0.035, depth)) * 0.75;
+          r += (fm0 - r) * t4;
+          g += (fm1 - g) * t4;
+          b += (fm2 - b) * t4;
+        }
       } else {
-        const hx = off ? (restHeight(x + e, y) - restHeight(x - e, y)) / (2 * e) : (sample(hgt, x + e, y) - sample(hgt, x - e, y)) / (2 * e);
-        const hy = off ? (restHeight(x, y + e) - restHeight(x, y - e)) / (2 * e) : (sample(hgt, x, y + e) - sample(hgt, x, y - e)) / (2 * e);
+        let hx: number;
+        let hy: number;
+        if (off) {
+          const x = colX[px];
+          const w = colWob[px];
+          hx = (restHeightW(x + e, y, colWobP[px]) - restHeightW(x - e, y, colWobM[px])) * inv2e;
+          hy = (restHeightW(x, y + e, w) - restHeightW(x, y - e, w)) * inv2e;
+        } else {
+          const kp = r0 + colIp[px];
+          const txp = colTxp[px];
+          const hp = (hgt[kp] + (hgt[kp + 1] - hgt[kp]) * txp) * ity0 + (hgt[kp + gx] + (hgt[kp + gx + 1] - hgt[kp + gx]) * txp) * ty0;
+          const km = r0 + colIm[px];
+          const txm = colTxm[px];
+          const hm = (hgt[km] + (hgt[km + 1] - hgt[km]) * txm) * ity0 + (hgt[km + gx] + (hgt[km + gx + 1] - hgt[km + gx]) * txm) * ty0;
+          hx = (hp - hm) * inv2e;
+
+          const i0 = colI[px];
+          const tx = colTx[px];
+          const kyp = rp + i0;
+          const hyp = (hgt[kyp] + (hgt[kyp + 1] - hgt[kyp]) * tx) * ityp + (hgt[kyp + gx] + (hgt[kyp + gx + 1] - hgt[kyp + gx]) * tx) * typ;
+          const kym = rm + i0;
+          const hym = (hgt[kym] + (hgt[kym + 1] - hgt[kym]) * tx) * itym + (hgt[kym + gx] + (hgt[kym + gx + 1] - hgt[kym + gx]) * tx) * tym;
+          hy = (hyp - hym) * inv2e;
+        }
         // picture axes: px grows toward -x, py toward +y; exaggerate relief
-        const n = norm3([hx * 1.6, -hy * 1.6, 1]);
-        const lambert = Math.max(0, n[0] * L[0] + n[1] * L[1] + n[2] * L[2]);
-        const flat = L[2];
-        col = lerp3(look.sandWet, look.sandDry, smoothstep(0.04, 0.32, h));
-        const d = off ? 0 : sample(dug, x, y);
-        if (d < -0.04) col = lerp3(col, look.sandDeep, smoothstep(0.04, 0.3, -d) * 0.6);
-        if (d > 0.06) col = lerp3(col, lighten(look.sandDry, 0.15), smoothstep(0.06, 0.4, d) * 0.4);
-        const shade = Math.max(0.62, 1 + 0.3 * (lambert - flat) / (1 - flat + 1e-6));
-        col = [col[0] * shade, col[1] * shade, col[2] * shade];
+        const nx1 = hx * 1.6;
+        const ny1 = -hy * 1.6;
+        const invLen = 1 / Math.sqrt(nx1 * nx1 + ny1 * ny1 + 1);
+        const dot = (nx1 * L0 + ny1 * L1 + L2) * invLen;
+        const lambert = dot > 0 ? dot : 0;
+        const ts = smoothstep(0.04, 0.32, h);
+        r = sw0 + (sd0 - sw0) * ts;
+        g = sw1 + (sd1 - sw1) * ts;
+        b = sw2 + (sd2 - sw2) * ts;
+        if (!off) {
+          const k = r0 + colI[px];
+          const tx = colTx[px];
+          const d = (dug[k] + (dug[k + 1] - dug[k]) * tx) * ity0 + (dug[k + gx] + (dug[k + gx + 1] - dug[k + gx]) * tx) * ty0;
+          if (d < -0.04) {
+            const td = smoothstep(0.04, 0.3, -d) * 0.6;
+            r += (sp0 - r) * td;
+            g += (sp1 - g) * td;
+            b += (sp2 - b) * td;
+          } else if (d > 0.06) {
+            const tl = smoothstep(0.06, 0.4, d) * 0.4;
+            r += (sl0 - r) * tl;
+            g += (sl1 - g) * tl;
+            b += (sl2 - b) * tl;
+          }
+        }
+        let shade = 1 + (lambert - L2) * shadeScale;
+        if (shade < 0.62) shade = 0.62;
+        r *= shade;
+        g *= shade;
+        b *= shade;
       }
       // the shore carries on past the beach, faded into the haze
-      const edge = Math.max(-x, x - WORLD);
-      if (edge > -0.6) col = lerp3(col, look.fog, 0.5 * smoothstep(-0.6, 5, edge));
-      const k = (py * W + px) * 3;
-      out[k] = to8(col[0]);
-      out[k + 1] = to8(col[1]);
-      out[k + 2] = to8(col[2]);
+      const fogT = colFog[px];
+      if (fogT > 0) {
+        r += (fg0 - r) * fogT;
+        g += (fg1 - g) * fogT;
+        b += (fg2 - b) * fogT;
+      }
+      out[kOut++] = r <= 0 ? 0 : r >= 1 ? 255 : Math.round(r * 255);
+      out[kOut++] = g <= 0 ? 0 : g >= 1 ? 255 : Math.round(g * 255);
+      out[kOut++] = b <= 0 ? 0 : b >= 1 ? 255 : Math.round(b * 255);
     }
   }
   if (sand) {
@@ -662,10 +837,10 @@ function crc32(buf: Uint8Array): number {
   return (c ^ 0xffffffff) >>> 0;
 }
 function chunk(type: string, data: Uint8Array): Buffer {
-  const out = Buffer.alloc(12 + data.length);
+  const out = Buffer.allocUnsafe(12 + data.length);
   out.writeUInt32BE(data.length, 0);
   out.write(type, 4, 'latin1');
-  Buffer.from(data).copy(out, 8);
+  out.set(data, 8);
   out.writeUInt32BE(crc32(out.subarray(4, 8 + data.length)), 8 + data.length);
   return out;
 }
@@ -673,13 +848,18 @@ function chunk(type: string, data: Uint8Array): Buffer {
 /** RGB pixels → PNG (each row "Up"-filtered, which suits smooth sand). */
 export function encodePng(rgb: Uint8Array, W: number, H: number): Buffer {
   const stride = W * 3;
-  const raw = Buffer.alloc((stride + 1) * H);
-  for (let y = 0; y < H; y++) {
-    const o = y * (stride + 1);
-    raw[o] = y === 0 ? 0 : 2;
-    for (let i = 0; i < stride; i++) {
-      const v = rgb[y * stride + i];
-      raw[o + 1 + i] = y === 0 ? v : (v - rgb[(y - 1) * stride + i]) & 0xff;
+  const raw = Buffer.allocUnsafe((stride + 1) * H);
+  if (H > 0) {
+    raw[0] = 0;
+    raw.set(rgb.subarray(0, stride), 1);
+    for (let y = 1; y < H; y++) {
+      const o = y * (stride + 1);
+      const cur = y * stride;
+      const prev = cur - stride;
+      raw[o] = 2;
+      for (let i = 0; i < stride; i++) {
+        raw[o + 1 + i] = (rgb[cur + i] - rgb[prev + i]) & 0xff;
+      }
     }
   }
   const ihdr = Buffer.alloc(13);

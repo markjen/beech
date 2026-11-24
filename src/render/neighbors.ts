@@ -622,6 +622,11 @@ export class NeighborView {
     r.showStatic(buf);
   }
 
+  private readonly _projIn = new Vector3();
+  private readonly _projOut = new Vector3();
+  private keepOutCache: DOMRect[] = [];
+  private keepOutAt = 0;
+
   /** Per frame: which beaches to draw, shared lighting/sea, animated neighbor waves, name tags. */
   update(p: Palette, camForward: Vector3, time: number, simTime: number, tide: number, amp: number): void {
     this.tide = tide;
@@ -637,27 +642,47 @@ export class NeighborView {
     const ext = this.extent;
     if (ext.left - c < AHEAD) void this.more('left');
     if (ext.right + c < AHEAD) void this.more('right');
-    const slots = [...this.entries.values()].filter((e) => e.slot);
+    let anySlot = false;
+    for (const e of this.entries.values()) {
+      if (e.slot) {
+        anySlot = true;
+        break;
+      }
+    }
+    if (!anySlot) return;
     const engine = this.scene.getEngine();
     const cam = this.scene.activeCamera!;
     const vp = cam.viewport.toGlobal(engine.getRenderWidth(), engine.getRenderHeight());
     const scale = engine.getHardwareScalingLevel();
+    const transform = this.scene.getTransformMatrix();
+    const identity = Matrix.IdentityReadOnly;
     // the HUD the name tags must not cover: the place card (top left) and
-    // the tool column (right)
-    const keepOut = [...this.uiRoot.querySelectorAll<HTMLElement>('.place, .hud-right')]
-      .map((el) => el.getBoundingClientRect())
-      .filter((r) => r.width > 0);
-    for (const e of slots) {
-      const s = e.slot!;
+    // the tool column (right); measure at most every 250 ms to avoid per-frame reflow
+    const now = performance.now();
+    if (now - this.keepOutAt > 250) {
+      this.keepOutAt = now;
+      this.keepOutCache = [...this.uiRoot.querySelectorAll<HTMLElement>('.place, .hud-right')]
+        .map((el) => el.getBoundingClientRect())
+        .filter((r) => r.width > 0);
+    }
+    const keepOut = this.keepOutCache;
+    const winW = window.innerWidth;
+    const winH = window.innerHeight;
+    for (const e of this.entries.values()) {
+      const s = e.slot;
+      if (!s) continue;
       s.renderer.update(p, camForward, time, simTime, tide, amp);
-      const at = Vector3.Project(new Vector3(s.renderer.offsetX, 1.4, 0), Matrix.Identity(), this.scene.getTransformMatrix(), vp);
-      const x = at.x * scale;
-      const y = at.y * scale;
-      const visible = at.z > 0 && at.z < 1 && x > -100 && x < window.innerWidth + 100;
-      s.label.style.display = visible ? 'flex' : 'none';
+      this._projIn.set(s.renderer.offsetX, 1.4, 0);
+      Vector3.ProjectToRef(this._projIn, identity, transform, vp, this._projOut);
+      const x = this._projOut.x * scale;
+      const y = this._projOut.y * scale;
+      const visible = this._projOut.z > 0 && this._projOut.z < 1 && x > -100 && x < winW + 100;
+      const disp = visible ? 'flex' : 'none';
+      if (s.label.style.display !== disp) s.label.style.display = disp;
       if (!visible) continue;
-      const at2 = placeTag(x, y, s.label.offsetWidth, s.label.offsetHeight, window.innerWidth, window.innerHeight, keepOut);
-      s.label.style.transform = `translate(${Math.round(at2.left)}px, ${Math.round(at2.top)}px)`;
+      const at2 = placeTag(x, y, s.label.offsetWidth, s.label.offsetHeight, winW, winH, keepOut);
+      const tf = `translate(${Math.round(at2.left)}px, ${Math.round(at2.top)}px)`;
+      if (s.label.style.transform !== tf) s.label.style.transform = tf;
     }
   }
 }

@@ -215,7 +215,13 @@ export class Hud {
     }
   }
 
+  private lastUndo = -1;
+  private lastRedo = -1;
+
   setUndoState(undoCount: number, redoCount: number): void {
+    if (undoCount === this.lastUndo && redoCount === this.lastRedo) return;
+    this.lastUndo = undoCount;
+    this.lastRedo = redoCount;
     this.undoBtn.classList.toggle('dim', undoCount === 0 && redoCount === 0);
     this.undoBtn.dataset.count = String(undoCount);
   }

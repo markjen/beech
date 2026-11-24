@@ -376,10 +376,10 @@ function extent(o: PlacedObject): { reach: number; height: number } {
 const LINEAR = new Set<ObjectKind>(['rock', 'shell', 'seaglass', 'conch', 'sanddollar', 'starfish', 'nautilus', 'bottle']);
 /**
  * Driftwood's thickness isn't proportional to its length: it's built in
- * sizes 25 % apart and stretched to the exact length along the log and to
- * the matching thickness across it (at most ~12 % either way).
+ * size buckets and stretched to the exact length along the log and to
+ * the matching thickness across it.
  */
-const WOOD_STEP = Math.log(1.25);
+const WOOD_STEP = Math.log(2.0);
 
 interface Source {
   mesh: Mesh;
@@ -388,6 +388,8 @@ interface Source {
   slots: Inst[];
   dirty: boolean;
   resized: boolean;
+  users: number;
+  sharedKey?: string;
 }
 
 interface Inst {
@@ -400,8 +402,6 @@ interface Part {
   src: Source;
   /** this part relative to the thing's root */
   local: Matrix;
-  /** the flag's pennant flutters on its own */
-  cloth: boolean;
 }
 
 interface Look {
@@ -414,26 +414,43 @@ interface Look {
   users: number;
 }
 
+function colorCountFor(o: PlacedObject): number {
+  const look = ITEM_LOOKS[o.item];
+  return look ? look.colors.length : PROP_COLORS[o.kind].length;
+}
+
 function lookKey(o: PlacedObject): { key: string; base: number } {
   // a prize item shares its kind's shape but not its look — pink-shell is
   // kind shell — so the look key carries the item too (src/palette.ts)
   const item = ITEM_LOOKS[o.item] ? `:${o.item}` : '';
+  // Store items do not depend on variant at all (fixed geometry and palette)
+  if (isStoreKind(o.kind)) return { key: `${o.kind}${item}`, base: 1 };
+  // Geometry-invariant kinds only vary by colour (variant % colorCount)
+  if (o.kind === 'deckchair' || o.kind === 'sanddollar' || o.kind === 'bottle') {
+    return { key: `${o.kind}${item}:${o.variant % colorCountFor(o)}`, base: 1 };
+  }
+  // Flags vary only by pole height (variant % 3) and cloth colour (variant % colorCount)
+  if (o.kind === 'flag') {
+    return { key: `flag${item}:${o.variant % 3}:${o.variant % colorCountFor(o)}`, base: 1 };
+  }
   if (LINEAR.has(o.kind)) return { key: `${o.kind}${item}:${o.variant}`, base: 1 };
   if (o.kind === 'driftwood') {
     const b = Math.round(Math.log(Math.max(0.05, o.size)) / WOOD_STEP);
     return { key: `driftwood${item}:${o.variant}:${b}`, base: Math.exp(b * WOOD_STEP) };
   }
-  // flags, deckchairs and the shop's things are one size
   return { key: `${o.kind}${item}:${o.variant}`, base: 1 };
 }
 
 class PropBank {
   private readonly looks = new Map<string, Look>();
   private readonly sources = new Set<Source>();
+  private readonly sharedSources = new Map<string, Source>();
+  private readonly clothMats = new Set<ShaderMaterial>();
   readonly mats: Record<ObjectKind, ShaderMaterial[]>;
   readonly poleMat: ShaderMaterial;
   readonly glow: Glow;
   private n = 0;
+  private windTime = 1;
 
   constructor(
     private readonly scene: Scene,
@@ -444,6 +461,14 @@ class PropBank {
     this.glow = new Glow(scene);
     // one upload per changed source per frame, whatever moved
     scene.onBeforeRenderObservable.add(() => this.flush());
+  }
+
+  tick(dt: number): void {
+    this.glow.tick(dt);
+    if (this.clothMats.size) {
+      this.windTime += dt;
+      for (const m of this.clothMats) m.setFloat('windTime', this.windTime);
+    }
   }
 
   /** Materials for one thing: its own item's colours and finish, or its kind's. */
@@ -475,14 +500,136 @@ class PropBank {
     if (--l.users > 0) return;
     this.looks.delete(l.key);
     for (const p of l.parts) {
+      if (--p.src.users > 0) continue;
+      if (p.src.sharedKey) this.sharedSources.delete(p.src.sharedKey);
       this.sources.delete(p.src);
       p.src.mesh.dispose();
     }
   }
 
+  private wrapSource(m: Mesh, name: string, sharedKey?: string): Source {
+    m.position.setAll(0);
+    m.rotationQuaternion = null;
+    m.rotation.setAll(0);
+    m.scaling.setAll(1);
+    m.isPickable = false;
+    m.alwaysSelectAsActiveMesh = true;
+    m.doNotSyncBoundingInfo = true;
+    m.name = name;
+    m.freezeWorldMatrix();
+    const src: Source = { mesh: m, buf: new Float32Array(16 * 4), count: 0, slots: [], dirty: true, resized: true, users: 1, sharedKey };
+    m.thinInstanceSetBuffer('matrix', src.buf, 16, false);
+    m.thinInstanceCount = 0;
+    m.setEnabled(false);
+    this.sources.add(src);
+    if (sharedKey) this.sharedSources.set(sharedKey, src);
+    return src;
+  }
+
+  private acquireShared(sharedKey: string, make: () => Mesh): Source {
+    const existing = this.sharedSources.get(sharedKey);
+    if (existing) {
+      existing.users++;
+      return existing;
+    }
+    return this.wrapSource(make(), `${sharedKey}#${this.n++}`, sharedKey);
+  }
+
   private build(key: string, o: PlacedObject, base: number): Look {
     const set = this.matsFor(o);
     const mat = set[o.variant % set.length];
+    const item = ITEM_LOOKS[o.item] ? `:${o.item}` : '';
+
+    // Shared-part kinds: reuse identical sub-part sources (pole, cloth, frame, cork)
+    // across colour/height variants to cut draw calls further.
+    if (o.kind === 'flag') {
+      const hIdx = o.variant % 3;
+      const cIdx = o.variant % set.length;
+      const H = 0.9 + hIdx * 0.15;
+      const poleSrc = this.acquireShared(`flag:pole:${hIdx}`, () => {
+        const f = flagMesh(this.scene, o);
+        f.cloth.parent = null;
+        f.cloth.dispose();
+        f.pole.material = this.poleMat;
+        return f.pole;
+      });
+      const clothSrc = this.acquireShared(`flag:cloth${item}:${cIdx}`, () => {
+        const f = flagMesh(this.scene, o);
+        f.cloth.parent = null;
+        f.pole.dispose();
+        f.cloth.material = mat;
+        this.clothMats.add(mat);
+        mat.setFloat('windTime', this.windTime);
+        return f.cloth;
+      });
+      return {
+        key,
+        parts: [
+          { src: poleSrc, local: Matrix.Identity() },
+          { src: clothSrc, local: Matrix.Translation(0, H, 0) },
+        ],
+        base,
+        lights: [],
+        users: 0,
+      };
+    }
+
+    if (o.kind === 'deckchair') {
+      const cIdx = o.variant % set.length;
+      const frameSrc = this.acquireShared('deckchair:frame', () => {
+        const d = deckchairMesh(this.scene, o);
+        d.canvas.parent = null;
+        d.canvas.dispose();
+        d.frame.material = this.poleMat;
+        return d.frame;
+      });
+      const canvasSrc = this.acquireShared(`deckchair:canvas${item}:${cIdx}`, () => {
+        const d = deckchairMesh(this.scene, o);
+        d.canvas.parent = null;
+        d.frame.dispose();
+        d.canvas.material = mat;
+        return d.canvas;
+      });
+      return {
+        key,
+        parts: [
+          { src: frameSrc, local: Matrix.Identity() },
+          { src: canvasSrc, local: Matrix.Identity() },
+        ],
+        base,
+        lights: [],
+        users: 0,
+      };
+    }
+
+    if (o.kind === 'bottle') {
+      const cIdx = o.variant % set.length;
+      const bodySrc = this.acquireShared(`bottle:body${item}:${cIdx}`, () => {
+        const bt = bottleMesh(this.scene, o);
+        bt.cork.parent = null;
+        bt.cork.dispose();
+        bt.body.material = mat;
+        return bt.body;
+      });
+      const corkSrc = this.acquireShared('bottle:cork', () => {
+        const bt = bottleMesh(this.scene, o);
+        bt.cork.parent = null;
+        bt.body.dispose();
+        bt.cork.material = this.poleMat;
+        return bt.cork;
+      });
+      return {
+        key,
+        parts: [
+          { src: bodySrc, local: Matrix.Identity() },
+          { src: corkSrc, local: Matrix.Identity() },
+        ],
+        base,
+        lights: [],
+        users: 0,
+      };
+    }
+
     let root: Mesh;
     let lights: Vector3[] = [];
     if (isStoreKind(o.kind)) {
@@ -490,21 +637,6 @@ class PropBank {
       for (const p of b.parts) p.mesh.material = p.mat === 'pole' ? this.poleMat : set[p.mat % set.length];
       root = b.root;
       lights = b.lights;
-    } else if (o.kind === 'flag') {
-      const f = flagMesh(this.scene, o);
-      root = f.pole;
-      root.material = this.poleMat;
-      f.cloth.material = mat;
-    } else if (o.kind === 'deckchair') {
-      const d = deckchairMesh(this.scene, o);
-      root = d.frame;
-      root.material = this.poleMat;
-      d.canvas.material = mat;
-    } else if (o.kind === 'bottle') {
-      const bt = bottleMesh(this.scene, o);
-      root = bt.body;
-      root.material = mat;
-      bt.cork.material = this.poleMat;
     } else {
       root =
         o.kind === 'rock' ? rockMesh(this.scene, o)
@@ -531,21 +663,8 @@ class PropBank {
         if (m !== root) m.dispose();
         continue;
       }
-      m.position.setAll(0);
-      m.rotationQuaternion = null;
-      m.rotation.setAll(0);
-      m.scaling.setAll(1);
-      m.isPickable = false;
-      m.alwaysSelectAsActiveMesh = true;
-      m.doNotSyncBoundingInfo = true;
-      m.name = `${key}#${this.n++}`;
-      m.freezeWorldMatrix();
-      const src: Source = { mesh: m, buf: new Float32Array(16 * 4), count: 0, slots: [], dirty: true, resized: true };
-      m.thinInstanceSetBuffer('matrix', src.buf, 16, false);
-      m.thinInstanceCount = 0;
-      m.setEnabled(false);
-      this.sources.add(src);
-      parts.push({ src, local, cloth: o.kind === 'flag' && m !== root });
+      const src = this.wrapSource(m, `${key}#${this.n++}`);
+      parts.push({ src, local });
     }
     if (!root.getTotalVertices()) root.dispose();
     return { key, parts, base, lights, users: 0 };
@@ -630,7 +749,7 @@ interface Shown {
   sx: number;
   sy: number;
   sz: number;
-  /** nothing moves it (resting, not afloat, not a flag): its matrices are already right */
+  /** nothing moves it (resting, not afloat): its matrices are already right */
   settled: boolean;
   glow?: GlowHandle;
 }
@@ -639,7 +758,6 @@ interface Shown {
 const SETTLED = 1e-3;
 const tmpRoot = new Matrix();
 const tmpPart = new Matrix();
-const tmpCloth = new Matrix();
 const tmpQ = new Quaternion();
 const tmpS = new Vector3();
 const tmpT = new Vector3();
@@ -650,6 +768,8 @@ const tmpT = new Vector3();
  */
 export class ObjectView {
   private readonly shown = new Map<number, Shown>();
+  /** only the unsettled (moving / floating) items, so update(dt) skips resting things in O(active) */
+  private readonly active = new Set<Shown>();
   private readonly bank: PropBank;
   private time = 0;
   private hidden = false;
@@ -668,9 +788,7 @@ export class ObjectView {
 
   /** things on this beach that moved or animated in the last update (profiling) */
   get moving(): number {
-    let n = 0;
-    for (const s of this.shown.values()) if (!s.settled) n++;
-    return n;
+    return this.active.size;
   }
 
   /** draw calls all things on all beaches take now, glows included (profiling) */
@@ -683,13 +801,24 @@ export class ObjectView {
    * are kept and read again each update (the caller updates them in place).
    */
   set(states: ObjectState[]): void {
+    const bulk = Math.abs(states.length - this.shown.size) > 4;
     const seen = new Set<number>();
     for (const st of states) {
       seen.add(st.id);
       const cur = this.shown.get(st.id);
       if (cur && cur.st.kind === st.kind && cur.st.item === st.item && cur.st.variant === st.variant && cur.st.size === st.size) {
         cur.st = st;
-        cur.settled = false;
+        if (
+          st.floating ||
+          Math.abs(st.x - cur.x) + Math.abs(st.y - cur.y) + Math.abs(st.z - cur.z) + Math.abs(st.angle - cur.angle) > SETTLED
+        ) {
+          if (bulk && !st.floating) {
+            this.place(cur, 0);
+          } else {
+            cur.settled = false;
+            this.active.add(cur);
+          }
+        }
         continue;
       }
       if (cur) this.drop(cur);
@@ -720,11 +849,13 @@ export class ObjectView {
       if (this.hidden) s.glow.setEnabled(false);
     }
     this.shown.set(st.id, s);
+    this.active.add(s);
     if (!this.hidden) for (const i of insts) this.bank.show(i);
     this.place(s, 0);
   }
 
   private drop(s: Shown): void {
+    this.active.delete(s);
     for (const i of s.insts) this.bank.hide(i);
     this.bank.release(s.look);
     s.glow?.dispose();
@@ -747,11 +878,11 @@ export class ObjectView {
 
   update(dt: number): void {
     this.time += dt;
-    this.bank.glow.tick(dt);
-    if (this.hidden) return;
+    this.bank.tick(dt);
+    if (this.hidden || this.active.size === 0) return;
     const ease = 1 - Math.exp(-dt * 12);
-    for (const s of this.shown.values()) {
-      if (!s.settled) this.place(s, ease);
+    for (const s of this.active) {
+      this.place(s, ease);
     }
   }
 
@@ -763,15 +894,23 @@ export class ObjectView {
     const dz = t.z - s.z;
     let da = t.angle - s.angle;
     da -= Math.round(da / (Math.PI * 2)) * Math.PI * 2;
-    s.x += dx * k;
-    s.y += dy * k;
-    s.z += dz * k;
-    s.angle += da * k;
+    const rem = (1 - k) * (Math.abs(dx) + Math.abs(dy) + Math.abs(dz) + Math.abs(da));
+    // nothing left to ease and nothing animating: snap and stop touching it until the sim moves it
+    // (flag pennants flutter in the vertex shader via windTime, so flags settle too)
+    const still = rem < SETTLED;
+    if (still) {
+      s.x = t.x;
+      s.y = t.y;
+      s.z = t.z;
+      s.angle = t.angle;
+    } else {
+      s.x += dx * k;
+      s.y += dy * k;
+      s.z += dz * k;
+      s.angle += da * k;
+    }
     const flag = t.kind === 'flag';
     const afloat = t.floating && (t.kind === 'driftwood' || t.kind === 'bottle');
-    // nothing left to ease and nothing animating: stop touching it until the sim moves it
-    const still = Math.abs(dx) + Math.abs(dy) + Math.abs(dz) + Math.abs(da) < SETTLED;
-    const animated = flag || t.floating;
     const bob = t.floating ? Math.sin(this.time * 1.7 + s.bob) * 0.015 : 0;
     // a conch lies on its side: lift its axis off the sand
     const lift = t.kind === 'conch' ? t.size * 0.24 : 0;
@@ -785,17 +924,13 @@ export class ObjectView {
     Matrix.ComposeToRef(tmpS, tmpQ, tmpT, tmpRoot);
     const parts = s.look.parts;
     for (let p = 0; p < parts.length; p++) {
-      const part = parts[p];
-      if (part.cloth) {
-        const flutter = Math.sin(this.time * 3.1 + s.bob) * 0.35 + Math.sin(this.time * 7.3 + s.bob) * 0.1;
-        Matrix.RotationYToRef(flutter, tmpCloth);
-        tmpCloth.multiplyToRef(part.local, tmpPart);
-        tmpPart.multiplyToRef(tmpRoot, tmpPart);
-      } else part.local.multiplyToRef(tmpRoot, tmpPart);
+      parts[p].local.multiplyToRef(tmpRoot, tmpPart);
       this.bank.write(s.insts[p], tmpPart);
     }
     s.glow?.setPose(tmpT, yaw);
-    s.settled = still && !animated;
+    s.settled = still && !t.floating;
+    if (s.settled) this.active.delete(s);
+    else this.active.add(s);
   }
 
   /**
@@ -807,7 +942,10 @@ export class ObjectView {
     for (const s of this.shown.values()) {
       if (!s.settled) continue;
       const t = s.st;
-      if (t.floating || Math.abs(t.x - s.x) + Math.abs(t.y - s.y) + Math.abs(t.z - s.z) + Math.abs(t.angle - s.angle) > SETTLED) s.settled = false;
+      if (t.floating || Math.abs(t.x - s.x) + Math.abs(t.y - s.y) + Math.abs(t.z - s.z) + Math.abs(t.angle - s.angle) > SETTLED) {
+        s.settled = false;
+        this.active.add(s);
+      }
     }
   }
 

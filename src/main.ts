@@ -217,6 +217,8 @@ async function boot() {
   let frames = 0;
   let swashRate = 0;
 
+  let pendingBuf: Float32Array | null = null;
+  let pendingTouch = false;
   type SandReply = { delta: Float32Array; objects: PlacedObject[]; cover?: Float32Array };
   /** what's on the beach now (the worker sends the roster when it changes, positions every frame) */
   let objectStates: ObjectState[] = [];
@@ -243,27 +245,35 @@ async function boot() {
       return;
     }
     if (m.type !== 'frame') return;
-    renderer.uploadFrame(m.buf);
+    // everything's position this frame, in roster order (no objects made per frame)
+    const pos = m.objPos;
     if (m.roster) {
-      // something was added or removed: a new roster (positions follow below)
-      objectStates = m.roster.map((o) => ({ ...o, z: 0, floating: false }));
+      // something was added or removed: apply positions right away so newly
+      // added objects spawn at their true z and settle immediately
+      objectStates = m.roster.map((o, i) => {
+        const off = i * POS_STRIDE;
+        return off + 4 < pos.length
+          ? { ...o, x: pos[off], y: pos[off + 1], z: pos[off + 2], angle: pos[off + 3], floating: pos[off + 4] > 0 }
+          : { ...o, z: 0, floating: false };
+      });
       objectView.set(objectStates);
+      pendingTouch = false;
       // how many of each item you've put down (prizes can only go down as often as you own them)
       const placed = new Map<string, number>();
       for (const o of objectStates) if (!o.wild) placed.set(o.item, (placed.get(o.item) ?? 0) + 1);
       inventory.setPlaced(placed);
       // kept from the sea: strays you picked up and put down
       inventory.setFound(countFound());
-    }
-    // everything's position this frame, in roster order (no objects made per frame)
-    const pos = m.objPos;
-    for (let i = 0, o = 0; i < objectStates.length && o < pos.length; i++, o += POS_STRIDE) {
-      const s = objectStates[i];
-      s.x = pos[o];
-      s.y = pos[o + 1];
-      s.z = pos[o + 2];
-      s.angle = pos[o + 3];
-      s.floating = pos[o + 4] > 0;
+    } else {
+      for (let i = 0, o = 0; i < objectStates.length && o < pos.length; i++, o += POS_STRIDE) {
+        const s = objectStates[i];
+        s.x = pos[o];
+        s.y = pos[o + 1];
+        s.z = pos[o + 2];
+        s.angle = pos[o + 3];
+        s.floating = pos[o + 4] > 0;
+      }
+      pendingTouch = true;
     }
     // a held thing follows the finger; one just put down waits for the worker
     if (settling) {
@@ -271,9 +281,14 @@ async function boot() {
       if (!s || performance.now() > settling.until || (Math.abs(s.x - settling.x) < 0.05 && Math.abs(s.y - settling.y) < 0.05)) settling = null;
     }
     applyDrag();
-    objectView.touch();
-    picker.updateFromFrame(m.buf);
-    send({ type: 'return', buf: m.buf }, [m.buf.buffer]);
+    // Defer the GPU texture upload and picker sync to the render loop so slow
+    // frames don't pile up wasted work; return any superseded buffer right away.
+    if (pendingBuf) {
+      send({ type: 'return', buf: pendingBuf, objPos: pos }, [pendingBuf.buffer, pos.buffer]);
+    } else {
+      send({ type: 'return', objPos: pos }, [pos.buffer]);
+    }
+    pendingBuf = m.buf;
     const dtSim = m.t - info.t;
     if (frames > 0 && dtSim > 0) swashRate += ((m.swash - info.swash) / dtSim - swashRate) * 0.3;
     prevT = frames === 0 ? m.t : info.t;
@@ -920,7 +935,10 @@ async function boot() {
     return { x: 0.5 + side * 0.48, y: 0.24 - Math.sin(e) * 0.2, alpha };
   };
   const clear = new Color4(0, 0, 0, 1);
+  let lastUiPalette: Palette | null = null;
   const applyUiColors = (p: Palette) => {
+    if (p === lastUiPalette) return;
+    lastUiPalette = p;
     const lum = 0.3 * p.ui[0] + 0.59 * p.ui[1] + 0.11 * p.ui[2];
     const bg = lum > 0.6 ? 'rgba(46, 40, 78, 0.55)' : 'rgba(255, 250, 244, 0.72)';
     hud.setColors(rgbToCss(p.ui), bg);
@@ -931,6 +949,9 @@ async function boot() {
   const t0 = last;
   let skip = false;
   const right = new Vector3();
+  let liveAt = -Infinity;
+  let liveFixed: string | undefined;
+  let liveBeachId = '';
   let slowTime = 0;
   let fastTime = 0;
   let reportedResDrop = false;
@@ -967,8 +988,14 @@ async function boot() {
     const dt = Math.min(0.1, (now - last) / 1000);
     last = now;
     const now0 = clockNow();
+    const nowMs = now0.getTime();
     const fixed = fixedPalette ?? (settings.palette !== 'live' ? settings.palette : undefined);
-    liveState = live.compute(now0, fixed);
+    if (Math.abs(nowMs - liveAt) >= 500 || fixed !== liveFixed || beach.id !== liveBeachId) {
+      liveState = live.compute(now0, fixed);
+      liveAt = nowMs;
+      liveFixed = fixed;
+      liveBeachId = beach.id;
+    }
     if (now - seaSentAt > 2000) {
       seaSentAt = now;
       sendSea();
@@ -982,12 +1009,21 @@ async function boot() {
     hud.setUndoState(info.undoCount, info.redoCount);
     applyUiColors(palette);
 
+    if (pendingBuf) {
+      const buf = pendingBuf;
+      pendingBuf = null;
+      picker.updateFromFrame(buf);
+      renderer.uploadFrame(buf);
+      send({ type: 'return', buf }, [buf.buffer]);
+    }
+
     const mix = Math.min(1, (now - frameAt) / (1000 / SIM_HZ));
     renderer.setFrameMix(mix);
     const simTime = prevT + (info.t - prevT) * mix;
     const amp = (1 - (1 - WAVES.calmFactor) * info.calmMix) * beach.waves;
-    renderer.update(palette, cam.forward(), (now - t0) / 1000, simTime, info.tide, amp);
-    neighbors?.update(palette, cam.forward(), (now - t0) / 1000, simTime, info.tide, amp);
+    const camFwd = cam.forward();
+    renderer.update(palette, camFwd, (now - t0) / 1000, simTime, info.tide, amp);
+    neighbors?.update(palette, camFwd, (now - t0) / 1000, simTime, info.tide, amp);
     // your beach is drawn while it's near the view (not while visiting someone)
     const ownShown = neighbors ? neighbors.ownVisible : true;
     renderer.setVisible(ownShown);
@@ -996,7 +1032,7 @@ async function boot() {
     if (cam.mode === 'chair') {
       // the static shore starts where the drawn beaches end
       horizon.setExtent(neighbors?.windowCenters() ?? [0]);
-      horizon.update(palette, cam.forward(), simTime, info.tide, amp);
+      horizon.update(palette, camFwd, simTime, info.tide, amp);
     }
     const sk = liveState.sky;
     const moonDisc = skyDisc(sk.moon.dir, sk.moon.elevation);
@@ -1012,6 +1048,10 @@ async function boot() {
     clear.set(palette.fog[0], palette.fog[1], palette.fog[2], 1);
     scene.clearColor = clear;
 
+    if (pendingTouch) {
+      pendingTouch = false;
+      objectView.touch();
+    }
     objectView.update(dt);
     if (digging) haptics.dig(info.digIntensity);
     cam.camera.getDirectionToRef(Vector3.Right(), right);

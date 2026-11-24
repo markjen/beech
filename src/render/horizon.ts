@@ -8,13 +8,12 @@ import { VertexData } from '@babylonjs/core/Meshes/mesh.vertexData';
 import type { Scene } from '@babylonjs/core/scene';
 
 import { WAVES, WORLD_SIZE_X, WORLD_SIZE_Z } from '../config';
-import type { Palette, RGB } from '../palette';
+import type { Palette } from '../palette';
 import { restHeight } from '../sim/profile';
 import { swellEnvelope, type Swell } from '../sim/waves';
 import { ORIGIN_Z } from './beachRenderer';
 import { flatVertex, shoreFragment } from './shaders';
 
-const c3 = (c: RGB) => new Color3(c[0], c[1], c[2]);
 const LIGHT = ['sunDir', 'sunCol', 'ambCol', 'shadowCol', 'cameraDir'];
 /** how far the static beach runs along the shore on each side (m) */
 const SHORE_LENGTH = 420;
@@ -36,6 +35,19 @@ export class Horizon {
   private extent = { minX: -WORLD_SIZE_X / 2, maxX: WORLD_SIZE_X / 2 };
   /** world-X centres of the drawn beaches, left to right */
   private centers: number[] = [0];
+
+  private readonly _sun = new Vector3();
+  private readonly _sunCol = new Color3();
+  private readonly _ambCol = new Color3();
+  private readonly _shadowCol = new Color3();
+  private readonly _fogCol = new Color3();
+  private readonly _baseCol = new Color3();
+  private readonly _wetCol = new Color3();
+  private readonly _foamCol = new Color3();
+  private readonly _oceanCol = new Color3();
+  private readonly _deepCol = new Color3();
+  private readonly _swellA = new Vector3();
+  private lastAmpScale = NaN;
 
   constructor(
     private readonly scene: Scene,
@@ -71,13 +83,23 @@ export class Horizon {
     Effect.ShadersStore['beachShoreFragmentShader'] = shoreFragment;
     this.sandMat = new ShaderMaterial('openShore', scene, 'beachShore', {
       attributes: ['position', 'normal'],
-      uniforms: ['world', 'viewProjection', ...LIGHT, 'baseCol', 'wetCol', 'foamCol', 'fogCol', 'fadeTop', 'fadeBottom',
+      uniforms: ['world', 'viewProjection', 'windTime', ...LIGHT, 'baseCol', 'wetCol', 'foamCol', 'fogCol', 'fadeTop', 'fadeBottom',
         'tide', 'simTime', 'swellA', 'swellW', 'swellP', 'swellK', 'swellEnv'],
       samplers: [],
     });
+    this.sandMat.setFloat('windTime', 0);
     this.sandMat.setFloat('fadeTop', -40);
     this.sandMat.setFloat('fadeBottom', -50);
     this.sandMat.backFaceCulling = false;
+
+    const swellW = new Vector3(swell[0].omega, swell[1].omega, swell[2].omega);
+    const swellP = new Vector3(swell[0].phase, swell[1].phase, swell[2].phase);
+    const swellK = new Vector3(swell[0].k, swell[1].k, swell[2].k);
+    for (const m of [this.seaMat, this.sandMat]) {
+      m.setVector3('swellW', swellW);
+      m.setVector3('swellP', swellP);
+      m.setVector3('swellK', swellK);
+    }
 
     this.sea = this.seaMesh(edgeZ);
     this.sea.material = this.seaMat;
@@ -194,30 +216,42 @@ export class Horizon {
 
   update(p: Palette, cameraDir: Vector3, simTime: number, tide: number, ampScale: number): void {
     if (!this.enabled) return;
-    const sun = new Vector3(p.sunDir[0], p.sunDir[1], p.sunDir[2]).normalize();
+    this._sun.set(p.sunDir[0], p.sunDir[1], p.sunDir[2]).normalize();
+    this._sunCol.set(p.sun[0], p.sun[1], p.sun[2]);
+    this._ambCol.set(p.ambient[0], p.ambient[1], p.ambient[2]);
+    this._shadowCol.set(p.shadow[0], p.shadow[1], p.shadow[2]);
+    this._fogCol.set(p.fog[0], p.fog[1], p.fog[2]);
+    this._baseCol.set(p.sandDry[0], p.sandDry[1], p.sandDry[2]);
+    this._wetCol.set(p.sandWet[0], p.sandWet[1], p.sandWet[2]);
+    this._foamCol.set(p.foam[0], p.foam[1], p.foam[2]);
+    this._oceanCol.set(p.farOcean[0], p.farOcean[1], p.farOcean[2]);
+    this._deepCol.set(p.waterDeep[0], p.waterDeep[1], p.waterDeep[2]);
     for (const m of [this.seaMat, this.sandMat]) {
-      m.setVector3('sunDir', sun);
-      m.setColor3('sunCol', c3(p.sun));
-      m.setColor3('ambCol', c3(p.ambient));
-      m.setColor3('shadowCol', c3(p.shadow));
+      m.setVector3('sunDir', this._sun);
+      m.setColor3('sunCol', this._sunCol);
+      m.setColor3('ambCol', this._ambCol);
+      m.setColor3('shadowCol', this._shadowCol);
       m.setVector3('cameraDir', cameraDir);
-      m.setColor3('fogCol', c3(p.fog));
+      m.setColor3('fogCol', this._fogCol);
     }
-    this.sandMat.setColor3('baseCol', c3(p.sandDry));
-    this.sandMat.setColor3('wetCol', c3(p.sandWet));
-    this.sandMat.setColor3('foamCol', c3(p.foam));
+    this.sandMat.setColor3('baseCol', this._baseCol);
+    this.sandMat.setColor3('wetCol', this._wetCol);
+    this.sandMat.setColor3('foamCol', this._foamCol);
     const sw = this.swell;
+    const env = swellEnvelope(simTime, sw);
+    const ampChanged = ampScale !== this.lastAmpScale;
+    if (ampChanged) {
+      this.lastAmpScale = ampScale;
+      this._swellA.set(sw[0].amp * ampScale, sw[1].amp * ampScale, sw[2].amp * ampScale);
+    }
     for (const m of [this.seaMat, this.sandMat]) {
-      m.setVector3('swellA', new Vector3(sw[0].amp * ampScale, sw[1].amp * ampScale, sw[2].amp * ampScale));
-      m.setVector3('swellW', new Vector3(sw[0].omega, sw[1].omega, sw[2].omega));
-      m.setVector3('swellP', new Vector3(sw[0].phase, sw[1].phase, sw[2].phase));
-      m.setVector3('swellK', new Vector3(sw[0].k, sw[1].k, sw[2].k));
-      m.setFloat('swellEnv', swellEnvelope(simTime, sw));
+      if (ampChanged) m.setVector3('swellA', this._swellA);
+      m.setFloat('swellEnv', env);
       m.setFloat('simTime', simTime);
       m.setFloat('tide', tide);
     }
-    this.seaMat.setColor3('oceanCol', c3(p.farOcean));
-    this.seaMat.setColor3('deepCol', c3(p.waterDeep));
-    this.seaMat.setColor3('foamCol', c3(p.foam));
+    this.seaMat.setColor3('oceanCol', this._oceanCol);
+    this.seaMat.setColor3('deepCol', this._deepCol);
+    this.seaMat.setColor3('foamCol', this._foamCol);
   }
 }

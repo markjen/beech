@@ -16,7 +16,7 @@ export type ToWorker =
   | { type: 'flags'; flags: Partial<SimFlags> }
   | { type: 'pause'; paused: boolean }
   | { type: 'tune'; section: TunableSection; key: string; value: number }
-  | { type: 'return'; buf: Float32Array }
+  | { type: 'return'; buf?: Float32Array; objPos?: Float32Array }
   | { type: 'bench' }
   /** ask for the player's sand (minus the rest beach) for saving */
   | { type: 'getSand'; id: number }

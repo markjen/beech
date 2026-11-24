@@ -169,26 +169,40 @@ function beachhut(scene: Scene, o: PlacedObject): Built {
   return { root: walls, parts, lights: [] };
 }
 
+/** Append geometry b into a. */
+function appendGeom(a: { P: number[]; I: number[] }, b: { P: number[]; I: number[] }): void {
+  const base = a.P.length / 3;
+  for (let i = 0; i < b.P.length; i++) a.P.push(b.P[i]);
+  for (let i = 0; i < b.I.length; i++) a.I.push(b.I[i] + base);
+}
+
 /** A little striped lighthouse with a lamp that glows. */
 function lighthouse(scene: Scene, o: PlacedObject): Built {
   const bands = 5;
   const H = 2.2;
   const r0 = 0.42;
   const r1 = 0.26;
-  const bandParts: Built['parts'] = [];
+  const stripe0 = { P: [] as number[], I: [] as number[] };
+  const stripe1 = { P: [] as number[], I: [] as number[] };
   for (let b = 0; b < bands; b++) {
     const y0 = (b / bands) * H;
     const y1 = ((b + 1) / bands) * H;
     const ra = r0 + (r1 - r0) * (b / bands);
     const rb = r0 + (r1 - r0) * ((b + 1) / bands);
-    const g = tower([[y0, ra], [y1, rb]], 10);
-    bandParts.push({ mesh: part(scene, `lh${o.id}_${b}`, g), mat: b % 2 });
+    appendGeom(b % 2 === 0 ? stripe0 : stripe1, tower([[y0, ra], [y1, rb]], 10));
   }
-  const gallery = part(scene, `gal${o.id}`, tower([[H, r1 + 0.1], [H + 0.06, r1 + 0.1]], 10));
+  const trim = tower([[H, r1 + 0.1], [H + 0.06, r1 + 0.1]], 10);
+  appendGeom(trim, tower([[H + 0.42, r1 * 0.95], [H + 0.72, 0.02]], 8));
+  const root = part(scene, `lh${o.id}_0`, stripe0);
+  const accent = part(scene, `lh${o.id}_1`, stripe1);
+  const trimMesh = part(scene, `gal${o.id}`, trim);
   const lamp = part(scene, `lamp${o.id}`, tower([[H + 0.06, r1 * 0.8], [H + 0.42, r1 * 0.8]], 8));
-  const cap = part(scene, `cap${o.id}`, tower([[H + 0.42, r1 * 0.95], [H + 0.72, 0.02]], 8));
-  const root = bandParts[0].mesh;
-  const parts: Built['parts'] = [...bandParts, { mesh: gallery, mat: 2 }, { mesh: lamp, mat: 3 }, { mesh: cap, mat: 2 }];
+  const parts: Built['parts'] = [
+    { mesh: root, mat: 0 },
+    { mesh: accent, mat: 1 },
+    { mesh: trimMesh, mat: 2 },
+    { mesh: lamp, mat: 3 },
+  ];
   assemble(root, parts);
   return { root, parts, lights: [new Vector3(0, H + 0.24, 0)] };
 }

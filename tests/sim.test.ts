@@ -381,4 +381,38 @@ describe('the water step skips dry rows above the swash', () => {
     for (let k = 0; k < sim.n; k++) if (sim.vx[k] !== 0 || sim.vy[k] !== 0) moving++;
     expect(moving).toBe(0);
   });
+
+  it('still slumps a steep dry mound high on the beach across iterations and conserves sand', () => {
+    const sim = new BeachSim(grid, 3, { closed: true, waves: false, erosion: false, healing: false, seep: false });
+    const j0 = Math.floor((PROFILE.shoreline + 11) / sim.dx);
+    const i0 = Math.floor(sim.nx / 2);
+    const k0 = j0 * sim.nx + i0;
+    sim.sand[k0] += 1.2;
+    const before = sandPlusSediment(sim);
+    const peak0 = sim.sand[k0];
+    for (let s = 0; s < 15; s++) sim.step(DT);
+    expect(sim.sand[k0]).toBeLessThan(peak0 - 0.5);
+    // neighbours two cells away received sand through multi-iteration propagation
+    expect(sim.sand[k0 + 2]).toBeGreaterThan(sim.rest[k0 + 2] + 1e-4);
+    expect(sandPlusSediment(sim)).toBeCloseTo(before, 3);
+  });
+
+  it('loads a beach with multiple rocks and props via loadDelta without altering rock heights', () => {
+    const simA = new BeachSim(grid, 1, { waves: false, erosion: false, healing: false, seep: false });
+    const y = PROFILE.shoreline + 9;
+    simA.placeObject({ kind: 'rock', item: 'rock', x: 10, y, angle: 0.3, size: 0.5, variant: 1 });
+    simA.placeObject({ kind: 'rock', item: 'rock', x: 14, y, angle: 1.1, size: 0.6, variant: 2 });
+    simA.placeObject({ kind: 'flag', item: 'flag', x: 18, y, angle: 0, size: 0.4, variant: 3 });
+    simA.placeObject({ kind: 'shell', item: 'shell', x: 20, y, angle: 0.5, size: 0.1, variant: 2 });
+    const delta = simA.sandDelta();
+    const saved = simA.objects.persisted();
+
+    const simB = new BeachSim(grid, 1, { waves: false, erosion: false, healing: false, seep: false });
+    simB.loadDelta(delta, saved);
+    let maxDiff = 0;
+    for (let k = 0; k < simA.n; k++) maxDiff = Math.max(maxDiff, Math.abs(simA.sand[k] - simB.sand[k]));
+    expect(maxDiff).toBeLessThan(1e-5);
+    expect(simB.objects.count).toBe(4);
+  });
 });
+

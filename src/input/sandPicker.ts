@@ -21,7 +21,21 @@ export class SandPicker {
   updateFromFrame(buf: Float32Array): void {
     const s = this.sand;
     const w = this.water;
-    for (let k = 0, o = 0; k < s.length; k++, o += 4) {
+    const n = s.length;
+    const n4 = n & ~3;
+    let k = 0;
+    let o = 0;
+    for (; k < n4; k += 4, o += 16) {
+      s[k] = buf[o];
+      w[k] = buf[o + 1];
+      s[k + 1] = buf[o + 4];
+      w[k + 1] = buf[o + 5];
+      s[k + 2] = buf[o + 8];
+      w[k + 2] = buf[o + 9];
+      s[k + 3] = buf[o + 12];
+      w[k + 3] = buf[o + 13];
+    }
+    for (; k < n; k++, o += 4) {
       s[k] = buf[o];
       w[k] = buf[o + 1];
     }
