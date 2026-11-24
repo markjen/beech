@@ -277,6 +277,14 @@ h2 a:hover,.see-all:hover{color:var(--sea-hi);transform:translateX(2px)}
 }
 .pic-pill:hover{background:rgba(20,34,44,.8);transform:translateY(-1px)}
 .pic-pill.code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.08em;font-size:12.5px}
+.view-toggle{
+  position:absolute;left:50%;bottom:14px;transform:translateX(-50%);
+  display:flex;gap:2px;padding:3px;border-radius:999px;
+  background:rgba(20,34,44,.62);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  border:1px solid rgba(255,255,255,.22);
+}
+.view-toggle button{border:0;background:transparent;color:#fff;font:600 12.5px 'Plus Jakarta Sans',system-ui,sans-serif;padding:5px 12px;border-radius:999px;cursor:pointer;opacity:.85}
+.view-toggle button[aria-pressed="true"]{background:#fbf6ee;color:#1f2f3d;opacity:1}
 .walk{
   position:absolute;top:50%;transform:translateY(-50%);
   width:48px;height:48px;border-radius:999px;display:grid;place-items:center;
@@ -502,6 +510,19 @@ document.addEventListener('keydown',e=>{
   const a=document.querySelector('[data-key="'+e.key+'"]');
   if(a)location.href=a.href;
 });
+
+// Beach picture view: top-down / 3D (only on beach pages)
+const vt=document.querySelector('[data-view-toggle]');
+if(vt){
+  const pic=vt.closest('.pic');const img=pic&&pic.querySelector('img');
+  vt.addEventListener('click',e=>{
+    const b=e.target.closest('[data-view]');if(!b||!img)return;
+    const iso=b.dataset.view==='iso';
+    img.src=iso?vt.dataset.iso:vt.dataset.card;
+    img.alt=iso?(img.dataset.altIso||img.alt):(img.dataset.altCard||img.alt);
+    vt.querySelectorAll('[data-view]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));
+  });
+}
 
 // Social Snapshot Studio (only on beach pages)
 const studio=document.getElementById('share');

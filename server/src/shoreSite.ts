@@ -29,7 +29,7 @@
 import { Hono, type Context } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 
-import { beachPng, placeById, PLACES } from './beachImage.js';
+import { beachIsoPng, beachPng, placeById, PLACES } from './beachImage.js';
 import { DISCORD_INVITE_URL } from './community.js';
 import { toBytes, type Db } from './db.js';
 import { createRateLimiter, logEvent } from './observability.js';
@@ -247,17 +247,46 @@ export function createShoreSite(db: Db, cfg: ShoreSiteConfig): Hono<any, any, an
 
   app.get('/img/:file{[A-Za-z0-9]{6}\\.png}', (c) => image(c, c.req.param('file').slice(0, 6), 'card'));
   app.get('/img/:code{[A-Za-z0-9]{6}}/thumb.png', (c) => image(c, c.req.param('code'), 'thumb'));
+  app.get('/img/:code{[A-Za-z0-9]{6}}/iso.png', (c) => image(c, c.req.param('code'), 'iso'));
 
-  async function image(c: Context, raw: string, kind: 'card' | 'thumb') {
+  async function image(c: Context, raw: string, kind: 'card' | 'thumb' | 'iso') {
     const code = normalizeCode(raw);
-    const rows = await db.query<{ sand: unknown; location: string | null; updated_at: string | null }>(
-      `SELECT b.sand, b.location, b.updated_at FROM beach b WHERE b.code = $1 AND ${PUBLIC}`,
+    const rows = await db.query<NodeRow & { sand: unknown }>(
+      `SELECT ${NODE}, b.sand FROM ${BEACH} WHERE b.code = $1 AND ${PUBLIC}`,
       [code],
     );
     const row = rows[0];
     if (!row) return c.text('no such beach on the shore', 404);
     const v = String(row.updated_at ?? 0);
-    const key = `${code}:${v}:${kind}`;
+    // The 3D view also shows the beaches either side, so its cache key
+    // carries their save times too: a neighbour rebuilding changes the
+    // picture even though this beach did not.
+    let version = v;
+    let left: { bytes: Uint8Array; location: string | null; linked: boolean } | null = null;
+    let right: { bytes: Uint8Array; location: string | null; linked: boolean } | null = null;
+    if (kind === 'iso') {
+      const { left: wl, right: wr } = await graph.walk(row, ['left', 'right'], 1, new Set([row.id]), isPublic);
+      const fetchOne = async (s: Step | undefined) => {
+        if (!s) return null;
+        const r = await db.query<{ sand: unknown; location: string | null; updated_at: string | null }>(
+          `SELECT b.sand, b.location, b.updated_at FROM beach b WHERE b.code = $1 AND ${PUBLIC}`,
+          [s.code],
+        );
+        if (!r[0]) return null; // walked past it, or it went private since
+        return {
+          bytes: toBytes(r[0].sand),
+          location: r[0].location,
+          linked: s.linked,
+          updatedAt: r[0].updated_at === null ? null : Number(r[0].updated_at),
+        };
+      };
+      const l = await fetchOne(wl[0]);
+      const r = await fetchOne(wr[0]);
+      left = l;
+      right = r;
+      version = `${v}.${l?.updatedAt ?? 0}.${r?.updatedAt ?? 0}`;
+    }
+    const key = `${code}:${version}:${kind}`;
     let png = imageCache.get(key);
     if (!png) {
       const ip = (c.req.header('x-forwarded-for') ?? '').split(',')[0]?.trim();
@@ -266,11 +295,14 @@ export function createShoreSite(db: Db, cfg: ShoreSiteConfig): Hono<any, any, an
         return c.text('too many image requests: slow down a little', 429, { 'Retry-After': '60' });
       }
       const t0 = Date.now();
-      png = beachPng(toBytes(row.sand), { ...(kind === 'card' ? CARD : THUMB), location: row.location });
+      png =
+        kind === 'iso'
+          ? beachIsoPng({ bytes: toBytes(row.sand), location: row.location }, left, right, CARD)
+          : beachPng(toBytes(row.sand), { ...(kind === 'card' ? CARD : THUMB), location: row.location });
       remember(key, png);
       logEvent('shore_image', { kind, ms: Date.now() - t0, bytes: png.length });
     }
-    return sendPng(c, png, `"${key}"`, c.req.query('v') === v);
+    return sendPng(c, png, `"${key}"`, c.req.query('v') === version);
   }
 
   // ------------------------------------------------------------ pages
@@ -705,6 +737,8 @@ ${
     const text = shareText(b);
     const cardHref = href(imgPath(b, 'card'));
     const thumbHref = href(imgPath(b, 'thumb'));
+    const isoVersion = `${b.updatedAt ?? 0}.${left[0]?.updatedAt ?? 0}.${right[0]?.updatedAt ?? 0}`;
+    const isoHref = href(`/img/${b.code}/iso.png?v=${isoVersion}`);
     const n = now();
     const step = (s: Step | undefined, dir: 'left' | 'right') =>
       s
@@ -719,7 +753,11 @@ ${
     const main = `
 <article class="beach">
   <div class="pic">
-    <img src="${esc(cardHref)}" width="${CARD.width}" height="${CARD.height}" alt="${esc(`${title}, seen from above: the sand, the sea, and what's on it`)}">
+    <img src="${esc(cardHref)}" width="${CARD.width}" height="${CARD.height}" alt="${esc(`${title}, seen from above: the sand, the sea, and what's on it`)}" data-alt-card="${esc(`${title}, seen from above: the sand, the sea, and what's on it`)}" data-alt-iso="${esc(`${title}, seen in 3D from the sea, with the beaches either side`)}">
+    <div class="view-toggle" role="group" aria-label="Picture view" data-view-toggle data-card="${esc(cardHref)}" data-iso="${esc(isoHref)}">
+      <button type="button" data-view="card" aria-pressed="true">Top-down</button>
+      <button type="button" data-view="iso" aria-pressed="false">3D</button>
+    </div>
     <div class="pic-pills">
       ${where ? `<a class="pic-pill" href="${href(`/at/${b.location}`)}">${ICONS.pin} ${esc(where)}</a>` : '<span></span>'}
       <button type="button" class="pic-pill code" data-copy="${esc(b.code)}" data-copied="Code ${esc(b.code)} copied" title="Copy beach code">${esc(b.code)}</button>

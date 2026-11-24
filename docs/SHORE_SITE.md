@@ -16,9 +16,10 @@ review from the shore.
 | `/at/bondi` (any place id) | Beaches built at one real beach. |
 | `/find?q=...` | Jump straight to a 6-letter beach code, or search public beaches by beach or owner name. |
 | `/random` | A random beach ("Walk the shore", "Surprise me"). |
-| `/K7F2QX` | One beach: its picture, owner, place, stars, neighbors, **Visit in beech →** (`GAME_URL/?visit=K7F2QX`), a **Share & Snapshot Studio** (`#share`: live Postcard, Square, Story, and Clean PNG snapshots with Web Share file attachment, clipboard image copy, PNG download, editable caption, and direct buttons for X, Bluesky, Threads, Reddit, WhatsApp, Facebook, and Text), and the stretch of shore either side (← → to walk). |
+| `/K7F2QX` | One beach: its picture (with a Top-down / 3D toggle — see below), owner, place, stars, neighbors, **Visit in beech →** (`GAME_URL/?visit=K7F2QX`), a **Share & Snapshot Studio** (`#share`: live Postcard, Square, Story, and Clean PNG snapshots with Web Share file attachment, clipboard image copy, PNG download, editable caption, and direct buttons for X, Bluesky, Threads, Reddit, WhatsApp, Facebook, and Text), and the stretch of shore either side (← → to walk). |
 | `/img/K7F2QX.png` | The beach's 1200×630 card, used as `og:image` (also by the game's own `?visit=` links). |
 | `/img/K7F2QX/thumb.png` | 480×300 thumbnail. |
+| `/img/K7F2QX/iso.png` | The beach in 3D, 1200×630: an isometric view from the sea — the real heightfield, water below sea level, things standing on the sand — with one public beach either side (linked flush at 32 m, unlinked keeping the 1.6 m gap; no public neighbor fades to untouched shore). Only public beaches ever appear. |
 | `/img/shore.png` | The site card (an untouched beach). |
 | `/submit` | Connect a Beech account, upload an item with a proposed price and frequency, and see your review status and creator credits. |
 | `/submit/spec` | Asset requirements, prompt example, JSON Schema and example file for creators and AI agents. |
@@ -79,6 +80,25 @@ with `node:zlib` (about 300 KB a card, 90 KB a thumbnail; a few tens of ms).
 The beach shape, day palette and place tints are copies of the app's;
 `tests/beachImage.test.ts` fails if they drift.
 
+**The 3D view** (`renderIsoBeach`/`beachIsoPng`, same file) draws the same
+saved beach as an isometric diorama from the sea: the real heightfield
+(rest profile + saved sand deltas), water as a flat surface below sea
+level, and things as vertical billboards (tall kinds) or flat ground
+marks, so a lighthouse or parasol stands up instead of lying flat. The
+camera is offshore and elevated, looking landward, and the picture is
+mirrored alongshore so the walk-left neighbor (+x) is on the picture's
+left, matching the top-down card and the beach-page strip. One public
+beach shows on each side — linked flush at 32 m, unlinked keeping the
+1.6 m gap of untouched shore — and a side with no public neighbor fades
+to untouched shore exactly like the card. A non-public neighbor never
+appears: the route only ever fetches neighbours through `shoreGraph.walk`
+with `keep=isPublic`, and the cache key carries the neighbours' save
+times. The beach page has a small Top-down / 3D toggle on the hero
+picture that swaps the image in place (no reload); it changes no URL,
+og tag, or share link, and `og:image` stays the top-down card. First
+render is a few hundred ms (1200×630, ~15k terrain quads) and cached
+like the card; sample in `docs/shore-iso-sample.png`.
+
 ## Cross links
 
 - **Game → shore:** a share button (bottom left, accounts builds) shares the
@@ -124,6 +144,8 @@ Nothing else changes: the server already answers to those hosts.
 - **Indexes at scale:** migration 17 adds partial indexes on
   `beach (updated_at DESC, id)` and `beach (location, updated_at DESC, id)`
   `WHERE on_shore AND sand IS NOT NULL`.
-- **Image drawing rate limits:** uncached PNG draws on `/img/:CODE.png` and
-  `/img/:CODE/thumb.png` are limited to 60 per minute per client IP
-  (`429` with `Retry-After: 60`); cache hits are not limited.
+- **Image drawing rate limits:** uncached PNG draws on `/img/:CODE.png`,
+  `/img/:CODE/thumb.png`, and `/img/:CODE/iso.png` are limited to 60 per
+  minute per client IP (`429` with `Retry-After: 60`); cache hits are not
+  limited. The 3D view's cache key carries the neighbours' save times too, so
+  a neighbour rebuilding changes the picture.

@@ -24,6 +24,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       'Refreshed the beech.games home page with a live time-of-day beach preview, a Play now on web button, a Google Play link, and an iOS coming soon note.',
       'Removed the “off the shore” setting for now — saved beaches stay on the shore.',
       'Visit any public beach in 3D and walk the shore without signing in (from beechshore.com or a shared link).',
+      'Every beach page on beechshore.com now has a Top-down / 3D toggle on its picture: the 3D view shows your beach as an isometric diorama from the sea, with the beaches either side.',
       'The shop no longer squeezes a pack’s description into a word per line when the “Buy with credit” button is showing: the buttons sit on a row of their own under the text.',
       'Linked neighbors now blend edge to edge into one continuous beach — sand, water, and rolling wave fronts flow smoothly across the seam with no gap, and the surf blends seamlessly out into the open sea. Unlinked beaches along the shore keep their space.',
       'Prizes from the claw and vending machines now look the part on your beach: the pink shell is properly pink, the golden sand dollar is shiny gold, and the rest of the week’s set stands out from the free shells and sea glass.',

@@ -360,6 +360,14 @@ accepted the repo's default branch, so the deploy job ran only there.
   buttons (`favorites` table, migration 4).
 - The neighbor tags poll every 30 s across the whole shore.
 - `npm run e2e:shore` covers walking, home, visiting by code, and favorites.
+- **The 3D view (2026-11-24):** every beach page has a Top-down / 3D toggle
+  on its picture, and `GET /img/:CODE/iso.png` serves the 3D isometric view
+  (1200×630, same cache behaviour as the card, keyed on the beach's and its
+  neighbours' save times). The camera sits offshore looking landward; the
+  real heightfield, water, and billboarded things show with one public beach
+  either side — linked flush, unlinked with the 1.6 m gap. Only public
+  beaches ever appear; a non-public neighbour renders as untouched shore.
+  `og:image` stays the top-down card. Sample: `docs/shore-iso-sample.png`.
 
 ## Leaderboard (added after more than one beach)
 
