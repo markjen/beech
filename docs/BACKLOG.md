@@ -119,7 +119,7 @@ _(nothing right now)_
 
 ## Done (recent)
 
-- [x] **Wash-ashore finds: trash, seaweed, cowrie** (2026-11-24, PR #TBD):
+- [x] **Wash-ashore finds: trash, seaweed, cowrie** (2026-11-24, PR #60):
   the sea now brings in a crumpled bright bottle or can (`trash`), a
   strand of seaweed (`seaweed`), and a spotted cowrie (`cowrie`, kind
   `shell`, rare) alongside shells, sea glass and driftwood — new kinds
