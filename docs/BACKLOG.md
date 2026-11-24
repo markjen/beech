@@ -274,6 +274,17 @@ _(nothing right now)_
   Sunset starfish, Green bottle / Nautilus (new kind). Sets are data in
   `server/src/vending.ts`; design and the weekly process in
   `docs/VENDING_MACHINE.md`.
+- [x] **Special items look different from free ones** (2026-11-23): prizes
+  sharing a kind with a free item used to render identically — only the
+  name and rarity ring set them apart. Now each has its own colours and
+  finish in `ITEM_LOOKS` (`src/palette.ts`): pink shell hot pink (pink is
+  reserved for it — free shells are warm cream/tan/peach with no pink),
+  golden sand dollar metallic gold with a gold glow and sparkles (free sand
+  dollars stay pale cream), plus blue sea glass, polished pebble, spiral
+  conch, sunset starfish, green bottle and a pearly nautilus. Same colours
+  on the shore pictures and tinted icons in the bag; `tests/specialItems.test.ts`
+  guards the palettes and the rendered pixels. No ids, rarities, odds,
+  pools, prices or behaviour changed.
 - [x] **Objects floating off Rose's beach** (2026-11-23): server refuses
   saves from the old 32 × 24 app; `fitWorld` repairs objects it shifted.
 - [x] **Leaderboard of the most-starred beaches** (2026-11-23): a trophy

@@ -418,6 +418,22 @@ accepted the repo's default branch, so the deploy job ran only there.
   on the beach as you own, and pulled items count toward that, not wild
   ones. Conch, sand dollar and starfish roll like shells; the bottle floats
   like driftwood.
+- **Prizes look like prizes** (2026-11-23): a prize that shares a kind with
+  a free or cheaper item has its own look in `ITEM_LOOKS`
+  (`src/palette.ts`) — its own colours and a specular finish (glass and
+  polished stone shine, gold shines hardest) — instead of the kind's
+  palette. The pink shell is hot pink, blue sea glass deep blue, the pebble
+  dark polished slate, the spiral conch coral, the golden sand dollar
+  metallic gold with a gold glow and sparkles, the sunset starfish magenta
+  and orange, the green bottle deep emerald, the nautilus pearly. Free
+  shells are warm cream/tan/peach with no pink anywhere, and free sand
+  dollars stay pale cream, never gold. The same colours are drawn on the
+  shore pictures (`server/src/beachImage.ts`, kept in step by
+  `tests/specialItems.test.ts`, which also checks the rendered pixels), and
+  the bag, claw, vending and dig-find icons are tinted per prize
+  (`itemIcon` in `src/ui/hud.ts`). The prop bank keys a look by kind +
+  item + variant, so a pink shell and a free shell never share a mesh.
+  Nothing about ids, rarities, odds, pools, prices or behaviour changed.
 - **Sandbox build:** the tile says "coming soon". Signed out (production):
   "Sign in to play". `tests/items.test.ts` checks that the server's pool
   items exist in the client catalog with matching rarity.

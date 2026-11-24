@@ -21,8 +21,8 @@ const ICONS = {
   right: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 6l6 6-6 6" /></svg>`,
   claw: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h16" /><path d="M12 3v6" /><path d="M12 9l-4 3.5 1 3M12 9l4 3.5-1 3" /><circle cx="12" cy="18.5" r="2.5" /></svg>`,
   vending: `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="2.5" width="14" height="19" rx="2" /><path d="M8 6h8v6H8z" /><circle cx="10.2" cy="9" r="1.4" /><circle cx="13.8" cy="9" r="1.4" /><path d="M8 18.5h8" /></svg>`,
-  // Week 1 vending set: variants reuse their kind's drawing; the name and
-  // rarity ring are what set them apart in the bag.
+  // Week 1 vending set: the shapes reuse their kind's drawing; the tint
+  // (itemIcon, below) is what sets them apart in the bag.
   'pink-shell': `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19.5L4 10a8.5 8.5 0 0 1 16 0z" /><path d="M12 19.5L8.2 6.3M12 19.5l3.8-13.2M12 19.5V5.2" opacity=".55"/><path d="M10 19.5h4" /></svg>`,
   'blue-seaglass': `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 14.5l2.5-6 6.5-2 4 4.5-1.5 6-6.5 2.5z" /><path d="M8.5 8.5l3 4 5.5-2M11.5 12.5L11 19" opacity=".55"/></svg>`,
   pebble: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 18.5l2.2-6.3 4.6-4.4 5.6 1.1 3.6 4.4 1 5.2z" /><path d="M10.3 7.8l1.4 5.2 4.2-3.9M11.7 13l-6-0.8" opacity=".55"/></svg>`,
@@ -54,8 +54,26 @@ const ICONS = {
 
 export type IconName = keyof typeof ICONS;
 
-export function icon(name: IconName): string {
-  return ICONS[name] ?? ICONS.bag;
+/** Stroke colour for a prize item's icon, so it doesn't read as its free kind in the bag. */
+export const ITEM_ICON_TINT: Record<string, string> = {
+  'pink-shell': '#e8437a',
+  'blue-seaglass': '#1f6fb8',
+  pebble: '#5a5f6b',
+  'spiral-conch': '#d94f30',
+  'gold-sanddollar': '#b8860b',
+  'sunset-starfish': '#e84a7a',
+  'green-bottle': '#0f7a4d',
+  nautilus: '#c97e5a',
+};
+
+export function icon(name: IconName, tint?: string): string {
+  const svg = ICONS[name] ?? ICONS.bag;
+  return tint ? svg.replace('<svg ', `<svg style="color:${tint}" `) : svg;
+}
+
+/** An item's icon, tinted when the item has its own look. */
+export function itemIcon(id: string): string {
+  return icon(id as IconName, ITEM_ICON_TINT[id]);
 }
 
 export interface HudHandlers {

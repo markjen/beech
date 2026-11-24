@@ -421,9 +421,29 @@ const star = (cx: number, cy: number, r: number, a: number): Pt[] =>
   });
 
 const C = (h: string) => hex(h);
-const SHELLS = ['#f4d6c8', '#efe4d2', '#e9c3b0', '#f7ead8', '#dcb7a6', '#f1cfd8', '#e8d9c0', '#f5e1cf'].map(C);
+// Free shells are warm cream, tan and peach — no pink anywhere (pink is
+// reserved for the pink shell, a prize). A copy of the app's free shell
+// palette (src/palette.ts); tests/beachImage.test.ts keeps them in step.
+export const SHELLS = ['#f7ead8', '#efe4d2', '#e8d9c0', '#f5e1cf', '#e6cfa8', '#f2e3c2', '#dfc49a', '#efe0c0'].map(C);
 const GLASS = ['#9fd8c1', '#8cc7de', '#b7e0a8', '#d3eef0'].map(C);
 const FLAGS = ['#e2574c', '#f2b134', '#4a90d9', '#55b27a'].map(C);
+
+/** Prize items draw in their own colours (a copy of src/palette.ts ITEM_LOOKS). */
+export const ITEM_COLORS: Record<string, string[]> = {
+  'pink-shell': ['#f27ba7', '#ef5d8f', '#f8a8c4', '#e8437a'],
+  'blue-seaglass': ['#2f7fc9', '#1f6fb8', '#4aa3e0', '#185a9e'],
+  pebble: ['#5a5f6b', '#6e7683', '#3f4650', '#7d838e'],
+  'spiral-conch': ['#e86a4a', '#f08a4b', '#d94f30', '#f2a65a'],
+  'gold-sanddollar': ['#d4a017', '#e8b923', '#f5c542', '#b8860b'],
+  'sunset-starfish': ['#ff7e3d', '#e84a7a', '#b84a8f', '#ffb347'],
+  'green-bottle': ['#0f7a4d', '#15965f', '#0a5c38', '#1fae6e'],
+  nautilus: ['#e8d5c4', '#d9a06b', '#c97e5a'],
+};
+/** A prize item's colour for this variant, or null for its kind's colour. */
+const itemColor = (item: string, v: number): RGB | null => {
+  const cs = ITEM_COLORS[item];
+  return cs ? C(cs[v % cs.length]) : null;
+};
 
 function drawThings(img: Uint8Array, W: number, H: number, things: Thing[], look: Look, at: (x: number, y: number) => Pt, s: number) {
   // big things first, so small ones on top stay visible
@@ -446,8 +466,10 @@ function drawThings(img: Uint8Array, W: number, H: number, things: Thing[], look
           const th = (i / n) * Math.PI * 2 + a;
           return [px + Math.cos(th) * r * q, py + Math.sin(th) * r * q * 0.9] as Pt;
         });
-        parts.push([pts, lerp3(look.rock, [0.55, 0.5, 0.45], hash2(v, 1, 9) * 0.5)]);
-        parts.push([circle(px - r * 0.25, py - r * 0.25, r * 0.4, 10), lighten(look.rock, 0.25)]);
+        const pebble = itemColor(t.item, v);
+        const base = pebble ?? lerp3(look.rock, [0.55, 0.5, 0.45], hash2(v, 1, 9) * 0.5);
+        parts.push([pts, base]);
+        parts.push([circle(px - r * 0.25, py - r * 0.25, r * 0.4, 10), pebble ? lighten(base, 0.25) : lighten(look.rock, 0.25)]);
         break;
       }
       case 'driftwood':
@@ -455,22 +477,22 @@ function drawThings(img: Uint8Array, W: number, H: number, things: Thing[], look
         break;
       case 'shell':
       case 'conch':
-        parts.push([circle(px, py, m(Math.max(0.1, t.size * 0.5), 3), 10), SHELLS[v % SHELLS.length]]);
+        parts.push([circle(px, py, m(Math.max(0.1, t.size * 0.5), 3), 10), itemColor(t.item, v) ?? SHELLS[v % SHELLS.length]]);
         break;
       case 'sanddollar':
-        parts.push([circle(px, py, m(Math.max(0.08, t.size * 0.5), 2), 12), C('#eee6d4')]);
+        parts.push([circle(px, py, m(Math.max(0.08, t.size * 0.5), 2), 12), itemColor(t.item, v) ?? C('#eee6d4')]);
         break;
       case 'nautilus':
-        parts.push([circle(px, py, m(Math.max(0.1, t.size * 0.5), 2.2), 12), C('#f1e2cc')]);
+        parts.push([circle(px, py, m(Math.max(0.1, t.size * 0.5), 2.2), 12), itemColor(t.item, v) ?? C('#f1e2cc')]);
         break;
       case 'seaglass':
-        parts.push([circle(px, py, m(0.07, 1.6), 6), GLASS[v % GLASS.length]]);
+        parts.push([circle(px, py, m(0.07, 1.6), 6), itemColor(t.item, v) ?? GLASS[v % GLASS.length]]);
         break;
       case 'starfish':
-        parts.push([star(px, py, m(Math.max(0.12, t.size * 0.6), 3), a), C('#f08a4b')]);
+        parts.push([star(px, py, m(Math.max(0.12, t.size * 0.6), 3), a), itemColor(t.item, v) ?? C('#f08a4b')]);
         break;
       case 'bottle':
-        parts.push([rect(px, py, m(0.18, 3), m(0.06, 1.3), a), C('#5fa67a')]);
+        parts.push([rect(px, py, m(0.18, 3), m(0.06, 1.3), a), itemColor(t.item, v) ?? C('#5fa67a')]);
         break;
       case 'flag':
         parts.push([circle(px, py, m(0.04, 1.2), 6), C('#6b5a48')]);

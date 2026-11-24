@@ -187,7 +187,7 @@ export function rgbToCss(c: RGB, alpha = 1): string {
 export const PROP_COLORS = {
   rock: [hex('#b3aeb4'), hex('#a59cab'), hex('#bfb2a6'), hex('#9ba3a8')] as RGB[],
   driftwood: [hex('#e0d2bd'), hex('#cfbfa8'), hex('#eae0d2')] as RGB[],
-  shell: [hex('#fad6cc'), hex('#fdf2e1'), hex('#f0c09a'), hex('#f3e6ef')] as RGB[],
+  shell: [hex('#fdf2e1'), hex('#f0c09a'), hex('#e6d3ae'), hex('#f5e7c8')] as RGB[],
   seaglass: [hex('#9fd8c0'), hex('#a8d4e6'), hex('#e8c27a'), hex('#e6f0ee')] as RGB[],
   flag: [hex('#f07f6b'), hex('#f4c95d'), hex('#5fb8b2'), hex('#8f7fd1')] as RGB[],
   conch: [hex('#f6c7b6'), hex('#f2dcc4'), hex('#e9b4a8')] as RGB[],
@@ -215,3 +215,43 @@ export const RARITY_GLOW: Record<'rare' | 'legendary' | 'unique', RGB> = {
   legendary: hex('#ffcf5a'),
   unique: hex('#c06fd6'),
 };
+
+/**
+ * How a prize item looks on the beach, per catalog item — not per kind.
+ * Several prizes share a kind with a free (or cheaper) item — pink-shell is
+ * kind shell, the golden sand dollar is kind sanddollar — so the kind
+ * palette alone can't tell them apart. These overrides are what make a
+ * special item unmistakable at a glance: its own colours, a finish (gloss
+ * is a specular glint in the sun: glass and polished stone shine, gold
+ * shines hardest), and, for the golden sand dollar, a gold glow. Free
+ * shells stay warm cream, tan and peach — pink is reserved for pink-shell —
+ * and free sand dollars stay pale cream, never gold.
+ */
+export interface ItemLook {
+  /** colours, one per variant (variant % length, like the kind palettes) */
+  colors: RGB[];
+  /** specular strength, 0 (matte) to 1 (a hard glint in the sun) */
+  gloss: number;
+  /** a glow on the beach, if any */
+  glow?: 'rare' | 'legendary' | 'unique';
+}
+
+export const ITEM_LOOKS: Record<string, ItemLook> = {
+  // Week 1 vending set ("First light", server/src/vending.ts).
+  'pink-shell': { colors: [hex('#f27ba7'), hex('#ef5d8f'), hex('#f8a8c4'), hex('#e8437a')], gloss: 0.45 },
+  'blue-seaglass': { colors: [hex('#2f7fc9'), hex('#1f6fb8'), hex('#4aa3e0'), hex('#185a9e')], gloss: 0.8 },
+  pebble: { colors: [hex('#5a5f6b'), hex('#6e7683'), hex('#3f4650'), hex('#7d838e')], gloss: 0.6 },
+  'spiral-conch': { colors: [hex('#e86a4a'), hex('#f08a4b'), hex('#d94f30'), hex('#f2a65a')], gloss: 0.5 },
+  'gold-sanddollar': { colors: [hex('#d4a017'), hex('#e8b923'), hex('#f5c542'), hex('#b8860b')], gloss: 1, glow: 'legendary' },
+  'sunset-starfish': { colors: [hex('#ff7e3d'), hex('#e84a7a'), hex('#b84a8f'), hex('#ffb347')], gloss: 0.4 },
+  'green-bottle': { colors: [hex('#0f7a4d'), hex('#15965f'), hex('#0a5c38'), hex('#1fae6e')], gloss: 0.9 },
+  // the claw's unique prize: same colours as the kind palette, with a pearl sheen
+  nautilus: { colors: [hex('#e8d5c4'), hex('#d9a06b'), hex('#c97e5a')], gloss: 0.7 },
+};
+
+/** The render look for one catalog item: its own colours and finish, or its kind's. */
+export function itemLook(itemId: string, kind: keyof typeof PROP_COLORS): ItemLook {
+  const own = ITEM_LOOKS[itemId];
+  if (own) return own;
+  return { colors: PROP_COLORS[kind] as RGB[], gloss: 0 };
+}
