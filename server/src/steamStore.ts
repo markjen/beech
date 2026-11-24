@@ -131,6 +131,7 @@ interface ReportOrder {
 const REVOKED_STATUSES = new Set(['Refunded', 'PartialRefund', 'ChargedBack', 'Chargeback']);
 
 import type { Db } from './db.js';
+import { revokeStorePurchase } from './store.js';
 
 /**
  * Fetch refunded or charged-back transaction IDs from ISteamMicroTxn/GetReport/v5
@@ -167,7 +168,8 @@ export async function getSteamRefunds(
 
 /**
  * Poll Steam for refunds/chargebacks since `sinceIso` and revoke any matching
- * purchases + inventory rows identically to Apple/Google/Xsolla refunds.
+ * purchases through the same `revokeStorePurchase` path as Apple/Google/Xsolla
+ * refunds, then mark the Steam order refunded.
  */
 export async function syncSteamRefunds(
   db: Db,
@@ -180,18 +182,12 @@ export async function syncSteamRefunds(
   const now = opts.now ?? Date.now();
   let revoked = 0;
   for (const tx of transIds) {
+    await revokeStorePurchase(db, 'steam', tx, now);
     const res = await db.query<{ id: string }>(
-      `WITH p AS (
-         UPDATE purchases SET refunded_at = $2
-          WHERE store = 'steam' AND transaction_id = $1 AND refunded_at IS NULL
-         RETURNING id
-       ), inv AS (
-         UPDATE inventory SET expires_at = $2 WHERE purchase_id IN (SELECT id FROM p)
-       )
-       UPDATE steam_orders SET status = 'refunded'
+      `UPDATE steam_orders SET status = 'refunded'
         WHERE trans_id = $1 AND status = 'paid'
        RETURNING order_id::text AS id`,
-      [tx, now],
+      [tx],
     );
     if (res.length) revoked++;
   }

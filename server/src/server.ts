@@ -97,11 +97,27 @@ const steamAuth = steamStore ? { appId: steamStore.appId, webApiKey: steamStore.
 logEvent('steam_config', { enabled: !!steamStore, sandbox: !!steamStore?.sandbox });
 
 if (steamStore) {
+  // The sync looks back 48h by default; if Steam is unreachable for longer
+  // than that, refunds in the gap would be missed forever. Remember the last
+  // successful sync and look back to it instead (capped at 7 days, so a stale
+  // timestamp can't ask GetReport for an unbounded window — refunds older
+  // than the cap after a >7 day outage still need a manual GetReport check).
+  // A failed run leaves the watermark alone, so the next run retries the gap.
+  const MAX_REFUND_LOOKBACK_MS = 7 * 24 * 3600 * 1000;
+  let lastSteamRefundSyncOk = 0;
   const refundTimer = setInterval(() => {
-    const sinceIso = new Date(Date.now() - 48 * 3600 * 1000).toISOString().replace(/\.\d+Z$/, 'Z');
+    const nowMs = Date.now();
+    const sinceMs = lastSteamRefundSyncOk
+      ? Math.max(lastSteamRefundSyncOk, nowMs - MAX_REFUND_LOOKBACK_MS)
+      : nowMs - 48 * 3600 * 1000;
+    const sinceIso = new Date(sinceMs).toISOString().replace(/\.\d+Z$/, 'Z');
     void syncSteamRefunds(db, steamStore, sinceIso)
       .then((revoked) => {
+        lastSteamRefundSyncOk = nowMs;
         if (revoked > 0) logEvent('steam_refund_sync', { revoked });
+        if (nowMs - sinceMs > 48 * 3600 * 1000) {
+          logEvent('steam_refund_sync_caught_up', { windowHours: Math.round((nowMs - sinceMs) / 3600000) }, 'WARNING');
+        }
       })
       .catch((e) => logEvent('steam_refund_sync_error', { message: (e as Error).message }, 'WARNING'));
   }, 60 * 60 * 1000);

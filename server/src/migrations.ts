@@ -433,7 +433,7 @@ const MIGRATIONS: string[] = [
   CREATE INDEX account_link_codes_user ON account_link_codes (user_id);
   `,
 
-  // 18: Steam Wallet microtransactions (ISteamMicroTxn, docs/STEAM.md).
+  // 19: Steam Wallet microtransactions (ISteamMicroTxn, docs/STEAM.md).
   // Steam InitTxn requires a numeric 64-bit orderid (BIGSERIAL). Fulfilment
   // reuses purchases (store = 'steam', transaction_id = trans_id) + inventory.
   `

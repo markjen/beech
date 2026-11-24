@@ -271,7 +271,12 @@ export class ShopApi {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ orderId }),
     });
-    if (res.ok || (res.status >= 400 && res.status < 500 && res.status !== 401 && res.status !== 408 && res.status !== 429)) {
+    // Drop the pending order only on terminal failures. 402 means Steam
+    // could not finalize the purchase yet (transient — the order is still
+    // open), so keep it pending and let retryPending() try again instead
+    // of losing the purchase.
+    const terminal = res.status === 400 || res.status === 404 || res.status === 409;
+    if (res.ok || terminal) {
       writePendingSteam(readPendingSteam().filter((x) => x !== orderId));
     }
     if (!res.ok) {

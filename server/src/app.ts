@@ -40,7 +40,7 @@ import {
   promoBlocked,
   type Promo,
 } from './giftCards.js';
-import { appleRefund, googleVoided, verifyAppleTransaction, verifyGooglePurchase, type VerifiedPurchase } from './store.js';
+import { appleRefund, googleVoided, revokeStorePurchase, verifyAppleTransaction, verifyGooglePurchase, type VerifiedPurchase } from './store.js';
 import { POOLS, GRAB_CHANCE, COOLDOWN_MAX_MS, COOLDOWN_MIN_MS, cooldownAfter, cryptoRandom, draw, grab, pullDay, starterPrize, STARTER, type Rarity } from './pulls.js';
 import { currentSet, drawVending, nextUtcMidnight } from './vending.js';
 import { DIG_FIND_DAILY_CAP, DIG_FIND_ROLL_COOLDOWN_MS, digDraw, qualifiesForFind } from './digFinds.js';
@@ -1683,13 +1683,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   });
 
   /** A refund: the purchase is marked, and what it granted expires now. */
-  const refund = async (store: 'apple' | 'google' | 'xsolla', transactionId: string) => {
-    const now = clock();
-    await db.query(
-      `WITH p AS (UPDATE purchases SET refunded_at = $3 WHERE store = $1 AND transaction_id = $2 AND refunded_at IS NULL RETURNING id)
-       UPDATE inventory SET expires_at = $3 WHERE purchase_id IN (SELECT id FROM p)`,
-      [store, transactionId, now],
-    );
+  const refund = async (store: 'apple' | 'google' | 'xsolla' | 'steam', transactionId: string) => {
+    await revokeStorePurchase(db, store, transactionId, clock());
   };
 
   // App Store Server Notifications V2 (set this URL in App Store Connect → App Information)
