@@ -809,3 +809,9 @@ prompt, JSON Schema and sample asset.
   their own bag anytime). The shore bar shows a **Feed pet** button when
   visiting a beach with a pet, and owners see a quiet toast (`X fed Barnaby!`)
   when visitors feed theirs.
+- **Second species — offshore dolphin (A5)** (2026-11-24): added `'dolphin'`
+  to `AnimalController` (`src/world/animals.ts`) and `buildDolphinMesh`
+  (`src/render/animals.ts`, single draw call, lazy-loaded, 0 idle draws). On
+  unbaited wild visit rolls, 35% of visits are an offshore dolphin cruising
+  alongshore in deep water (`depth >= 0.6 m`) with periodic parabolic breaching
+  arcs and nose pitch; `?debug=1` adds **Spawn dolphin**.

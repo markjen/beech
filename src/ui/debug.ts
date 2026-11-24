@@ -3,6 +3,7 @@ import type { FrameInfo, TunableSection, ToWorker } from '../sim/protocol';
 
 export interface DebugAnimalsHandle {
   spawn: () => boolean;
+  spawnDolphin: () => boolean;
   despawn: () => void;
   dropFood: () => boolean;
   status: () => string;
@@ -71,6 +72,7 @@ export async function setupDebug(
   if (animals) {
     const af = gui.addFolder('ANIMALS');
     af.add({ spawnCrab: () => animals.spawn() }, 'spawnCrab').name('Spawn sand crab');
+    af.add({ spawnDolphin: () => animals.spawnDolphin() }, 'spawnDolphin').name('Spawn dolphin');
     af.add({ dropFood: () => animals.dropFood() }, 'dropFood').name('Drop beach snack');
     af.add({ despawn: () => animals.despawn() }, 'despawn').name('Despawn');
   }

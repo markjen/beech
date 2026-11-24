@@ -10,7 +10,7 @@
 
 import { ANIMALS, PROFILE, WORLD_SIZE_X, WORLD_SIZE_Z } from '../config';
 
-export type AnimalSpecies = 'crab';
+export type AnimalSpecies = 'crab' | 'dolphin';
 
 export type PetMood = 'happy' | 'peckish' | 'hungry' | 'sleepy';
 
@@ -23,7 +23,9 @@ export type AnimalPhase =
   | 'seeking_food'
   | 'eating'
   | 'sleeping'
-  | 'burrowing';
+  | 'burrowing'
+  | 'swimming'
+  | 'breaching';
 
 export interface AnimalObstacle {
   x: number;
@@ -69,15 +71,17 @@ export interface AnimalSnapshot {
   z: number;
   /** body yaw (radians); front (+Z in mesh space) faces this heading */
   facing: number;
+  /** body pitch (radians, + = nose down, - = nose up; used for dolphin breaches) */
+  pitch: number;
   /** current horizontal speed (m/s) */
   speed: number;
-  /** accumulated leg-scuttle phase (radians) */
+  /** accumulated leg-scuttle / tail-beat phase (radians) */
   scuttlePhase: number;
   /** 0 = underground/burrowed, 1 = fully on top of the sand */
   emerge: number;
   /** 0..1 claw wave animation intensity while pausing or eating */
   clawWave: number;
-  /** carapace width (m) */
+  /** visual scale (m) */
   size: number;
   /** seconds until next spawn roll while absent */
   nextSpawnIn: number;
@@ -131,6 +135,10 @@ export class AnimalController {
   private targetZ = 4;
   /** +1 or -1: which side the crab faces relative to its travel direction */
   private sideSign = 1;
+  /** dolphin swim direction along X (+1 or -1) and breach progress */
+  private swimDir = 1;
+  private breachClock = 0;
+  private nextBreachIn = 2.5;
   /** Optional callback fired whenever a wild animal finishes eating a treat. */
   onWildFed?: (species: AnimalSpecies) => void;
 
@@ -148,6 +156,7 @@ export class AnimalController {
       y: 0,
       z: 4,
       facing: 0,
+      pitch: 0,
       speed: 0,
       scuttlePhase: 0,
       emerge: 0,
@@ -185,7 +194,7 @@ export class AnimalController {
     s.petName = pet.name;
     s.petMood = pet.mood;
     if (!s.active && env) {
-      this.spawnNow(env);
+      this.spawnNow(env, undefined, pet.species);
     }
     if (s.active) {
       s.species = pet.species;
@@ -230,8 +239,9 @@ export class AnimalController {
     return true;
   }
 
-  /** Immediately spawn a sand crab on dry/damp sand (used by ?debug=1 and tests). */
-  spawnNow(env: AnimalEnv, pos?: { x: number; z: number }): boolean {
+  /** Immediately spawn a wild animal (`'crab'` or `'dolphin'`, used by ?debug=1 and tests). */
+  spawnNow(env: AnimalEnv, pos?: { x: number; z: number }, species: AnimalSpecies = 'crab'): boolean {
+    if (species === 'dolphin') return this.spawnDolphin(env, pos);
     const spot = pos ? this.validateSpot(pos.x, pos.z, env) : this.pickSpawnSpot(env);
     if (!spot) return false;
     const s = this.snap;
@@ -243,6 +253,7 @@ export class AnimalController {
     s.z = spot.z;
     // face roughly toward the sea (-Z) with a slight natural turn
     s.facing = Math.PI + (this.rand() - 0.5) * 1.1;
+    s.pitch = 0;
     s.speed = 0;
     s.scuttlePhase = 0;
     s.emerge = this.pet?.mood === 'sleepy' ? 0.45 : 0;
@@ -261,12 +272,59 @@ export class AnimalController {
     return true;
   }
 
+  /** Spawn an offshore dolphin cruising alongshore in deep water. */
+  private spawnDolphin(env: AnimalEnv, pos?: { x: number; z: number }): boolean {
+    this.swimDir = this.rand() < 0.5 ? 1 : -1;
+    const startX = pos ? clamp(pos.x, -HALF_X + 1.5, HALF_X - 1.5) : -this.swimDir * (HALF_X - 2.0);
+    let z = pos ? pos.z : -HALF_Z + 3.0 + this.rand() * 7.0;
+    // Find a deep-water offshore lane
+    if (!pos) {
+      let found = false;
+      for (let i = 0; i < 12; i++) {
+        const cz = -HALF_Z + 2.5 + this.rand() * Math.max(2, PROFILE.shoreline - 6.0);
+        if (env.waterAt(startX, cz) >= ANIMALS.dolphinMinDepth) {
+          z = cz;
+          found = true;
+          break;
+        }
+      }
+      if (!found && env.waterAt(startX, z) < ANIMALS.dolphinMinDepth) return false;
+    }
+    const bed = env.heightAt(startX, z);
+    const depth = env.waterAt(startX, z);
+    if (!Number.isFinite(bed) || depth < ANIMALS.dolphinMinDepth) return false;
+
+    const s = this.snap;
+    s.species = 'dolphin';
+    s.active = true;
+    s.phase = 'swimming';
+    s.x = startX;
+    s.z = z;
+    s.y = bed + depth - 0.2;
+    s.facing = this.swimDir > 0 ? Math.PI * 0.5 : -Math.PI * 0.5;
+    s.pitch = 0;
+    s.speed = ANIMALS.dolphinSpeed;
+    s.scuttlePhase = 0;
+    s.emerge = 1;
+    s.clawWave = 0;
+    s.size = ANIMALS.dolphinSize * (0.9 + this.rand() * 0.2);
+    s.visitLeft = 16;
+    s.nextSpawnIn = 0;
+    s.startles = 0;
+    s.happyTimer = 0;
+    s.calmTimer = 0;
+    this.breachClock = 0;
+    this.nextBreachIn = 1.6 + this.rand() * 1.4;
+    return true;
+  }
+
   /** Immediately clear any active visitor and start a fresh quiet wait. */
   despawnNow(): void {
     const s = this.snap;
     s.active = false;
     s.phase = 'absent';
     s.speed = 0;
+    s.pitch = 0;
     s.emerge = 0;
     s.clawWave = 0;
     s.visitLeft = 0;
@@ -305,7 +363,7 @@ export class AnimalController {
 
     // Resident pet is always present on the beach
     if (this.pet && s.phase === 'absent') {
-      this.spawnNow(env);
+      this.spawnNow(env, undefined, this.pet.species);
       return;
     }
 
@@ -316,14 +374,21 @@ export class AnimalController {
       if (this.waitTimer <= 0) {
         const chance = f.active ? Math.min(0.95, ANIMALS.visitChance + 0.25) : ANIMALS.visitChance;
         if (this.rand() < chance) {
-          // If food is out, spawn somewhere nearby so the crab can smell it
+          // Bait on dry sand attracts crabs; unbaited rolls can spawn an offshore dolphin
+          const pickDolphin = !f.active && this.rand() < ANIMALS.dolphinChance;
+          if (pickDolphin && this.spawnNow(env, undefined, 'dolphin')) return;
           const nearFood = f.active ? this.pickSpotNear(f.x, f.z, 3.5, 7.5, env) : null;
-          if (this.spawnNow(env, nearFood ?? undefined)) return;
+          if (this.spawnNow(env, nearFood ?? undefined, 'crab')) return;
         }
         // quiet miss — wait another interval so the beach stays empty most of the time
         this.waitTimer = this.rollWait();
         s.nextSpawnIn = this.waitTimer / rate;
       }
+      return;
+    }
+
+    if (s.species === 'dolphin') {
+      this.updateDolphin(step, env);
       return;
     }
 
@@ -676,5 +741,58 @@ export class AnimalController {
       if (dx * dx + dz * dz < r * r) return true;
     }
     return false;
+  }
+
+  /** Offshore dolphin: cruises alongshore in deep water with periodic breaching arcs. */
+  private updateDolphin(step: number, env: AnimalEnv): void {
+    const s = this.snap;
+    s.visitLeft = Math.max(0, s.visitLeft - step);
+    const speed = ANIMALS.dolphinSpeed * (s.phase === 'breaching' ? 1.15 : 1);
+    s.x += this.swimDir * speed * step;
+    s.scuttlePhase += step * 8;
+
+    // Gentle sinusoidal offshore weave, nudged seaward if water gets shallow
+    let dz = Math.sin(s.scuttlePhase * 0.22) * 0.35 * step;
+    const curDepth = env.waterAt(s.x, s.z);
+    if (curDepth < ANIMALS.dolphinMinDepth) dz -= 1.5 * step;
+    s.z = clamp(s.z + dz, -HALF_Z + 2.0, SHORELINE_Z - 3.5);
+
+    const bed = env.heightAt(s.x, s.z);
+    const depth = env.waterAt(s.x, s.z);
+    const surface = Number.isFinite(bed) ? bed + Math.max(depth, 0.4) : 0;
+
+    // Leave once crossed the beach or visit timer finishes
+    if (Math.abs(s.x) > HALF_X - 1.0 || (s.visitLeft <= 0 && s.phase !== 'breaching')) {
+      this.despawnNow();
+      return;
+    }
+
+    const BREACH_SEC = 1.65;
+    if (s.phase === 'breaching') {
+      this.breachClock += step;
+      const t = clamp(this.breachClock / BREACH_SEC, 0, 1);
+      // Graceful parabolic arc out of the water and back in
+      const arc = Math.sin(t * Math.PI);
+      s.y = surface - 0.35 + arc * ANIMALS.dolphinBreachHeight;
+      // Nose up on ascent, nose down on dive
+      s.pitch = -Math.cos(t * Math.PI) * 0.72;
+      if (t >= 1) {
+        s.phase = 'swimming';
+        s.pitch = 0;
+        this.nextBreachIn = 2.0 + this.rand() * 2.2;
+      }
+    } else {
+      // Surface glide with dorsal fin cutting the water
+      s.y = surface - 0.14 + Math.sin(s.scuttlePhase * 0.6) * 0.06;
+      s.pitch = Math.cos(s.scuttlePhase * 0.6) * 0.08;
+      this.nextBreachIn -= step;
+      if (this.nextBreachIn <= 0 && depth >= ANIMALS.dolphinMinDepth && Math.abs(s.x) < HALF_X - 5.0) {
+        s.phase = 'breaching';
+        this.breachClock = 0;
+      }
+    }
+
+    s.speed = speed;
+    s.facing = this.swimDir > 0 ? Math.PI * 0.5 : -Math.PI * 0.5;
   }
 }

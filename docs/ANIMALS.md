@@ -1,7 +1,7 @@
 # Animals (design)
 
-Status: **A1–A4 built** (wild sand crab, beach snacks & feeding, resident pets,
-visitor feeding, 2026-11-24). A5 (second species) up next.
+Status: **A1–A5 built** (wild sand crab, beach snacks & feeding, resident pets,
+visitor feeding, offshore dolphin — 2026-11-24).
 
 Animals bring quiet life to the beach without turning it into a busy zoo. We
 start small — **one animal species (sand crab)**, showing up rarely and leaving

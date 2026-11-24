@@ -1784,9 +1784,9 @@ async function boot() {
     objectView,
     animals: {
       snapshot: () => ({ ...animals.snapshot(), food: { ...animals.snapshot().food } }),
-      spawn: (pos?: { x: number; z: number }) => {
+      spawn: (pos?: { x: number; z: number }, species: 'crab' | 'dolphin' = 'crab') => {
         syncAnimalObstacles();
-        return animals.spawnNow(animalEnv, pos);
+        return animals.spawnNow(animalEnv, pos, species);
       },
       dropFood: (pos?: { x: number; z: number }) => {
         syncAnimalObstacles();
@@ -1813,7 +1813,11 @@ async function boot() {
     await setupDebug(send, () => info, () => cam.brushRadius(), {
       spawn: () => {
         syncAnimalObstacles();
-        return animals.spawnNow(animalEnv);
+        return animals.spawnNow(animalEnv, undefined, 'crab');
+      },
+      spawnDolphin: () => {
+        syncAnimalObstacles();
+        return animals.spawnNow(animalEnv, undefined, 'dolphin');
       },
       dropFood: () => {
         syncAnimalObstacles();

@@ -299,5 +299,11 @@ export const ANIMAL_COLORS = {
     shrimp: hex('#f28c6b'),
     kelp: hex('#5b7a3a'),
   },
+  dolphin: {
+    back: hex('#5d84a6'),
+    belly: hex('#d2e2ed'),
+    fin: hex('#4a6e8f'),
+    eyes: hex('#1e2228'),
+  },
 };
 

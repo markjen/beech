@@ -57,9 +57,6 @@ _(nothing right now)_
 
 ## Up next (engineering)
 
-- [ ] **Animals (A5)**: A1–A4 (wild sand crab, food & feeding, resident pets,
-  visitor feeding) are built; next up is a second species (dolphin offshore).
-  Spec in [ANIMALS.md](ANIMALS.md).
 - [ ] **Sandcastle mini-game: customize detailed sandcastles**: Rose
   asked for more sandcastle shapes (Discord #feedback, 2026-11-23);
   Mark (2026-11-24) chose a mini-game instead — let users build and

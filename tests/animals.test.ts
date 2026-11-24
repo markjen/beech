@@ -197,6 +197,32 @@ describe('AnimalController (wild sand crab)', () => {
     expect(ctrl.snapshot().active).toBe(true);
     expect(ctrl.snapshot().petMood).toBe('happy');
   });
+
+  it('spawns an offshore dolphin that cruises alongshore, breaches above the water, and leaves cleanly', () => {
+    const ctrl = new AnimalController(seeded(77));
+    const env = flatBeach({
+      heightAt: (_x, z) => (z < 0 ? -1.4 : 0.2),
+      waterAt: (_x, z) => (z < 0 ? 1.4 : 0),
+    });
+
+    expect(ctrl.spawnNow(env, { x: -10, z: -8 }, 'dolphin')).toBe(true);
+    expect(ctrl.snapshot().species).toBe('dolphin');
+    expect(ctrl.snapshot().phase).toBe('swimming');
+
+    let breached = false;
+    let maxY = -Infinity;
+    for (let i = 0; i < 400; i++) {
+      ctrl.update(0.05, env);
+      const s = ctrl.snapshot();
+      if (!s.active) break;
+      if (s.phase === 'breaching') breached = true;
+      if (s.y > maxY) maxY = s.y;
+    }
+
+    expect(breached).toBe(true);
+    expect(maxY).toBeGreaterThan(0.5); // leapt visibly above water surface (y = 0)
+    expect(ctrl.snapshot().active).toBe(false);
+  });
 });
 
 import { nextPetNotifyTime } from '../src/platform/petNotify';

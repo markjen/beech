@@ -205,21 +205,67 @@ function buildTreatMesh(scene: Scene): Mesh {
   return mesh;
 }
 
+/** Low-poly offshore dolphin, unit length = 1.0 along +Z, dorsal fin along +Y (1 draw call). */
+function buildDolphinMesh(scene: Scene): Mesh {
+  const b = makeBuilder();
+  const c = ANIMAL_COLORS.dolphin;
+  // Torso segments (tapered sleek body, slate-blue back + pale belly)
+  addBox(b, 0, 0.05, 0.04, 0.22, 0.16, 0.44, c.back, 0, 0);
+  addBox(b, 0, -0.04, 0.04, 0.18, 0.10, 0.40, c.belly, 0, 0);
+  // Head & rostrum (snout pointing +Z)
+  addBox(b, 0, 0.03, 0.30, 0.16, 0.13, 0.18, c.back, 0, 0, 0.12, 0, 0);
+  addBox(b, 0, -0.01, 0.44, 0.08, 0.06, 0.16, c.back, 0, 0, 0.05, 0, 0);
+  // Eyes
+  for (const side of [-1, 1]) {
+    addBox(b, side * 0.085, 0.03, 0.30, 0.025, 0.025, 0.025, c.eyes, 0, 0);
+  }
+  // Curved dorsal fin
+  addBox(b, 0, 0.19, -0.02, 0.04, 0.18, 0.14, c.fin, 0, 0, -0.35, 0, 0);
+  // Pectoral fins
+  for (const side of [-1, 1]) {
+    addBox(b, side * 0.16, -0.03, 0.10, 0.18, 0.035, 0.10, c.fin, 0, 0, 0, -side * 0.45, -side * 0.32);
+  }
+  // Tail peduncle & horizontal flukes
+  addBox(b, 0, 0.01, -0.28, 0.12, 0.10, 0.24, c.back, 0, 0, -0.06, 0, 0);
+  addBox(b, 0, 0.0, -0.45, 0.34, 0.035, 0.12, c.fin, 0, 0);
+
+  const vd = new VertexData();
+  vd.positions = b.P;
+  vd.indices = b.I;
+  vd.colors = b.C;
+  vd.uvs = b.UV;
+  const normals: number[] = [];
+  VertexData.ComputeNormals(b.P, b.I, normals);
+  vd.normals = normals;
+
+  const mesh = new Mesh('wildDolphin', scene);
+  vd.applyToMesh(mesh, false);
+  mesh.convertToFlatShadedMesh();
+  mesh.isPickable = false;
+  mesh.alwaysSelectAsActiveMesh = true;
+  mesh.setEnabled(false);
+  return mesh;
+}
+
 /**
- * Owns the single-draw-call crab mesh and dropped treat mesh, syncing their
- * transforms and shader animation uniforms from `AnimalController.snapshot()`.
+ * Owns the single-draw-call crab, dolphin, and dropped treat meshes, syncing
+ * their transforms and shader animation uniforms from `AnimalController.snapshot()`.
  */
 export class AnimalView {
   readonly mesh: Mesh;
+  readonly dolphinMesh: Mesh;
   readonly treatMesh: Mesh;
   readonly mat: ShaderMaterial;
   private visible = false;
+  private dolphinVisible = false;
   private treatVisible = false;
 
   constructor(scene: Scene, renderer: BeachRenderer) {
     this.mat = renderer.createAnimalMaterial(0.25);
     this.mesh = buildCrabMesh(scene);
     this.mesh.material = this.mat;
+    this.dolphinMesh = buildDolphinMesh(scene);
+    this.dolphinMesh.material = this.mat;
     this.treatMesh = buildTreatMesh(scene);
     this.treatMesh.material = this.mat;
   }
@@ -234,12 +280,32 @@ export class AnimalView {
       this.treatMesh.position.set(snap.food.x, snap.food.y, snap.food.z);
     }
 
-    const show = snap.active && beachVisible;
-    if (show !== this.visible) {
-      this.visible = show;
-      this.mesh.setEnabled(show);
+    const showCrab = snap.active && snap.species === 'crab' && beachVisible;
+    if (showCrab !== this.visible) {
+      this.visible = showCrab;
+      this.mesh.setEnabled(showCrab);
     }
-    if (!show) return;
+
+    const showDolphin = snap.active && snap.species === 'dolphin' && beachVisible;
+    if (showDolphin !== this.dolphinVisible) {
+      this.dolphinVisible = showDolphin;
+      this.dolphinMesh.setEnabled(showDolphin);
+    }
+
+    if (showDolphin) {
+      const s = snap.size;
+      this.dolphinMesh.position.set(snap.x, snap.y, snap.z);
+      this.dolphinMesh.scaling.set(s, s, s);
+      this.dolphinMesh.rotation.y = snap.facing;
+      this.dolphinMesh.rotation.x = snap.pitch;
+      this.dolphinMesh.rotation.z = Math.sin(snap.scuttlePhase * 0.5) * 0.08;
+      this.mat.setFloat('scuttlePhase', 0);
+      this.mat.setFloat('scuttleAmp', 0);
+      this.mat.setFloat('clawWave', 0);
+      return;
+    }
+
+    if (!showCrab) return;
 
     const s = snap.size;
     // Sink smoothly below the sand during emerging / burrowing; gentle hop when freshly fed
@@ -262,6 +328,7 @@ export class AnimalView {
 
   dispose(): void {
     this.mesh.dispose();
+    this.dolphinMesh.dispose();
     this.treatMesh.dispose();
     this.mat.dispose();
   }

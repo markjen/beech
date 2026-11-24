@@ -213,5 +213,15 @@ export const ANIMALS = {
   foodMaxVisit: 420,
   /** seconds after eating during which the crab is calm around the brush */
   foodCalmSec: 60,
+  /** share of unbaited wild visits that are an offshore dolphin instead of a sand crab */
+  dolphinChance: 0.35,
+  /** dolphin length scale (metres) */
+  dolphinSize: 1.55,
+  /** dolphin cruising speed alongshore (m/s) */
+  dolphinSpeed: 2.4,
+  /** minimum water depth (m) where a dolphin will swim */
+  dolphinMinDepth: 0.6,
+  /** peak height (m) of a dolphin breach arc above the water surface */
+  dolphinBreachHeight: 1.15,
 };
 
