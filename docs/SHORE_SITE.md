@@ -84,8 +84,11 @@ The beach shape, day palette and place tints are copies of the app's;
 **The 3D views** (`renderIsoBeach`/`beachIsoPng`, same file) draw the same
 saved beach as an isometric diorama from either side: the real heightfield
 (rest profile + saved sand deltas), water as a flat surface below sea
-level, and things as vertical billboards (tall kinds) or flat ground
-marks, so a lighthouse or parasol stands up instead of lying flat.
+level with swell lines and waterline lace, sand with a slow grain so even
+a dark sand reads as sand, and things as vertical billboards (tall kinds)
+or flat ground marks, so a lighthouse or parasol stands up instead of
+lying flat. Billboards are drawn at the ground scale, so a sandcastle
+reads at the same size relative to the beach whatever the frame fits.
 `iso.png` is the land-side view, camera on the land looking out toward
 the sea; `iso-ocean.png` is the reverse, camera offshore and elevated,
 looking landward — sea in the foreground, beach rising away — and is the
@@ -94,9 +97,10 @@ walk-left neighbor (+x) is on the picture's left, matching the top-down
 card and the beach-page strip; from the land the neighbours appear on the
 opposite sides, because you are looking from the other direction. One
 public beach shows on each side — linked flush at 32 m, unlinked keeping
-the 1.6 m gap of untouched shore — and a side with no public neighbor
-shows no shore at all: the frame is fitted to exactly the beaches present,
-with no faded empty-shore filler. A non-public neighbor never
+the 1.6 m gap of untouched shore — and the frame fits the centre beach
+plus a 14 m slice of each neighbour, so the beach is the subject instead
+of a thin strip in a void; a side with no public neighbor shows no shore
+at all, with no faded empty-shore filler. A non-public neighbor never
 appears: the route only ever fetches neighbours through `shoreGraph.walk`
 with `keep=isPublic`, and the cache key carries the neighbours' save
 times. The beach page has three small buttons on the hero picture — Flat,
@@ -104,7 +108,8 @@ times. The beach page has three small buttons on the hero picture — Flat,
 no URL, og tag, or share link, and `og:image` stays the top-down card.
 First render is around 100 ms (1200×630, ~15k terrain quads) and cached
 like the card; samples in `docs/shore-iso-sample.png` (ocean) and
-`docs/shore-iso-land-sample.png` (land).
+`docs/shore-iso-land-sample.png` (land), re-rendered from a constructed
+player-like beach by `server/scripts/render-iso-samples.ts`.
 
 The top-down card is exactly the beach edge to edge: the 32 m beach is
 stretched alongshore to fill the 1200 px width (37.5 px/m alongshore,

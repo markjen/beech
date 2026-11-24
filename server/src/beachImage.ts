@@ -928,8 +928,10 @@ function drawThings(img: Uint8Array, W: number, H: number, things: Thing[], look
 // camera offshore, looking landward, the sea in the foreground and the beach
 // rising away — the same angled look as the game. One beach either side,
 // from the walk; a linked neighbour sits flush, an unlinked one keeps the
-// 1.6 m diorama gap, and where there is no public neighbour the shore
-// carries on untouched and fades, like the top-down picture.
+// 1.6 m diorama gap, and where there is no public neighbour the frame ends
+// at the centre beach — no faded filler shore on any side. The frame shows
+// the centre beach plus a slice (14 m) of each neighbour, so the beach is
+// the subject instead of a thin strip in a void.
 //
 // Alongshore the picture is mirrored against a literal offshore camera so
 // left and right match the top-down card (facing the sea, left is +x, so
@@ -963,9 +965,13 @@ interface IsoCam {
   /** +1: camera offshore looking landward (sea in front); -1: camera inland looking seaward */
   sgn: 1 | -1;
 }
-/** Fit the ground diamond to exactly the beaches present (fx0..fx1 alongshore, 0..32 offshore→land). No filler shore past the ends. */
+/** metres of each neighbour shown either side of the centre beach */
+const ISO_SHOW = 14;
+/** Fit the frame to the centre beach plus a slice of each neighbour (fx0..fx1 are the strip's ends, 0/32 with no neighbours). The beach is the subject — the frame does not fit the whole 96 m strip, which reads as a thin diagonal in a void. A side with no neighbour ends at the centre beach, with no filler shore past it. */
 const isoCam = (W: number, H: number, fx0: number, fx1: number, dir: IsoDir): IsoCam => {
-  const span = fx1 - fx0 + WORLD;
+  const vx0 = Math.max(fx0, -ISO_SHOW);
+  const vx1 = Math.min(fx1, WORLD + ISO_SHOW);
+  const span = vx1 - vx0 + WORLD;
   const mx = 20;
   const myTop = 80;
   const myBot = 16;
@@ -975,10 +981,10 @@ const isoCam = (W: number, H: number, fx0: number, fx1: number, dir: IsoDir): Is
   const B = ISO_B * s;
   const C = ISO_Z * s;
   const sgn = dir === 'ocean' ? 1 : -1;
-  // centre the ground diamond; the land view mirrors it alongshore, so a
+  // centre the ground diamond on the view window; the land view mirrors it alongshore, so a
   // neighbour that is on the left from the sea is on the right from the land
-  const ox = (W + sgn * (fx0 + fx1 + WORLD) * A) / 2;
-  const oy = myTop + topH * C + (sgn > 0 ? WORLD - fx0 : fx1) * B;
+  const ox = (W + sgn * (vx0 + vx1 + WORLD) * A) / 2;
+  const oy = myTop + topH * C + (sgn > 0 ? WORLD - vx0 : vx1) * B;
   return { s, A, B, C, ox, oy, sgn };
 };
 /** world (x alongshore, y offshore→land, h height) → screen, y down */
@@ -1088,8 +1094,8 @@ function fillQuad(img: Uint8Array, W: number, H: number, pts: Pt[], r: number, g
  * picture's left. `land` is the view from the land side, looking out toward
  * the sea: the beach in the foreground, the sea far away, and the neighbours
  * mirrored — the walk-left neighbour is on the picture's right. The frame
- * fits exactly the beaches present; a side with no public neighbour ends at
- * the centre beach, with no filler shore past it.
+ * fits the centre beach plus a slice of each neighbour; a side with no
+ * public neighbour ends at the centre beach, with no filler shore past it.
  */
 export function renderIsoBeach(
   center: IsoPanel,
@@ -1107,6 +1113,10 @@ export function renderIsoBeach(
   const fx1 = Math.max(...panels.map((p) => p.start + WORLD));
   const cam = isoCam(W, H, fx0, fx1, dir);
   const out = new Uint8Array(W * H * 3);
+  // billboards are drawn at the ground scale, so things read at the same
+  // size relative to the beach whatever the frame fits (13 px/m at least,
+  // so they still read on a small picture)
+  const bs = Math.min(24, Math.max(13, cam.s));
 
   // sky: pale blue up top, warm haze at the horizon
   const skyTop = hex('#cfe6ee');
@@ -1207,10 +1217,12 @@ export function renderIsoBeach(
         r = look.sandWet[0] + (r - look.sandWet[0]) * t2;
         g = look.sandWet[1] + (g - look.sandWet[1]) * t2;
         b = look.sandWet[2] + (b - look.sandWet[2]) * t2;
-        if (depth > 0.4) {
+        if (depth > 0.15) {
           const wave = Math.sin((yc - PROFILE.shoreline) * 2.2 + Math.sin(xc * 0.35) * 0.9 + noise1(xc * 0.6, 3) * 2);
-          if (wave > 0.9) {
-            const t3 = (wave - 0.9) * 0.5 * smoothstep(0.4, 1.0, depth);
+          if (wave > 0.75) {
+            // stronger than the flat card's swell lines: in the diorama the
+            // sea is compressed, so the card's 0.16 blend barely shows
+            const t3 = (wave - 0.75) * 1.4 * smoothstep(0.15, 0.6, depth);
             r += (look.foam[0] - r) * t3;
             g += (look.foam[1] - g) * t3;
             b += (look.foam[2] - b) * t3;
@@ -1258,16 +1270,26 @@ export function renderIsoBeach(
           g += (look.foam[1] - g) * t4;
           b += (look.foam[2] - b) * t4;
         }
+        // sand grain: a slow, smooth mottle, so sand reads as sand even
+        // where the location tint is dark (Piha's black sand rendered as
+        // one flat slab before this — the rest profile's bands were the
+        // only variation). Smooth on purpose: a per-cell speckle read as
+        // a checkerboard of square blocks at this zoom. Additive, so it
+        // shows on dark sand too.
+        const grain = ((noise1(xc * 1.8, 5) - 0.5) + (noise1(yc * 1.8, 6) - 0.5)) * 0.1;
+        r += grain;
+        g += grain;
+        b += grain;
         pts = [isoPt(cam, x0, y0, h00), isoPt(cam, x1, y0, h10), isoPt(cam, x1, y1, h11), isoPt(cam, x0, y1, h01)];
       }
       fillQuad(out, W, H, pts, to8(r), to8(g), to8(b));
-      for (const pl of byCell[j * cols + i]) drawIsoThing(out, W, H, pl);
+      for (const pl of byCell[j * cols + i]) drawIsoThing(out, W, H, pl, bs);
     }
   }
   return out;
 }
 
-const ISO_BS = 13; // px per metre for billboards — bigger than the ground scale so things read
+/** px per metre for billboards — the ground scale, passed in so things stay in proportion to the beach whatever the frame fits (13 px/m at least, so they still read on a small picture) */
 const ISO_SHADOW: RGB = [0.18, 0.14, 0.1];
 const ellipsePts = (cx: number, cy: number, rx: number, ry: number, n = 16): Pt[] =>
   Array.from({ length: n }, (_, i) => [cx + Math.cos((i / n) * Math.PI * 2) * rx, cy + Math.sin((i / n) * Math.PI * 2) * ry] as Pt);
@@ -1277,7 +1299,7 @@ const ellipsePts = (cx: number, cy: number, rx: number, ry: number, n = 16): Pt[
  * sand (tall things) or a small flat mark on the ground (shells, rocks and
  * the rest). Same colours as the top-down picture.
  */
-function drawIsoThing(img: Uint8Array, W: number, H: number, pl: { t: Thing; bx: number; by: number; look: Look }) {
+function drawIsoThing(img: Uint8Array, W: number, H: number, pl: { t: Thing; bx: number; by: number; look: Look }, bs: number) {
   const { t, bx, by, look } = pl;
   const v = Math.abs(Math.floor(t.variant));
   const vendingVariant = Math.max(0, v - 1);
@@ -1357,7 +1379,7 @@ function drawIsoThing(img: Uint8Array, W: number, H: number, pl: { t: Thing; bx:
       default:
         c = C('#d9c7a8');
     }
-    const rx = Math.max(2.5, t.size * ISO_BS * 0.5);
+    const rx = Math.max(2.5, t.size * bs * 0.5);
     const ry = rx * 0.45;
     if (t.kind === 'starfish') {
       fillPoly(img, W, H, star(bx, by, rx, -t.angle), c);
@@ -1367,8 +1389,8 @@ function drawIsoThing(img: Uint8Array, W: number, H: number, pl: { t: Thing; bx:
     return;
   }
   const [kf, wf, minH] = spec;
-  const h = Math.min(56, Math.max(minH, t.size * ISO_BS * kf));
-  const w = Math.min(48, Math.max(6, t.size * ISO_BS * wf));
+  const h = Math.min(56, Math.max(minH, t.size * bs * kf));
+  const w = Math.min(48, Math.max(6, t.size * bs * wf));
   const top = by - h;
   shadow(w);
   const R = (x: number, y: number, hw: number, hh: number): Pt[] => [

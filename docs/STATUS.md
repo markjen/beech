@@ -364,15 +364,18 @@ accepted the repo's default branch, so the deploy job ran only there.
   sea buttons on its picture, and `GET /img/:CODE/iso.png` (from the land)
   and `GET /img/:CODE/iso-ocean.png` (from the sea) serve the 3D isometric
   views (1200×630, same cache behaviour as the card, keyed on the beach's
-  and its neighbours' save times). The real heightfield, water, and
-  billboarded things show with one public beach either side — linked flush,
-  unlinked with the 1.6 m gap — and the neighbours mirror between the two
-  views, because you are looking from opposite directions. A side with no
-  public neighbour shows no shore at all: the frame is fitted to the
-  beaches present, with no faded filler. Only public beaches ever appear;
-  a non-public neighbour renders as untouched shore.
+  and its neighbours' save times). The real heightfield, water with swell
+  lines, sand with a slow grain, and billboarded things at the ground
+  scale show with one public beach either side — linked flush, unlinked
+  with the 1.6 m gap — and the neighbours mirror between the two views,
+  because you are looking from opposite directions. The frame fits the
+  centre beach plus a 14 m slice of each neighbour, so the beach is the
+  subject; a side with no public neighbour shows no shore at all, with no
+  faded filler. Only public beaches ever appear; a non-public neighbour
+  renders as untouched shore.
   `og:image` stays the top-down card. Samples: `docs/shore-iso-sample.png`
-  (ocean) and `docs/shore-iso-land-sample.png` (land).
+  (ocean) and `docs/shore-iso-land-sample.png` (land), re-rendered from a
+  constructed player-like beach by `server/scripts/render-iso-samples.ts`.
 - **The flat card has no shoulders (2026-11-24):** the top-down card is
   exactly the beach edge to edge — the 32 m beach is stretched alongshore
   to fill the 1200 px width, so the pale bands of empty shore that flanked
