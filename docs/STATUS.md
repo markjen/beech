@@ -32,9 +32,12 @@
   a three-band toon ramp. Pure facets looked speckled at cell scale because of
   the alternating triangle diagonals.
 - **Zoom goes in to a 0.45 m half-height** (`CAMERA.minHalfHeight`), close
-  enough to look at a shell. Past the point where the 24 px brush would
-  cover fewer than 2 cells, the brush stays 2 cells on the sand and grows on
-  screen. The chair view zooms to a 0.12 rad field of view.
+  enough to look at a shell, and **out to 28 m** (`CAMERA.maxHalfHeight`, or
+  1.5× the single-beach fit height on narrow screens via `CAMERA.maxFitScale`)
+  so neighbouring beaches along the shore fit in view at once. Past either
+  brush bound, `brushRadiusOnSand` clamps the brush on the sand between 2 grid
+  cells and `BRUSH.maxRadius` (2.2 m). The chair view zooms to a 0.12 rad field
+  of view.
 - **Minimum brush is 2 grid cells** (25 cm at the medium tier). This caps
   zoom-in, so the finest dig still looks clean on a 12.5 cm grid.
 - **Dry sand angle of repose is 36°** (not 33°), so held digs in dry sand
@@ -350,10 +353,18 @@ accepted the repo's default branch, so the deploy job ran only there.
   › or Q/E). After a second of holding, walking speeds up to 4×. In the chair
   view the static shore fills the gaps between drawn beaches and runs on past
   both ends.
-- **Home:** away from your own beach, a bar (top right; under the place
+- **Home:** just past your own beach, a bar (top right; under the place
   label on phones) says whose beach you're on, with ☆ to favorite it and
-  "⌂ my beach" to glide home. It pulses if you try to dig someone else's
-  beach.
+  "⌂ my beach" to glide home.
+- **Viewing mode (2026-11-24):** once you're looking at someone else's
+  stretch of shore — visiting a beach by code, or scrolled away from your
+  own — no name tags float over the sand, and the bar above goes away too.
+  A small "i" sits at the bottom centre instead (raised above the walk
+  buttons in the chair view); tapping it opens a card with "⌂ my beach" and
+  the name cards for the beaches in view, nearest first — same names,
+  stars and "ask to be neighbors" buttons as the tags had, just behind the
+  tap. Trying to dig someone else's beach nudges the "i" button.
+  (`src/ui/shoreInfo.ts`, `NeighborView.viewing`.)
 - **Visiting by code** (settings → visit): their beach takes the middle, with
   their shore either side, until you head home. **Favorites** come from ☆ on
   a name tag or on the bar. The list sits in the settings sheet, with visit
@@ -784,9 +795,16 @@ here: it needs the service's URL on the web OAuth client.
   mirror field-for-field equal to the catalog, and
   `tests/items.test.ts` checks every item has a render in
   `docs/items/renders/` and a copy in `public/items/`.
-  Migration 21 adds `item_votes` and `item_comments`. Admins cannot
+  Migration 22 adds `item_votes` and `item_comments`. Admins cannot
   delete other players' comments from the game server — the admin
   email list lives only in the admin service.
+
+- **Signed-out public shore** (2026-11-24): when signed out (and not visiting a
+  `?visit=` code), `GET /api/public/shore` without `code` anchors on the top
+  public beach and walks both directions (`center: null`, unlinked at the edges
+  beside index 0), so `NeighborView` renders public sections of the beechshore
+  next to the player's empty beach for inspiration and supports infinite scroll
+  and returning home from a visit.
 
 ## Verification
 
@@ -808,3 +826,47 @@ catalog product. Linked paid items credit the creator 30% of each
 completed sale. Assets and availability ship through the existing
 catalog release process. The public specification includes an example
 prompt, JSON Schema and sample asset.
+
+## Animals — A1 wild sand crab (2026-11-24)
+
+- **Rare wild visitor** ([ANIMALS.md](ANIMALS.md)): a single sand crab
+  occasionally emerges from the sand (4–12 min quiet wait, 65% roll, 45–120 s
+  visit, empty most of the time), scurries sideways in short bursts, pauses to
+  wave its claws, flees incoming waves and the player's digging brush, steers
+  around placed rocks/large objects, and burrows back into the sand.
+- **Implementation:** pure-TS state machine in `src/world/animals.ts` (unit
+  tested in `tests/animals.test.ts`), tuning constants in `ANIMALS`
+  (`src/config.ts`), colours in `ANIMAL_COLORS` (`src/palette.ts`), and a
+  single-draw-call vertex-coloured procedural mesh with GPU leg-scuttle and
+  claw-wave animation in `src/render/animals.ts` (`beachAnimal` shader in
+  `src/render/shaders.ts`, disabled when absent so idle draw calls stay
+  unchanged). `?debug=1` adds **Spawn sand crab** / **Despawn** and a status
+  readout.
+
+- **Food & feeding (A2)** (2026-11-24): `crab-treat` ("Beach snacks") added to
+  `EXTRAS` and the shop (`food_pack_10` $0.99, `food_pack_35` $2.99) plus a
+  25% free bonus treat trickle on digging finds. Tossing a snack from the bag
+  calls `POST /api/animals/feed` (atomic server decrement), drops a visible
+  treat pile on the sand, speeds up wild spawns 4× while empty, and draws an
+  active crab over to eat (extending its visit and calming it around the
+  brush).
+- **Resident pets (A3)** (2026-11-24): migration 21 adds `beach_pets`,
+  `wild_feed_progress`, and `pet_feed_log`. Players can adopt one pet per beach
+  either by feeding wild crabs 10 times (`POST /api/pet/adopt { mode:
+  'befriend' }`) or buying `pet_crab` ($1.99) in the shop (`mode: 'shop'`).
+  Mood (`happy` / `peckish` / `hungry` / `sleepy`) is computed from
+  `last_fed_at`; sleepy pets nap half-burrowed until fed and never leave.
+  `src/platform/petNotify.ts` schedules local hunger reminders at +24 h
+  respecting 22:00–08:00 quiet hours.
+- **Visitor feeding (A4)** (2026-11-24): `GET /api/beaches/:code/pet` and
+  `POST /api/beaches/:code/pet/feed` let signed-in visitors feed another
+  beach's pet (1 free feed per beach per UTC day, or spend 1 `crab-treat` from
+  their own bag anytime). The shore bar shows a **Feed pet** button when
+  visiting a beach with a pet, and owners see a quiet toast (`X fed Barnaby!`)
+  when visitors feed theirs.
+- **Second species — offshore dolphin (A5)** (2026-11-24): added `'dolphin'`
+  to `AnimalController` (`src/world/animals.ts`) and `buildDolphinMesh`
+  (`src/render/animals.ts`, single draw call, lazy-loaded, 0 idle draws). On
+  unbaited wild visit rolls, 35% of visits are an offshore dolphin cruising
+  alongshore in deep water (`depth >= 0.6 m`) with periodic parabolic breaching
+  arcs and nose pitch; `?debug=1` adds **Spawn dolphin**.

@@ -1,6 +1,7 @@
 # Animals (design)
 
-Status: **spec ready for A1** — core decisions locked (2026-11-24). Nothing built yet.
+Status: **A1–A5 built** (wild sand crab, beach snacks & feeding, resident pets,
+visitor feeding, offshore dolphin — 2026-11-24).
 
 Animals bring quiet life to the beach without turning it into a busy zoo. We
 start small — **one animal species (sand crab)**, showing up rarely and leaving

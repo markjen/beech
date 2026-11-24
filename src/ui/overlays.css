@@ -667,17 +667,6 @@ body.ambient-idle {
   cursor: pointer;
 }
 
-/* tried to dig on someone else's beach: point at the way home */
-.shore-bar.nudge {
-  animation: shore-nudge 0.5s ease;
-}
-
-@keyframes shore-nudge {
-  30% {
-    transform: scale(1.06);
-  }
-}
-
 @media (max-width: 520px) {
   /* below the place label on phones */
   .shore-bar {
@@ -685,6 +674,129 @@ body.ambient-idle {
     left: calc(14px + env(safe-area-inset-left));
     right: auto;
   }
+}
+
+/* ---------------------------------------------------------- viewing mode:
+   the beach info lives behind a small "i" at the bottom, not floating
+   over the sand. The name cards open only when the viewer taps it. */
+
+.shore-info {
+  position: fixed;
+  left: 50%;
+  bottom: calc(18px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100vw - 32px);
+  pointer-events: none;
+  z-index: 5;
+}
+
+.shore-info[hidden] {
+  display: none;
+}
+
+/* hide with the rest of the HUD when the toolbars are collapsed, and
+   while the ambient screen is idle */
+.ui-collapsed .shore-info,
+body.ambient-idle .shore-info {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* above the walk buttons in the chair view */
+.hud.chair ~ .shore-info {
+  bottom: calc(18px + 70px + env(safe-area-inset-bottom));
+}
+
+.shore-info-btn {
+  pointer-events: auto;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 21px;
+  font-style: italic;
+  line-height: 1;
+  color: var(--ui-fg);
+  background: var(--ui-bg);
+  box-shadow: 0 6px 18px var(--ui-shadow);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  cursor: pointer;
+}
+
+/* tried to dig on someone else's beach: point at the info button */
+.shore-info-btn.nudge {
+  animation: shore-info-nudge 0.5s ease;
+}
+
+@keyframes shore-info-nudge {
+  30% {
+    transform: scale(1.12);
+  }
+}
+
+.shore-info-card {
+  pointer-events: auto;
+  width: min(420px, calc(100vw - 32px));
+  max-height: min(50vh, 420px);
+  overflow-y: auto;
+  padding: 6px 12px 10px;
+  border-radius: 18px;
+  color: var(--ui-fg);
+  background: var(--ui-bg);
+  box-shadow: 0 6px 18px var(--ui-shadow);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.shore-info-card[hidden] {
+  display: none;
+}
+
+.shore-info-home {
+  border: none;
+  border-radius: 999px;
+  padding: 8px 14px;
+  margin: 6px 0 2px;
+  color: var(--ui-bg);
+  background: var(--ui-fg);
+  font: inherit;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* name tags moved into the card lay out as rows, not floating pills */
+.shore-info-list .neighbor-tag {
+  position: static;
+  transform: none;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.25);
+}
+
+.shore-info-list .neighbor-tag:last-child {
+  border-bottom: none;
+}
+
+.shore-info-list .neighbor-tag .name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .beaches .beach-row.here .fav-name {
