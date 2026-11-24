@@ -124,35 +124,38 @@ export async function createPgliteDb(dataDir?: string): Promise<Db> {
   const db = new PGlite(dataDir);
   await db.waitReady;
   const stats: DbStats = createDbStats();
+  const timedQuery = (conn: Pick<typeof db, 'query'>): Db['query'] => async <T>(sql: string, params: unknown[] = []) => {
+    const start = performance.now();
+    try {
+      const rows = (await conn.query<T>(sql, params)).rows;
+      stats.record(performance.now() - start, true);
+      return rows;
+    } catch (e) {
+      const ms = performance.now() - start;
+      stats.record(ms, false);
+      logEvent('db_error', { duration_ms: Math.round(ms), code: String((e as { code?: unknown })?.code ?? 'unknown') }, 'ERROR');
+      throw e;
+    }
+  };
   const pgliteDb: Db = {
-    async query(sql, params = []) {
-      const start = performance.now();
-      try {
-        const rows = (await db.query(sql, params)).rows as never[];
-        stats.record(performance.now() - start, true);
-        return rows;
-      } catch (e) {
-        const ms = performance.now() - start;
-        stats.record(ms, false);
-        logEvent('db_error', { duration_ms: Math.round(ms), code: String((e as { code?: unknown })?.code ?? 'unknown') }, 'ERROR');
-        throw e;
-      }
-    },
+    query: timedQuery(db),
     async exec(sql) {
       await db.exec(sql);
     },
     withLock: (_key, fn) => fn(), // single connection: nothing to race with
     async withTransaction(fn) {
-      // Single connection, so BEGIN/COMMIT bracket the same queries fn runs.
-      await db.exec('BEGIN');
-      try {
-        const result = await fn(pgliteDb);
-        await db.exec('COMMIT');
-        return result;
-      } catch (e) {
-        await db.exec('ROLLBACK').catch(() => {});
-        throw e;
-      }
+      // PGlite's transaction owns the connection until commit or rollback.
+      return db.transaction((connection) => {
+        const tx: Db = {
+          query: timedQuery(connection),
+          exec: async (sql) => { await connection.exec(sql); },
+          withLock: (_key, f) => f(),
+          withTransaction: (f) => f(tx),
+          close: () => Promise.resolve(),
+          stats: pgliteDb.stats,
+        };
+        return fn(tx);
+      });
     },
     close: () => db.close(),
     stats: () => stats.snapshot(),

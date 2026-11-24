@@ -178,6 +178,8 @@ refresh the full beach and contact sheet after adding items.
 
 ## Adding an item
 
+For community assets, see [Community item submissions](ITEM_SUBMISSIONS.md).
+
 `tests/items.test.ts` checks the catalog, pools and products.
 `tests/specialItems.test.ts` checks distinct item finishes and matching
 shore-picture colours.

@@ -121,9 +121,9 @@ export function formatCents(cents: number): string {
  * between this check and the increment below. The promo is then incremented
  * only because the payment went through, the use is logged only because the
  * promo was claimed, and the items are granted only when the payment went
- * through (and the promo, if any, was claimed). Returns the granted item
- * ids, or [] when the payment didn't go through — credit drained, or the
- * promo spent, after the handler's pre-checks. A [] return has changed
+ * through (and the promo, if any, was claimed). Returns the granted inventory
+ * row IDs, or [] if credit or promo availability changed after the handler's
+ * pre-checks. A [] return has changed
  * nothing: no burned promo use, no credit debited without items.
  *
  * The $3::text casts are load-bearing: Postgres can't infer the promo-code
@@ -142,7 +142,7 @@ export async function claimCreditPurchase(
     now: number;
   },
 ): Promise<string[]> {
-  const rows = await db.query<{ item_id: string }>(
+  const rows = await db.query<{ id: string }>(
     `WITH paid AS (
        UPDATE users SET credit_cents = credit_cents - $5
         WHERE id = $1 AND credit_cents >= $5
@@ -174,8 +174,8 @@ export async function claimCreditPurchase(
      INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at, purchase_id)
      SELECT $1, g.item, g.qty, 'shop', $4, NULL FROM paid, unnest($7::text[], $8::int[]) AS g(item, qty)
      WHERE $3::text IS NULL OR EXISTS (SELECT 1 FROM promo)
-     RETURNING item_id`,
+     RETURNING id`,
     [args.userId, args.productId, args.promoCode, args.now, args.finalCents, args.discountCents, args.items, args.quantities],
   );
-  return rows.map((r) => r.item_id);
+  return rows.map((r) => r.id);
 }

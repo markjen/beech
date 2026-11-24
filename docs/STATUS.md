@@ -760,3 +760,14 @@ here: it needs the service's URL on the web OAuth client.
   a dev server) drives a headless browser through these checks: the sim is
   running, a touch dig is cancelled by a second finger, a one-finger touch digs,
   a mouse dig changes the sand, undo restores it and redo re-applies it.
+
+## Community item submissions
+
+Beechshore has a signed-in [item submission section](ITEM_SUBMISSIONS.md)
+with proposed prices and availability, versioned upload consent, and a
+creator status and credit view. The admin console queues submissions and
+lets reviewers edit a proposal, replace its asset, and link it to a
+catalog product. Linked paid items credit the creator 30% of each
+completed sale. Assets and availability ship through the existing
+catalog release process. The public specification includes an example
+prompt, JSON Schema and sample asset.

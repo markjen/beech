@@ -109,6 +109,9 @@ _(nothing right now)_
 
 ## Done (recent)
 
+- [x] **Beechshore item submissions** (2026-11-24): signed-in uploads with
+  versioned terms, an admin review queue, and 30% non-cashable credit on
+  linked item sales. [Asset spec and publishing workflow](ITEM_SUBMISSIONS.md).
 - [x] **Shop centrepieces: palm tree, lifeguard tower, bonfire,
   hammock, towel** (2026-11-24, PR #66): five new shop items — a palm
   tree (legendary, $2.99, the tallest of the five), a lifeguard tower

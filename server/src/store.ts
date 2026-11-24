@@ -16,6 +16,7 @@ import { X509Certificate } from 'node:crypto';
 import { compactVerify, createRemoteJWKSet, decodeProtectedHeader, jwtVerify, SignJWT, importPKCS8 } from 'jose';
 
 import type { Db } from './db.js';
+import { reverseCreatorCredit } from './creatorCredit.js';
 
 import { APPLE_ROOT_CA_G3_DER_BASE64 } from './appleRoot.js';
 
@@ -200,9 +201,13 @@ export async function revokeStorePurchase(
   transactionId: string,
   now: number,
 ): Promise<void> {
-  await db.query(
-    `WITH p AS (UPDATE purchases SET refunded_at = $3 WHERE store = $1 AND transaction_id = $2 AND refunded_at IS NULL RETURNING id)
-     UPDATE inventory SET expires_at = $3 WHERE purchase_id IN (SELECT id FROM p)`,
-    [store, transactionId, now],
-  );
+  await db.withTransaction(async (tx) => {
+    const [purchase] = await tx.query<{ id: string }>(
+      `UPDATE purchases SET refunded_at = $3 WHERE store = $1 AND transaction_id = $2 AND refunded_at IS NULL RETURNING id`,
+      [store, transactionId, now],
+    );
+    if (!purchase) return;
+    await tx.query('UPDATE inventory SET expires_at = $2 WHERE purchase_id = $1', [purchase.id, now]);
+    await reverseCreatorCredit(tx, purchase.id, now);
+  });
 }

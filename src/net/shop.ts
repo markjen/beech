@@ -139,6 +139,7 @@ function native(): Promise<Purchases> {
 export class ShopApi {
   /** the server takes card payments on the web (Xsolla); learned from the product list */
   webCheckout = false;
+  private readonly creditRequests = new Map<string, string>();
 
   constructor(private readonly account: Account) {}
 
@@ -448,15 +449,30 @@ export class ShopApi {
     productId: string,
     promoCode?: string,
   ): Promise<{ paidCents: number; discountCents: number; creditCents: number }> {
+    const key = 'beech.creditRequest.v1:' + JSON.stringify([this.account.user?.id, productId, promoCode]);
+    let requestId = this.creditRequests.get(key);
+    try {
+      requestId ??= sessionStorage.getItem(key) ?? undefined;
+    } catch { /* storage blocked */ }
+    requestId ??= crypto.randomUUID();
+    this.creditRequests.set(key, requestId);
+    try { sessionStorage.setItem(key, requestId); } catch { /* storage blocked */ }
+    const clearRequest = () => {
+      this.creditRequests.delete(key);
+      try { sessionStorage.removeItem(key); } catch { /* storage blocked */ }
+    };
     const res = await this.account.fetch('/api/store/credit-purchase', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ productId, ...(promoCode ? { promoCode } : {}) }),
+      body: JSON.stringify({ productId, requestId, ...(promoCode ? { promoCode } : {}) }),
     });
     if (!res.ok) {
+      if (res.status < 500 && res.status !== 429) clearRequest();
       const msg = ((await res.json().catch(() => ({}))) as { error?: string }).error;
       throw new Error(msg ?? 'the credit purchase did not go through');
     }
-    return (await res.json()) as { paidCents: number; discountCents: number; creditCents: number };
+    const receipt = (await res.json()) as { paidCents: number; discountCents: number; creditCents: number };
+    clearRequest();
+    return receipt;
   }
 }

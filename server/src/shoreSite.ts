@@ -27,12 +27,16 @@
 //   /robots.txt /sitemap.xml
 
 import { Hono, type Context } from 'hono';
+import { HTTPException } from 'hono/http-exception';
 
 import { beachPng, placeById, PLACES } from './beachImage.js';
 import { DISCORD_INVITE_URL } from './community.js';
 import { toBytes, type Db } from './db.js';
 import { createRateLimiter, logEvent } from './observability.js';
 import { BEACH, NODE, isPublic, normalizeCode, shoreGraph, type NodeRow, type Step } from './shore.js';
+import { createItemSubmission, creatorSubmissions, limitUpload, multipart, requireSubmissionSession } from './itemSubmissions.js';
+import { assetExample, assetSchema } from './submissionAssets.js';
+import { connectContent, specContent, submissionContent } from './submissionPage.js';
 import { FAVICON, ICONS, SHORE_CSS, SHORE_SCRIPT, WAVE_SVG } from './shoreAssets.js';
 
 export interface ShoreSiteConfig {
@@ -42,6 +46,8 @@ export interface ShoreSiteConfig {
   gameUrl: string;
   /** the site's public origin for links people share (https://beechshore.com); unset: from the request */
   publicUrl?: string;
+  /** canonical shore origin, used only by the game's account connection window */
+  submissionOrigin?: string;
   /** uncached image draws per minute per client IP (default 60) */
   imageDrawsPerMinute?: number;
   /** optional shared limiter across host/path mounts */
@@ -56,7 +62,7 @@ const CARD = { width: 1200, height: 630 };
 const THUMB = { width: 480, height: 300 };
 
 type Sort = 'top' | 'rising' | 'new';
-type NavKey = 'home' | 'top' | 'rising' | 'new' | 'other';
+type NavKey = 'home' | 'top' | 'rising' | 'new' | 'submit' | 'other';
 interface ListRow extends NodeRow {
   stars: string | number;
   recent: string | number;
@@ -283,6 +289,7 @@ export function createShoreSite(db: Db, cfg: ShoreSiteConfig): Hono<any, any, an
   const navLinks = (active: NavKey) =>
     [
       `<a href="${href('/top')}"${active === 'top' ? ' aria-current="page"' : ''}>Most loved</a>`,
+      `<a href="${href('/submit')}"${active === 'submit' ? ' aria-current="page"' : ''}>Submit an item</a>`,
       `<a href="${href('/rising')}"${active === 'rising' ? ' aria-current="page"' : ''}>Rising</a>`,
       `<a href="${href('/new')}"${active === 'new' ? ' aria-current="page"' : ''}>Just built</a>`,
       `<a href="${href('/random')}" rel="nofollow">Surprise me</a>`,
@@ -349,6 +356,7 @@ ${main}
     <a href="${href('/rising')}">Rising</a>
     <a href="${href('/new')}">Just built</a>
     <a href="${href('/find')}">Find a beach</a>
+    <a href="${href('/submit')}">Submit an item</a>
     <a href="${esc(DISCORD_INVITE_URL)}">Discord</a>${
       opts.share
         ? ` <button type="button" class="linkish" data-share data-url="${esc(opts.share.url)}" data-text="${esc(opts.share.text)}" data-title="${esc(opts.share.title)}">Share this page</button>`
@@ -625,6 +633,50 @@ ${
   });
 
   // one beach (last: any six letters and numbers)
+  const submissionLayout = (c: Context, title: string, path: string, main: string) => layout({
+    title: `${title} · beechshore`,
+    description: 'Create and submit an item for Beech.',
+    url: abs(c, path),
+    image: abs(c, '/img/shore.png'),
+    imageAlt: 'An untouched beach',
+  }, main, { active: 'submit' });
+
+  app.get('/submit', (c) => {
+    const bridge = cfg.publicUrl ? `${game}/shore/submit/connect?destination=shore` : null;
+    c.header('X-Frame-Options', 'DENY');
+    return html(c, submissionLayout(c, 'Submit an item', '/submit', submissionContent(href, { bridge, endpoint: href('/submit/items') })));
+  });
+  app.get('/submit/spec', (c) => html(c, submissionLayout(c, 'Item asset specification', '/submit/spec', specContent(href))));
+  app.get('/submit/schema.json', (c) => c.json(assetSchema, 200, { 'Cache-Control': 'public, max-age=60' }));
+  app.get('/submit/example.json', (c) => c.json(assetExample, 200, { 'Cache-Control': 'public, max-age=60' }));
+  if (!cfg.publicUrl) {
+    app.get('/submit/connect', (c) => {
+      const destination = c.req.query('destination') === 'shore' ? cfg.submissionOrigin : null;
+      if (c.req.query('destination') === 'shore' && !destination) return c.text('Submission site unavailable', 404);
+      c.header('Cache-Control', 'no-store');
+      c.header('X-Frame-Options', 'DENY');
+      c.header('Referrer-Policy', 'no-referrer');
+      return c.html(submissionLayout(c, 'Connect Beech', '/submit/connect', connectContent(destination ?? null)));
+    });
+  }
+
+  const submissionSession = requireSubmissionSession(db);
+  const uploads = createRateLimiter(5);
+  app.get('/submit/items', submissionSession, async (c) => {
+    const user = c.get('submitter');
+    const [submissions, credit] = await Promise.all([
+      creatorSubmissions(db, user.id),
+      db.query<{ credit_cents: number }>('SELECT credit_cents FROM users WHERE id = $1', [user.id]),
+    ]);
+    return c.json({ user: { name: user.name }, submissions, creditCents: credit[0]?.credit_cents ?? 0 });
+  });
+  app.post('/submit/items', submissionSession, limitUpload, async (c) => {
+    const user = c.get('submitter');
+    if (!uploads(user.id)) return c.json({ error: 'Too many attempts. Try again in a minute.' }, 429, { 'Retry-After': '60' });
+    const id = await createItemSubmission(db, user.id, await multipart(c.req.raw), now());
+    return c.json({ id, status: 'pending' }, 201);
+  });
+
   app.get('/:code{[A-Za-z0-9]{6}}', async (c) => {
     const raw = c.req.param('code');
     const found = await one(raw);
@@ -796,6 +848,7 @@ ${
     );
   app.notFound(notFound);
   app.onError((err, c) => {
+    if (err instanceof HTTPException) return c.json({ error: err.message }, err.status);
     logEvent('shore_error', { message: err.message, path: c.req.path }, 'ERROR');
     return c.text('something went wrong', 500);
   });
