@@ -846,7 +846,12 @@ export interface BondDto {
   ready: boolean;
 }
 
-/** Animal food & resident pet API (POST /api/animals/feed, /api/pet*). */
+export interface PetFeederDto {
+  name: string;
+  at: number;
+}
+
+/** Animal food & resident pet API (POST /api/animals/feed, /api/pet*, /api/beaches/:code/pet*). */
 export class AnimalsApi {
   constructor(private readonly account: Account) {}
 
@@ -864,11 +869,30 @@ export class AnimalsApi {
     return (await res.json()) as { ok: boolean; remaining: number; pet?: PetDto | null; bond?: BondDto };
   }
 
-  async getPet(beachId?: string): Promise<{ pet: PetDto | null; bond: BondDto }> {
+  async getPet(beachId?: string): Promise<{ pet: PetDto | null; bond: BondDto; recentFeeders: PetFeederDto[] }> {
     const q = beachId ? `?beach=${encodeURIComponent(beachId)}` : '';
     const res = await this.account.fetch(`/api/pet${q}`);
     if (!res.ok) throw await errorOf(res, 'could not load pet');
-    return (await res.json()) as { pet: PetDto | null; bond: BondDto };
+    return (await res.json()) as { pet: PetDto | null; bond: BondDto; recentFeeders: PetFeederDto[] };
+  }
+
+  async getBeachPet(code: string): Promise<{ pet: PetDto | null; recentFeeders: PetFeederDto[]; canFreeFeed?: boolean }> {
+    const res = await this.account.fetch(`/api/beaches/${encodeURIComponent(code)}/pet`);
+    if (!res.ok) throw await errorOf(res, 'could not load beach pet');
+    return (await res.json()) as { pet: PetDto | null; recentFeeders: PetFeederDto[]; canFreeFeed?: boolean };
+  }
+
+  async feedVisitorPet(
+    code: string,
+    useFood = false,
+  ): Promise<{ pet: PetDto; usedFood: boolean; remaining?: number; freeUsedToday: boolean }> {
+    const res = await this.account.fetch(`/api/beaches/${encodeURIComponent(code)}/pet/feed`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(useFood ? { useFood: true } : {}),
+    });
+    if (!res.ok) throw await errorOf(res, 'could not feed pet');
+    return (await res.json()) as { pet: PetDto; usedFood: boolean; remaining?: number; freeUsedToday: boolean };
   }
 
   async adoptPet(opts: { mode: 'befriend' | 'shop'; name?: string; beachId?: string }): Promise<PetDto> {

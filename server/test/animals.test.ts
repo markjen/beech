@@ -149,3 +149,55 @@ describe('resident pets (A3)', () => {
     expect((await req('/pet/adopt', json('POST', { mode: 'shop' }), u.token)).status).toBe(409);
   });
 });
+
+describe('visitor pet feeding (A4)', () => {
+  it('allows 1 free feed per beach per UTC day, then requires the visitor to spend their own snack, and logs recentFeeders', async () => {
+    const owner = await signIn('PetOwner');
+    const visitor = await signIn('FriendlyVisitor');
+
+    // Adopt a pet on owner's home beach
+    expect((await req('/dev/grant', json('POST', { item: PET_CRAB_ITEM_ID, quantity: 1 }), owner.token)).status).toBe(204);
+    expect((await req('/pet/adopt', json('POST', { mode: 'shop', name: 'Shelly' }), owner.token)).status).toBe(200);
+
+    // Fetch owner's beach code
+    const mineRes = await req('/beaches/mine', {}, owner.token);
+    expect(mineRes.status).toBe(200);
+    const code = ((await mineRes.json()) as { beaches: { code: string }[] }).beaches[0].code;
+
+    // Signed-out visitor can see the public beach's pet
+    const pub = await req(`/beaches/${code}/pet`);
+    expect(pub.status).toBe(200);
+    expect(((await pub.json()) as { pet: { name: string } }).pet.name).toBe('Shelly');
+
+    // Signed-out visitor cannot feed
+    expect((await req(`/beaches/${code}/pet/feed`, { method: 'POST' })).status).toBe(401);
+
+    // Signed-in visitor gets 1 free feed today (no snacks required)
+    const freeFeed = await req(`/beaches/${code}/pet/feed`, { method: 'POST' }, visitor.token);
+    expect(freeFeed.status).toBe(200);
+    const freeData = (await freeFeed.json()) as { usedFood: boolean; freeUsedToday: boolean; pet: { fedCount: number } };
+    expect(freeData.usedFood).toBe(false);
+    expect(freeData.freeUsedToday).toBe(true);
+    expect(freeData.pet.fedCount).toBe(2);
+
+    // Second feed same day without snacks returns 409
+    const secondEmpty = await req(`/beaches/${code}/pet/feed`, { method: 'POST' }, visitor.token);
+    expect(secondEmpty.status).toBe(409);
+
+    // Grant visitor 1 beach snack — now a second feed succeeds and spends it
+    expect((await req('/dev/grant', json('POST', { item: TREAT_ITEM_ID, quantity: 1 }), visitor.token)).status).toBe(204);
+    const paidFeed = await req(`/beaches/${code}/pet/feed`, { method: 'POST' }, visitor.token);
+    expect(paidFeed.status).toBe(200);
+    const paidData = (await paidFeed.json()) as { usedFood: boolean; remaining: number; pet: { fedCount: number } };
+    expect(paidData.usedFood).toBe(true);
+    expect(paidData.remaining).toBe(0);
+    expect(paidData.pet.fedCount).toBe(3);
+
+    // Owner sees FriendlyVisitor in recentFeeders
+    const ownerPet = await req('/pet', {}, owner.token);
+    expect(ownerPet.status).toBe(200);
+    const ownerData = (await ownerPet.json()) as { recentFeeders: { name: string; at: number }[] };
+    expect(ownerData.recentFeeders.length).toBeGreaterThan(0);
+    expect(ownerData.recentFeeders[0].name).toBe('FriendlyVisitor');
+  });
+});

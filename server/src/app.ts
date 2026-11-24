@@ -53,9 +53,12 @@ import {
   feedBeachPet,
   getBeachPet,
   getBondProgress,
+  hasVisitorFedToday,
   maybeGrantBonusTreat,
+  recentPetFeeders,
   recordWildFeed,
   renameBeachPet,
+  visitorFeedPet,
 } from './animals.js';
 import {
   hashToken,
@@ -1272,11 +1275,13 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   });
 
   app.get('/pet', requireUser, async (c) => {
+    const me = c.get('user').id;
     const beachId = await mine(c, c.req.query('beach'));
     const now = clock();
     const pet = await getBeachPet(db, beachId, now);
     const bond = await getBondProgress(db, beachId, 'crab');
-    return c.json({ pet, bond });
+    const recentFeeders = pet ? await recentPetFeeders(db, beachId, me) : [];
+    return c.json({ pet, bond, recentFeeders });
   });
 
   app.post('/pet/adopt', requireUser, async (c) => {
@@ -1303,6 +1308,64 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const pet = await renameBeachPet(db, beachId, cleanPetName(b.name), clock());
     if (!pet) return c.json({ error: 'no pet on this beach' }, 404);
     return c.json({ pet });
+  });
+
+  // ---------------------------------------------------------------- animals (A4: visitor pet read & feeding)
+  app.get('/beaches/:code/pet', async (c) => {
+    const code = normalizeCode(c.req.param('code'));
+    const now = clock();
+    const rows = await db.query<{ id: string; owner_id: string; on_shore: boolean }>(
+      `SELECT id, owner_id, on_shore FROM beach WHERE code = $1`,
+      [code],
+    );
+    const beach = rows[0];
+    if (!beach) return c.json({ error: 'beach not found' }, 404);
+
+    // Optional caller lookup so signed-in visitors get `canFreeFeed` and owners can view off-shore beaches
+    let viewerId: string | null = null;
+    const auth = c.req.header('Authorization');
+    if (auth?.startsWith('Bearer ')) {
+      const s = await db.query<{ user_id: string }>(
+        `SELECT user_id FROM sessions WHERE token_hash = $1 AND expires_at > $2`,
+        [hashToken(auth.slice(7)), now],
+      );
+      viewerId = s[0]?.user_id ?? null;
+    }
+    if (!beach.on_shore && viewerId !== beach.owner_id) return c.json({ error: 'beach not found' }, 404);
+
+    const pet = await getBeachPet(db, beach.id, now);
+    const recentFeeders = pet ? await recentPetFeeders(db, beach.id, beach.owner_id) : [];
+    const canFreeFeed =
+      pet && viewerId && viewerId !== beach.owner_id ? !(await hasVisitorFedToday(db, beach.id, viewerId, now)) : undefined;
+    return c.json({ pet, recentFeeders, ...(canFreeFeed !== undefined ? { canFreeFeed } : {}) });
+  });
+
+  app.post('/beaches/:code/pet/feed', requireUser, async (c) => {
+    const user = c.get('user');
+    const code = normalizeCode(c.req.param('code'));
+    const now = clock();
+    const b = await body<{ useFood?: boolean }>(c).catch(() => ({} as { useFood?: boolean }));
+    const rows = await db.query<{ id: string; owner_id: string; on_shore: boolean }>(
+      `SELECT id, owner_id, on_shore FROM beach WHERE code = $1`,
+      [code],
+    );
+    const beach = rows[0];
+    if (!beach || (!beach.on_shore && beach.owner_id !== user.id)) return c.json({ error: 'beach not found' }, 404);
+
+    const res = await visitorFeedPet(db, {
+      beachId: beach.id,
+      visitorId: user.id,
+      visitorName: user.name,
+      useFood: Boolean(b.useFood),
+      now,
+    });
+    if (!res.ok) return c.json({ error: res.error, ...(res.freeUsedToday ? { freeUsedToday: true } : {}) }, res.status);
+    return c.json({
+      pet: res.pet,
+      usedFood: res.usedFood,
+      ...(res.remaining !== undefined ? { remaining: res.remaining } : {}),
+      freeUsedToday: res.freeUsedToday,
+    });
   });
 
   app.post('/neighbors/code', requireUser, async (c) => {

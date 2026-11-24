@@ -255,3 +255,81 @@ export async function renameBeachPet(db: Db, beachId: string, name: string, now:
   );
   return rows[0] ? toPetDto(rows[0], now) : null;
 }
+
+export interface PetFeederDto {
+  name: string;
+  at: number;
+}
+
+/** Start of the current UTC day in milliseconds. */
+export function utcDayStart(now: number): number {
+  const d = new Date(now);
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+}
+
+/** Has this visitor already fed this beach's pet today (UTC)? */
+export async function hasVisitorFedToday(db: Db, beachId: string, visitorId: string, now: number): Promise<boolean> {
+  const rows = await db.query<{ id: string }>(
+    `SELECT id FROM pet_feed_log
+      WHERE beach_id = $1 AND feeder_id = $2 AND fed_at >= $3
+      LIMIT 1`,
+    [beachId, visitorId, utcDayStart(now)],
+  );
+  return rows.length > 0;
+}
+
+/** Recent non-owner feeds for a beach's pet (newest first, up to 5). */
+export async function recentPetFeeders(db: Db, beachId: string, ownerId?: string): Promise<PetFeederDto[]> {
+  const rows = ownerId
+    ? await db.query<{ feeder_name: string; fed_at: string }>(
+        `SELECT feeder_name, fed_at FROM pet_feed_log
+          WHERE beach_id = $1 AND (feeder_id IS NULL OR feeder_id <> $2)
+          ORDER BY fed_at DESC, id DESC LIMIT 5`,
+        [beachId, ownerId],
+      )
+    : await db.query<{ feeder_name: string; fed_at: string }>(
+        `SELECT feeder_name, fed_at FROM pet_feed_log
+          WHERE beach_id = $1
+          ORDER BY fed_at DESC, id DESC LIMIT 5`,
+        [beachId],
+      );
+  return rows.map((r) => ({ name: r.feeder_name || 'A visitor', at: Number(r.fed_at) }));
+}
+
+/**
+ * Visitor feeds a beach's resident pet:
+ *  - 1 free feed per beach per UTC day (no snack required), OR
+ *  - spend 1 `crab-treat` from the visitor's own bag anytime.
+ */
+export async function visitorFeedPet(
+  db: Db,
+  opts: { beachId: string; visitorId: string; visitorName: string; useFood?: boolean; now: number },
+): Promise<
+  | { ok: true; pet: PetDto; usedFood: boolean; remaining?: number; freeUsedToday: true }
+  | { ok: false; status: 404 | 409; error: string; freeUsedToday?: boolean }
+> {
+  const existing = await getBeachPet(db, opts.beachId, opts.now);
+  if (!existing) return { ok: false, status: 404, error: 'no pet on this beach' };
+
+  const alreadyFree = await hasVisitorFedToday(db, opts.beachId, opts.visitorId, opts.now);
+  if (!alreadyFree && !opts.useFood) {
+    const pet = await feedBeachPet(db, opts.beachId, opts.visitorId, opts.visitorName, opts.now);
+    if (!pet) return { ok: false, status: 404, error: 'no pet on this beach' };
+    return { ok: true, pet, usedFood: false, freeUsedToday: true };
+  }
+
+  // Free daily feed already used (or visitor explicitly chose to spend own food)
+  const consumed = await consumeTreat(db, opts.visitorId, opts.now);
+  if (!consumed.ok) {
+    return {
+      ok: false,
+      status: 409,
+      error: 'already gave your free snack today — bring beach snacks to feed again',
+      freeUsedToday: true,
+    };
+  }
+  const pet = await feedBeachPet(db, opts.beachId, opts.visitorId, opts.visitorName, opts.now);
+  if (!pet) return { ok: false, status: 404, error: 'no pet on this beach' };
+  return { ok: true, pet, usedFood: true, remaining: consumed.remaining, freeUsedToday: true };
+}
+

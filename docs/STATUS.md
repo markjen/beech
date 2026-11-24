@@ -803,3 +803,9 @@ prompt, JSON Schema and sample asset.
   `last_fed_at`; sleepy pets nap half-burrowed until fed and never leave.
   `src/platform/petNotify.ts` schedules local hunger reminders at +24 h
   respecting 22:00–08:00 quiet hours.
+- **Visitor feeding (A4)** (2026-11-24): `GET /api/beaches/:code/pet` and
+  `POST /api/beaches/:code/pet/feed` let signed-in visitors feed another
+  beach's pet (1 free feed per beach per UTC day, or spend 1 `crab-treat` from
+  their own bag anytime). The shore bar shows a **Feed pet** button when
+  visiting a beach with a pet, and owners see a quiet toast (`X fed Barnaby!`)
+  when visitors feed theirs.

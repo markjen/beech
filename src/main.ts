@@ -724,11 +724,13 @@ async function boot() {
   // the shore bar (top right): who you're visiting, and the way home
   const shoreBar = document.createElement('div');
   shoreBar.className = 'shore-bar';
-  shoreBar.innerHTML = `<span class="sb-where"></span><button type="button" class="sb-fav"></button><button type="button" class="sb-home" data-act="home">⌂ <span>my beach</span></button>`;
+  shoreBar.innerHTML = `<span class="sb-where"></span><button type="button" class="sb-pet" hidden>Feed pet</button><button type="button" class="sb-fav"></button><button type="button" class="sb-home" data-act="home">⌂ <span>my beach</span></button>`;
   hud.root.appendChild(shoreBar);
   const sbWhere = shoreBar.querySelector<HTMLElement>('.sb-where')!;
+  const sbPet = shoreBar.querySelector<HTMLButtonElement>('.sb-pet')!;
   const sbFav = shoreBar.querySelector<HTMLButtonElement>('.sb-fav')!;
   let shoreKey = '';
+  const visitedPetCache = new Map<string, { name: string } | null>();
   /** the beach under the view, along the shore (null: your own) */
   const beachHere = () => {
     if (!neighbors) return null;
@@ -749,6 +751,24 @@ async function boot() {
     const b = beachHere();
     if (b && neighbors) void neighbors.toggleFavorite(b).catch(() => {});
   });
+  sbPet.addEventListener('click', () => {
+    const b = beachHere();
+    if (!b || !animalsApi) return;
+    if (!animalsApi.signedIn) {
+      showToast(uiRoot, 'Sign in to feed pets.');
+      return;
+    }
+    void animalsApi
+      .feedVisitorPet(b.code)
+      .then((res) => {
+        if (res.usedFood) refreshOwned();
+        haptics.impact('light');
+        showToast(uiRoot, res.pet.name ? `Fed ${res.pet.name}!` : 'Fed their sand crab!');
+      })
+      .catch((err: unknown) => {
+        showToast(uiRoot, err instanceof Error ? err.message : 'Could not feed pet.');
+      });
+  });
   const updateShoreBar = () => {
     const away = !!neighbors && (!!neighbors.visiting || Math.abs(cam.focusX) > WORLD_SIZE_X / 2 + 2);
     const b = away ? beachHere() : null;
@@ -764,6 +784,28 @@ async function boot() {
     sbFav.textContent = fav ? '★' : '☆';
     sbFav.classList.toggle('on', fav);
     sbFav.setAttribute('aria-label', fav ? 'Remove from favorites' : 'Add to favorites');
+    sbPet.hidden = true;
+    if (b && animalsApi) {
+      const cached = visitedPetCache.get(b.code);
+      if (cached !== undefined) {
+        if (cached) {
+          sbPet.textContent = cached.name ? `Feed ${cached.name}` : 'Feed pet';
+          sbPet.hidden = false;
+        }
+      } else {
+        const code = b.code;
+        void animalsApi
+          .getBeachPet(code)
+          .then((r) => {
+            visitedPetCache.set(code, r.pet ? { name: r.pet.name } : null);
+            if (beachHere()?.code === code && r.pet) {
+              sbPet.textContent = r.pet.name ? `Feed ${r.pet.name}` : 'Feed pet';
+              sbPet.hidden = false;
+            }
+          })
+          .catch(() => {});
+      }
+    }
   };
 
   // chair: hold ‹ or › to walk the chair along the beach (and over to the neighbors)
@@ -1200,9 +1242,25 @@ async function boot() {
         animals.setPet(null);
         return;
       }
+      const bId = account?.beachId ?? undefined;
       void animalsApi
-        .getPet(account?.beachId ?? undefined)
-        .then((r) => applyPet(r.pet))
+        .getPet(bId)
+        .then((r) => {
+          applyPet(r.pet);
+          const latest = r.recentFeeders?.[0];
+          if (r.pet && latest) {
+            const key = `beech.petFeedSeen.${r.pet.beachId}`;
+            const prev = Number(localStorage.getItem(key) ?? 0);
+            if (latest.at > prev) {
+              try {
+                localStorage.setItem(key, String(latest.at));
+              } catch {
+                /* storage unavailable */
+              }
+              showToast(uiRoot, `${latest.name} fed ${r.pet.name || 'your sand crab'}!`);
+            }
+          }
+        })
         .catch(() => {});
     };
     account.onChange(() => refreshPet());
