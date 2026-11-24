@@ -557,6 +557,7 @@ function footprint(t: Thing): number {
       return 2;
     case 'rock':
     case 'driftwood':
+    case 'sanddollar':
       return t.size;
     default:
       return 0;

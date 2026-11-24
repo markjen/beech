@@ -81,6 +81,16 @@ describe('item catalog', () => {
     expect(rollPlacement(rock, 0.8, () => 0).size).toBeGreaterThan(rollPlacement(rock, 0.6, () => 0.999).size);
   });
 
+  it('the golden sand dollar is giant: starts at twice the largest regular sand dollar and scales up', () => {
+    const regular = itemById('sanddollar')!;
+    const golden = itemById('gold-sanddollar')!;
+    const fixed = () => 0.5;
+    expect(golden.size[0]).toBeCloseTo(regular.size[1] * 2, 6);
+    expect(golden.size[1]).toBeGreaterThan(golden.size[0]);
+    expect(rollPlacement(golden, 0, fixed).size).toBeCloseTo(regular.size[1] * 2, 6);
+    expect(rollPlacement(golden, 1, fixed).size).toBeCloseTo(golden.size[1], 6);
+  });
+
   it('the shop and the catalog agree: every product grants real things, every shop item is sold', () => {
     for (const p of PRODUCTS) {
       expect(p.id).toMatch(/^[a-z0-9_.]+$/); // a valid Google Play / App Store product id
