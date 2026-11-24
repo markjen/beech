@@ -25,7 +25,7 @@ The Steam release wraps the same Vite web build (`dist/`) in an **Electron + `st
   - `openExternal(url)` → opens `beech.games/guide`, Discord, and `beechshore.com` in the Steam Overlay browser (or OS browser) without navigating the game window away
   - `toggleFullscreen()`, `isFullscreen()`, `quit()`
   - `saveBeachFile(suggestedName, text)` → native OS Save dialog
-- **Windowing:** Persists window size/position/fullscreen state; launches borderless fullscreen on Steam Deck (`SteamDeck=1` or `isSteamRunningOnSteamDeck()`). `F11` / `Alt+Enter` toggles fullscreen; Settings gains a **Quit** button on Steam.
+- **Windowing:** Launches borderless fullscreen on Steam Deck (`SteamDeck=1` or `isSteamRunningOnSteamDeck()`). `F11` / `Alt+Enter` toggles fullscreen; Settings gains a **Quit** button on Steam. (Window size/position is not persisted yet.)
 
 ### Client runtime abstraction (`src/platform/runtime.ts`)
 
@@ -97,5 +97,5 @@ Required 2024+ Steam graphical asset sizes (older dimensions are rejected):
 - **S2:** `POST /api/auth/steam`, offline fallback, `user_identities` (migration 17) + 8-char cross-platform account linking.
 - **S3:** `ISteamMicroTxn` server + client shop `'steam'` mode (migration 18) + `GetReport/v5` refund sync job.
 - **S4:** Steam Achievements, Rich Presence, Gamepad API + Steam Deck `1280×800` verification.
-- **S5:** `.github/workflows/release-steam.yml` SteamPipe CI + clean-machine Windows & Steam Deck beta testing.
+- **S5:** Clean-machine Windows & Steam Deck beta testing. (The `.github/workflows/release-steam.yml` SteamPipe workflow itself was built in S1.)
 - **S6:** Storefront capsules/screenshots/trailer, Coming Soon page, Valve review, and launch.

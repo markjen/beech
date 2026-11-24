@@ -18,7 +18,10 @@ const APP_SCHEME = 'app';
 const APP_HOST = 'beech';
 
 // Allow passing STEAM_APP_ID at build/launch time (480 = Spacewar test app in dev).
-const parsedAppId = Number(process.env.STEAM_APP_ID ?? '');
+// Steam itself sets SteamAppId when it launches the game, so accept that too;
+// otherwise the packaged build relies on steam_appid.txt next to the
+// executable (written at pack time by desktop/scripts/after-pack.cjs).
+const parsedAppId = Number(process.env.STEAM_APP_ID ?? process.env.SteamAppId ?? '');
 const STEAM_APP_ID = Number.isInteger(parsedAppId) && parsedAppId > 0 ? parsedAppId : null;
 
 // Must run before app.whenReady() so Steam Overlay attaches to Chromium's GPU process.
@@ -55,7 +58,7 @@ function registerAppProtocol(): void {
     const url = new URL(request.url);
     const relPath = decodeURIComponent(url.pathname === '/' ? '/index.html' : url.pathname);
     const resolved = path.resolve(root, `.${relPath}`);
-    if (!resolved.startsWith(root)) {
+    if (resolved !== root && !resolved.startsWith(root + path.sep)) {
       return new Response('Forbidden', { status: 403 });
     }
     return net.fetch(pathToFileURL(resolved).toString());
@@ -156,10 +159,16 @@ app.whenReady().then(() => {
 
   ipcMain.handle('file:saveBeach', async (_ev, suggestedName: unknown, text: unknown) => {
     if (typeof suggestedName !== 'string' || typeof text !== 'string') return false;
-    const result = await dialog.showSaveDialog(mainWindow ?? undefined, {
+    const options = {
       defaultPath: suggestedName,
       filters: [{ name: 'beech file', extensions: ['beach.json', 'json'] }],
-    });
+    };
+    // showSaveDialog's windowed overload requires a real BrowserWindow;
+    // passing undefined is a type error in Electron 35, so use the
+    // no-window overload when there is no window yet.
+    const result = mainWindow
+      ? await dialog.showSaveDialog(mainWindow, options)
+      : await dialog.showSaveDialog(options);
     if (result.canceled || !result.filePath) return false;
     await fs.writeFile(result.filePath, text, 'utf8');
     return true;

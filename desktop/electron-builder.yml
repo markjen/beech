@@ -5,6 +5,8 @@ asar: true
 asarUnpack:
   - "**/node_modules/steamworks.js/**"
 
+afterPack: ./scripts/after-pack.cjs
+
 directories:
   output: release
 

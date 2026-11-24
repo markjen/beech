@@ -43,13 +43,17 @@ jobs:
           VITE_ACCOUNTS: '1'
           VITE_PLATFORM: steam
           VITE_API_URL: https://play.beech.games
-          VITE_STEAM_APP_ID: ${{ vars.STEAM_APP_ID }}
         run: |
           npm ci
           npm run build
 
       - name: Build Electron desktop shell
         working-directory: desktop
+        env:
+          # Consumed by the afterPack hook (desktop/scripts/after-pack.cjs),
+          # which writes steam_appid.txt next to the packaged executable so
+          # Steamworks can init when the game is launched outside Steam.
+          STEAM_APP_ID: ${{ vars.STEAM_APP_ID }}
         run: |
           npm ci
           ${{ matrix.pack_cmd }}
