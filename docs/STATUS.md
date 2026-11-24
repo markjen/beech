@@ -32,9 +32,12 @@
   a three-band toon ramp. Pure facets looked speckled at cell scale because of
   the alternating triangle diagonals.
 - **Zoom goes in to a 0.45 m half-height** (`CAMERA.minHalfHeight`), close
-  enough to look at a shell. Past the point where the 24 px brush would
-  cover fewer than 2 cells, the brush stays 2 cells on the sand and grows on
-  screen. The chair view zooms to a 0.12 rad field of view.
+  enough to look at a shell, and **out to 28 m** (`CAMERA.maxHalfHeight`, or
+  1.5× the single-beach fit height on narrow screens via `CAMERA.maxFitScale`)
+  so neighbouring beaches along the shore fit in view at once. Past either
+  brush bound, `brushRadiusOnSand` clamps the brush on the sand between 2 grid
+  cells and `BRUSH.maxRadius` (2.2 m). The chair view zooms to a 0.12 rad field
+  of view.
 - **Minimum brush is 2 grid cells** (25 cm at the medium tier). This caps
   zoom-in, so the finest dig still looks clean on a 12.5 cm grid.
 - **Dry sand angle of repose is 36°** (not 33°), so held digs in dry sand

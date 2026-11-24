@@ -154,8 +154,8 @@ export const BRUSH = {
   rimFraction: 0.85,
   /** minimum world radius in grid cells; zoom-in is limited so the brush never goes below this */
   minCells: 2.0,
-  /** maximum world radius (m) at full zoom-out */
-  maxRadius: 1.4,
+  /** maximum world radius (m) on the sand; past full zoom-out the brush stops growing on the sand */
+  maxRadius: 2.2,
 };
 
 export const CAMERA = {
@@ -163,8 +163,10 @@ export const CAMERA = {
   elevation: 34,
   /** default rotation around the vertical axis (radians) */
   alpha: Math.PI * 0.75,
-  /** largest allowed ortho half-height (m) */
-  maxHalfHeight: 17,
+  /** largest allowed ortho half-height (m) on wide screens */
+  maxHalfHeight: 28,
+  /** multiplier on single-beach fit height for max zoom-out on narrow screens */
+  maxFitScale: 1.5,
   /** closest zoom: ortho half-height (m). Past the brush's own limit the brush
    * stops shrinking on the sand (it grows on screen instead). */
   minHalfHeight: 0.45,
@@ -172,7 +174,7 @@ export const CAMERA = {
   defaultHalfHeight: 11,
   /** rotation snap step after a twist (radians) */
   snapStep: Math.PI / 4,
-  radius: 80,
+  radius: 120,
 };
 
 /**
