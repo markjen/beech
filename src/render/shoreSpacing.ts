@@ -7,15 +7,27 @@
 // Pure math, no scene: the layout is unit-tested in tests/shoreSpacing.test.ts.
 
 import { WORLD_SIZE_X } from '../config';
+import { swellEnvelope, type Swell } from '../sim/waves';
 
 /** gap between dioramas, so each beach reads as its own little island */
 export const DIORAMA_GAP = 1.6;
 /** centre-to-centre step between two beaches that aren't linked */
 export const UNLINKED_STEP = WORLD_SIZE_X + DIORAMA_GAP;
+/** metres inward from a linked boundary over which sand, water and waves blend */
+export const SEAM_BLEND_METRES = 1.75;
 
 /** Centre-to-centre step across one boundary: linked neighbours touch. */
 export function boundaryStep(linked: boolean): number {
   return WORLD_SIZE_X + (linked ? 0 : DIORAMA_GAP);
+}
+
+/**
+ * Is the boundary between shore index `lowerIndex` (on -X) and
+ * `lowerIndex + 1` (on +X) a linked-neighbour boundary?
+ * Each entry's `linked` flag describes its link to the beach nearer index 0.
+ */
+export function boundaryLinked(lowerIndex: number, isLinked: (index: number) => boolean): boolean {
+  return lowerIndex >= 0 ? isLinked(lowerIndex + 1) : isLinked(lowerIndex);
 }
 
 /**
@@ -78,4 +90,76 @@ export function windowBeachCenters(
     if (i === 0 || hasEntry(i)) out.push(pos.get(i) ?? i * UNLINKED_STEP);
   }
   return out;
+}
+
+const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
+const smoothstep = (e0: number, e1: number, x: number) => {
+  const t = clamp01((x - e0) / (e1 - e0));
+  return t * t * (3 - 2 * t);
+};
+
+/**
+ * Blend weight across a linked seam: 0.5 right at the shared boundary
+ * (dist = 0), falling smoothly with zero slope at both ends to 0 at
+ * `blendMetres` inward. Mirrors the GLSL vertex shader in src/render/shaders.ts.
+ */
+export function seamWeight(distMetres: number, blendMetres = SEAM_BLEND_METRES): number {
+  return 0.5 * (1 - smoothstep(0, blendMetres, Math.max(0, distMetres)));
+}
+
+export interface FieldSample {
+  sand: number;
+  depth: number;
+  wet: number;
+  foam: number;
+}
+
+/**
+ * Smoothly reconciles sand height, water depth, wetness and foam across a
+ * linked boundary. Mirrors `seamBlend` in src/render/shaders.ts:
+ * - At `w = 0.5` (the seam), both sides evaluate to the exact midpoint of
+ *   `selfEdge` and `otherEdge`.
+ * - At `w = 0` (past the blend zone), returns `self` unchanged.
+ * - Positive water-depth spill onto dry sand is gated when `self.sand` rises
+ *   well above `selfEdge.sand`, so waves don't float onto tall dry features.
+ */
+export function blendSeamSample(
+  self: FieldSample,
+  selfEdge: FieldSample,
+  otherEdge: FieldSample,
+  w: number,
+): FieldSample {
+  const sand = self.sand + (otherEdge.sand - selfEdge.sand) * w;
+  const dDiff = otherEdge.depth - selfEdge.depth;
+  const spillGate = self.depth > 0.003 || dDiff <= 0 ? 1 : smoothstep(0.18, 0, self.sand - selfEdge.sand);
+  const depth = Math.max(0, self.depth + dDiff * w * spillGate);
+  const wet = clamp01(self.wet + (otherEdge.wet - selfEdge.wet) * w);
+  const foam = clamp01(self.foam + (otherEdge.foam - selfEdge.foam) * w);
+  return { sand, depth, wet, foam };
+}
+
+/**
+ * Animated wave surface elevation for a neighbor beach at cross-shore distance
+ * `u = max(0, z - zEdge)` and world-X `wx`. Mirrors `evalRaw` in
+ * src/render/shaders.ts: matches `tide + swellAt(simTime, swell, ampScale, wx)`
+ * at `u = 0` and propagates shoreward at the shallow-water sim's shoaling speed.
+ */
+export function neighborWaveEta(
+  u: number,
+  wx: number,
+  simTime: number,
+  tide: number,
+  swell: Swell,
+  ampScale = 1,
+): number {
+  const uu = Math.max(0, u);
+  const lag = uu / 3.7 + 0.0042 * uu * uu;
+  const shoal = (1 - 0.35 * smoothstep(0, 7, uu)) + 0.25 * smoothstep(10, 16, uu);
+  const shoreFade = 1 - smoothstep(19, 23, uu);
+  const env = swellEnvelope(simTime, swell);
+  let s = 0;
+  for (const c of swell) s += c.amp * ampScale * Math.sin(c.omega * (simTime - lag) + c.phase - c.k * wx);
+  const hWave = s * env * shoal * shoreFade;
+  const swashBoost = Math.max(0, hWave) * 0.25 * smoothstep(13, 17, uu);
+  return tide + hWave + swashBoost;
 }

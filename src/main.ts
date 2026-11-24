@@ -1044,7 +1044,7 @@ async function boot() {
       if (st === 'tooBig' && !toldTooBig) showToast(uiRoot, 'This beach is too big to save. Smooth some of the sand and it will save again.');
       toldTooBig = st === 'tooBig';
     });
-    neighbors = new NeighborView(scene, grid, ready.rest, swell, cam, uiRoot, account);
+    neighbors = new NeighborView(scene, grid, ready.rest, swell, cam, uiRoot, account, renderer);
     const nv = neighbors;
     const acct = account;
     // a share link (?visit=CODE) waits for sign-in, then lands on that beach

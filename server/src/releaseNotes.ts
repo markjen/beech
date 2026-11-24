@@ -22,7 +22,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       'Removed the “off the shore” setting for now — saved beaches stay on the shore.',
       'Visit any public beach in 3D and walk the shore without signing in (from beechshore.com or a shared link).',
       'The shop no longer squeezes a pack’s description into a word per line when the “Buy with credit” button is showing: the buttons sit on a row of their own under the text.',
-      'Linked neighbors now touch edge to edge as one continuous stretch of sand, with no gap between them. Unlinked beaches along the shore keep their space.',
+      'Linked neighbors now blend edge to edge into one continuous beach — sand, water, and rolling wave fronts flow smoothly across the seam with no gap, and the surf blends seamlessly out into the open sea. Unlinked beaches along the shore keep their space.',
       'Prizes from the claw and vending machines now look the part on your beach: the pink shell is properly pink, the golden sand dollar is shiny gold, and the rest of the week’s set stands out from the free shells and sea glass.',
       'The golden sand dollar is now giant: it starts at twice the size of the largest regular sand dollar and scales up from there.',
       'Rocks placed against each other no longer pile sand up into a tall spike. Beaches that grew one smooth it away the next time they’re opened.',

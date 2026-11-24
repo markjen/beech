@@ -1,7 +1,18 @@
 import { describe, expect, it } from 'vitest';
 
 import { WORLD_SIZE_X } from '../src/config';
-import { boundaryStep, nearestShoreIndex, shoreLayout, windowBeachCenters } from '../src/render/shoreSpacing';
+import {
+  SEAM_BLEND_METRES,
+  blendSeamSample,
+  boundaryLinked,
+  boundaryStep,
+  nearestShoreIndex,
+  neighborWaveEta,
+  seamWeight,
+  shoreLayout,
+  windowBeachCenters,
+} from '../src/render/shoreSpacing';
+import { makeSwell, swellAt } from '../src/sim/waves';
 
 // a slab spans [centre - 16, centre + 16]; the edge-to-edge gap between two
 // neighbours is their centre distance minus one slab width
@@ -125,5 +136,68 @@ describe('shore spacing', () => {
     expect(windowBeachCenters([-1, 1], has, pos)).toEqual([-(WORLD_SIZE_X + 1.6), 0, WORLD_SIZE_X]);
     // when index 0 is outside the window, only the drawn entries are returned
     expect(windowBeachCenters([1, 2], has, pos)).toEqual([WORLD_SIZE_X]);
+  });
+
+  it('boundaryLinked reads the entry further from index 0 on both sides', () => {
+    const flags = new Map<number, boolean>([
+      [-2, false],
+      [-1, true],
+      [1, true],
+      [2, false],
+    ]);
+    const linked = (i: number) => flags.get(i) === true;
+    expect(boundaryLinked(-2, linked)).toBe(false); // (-2, -1) governed by -2
+    expect(boundaryLinked(-1, linked)).toBe(true); // (-1, 0) governed by -1
+    expect(boundaryLinked(0, linked)).toBe(true); // (0, +1) governed by +1
+    expect(boundaryLinked(1, linked)).toBe(false); // (+1, +2) governed by +2
+  });
+});
+
+describe('seam blending and neighbor waves', () => {
+  it('seamWeight is 0.5 at the boundary and smoothly reaches 0 at SEAM_BLEND_METRES', () => {
+    expect(seamWeight(0)).toBeCloseTo(0.5, 9);
+    expect(seamWeight(SEAM_BLEND_METRES / 2)).toBeCloseTo(0.25, 9);
+    expect(seamWeight(SEAM_BLEND_METRES)).toBeCloseTo(0, 9);
+    expect(seamWeight(SEAM_BLEND_METRES + 1)).toBe(0);
+  });
+
+  it('blendSeamSample is exact-symmetric at the seam and leaves interior unchanged', () => {
+    const a = { sand: 0.12, depth: 0.18, wet: 0.9, foam: 0.7 };
+    const b = { sand: 0.24, depth: 0.06, wet: 0.4, foam: 0.2 };
+    const fromA = blendSeamSample(a, a, b, seamWeight(0));
+    const fromB = blendSeamSample(b, b, a, seamWeight(0));
+    expect(fromA.sand).toBeCloseTo(fromB.sand, 9);
+    expect(fromA.depth).toBeCloseTo(fromB.depth, 9);
+    expect(fromA.wet).toBeCloseTo(fromB.wet, 9);
+    expect(fromA.foam).toBeCloseTo(fromB.foam, 9);
+    expect(fromA.sand).toBeCloseTo(0.18, 9);
+    expect(fromA.depth).toBeCloseTo(0.12, 9);
+    // outside the blend zone (w = 0), the interior is untouched
+    expect(blendSeamSample(a, a, b, 0)).toEqual(a);
+  });
+
+  it('blendSeamSample never spills water onto a tall dry sand feature inland', () => {
+    const edgeA = { sand: 0.05, depth: 0, wet: 0.5, foam: 0 };
+    const edgeB = { sand: -0.05, depth: 0.15, wet: 1, foam: 0.4 };
+    const tallDryA = { sand: 0.45, depth: 0, wet: 0, foam: 0 };
+    const res = blendSeamSample(tallDryA, edgeA, edgeB, seamWeight(0.5));
+    expect(res.depth).toBe(0);
+  });
+
+  it('neighborWaveEta matches the offshore ocean swell identically at z = zEdge and propagates shoreward', () => {
+    const swell = makeSwell(3);
+    const tide = 0.08;
+    const t = 42.5;
+    for (const wx of [-32, -16, 0, 16, 32]) {
+      expect(neighborWaveEta(0, wx, t, tide, swell, 1)).toBeCloseTo(tide + swellAt(t, swell, 1, wx), 9);
+    }
+    // waves off -> flat tide everywhere
+    expect(neighborWaveEta(12, 16, t, tide, swell, 0)).toBeCloseTo(tide, 9);
+    // shoreward lag: surface at u = 8m differs from u = 0m as crests travel in
+    let maxDiff = 0;
+    for (let s = 0; s < 12; s += 0.5) {
+      maxDiff = Math.max(maxDiff, Math.abs(neighborWaveEta(8, 16, s, tide, swell, 1) - neighborWaveEta(0, 16, s, tide, swell, 1)));
+    }
+    expect(maxDiff).toBeGreaterThan(0.05);
   });
 });

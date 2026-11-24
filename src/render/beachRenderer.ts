@@ -49,6 +49,11 @@ export class BeachRenderer {
   private apronMesh!: Mesh;
   private waterSkirt!: Mesh;
   private brush = new Vector4(0, 0, 0.3, 0);
+  private isStatic = false;
+  private negNeighbor: BeachRenderer | null = null;
+  private posNeighbor: BeachRenderer | null = null;
+  private readonly edgeZ: number;
+  private readonly fieldMats: ShaderMaterial[];
 
   constructor(
     private readonly scene: Scene,
@@ -59,6 +64,7 @@ export class BeachRenderer {
     readonly offsetX = 0,
   ) {
     this.grid = grid;
+    this.edgeZ = ORIGIN_Z + grid.dx * 0.5;
     const { nx, ny } = grid;
     const empty = new Float32Array(nx * ny * 4);
     this.texPrev = this.makeFieldTexture(empty, 'fieldA');
@@ -79,16 +85,29 @@ export class BeachRenderer {
     Effect.ShadersStore['beachFlatFragmentShader'] = S.flatFragment;
 
     const light = ['sunDir', 'sunCol', 'ambCol', 'shadowCol', 'cameraDir'];
-    const field = ['frameMix', 'gridSize'];
-    const fieldSamplers = ['fieldPrev', 'fieldCur'];
+    const swellUniforms = ['swellA', 'swellW', 'swellP', 'swellK', 'swellEnv', 'simTime', 'tide', 'zEdge'];
+    const field = [
+      'frameMix',
+      'gridSize',
+      'cellSize',
+      'centerX',
+      'originZ',
+      'staticWater',
+      'linkedSides',
+      'negMix',
+      'negStatic',
+      'posMix',
+      'posStatic',
+      ...swellUniforms,
+    ];
+    const fieldSamplers = ['fieldPrev', 'fieldCur', 'negFieldPrev', 'negFieldCur', 'posFieldPrev', 'posFieldCur'];
 
     this.sandMat = this.material('beachSand', {
       attributes: ['position', 'uv'],
-      uniforms: [...light, ...field, 'sandDry', 'sandWet', 'sandDeep', 'brush', 'brushCol', 'cellSize'],
+      uniforms: [...light, ...field, 'sandDry', 'sandWet', 'sandDeep', 'brush', 'brushCol'],
       samplers: [...fieldSamplers, 'restTex'],
     });
     this.sandMat.setTexture('restTex', this.restTex);
-    this.sandMat.setFloat('cellSize', grid.dx);
     this.sandMat.backFaceCulling = false;
 
     this.waterMat = this.material('beachWater', {
@@ -102,14 +121,7 @@ export class BeachRenderer {
       attributes: ['position'],
       uniforms: [
         ...light,
-        'swellA',
-        'swellW',
-        'swellP',
-        'swellK',
-        'swellEnv',
-        'simTime',
-        'tide',
-        'zEdge',
+        ...swellUniforms,
         'waveSpeed',
         'oceanCol',
         'deepCol',
@@ -120,6 +132,7 @@ export class BeachRenderer {
         'fadeNear',
         'fadeFar',
         'apron',
+        'linkedSides',
         'slabA',
         'slabB',
         'slabHalf',
@@ -171,6 +184,20 @@ export class BeachRenderer {
     this.waterSkirtMat.backFaceCulling = false;
     this.makeTransparent(this.waterSkirtMat);
 
+    this.fieldMats = [this.sandMat, this.waterMat, this.skirtMat, this.waterSkirtMat];
+    for (const m of this.fieldMats) {
+      m.setFloat('cellSize', grid.dx);
+      m.setFloat('centerX', this.offsetX);
+      m.setFloat('originZ', ORIGIN_Z);
+      m.setFloat('staticWater', 0);
+      m.setFloat('zEdge', this.edgeZ);
+      m.setVector2('linkedSides', new Vector2(0, 0));
+      m.setFloat('negMix', 1);
+      m.setFloat('negStatic', 0);
+      m.setFloat('posMix', 1);
+      m.setFloat('posStatic', 0);
+    }
+
     this.rockMat = this.material('beachFlat', {
       attributes: ['position', 'normal'],
       uniforms: [...light, 'baseCol', 'fogCol', 'fadeTop', 'fadeBottom', 'shine'],
@@ -183,6 +210,7 @@ export class BeachRenderer {
 
     this.buildMeshes();
     this.bindFieldTextures();
+    this.syncNeighborUniforms();
   }
 
   /** A flat-shaded lit material with a fixed colour (props such as shells). `shine` is its specular strength, 0 for matte. */
@@ -247,7 +275,8 @@ export class BeachRenderer {
     for (let j = 0; j < ny; j++) {
       for (let i = 0; i < nx; i++) {
         const k = j * nx + i;
-        positions[k * 3] = ORIGIN_X + (i + 0.5) * dx;
+        // outer columns reach the exact slab edge [-hx, +hx] so linked beaches meet with zero gap
+        positions[k * 3] = i === 0 ? ORIGIN_X : i === nx - 1 ? ORIGIN_X + WORLD_SIZE_X : ORIGIN_X + (i + 0.5) * dx;
         positions[k * 3 + 1] = 0;
         positions[k * 3 + 2] = ORIGIN_Z + (j + 0.5) * dx;
         uvs[k * 2] = (i + 0.5) / nx;
@@ -290,7 +319,7 @@ export class BeachRenderer {
     const addEdge = (cells: [number, number][], normal: [number, number, number]) => {
       const base = pos.length / 3;
       for (const [i, j] of cells) {
-        const x = ORIGIN_X + (i + 0.5) * dx;
+        const x = i === 0 ? ORIGIN_X : i === nx - 1 ? ORIGIN_X + WORLD_SIZE_X : ORIGIN_X + (i + 0.5) * dx;
         const z = ORIGIN_Z + (j + 0.5) * dx;
         const u = (i + 0.5) / nx;
         const v = (j + 0.5) / ny;
@@ -389,17 +418,18 @@ export class BeachRenderer {
     wskirt.material = this.waterSkirtMat;
     wskirt.alphaIndex = 3;
 
-    // overlap the simulated water by one cell so no hairline crack shows at the seam
-    const edgeZ = ORIGIN_Z + this.grid.dx * 1.5;
-    const ocean = this.planeMesh('ocean', -hx + this.grid.dx * 0.5, hx - this.grid.dx * 0.5, edgeZ - 34, edgeZ, 96, 48);
+    // tuck half a cell under the opaque deep offshore edge of water to seal T-junction pinholes
+    const edgeZ = this.edgeZ;
+    const ocean = this.planeMesh('ocean', -hx, hx, edgeZ - 34, edgeZ + this.grid.dx * 0.5, 96, 48);
     ocean.material = this.oceanMat;
     ocean.alphaIndex = 1;
     this.oceanMat.setFloat('zEdge', edgeZ);
     this.oceanMat.setFloat('halfX', hx);
     this.oceanMat.setFloat('centerX', this.offsetX);
-    this.oceanMat.setFloat('fadeNear', 2);
-    this.oceanMat.setFloat('fadeFar', 17);
+    this.oceanMat.setFloat('fadeNear', 1);
+    this.oceanMat.setFloat('fadeFar', 18);
     this.oceanMat.setFloat('apron', 1);
+    this.oceanMat.setVector2('linkedSides', new Vector2(0, 0));
     this.oceanMat.setVector4('slabA', new Vector4(1e7, 1e7, 1e7, 1e7));
     this.oceanMat.setVector4('slabB', new Vector4(1e7, 1e7, 1e7, 1e7));
     this.oceanMat.setFloat('slabHalf', 0);
@@ -426,10 +456,42 @@ export class BeachRenderer {
   }
 
   private bindFieldTextures(): void {
-    for (const m of [this.sandMat, this.waterMat, this.skirtMat, this.waterSkirtMat]) {
+    const gs = new Vector2(this.grid.nx, this.grid.ny);
+    for (const m of this.fieldMats) {
       m.setTexture('fieldPrev', this.texPrev);
       m.setTexture('fieldCur', this.texCur);
-      m.setVector2('gridSize', new Vector2(this.grid.nx, this.grid.ny));
+      m.setVector2('gridSize', gs);
+    }
+  }
+
+  /**
+   * Link this beach to adjacent rendered beaches on its -X (right when facing
+   * the sea) and/or +X (left) boundaries. Linked boundaries hide their internal
+   * skirts, disable the ocean apron's side mist fade, and blend sand, water and
+   * wave fronts smoothly across the shared edge.
+   */
+  setNeighbors(negX: BeachRenderer | null, posX: BeachRenderer | null): void {
+    if (this.negNeighbor === negX && this.posNeighbor === posX) return;
+    this.negNeighbor = negX;
+    this.posNeighbor = posX;
+    this.syncNeighborUniforms();
+  }
+
+  private syncNeighborUniforms(): void {
+    const neg = this.negNeighbor;
+    const pos = this.posNeighbor;
+    const linked = new Vector2(neg ? 1 : 0, pos ? 1 : 0);
+    this.oceanMat.setVector2('linkedSides', linked);
+    for (const m of this.fieldMats) {
+      m.setVector2('linkedSides', linked);
+      m.setTexture('negFieldPrev', neg ? neg.texPrev : this.texPrev);
+      m.setTexture('negFieldCur', neg ? neg.texCur : this.texCur);
+      m.setFloat('negMix', neg ? neg.frameMix : 1);
+      m.setFloat('negStatic', neg?.isStatic ? 1 : 0);
+      m.setTexture('posFieldPrev', pos ? pos.texPrev : this.texPrev);
+      m.setTexture('posFieldCur', pos ? pos.texCur : this.texCur);
+      m.setFloat('posMix', pos ? pos.frameMix : 1);
+      m.setFloat('posStatic', pos?.isStatic ? 1 : 0);
     }
   }
 
@@ -455,14 +517,23 @@ export class BeachRenderer {
     this.waterSkirt.setEnabled(this.visible && !this.chair);
   }
 
-  /** Show a still snapshot (neighbors): the same packed frame as both prev and current. */
+  /** Show a neighbor snapshot: static sand, with rolling waves and foam animated in the shader. */
   showStatic(buf: Float32Array): void {
+    this.isStatic = true;
+    for (const m of this.fieldMats) m.setFloat('staticWater', 1);
     this.uploadFrame(buf);
     this.uploadFrame(buf);
     this.frameMix = 1;
   }
 
   dispose(): void {
+    // detach from any linked neighbors before disposing our textures
+    const neg = this.negNeighbor;
+    const pos = this.posNeighbor;
+    this.negNeighbor = null;
+    this.posNeighbor = null;
+    if (neg && neg.posNeighbor === this) neg.setNeighbors(neg.negNeighbor, null);
+    if (pos && pos.negNeighbor === this) pos.setNeighbors(null, pos.posNeighbor);
     const mats = new Set<ShaderMaterial>();
     for (const m of this.meshes) {
       if (m.material) mats.add(m.material as ShaderMaterial);
@@ -506,9 +577,26 @@ export class BeachRenderer {
       mat.setColor3('shadowCol', c3(p.shadow));
       mat.setVector3('cameraDir', cameraDir);
     }
-    for (const m of [this.sandMat, this.waterMat, this.skirtMat, this.waterSkirtMat]) {
+    const sw = this.swell;
+    const swellA = new Vector3(sw[0].amp * ampScale, sw[1].amp * ampScale, sw[2].amp * ampScale);
+    const swellW = new Vector3(sw[0].omega, sw[1].omega, sw[2].omega);
+    const swellP = new Vector3(sw[0].phase, sw[1].phase, sw[2].phase);
+    const swellK = new Vector3(sw[0].k, sw[1].k, sw[2].k);
+    const swellEnv = swellEnvelope(simTime, sw);
+
+    for (const m of this.fieldMats) {
       m.setFloat('frameMix', this.frameMix);
+      m.setVector3('swellA', swellA);
+      m.setVector3('swellW', swellW);
+      m.setVector3('swellP', swellP);
+      m.setVector3('swellK', swellK);
+      m.setFloat('swellEnv', swellEnv);
+      m.setFloat('simTime', simTime);
+      m.setFloat('tide', tide);
     }
+    // keep linked neighbor texture swaps & frameMix in sync every frame
+    if (this.negNeighbor || this.posNeighbor) this.syncNeighborUniforms();
+
     this.sandMat.setColor3('sandDry', c3(p.sandDry));
     this.sandMat.setColor3('sandWet', c3(p.sandWet));
     this.sandMat.setColor3('sandDeep', c3(p.sandDeep));
@@ -529,12 +617,11 @@ export class BeachRenderer {
       m.setColor3('deepCol', c3(p.waterDeep));
     }
 
-    const sw = this.swell;
-    this.oceanMat.setVector3('swellA', new Vector3(sw[0].amp * ampScale, sw[1].amp * ampScale, sw[2].amp * ampScale));
-    this.oceanMat.setVector3('swellW', new Vector3(sw[0].omega, sw[1].omega, sw[2].omega));
-    this.oceanMat.setVector3('swellP', new Vector3(sw[0].phase, sw[1].phase, sw[2].phase));
-    this.oceanMat.setVector3('swellK', new Vector3(sw[0].k, sw[1].k, sw[2].k));
-    this.oceanMat.setFloat('swellEnv', swellEnvelope(simTime, sw));
+    this.oceanMat.setVector3('swellA', swellA);
+    this.oceanMat.setVector3('swellW', swellW);
+    this.oceanMat.setVector3('swellP', swellP);
+    this.oceanMat.setVector3('swellK', swellK);
+    this.oceanMat.setFloat('swellEnv', swellEnv);
     this.oceanMat.setFloat('simTime', simTime);
     this.oceanMat.setFloat('tide', tide);
     this.oceanMat.setColor3('oceanCol', c3(p.farOcean));
