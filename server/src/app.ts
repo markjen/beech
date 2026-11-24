@@ -44,7 +44,16 @@ import { appleRefund, googleVoided, verifyAppleTransaction, verifyGooglePurchase
 import { POOLS, GRAB_CHANCE, COOLDOWN_MAX_MS, COOLDOWN_MIN_MS, cooldownAfter, cryptoRandom, draw, grab, pullDay, starterPrize, STARTER, type Rarity } from './pulls.js';
 import { currentSet, drawVending, nextUtcMidnight } from './vending.js';
 import { DIG_FIND_DAILY_CAP, DIG_FIND_ROLL_COOLDOWN_MS, digDraw, qualifiesForFind } from './digFinds.js';
-import { hashToken, newSessionToken, SESSION_DAYS, verifyAppleIdToken, verifyGoogleIdToken, type VerifiedIdentity } from './auth.js';
+import {
+  hashToken,
+  newSessionToken,
+  SESSION_DAYS,
+  verifyAppleIdToken,
+  verifyGoogleIdToken,
+  verifySteamTicket,
+  type SteamAuthConfig,
+  type VerifiedIdentity,
+} from './auth.js';
 import { toBytes, type Db } from './db.js';
 import { BEACH, NODE, SIDES, beachJson, isPublic, normalizeCode, shoreGraph, type NodeRow, type Side } from './shore.js';
 import {
@@ -72,6 +81,9 @@ export interface AppConfig {
   /** injectable for tests */
   verifyGoogle?: typeof verifyGoogleIdToken;
   verifyApple?: typeof verifyAppleIdToken;
+  verifySteam?: typeof verifySteamTicket;
+  /** Steam Web API auth config (STEAM_APP_ID + STEAM_WEB_API_KEY); unset disables /auth/steam */
+  steamAuth?: SteamAuthConfig;
   /** requests a minute per client IP (default 300), and sign-ins (default 20) */
   rateLimit?: { perMinute?: number; signInsPerMinute?: number };
   /** the clock (tests move it forward) */
@@ -125,11 +137,21 @@ export function newNeighborCode(): string {
   return [...bytes].map((b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join('');
 }
 
+function newLinkCode(): string {
+  const bytes = new Uint8Array(8);
+  crypto.getRandomValues(bytes);
+  const raw = [...bytes].map((b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join('');
+  return `${raw.slice(0, 4)}-${raw.slice(4)}`;
+}
+
+const normalizeLinkCode = (raw: string): string => raw.toUpperCase().replace(/[^A-Z0-9]/g, '');
+
 export { normalizeCode };
 
 export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   const verifyGoogle = cfg.verifyGoogle ?? verifyGoogleIdToken;
   const verifyApple = cfg.verifyApple ?? verifyAppleIdToken;
+  const verifySteam = cfg.verifySteam ?? verifySteamTicket;
   const app = new Hono<Env>();
 
   // Request logging (httpLogger) is mounted once, on the root app in
@@ -188,9 +210,12 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
 
   // ---------------------------------------------------------------- sessions
   async function startSession(c: Context<Env>, who: VerifiedIdentity | { provider: 'dev'; sub: string; name: string }) {
-    const now = Date.now();
+    const now = (cfg.now ?? Date.now)();
     const email = 'email' in who ? who.email ?? null : null;
-    let rows = await db.query<User>('SELECT id, name FROM users WHERE provider = $1 AND provider_sub = $2', [who.provider, who.sub]);
+    let rows = await db.query<User>(
+      'SELECT u.id, u.name FROM user_identities ui JOIN users u ON u.id = ui.user_id WHERE ui.provider = $1 AND ui.provider_sub = $2',
+      [who.provider, who.sub],
+    );
     let user = rows[0];
     if (!user) {
       // a fresh neighbor code; retry on the (very unlikely) collision
@@ -201,6 +226,10 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
             [crypto.randomUUID(), who.provider, who.sub, who.name, newNeighborCode(), email, now],
           );
           user = rows[0];
+          await db.query(
+            'INSERT INTO user_identities (provider, provider_sub, user_id, created_at) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING',
+            [who.provider, who.sub, user!.id, now],
+          );
         } catch (e) {
           if (attempt === 4) throw e;
         }
@@ -340,6 +369,19 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     return startSession(c, who);
   });
 
+  app.post('/auth/steam', async (c) => {
+    if (!cfg.steamAuth) fail(404, 'steam sign-in is not enabled');
+    const { ticket, name } = await body<{ ticket?: string; name?: string }>(c);
+    if (!ticket) fail(400, 'missing ticket');
+    let who: VerifiedIdentity;
+    try {
+      who = await verifySteam(ticket!, cfg.steamAuth!, name ?? '');
+    } catch (e) {
+      return fail(401, `steam sign-in failed: ${(e as Error).message}`);
+    }
+    return startSession(c, who);
+  });
+
   app.post('/auth/dev', async (c) => {
     if (!cfg.devAuth) fail(404, 'not found');
     const { name } = await body<{ name?: string }>(c);
@@ -367,6 +409,79 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   });
 
   app.get('/me', requireUser, (c) => c.json({ user: c.get('user') }));
+
+  // Cross-platform account linking (docs/STEAM.md): generate a 10-minute code on
+  // your existing device (web/iOS/Android), then enter it on a fresh Steam
+  // account so both share the same user_id, beaches, inventory, and purchases.
+  const LINK_CODE_TTL_MS = 10 * 60 * 1000;
+  app.post('/account/link-code', requireUser, async (c) => {
+    const now = (cfg.now ?? Date.now)();
+    const userId = c.get('user').id;
+    const code = newLinkCode();
+    const codeHash = await hashToken(normalizeLinkCode(code));
+    const expiresAt = now + LINK_CODE_TTL_MS;
+    await db.query('DELETE FROM account_link_codes WHERE user_id = $1 OR expires_at <= $2', [userId, now]);
+    await db.query('INSERT INTO account_link_codes (code_hash, user_id, created_at, expires_at) VALUES ($1, $2, $3, $4)', [
+      codeHash,
+      userId,
+      now,
+      expiresAt,
+    ]);
+    return c.json({ code, expiresAt });
+  });
+
+  app.post('/account/link', requireUser, async (c) => {
+    const now = (cfg.now ?? Date.now)();
+    const { code } = await body<{ code?: string }>(c);
+    const normalized = normalizeLinkCode(code ?? '');
+    if (normalized.length !== 8) fail(400, 'enter the 8-character link code');
+    const codeHash = await hashToken(normalized);
+    const currentId = c.get('user').id;
+
+    const codeRows = await db.query<{ user_id: string; expires_at: string }>(
+      'SELECT user_id, expires_at FROM account_link_codes WHERE code_hash = $1',
+      [codeHash],
+    );
+    const row = codeRows[0];
+    if (!row || Number(row.expires_at) <= now) fail(404, 'that link code is invalid or has expired');
+    const targetId = row.user_id;
+    if (targetId === currentId) fail(400, 'this device is already signed into that account');
+
+    // Only merge a fresh/empty account so nobody loses a saved beach or purchases.
+    const [beaches, items, purchases] = await Promise.all([
+      db.query<{ count: string; saved: string }>(
+        'SELECT COUNT(*)::text AS count, COUNT(*) FILTER (WHERE sand IS NOT NULL)::text AS saved FROM beach WHERE owner_id = $1',
+        [currentId],
+      ),
+      db.query<{ count: string }>('SELECT COUNT(*)::text AS count FROM inventory WHERE user_id = $1 AND quantity > 0', [currentId]),
+      db.query<{ count: string }>('SELECT COUNT(*)::text AS count FROM purchases WHERE user_id = $1', [currentId]),
+    ]);
+    if (Number(beaches[0]?.count ?? 0) > 1 || Number(beaches[0]?.saved ?? 0) > 0 || Number(items[0]?.count ?? 0) > 0 || Number(purchases[0]?.count ?? 0) > 0) {
+      fail(409, 'this account already has a saved beach or items; delete it first to link another account');
+    }
+
+    // Consume the one-time code, move identities to targetId, and drop the empty user row.
+    const claimed = await db.query<{ user_id: string }>(
+      'DELETE FROM account_link_codes WHERE code_hash = $1 AND expires_at > $2 RETURNING user_id',
+      [codeHash, now],
+    );
+    if (!claimed.length) fail(404, 'that link code is invalid or has expired');
+    await db.query('UPDATE user_identities SET user_id = $1 WHERE user_id = $2', [targetId, currentId]);
+    await db.query('DELETE FROM users WHERE id = $1', [currentId]);
+
+    const targetRows = await db.query<User>('SELECT id, name FROM users WHERE id = $1', [targetId]);
+    const targetUser = targetRows[0];
+    if (!targetUser) fail(404, 'target account no longer exists');
+
+    const token = newSessionToken();
+    await db.query('INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES ($1, $2, $3, $4)', [
+      await hashToken(token),
+      targetUser.id,
+      now,
+      now + SESSION_DAYS * 86400000,
+    ]);
+    return c.json({ token, user: targetUser });
+  });
 
   app.delete('/account', requireUser, async (c) => {
     // sessions, beach and neighbor links go with it (ON DELETE CASCADE)
