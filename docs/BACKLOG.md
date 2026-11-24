@@ -57,6 +57,10 @@ _(nothing right now)_
 
 ## Up next (engineering)
 
+- [ ] **Animals (A1–A5)**: start with one rare wild visitor (**sand crab**),
+  then food & feeding (free trickle + shop packs), then resident pets (cozy
+  hunger/burrow model, local notifications, and visitor feeding 1 free/day +
+  own food). Spec in [ANIMALS.md](ANIMALS.md).
 - [ ] **Sandcastle mini-game: customize detailed sandcastles**: Rose
   asked for more sandcastle shapes (Discord #feedback, 2026-11-23);
   Mark (2026-11-24) chose a mini-game instead — let users build and
@@ -98,7 +102,6 @@ _(nothing right now)_
 
 ## Ideas
 
-- [ ] Tide-pool life: tiny crabs that scurry away from your finger.
 - [ ] Sand-castle bucket stamps as a fourth tool.
 - [ ] More real beaches (Reynisfjara, Whitehaven, Navagio…), maybe with
   per-beach slope and sand-grain colour.
