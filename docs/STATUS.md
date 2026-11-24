@@ -293,8 +293,9 @@ accepted the repo's default branch, so the deploy job ran only there.
 ## More than one beach (added after the claw starter gifts)
 
 - See docs/MULTI_BEACH.md. Settings → "your beaches" lets you open one here,
-  rename it, set it on or off the shore, make it home, remove it, or make a
-  new one (allowance = 1 + extra beaches owned, cap 8).
+  rename it, make it home, remove it, or make a new one (allowance = 1 + extra
+  beaches owned, cap 8). The player-facing "off the shore" toggle is removed
+  for now (admin hide/unhide via `on_shore` remains).
 - **Each device shows one of your beaches** and runs its simulation. It's
   remembered per device (`beech.activeBeach.v1`), so different devices run
   different beaches at the same time, each saving its own. Opening another

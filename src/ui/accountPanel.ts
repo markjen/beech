@@ -357,7 +357,7 @@ export class AccountPanel {
       const label = document.createElement('span');
       label.className = 'fav-name';
       label.textContent = `${b.name || (b.home ? 'home' : 'a beach')}${place ? ` · ${place.name}` : ''}${b.id === a.beachId ? ' (here)' : ''}`;
-      label.title = `code ${b.code}${b.onShore ? '' : ' · off the shore'}`;
+      label.title = `code ${b.code}`;
       row.appendChild(label);
       if (b.id !== a.beachId) row.appendChild(act('open here', `open-${b.id}`, () => mine.open(b.id), 'Show and play this beach on this device'));
       if (a.beaches.length > 1) {
@@ -373,9 +373,6 @@ export class AccountPanel {
         const cps = this.checkpoints;
         row.appendChild(act('checkpoint', `checkpoint-${b.id}`, () => cps.saveOf(b.id), 'Save a checkpoint of this beach'));
       }
-      row.appendChild(
-        act(b.onShore ? 'on the shore' : 'off the shore', `shore-${b.id}`, () => a.updateBeach(b.id, { onShore: !b.onShore }), b.onShore ? 'Everyone can walk past it. Tap to keep it off the shore (only by code or as a neighbor)' : 'Only by code or as a neighbor. Tap to put it on the shore'),
-      );
       if (!b.home)
         row.appendChild(
           act('remove', `remove-beach-${b.id}`, async () => {

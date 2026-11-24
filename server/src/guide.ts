@@ -174,7 +174,7 @@ ${
 <p>Past sets’ items stay yours, and stay placeable, after the week ends.</p>
 
 <h2 id="beaches">Your beaches</h2>
-<p>You start with one beach. Each extra beach you own (from the shop or the claw machine) lets you make one more, up to ${BEACH_CAP}. Settings → “your beaches” lets you open one on this device, rename it, put it on or off the shore, make it home, or remove it.</p>
+<p>You start with one beach. Each extra beach you own (from the shop or the claw machine) lets you make one more, up to ${BEACH_CAP}. Settings → “your beaches” lets you open one on this device, rename it, make it home, or remove it.</p>
 <p>Each device shows one of your beaches and remembers which, so your phone and your TV can show different ones at the same time. Put one of your own beach codes next to another of yours and they link straight away, without asking.</p>
 
 <h2 id="shore">Neighbors and the shore</h2>

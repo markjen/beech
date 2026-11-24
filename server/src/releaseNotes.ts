@@ -19,6 +19,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     date: '2026-11-24',
     title: 'Linked beaches, shiny prizes, and rocks that stay put',
     changes: [
+      'Removed the “off the shore” setting for now — saved beaches stay on the shore.',
       'Visit any public beach in 3D and walk the shore without signing in (from beechshore.com or a shared link).',
       'The shop no longer squeezes a pack’s description into a word per line when the “Buy with credit” button is showing: the buttons sit on a row of their own under the text.',
       'Linked neighbors now touch edge to edge as one continuous stretch of sand, with no gap between them. Unlinked beaches along the shore keep their space.',

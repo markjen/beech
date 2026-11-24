@@ -1113,11 +1113,10 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   app.patch('/beaches/mine/:id', requireUser, async (c) => {
     const me = c.get('user').id;
     const id = await mine(c, c.req.param('id'));
-    const p = await body<{ name?: string; location?: string; onShore?: boolean; home?: boolean }>(c);
+    const p = await body<{ name?: string; location?: string; home?: boolean }>(c);
     if (p.location !== undefined && !/^[a-z0-9-]{1,40}$/.test(p.location)) fail(400, 'bad location');
     if (p.name !== undefined) await db.query('UPDATE beach SET name = $1 WHERE id = $2', [String(p.name).trim().slice(0, 30), id]);
     if (p.location !== undefined) await db.query('UPDATE beach SET location = $1 WHERE id = $2', [p.location, id]);
-    if (p.onShore !== undefined) await db.query('UPDATE beach SET on_shore = $1 WHERE id = $2', [!!p.onShore, id]);
     if (p.home === true) {
       // one statement, so there's always exactly one home
       await db.query('UPDATE beach SET home = (id = $1) WHERE owner_id = $2', [id, me]);

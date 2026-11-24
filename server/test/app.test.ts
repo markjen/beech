@@ -280,10 +280,10 @@ describe('more than one beach', () => {
     const shore = (await (await req('/shore?depth=2', {}, eve.token)).json()) as { right: { code: string }[] };
     expect(shore.right.slice(0, 2).map((b) => b.code)).toEqual([second.code, malCode]);
 
-    // rename, take it off the shore, make it home
+    // rename, make it home (onShore can't be toggled off by the owner)
     expect((await req(`/beaches/mine/${second.id}`, json('PATCH', { name: 'Bondi Bay', onShore: false }), eve.token)).status).toBe(200);
     m = await mine();
-    expect(m.beaches.find((b) => b.id === second.id)).toMatchObject({ name: 'Bondi Bay', onShore: false });
+    expect(m.beaches.find((b) => b.id === second.id)).toMatchObject({ name: 'Bondi Bay', onShore: true });
     expect((await req(`/beaches/mine/${second.id}`, json('PATCH', { location: 'NOT OK' }), eve.token)).status).toBe(400);
     expect((await req(`/beaches/mine/${second.id}`, json('PATCH', { home: true }), eve.token)).status).toBe(200);
     m = await mine();

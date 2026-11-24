@@ -239,7 +239,7 @@ export class Account {
     return b;
   }
 
-  async updateBeach(id: string, patch: { name?: string; location?: string; onShore?: boolean; home?: boolean }): Promise<void> {
+  async updateBeach(id: string, patch: { name?: string; location?: string; home?: boolean }): Promise<void> {
     const res = await this.call(`/api/beaches/mine/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },

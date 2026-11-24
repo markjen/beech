@@ -66,7 +66,7 @@ beforeAll(async () => {
       expect(
         (await call('/beach', { method: 'PUT', body: savedBeach() as BodyInit, headers: { 'Content-Type': 'application/octet-stream', 'X-Beach-Location': 'waikiki', 'X-Beach-Nx': '64', 'X-Beach-Ny': '64' } }, token)).status,
       ).toBe(200);
-    if (!onShore) expect((await call(`/beaches/mine/${b.id}`, { method: 'PATCH', body: JSON.stringify({ onShore: false }) }, token)).status).toBe(200);
+    if (!onShore) await db.query('UPDATE beach SET on_shore = false WHERE id = $1', [b.id]);
     people[name] = { token, code: b.code, beachId: b.id };
   }
   // Dee stars Ana
