@@ -5,6 +5,15 @@ get it. The catalog itself is `src/world/items.ts`; this is the map over
 it — what each thing is, where it comes from, what it looks like, and how
 to add the next one.
 
+The player-facing home of the catalog is the user guide
+(beech.games/guide#catalog, `server/src/guide.ts`): it lists every item
+by how you get it, with rarity, shop prices, and a line on how each
+thing behaves. The guide builds that listing at runtime from the claw
+pool, the vending sets, the shop products and the free items — never a
+hand-kept copy — so it stays in step with the catalog below. This
+document stays the builder's reference: kind, size, variants, mesh,
+renders, and the checklist for adding the next item.
+
 Renders of every item are in [`items/renders/`](items/renders/) (see
 [Renders](#renders) below). The renders are also what players see: copies
 live in `public/items/<item-id>.png` and are served on beechshore.com as
@@ -211,12 +220,25 @@ shore-picture colours.
    `server/src/vending.ts`, product in `server/src/products.ts`, or
    wash-in in `src/sim/objects.ts` (`washIn`). Prize display names in
    `server/src/prizeNames.ts`.
-8. **Docs** — the tables above, `docs/BACKLOG.md` (move the line to
+8. **Guide mirrors** — the guide (`server/src/guide.ts`) can't import
+   the catalog (the production image only copies `server/src`), so the
+   per-item facts it can't derive live mirrored in
+   `server/src/prizeNames.ts`, and the guide's kind-to-behaviour map
+   covers new kinds. Only add what's missing, and only where the guide
+   can't derive it: a name in `PRIZE_NAMES` unless the id already reads
+   as the name (single-word ids do); a rarity in `ITEM_RARITY` unless
+   the item is drawn from a pool or set or is a common free item; a kind
+   in `KIND_OVERRIDES` unless the kind is the id; a glow in
+   `GLOW_ITEMS` only if `ITEM_LOOKS` gives it one; a wash-in in
+   `WASH_ASHORE_ITEMS` (`server/src/guide.ts`) only if the sea brings
+   it in. `tests/items.test.ts` keeps every mirror in step with the
+   catalog — a missing mirror fails the tests.
+9. **Docs** — the tables above, `docs/BACKLOG.md` (move the line to
    Done with the PR number), `docs/STATUS.md`, the guide in
    `server/src/guide.ts` where behaviour changes, and a plain-words
    line in `server/src/releaseNotes.ts` for anything a player can
    notice.
-9. **Renders** — `node scripts/render-items.mjs --only <id,...>`,
+10. **Renders** — `node scripts/render-items.mjs --only <id,...>`,
    checked by eye before committing: recognizable, correctly
    coloured, right-side up, distinct from its same-kind neighbours.
 

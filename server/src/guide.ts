@@ -9,21 +9,30 @@
 // same commit as the feature (CLAUDE.md).
 //
 // Starter gifts are a surprise (#9): never mention them here.
+//
+// The catalog section (#catalog) lists every item by how you get it,
+// built at runtime from the claw pool, the vending sets, the shop
+// products and the free items — never a hand-kept copy. Names, rarities
+// and kinds the server can't derive from those live mirrored in
+// prizeNames.ts, kept in step by tests/items.test.ts.
 
 import { BEACH_CAP } from './app.js';
-import { CHECKPOINTS_PER_BEACH } from './checkpoints.js';
+import { CHECKPOINTS_PER_BEACH, FREE_ITEMS } from './checkpoints.js';
 import { DIG_FIND_CHANCE, DIG_FIND_DAILY_CAP, DIG_FIND_ROLL_COOLDOWN_MS } from './digFinds.js';
 import { COOLDOWN_MAX_MS, COOLDOWN_MIN_MS, GRAB_CHANCE, POOLS, type Rarity } from './pulls.js';
 import { RELEASE_NOTES } from './releaseNotes.js';
-import { PRIZE_NAMES } from './prizeNames.js';
+import { GLOW_ITEMS, ITEM_RARITY, KIND_OVERRIDES, displayName } from './prizeNames.js';
+import { PRODUCTS } from './products.js';
 import { escapeHtml as esc } from './shareMeta.js';
-import { currentSet, nextUtcMidnight, type VendingSet } from './vending.js';
+import { VENDING_SETS, currentSet, nextUtcMidnight, type VendingSet } from './vending.js';
 
 const RARITY: Record<Rarity, string> = { common: 'Common', uncommon: 'Uncommon', rare: 'Rare', legendary: 'Legendary', unique: 'One of a kind' };
 const ORDER: Rarity[] = ['common', 'uncommon', 'rare', 'legendary', 'unique'];
 
 const pct = (v: number) => `${Math.round(v * 1000) / 10}%`;
-const names = (ids: string[]) => ids.map((id) => esc(PRIZE_NAMES[id] ?? id)).join(', ');
+const names = (ids: string[]) => ids.map((id) => esc(displayName(id))).join(', ');
+const usd = (n: number) => `$${n.toFixed(2)}`;
+const sentence = (s: string) => (s.endsWith('.') ? s : `${s}.`);
 const minutes = (ms: number) => {
   const m = Math.round(ms / 60000);
   return m >= 60 && m % 60 === 0 ? `${m / 60} hour${m === 60 ? '' : 's'}` : `${m} minutes`;
@@ -37,6 +46,146 @@ function oddsTable(odds: Partial<Record<Rarity, number>>, items: Partial<Record<
     )
     .join('');
   return `<table><thead><tr><th>Rarity</th><th>Chance</th>${grab ? '<th>Claw holds on</th>' : ''}<th>What</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+/** The free things the sea brings in on its own (washIn in src/sim/objects.ts): the loose light things, a few at a time. Rocks and flags never wash in, and neither do things you win or buy. Kept in step by tests/items.test.ts. */
+export const WASH_ASHORE_ITEMS: ReadonlySet<string> = new Set(['driftwood', 'shell', 'seaglass', 'trash', 'seaweed', 'cowrie']);
+
+type Behaviour = 'rock' | 'float' | 'tumble' | 'fixed';
+/** How the sea treats a kind (BEHAVIOUR in src/sim/objects.ts). */
+const KIND_BEHAVIOUR: Record<string, Behaviour> = {
+  rock: 'rock',
+  driftwood: 'float',
+  shell: 'tumble',
+  seaglass: 'tumble',
+  trash: 'tumble',
+  seaweed: 'tumble',
+  flag: 'fixed',
+  conch: 'tumble',
+  sanddollar: 'tumble',
+  starfish: 'tumble',
+  bottle: 'float',
+  nautilus: 'tumble',
+  beachball: 'float',
+  sandals: 'tumble',
+  bucket: 'fixed',
+  coral: 'tumble',
+  coconut: 'float',
+  deckchair: 'fixed',
+  parasol: 'fixed',
+  surfboard: 'fixed',
+  sandcastle: 'fixed',
+  beachhut: 'fixed',
+  lighthouse: 'fixed',
+  tikitorch: 'fixed',
+  palmtree: 'fixed',
+  lifeguardtower: 'fixed',
+  bonfire: 'fixed',
+  hammock: 'fixed',
+  towel: 'fixed',
+  // footprints (PR #81, not merged yet): a trail pressed into the sand, staying put
+  footprints: 'fixed',
+};
+const BEHAVIOUR_WORDS: Record<Behaviour, string> = {
+  rock: 'Shapes how water flows and where sand settles.',
+  float: 'Floats on the water, and strands when it drains.',
+  tumble: 'Moves in fast water, then settles on the sand.',
+  fixed: 'Stays where you put it.',
+};
+
+/** How the sea treats this kind, if the guide knows it. */
+export function behaviourOfKind(kind: string): Behaviour | undefined {
+  return KIND_BEHAVIOUR[kind];
+}
+
+/** The catalog kind of an item: most items are their own kind; the prizes that share a kind with a free item are listed in prizeNames.ts. */
+export function itemKind(id: string): string {
+  return KIND_OVERRIDES[id] ?? id;
+}
+
+/** The rarity of an item: the tier it is drawn at in the claw or a vending set, else the table in prizeNames.ts, else common for a free thing. */
+export function itemRarity(id: string): Rarity {
+  for (const pool of Object.values(POOLS))
+    for (const [rarity, ids] of Object.entries(pool.items)) if (ids.includes(id)) return rarity as Rarity;
+  for (const set of VENDING_SETS)
+    for (const [rarity, ids] of Object.entries(set.items)) if (ids.includes(id)) return rarity as Rarity;
+  if (ITEM_RARITY[id]) return ITEM_RARITY[id];
+  if (FREE_ITEMS.has(id)) return 'common';
+  // Every catalog item resolves above (tests/items.test.ts keeps the mirrors in step); anything else isn't something the guide lists.
+  return 'common';
+}
+
+/** Does it glow and sparkle on the sand? Rare, legendary and one-of-a-kind things do, and so does the golden sand dollar. */
+export function itemGlows(id: string): boolean {
+  const r = itemRarity(id);
+  return r === 'rare' || r === 'legendary' || r === 'unique' || GLOW_ITEMS.has(id);
+}
+
+const byName = (a: string, b: string) => displayName(a).localeCompare(displayName(b));
+const byTierThenName = (a: string, b: string) => ORDER.indexOf(itemRarity(a)) - ORDER.indexOf(itemRarity(b)) || byName(a, b);
+
+/** One catalog row: name, rarity, and a line on how it behaves — plus the shop price and the shop's own line where there is one. */
+function catalogRow(id: string): string {
+  const behaviour = behaviourOfKind(itemKind(id));
+  const single = PRODUCTS.find((p) => p.grants.length === 1 && p.grants[0].item === id);
+  const price = single ? ` · ${usd(single.usd)}` : '';
+  const words = [single?.blurb ?? '', behaviour ? BEHAVIOUR_WORDS[behaviour] : '', itemGlows(id) ? 'Glows and sparkles on the sand.' : '']
+    .filter(Boolean)
+    .map(sentence)
+    .join(' ');
+  return `<li><b>${esc(displayName(id))}</b> — ${RARITY[itemRarity(id)]}${price}${words ? `. ${words}` : ''}</li>`;
+}
+
+/** The full catalog, grouped by how you get each thing. Every group is built at runtime from the pools, sets, products and free items, so a new item joins its group on its own. */
+function catalogSection(now: number): string {
+  const free = [...FREE_ITEMS].sort(byName);
+  const wash = [...WASH_ASHORE_ITEMS].sort(byName);
+  const clawIds = [...new Set(Object.values(POOLS).flatMap((p) => Object.values(p.items).flat()))].sort(byTierThenName);
+  const sets = [...VENDING_SETS].sort((a, b) => b.week - a.week);
+  const current = currentSet(now);
+  const shopIds = [...new Set(PRODUCTS.flatMap((p) => p.grants.map((g) => g.item)))].filter((id) => id !== 'beach').sort(byName);
+  const founder = PRODUCTS.find((p) => p.featured);
+  const beachProducts = PRODUCTS.filter((p) => p.grants.length > 0 && p.grants.every((g) => g.item === 'beach')).sort(
+    (a, b) => a.grants[0].quantity - b.grants[0].quantity,
+  );
+  const beachPrices = beachProducts
+    .map((p) => (p.grants[0].quantity === 1 ? usd(p.usd) : `${p.grants[0].quantity} for ${usd(p.usd)}`))
+    .join(', or ');
+  const beachBlurb = beachProducts[0]?.blurb ?? '';
+  return `
+<h2 id="catalog">Everything you can place</h2>
+<p>Everything you can put on your beach, by how you get it. Free things never run out; things you win or buy show how many you have left to place.</p>
+
+<h3>Free, from your bag</h3>
+<p>Yours from the start. Pick one, choose its size, and set it down.</p>
+<ul>${free.map(catalogRow).join('')}</ul>
+
+<h3>Washed ashore</h3>
+<p>The sea brings these in on its own, a few at a time. Pick one up and put it down and it's yours; your bag lists what you've kept under Found.</p>
+<ul>${wash.map(catalogRow).join('')}</ul>
+
+<h3>From the vending machine</h3>
+<p>One free ball a day, from the week's set — the odds are in the vending machine section above. Past sets' items stay yours, and stay placeable, after the week ends.</p>
+${sets
+  .map(
+    (set) =>
+      `<h3>Week ${set.week}: ${esc(set.name)}${set === current ? ' (this week)' : ''}</h3><ul>${[...new Set(Object.values(set.items).flat())].sort(byTierThenName).map(catalogRow).join('')}</ul>`,
+  )
+  .join('')}
+
+<h3>From the claw machine</h3>
+<p>Won from the free claw machine — the odds are in the claw machine section above.</p>
+<ul>${clawIds.map(catalogRow).join('')}</ul>
+
+<h3>From the shop</h3>
+<p>Bought in the shop — open it from the bag. Prices in US dollars; what you buy is yours on every device you sign in on.</p>
+<ul>${shopIds.map(catalogRow).join('')}</ul>
+${founder ? `<p>The <b>${esc(founder.name)}</b> (${usd(founder.usd)}) — ${esc(sentence(founder.blurb))}</p>` : ''}
+
+<h3>Extras</h3>
+<p>Things you own that aren't placed on the sand.</p>
+<ul><li><b>${esc(displayName('beach'))}</b> — ${RARITY[itemRarity('beach')]}${beachPrices ? ` · ${beachPrices}` : ''}${beachBlurb ? `. ${esc(sentence(beachBlurb))}` : ''}</li></ul>
+`;
 }
 
 function page(title: string, body: string, nav: string): string {
@@ -100,6 +249,7 @@ const NAV_SECTIONS: [string, string][] = [
   ['animals', 'Animals'],
   ['claw', 'Claw machine'],
   ['vending', 'Vending machine'],
+  ['catalog', 'Everything'],
   ['beaches', 'Your beaches'],
   ['shore', 'Neighbors and the shore'],
   ['leaderboard', 'Leaderboard'],
@@ -178,6 +328,7 @@ ${
     : '<p>No set is live right now.</p>'
 }
 <p>Past sets’ items stay yours, and stay placeable, after the week ends.</p>
+${catalogSection(now)}
 
 <h2 id="beaches">Your beaches</h2>
 <p>You start with one beach. Each extra beach you own (from the shop or the claw machine) lets you make one more, up to ${BEACH_CAP}. Settings → “your beaches” lets you open one on this device, rename it, make it home, or remove it.</p>

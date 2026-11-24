@@ -47,6 +47,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       'Next week the vending machine has a beach ball, a pair of sandals and a bucket to win, alongside last week’s sea glass, pebble, conch, bottle and nautilus.',
       'The claw machine has two new prizes to win: a branching piece of coral and a coconut.',
       'The shop has five new centrepieces: a palm tree, a lifeguard tower, a bonfire, a hammock and a beach towel.',
+      'The guide now lists everything you can put on your beach — free things, washed-ashore finds, claw and vending prizes, and shop items with their prices.',
       'When you’re looking at someone else’s beach, the name tags no longer float over the sand: a small “i” sits at the bottom instead, and tapping it opens the beach’s name card (with its star and “ask to be neighbors”) and a way back to your own beach.',
       'beechshore.com now has an item catalog: every item with a picture, its size and price, and how to get it. Vote for the ones you like and leave a comment — it’s linked from the guide.',
       'Footprints are free now: press a trail of them into the sand, as many as you like.',

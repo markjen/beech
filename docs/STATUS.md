@@ -778,6 +778,7 @@ here: it needs the service's URL on the web OAuth client.
   rules (special items look different — and better — than the free
   items sharing their kind; free shells never pink, free sand dollars
   never gold).
+- **The guide lists the whole catalog** (2026-11-24): beech.games/guide#catalog groups every item by how you get it — free, washed ashore, claw, vending (this week's set and past sets), shop with prices, extras — with rarity and a line on how each thing behaves. The listing is built at runtime from the claw pool, the vending sets, the shop products and the free items; names, rarities and kinds the server can't derive from those are mirrored in `server/src/prizeNames.ts` and kept in step by `tests/items.test.ts`. A new free item joins its group on its own: footprints (PR #81, still open) will appear in the free list once that PR merges, with no change needed here.
 - **Sample renders** (`scripts/render-items.mjs`, committed under
   `docs/items/renders/`): headless Chromium, day light, seed 1. The
   script bundles the app's own catalog, places every item in rows on
