@@ -334,6 +334,20 @@ describe('the shop', () => {
     for (const p of r.products) expect(p.usd).toBeGreaterThan(0);
   });
 
+  it('lists and grants each new shop centrepiece at its catalog price', async () => {
+    const shopper = await signIn('Shopper');
+    const { products } = (await (await req('/store/products')).json()) as { products: { id: string; usd: number; grants: unknown[] }[] };
+    const prices = { palmtree: 2.99, lifeguardtower: 2.99, bonfire: 1.49, hammock: 1.49, towel: 0.99 };
+    for (const [item, usd] of Object.entries(prices)) {
+      const productId = `item_${item}`;
+      expect(products.find((p) => p.id === productId)).toMatchObject({ usd, grants: [{ item, quantity: 1 }] });
+      const response = await buy(shopper.token, { platform: 'dev', productId, token: `centrepiece-${item}` });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ already: false, product: productId });
+    }
+    expect(await owned(shopper.token)).toEqual({ palmtree: 1, lifeguardtower: 1, bonfire: 1, hammock: 1, towel: 1 });
+  });
+
   it('grants a checked purchase once, ties it to its account, and takes it back on a refund', async () => {
     const hal = await signIn('Hal');
     const ivy = await signIn('Ivy');

@@ -50,6 +50,11 @@ export const PRODUCTS: Product[] = [
   { id: 'item_tikitorch', steamItemId: 1008, name: 'Tiki torches', grants: [{ item: 'tikitorch', quantity: 2 }], usd: 1.49, blurb: 'A pair, with flames that flicker' },
   { id: 'item_parasol', steamItemId: 1009, name: 'Parasol', grants: [{ item: 'parasol', quantity: 1 }], usd: 0.99, blurb: 'Red and white stripes' },
   { id: 'item_deckchair', steamItemId: 1010, name: 'Deckchair', grants: [{ item: 'deckchair', quantity: 1 }], usd: 0.99, blurb: 'Striped canvas, facing the sea' },
+  { id: 'item_palmtree', steamItemId: 1011, name: 'Palm tree', grants: [{ item: 'palmtree', quantity: 1 }], usd: 2.99, blurb: 'A tall palm with spreading fronds' },
+  { id: 'item_lifeguardtower', steamItemId: 1012, name: 'Lifeguard tower', grants: [{ item: 'lifeguardtower', quantity: 1 }], usd: 2.99, blurb: 'A tower, a cabin and a ramp, watching over the beach' },
+  { id: 'item_bonfire', steamItemId: 1013, name: 'Bonfire', grants: [{ item: 'bonfire', quantity: 1 }], usd: 1.49, blurb: 'Stones, logs and a flickering flame' },
+  { id: 'item_hammock', steamItemId: 1014, name: 'Hammock', grants: [{ item: 'hammock', quantity: 1 }], usd: 1.49, blurb: 'Two posts and a slung cloth, made for naps' },
+  { id: 'item_towel', steamItemId: 1015, name: 'Beach towel', grants: [{ item: 'towel', quantity: 1 }], usd: 0.99, blurb: 'Striped, lying flat on the sand' },
 ];
 
 export const productById = (id: string): Product | undefined => PRODUCTS.find((p) => p.id === id);

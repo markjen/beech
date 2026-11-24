@@ -741,6 +741,15 @@ here: it needs the service's URL on the web OAuth client.
   floats with its bottom submerged. Imported variant 0 uses the first
   colour scheme, and the shore pictures use the same variant colours
   as the game. Renders are in `docs/items/renders/`.
+- **Shop centrepieces** (2026-11-24): five new shop items — a palm
+  tree (legendary, $2.99, the tallest of the five), a lifeguard tower
+  (legendary, $2.99, with a cabin and a ramp), a bonfire (rare,
+  $1.49, its flame glows like the tiki torch's), a hammock (rare,
+  $1.49) and a beach towel (rare, $0.99) — five new kinds
+  (`palmtree`, `lifeguardtower`, `bonfire`, `hammock`, `towel`), each
+  the only item of its kind. The render layout keeps the expanded
+  catalog on dry sand. The payment-provider setup uses the product
+  IDs in `server/src/products.ts` and the Steam IDs in `docs/STEAM.md`.
 
 ## Verification
 

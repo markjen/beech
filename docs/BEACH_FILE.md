@@ -336,6 +336,7 @@ Owned (prizes and the shop): `conch`, `sanddollar`, `starfish`, `deckchair`,
 `parasol`, `surfboard`, `tikitorch`, `sandcastle`, `beachhut`, `lighthouse`,
 `bottle`, `pink-shell`, `blue-seaglass`, `pebble`, `spiral-conch`,
 `gold-sanddollar`, `sunset-starfish`, `green-bottle`, `nautilus`,
-`beach-ball`, `sandals`, `bucket`, `coral`, `coconut`.
+`beach-ball`, `sandals`, `bucket`, `coral`, `coconut`, `palmtree`,
+`lifeguardtower`, `bonfire`, `hammock`, `towel`.
 The catalog (`src/world/items.ts`) is the source of truth; new items are
 added there and here.

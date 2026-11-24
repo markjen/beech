@@ -99,13 +99,19 @@ const HALF_H = {
   driftwood: 1.5, flag: 1.7,
   deckchair: 1.9, parasol: 2.7, surfboard: 2.5, tikitorch: 2.0,
   sandcastle: 2.2, beachhut: 2.6, lighthouse: 3.4,
+  palmtree: 3.4, lifeguardtower: 3.0, bonfire: 1.6, hammock: 1.8, towel: 1.6,
 };
+const CLOSE_UP_LIFT = { palmtree: 1.2, lifeguardtower: 1.2 };
 const halfHFor = (it) => HALF_H[it.kind] ?? Math.min(1.6, Math.max(0.55, Math.sqrt(it.size[0] * it.size[1]) * 2.2));
 
-// every item the run renders, laid out in rows of 8 (groups stay in order)
+// Keep the rows on dry sand as the catalog grows. Widen the grid before
+// putting a fifth row beyond the back edge of the beach.
+const columns = Math.max(8, Math.ceil(items.length / 4));
+const columnSpacing = 25.9 / (columns - 1);
+const rowSpacing = columns > 8 ? 2.3 : 3;
 const placed = items.map((it, i) => {
-  const col = i % 8;
-  const row = Math.floor(i / 8);
+  const col = i % columns;
+  const row = Math.floor(i / columns);
   const mid = Math.sqrt(it.size[0] * it.size[1]);
   return {
     id: it.id,
@@ -113,8 +119,8 @@ const placed = items.map((it, i) => {
     group: groupOf(it),
     kind: it.kind,
     item: it.id,
-    x: 3.2 + col * 3.7,
-    y: 22.5 + row * 3.0,
+    x: 3.2 + col * columnSpacing,
+    y: 22.5 + row * rowSpacing,
     angle: 0,
     size: it.fixedSize ? it.size[0] : mid,
     variant: 1,
@@ -197,7 +203,7 @@ try {
 
   // one close-up per item, centred (a 400 px square out of the 800x500 view)
   for (const p of placed) {
-    const lift = p.kind === 'beachball' ? p.size : 0;
+    const lift = p.kind === 'beachball' ? p.size : (CLOSE_UP_LIFT[p.kind] ?? 0);
     await frame(p.x, p.y, p.halfH, lift);
     await page.screenshot({ path: path.join(OUT, `${p.id}.png`), clip: { x: 200, y: 50, width: 400, height: 400 }, timeout: 120000 });
     console.log(`${p.id}.png  ${p.name} (${p.group}, ${p.kind})`);

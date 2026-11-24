@@ -106,6 +106,11 @@ Required 2024+ Steam graphical asset sizes (older dimensions are rejected):
   | 1008 | Tiki torches | 1.49 |
   | 1009 | Parasol | 0.99 |
   | 1010 | Deckchair | 0.99 |
+  | 1011 | Palm tree | 2.99 |
+  | 1012 | Lifeguard tower | 2.99 |
+  | 1013 | Bonfire | 1.49 |
+  | 1014 | Hammock | 1.49 |
+  | 1015 | Beach towel | 0.99 |
 
 - Create the 10 achievement definitions (IDs in `src/platform/steamFeatures.ts`, S4): `FIRST_DIG`, `BURIED_FIND`, `CHAIR_VIEW`, `NIGHT_BEACH`, `WALK_SHORE`, `FIRST_NEIGHBOR`, `CLAW_WIN`, `VENDING_PULL`, `CHECKPOINT_SAVED`, `FIVE_BEACHES`.
 - Create the Rich Presence `#Status_*` display tokens matching the presence strings in S4.

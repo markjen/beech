@@ -224,8 +224,8 @@ pass `promo_code` on the token call, and on `order_paid` accept
 1. **Xsolla account (Mark).** Publisher Account, licensing agreement, tax
    forms, payout details. Get the all-in fee in writing.
 2. **Catalog.** Create one virtual item per product in
-   `server/src/products.ts`, **SKU = product id**, USD price = `usd`
-   (same 10 SKUs). Keep the two in step when products change.
+   `server/src/products.ts`, using the product ID as the SKU and `usd`
+   for the USD price. Keep the catalog in step when products change.
 3. **Webhooks.** Project → Webhooks: URL
    `https://play.beech.games/api/store/xsolla/webhook`; copy the secret key.
    Set exactly this URL in the Xsolla dashboard — the webhook must match

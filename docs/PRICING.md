@@ -19,11 +19,16 @@ list).
 | `beach_1` | 1 extra beach | **$2.99** | The core purchase. It sits at a common "meaningful but impulse" point, a little above a single centrepiece because a beach is a whole new canvas. |
 | `beach_3` | 3 extra beaches | **$6.99** | About $2.33 each (save 22%), for people building their own stretch of shore. |
 | `item_lighthouse` | Lighthouse | $2.99 | A legendary centrepiece that shines at night. |
+| `item_palmtree` | Palm tree | $2.99 | A legendary centrepiece, the tallest of the new set. |
+| `item_lifeguardtower` | Lifeguard tower | $2.99 | A legendary centrepiece. |
 | `item_beachhut` | Beach hut | $2.99 | A legendary centrepiece. |
 | `item_sandcastle` | Sandcastle | $1.99 | Legendary, but smaller. |
+| `item_bonfire` | Bonfire | $1.49 | Rare, with a flame that flickers. |
+| `item_hammock` | Hammock | $1.49 | Rare. |
 | `item_surfboard` | Surfboard | $1.49 | Rare. |
 | `item_tikitorch` | 2 tiki torches | $1.49 | Rare, sold as a pair (they frame a path). |
 | `item_parasol` | Parasol | $0.99 | Rare, and the entry point. |
+| `item_towel` | Beach towel | $0.99 | Rare. |
 | `item_deckchair` | Deckchair | $0.99 | Rare. Also everyone's second claw-machine gift, a taste of the shop. |
 
 What you buy counts toward "N of M left": you can put down as many of an
