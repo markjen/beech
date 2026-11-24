@@ -31,6 +31,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       'Rocks placed against each other no longer pile sand up into a tall spike. Beaches that grew one smooth it away the next time they’re opened.',
       'The sea now brings in more than shells and sea glass: a crumpled bright bottle or can, a strand of seaweed, and a spotted cowrie now and then. Pick one up and put it down and it’s yours — the bag’s “Found” section keeps track.',
       'Next week the vending machine has a beach ball, a pair of sandals and a bucket to win, alongside last week’s sea glass, pebble, conch, bottle and nautilus.',
+      'The claw machine has two new prizes to win: a branching piece of coral and a coconut.',
     ],
   },
   {

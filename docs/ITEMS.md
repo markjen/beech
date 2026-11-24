@@ -52,8 +52,16 @@ legendary 40% — and a ball that slips spends the go.
 |---|---|---|---|---|---|---|
 | Conch | `conch` | common | 0.1–0.35 | 3 | tumble | `src/render/objects.ts` |
 | Sand dollar | `sanddollar` | common | 0.06–0.16 | 2 | tumble | `src/render/objects.ts` |
+| Coconut | `coconut` | common | 0.15–0.35 | 2 | float | `src/render/objects.ts` |
 | Starfish | `starfish` | rare | 0.08–0.26 | 3 | tumble | `src/render/objects.ts` |
+| Coral | `coral` | rare | 0.08–0.3 | 3 | tumble | `src/render/objects.ts` |
 | Message in a bottle | `bottle` | legendary | 0.22–0.45 | 2 | float | `src/render/objects.ts` |
+
+The coral tumbles in the swash like a shell; the coconut floats like a
+bottle, riding high in the water. Each is the only item of its kind, so
+the kind palette is its look — no `ITEM_LOOKS` entry — and the coral is
+brick red, darker and redder than the starfish's orange and never the
+sunset starfish's magenta.
 
 ## Vending sets
 
@@ -137,7 +145,6 @@ Things you own that aren't placed on the sand: **Extra beach**
 Rose's Discord #feedback (2026-11-23), approved by Mark (2026-11-24).
 Each lands as its own PR; the tables above grow with it.
 
-- **Claw prizes** (`feat/claw-coral-coconut`): `coral`, `coconut`.
 - **Shop centrepieces** (`feat/shop-centrepieces`): `palmtree`,
   `lifeguardtower`, `bonfire`, `hammock`, `towel`.
 - **Free footprints** (`feat/footprints`): `footprints`, plus a little

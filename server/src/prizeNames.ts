@@ -10,6 +10,8 @@ export const PRIZE_NAMES: Record<string, string> = {
   conch: 'Conch',
   sanddollar: 'Sand dollar',
   starfish: 'Starfish',
+  coral: 'Coral',
+  coconut: 'Coconut',
   bottle: 'Message in a bottle',
   'pink-shell': 'Pink shell',
   'blue-seaglass': 'Blue sea glass',

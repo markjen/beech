@@ -690,6 +690,8 @@ const SANDAL_SOLES = ['#2f8f7a', '#e86a5a'].map(C);
 const SANDAL_STRAPS = ['#f08a4b', '#2f4a6b'].map(C);
 const BUCKET_RIMS = ['#d8473b', '#2f8fd0'].map(C);
 const BUCKET_INSIDE = ['#8a2f28', '#1f5a8a'].map(C);
+const CORAL = ['#c73e2e', '#a82e28', '#d95a3a'].map(C);
+const NUT = ['#6b4a2f', '#7d5a38'].map(C);
 
 /** Prize items draw in their own colours (a copy of src/palette.ts ITEM_LOOKS). */
 export const ITEM_COLORS: Record<string, string[]> = {
@@ -782,6 +784,26 @@ function drawThings(img: Uint8Array, W: number, H: number, things: Thing[], look
       case 'starfish':
         parts.push([star(px, py, m(Math.max(0.12, t.size * 0.6), 3), a), itemColor(t.item, v) ?? C('#f08a4b')]);
         break;
+      case 'coral': {
+        // a branching fragment: a few short arms fanning out from the base, brick red
+        const c = CORAL[v % CORAL.length];
+        const baseR = m(t.size * 0.175, 1);
+        const branch = m(t.size * 0.4, 2);
+        parts.push([circle(px, py, baseR, 8), c]);
+        for (let k = 0; k < 3; k++) {
+          const aa = a + (k / 3) * Math.PI * 2 - Math.PI / 2;
+          parts.push([rect(px + Math.cos(aa) * branch, py + Math.sin(aa) * branch, branch, m(t.size * 0.1, 0.9), aa), c]);
+        }
+        break;
+      }
+      case 'coconut': {
+        // a brown nut with its three dark pores
+        const r = m(t.size * 0.5, 2.2);
+        parts.push([circle(px, py, r, 14), NUT[v % NUT.length]]);
+        for (const [ox, oy] of [[-0.3, -0.2], [0.3, -0.25], [0, 0.3]] as Pt[])
+          parts.push([circle(px + ox * r, py + oy * r, Math.max(1, r * 0.12), 6), C('#3d2716')]);
+        break;
+      }
       case 'bottle':
         parts.push([rect(px, py, m(0.18, 3), m(0.06, 1.3), a), itemColor(t.item, v) ?? C('#5fa67a')]);
         break;
