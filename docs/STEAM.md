@@ -1,6 +1,6 @@
 # Steam desktop release (Windows + Linux / Steam Deck)
 
-Status: **S1 (runtime abstraction, `desktop/` shell, SteamPipe CI) and S2 (Steam Auth + `user_identities` cross-platform linking) built; S3–S6 queued.**
+Status: **S1 (runtime abstraction, `desktop/` shell, SteamPipe CI), S2 (Steam Auth + cross-platform linking), and S3 (`ISteamMicroTxn` + refund sync) built; S4 & S6 queued.**
 
 The Steam release wraps the same Vite web build (`dist/`) in an **Electron + `steamworks.js`** shell under `desktop/`, mirroring how `android/` and `ios/` wrap `dist/` with Capacitor. It connects to the same Cloud Run backend (`https://play.beech.games`), adds zero-friction Steam sign-in with cross-platform account linking, and routes in-game shop purchases through Steam Wallet (`ISteamMicroTxn`).
 

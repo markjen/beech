@@ -1,6 +1,6 @@
 import { Capacitor } from '@capacitor/core';
 
-import { isMobileApp, isSteam } from '../platform/runtime';
+import { isMobileApp, isSteam, steamBridge } from '../platform/runtime';
 import { DEV_AUTH, type Account } from './account';
 import { reportError, reportEvent } from './telemetry';
 
@@ -112,6 +112,23 @@ function writePending(list: Pending[]): void {
   }
 }
 
+const PENDING_STEAM_KEY = 'beech.pendingSteamOrders.v1';
+function readPendingSteam(): string[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(PENDING_STEAM_KEY) ?? '[]') as unknown;
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string').slice(-20) : [];
+  } catch {
+    return [];
+  }
+}
+function writePendingSteam(list: string[]): void {
+  try {
+    localStorage.setItem(PENDING_STEAM_KEY, JSON.stringify(list));
+  } catch {
+    /* storage blocked */
+  }
+}
+
 type Purchases = typeof import('@capgo/native-purchases').NativePurchases;
 let plugin: Promise<Purchases> | null = null;
 function native(): Promise<Purchases> {
@@ -161,6 +178,9 @@ export class ShopApi {
     if (!user) throw new Error('sign in to buy');
     let pending: Pending;
     const mode = shopMode();
+    if (mode === 'steam') {
+      return this.buyOnSteam(productId);
+    }
     if (mode === 'native') {
       const p = await native();
       let t;
@@ -203,6 +223,63 @@ export class ShopApi {
     return 'bought';
   }
 
+  private async buyOnSteam(productId: string): Promise<'bought' | 'cancelled'> {
+    const steam = steamBridge();
+    if (!steam) throw new Error('Steam is not running');
+    const initRes = await this.account.fetch('/api/store/steam/init', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ productId }),
+    });
+    if (!initRes.ok) {
+      const msg = ((await initRes.json().catch(() => ({}))) as { error?: string }).error;
+      throw new Error(msg ?? 'Steam checkout could not be started');
+    }
+    const { orderId } = (await initRes.json()) as { orderId: string };
+    writePendingSteam([...readPendingSteam().filter((x) => x !== orderId), orderId]);
+
+    const authorized = await new Promise<boolean>((resolve, reject) => {
+      const timer = window.setTimeout(() => {
+        unsub();
+        reject(new Error('Steam Wallet authorization timed out'));
+      }, 5 * 60 * 1000);
+      const unsub = steam.onMicroTxnResponse((ev) => {
+        if (ev.orderId !== orderId) return;
+        window.clearTimeout(timer);
+        unsub();
+        resolve(ev.authorized);
+      });
+    });
+
+    if (!authorized) {
+      writePendingSteam(readPendingSteam().filter((x) => x !== orderId));
+      void this.account.fetch('/api/store/steam/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId }),
+      });
+      return 'cancelled';
+    }
+
+    await this.finalizeSteamOrder(orderId);
+    return 'bought';
+  }
+
+  private async finalizeSteamOrder(orderId: string): Promise<void> {
+    const res = await this.account.fetch('/api/store/steam/finalize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderId }),
+    });
+    if (res.ok || (res.status >= 400 && res.status < 500 && res.status !== 401 && res.status !== 408 && res.status !== 429)) {
+      writePendingSteam(readPendingSteam().filter((x) => x !== orderId));
+    }
+    if (!res.ok) {
+      const msg = ((await res.json().catch(() => ({}))) as { error?: string }).error;
+      throw new Error(msg ?? 'the Steam purchase could not be finalized yet; it will be retried');
+    }
+  }
+
   private async deliver(p: Pending): Promise<void> {
     let res: Response;
     try {
@@ -236,6 +313,14 @@ export class ShopApi {
         done++;
       } catch {
         /* still offline, or the server said no: deliver() already dropped the hopeless ones */
+      }
+    }
+    for (const orderId of readPendingSteam()) {
+      try {
+        await this.finalizeSteamOrder(orderId);
+        done++;
+      } catch {
+        /* still offline or not finalized yet */
       }
     }
     return done;

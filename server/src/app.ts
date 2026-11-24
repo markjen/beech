@@ -71,6 +71,7 @@ import {
 } from './checkpoints.js';
 import { createRateLimiter, logEvent, parseClientEvent, routeLabel } from './observability.js';
 import { createPaymentToken, payStationUrl, verifyWebhookSignature, xsollaError, type CreateToken, type XsollaConfig, type XsollaWebhook } from './xsolla.js';
+import { finalizeSteamTxn, initSteamTxn, type SteamStoreConfig } from './steamStore.js';
 
 export interface AppConfig {
   googleClientIds: string[];
@@ -84,6 +85,13 @@ export interface AppConfig {
   verifySteam?: typeof verifySteamTicket;
   /** Steam Web API auth config (STEAM_APP_ID + STEAM_WEB_API_KEY); unset disables /auth/steam */
   steamAuth?: SteamAuthConfig;
+  /** Steam Wallet microtransactions (ISteamMicroTxn); unset disables /store/steam/* */
+  steamStore?: SteamStoreConfig;
+  /** injectable for tests: Steam InitTxn/FinalizeTxn overrides */
+  steamTxn?: {
+    init?: typeof initSteamTxn;
+    finalize?: typeof finalizeSteamTxn;
+  };
   /** requests a minute per client IP (default 300), and sign-ins (default 20) */
   rateLimit?: { perMinute?: number; signInsPerMinute?: number };
   /** the clock (tests move it forward) */
@@ -1916,6 +1924,114 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     // payment, partial refunds, disputes and the rest: acknowledged, acted
     // on elsewhere (order_paid / order_canceled carry what we need)
     log('ignored');
+    return c.body(null, 204);
+  });
+
+  // ---------------------------------------------------------------- Steam Wallet (ISteamMicroTxn)
+  // docs/STEAM.md. Server-authoritative Steam Wallet microtransactions:
+  //   1. POST /store/steam/init { productId } -> InitTxn/v3 (opens Steam Overlay)
+  //   2. POST /store/steam/finalize { orderId } -> FinalizeTxn/v2 + atomic grant
+  //   3. POST /store/steam/cancel { orderId } -> marks order canceled
+  const steamInit = cfg.steamTxn?.init ?? initSteamTxn;
+  const steamFinalize = cfg.steamTxn?.finalize ?? finalizeSteamTxn;
+  const isOrderId = (s: string) => /^\d{1,19}$/.test(s);
+
+  app.post('/store/steam/init', requireUser, async (c) => {
+    if (!cfg.steamStore) fail(404, 'Steam purchases are not enabled yet');
+    const me = c.get('user').id;
+    if (!checkoutLimiter(me)) return c.json({ error: 'slow down' }, 429);
+    const { productId } = await body<{ productId?: string }>(c);
+    const product = productById(productId ?? '');
+    if (!product) fail(404, 'no such product');
+
+    const idRows = await db.query<{ provider_sub: string }>(
+      "SELECT provider_sub FROM user_identities WHERE user_id = $1 AND provider = 'steam' LIMIT 1",
+      [me],
+    );
+    const steamId = idRows[0]?.provider_sub;
+    if (!steamId) fail(400, 'sign in through Steam to buy with Steam Wallet');
+
+    const now = clock();
+    const amountCents = Math.round(product!.usd * 100);
+    const inserted = await db.query<{ order_id: string }>(
+      'INSERT INTO steam_orders (user_id, steam_id, product_id, amount_cents, sandbox, created_at) VALUES ($1, $2, $3, $4, $5, $6) RETURNING order_id::text AS order_id',
+      [me, steamId, product!.id, amountCents, cfg.steamStore!.sandbox, now],
+    );
+    const orderId = inserted[0]!.order_id;
+    try {
+      const { transId } = await steamInit(cfg.steamStore!, {
+        orderId,
+        steamId,
+        itemId: product!.steamItemId,
+        amountCents,
+        description: product!.name,
+      });
+      await db.query('UPDATE steam_orders SET trans_id = $2 WHERE order_id = $1', [orderId, transId]);
+      logEvent('steam_checkout_init', { product: product!.id, order_id: orderId, sandbox: cfg.steamStore!.sandbox });
+      return c.json({ orderId });
+    } catch (e) {
+      await db.query('DELETE FROM steam_orders WHERE order_id = $1', [orderId]);
+      logEvent('steam_checkout_error', { product: product!.id, message: (e as Error).message }, 'ERROR');
+      return c.json({ error: 'Steam checkout could not be started right now: try again in a minute' }, 502);
+    }
+  });
+
+  app.post('/store/steam/finalize', requireUser, async (c) => {
+    if (!cfg.steamStore) fail(404, 'Steam purchases are not enabled yet');
+    const me = c.get('user').id;
+    const { orderId } = await body<{ orderId?: string }>(c);
+    const oid = String(orderId ?? '').trim();
+    if (!isOrderId(oid)) fail(400, 'invalid orderId');
+
+    const rows = await db.query<{ order_id: string; user_id: string; product_id: string; trans_id: string | null; sandbox: boolean; status: string }>(
+      'SELECT order_id::text AS order_id, user_id, product_id, trans_id, sandbox, status FROM steam_orders WHERE order_id = $1 AND user_id = $2',
+      [oid, me],
+    );
+    const o = rows[0];
+    if (!o) fail(404, 'no such order');
+    const product = productById(o!.product_id)!;
+    if (o!.status === 'paid') return c.json({ ok: true, already: true, grants: product.grants });
+    if (o!.status !== 'created') fail(409, `order is ${o!.status}`);
+
+    let transId: string;
+    try {
+      const r = await steamFinalize(cfg.steamStore!, oid);
+      transId = r.transId;
+    } catch (e) {
+      logEvent('steam_finalize_error', { order_id: oid, message: (e as Error).message }, 'WARNING');
+      return c.json({ error: 'Steam could not finalize that purchase yet' }, 402);
+    }
+
+    const now = clock();
+    const grantItems = product.grants.map((g) => g.item);
+    const qty = product.grants.map((g) => g.quantity);
+    const granted = await db.query<{ item_id: string }>(
+      `WITH p AS (
+         INSERT INTO purchases (user_id, store, transaction_id, product_id, environment, purchased_at, granted_at)
+         SELECT $1, 'steam', $2, $3, $4, $5, $5
+          WHERE EXISTS (SELECT 1 FROM steam_orders WHERE order_id = $6 AND status = 'created')
+         ON CONFLICT (store, transaction_id) DO NOTHING
+         RETURNING id, user_id
+       ), o AS (
+         UPDATE steam_orders SET status = 'paid', trans_id = $2, paid_at = $5
+          WHERE order_id = $6 AND status = 'created' AND EXISTS (SELECT 1 FROM p)
+         RETURNING order_id
+       )
+       INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at, purchase_id)
+       SELECT p.user_id, g.item, g.qty, 'shop', $5, p.id FROM p, unnest($7::text[], $8::int[]) AS g(item, qty)
+       RETURNING item_id`,
+      [me, transId, product.id, o!.sandbox ? 'Sandbox' : 'Production', now, oid, grantItems, qty],
+    );
+    logEvent('steam_checkout_paid', { product: product.id, order_id: oid, granted: granted.length > 0 });
+    return c.json({ ok: true, already: granted.length === 0, grants: product.grants });
+  });
+
+  app.post('/store/steam/cancel', requireUser, async (c) => {
+    const me = c.get('user').id;
+    const { orderId } = await body<{ orderId?: string }>(c);
+    const oid = String(orderId ?? '').trim();
+    if (!isOrderId(oid)) fail(400, 'invalid orderId');
+    await db.query("UPDATE steam_orders SET status = 'canceled' WHERE order_id = $1 AND user_id = $2 AND status = 'created'", [oid, me]);
     return c.body(null, 204);
   });
 

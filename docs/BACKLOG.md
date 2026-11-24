@@ -80,10 +80,6 @@ _(nothing right now)_
 - [ ] **Free item: footprints**: Rose, Discord #feedback 2026-11-23.
   Footprints left in the sand, plus a little figure walking the
   waterline (promoted from Ideas).
-- [ ] **Steam S3 (Microtransactions)**: `ISteamMicroTxn` (`InitTxn/v3`,
-  `FinalizeTxn/v2`, `QueryTxn/v3`), migration 18 (`steam_orders`,
-  `purchases.store` allows `'steam'`), client `'steam'` shop flow, and
-  hourly `GetReport/v5` refund/chargeback sync. See [STEAM.md](STEAM.md).
 - [ ] **Steam S4 (Steamworks polish & Steam Deck)**: Steam Achievements, Rich
   Presence, lightweight Gamepad API adapter (`src/input/gamepad.ts`) +
   Steam Input layout, and `1280×800` Steam Deck UI pass. See
