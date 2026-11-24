@@ -24,7 +24,10 @@ review from the shore.
 | `/img/shore.png` | The site card (an untouched beach). |
 | `/submit` | Connect a Beech account, upload an item with a proposed price and frequency, and see your review status and creator credits. |
 | `/submit/spec` | Asset requirements, prompt example, JSON Schema and example file for creators and AI agents. |
-| `/robots.txt`, `/sitemap.xml` | For search engines (up to 5000 beach pages). |
+| `/items` | Every item in the game, grouped by how you get it, with vote counts. |
+| `/items/<id>` | One item: its picture, rarity, size, how to get it, price, votes and comments. Sign in (the same Beech account connection as `/submit`) to vote or comment. |
+| `/items/img/<id>.png` | The item's 400×400 render, copied from `docs/items/renders/` into `public/items/` (see `docs/ITEMS.md`). |
+| `/robots.txt`, `/sitemap.xml` | For search engines (up to 5000 beach pages, plus the item pages). |
 
 Beach links are the shortest thing that works: `beechshore.com/K7F2QX`, the
 beach's code. Lower case redirects to upper case.

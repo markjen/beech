@@ -783,6 +783,21 @@ here: it needs the service's URL on the web OAuth client.
   the only item of its kind. The render layout keeps the expanded
   catalog on dry sand. The payment-provider setup uses the product
   IDs in `server/src/products.ts` and the Steam IDs in `docs/STEAM.md`.
+- **Item catalog on beechshore** (2026-11-24): every item is published
+  at `beechshore.com/items`, one page per item (`/items/<id>`) with its
+  render, rarity, size, how to get it, price, and creator credit where
+  it applies. Signed-in players can vote once per item (toggleable)
+  and leave comments (newest first, 1000 characters, author-only
+  delete). The guide links to it instead of duplicating it. The
+  catalog data is a server-side mirror in
+  `server/src/itemCatalog.ts` (the server cannot import
+  `src/world/items.ts`); `server/test/itemCatalog.test.ts` keeps the
+  mirror field-for-field equal to the catalog, and
+  `tests/items.test.ts` checks every item has a render in
+  `docs/items/renders/` and a copy in `public/items/`.
+  Migration 22 adds `item_votes` and `item_comments`. Admins cannot
+  delete other players' comments from the game server — the admin
+  email list lives only in the admin service.
 
 - **Signed-out public shore** (2026-11-24): when signed out (and not visiting a
   `?visit=` code), `GET /api/public/shore` without `code` anchors on the top

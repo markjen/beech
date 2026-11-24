@@ -45,6 +45,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       'The claw machine has two new prizes to win: a branching piece of coral and a coconut.',
       'The shop has five new centrepieces: a palm tree, a lifeguard tower, a bonfire, a hammock and a beach towel.',
       'When you’re looking at someone else’s beach, the name tags no longer float over the sand: a small “i” sits at the bottom instead, and tapping it opens the beach’s name card (with its star and “ask to be neighbors”) and a way back to your own beach.',
+      'beechshore.com now has an item catalog: every item with a picture, its size and price, and how to get it. Vote for the ones you like and leave a comment — it’s linked from the guide.',
     ],
   },
   {

@@ -591,6 +591,31 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX pet_feed_log_beach_time ON pet_feed_log (beach_id, fed_at DESC);
   `,
+
+  // 22: item catalog on beechshore.com (/items): one vote per person per
+  // item, and signed-in comments on each item's page. Votes are a toggle
+  // (the primary key makes one vote per person hold even with two requests
+  // at once). Comments are plain text, newest first; only their author can
+  // delete one (there is no admin delete from the game server — admin
+  // identity lives in the separate admin console).
+  `
+  CREATE TABLE item_votes (
+    item_id TEXT NOT NULL,             -- src/world/items.ts
+    user_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    created_at BIGINT NOT NULL,
+    PRIMARY KEY (item_id, user_id)
+  );
+  CREATE INDEX item_votes_user ON item_votes (user_id);
+
+  CREATE TABLE item_comments (
+    id UUID PRIMARY KEY,
+    item_id TEXT NOT NULL,             -- src/world/items.ts
+    user_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    body TEXT NOT NULL,
+    created_at BIGINT NOT NULL
+  );
+  CREATE INDEX item_comments_item ON item_comments (item_id, created_at DESC, id DESC);
+  `,
 ];
 
 /** Apply migrations up to `upTo` (default: all). Tests use `upTo` to check a migration on older data. */
