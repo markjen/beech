@@ -714,7 +714,8 @@ here: it needs the service's URL on the web OAuth client.
   script bundles the app's own catalog, places every item in rows on
   dry sand, pauses the sea, and screenshots the whole beach plus a
   close-up of each item, then composes a labelled contact sheet.
-  Regenerate with `--only <id,...>` when an item's look changes.
+  Regenerate individual shots with `--only <id,...>` and run without
+  that option to refresh the full beach and contact sheet.
   Needs playwright (`npm install --no-save playwright@1.63.0`, as in
   CI) and a dev server (or `--url`).
 

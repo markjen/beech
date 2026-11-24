@@ -28,7 +28,9 @@ yours — the bag's "Found" section lists what you've kept from the sea.
 
 | Item | Kind | Rarity | Size (m) | Variants | Behaviour | Mesh |
 |---|---|---|---|---|---|---|
-| *(none yet — see [Coming next](#coming-next))* | | | | | | |
+| Driftwood (also in the bag) | `driftwood` | common | 0.7–1.8 | 6 | float | `src/render/objects.ts` |
+| Shell (also in the bag) | `shell` | common | 0.07–0.13 | 6 | tumble | `src/render/objects.ts` |
+| Sea glass (also in the bag) | `seaglass` | common | 0.07–0.11 | 4 | tumble | `src/render/objects.ts` |
 
 ## Claw pool
 
@@ -83,8 +85,8 @@ filling the tiers the new items can't (see
 ## Shop
 
 Centrepieces, one-off purchases (`server/src/products.ts`, prices in
-`docs/PRICING.md`). All fixed size, one variant, behaviour `fixed`;
-mesh in `src/render/storeMeshes.ts`.
+`docs/PRICING.md`). All fixed size, behaviour `fixed`, and one variant
+except the deckchair, which has three. Meshes are in `src/render/storeMeshes.ts`.
 
 | Item | Kind | Rarity | Product | US price |
 |---|---|---|---|---|
@@ -131,15 +133,15 @@ sand, pauses the sea, and shoots the whole beach plus a close-up each):
 - Per item: `items/renders/<item-id>.png` (e.g.
   [pink-shell](items/renders/pink-shell.png)).
 
-Regenerate them whenever an item's look changes, and add renders for new
-items in the same PR that adds them (`node scripts/render-items.mjs
---only <new-id,...>`).
+Regenerate individual renders when an item's look changes with
+`node scripts/render-items.mjs --only <id,...>`. Run without `--only` to
+refresh the full beach and contact sheet after adding items.
 
 ## Adding an item
 
-The checklist, so the next one doesn't have to be rediscovered. The
-tests in `tests/items.test.ts` and `tests/specialItems.test.ts` fail if
-a step is missed.
+`tests/items.test.ts` checks the catalog, pools and products.
+`tests/specialItems.test.ts` checks distinct item finishes and matching
+shore-picture colours.
 
 1. **Catalog** — a row in `ITEMS` (`src/world/items.ts`): id, name,
    kind, rarity, source (`free` / `shop` / `pull`), `unlimited`,
