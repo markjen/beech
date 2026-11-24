@@ -125,7 +125,7 @@ await page.waitForFunction(() => document.querySelector('.shore-bar .sb-where')?
 check((await page.textContent('.shore-bar .sb-where'))?.startsWith('Visiting'), 'the bar says Visiting');
 check(!(await page.evaluate(() => window.__beech.neighbors().ownVisible)), 'your own beach is hidden while visiting');
 // you can't dig someone else's beach
-await page.click('button[data-tool="dig"]');
+await page.click('button[data-tool="sand"]');
 const d0 = await page.evaluate(() => window.__beech.info().undoCount);
 await page.mouse.move(500, 450);
 await page.mouse.down();

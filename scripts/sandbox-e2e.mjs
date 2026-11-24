@@ -23,7 +23,7 @@ const open = async () => {
 };
 const dug = () => page.evaluate(() => { const b = window.__beech; let d = 0; for (let k = 0; k < b.rest.length; k++) if (b.rest[k] > 0.5) d += Math.abs(b.picker.sand[k] - b.rest[k]); return d; });
 await open();
-await page.click('button[data-tool="dig"]');
+await page.click('button[data-tool="sand"]');
 await page.mouse.move(300, 560); await page.mouse.down();
 for (let i = 0; i < 25; i++) { await page.mouse.move(300 + i * 8, 560); await page.waitForTimeout(30); }
 await page.mouse.up();

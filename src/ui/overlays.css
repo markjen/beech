@@ -549,6 +549,13 @@ body.ambient-idle .hint {
   pointer-events: none;
 }
 
+.ui-collapsed .place,
+.ui-collapsed .shore-bar {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-10px);
+}
+
 body.ambient-idle {
   cursor: none;
 }

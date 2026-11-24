@@ -23,6 +23,7 @@
 .hud-tools {
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 8px;
   padding: 6px;
   border-radius: 999px;
@@ -47,10 +48,11 @@
   color: var(--ui-bg);
 }
 
-/* modes of a grouped tool (the clearing tool): a small strip under its button */
+/* modes of a grouped tool (sand, clearing): a small strip under its button */
 .hud-modes {
   display: none;
   flex-direction: column;
+  align-items: center;
   gap: 6px;
   padding: 6px 0 2px;
 }
@@ -72,6 +74,51 @@
 .hud-left {
   left: calc(var(--pad) + env(safe-area-inset-left));
   bottom: calc(var(--pad) + env(safe-area-inset-bottom));
+  transition: gap 0.22s ease;
+}
+
+.hud-right {
+  transition:
+    opacity 0.22s ease,
+    transform 0.22s ease;
+}
+
+/* collapsed pan mode: hide toolbars and leave only the subtle restore button */
+.hud.collapsed .hud-right,
+.hud.collapsed .hud-walk {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.hud.collapsed .hud-right {
+  transform: translateX(16px);
+}
+
+.hud.collapsed .hud-right .hud-tools,
+.hud.collapsed .hud-right .hud-btn,
+.hud.collapsed .hud-walk .hud-btn {
+  pointer-events: none;
+}
+
+.hud.collapsed .hud-left {
+  gap: 0;
+}
+
+.hud.collapsed .hud-left > .hud-btn:not(.hud-collapse) {
+  width: 0;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+  box-shadow: none;
+}
+
+.hud.collapsed .hud-collapse {
+  opacity: 0.42;
+}
+
+.hud.collapsed .hud-collapse:hover,
+.hud.collapsed .hud-collapse:focus-visible {
+  opacity: 0.95;
 }
 
 .hud-btn {
