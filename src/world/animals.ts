@@ -12,6 +12,8 @@ import { ANIMALS, PROFILE, WORLD_SIZE_X, WORLD_SIZE_Z } from '../config';
 
 export type AnimalSpecies = 'crab';
 
+export type PetMood = 'happy' | 'peckish' | 'hungry' | 'sleepy';
+
 export type AnimalPhase =
   | 'absent'
   | 'emerging'
@@ -20,6 +22,7 @@ export type AnimalPhase =
   | 'fleeing'
   | 'seeking_food'
   | 'eating'
+  | 'sleeping'
   | 'burrowing';
 
 export interface AnimalObstacle {
@@ -47,9 +50,18 @@ export interface FoodSnapshot {
   timeLeft: number;
 }
 
+export interface ResidentPet {
+  species: AnimalSpecies;
+  name: string;
+  mood: PetMood;
+}
+
 export interface AnimalSnapshot {
   species: AnimalSpecies;
   active: boolean;
+  isPet: boolean;
+  petName: string;
+  petMood: PetMood | null;
   phase: AnimalPhase;
   /** world coordinates */
   x: number;
@@ -103,12 +115,14 @@ function lerpAngle(cur: number, target: number, t: number): number {
 }
 
 /**
- * Controls rare wild animal visits and dropped food on the player's beach.
+ * Controls rare wild animal visits, dropped food, and an optional resident pet
+ * on the player's beach.
  */
 export class AnimalController {
   private readonly rand: () => number;
   private readonly snap: AnimalSnapshot;
 
+  private pet: ResidentPet | null = null;
   private waitTimer = 0;
   private phaseTimer = 0;
   private startleCooldown = 0;
@@ -126,6 +140,9 @@ export class AnimalController {
     this.snap = {
       species: 'crab',
       active: false,
+      isPet: false,
+      petName: '',
+      petMood: null,
       phase: 'absent',
       x: 0,
       y: 0,
@@ -151,6 +168,40 @@ export class AnimalController {
   }
 
   /**
+   * Configure or clear a resident pet for this beach. A resident pet is always
+   * present (never leaves on a visit timer) and expresses its cozy mood
+   * (`happy` / `peckish` / `hungry` / `sleepy`).
+   */
+  setPet(pet: ResidentPet | null, env?: AnimalEnv): void {
+    this.pet = pet ? { ...pet } : null;
+    const s = this.snap;
+    if (!pet) {
+      s.isPet = false;
+      s.petName = '';
+      s.petMood = null;
+      return;
+    }
+    s.isPet = true;
+    s.petName = pet.name;
+    s.petMood = pet.mood;
+    if (!s.active && env) {
+      this.spawnNow(env);
+    }
+    if (s.active) {
+      s.species = pet.species;
+      if (pet.mood === 'sleepy') {
+        s.phase = 'sleeping';
+        s.speed = 0;
+        s.emerge = 0.45;
+        s.clawWave = 0;
+      } else if (s.phase === 'sleeping' || s.phase === 'burrowing') {
+        s.phase = 'emerging';
+        this.phaseTimer = EMERGE_DURATION;
+      }
+    }
+  }
+
+  /**
    * Drop a beach snack on dry sand. While active, it speeds up wild spawns
    * (bait) and draws any nearby active crab over to eat it.
    */
@@ -164,6 +215,13 @@ export class AnimalController {
     f.z = spot.z;
     f.timeLeft = ANIMALS.foodDuration;
     this.foodWetTimer = 0;
+    // Waking a sleepy resident pet when food is tossed
+    if (this.pet && this.snap.phase === 'sleeping') {
+      this.pet.mood = 'happy';
+      this.snap.petMood = 'happy';
+      this.snap.phase = 'emerging';
+      this.phaseTimer = EMERGE_DURATION * 0.6;
+    }
     // If absent and waiting a long time, cap the remaining wait so bait feels responsive
     if (!this.snap.active && this.waitTimer > 90) {
       this.waitTimer = 30 + this.rand() * 60;
@@ -179,7 +237,7 @@ export class AnimalController {
     const s = this.snap;
     s.species = 'crab';
     s.active = true;
-    s.phase = 'emerging';
+    s.phase = this.pet?.mood === 'sleepy' ? 'sleeping' : 'emerging';
     s.x = spot.x;
     s.y = spot.y;
     s.z = spot.z;
@@ -187,7 +245,7 @@ export class AnimalController {
     s.facing = Math.PI + (this.rand() - 0.5) * 1.1;
     s.speed = 0;
     s.scuttlePhase = 0;
-    s.emerge = 0;
+    s.emerge = this.pet?.mood === 'sleepy' ? 0.45 : 0;
     s.clawWave = 0;
     s.size = ANIMALS.crabSize * (0.9 + this.rand() * 0.2);
     s.visitLeft = ANIMALS.visitMin + this.rand() * (ANIMALS.visitMax - ANIMALS.visitMin);
@@ -245,6 +303,12 @@ export class AnimalController {
     if (s.happyTimer > 0) s.happyTimer = Math.max(0, s.happyTimer - step);
     if (s.calmTimer > 0) s.calmTimer = Math.max(0, s.calmTimer - step);
 
+    // Resident pet is always present on the beach
+    if (this.pet && s.phase === 'absent') {
+      this.spawnNow(env);
+      return;
+    }
+
     if (s.phase === 'absent') {
       const rate = f.active ? ANIMALS.foodBaitMultiplier : 1;
       this.waitTimer -= step * rate;
@@ -264,6 +328,21 @@ export class AnimalController {
     }
 
     if (this.startleCooldown > 0) this.startleCooldown = Math.max(0, this.startleCooldown - step);
+
+    // Cozy sleeping state for a sleepy resident pet (tucked half into the sand until fed)
+    if (s.phase === 'sleeping') {
+      s.speed = 0;
+      s.emerge = 0.45;
+      s.clawWave = 0;
+      this.syncHeight(env);
+      if (f.active) {
+        if (this.pet) this.pet.mood = 'happy';
+        s.petMood = 'happy';
+        s.phase = 'emerging';
+        this.phaseTimer = EMERGE_DURATION * 0.6;
+      }
+      return;
+    }
 
     if (s.phase === 'emerging') {
       this.phaseTimer -= step;
@@ -293,10 +372,12 @@ export class AnimalController {
     }
 
     // Active surface phases: pausing, wandering, fleeing, seeking_food, eating
-    s.visitLeft = Math.max(0, s.visitLeft - step);
-    if (s.visitLeft <= 0 && s.phase !== 'eating' && env.waterAt(s.x, s.z) < ANIMALS.crabWetDepth) {
-      this.enterBurrow();
-      return;
+    if (!this.pet) {
+      s.visitLeft = Math.max(0, s.visitLeft - step);
+      if (s.visitLeft <= 0 && s.phase !== 'eating' && env.waterAt(s.x, s.z) < ANIMALS.crabWetDepth) {
+        this.enterBurrow();
+        return;
+      }
     }
 
     // React to player brush (unless calmed by a recent treat)
@@ -308,7 +389,7 @@ export class AnimalController {
         if (this.startleCooldown <= 0) {
           s.startles++;
           this.startleCooldown = 1.6;
-          if (s.startles >= ANIMALS.crabMaxStartles) {
+          if (!this.pet && s.startles >= ANIMALS.crabMaxStartles) {
             s.visitLeft = Math.min(s.visitLeft, 1.4);
           }
         }
@@ -346,6 +427,10 @@ export class AnimalController {
         s.happyTimer = 3.0;
         s.calmTimer = ANIMALS.foodCalmSec;
         s.startles = 0;
+        if (this.pet) {
+          this.pet.mood = 'happy';
+          s.petMood = 'happy';
+        }
         this.onWildFed?.(s.species);
         this.enterPause(1.5 + this.rand());
       }
@@ -370,7 +455,7 @@ export class AnimalController {
       s.clawWave = Math.sin(clamp(this.phaseTimer * 2.5, 0, Math.PI));
       this.syncHeight(env);
       if (this.phaseTimer <= 0) {
-        if (s.visitLeft <= 0) {
+        if (!this.pet && s.visitLeft <= 0) {
           this.enterBurrow();
         } else {
           this.pickWanderTarget(env);
@@ -389,12 +474,13 @@ export class AnimalController {
       this.targetZ = f.z;
     }
 
+    const moodScale = this.pet?.mood === 'hungry' ? 0.55 : this.pet?.mood === 'peckish' ? 0.75 : 1;
     const maxSpeed =
       s.phase === 'fleeing'
         ? ANIMALS.crabFleeSpeed
         : s.phase === 'seeking_food'
           ? ANIMALS.crabSpeed * 1.2
-          : ANIMALS.crabSpeed;
+          : ANIMALS.crabSpeed * moodScale;
     const dx = this.targetX - s.x;
     const dz = this.targetZ - s.z;
     const dist = Math.hypot(dx, dz);

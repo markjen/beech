@@ -57,11 +57,9 @@ _(nothing right now)_
 
 ## Up next (engineering)
 
-- [ ] **Animals (A3–A5)**: A1 (wild sand crab) and A2 (food & feeding) are
-  built; next up are resident pets (adopt by buying in the shop or feeding wild
-  visitors enough to befriend one; cozy hunger/burrow model, local
-  notifications, and visitor feeding 1 free/day + own food), and a second
-  species. Spec in [ANIMALS.md](ANIMALS.md).
+- [ ] **Animals (A4–A5)**: A1–A3 (wild sand crab, food & feeding, resident
+  pets) are built; next up are visitor feeding & activity and a second species
+  (dolphin). Spec in [ANIMALS.md](ANIMALS.md).
 - [ ] **Sandcastle mini-game: customize detailed sandcastles**: Rose
   asked for more sandcastle shapes (Discord #feedback, 2026-11-23);
   Mark (2026-11-24) chose a mini-game instead — let users build and

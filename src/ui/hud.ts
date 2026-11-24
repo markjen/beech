@@ -54,6 +54,7 @@ const ICONS = {
   deckchair: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 20l4.5-9.5L17 5" /><path d="M8.5 15h8l2.5 5" /><path d="M10.5 10.5c2 1 4 3 6 4.5" opacity=".55"/></svg>`,
   beach: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 16.5c3.5-3 15.5-3 19 0" /><path d="M2.5 19.5c3-1.4 6-1.4 9.5 0s6.5 1.4 9.5 0" opacity=".55"/><path d="M12 13V6" /><path d="M12 6c-2.8 0-5 1.5-6 3.5h12C17 7.5 14.8 6 12 6z" /></svg>`,
   'crab-treat': `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="14.5" r="3" /><circle cx="15.5" cy="15" r="2.5" /><circle cx="12.5" cy="10" r="2.5" /><path d="M6 19c3.5-1 8.5-1 12 0" opacity=".55" /></svg>`,
+  'pet-crab': `<svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="14" rx="5.5" ry="3.8" /><path d="M8 11L6 7.5M16 11l2-3.5M6.5 14L3.5 15.5M6.8 16L4 18M17.5 14l3 1.5M17.2 16l2.8 2" /><circle cx="10" cy="9.5" r="1" /><circle cx="14" cy="9.5" r="1" /></svg>`,
   parasol: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11a9 7 0 0 1 18 0z" /><path d="M12 11v10M12 4v1" /><path d="M9 11c0-3 1.2-5.5 3-6.5 1.8 1 3 3.5 3 6.5" opacity=".55"/></svg>`,
   surfboard: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5c3 3 3.6 9.5 2.2 15.5L12 21.5 9.8 18C8.4 12 9 5.5 12 2.5z" /><path d="M10 12h4" opacity=".55"/><path d="M4 21.5h16" /></svg>`,
   sandcastle: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20h18" /><path d="M5 20v-8h3v-2h2v2h4v-2h2v2h3v8" /><path d="M9 20v-4h6v4" /><path d="M12 10V4l3 1.2L12 6.4" /></svg>`,

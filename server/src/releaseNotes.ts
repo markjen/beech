@@ -19,6 +19,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     date: '2026-11-24',
     title: 'Linked beaches, shiny prizes, and rocks that stay put',
     changes: [
+      'Adopt a resident sand crab for your beach — either by feeding wild crabs enough times to befriend one or straight from the shop. Pets stay on your beach, cozy up in a burrow to nap if unfed for a couple of days, and wake right up when you feed them.',
       'Toss Beach snacks from your bag to attract wild sand crabs sooner or feed one to keep it around longer — earned occasionally from digging finds or available in packs in the shop.',
       'A wild sand crab now pops out of the sand from time to time, scurries sideways across the beach, dodges waves and your brush, and burrows back down.',
       'Design an item for Beech and submit it on beechshore.com. Propose a price and availability, follow its review, and earn Beech shop credit when your approved item sells.',

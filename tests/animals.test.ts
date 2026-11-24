@@ -172,4 +172,49 @@ describe('AnimalController (wild sand crab)', () => {
     advance(ctrl, env, 2);
     expect(ctrl.snapshot().food.active).toBe(false);
   });
+
+  it('keeps a resident pet permanently on the beach and wakes a sleepy pet when fed', () => {
+    const ctrl = new AnimalController(seeded(31));
+    const env = flatBeach();
+    ctrl.setPet({ species: 'crab', name: 'Barnaby', mood: 'sleepy' }, env);
+
+    expect(ctrl.snapshot().active).toBe(true);
+    expect(ctrl.snapshot().isPet).toBe(true);
+    expect(ctrl.snapshot().petName).toBe('Barnaby');
+    expect(ctrl.snapshot().phase).toBe('sleeping');
+    expect(ctrl.snapshot().emerge).toBeCloseTo(0.45, 2);
+
+    // Stays present even after a long idle stretch (never leaves)
+    advance(ctrl, env, 200);
+    expect(ctrl.snapshot().active).toBe(true);
+    expect(ctrl.snapshot().phase).toBe('sleeping');
+
+    // Tossing food immediately wakes the sleepy pet to happy
+    ctrl.dropFood(env, { x: ctrl.snapshot().x + 1.5, z: ctrl.snapshot().z });
+    expect(ctrl.snapshot().petMood).toBe('happy');
+    expect(ctrl.snapshot().phase).toBe('emerging');
+    advance(ctrl, env, 8);
+    expect(ctrl.snapshot().active).toBe(true);
+    expect(ctrl.snapshot().petMood).toBe('happy');
+  });
+});
+
+import { nextPetNotifyTime } from '../src/platform/petNotify';
+
+describe('pet hunger notification timing', () => {
+  it('pushes late-night and early-morning reminders out of quiet hours (22:00-08:00) to 08:00', () => {
+    const lateNight = new Date(2026, 10, 24, 23, 15, 0, 0).getTime();
+    const scheduled = new Date(nextPetNotifyTime(lateNight - 24 * 3600 * 1000, lateNight - 3600 * 1000));
+    expect(scheduled.getHours()).toBe(8);
+    expect(scheduled.getMinutes()).toBe(0);
+
+    const earlyMorning = new Date(2026, 10, 25, 3, 30, 0, 0).getTime();
+    const scheduled2 = new Date(nextPetNotifyTime(earlyMorning - 24 * 3600 * 1000, earlyMorning - 3600 * 1000));
+    expect(scheduled2.getHours()).toBe(8);
+    expect(scheduled2.getMinutes()).toBe(0);
+
+    const daytime = new Date(2026, 10, 25, 14, 0, 0, 0).getTime();
+    const scheduled3 = new Date(nextPetNotifyTime(daytime - 24 * 3600 * 1000, daytime - 3600 * 1000));
+    expect(scheduled3.getHours()).toBe(14);
+  });
 });

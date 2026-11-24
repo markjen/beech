@@ -46,7 +46,17 @@ import { appleRefund, googleVoided, revokeStorePurchase, verifyAppleTransaction,
 import { POOLS, GRAB_CHANCE, COOLDOWN_MAX_MS, COOLDOWN_MIN_MS, cooldownAfter, cryptoRandom, draw, grab, pullDay, starterPrize, STARTER, type Rarity } from './pulls.js';
 import { currentSet, drawVending, nextUtcMidnight } from './vending.js';
 import { DIG_FIND_DAILY_CAP, DIG_FIND_ROLL_COOLDOWN_MS, digDraw, qualifiesForFind } from './digFinds.js';
-import { consumeTreat, maybeGrantBonusTreat } from './animals.js';
+import {
+  adoptPet,
+  cleanPetName,
+  consumeTreat,
+  feedBeachPet,
+  getBeachPet,
+  getBondProgress,
+  maybeGrantBonusTreat,
+  recordWildFeed,
+  renameBeachPet,
+} from './animals.js';
 import {
   hashToken,
   newSessionToken,
@@ -1242,12 +1252,57 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     });
   });
 
-  // ---------------------------------------------------------------- animals (A2: food & feeding)
+  // ---------------------------------------------------------------- animals (A2: food & feeding, A3: resident pets)
   app.post('/animals/feed', requireUser, async (c) => {
-    const me = c.get('user').id;
-    const res = await consumeTreat(db, me, clock());
+    const user = c.get('user');
+    const now = clock();
+    const b = await body<{ beachId?: string; species?: string }>(c).catch(() => ({} as { beachId?: string; species?: string }));
+    const species = b.species === 'crab' || !b.species ? 'crab' : fail(400, 'unknown species');
+    const res = await consumeTreat(db, user.id, now);
     if (!res.ok) return c.json({ error: 'no beach snacks left', remaining: 0 }, 409);
-    return c.json({ ok: true, remaining: res.remaining });
+
+    const beachId = await mine(c, b.beachId ?? c.req.query('beach'));
+    const existingPet = await getBeachPet(db, beachId, now);
+    if (existingPet) {
+      const pet = await feedBeachPet(db, beachId, user.id, user.name, now);
+      return c.json({ ok: true, remaining: res.remaining, pet });
+    }
+    const bond = await recordWildFeed(db, beachId, species, now);
+    return c.json({ ok: true, remaining: res.remaining, bond });
+  });
+
+  app.get('/pet', requireUser, async (c) => {
+    const beachId = await mine(c, c.req.query('beach'));
+    const now = clock();
+    const pet = await getBeachPet(db, beachId, now);
+    const bond = await getBondProgress(db, beachId, 'crab');
+    return c.json({ pet, bond });
+  });
+
+  app.post('/pet/adopt', requireUser, async (c) => {
+    const user = c.get('user');
+    const b = await body<{ beachId?: string; species?: string; name?: string; mode?: string }>(c);
+    const mode = b.mode === 'shop' ? 'shop' : b.mode === 'befriend' ? 'befriend' : fail(400, 'expected mode "befriend" or "shop"');
+    const species = !b.species || b.species === 'crab' ? 'crab' : fail(400, 'unknown species');
+    const beachId = await mine(c, b.beachId ?? c.req.query('beach'));
+    const res = await adoptPet(db, {
+      beachId,
+      userId: user.id,
+      species,
+      name: cleanPetName(b.name),
+      mode,
+      now: clock(),
+    });
+    if (!res.ok) return c.json({ error: res.error }, res.status);
+    return c.json({ pet: res.pet });
+  });
+
+  app.patch('/pet', requireUser, async (c) => {
+    const b = await body<{ beachId?: string; name?: string }>(c);
+    const beachId = await mine(c, b.beachId ?? c.req.query('beach'));
+    const pet = await renameBeachPet(db, beachId, cleanPetName(b.name), clock());
+    if (!pet) return c.json({ error: 'no pet on this beach' }, 404);
+    return c.json({ pet });
   });
 
   app.post('/neighbors/code', requireUser, async (c) => {

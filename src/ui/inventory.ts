@@ -281,12 +281,12 @@ export class InventoryTray {
     for (const x of EXTRAS) {
       const n = this.ownedOf(x.id);
       if (!n) continue;
-      if (x.id === 'crab-treat') {
+      if (x.id === 'crab-treat' || x.id === 'pet-crab') {
         const b = document.createElement('button');
         b.type = 'button';
         b.className = `inv-item extra rarity-${x.rarity}`;
         b.dataset.extra = x.id;
-        b.innerHTML = `${icon(x.id as IconName)}<b>${x.name}</b><span>${n} left</span>`;
+        b.innerHTML = `${icon(x.id as IconName)}<b>${x.name}</b><span>${x.id === 'pet-crab' ? 'Tap to adopt' : `${n} left`}</span>`;
         b.addEventListener('click', () => {
           this.setOpen(false);
           this.onUseExtra(x.id);

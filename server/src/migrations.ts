@@ -557,6 +557,40 @@ const MIGRATIONS: string[] = [
     PRIMARY KEY (user_id, request_id)
   );
   `,
+
+  // 21: resident beach pets, wild-feeding bond progress, and visitor feed log
+  // (docs/ANIMALS.md, Phase 3). Kept out of the BCH3 sand blob so visitors
+  // feeding a pet never race with the owner's device saving sand.
+  `
+  CREATE TABLE beach_pets (
+    beach_id UUID PRIMARY KEY REFERENCES beach (id) ON DELETE CASCADE,
+    species TEXT NOT NULL DEFAULT 'crab',
+    name TEXT NOT NULL DEFAULT '',
+    variant SMALLINT NOT NULL DEFAULT 0,
+    source TEXT NOT NULL CHECK (source IN ('befriended', 'shop')),
+    last_fed_at BIGINT NOT NULL,
+    last_fed_by UUID REFERENCES users (id) ON DELETE SET NULL,
+    fed_count INTEGER NOT NULL DEFAULT 0,
+    created_at BIGINT NOT NULL
+  );
+
+  CREATE TABLE wild_feed_progress (
+    beach_id UUID NOT NULL REFERENCES beach (id) ON DELETE CASCADE,
+    species TEXT NOT NULL DEFAULT 'crab',
+    feed_count INTEGER NOT NULL DEFAULT 0,
+    updated_at BIGINT NOT NULL,
+    PRIMARY KEY (beach_id, species)
+  );
+
+  CREATE TABLE pet_feed_log (
+    id BIGSERIAL PRIMARY KEY,
+    beach_id UUID NOT NULL REFERENCES beach (id) ON DELETE CASCADE,
+    feeder_id UUID REFERENCES users (id) ON DELETE SET NULL,
+    feeder_name TEXT NOT NULL DEFAULT '',
+    fed_at BIGINT NOT NULL
+  );
+  CREATE INDEX pet_feed_log_beach_time ON pet_feed_log (beach_id, fed_at DESC);
+  `,
 ];
 
 /** Apply migrations up to `upTo` (default: all). Tests use `upTo` to check a migration on older data. */

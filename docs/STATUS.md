@@ -795,3 +795,11 @@ prompt, JSON Schema and sample asset.
   treat pile on the sand, speeds up wild spawns 4× while empty, and draws an
   active crab over to eat (extending its visit and calming it around the
   brush).
+- **Resident pets (A3)** (2026-11-24): migration 21 adds `beach_pets`,
+  `wild_feed_progress`, and `pet_feed_log`. Players can adopt one pet per beach
+  either by feeding wild crabs 10 times (`POST /api/pet/adopt { mode:
+  'befriend' }`) or buying `pet_crab` ($1.99) in the shop (`mode: 'shop'`).
+  Mood (`happy` / `peckish` / `hungry` / `sleepy`) is computed from
+  `last_fed_at`; sleepy pets nap half-burrowed until fed and never leave.
+  `src/platform/petNotify.ts` schedules local hunger reminders at +24 h
+  respecting 22:00–08:00 quiet hours.

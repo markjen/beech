@@ -110,6 +110,7 @@ export interface Extra {
 export const EXTRAS: Extra[] = [
   { id: 'beach', name: 'Extra beach', rarity: 'legendary', note: 'A second beach of your own. Coming soon: set it up next to yours, or anywhere on the shore.' },
   { id: 'crab-treat', name: 'Beach snacks', rarity: 'common', note: 'Toss a snack on the sand to attract a wild crab or keep one around longer.' },
+  { id: 'pet-crab', name: 'Pet sand crab', rarity: 'rare', note: 'Adopt a sand crab to live permanently on your beach.' },
 ];
 
 export const extraById = (id: string): Extra | undefined => EXTRAS.find((e) => e.id === id);

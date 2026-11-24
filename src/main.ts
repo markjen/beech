@@ -53,6 +53,7 @@ import { LocalCheckpointsSection } from './ui/localCheckpoints';
 import { watchForNewVersion } from './platform/version';
 import { isPackagedApp, isSteam, steamBridge } from './platform/runtime';
 import { unlockSteamAchievement, updateSteamRichPresence } from './platform/steamFeatures';
+import { schedulePetHungerReminder } from './platform/petNotify';
 import { GamepadController } from './input/gamepad';
 import { BeachFileDialog, beachFileName, pickFile, saveText, type BeachFileHost } from './ui/beachFileDialog';
 import { parseBeachFile, writeBeachFile } from './world/beachFile';
@@ -1189,24 +1190,71 @@ async function boot() {
   if (ACCOUNTS_ENABLED) {
     account = new Account();
     animalsApi = new AnimalsApi(account);
-    inventory.onUseExtra = (id) => {
-      if (id !== 'crab-treat') return;
+    const applyPet = (pet: { species: 'crab'; name: string; mood: 'happy' | 'peckish' | 'hungry' | 'sleepy'; lastFedAt: number } | null) => {
+      syncAnimalObstacles();
+      animals.setPet(pet ? { species: pet.species, name: pet.name, mood: pet.mood } : null, animalEnv);
+      if (pet) void schedulePetHungerReminder(pet.name, beach.name, pet.lastFedAt);
+    };
+    const refreshPet = () => {
       if (!animalsApi?.signedIn) {
-        showToast(uiRoot, 'Sign in to feed animals.');
-        return;
-      }
-      if (neighbors && !neighbors.ownVisible) {
-        showToast(uiRoot, 'Head back to your beach to toss a snack.');
+        animals.setPet(null);
         return;
       }
       void animalsApi
-        .feed()
-        .then(() => {
+        .getPet(account?.beachId ?? undefined)
+        .then((r) => applyPet(r.pet))
+        .catch(() => {});
+    };
+    account.onChange(() => refreshPet());
+    inventory.onUseExtra = (id) => {
+      if (!animalsApi?.signedIn) {
+        showToast(uiRoot, 'Sign in first.');
+        return;
+      }
+      if (neighbors && !neighbors.ownVisible) {
+        showToast(uiRoot, 'Head back to your beach first.');
+        return;
+      }
+      const activeBeachId = account?.beachId ?? undefined;
+      if (id === 'pet-crab') {
+        void animalsApi
+          .adoptPet({ mode: 'shop', beachId: activeBeachId })
+          .then((pet) => {
+            applyPet(pet);
+            refreshOwned();
+            haptics.impact('medium');
+            showToast(uiRoot, 'A sand crab moved onto your beach!');
+          })
+          .catch((err: unknown) => {
+            showToast(uiRoot, err instanceof Error ? err.message : 'Could not adopt pet.');
+          });
+        return;
+      }
+      if (id !== 'crab-treat') return;
+      void animalsApi
+        .feed(activeBeachId)
+        .then((res) => {
           syncAnimalObstacles();
           animals.dropFood(animalEnv);
           refreshOwned();
           haptics.impact('light');
-          showToast(uiRoot, 'Beach snack tossed on the sand.');
+          if (res.pet) {
+            applyPet(res.pet);
+            showToast(uiRoot, res.pet.name ? `Fed ${res.pet.name}!` : 'Fed your sand crab!');
+          } else if (res.bond?.ready) {
+            showActionToast(uiRoot, 'A wild sand crab wants to stay on your beach!', 'Adopt', () => {
+              void animalsApi
+                ?.adoptPet({ mode: 'befriend', beachId: activeBeachId })
+                .then((pet) => {
+                  applyPet(pet);
+                  haptics.impact('medium');
+                  showToast(uiRoot, 'Your new sand crab moved in!');
+                })
+                .catch((err: unknown) => showToast(uiRoot, err instanceof Error ? err.message : 'Could not adopt pet.'));
+            });
+          } else {
+            showToast(uiRoot, 'Beach snack tossed on the sand.');
+          }
         })
         .catch((err: unknown) => {
           showToast(uiRoot, err instanceof Error ? err.message : 'No beach snacks left.');
