@@ -606,6 +606,36 @@ describe('vending machine', () => {
     expect(third.error).toMatch(/tomorrow/);
   });
 
+  it('a one-of-a-kind item has one owner: the next draw of it gives a rare, a gift moves it', async () => {
+    // the dice: the unique slot (3 %), first item
+    forcedRand = () => 0.01;
+    try {
+      const una = await signIn('Una');
+      const una1 = (await (await req('/pulls/vending', { method: 'POST' }, una.token)).json()) as { item: string; rarity: string };
+      expect(una1).toMatchObject({ item: 'nautilus', rarity: 'unique' });
+      const inv = ((await (await req('/inventory', {}, una.token)).json()) as { items: { item: string; foundBy?: string }[] }).items;
+      expect(inv.find((i) => i.item === 'nautilus')?.foundBy).toBe('Una');
+      // someone else draws it too: it's taken, so they get a rare instead
+      const otto = await signIn('Otto');
+      const otto1 = (await (await req('/pulls/vending', { method: 'POST' }, otto.token)).json()) as { item: string; rarity: string };
+      expect(otto1.rarity).toBe('rare');
+      expect(otto1.item).not.toBe('nautilus');
+      // Una gives it to Otto: he owns it now (still "found by Una")
+      const ottoCode = ((await (await req('/beaches/mine', {}, otto.token)).json()) as { beaches: { code: string }[] }).beaches[0].code;
+      expect((await req('/gifts', json('POST', { code: ottoCode, item: 'nautilus' }), una.token)).status).toBe(200);
+      const owner = await db.query<{ owner_id: string; found_by: string }>("SELECT owner_id, found_by FROM unique_items WHERE item_id = 'nautilus'");
+      expect(owner[0]).toEqual({ owner_id: otto.user.id, found_by: 'Una' });
+      // an owner who leaves frees it to be found again
+      await req('/account', { method: 'DELETE' }, otto.token);
+      skew += 86400000;
+      const una2 = (await (await req('/pulls/vending', { method: 'POST' }, una.token)).json()) as { item: string; rarity: string };
+      expect(una2).toMatchObject({ item: 'nautilus', rarity: 'unique' });
+    } finally {
+      forcedRand = null;
+      skew = 0;
+    }
+  });
+
   it('a ball from the vending machine does not spend the claw’s free go', async () => {
     const uma = await signIn('Uma');
     expect((await req('/pulls/vending', { method: 'POST' }, uma.token)).status).toBe(200);

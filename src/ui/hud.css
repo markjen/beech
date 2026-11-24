@@ -1416,3 +1416,10 @@
 .board-shore[hidden] {
   display: none;
 }
+
+/* a one-of-a-kind thing: who found it */
+.inv-item .inv-found {
+  font-size: 10px;
+  font-style: normal;
+  opacity: 0.7;
+}

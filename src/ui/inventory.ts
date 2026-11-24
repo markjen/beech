@@ -22,6 +22,8 @@ export class InventoryTray {
   private open = false;
   /** how many of each non-free item you own, and how many are on the beach */
   private owned = new Map<string, number>();
+  /** one-of-a-kind things you own: who found each first */
+  private foundBy = new Map<string, string>();
   private placed = new Map<string, number>();
   /** how many of each are on your other beaches (as of their last saves) */
   private elsewhere = new Map<string, number>();
@@ -57,8 +59,9 @@ export class InventoryTray {
     });
   }
 
-  setOwned(owned: Map<string, number>): void {
+  setOwned(owned: Map<string, number>, foundBy: Map<string, string> = new Map()): void {
     this.owned = owned;
+    this.foundBy = foundBy;
     if (this.selected && !this.canPlace(this.selected) && this.placedOf(this.selected) === 0 && !this.ownedOf(this.selected)) this.select(null);
     this.render();
   }
@@ -169,7 +172,16 @@ export class InventoryTray {
       b.classList.toggle('selected', it.id === this.selected);
       b.setAttribute('aria-pressed', String(it.id === this.selected));
       const left = this.ownedOf(it.id) - this.placedOf(it.id);
-      b.innerHTML = `${icon(it.id as IconName)}<b>${it.name}</b><span>${it.unlimited ? 'Free · ∞' : `${Math.max(0, left)} of ${this.ownedOf(it.id)} left`}</span>`;
+      const finder = this.foundBy.get(it.id);
+      b.innerHTML = `${icon(it.id as IconName)}<b>${it.name}</b><span>${it.unlimited ? 'Free · ∞' : finder !== undefined ? 'one of a kind' : `${Math.max(0, left)} of ${this.ownedOf(it.id)} left`}</span>`;
+      if (finder !== undefined) {
+        // the only one in the game, and who found it
+        const f = document.createElement('i');
+        f.className = 'inv-found';
+        f.textContent = finder ? `found by ${finder}` : 'found';
+        b.appendChild(f);
+        b.title = `${it.name}: one of a kind${finder ? `, first found by ${finder}` : ''}`;
+      }
       if (!it.unlimited && left <= 0 && it.id !== this.selected) b.classList.add('used');
       b.addEventListener('click', () => {
         this.select(it.id === this.selected ? null : it.id);

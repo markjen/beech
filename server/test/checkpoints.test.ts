@@ -302,3 +302,22 @@ describe('checkpoints', () => {
     expect(r.headers.get('Access-Control-Expose-Headers')).toContain('X-Beach-Epoch');
   });
 });
+
+describe('rate limits', () => {
+  it('slows down one IP that hammers the API, signs-ins sooner; others and webhooks are unaffected', async () => {
+    const limited = createApp(db, { googleClientIds: [], appleClientIds: [], allowedOrigins: [], devAuth: true, rateLimit: { perMinute: 5, signInsPerMinute: 2 } });
+    const from = (ip: string, path: string, init: RequestInit = {}) =>
+      limited.request(path, { ...init, headers: { ...(init.headers as Record<string, string>), 'X-Forwarded-For': `${ip}, 10.0.0.1` } });
+    const codes: number[] = [];
+    for (let i = 0; i < 6; i++) codes.push((await from('1.2.3.4', '/health')).status);
+    expect(codes).toEqual([200, 200, 200, 200, 200, 429]);
+    expect((await from('1.2.3.4', '/health')).headers.get('Retry-After')).toBe('60');
+    expect((await from('5.6.7.8', '/health')).status).toBe(200); // someone else
+    const signIn = () => from('9.9.9.9', '/auth/dev', { method: 'POST', body: JSON.stringify({ name: 'rl' }), headers: { 'Content-Type': 'application/json' } });
+    expect([(await signIn()).status, (await signIn()).status, (await signIn()).status]).toEqual([200, 200, 429]);
+    // the stores' webhooks aren't limited (they fail on their signature instead)
+    for (let i = 0; i < 8; i++) expect((await from('1.2.3.4', '/store/google/rtdn', { method: 'POST', body: '{}' })).status).not.toBe(429);
+    // no forwarded IP (local development, tests): no limit
+    for (let i = 0; i < 8; i++) expect((await limited.request('/health')).status).toBe(200);
+  });
+});

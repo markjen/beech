@@ -46,6 +46,8 @@ import { Leaderboard } from './ui/leaderboard';
 import { NEIGHBOR_OFFSET, NeighborView } from './render/neighbors';
 import { loadSettings, saveSettings, type Settings } from './ui/settingsStore';
 import { initTelemetry } from './net/telemetry';
+import { watchForNewVersion } from './platform/version';
+import { Capacitor } from '@capacitor/core';
 import { BeachFileDialog, beachFileName, pickFile, saveText, type BeachFileHost } from './ui/beachFileDialog';
 import { parseBeachFile, writeBeachFile } from './world/beachFile';
 import { version as APP_VERSION } from '../package.json';
@@ -168,6 +170,19 @@ async function boot() {
   haptics.enabled = settings.haptics;
   audio.setSound(settings.sound);
   audio.setMusic(settings.music);
+
+  // ---------------------------------------------------------------- new versions
+  // A tab left open across a deploy runs old code (and an old app's saves can
+  // be refused, 426): offer a reload, once. The phone apps update through the
+  // stores, so there it says to update instead.
+  let reloadOffered = false;
+  const offerReload = () => {
+    if (reloadOffered) return;
+    reloadOffered = true;
+    if (Capacitor.isNativePlatform()) showToast(uiRoot, 'A newer beech is out: update it from the store to keep saving.');
+    else showActionToast(uiRoot, 'A new version of beech is ready.', 'Reload', () => location.reload(), 24 * 3600 * 1000);
+  };
+  if (!Capacitor.isNativePlatform()) watchForNewVersion(offerReload);
 
   // ---------------------------------------------------------------- sim frames
   let info: FrameInfo = {
@@ -888,6 +903,10 @@ async function boot() {
     });
     const s = sync;
     markDirty = (delayMs?: number) => s.markDirty(delayMs);
+    // an app older than the server's data can't save: say so, once, with a reload
+    s.onState((st) => {
+      if (st === 'outdated') offerReload();
+    });
     // say so when a save can't hold everything (an undo can bring a full
     // beach past the limit), and when the server refuses one as too big
     s.onDropped((n) => {
@@ -1107,8 +1126,12 @@ async function boot() {
       if (!acct.user) return inventory.setOwned(new Map());
       try {
         const owned = new Map<string, number>();
-        for (const it of await acct.inventory()) owned.set(it.item, (owned.get(it.item) ?? 0) + it.quantity);
-        inventory.setOwned(owned);
+        const foundBy = new Map<string, string>();
+        for (const it of await acct.inventory()) {
+          owned.set(it.item, (owned.get(it.item) ?? 0) + it.quantity);
+          if (it.foundBy !== undefined) foundBy.set(it.item, it.foundBy);
+        }
+        inventory.setOwned(owned, foundBy);
       } catch {
         /* offline: keep what we had */
       }
