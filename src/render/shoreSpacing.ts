@@ -163,3 +163,13 @@ export function neighborWaveEta(
   const swashBoost = Math.max(0, hWave) * 0.25 * smoothstep(13, 17, uu);
   return tide + hWave + swashBoost;
 }
+
+/** The order the settings panel lists the beaches along the shore: nearest first, left then right at each step out. */
+export function shoreRowOrder(left: number, right: number): number[] {
+  const out: number[] = [];
+  for (let d = 1; d <= Math.max(left, right); d++) {
+    if (d <= left) out.push(d);
+    if (d <= right) out.push(-d);
+  }
+  return out;
+}

@@ -129,8 +129,8 @@ Before/after in `docs/shore-card-before.png` and `docs/shore-card-after.png`.
   sheet (native apps: `@capacitor/share`; browsers: `navigator.share`; else
   it copies). Settings → your code: **share** (beechshore link), **game
   link** (copies `?visit=`), and "see it on beechshore ↗". The leaderboard
-  links to `/top`. Opening a `?visit=` link signed out says to sign in and
-  offers "see it now" on beechshore.
+  links to `/top`. Opening a `?visit=` link signed out opens that public beach
+  in the game right away, in read-only 3D.
 - **Shore → game:** "Visit in beech" on every beach, "Build a beach" in the
   header, "Make one of your own" under each beach, "Play beech" in the footer.
   The footer also links the Discord server for feedback, bug reports and
@@ -164,6 +164,12 @@ Nothing else changes: the server already answers to those hosts.
   opens a public beach directly in 3D via `/api/public/shore`,
   `/api/public/shore/more` and `/api/public/beaches/:code` (strictly
   `isPublic`; off-shore beaches still return 404 and wait for sign-in).
+- **Signed-out shore at home:** without signing in, the game loads public
+  sections of the shore around your local-only beach — `GET /api/public/shore`
+  with no code anchors on the top public beach and walks both directions — so
+  the beaches either side show in 3D, the whole public world is a scroll away,
+  and the settings sheet lists the beaches along it to visit. Signing in there
+  saves your beach.
 - **Indexes at scale:** migration 17 adds partial indexes on
   `beach (updated_at DESC, id)` and `beach (location, updated_at DESC, id)`
   `WHERE on_shore AND sand IS NOT NULL`.

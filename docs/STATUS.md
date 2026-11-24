@@ -675,7 +675,7 @@ here: it needs the service's URL on the web OAuth client.
   beechshore link; the leaderboard links to the site; a `?visit=` link
   opened signed out opens public beaches directly in read-only 3D (via
   `/api/public/shore`, `/api/public/shore/more` and `/api/public/beaches/:code`,
-  strictly `isPublic`), while off-shore beaches still ask for sign-in.
+  strictly `isPublic`), while off-shore beaches still ask for sign-in. Signed out at home, the public shore runs past your (local-only) beach too: public sections appear either side of your empty beach, and scrolling either way walks the whole public world; settings lists the beaches along the shore to visit, and signing in there saves your beach.
 - Scale & protection (2026-11-24): migration 17 adds partial indexes
   (`beach_public_updated`, `beach_public_location`) for the lists and counts,
   and uncached PNG draws on `/img/*` are rate-limited (60/min per IP, 429 with

@@ -1448,6 +1448,8 @@ async function boot() {
         void nv.loadFavorites();
         void applyPendingVisit();
       } else if (!u) {
+        // signed out: the account's shore goes away, but the public shore
+        // still runs past your (local-only) beach — load it
         nv.clear();
         if (signedInAs) void nv.refresh();
       }
@@ -1742,6 +1744,9 @@ async function boot() {
       }
       if (u) return;
       if (!visitCode) {
+        // signed out with no shared beach to open: your beach is local-only,
+        // but the public shore still runs past it — load it, so the beaches
+        // either side show and the whole world is a scroll away
         void nv.refresh();
         return;
       }
