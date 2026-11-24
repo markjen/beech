@@ -62,7 +62,7 @@ export const ITEMS: Item[] = [
   { id: 'blue-seaglass', name: 'Blue sea glass', kind: 'seaglass', rarity: 'common', source: 'pull', unlimited: false, size: [0.05, 0.16], variants: 4 },
   { id: 'pebble', name: 'Pebble', kind: 'rock', rarity: 'common', source: 'pull', unlimited: false, size: [0.05, 0.25], variants: 8 },
   { id: 'spiral-conch', name: 'Spiral conch', kind: 'conch', rarity: 'uncommon', source: 'pull', unlimited: false, size: [0.1, 0.35], variants: 3 },
-  { id: 'gold-sanddollar', name: 'Golden sand dollar', kind: 'sanddollar', rarity: 'uncommon', source: 'pull', unlimited: false, size: [0.06, 0.16], variants: 2 },
+  { id: 'gold-sanddollar', name: 'Golden sand dollar', kind: 'sanddollar', rarity: 'uncommon', source: 'pull', unlimited: false, size: [0.32, 0.85], variants: 2 },
   { id: 'sunset-starfish', name: 'Sunset starfish', kind: 'starfish', rarity: 'rare', source: 'pull', unlimited: false, size: [0.08, 0.26], variants: 3 },
   { id: 'green-bottle', name: 'Green bottle', kind: 'bottle', rarity: 'rare', source: 'pull', unlimited: false, size: [0.22, 0.45], variants: 2 },
   { id: 'nautilus', name: 'Nautilus', kind: 'nautilus', rarity: 'unique', source: 'pull', unlimited: false, size: [0.12, 0.3], variants: 3 },

@@ -420,7 +420,9 @@ accepted the repo's default branch, so the deploy job ran only there.
 - **Prizes in the bag** show "N of M left". You can have as many of an item
   on the beach as you own, and pulled items count toward that, not wild
   ones. Conch, sand dollar and starfish roll like shells; the bottle floats
-  like driftwood.
+  like driftwood. The Week 1 vending Golden sand dollar (`gold-sanddollar`)
+  is giant: its size starts at 0.32 m (twice the largest regular sand dollar,
+  0.16 m) and scales up to 0.85 m.
 - **Prizes look like prizes** (2026-11-23): a prize that shares a kind with
   a free or cheaper item has its own look in `ITEM_LOOKS`
   (`src/palette.ts`) — its own colours and a specular finish (glass and
