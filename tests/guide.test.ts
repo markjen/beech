@@ -9,7 +9,13 @@ const known = (id: string) => !!itemById(id) || !!extraById(id);
 describe('the beach guide', () => {
   it('has the same steps, in the same order, with the same gifts as the server', () => {
     expect(GUIDE.map((s) => s.id)).toEqual(GUIDE_STEPS.map((s) => s.id));
-    for (const s of GUIDE) expect(s.gift, s.id).toBe(GUIDE_STEPS.find((g) => g.id === s.id)!.gift);
+    for (const s of GUIDE) {
+      const g = GUIDE_STEPS.find((x) => x.id === s.id)!;
+      expect(s.gift, s.id).toBe(g.gift);
+      // the web guide explains each step under the name the game shows
+      expect(s.title, s.id).toBe(g.title);
+      expect(g.how.length, s.id).toBeGreaterThan(10);
+    }
     expect(GUIDE_BONUS).toBe(SERVER_BONUS);
   });
 

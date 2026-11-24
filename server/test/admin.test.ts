@@ -478,3 +478,32 @@ describe('credit purchase statement', () => {
     expect(Number(uses[0].n)).toBe(1);
   });
 });
+
+describe('reports (docs/INBOX_NOTIFICATIONS.md)', () => {
+  it('lists a reported note, hides it (closing every report on it), and audits it', async () => {
+    const ana = await signInDev(`report-ana-${Date.now()}`);
+    const ben = await signInDev(`report-ben-${Date.now()}`);
+    const anaCode = ((await (await req('/neighbors', {}, ana)).json()) as { code: string }).code;
+    expect((await req(`/beaches/${anaCode}/visit`, json('POST', { note: 'Lovely beach!', quick: true }), ben)).status).toBe(200);
+    const box = (await (await req('/inbox', {}, ana)).json()) as { entries: { note: { id: number } }[] };
+    const noteId = box.entries[0].note.id;
+    expect((await req(`/notes/${noteId}/report`, json('POST', { reason: 'spam' }), ana)).status).toBe(204);
+
+    const list = (await (await areq('/api/reports', {}, CLI_TOKEN)).json()) as { reports: { id: number; noteId: number; note: string; reason: string; from: { name: string } }[] };
+    const r = list.reports.find((x) => x.noteId === noteId)!;
+    expect(r).toMatchObject({ note: 'Lovely beach!', reason: 'spam' });
+    expect(r.from.name).toContain('report-ben');
+    expect((await areq(`/api/reports/${r.id}/resolve`, json('POST', { action: 'nope' }), CLI_TOKEN)).status).toBe(400);
+    expect((await areq(`/api/reports/${r.id}/resolve`, json('POST', { action: 'hide' }), CLI_TOKEN)).status).toBe(200);
+    // gone from the open list, still in "all", and the recipient sees it removed
+    expect(((await (await areq('/api/reports', {}, CLI_TOKEN)).json()) as { reports: { noteId: number }[] }).reports.some((x) => x.noteId === noteId)).toBe(false);
+    const all = (await (await areq('/api/reports?all=1', {}, CLI_TOKEN)).json()) as { reports: { noteId: number; resolution: string; hidden: boolean }[] };
+    expect(all.reports.find((x) => x.noteId === noteId)).toMatchObject({ resolution: 'hidden', hidden: true });
+    const after = (await (await req('/inbox', {}, ana)).json()) as { entries: { note: { removed?: boolean } }[] };
+    expect(after.entries[0].note.removed).toBe(true);
+    const audit = (await (await areq('/api/audit', {}, CLI_TOKEN)).json()) as { audit: { action: string; target: string }[] };
+    expect(audit.audit[0]).toMatchObject({ action: 'report.hide', target: `note:${noteId}` });
+    // players can't reach it
+    expect((await areq('/api/reports')).status).toBe(401);
+  });
+});

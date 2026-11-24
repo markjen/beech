@@ -1,6 +1,37 @@
 # Visitors, the inbox and notifications
 
-Status: **designed, not built** (2026-11-23). Owner decisions at the end.
+Status: **phases V1–V4 built** (2026-11-24): the inbox, the visitor card
+(ratings, notes, gifts), filter / report / block with the admin Reports tab,
+and signed-out visits. **V5–V6 (web and native push) are not built**: they
+need keys and console setup from the owner. Owner decisions are at the end.
+
+### As built (where it differs from the design below)
+
+- **No explanations in the game** (CLAUDE.md, a rule added after this
+  spec): the card and the inbox show labels and status only, with a "how it
+  works" link to the web guide (`/guide#visitors`, `server/src/guide.ts`).
+- The beach's **average shows in the shore bar** (from 3 ratings), not on
+  the name tags along the shore (a follow-up: it needs the rating in the
+  shore walk's JSON).
+- The **blocked list** is at the bottom of the inbox, not in settings.
+- The admin can **hide** a reported note or **dismiss** the report.
+  "Suspend the sender's notes" isn't built: block-by-admin is a follow-up.
+- Ratings with no note fold into a "N new ratings" row per day, as
+  designed. A rating that comes with a note or a gift is part of that
+  visit's row.
+- The visitor card's gift list counts **owned** items, not what's left
+  after placing: a gift moves what you own (SHARING_GIFTING.md), and the
+  thing on your sand stays.
+- **Signed-out visits** were built on main at the same time (the
+  beechshore follow-ups, `/api/public/shore`, `/api/public/shore/more`,
+  `/api/public/beaches/:code`, docs/SHORE_SITE.md); this work uses those.
+- Code: `server/src/inbox.ts` (limits, quick notes, the filter), the
+  endpoints in `server/src/app.ts`, migration 24, the Reports tab in
+  `adminApp.ts` / `adminPage.ts`; the app's `src/ui/inbox.ts`,
+  `src/ui/visitorCard.ts`, `src/ui/inboxText.ts` (the wording), and
+  `InboxApi` in `src/net/account.ts`. Tests: `server/test/inbox.test.ts`,
+  the reports test in `server/test/admin.test.ts`,
+  `tests/inboxText.test.ts`, and `npm run e2e:inbox`.
 
 When someone visits your beach they should be able to **sign in**, **rate
 it**, **leave a note** and **give you something from their bag**. You
@@ -179,7 +210,7 @@ require, before the update ships (App Store 1.2; Play UGC policy):
   setting (and the default for unknown ages) of **quick notes only**,
   inbound and outbound.
 
-## 5. Data (migration 17+)
+## 5. Data (migration 24)
 
 ```sql
 inbox (id BIGSERIAL, user_id, kind, actor_id NULL, beach_id NULL,
@@ -243,6 +274,11 @@ to the stores without the filter, report and block in the same release.
   blocks Ben; Ben's next note doesn't go through.
 
 ## Decisions for the owner
+
+Decided (2026-11-24): **3 — yes**, signed-out visitors see on-shore
+beaches through a link; **4 — yes**, a sign-up from a plain visit link
+counts as an invite. The rest were built with the defaults below; say if
+any should change.
 
 1. **Notes are private** (only the owner reads them). A public guestbook
    later?

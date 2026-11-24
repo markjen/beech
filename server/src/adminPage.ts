@@ -127,6 +127,7 @@ export function adminConsoleHtml(opts: { nonce: string; email: string; appUrl: s
     <button type="button" role="tab" data-tab="gifts" aria-selected="false">Gift cards</button>
     <button type="button" role="tab" data-tab="promos" aria-selected="false">Promo codes</button>
     <button type="button" role="tab" data-tab="redemptions" aria-selected="false">Redemptions</button>
+    <button type="button" role="tab" data-tab="reports" aria-selected="false">Reports</button>
     <button type="button" role="tab" data-tab="audit" aria-selected="false">Audit log</button>
   </nav>
   <div class="who">${esc(opts.email)} <button id="signout" type="button">Sign out</button></div>
@@ -228,6 +229,13 @@ export function adminConsoleHtml(opts: { nonce: string; email: string; appUrl: s
     <div class="panel"><div id="redemptions"><p class="muted">Loading…</p></div></div>
   </section>
 
+  <section id="tab-reports" hidden>
+    <div class="panel">
+      <label><input type="checkbox" id="reports-all"> show resolved too</label>
+      <div id="reports"><p class="muted">Loading…</p></div>
+    </div>
+  </section>
+
   <section id="tab-audit" hidden>
     <div class="panel"><div id="audit"><p class="muted">Loading…</p></div></div>
   </section>
@@ -254,7 +262,7 @@ const items = (m) => { const e = Object.entries(m || {}); return e.length ? e.ma
 
 // ---- tabs
 const loaded = {};
-const loaders = { beaches: loadBeachesTab, submissions: () => loadSubmissions(0), gifts: loadGifts, promos: loadPromos, redemptions: loadRedemptions, audit: loadAudit };
+const loaders = { beaches: loadBeachesTab, submissions: () => loadSubmissions(0), gifts: loadGifts, promos: loadPromos, redemptions: loadRedemptions, reports: loadReports, audit: loadAudit };
 function show(tab) {
   document.querySelectorAll('nav [data-tab]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === tab)));
   for (const t of Object.keys(loaders)) $('tab-' + t).hidden = t !== tab;
@@ -552,6 +560,26 @@ async function loadRedemptions() {
   const rows = giftRows + promoRows + creditRows;
   $('redemptions').innerHTML = rows ? '<table><tr><th>What</th><th>Amount</th><th>Who</th><th>When</th></tr>' + rows + '</table>' : '<p class="muted">Nothing redeemed yet.</p>';
 }
+async function loadReports() {
+  const { reports } = await api('/reports' + ($('reports-all').checked ? '?all=1' : ''));
+  const el = $('reports');
+  el.innerHTML = reports.length ? '<table><tr><th>When</th><th>Note</th><th>From</th><th>To</th><th>Reason</th><th></th></tr>' +
+    reports.map((r) => '<tr><td>' + when(r.at) + '</td><td>' + (r.hidden ? '<s>' + esc(r.note) + '</s>' : esc(r.note)) + '</td><td>' +
+      (r.from ? esc(r.from.name) + ' <span class="mono">' + esc(r.from.code || '') + '</span><br><span class="muted">' + esc(r.from.email || '') + ' · ' + r.senderReports + ' report(s)</span>' : '<span class="muted">deleted</span>') +
+      '</td><td>' + esc(r.to.name) + ' <span class="mono">' + esc(r.to.code || '') + '</span></td><td>' + esc(r.reason) + '</td><td>' +
+      (r.resolvedAt ? esc(r.resolution) + '<br><span class="muted">' + esc(r.resolvedBy || '') + '</span>'
+        : '<button type="button" data-report-hide="' + r.id + '">Hide note</button> <button type="button" data-report-dismiss="' + r.id + '">Dismiss</button>') +
+      '</td></tr>').join('') + '</table>'
+    : '<p class="muted">No open reports.</p>';
+  const act = (attr, action) => el.querySelectorAll('[' + attr + ']').forEach((b) => b.addEventListener('click', async () => {
+    try { await post('/reports/' + b.getAttribute(attr) + '/resolve', { action }); say(action === 'hide' ? 'Note hidden' : 'Report dismissed', true); await loadReports(); }
+    catch (e) { say(e.message); }
+  }));
+  act('data-report-hide', 'hide');
+  act('data-report-dismiss', 'dismiss');
+}
+$('reports-all').addEventListener('change', () => loadReports().catch((e) => say(e.message)));
+
 async function loadAudit() {
   const { audit } = await api('/audit');
   $('audit').innerHTML = audit.length ? '<table><tr><th>When</th><th>Who</th><th>Action</th><th>Target</th><th>Detail</th></tr>' +

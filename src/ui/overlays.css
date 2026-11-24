@@ -988,3 +988,43 @@ body.ambient-idle .shore-info {
   margin: 8px 0 4px;
   opacity: 1;
 }
+
+/* ---- visitors and the inbox (docs/INBOX_NOTIFICATIONS.md) ---- */
+.shore-bar .sb-leave {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  color: inherit;
+  background: none;
+  cursor: pointer;
+}
+
+.shore-bar .sb-leave svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.shore-bar .sb-leave[hidden],
+.shore-bar .sb-rating[hidden] {
+  display: none;
+}
+
+.shore-bar .sb-rating {
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.8;
+}
+
+.shore-bar .sb-rating::before {
+  content: '🐚 ';
+}

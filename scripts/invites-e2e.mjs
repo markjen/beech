@@ -56,7 +56,7 @@ await pa.evaluate(() => window.__beech.invites().open());
 await pa.waitForSelector('.invite.open .invite-link input', { timeout: 10000 });
 const link = await pa.$eval('.invite-link input', (i) => i.value);
 check(link.endsWith(`?invite=${anaCode}`), `Ana's invite link carries her code (${link})`);
-check((await pa.$eval('.invite-empty', (e) => e.textContent)).includes('Nobody yet'), 'nobody has joined yet');
+check((await pa.$eval('.invite-empty', (e) => e.textContent)).includes('nobody yet'), 'nobody has joined yet');
 
 // ---- Fran: opens the link in a fresh browser
 const pf = await open(`${URL_}?invite=${anaCode}&fixedres&seed=1&nofinds`, { width: 390, height: 844 });

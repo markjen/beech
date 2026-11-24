@@ -300,7 +300,7 @@ export class AccountPanel {
       inv.type = 'button';
       inv.className = 'action invite-open';
       inv.dataset.act = 'invite-friends';
-      inv.textContent = 'invite friends · you both get a gift';
+      inv.textContent = 'invite friends';
       const open = this.invite;
       inv.addEventListener('click', () => open());
       wrap.appendChild(inv);
