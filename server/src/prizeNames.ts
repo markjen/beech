@@ -14,12 +14,12 @@
  * catalog, and tests/items.test.ts keeps every mirror in step with the
  * catalog — a catalog change that isn't mirrored here fails the tests:
  *
- * - PRIZE_NAMES: every catalog item's name, plus the extra beach.
+ * - PRIZE_NAMES: every catalog item's name, plus the extras (extra beach, beach snacks, pet crab).
  * - displayName: the name, or the id made readable (single-word ids like
  *   `footprints` read as their name, so a new free item joins the guide
  *   on its own).
  * - ITEM_RARITY: only the rarities the guide can't derive — shop items,
- *   the rare free cowrie, and the extra beach. Pull rarities come from
+ *   the rare free cowrie, and the extras (extra beach, beach snacks, pet crab). Pull rarities come from
  *   the pool or set tier an item is drawn at; other free items are
  *   common.
  * - KIND_OVERRIDES: only the items whose kind isn't their id (a prize
@@ -76,6 +76,8 @@ export const PRIZE_NAMES: Record<string, string> = {
   hammock: 'Hammock',
   towel: 'Beach towel',
   beach: 'Extra beach',
+  'crab-treat': 'Beach snacks',
+  'pet-crab': 'Pet sand crab',
 };
 
 /** The name as the guide shows it: the table, or the id made readable. */
@@ -85,7 +87,7 @@ export function displayName(id: string): string {
 
 /**
  * Rarities the guide can't derive: shop items, the rare free cowrie, and
- * the extra beach. Every other item's rarity comes from the pool or set
+ * the extras. Every other item's rarity comes from the pool or set
  * tier it is drawn at, or from being a free item (common).
  */
 export const ITEM_RARITY: Record<string, Rarity> = {
@@ -103,6 +105,8 @@ export const ITEM_RARITY: Record<string, Rarity> = {
   palmtree: 'legendary',
   lifeguardtower: 'legendary',
   beach: 'legendary',
+  'crab-treat': 'common',
+  'pet-crab': 'rare',
 };
 
 /**

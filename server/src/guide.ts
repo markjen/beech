@@ -66,7 +66,9 @@ function catalogRow(id: string): string {
   const behaviour = behaviourOfKind(itemKind(id));
   const single = PRODUCTS.find((p) => p.grants.length === 1 && p.grants[0].item === id);
   const price = single ? ` · ${usd(single.usd)}` : '';
-  const words = [single?.blurb ?? '', behaviour ? BEHAVIOUR_WORDS[behaviour] : '', itemGlows(id) ? 'Glows and sparkles on the sand.' : '']
+  // The glow line is for placed things: extras with no behaviour (beach
+  // snacks, the pet crab) aren't placed on the sand, and pets don't glow.
+  const words = [single?.blurb ?? '', behaviour ? BEHAVIOUR_WORDS[behaviour] : '', behaviour && itemGlows(id) ? 'Glows and sparkles on the sand.' : '']
     .filter(Boolean)
     .map(sentence)
     .join(' ');
