@@ -1,6 +1,6 @@
 # Steam desktop release (Windows + Linux / Steam Deck)
 
-Status: **S1 (runtime abstraction, `desktop/` shell, SteamPipe CI) and S2 (Steam Auth + `user_identities` cross-platform linking) built; S3–S6 queued.**
+Status: **S1 (runtime abstraction, `desktop/` shell, SteamPipe CI), S2 (Steam Auth + cross-platform linking), and S3 (`ISteamMicroTxn` + refund sync) built; S4 & S6 queued.**
 
 The Steam release wraps the same Vite web build (`dist/`) in an **Electron + `steamworks.js`** shell under `desktop/`, mirroring how `android/` and `ios/` wrap `dist/` with Capacitor. It connects to the same Cloud Run backend (`https://play.beech.games`), adds zero-friction Steam sign-in with cross-platform account linking, and routes in-game shop purchases through Steam Wallet (`ISteamMicroTxn`).
 
@@ -48,7 +48,7 @@ Replaces direct `Capacitor.isNativePlatform()` checks with `getRuntime()` (`'web
 - **Optional DLC:** `pack_founder` (`$9.99`) can also be listed as a one-time Steam DLC for store-page visibility once the store page is live.
 - **Claw & vending machines:** Remain 100% free (no paid random draws).
 - **Flow:**
-  1. `POST /api/store/steam/init { productId }` creates a `steam_orders` row (`BIGSERIAL` numeric `order_id`, migration 18) and calls `ISteamMicroTxn/InitTxn/v3` (or `ISteamMicroTxnSandbox/InitTxn/v3` when `STEAM_SANDBOX=1`).
+  1. `POST /api/store/steam/init { productId }` creates a `steam_orders` row (`BIGSERIAL` numeric `order_id`, migration 19) and calls `ISteamMicroTxn/InitTxn/v3` (or `ISteamMicroTxnSandbox/InitTxn/v3` when `STEAM_SANDBOX=1`).
   2. Steam opens the Overlay for Wallet authorization and fires `MicroTxnAuthorizationResponse_t`.
   3. On approval, the client calls `POST /api/store/steam/finalize { orderId }`; the server calls `ISteamMicroTxn/FinalizeTxn/v2` and atomically writes `purchases` (`store = 'steam'`, `transaction_id = transid`) + `inventory`. On cancel, `POST /api/store/steam/cancel` marks the order canceled.
   4. Pending order IDs are stored in `localStorage` (`beech.pendingSteamOrders.v1`) and retried on next boot or shop open via `QueryTxn/v3` / `FinalizeTxn/v2`.
@@ -91,11 +91,30 @@ Required 2024+ Steam graphical asset sizes (older dimensions are rejected):
 - Disclose UGC (beaches, first names, and beach names on the global shore and leaderboard; no chat; moderated via `beech-admin`) and in-app purchases. Keep Apple/Google/Xsolla links out of the Steam listing and client.
 - Submit final build for Valve Build Review (3–5 days), disable `STEAM_SANDBOX`, promote `staging` → `default`, and launch.
 
+**Steamworks Partner portal — owner steps (Mark; cannot be done from the repo):**
+- Create the `ISteamMicroTxn` item definitions for the `steamItemId`s in `server/src/products.ts`, with prices matching the `usd` column exactly (Steam rejects a purchase whose price doesn't match the definition):
+
+  | `steamItemId` | Product | Price (USD) |
+  |---:|---|---:|
+  | 1001 | Founder's pack | 9.99 |
+  | 1002 | Extra beach | 2.99 |
+  | 1003 | Three extra beaches | 6.99 |
+  | 1004 | Lighthouse | 2.99 |
+  | 1005 | Beach hut | 2.99 |
+  | 1006 | Sandcastle | 1.99 |
+  | 1007 | Surfboard | 1.49 |
+  | 1008 | Tiki torches | 1.49 |
+  | 1009 | Parasol | 0.99 |
+  | 1010 | Deckchair | 0.99 |
+
+- Create the 10 achievement definitions (IDs in `src/platform/steamFeatures.ts`, S4): `FIRST_DIG`, `BURIED_FIND`, `CHAIR_VIEW`, `NIGHT_BEACH`, `WALK_SHORE`, `FIRST_NEIGHBOR`, `CLAW_WIN`, `VENDING_PULL`, `CHECKPOINT_SAVED`, `FIVE_BEACHES`.
+- Create the Rich Presence `#Status_*` display tokens matching the presence strings in S4.
+
 ## Milestones
 
 - **S1:** Runtime abstraction (`src/platform/runtime.ts`), Electron + `steamworks.js` shell (`desktop/`), `app://beech` CORS origin, version script update.
 - **S2:** `POST /api/auth/steam`, offline fallback, `user_identities` (migration 18) + 8-char cross-platform account linking.
-- **S3:** `ISteamMicroTxn` server + client shop `'steam'` mode (migration 18) + `GetReport/v5` refund sync job.
+- **S3:** `ISteamMicroTxn` server + client shop `'steam'` mode (migration 19) + `GetReport/v5` refund sync job.
 - **S4:** Steam Achievements, Rich Presence, Gamepad API + Steam Deck `1280×800` verification.
 - **S5:** Clean-machine Windows & Steam Deck beta testing. (The `.github/workflows/release-steam.yml` SteamPipe workflow itself was built in S1.)
 - **S6:** Storefront capsules/screenshots/trailer, Coming Soon page, Valve review, and launch.
