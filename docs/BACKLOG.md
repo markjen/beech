@@ -51,6 +51,30 @@ _(nothing right now)_
 
 ## Up next (engineering)
 
+- [ ] **Sandcastle mini-game: customize detailed sandcastles**: Rose
+  asked for more sandcastle shapes (Discord #feedback, 2026-11-23);
+  Mark (2026-11-24) chose a mini-game instead — let users build and
+  customize a detailed sandcastle (towers, walls, moat, decorations)
+  rather than adding more preset shapes. The shop sandcastle ($1.99,
+  legendary) stays as is.
+- [ ] **Wash-ashore finds: trash, seaweed, unique shells**: Rose,
+  Discord #feedback 2026-11-23. New kinds washing in from the sea,
+  alongside the existing shells, sea glass and flags. Decide which are
+  keepable finds vs scenery.
+- [ ] **Vending set additions: beach ball, sandals, bucket**: Rose,
+  Discord #feedback 2026-11-23. New items for a future weekly vending
+  set (catalog entry, kind, mesh and icon each; see "More prizes").
+- [ ] **Claw prizes: coral and coconut**: Rose, Discord #feedback
+  2026-11-23. New claw-machine prizes (catalog entry, kind, mesh and
+  icon each).
+- [ ] **Store items: palm tree, beach towel, bonfire, hammock,
+  lifeguard tower**: Rose, Discord #feedback 2026-11-23. Five new shop
+  items (catalog entry, kind, mesh, icon and product each; pricing per
+  PRICING.md).
+- [ ] **Free item: footprints**: Rose, Discord #feedback 2026-11-23.
+  Footprints left in the sand, plus a little figure walking the
+  waterline (promoted from Ideas).
+
 - [ ] **Buried rocks lose cover on reload** (predates the spire fix): a
   save strips each rock's lift from the sand, so sand piled on a rock is
   saved as `under + deposit`; on load the rock is embedded with that as
@@ -88,7 +112,6 @@ _(nothing right now)_
 ## Ideas
 
 - [ ] Tide-pool life: tiny crabs that scurry away from your finger.
-- [ ] Footprints and a little figure walking the waterline.
 - [ ] Sand-castle bucket stamps as a fourth tool.
 - [ ] More real beaches (Reynisfjara, Whitehaven, Navagio…), maybe with
   per-beach slope and sand-grain colour.
