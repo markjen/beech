@@ -19,4 +19,7 @@ export const PRIZE_NAMES: Record<string, string> = {
   'sunset-starfish': 'Sunset starfish',
   'green-bottle': 'Green bottle',
   nautilus: 'Nautilus',
+  'beach-ball': 'Beach ball',
+  sandals: 'Sandals',
+  bucket: 'Bucket',
 };

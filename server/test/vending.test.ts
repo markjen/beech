@@ -25,6 +25,18 @@ describe('vending sets', () => {
     expect(currentSet(Date.now(), [])).toBeNull();
   });
 
+  it('switches to Beach day at the scheduled UTC midnight', () => {
+    expect(currentSet(Date.parse('2026-11-29T23:59:59Z'))?.name).toBe('First light');
+    const beachDay = currentSet(Date.parse('2026-11-30T00:00:00Z'))!;
+    expect(beachDay.name).toBe('Beach day');
+    expect(beachDay.items).toEqual({
+      common: ['beach-ball', 'blue-seaglass', 'pebble'],
+      uncommon: ['sandals', 'spiral-conch'],
+      rare: ['bucket', 'green-bottle'],
+      unique: ['nautilus'],
+    });
+  });
+
   it('the shipped sets are in start order, with odds that sum to 1', () => {
     expect(VENDING_SETS.length).toBeGreaterThan(0);
     const starts = VENDING_SETS.map((s) => Date.parse(s.starts));

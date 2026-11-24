@@ -18,6 +18,12 @@
 // shells and sea glass at the waterline). Those are marked `wild`; only a few
 // stay at a time, and the oldest is taken back by the sea.
 
+//  beachball  Light and round: it floats like driftwood, bobbing on
+//             the water, and the swash rolls it up the beach.
+//  sandals    A pair, flat on the sand: the water slides them about
+//             like shells, then leaves them.
+//  bucket     A pail, upright and heavy enough to stay put: it sits
+//             where you put it, even when the water comes up.
 export type ObjectKind =
   | 'rock'
   | 'driftwood'
@@ -31,6 +37,9 @@ export type ObjectKind =
   | 'starfish'
   | 'bottle'
   | 'nautilus'
+  | 'beachball'
+  | 'sandals'
+  | 'bucket'
   | 'deckchair'
   // from the shop
   | 'parasol'
@@ -40,7 +49,7 @@ export type ObjectKind =
   | 'lighthouse'
   | 'tikitorch';
 export const OBJECT_KINDS: ObjectKind[] = [
-  'rock', 'driftwood', 'shell', 'seaglass', 'trash', 'seaweed', 'flag', 'conch', 'sanddollar', 'starfish', 'bottle', 'nautilus', 'deckchair',
+  'rock', 'driftwood', 'shell', 'seaglass', 'trash', 'seaweed', 'flag', 'conch', 'sanddollar', 'starfish', 'bottle', 'nautilus', 'beachball', 'sandals', 'bucket', 'deckchair',
   'parasol', 'surfboard', 'sandcastle', 'beachhut', 'lighthouse', 'tikitorch',
 ];
 
@@ -62,6 +71,12 @@ const BEHAVIOUR: Record<ObjectKind, Behaviour> = {
   bottle: 'float',
   // a nautilus shell sits and tumbles like the other shells
   nautilus: 'tumble',
+  // a beach ball floats like driftwood — light, so it rides high
+  beachball: 'float',
+  // sandals tumble like shells: the swash slides them along, then leaves them
+  sandals: 'tumble',
+  // a bucket sits upright where you put it, even when the water comes up
+  bucket: 'fixed',
   // a deckchair (and everything from the shop) is set up on the sand and stays there
   deckchair: 'fixed',
   parasol: 'fixed',
@@ -157,7 +172,8 @@ const WASH_IN = [70, 160];
 export const ROCK_HEIGHT = 0.8; // height as a fraction of radius
 export const WOOD_RADIUS = (length: number) => 0.05 + length * 0.028;
 /** radius of something afloat (its draft is about this) */
-export const floatRadius = (o: { kind: ObjectKind; size: number }) => (o.kind === 'bottle' ? o.size * 0.2 : WOOD_RADIUS(o.size));
+export const floatRadius = (o: { kind: ObjectKind; size: number }) =>
+  o.kind === 'bottle' ? o.size * 0.2 : o.kind === 'beachball' ? o.size * 0.3 : WOOD_RADIUS(o.size);
 
 /** Floats per object in a packed positions buffer: x, y, z, angle, floating. */
 export const POS_STRIDE = 5;
@@ -669,7 +685,7 @@ export class BeachObjects {
         l.z = this.sandAt(o.x, o.y);
         continue;
       }
-      // driftwood and bottles
+      // driftwood, bottles and beach balls
       const r = floatRadius(o);
       const k = this.cellAt(o.x, o.y);
       const d = water[k];
@@ -691,7 +707,8 @@ export class BeachObjects {
         const across = (vx[kb] - vx[ka]) * -sa + (vy[kb] - vy[ka]) * ca;
         l.spin += (across / (o.size > 0.5 ? o.size : 0.5)) * dt * 1.5;
         l.spin *= floatSpinDamp;
-        l.z = this.sandAt(o.x, o.y) + d - r * 0.6;
+        // The ball's origin is at its bottom. Logs and bottles use their axes.
+        l.z = this.sandAt(o.x, o.y) + d - r * (o.kind === 'beachball' ? 1 : 0.6);
         o.x = Math.min(wMax, Math.max(0.3, o.x + l.vx * dt));
         o.y = Math.min(hMax, Math.max(0.3, o.y + l.vy * dt));
         o.angle += l.spin * dt;
@@ -709,7 +726,7 @@ export class BeachObjects {
           o.y = Math.min(hMax, Math.max(0.3, o.y + l.vy * dt));
           o.angle += l.spin * dt;
         }
-        l.z = this.sandAt(o.x, o.y) + r * 0.7;
+        l.z = this.sandAt(o.x, o.y) + (o.kind === 'beachball' ? 0 : r * 0.7);
       }
     }
   }

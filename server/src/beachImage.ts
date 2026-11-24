@@ -685,6 +685,11 @@ const GLASS = ['#9fd8c1', '#8cc7de', '#b7e0a8', '#d3eef0'].map(C);
 const FLAGS = ['#e2574c', '#f2b134', '#4a90d9', '#55b27a'].map(C);
 const TRASH = ['#e63329', '#1f8fff', '#22b573', '#ffcf00'].map(C);
 const WEED = ['#4a5d23', '#3d4a1f', '#5d6b2a', '#6b5e2f'].map(C);
+const BALL_PANELS = ['#e8443a', '#2f8fd0', '#f5c542'].map(C);
+const SANDAL_SOLES = ['#2f8f7a', '#e86a5a'].map(C);
+const SANDAL_STRAPS = ['#f08a4b', '#2f4a6b'].map(C);
+const BUCKET_RIMS = ['#d8473b', '#2f8fd0'].map(C);
+const BUCKET_INSIDE = ['#8a2f28', '#1f5a8a'].map(C);
 
 /** Prize items draw in their own colours (a copy of src/palette.ts ITEM_LOOKS). */
 export const ITEM_COLORS: Record<string, string[]> = {
@@ -716,6 +721,7 @@ function drawThings(img: Uint8Array, W: number, H: number, things: Thing[], look
     const a = -t.angle; // mirrored alongshore
     const m = (r: number, min: number) => Math.max(min, r * s);
     const v = Math.abs(Math.floor(t.variant));
+    const vendingVariant = Math.max(0, v - 1);
     const parts: [Pt[], RGB][] = [];
     switch (t.kind) {
       case 'rock': {
@@ -821,6 +827,42 @@ function drawThings(img: Uint8Array, W: number, H: number, things: Thing[], look
         parts.push([circle(px, py, m(0.12, 2), 8), C('#7a5a3a')]);
         parts.push([circle(px, py, m(0.07, 1.2), 8), C('#ffb347')]);
         break;
+      case 'beachball': {
+        // a striped ball, seen from above: a white disc with bright wedges
+        const r = m(t.size, 2.5);
+        const bright = BALL_PANELS[vendingVariant % BALL_PANELS.length];
+        parts.push([circle(px, py, r, 16), C('#fbf3e4')]);
+        for (let i = 0; i < 6; i += 2) {
+          const t0 = a + (i / 6) * Math.PI * 2;
+          const t1 = a + ((i + 1) / 6) * Math.PI * 2;
+          parts.push([[[px, py], [px + Math.cos(t0) * r, py + Math.sin(t0) * r], [px + Math.cos(t1) * r, py + Math.sin(t1) * r]], bright]);
+        }
+        break;
+      }
+      case 'sandals': {
+        // a pair of flat soles side by side, each with a strap across it
+        const c = SANDAL_SOLES[vendingVariant % SANDAL_SOLES.length];
+        const st = SANDAL_STRAPS[vendingVariant % SANDAL_STRAPS.length];
+        const off = m(t.size * 0.3, 1.5);
+        const ox = Math.sin(a) * off;
+        const oy = Math.cos(a) * off;
+        for (const sgn of [1, -1]) {
+          const cx = px + sgn * ox;
+          const cy = py + sgn * oy;
+          const halfWidth = m(t.size * 0.24, 1.2);
+          const strapOffset = m(t.size * 0.12, 0.5);
+          parts.push([rect(cx, cy, m(t.size * 0.5, 2.5), halfWidth, a), c]);
+          parts.push([rect(cx + Math.cos(a) * strapOffset, cy + Math.sin(a) * strapOffset, m(t.size * 0.045, 0.8), halfWidth, a), st]);
+        }
+        break;
+      }
+      case 'bucket': {
+        // a pail, seen from above: a coloured rim with its darker inside
+        const r = m(t.size * 0.5, 2.5);
+        parts.push([circle(px, py, r, 16), BUCKET_RIMS[vendingVariant % BUCKET_RIMS.length]]);
+        parts.push([circle(px, py, r * 0.72, 14), BUCKET_INSIDE[vendingVariant % BUCKET_INSIDE.length]]);
+        break;
+      }
       default:
         parts.push([circle(px, py, m(0.12, 2), 8), C('#d9c7a8')]);
     }

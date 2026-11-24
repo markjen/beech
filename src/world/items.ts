@@ -71,6 +71,12 @@ export const ITEMS: Item[] = [
   { id: 'sunset-starfish', name: 'Sunset starfish', kind: 'starfish', rarity: 'rare', source: 'pull', unlimited: false, size: [0.08, 0.26], variants: 3 },
   { id: 'green-bottle', name: 'Green bottle', kind: 'bottle', rarity: 'rare', source: 'pull', unlimited: false, size: [0.22, 0.45], variants: 2 },
   { id: 'nautilus', name: 'Nautilus', kind: 'nautilus', rarity: 'unique', source: 'pull', unlimited: false, size: [0.12, 0.3], variants: 3 },
+  // Week 2 of the vending machine ("Beach day", server/src/vending.ts).
+  // Three genuinely new kinds this time, so each has its own look from
+  // its kind palette (src/palette.ts) — no ITEM_LOOKS needed.
+  { id: 'beach-ball', name: 'Beach ball', kind: 'beachball', rarity: 'common', source: 'pull', unlimited: false, size: [0.25, 0.6], variants: 3 },
+  { id: 'sandals', name: 'Sandals', kind: 'sandals', rarity: 'uncommon', source: 'pull', unlimited: false, size: [0.15, 0.35], variants: 2 },
+  { id: 'bucket', name: 'Bucket', kind: 'bucket', rarity: 'rare', source: 'pull', unlimited: false, size: [0.2, 0.4], variants: 2 },
 ];
 
 export const itemById = (id: string): Item | undefined => ITEMS.find((i) => i.id === id);

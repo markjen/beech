@@ -1,6 +1,6 @@
 import type { ShaderMaterial } from '@babylonjs/core/Materials/shaderMaterial';
 import { Matrix, Quaternion, Vector3 } from '@babylonjs/core/Maths/math.vector';
-import type { Mesh } from '@babylonjs/core/Meshes/mesh';
+import { Mesh } from '@babylonjs/core/Meshes/mesh';
 import '@babylonjs/core/Meshes/thinInstanceMesh';
 import type { Scene } from '@babylonjs/core/scene';
 
@@ -376,6 +376,156 @@ function bottleMesh(scene: Scene, o: PlacedObject): { body: Mesh; cork: Mesh } {
   return { body, cork };
 }
 
+/**
+ * A striped beach ball: six wedges of a sphere in two meshes, one per
+ * material. Its centre is one radius up and its bottom point is at y = 0.
+ */
+function beachballMesh(scene: Scene, o: PlacedObject): { root: Mesh; panels: Mesh[] } {
+  const R = o.size;
+  const root = new Mesh(`ball${o.id}`, scene);
+  const groups = [{ positions: [] as number[], indices: [] as number[] }, { positions: [] as number[], indices: [] as number[] }];
+  const WEDGES = 6;
+  const lats = [-90, -60, -30, 0, 30, 60, 90];
+  const pt = (phi: number, lam: number): [number, number, number] => {
+    const p = (phi * Math.PI) / 180;
+    const l = lam;
+    return [R * Math.cos(p) * Math.cos(l), R + R * Math.sin(p), R * Math.cos(p) * Math.sin(l)];
+  };
+  for (let w = 0; w < WEDGES; w++) {
+    const l0 = (w / WEDGES) * Math.PI * 2;
+    const l1 = ((w + 1) / WEDGES) * Math.PI * 2;
+    const lm = (l0 + l1) / 2;
+    const lons = [l0, lm, l1];
+    const P: number[] = [];
+    const I: number[] = [];
+    // vertex 0 is the south pole, then one ring per latitude (3 lon
+    // steps each), then the north pole
+    P.push(...pt(-90, l0));
+    for (let k = 1; k < lats.length - 1; k++) {
+      for (const l of lons) P.push(...pt(lats[k], l));
+    }
+    const north = P.length / 3;
+    P.push(...pt(90, l0));
+    const ring = (k: number) => 1 + (k - 1) * 3; // first vertex of latitude ring k (1..5)
+    for (let s = 0; s < 2; s++) {
+      I.push(0, ring(1) + s + 1, ring(1) + s);
+      I.push(north, ring(5) + s, ring(5) + s + 1);
+    }
+    for (let k = 1; k < 5; k++) {
+      for (let s = 0; s < 2; s++) {
+        const a = ring(k) + s;
+        const b = ring(k) + s + 1;
+        I.push(a, a + 3, b, b, a + 3, b + 3);
+      }
+    }
+    orient(P, I, () => [0, R, 0]);
+    const group = groups[w % 2];
+    const base = group.positions.length / 3;
+    group.positions.push(...P);
+    group.indices.push(...I.map((i) => base + i));
+  }
+  const panels = groups.map(({ positions, indices }, i) => {
+    const panel = finish(scene, `ball${o.id}p${i}`, positions, indices);
+    panel.parent = root;
+    return panel;
+  });
+  return { root, panels };
+}
+
+/** A pair of sandals: two flat lathed soles side by side, with a strap across each. */
+function sandalsMesh(scene: Scene, o: PlacedObject): { soles: Mesh; straps: Mesh } {
+  const L = o.size;
+  const W = L * 0.24; // half-width of one sole
+  const squash = 0.14; // soles are flat
+  const P: number[] = [];
+  const I: number[] = [];
+  for (const side of [-1, 1]) {
+    const zoff = side * L * 0.3;
+    const s = lathe(
+      [
+        [-L * 0.5, W * 0.55],
+        [-L * 0.25, W],
+        [0, W * 1.02],
+        [L * 0.25, W * 0.95],
+        [L * 0.5, W * 0.6],
+      ],
+      8,
+      squash,
+    );
+    orient(s.P, s.I, (x) => [x, 0, 0]);
+    const base = P.length / 3;
+    for (let n = 0; n < s.P.length; n += 3) P.push(s.P[n], s.P[n + 1] + squash * W, s.P[n + 2] + zoff);
+    for (const idx of s.I) I.push(base + idx);
+  }
+  const soles = finish(scene, `soles${o.id}`, P, I);
+  // each strap is a shallow Λ of two thin boxes, rising from the sole's
+  // edges to a peak over the middle (the tilt leans in the y-z plane)
+  const S: number[] = [];
+  const SI: number[] = [];
+  for (const side of [-1, 1]) {
+    const zoff = side * L * 0.3;
+    // the sole's top is ~0.07L at the middle and ~0.05L where the strap
+    // meets it, so the strap has to start above the sole and peak higher
+    const apexY = L * 0.115;
+    const edgeY = L * 0.045;
+    const half = L * 0.2;
+    const len = Math.hypot(half, apexY - edgeY);
+    const tilt = Math.atan2(apexY - edgeY, half);
+    box(S, SI, L * 0.12, (apexY + edgeY) / 2, zoff + half / 2, L * 0.09, L * 0.02, len, tilt);
+    box(S, SI, L * 0.12, (apexY + edgeY) / 2, zoff - half / 2, L * 0.09, L * 0.02, len, -tilt);
+  }
+  orient(S, SI, (x, y, z) => [x * 0.98, y, z]);
+  const straps = finish(scene, `straps${o.id}`, S, SI);
+  straps.parent = soles;
+  return { soles, straps };
+}
+
+/**
+ * A pail, standing upright: one lathe traces the outside up, over the
+ * rim, and back down the inside to the floor, so the open top reads
+ * from above; a wire handle arches over it (child mesh).
+ */
+function bucketMesh(scene: Scene, o: PlacedObject): { body: Mesh; handle: Mesh } {
+  const H = o.size;
+  const R = o.size * 0.5;
+  const b = lathe(
+    [
+      [0, 0.02],
+      [0, R * 0.8],
+      [H * 0.75, R * 0.95],
+      [H * 0.95, R],
+      [H, R * 1.02],
+      [H * 0.97, R * 0.88],
+      [H * 0.2, R * 0.8],
+      [H * 0.12, 0.02],
+    ],
+    10,
+  );
+  // the lathe runs along x; stand it up (a proper rotation, so the
+  // winding survives: +x becomes +y)
+  for (let n = 0; n < b.P.length; n += 3) {
+    const [x, y, z] = [b.P[n], b.P[n + 1], b.P[n + 2]];
+    b.P[n] = -y;
+    b.P[n + 1] = x;
+    b.P[n + 2] = z;
+  }
+  const body = finish(scene, `bucket${o.id}`, b.P, b.I);
+  // the handle arches over the top in the y-z plane
+  const S: number[] = [];
+  const SI: number[] = [];
+  const apexY = H + R * 0.75;
+  const edgeY = H + 0.01;
+  const half = R * 0.9;
+  const len = Math.hypot(half, apexY - edgeY);
+  const tilt = Math.atan2(apexY - edgeY, half);
+  box(S, SI, 0, (apexY + edgeY) / 2, half / 2, H * 0.035, H * 0.035, len, tilt);
+  box(S, SI, 0, (apexY + edgeY) / 2, -half / 2, H * 0.035, H * 0.035, len, -tilt);
+  orient(S, SI, (x, y, z) => [x * 0.98, y, z]);
+  const handle = finish(scene, `handle${o.id}`, S, SI);
+  handle.parent = body;
+  return { body, handle };
+}
+
 /** A striped deckchair: a wooden frame and a canvas sling (child mesh), facing the sea. */
 function deckchairMesh(scene: Scene, o: PlacedObject): { frame: Mesh; canvas: Mesh } {
   const P: number[] = [];
@@ -426,6 +576,10 @@ function extent(o: PlacedObject): { reach: number; height: number } {
   switch (o.kind) {
     case 'deckchair':
       return { reach: 0.6, height: 0.8 };
+    case 'beachball':
+      return { reach: o.size, height: o.size * 2 };
+    case 'bucket':
+      return { reach: o.size * 0.6, height: o.size * 1.4 };
     case 'driftwood':
       return { reach: o.size / 2, height: 0.3 };
     case 'bottle':
@@ -454,7 +608,7 @@ function extent(o: PlacedObject): { reach: number; height: number } {
 // The other kinds are built at size 1 and scaled, or are a fixed size.
 
 /** kinds whose every dimension is proportional to `size` */
-const LINEAR = new Set<ObjectKind>(['rock', 'shell', 'seaglass', 'trash', 'seaweed', 'conch', 'sanddollar', 'starfish', 'nautilus', 'bottle']);
+const LINEAR = new Set<ObjectKind>(['rock', 'shell', 'seaglass', 'trash', 'seaweed', 'conch', 'sanddollar', 'starfish', 'nautilus', 'bottle', 'beachball', 'sandals', 'bucket']);
 /**
  * Driftwood's thickness isn't proportional to its length: it's built in
  * size buckets and stretched to the exact length along the log and to
@@ -619,6 +773,8 @@ class PropBank {
   private build(key: string, o: PlacedObject, base: number): Look {
     const set = this.matsFor(o);
     const mat = set[o.variant % set.length];
+    // Placement rolls start at 1. Beach files also accept variant 0.
+    const vendingVariant = Math.max(0, Math.floor(o.variant) - 1);
     const item = ITEM_LOOKS[o.item] ? `:${o.item}` : '';
 
     // Shared-part kinds: reuse identical sub-part sources (pole, cloth, frame, cork)
@@ -718,6 +874,26 @@ class PropBank {
       for (const p of b.parts) p.mesh.material = p.mat === 'pole' ? this.poleMat : set[p.mat % set.length];
       root = b.root;
       lights = b.lights;
+    } else if (o.kind === 'beachball') {
+      const bb = beachballMesh(this.scene, o);
+      root = bb.root;
+      // panels alternate bright and white; the variant picks the bright
+      // colour (red, blue, yellow — PROP_COLORS.beachball indices 0, 2, 3)
+      const bright = [0, 2, 3][vendingVariant % 3];
+      bb.panels[0].material = set[bright];
+      bb.panels[1].material = set[1];
+    } else if (o.kind === 'sandals') {
+      const sd = sandalsMesh(this.scene, o);
+      root = sd.soles;
+      // PROP_COLORS.sandals is [sole, strap] per variant
+      const pair = (vendingVariant % 2) * 2;
+      root.material = set[pair];
+      sd.straps.material = set[pair + 1];
+    } else if (o.kind === 'bucket') {
+      const bk = bucketMesh(this.scene, o);
+      root = bk.body;
+      root.material = set[vendingVariant % set.length];
+      bk.handle.material = this.poleMat;
     } else {
       root =
         o.kind === 'rock' ? rockMesh(this.scene, o)

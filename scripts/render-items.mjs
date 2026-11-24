@@ -71,15 +71,18 @@ const { ITEMS, POOLS, VENDING_SETS } = catalog;
 const GROUPS = [
   { name: 'Free', match: (it) => it.source === 'free' },
   { name: 'Claw', match: (it) => POOLS.daily.items[it.rarity]?.includes(it.id) },
-  { name: 'Vending · Week 1', match: (it) => VENDING_SETS[0]?.items[it.rarity]?.includes(it.id) },
+  ...VENDING_SETS.map(({ week, items }) => ({
+    name: `Vending · Week ${week}`,
+    match: (it) => items[it.rarity]?.includes(it.id),
+  })),
   { name: 'Shop', match: (it) => it.source === 'shop' },
 ];
 const groupOf = (it) => GROUPS.find((g) => g.match(it))?.name ?? 'Other';
-const ordered = [...ITEMS].sort((a, b) => {
-  const ga = GROUPS.findIndex((g) => g.match(a));
-  const gb = GROUPS.findIndex((g) => g.match(b));
-  return ga - gb || ITEMS.indexOf(a) - ITEMS.indexOf(b);
-});
+const groupOrder = (it) => {
+  const index = GROUPS.findIndex((group) => group.match(it));
+  return index < 0 ? GROUPS.length : index;
+};
+const ordered = [...ITEMS].sort((a, b) => groupOrder(a) - groupOrder(b));
 const items = ONLY ? ordered.filter((it) => ONLY.includes(it.id)) : ordered;
 if (ONLY) {
   const missing = ONLY.filter((id) => !ITEMS.some((it) => it.id === id));
@@ -127,7 +130,7 @@ try {
     const { createServer } = await import('vite');
     server = await createServer({
       root: ROOT,
-      server: { host: url.hostname, port: PORT, strictPort: true },
+      server: { host: url.hostname, port: PORT, strictPort: true, hmr: false },
     });
     await server.listen();
   }
@@ -164,9 +167,9 @@ try {
   // freeze the sea: no wash-ins, no rolling, while the shots are taken
   await page.evaluate(() => window.__beech.send({ type: 'pause', paused: true }));
 
-  const frame = async (x, y, halfH) => {
+  const frame = async (x, y, halfH, lift = 0) => {
     await page.evaluate(
-      ({ x, y, halfH }) => {
+      ({ x, y, halfH, lift }) => {
         const b = window.__beech;
         const cam = b.cam;
         // aim at the sand under the item, not at y=0.2: the camera looks
@@ -176,12 +179,12 @@ try {
         const j = Math.min(b.grid.ny - 1, Math.max(0, Math.floor(y / dx)));
         const sand = b.rest[j * b.grid.nx + i];
         cam.camera.target.x = x + b.origin.x;
-        cam.camera.target.y = sand;
+        cam.camera.target.y = sand + lift;
         cam.camera.target.z = y + b.origin.z;
         cam.halfH = halfH;
         cam.applyOrtho();
       },
-      { x, y, halfH },
+      { x, y, halfH, lift },
     );
     await page.waitForTimeout(800);
   };
@@ -194,7 +197,8 @@ try {
 
   // one close-up per item, centred (a 400 px square out of the 800x500 view)
   for (const p of placed) {
-    await frame(p.x, p.y, p.halfH);
+    const lift = p.kind === 'beachball' ? p.size : 0;
+    await frame(p.x, p.y, p.halfH, lift);
     await page.screenshot({ path: path.join(OUT, `${p.id}.png`), clip: { x: 200, y: 50, width: 400, height: 400 }, timeout: 120000 });
     console.log(`${p.id}.png  ${p.name} (${p.group}, ${p.kind})`);
   }

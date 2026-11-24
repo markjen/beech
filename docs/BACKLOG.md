@@ -63,9 +63,6 @@ _(nothing right now)_
   customize a detailed sandcastle (towers, walls, moat, decorations)
   rather than adding more preset shapes. The shop sandcastle ($1.99,
   legendary) stays as is.
-- [ ] **Vending set additions: beach ball, sandals, bucket**: Rose,
-  Discord #feedback 2026-11-23. New items for a future weekly vending
-  set (catalog entry, kind, mesh and icon each; see "More prizes").
 - [ ] **Claw prizes: coral and coconut**: Rose, Discord #feedback
   2026-11-23. New claw-machine prizes (catalog entry, kind, mesh and
   icon each).
@@ -119,6 +116,14 @@ _(nothing right now)_
 
 ## Done (recent)
 
+- [x] **Vending Week 2 "Beach day": beach ball, sandals, bucket**
+  (2026-11-24, PR #62): Week 2 of the vending machine, from Mon
+  2026-11-30 — a beach ball (common, floats), sandals (uncommon,
+  tumble) and a bucket (rare, stands upright), three new kinds
+  (`beachball`, `sandals`, `bucket`). A mixed set: three new items
+  can't fill all four tiers, so Week 1 items fill the gaps (blue sea
+  glass, pebble, spiral conch, green bottle, nautilus) and keep the
+  3/2/2/1 shape; sunset starfish sits the week out.
 - [x] **Wash-ashore finds: trash, seaweed, cowrie** (2026-11-24, PR #60):
   the sea now brings in a crumpled bright bottle or can (`trash`), a
   strand of seaweed (`seaweed`), and a spotted cowrie (`cowrie`, kind

@@ -199,6 +199,12 @@ export const PROP_COLORS = {
   starfish: [hex('#ef8a5f'), hex('#d9645a'), hex('#f2a65a')] as RGB[],
   bottle: [hex('#8fc9b3'), hex('#9cc3d9')] as RGB[],
   nautilus: [hex('#e8d5c4'), hex('#d9a06b'), hex('#c97e5a')] as RGB[],
+  /** a striped beach ball: bright panels alternate with white (variant picks the bright colour) */
+  beachball: [hex('#e8443a'), hex('#fbf3e4'), hex('#2f8fd0'), hex('#f5c542')] as RGB[],
+  /** sandals: [sole, strap] per variant — teal with an orange strap, coral with a navy strap */
+  sandals: [hex('#2f8f7a'), hex('#f08a4b'), hex('#e86a5a'), hex('#2f4a6b')] as RGB[],
+  /** a pail: red or blue, by variant */
+  bucket: [hex('#d8473b'), hex('#2f8fd0')] as RGB[],
   /** deckchair canvas stripes (frame uses `pole`) */
   deckchair: [hex('#4f86c6'), hex('#e46f5a'), hex('#3fa58f')] as RGB[],
   // the shop: [main, accent, trim, lamp]
