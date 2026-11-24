@@ -51,6 +51,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       'When you’re looking at someone else’s beach, the name tags no longer float over the sand: a small “i” sits at the bottom instead, and tapping it opens the beach’s name card (with its star and “ask to be neighbors”) and a way back to your own beach.',
       'beechshore.com now has an item catalog: every item with a picture, its size and price, and how to get it. Vote for the ones you like and leave a comment — it’s linked from the guide.',
       'Footprints are free now: press a trail of them into the sand, as many as you like.',
+      'Invite friends to Beech: anyone who joins from your invite starts with a parasol, and you earn a gift each time a friend settles in — up to ten friends.',
     ],
   },
   {
