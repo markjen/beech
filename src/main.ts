@@ -159,7 +159,7 @@ async function boot() {
   let beach: Beach = beachById(params.get('beach')) ?? beachById(settings.beach) ?? defaultBeach();
   const live = new LiveConditions(beach);
   let liveState = live.compute(clockNow());
-  const sendSea = () => send({ type: 'sea', tide: liveState.simTide, waves: beach.waves });
+  const sendSea = () => send({ type: 'sea', tide: liveState.simTide, waves: liveState.waves });
   sendSea();
   const sky = new Sky(scene);
   const picker = new SandPicker(grid, ready.rest);
@@ -1145,7 +1145,7 @@ async function boot() {
     const mix = Math.min(1, (now - frameAt) / (1000 / SIM_HZ));
     renderer.setFrameMix(mix);
     const simTime = prevT + (info.t - prevT) * mix;
-    const amp = (1 - (1 - WAVES.calmFactor) * info.calmMix) * beach.waves;
+    const amp = (1 - (1 - WAVES.calmFactor) * info.calmMix) * liveState.waves;
     const camFwd = cam.forward();
     renderer.update(palette, camFwd, (now - t0) / 1000, simTime, info.tide, amp);
     neighbors?.update(palette, camFwd, (now - t0) / 1000, simTime, info.tide, amp);

@@ -1,3 +1,4 @@
+import { WAVES } from '../config';
 import { paletteAlong, paletteByName, tint, type Palette } from '../palette';
 import { moonIllumination, moonPosition, sunPosition, type SkyPosition } from './astro';
 import type { Beach } from './locations';
@@ -20,6 +21,8 @@ export interface LiveState {
   tide: number;
   /** compressed tide for the diorama (m) */
   simTide: number;
+  /** default wave strength for this beach at the current point in the tide schedule */
+  waves: number;
   rising: boolean;
   next: TideExtreme[];
   localTime: string;
@@ -43,6 +46,17 @@ export function sceneDirection(pos: SkyPosition, facing: number): [number, numbe
  */
 export function diorama(tide: number): number {
   return Math.sign(tide) * 0.3 * (1 - Math.exp(-Math.abs(tide) / 1.0));
+}
+
+/**
+ * Modulate a beach's default wave strength along its tide schedule: weaker
+ * around low tide, stronger around high tide. Beaches with almost no tide
+ * stay at their baseline.
+ */
+export function tideWaveScale(baseWaves: number, tide: number, range: number): number {
+  if (range < WAVES.tideWaveMinRange) return baseWaves;
+  const norm = Math.max(-1, Math.min(1, tide / range));
+  return Math.max(0, Math.min(WAVES.maxScale, baseWaves * (1 + WAVES.tideWaveSwing * norm)));
 }
 
 const EVENING: [number, string][] = [
@@ -162,6 +176,7 @@ export class LiveConditions {
       },
       tide,
       simTide: diorama(tide),
+      waves: tideWaveScale(b.waves, tide, tideRange(b.tide)),
       rising: soon > tide,
       next: this.extremes.filter((e) => e.time.getTime() > now.getTime()),
       localTime: formatLocalTime(now, b.timeZone),
