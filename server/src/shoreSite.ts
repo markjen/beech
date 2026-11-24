@@ -598,7 +598,7 @@ h2 a{font-size:14px;font-weight:400}
 .hero .btn.ghost{color:#fff;box-shadow:inset 0 0 0 2px #fff}
 .cta{display:flex;flex-wrap:wrap;gap:10px}
 @media (max-width:640px){.hero-img{aspect-ratio:4/3}.hero-text{position:static;background:var(--card);color:var(--ink)}.hero .btn.ghost{color:var(--sea);box-shadow:inset 0 0 0 2px var(--sea)}.hero{background:var(--card)}}
-.grid{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px}
+.grid{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:0}
 .card a{display:block;background:var(--card);border-radius:16px;overflow:hidden;text-decoration:none;color:var(--ink);border:1px solid var(--line);transition:transform .15s}
 .card a:hover{transform:translateY(-2px)}
 .card img{aspect-ratio:480/300;width:100%;object-fit:cover;background:var(--sand)}
@@ -629,7 +629,7 @@ h2 a{font-size:14px;font-weight:400}
 .actions{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
 .hint{color:var(--ink2);font-size:14px;margin:4px 0 0}
 .share{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:14px}
-.strip{list-style:none;margin:0;padding:4px 0 8px;display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory}
+.strip{list-style:none;margin:0;padding:4px 0 8px;display:flex;gap:0;overflow-x:auto;scroll-snap-type:x mandatory}
 .strip li{flex:0 0 200px;scroll-snap-align:center}
 .strip a{display:block;text-decoration:none;color:var(--ink);font-size:14px}
 .strip img{border-radius:12px;aspect-ratio:480/300;object-fit:cover}
