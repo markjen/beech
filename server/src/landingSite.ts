@@ -2,7 +2,7 @@
 // every other host, so it works before the domain does).
 //
 // Server-rendered HTML with inline CSS and a tiny progressive-enhancement
-// script for the hero time-of-day showcase. Numbers that the server decides
+// script for the time-of-day diorama showcase, lower on the page. Numbers that the server decides
 // are read from the same constants the server and the guide use, so the page
 // can't drift from the game.
 //
@@ -77,14 +77,14 @@ export function landingHtml(gameUrl: string = LANDING_GAME_URL): string {
 <meta property="og:title" content="beech — a quiet place by the sea">
 <meta property="og:description" content="Shape the sand, watch the waves rework it, and build a beach of your own. Play now on the web or on Google Play; iOS coming soon.">
 <meta property="og:url" content="https://beech.games/">
-<meta property="og:image" content="https://beech.games/landing-assets/og-card.jpg">
-<meta property="og:image:width" content="1200">
-<meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="A sunlit 3D beach diorama in beech with a lighthouse, beach hut, striped parasol, sandcastle, shells, and turquoise waves">
+<meta property="og:image" content="https://beech.games/hero-beach.jpg">
+<meta property="og:image:width" content="2048">
+<meta property="og:image:height" content="1152">
+<meta property="og:image:alt" content="A sunny illustrated beach in beech: a red-and-white lighthouse, beach hut, striped parasol, sandcastle, shells, and gentle waves">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="beech — a quiet place by the sea">
 <meta name="twitter:description" content="Shape the sand, watch the waves rework it, and build a beach of your own. Free on the web and Google Play; iOS coming soon.">
-<meta name="twitter:image" content="https://beech.games/landing-assets/og-card.jpg">
+<meta name="twitter:image" content="https://beech.games/hero-beach.jpg">
 <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
 <link rel="icon" href="/icons/favicon-32.png" sizes="32x32" type="image/png">
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
@@ -116,30 +116,10 @@ export function landingHtml(gameUrl: string = LANDING_GAME_URL): string {
   --shadow-md: 0 14px 36px rgba(32, 48, 60, 0.10), 0 2px 8px rgba(32, 48, 60, 0.05);
   --shadow-lg: 0 28px 68px rgba(24, 42, 54, 0.18), 0 6px 18px rgba(24, 42, 54, 0.08);
   --nav-bg: rgba(251, 244, 231, 0.78);
-  --hero-sky-top: #b8e0ee;
-  --hero-sky-mid: #e6f2f1;
-  --hero-sky-bottom: #fbf4e7;
   --wave-back: rgba(143, 218, 210, 0.42);
   --wave-front: #fbf4e7;
   --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
   --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
-}
-
-/* Time-of-day hero atmosphere states (matched to src/palette.ts) */
-.hero[data-mood="dawn"] {
-  --hero-sky-top: #c2cce8;
-  --hero-sky-mid: #f5d8ce;
-  --wave-back: rgba(159, 227, 216, 0.38);
-}
-.hero[data-mood="golden"] {
-  --hero-sky-top: #f2be9d;
-  --hero-sky-mid: #fce5be;
-  --wave-back: rgba(242, 180, 128, 0.34);
-}
-.hero[data-mood="dusk"] {
-  --hero-sky-top: #8f95bd;
-  --hero-sky-mid: #e8bcb8;
-  --wave-back: rgba(136, 201, 207, 0.35);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -167,15 +147,9 @@ export function landingHtml(gameUrl: string = LANDING_GAME_URL): string {
     --shadow-md: 0 16px 40px rgba(0, 0, 0, 0.34);
     --shadow-lg: 0 30px 72px rgba(0, 0, 0, 0.5);
     --nav-bg: rgba(19, 27, 38, 0.8);
-    --hero-sky-top: #1b364a;
-    --hero-sky-mid: #1a2a3b;
-    --hero-sky-bottom: #131b26;
     --wave-back: rgba(74, 152, 174, 0.22);
     --wave-front: #131b26;
   }
-  .hero[data-mood="dawn"] { --hero-sky-top: #26314c; --hero-sky-mid: #312c3c; }
-  .hero[data-mood="golden"] { --hero-sky-top: #46322b; --hero-sky-mid: #2a2427; }
-  .hero[data-mood="dusk"] { --hero-sky-top: #1d2742; --hero-sky-mid: #282436; }
 }
 
 * { box-sizing: border-box; }
@@ -284,19 +258,28 @@ body::before {
 .hero {
   position: relative;
   overflow: hidden;
-  background: linear-gradient(180deg, var(--hero-sky-top) 0%, var(--hero-sky-mid) 48%, var(--hero-sky-bottom) 100%);
-  transition: background 450ms ease;
-  padding: 56px 24px 104px;
+  background: var(--bg);
+  padding: 40px 24px 104px;
+}
+/* Full-width hero splash: an illustration of a beach you could build in
+   the game, with no text on top of it. */
+.hero-splash {
+  max-width: 1180px;
+  margin: 0 auto 40px;
+}
+.hero-splash img {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 26px;
+  box-shadow: var(--shadow-lg);
 }
 .hero-inner {
   position: relative;
   z-index: 2;
-  max-width: 1180px;
+  max-width: 780px;
   margin: 0 auto;
-  display: grid;
-  grid-template-columns: minmax(0, 0.96fr) minmax(0, 1.14fr);
-  align-items: center;
-  gap: 52px;
+  text-align: center;
 }
 .eyebrow {
   margin: 0 0 14px;
@@ -320,8 +303,8 @@ body::before {
   font-weight: 400;
 }
 .hero-lead {
-  margin: 22px 0 32px;
-  max-width: 490px;
+  margin: 22px auto 32px;
+  max-width: 560px;
   font-size: 18px;
   line-height: 1.62;
   color: var(--ink-soft);
@@ -332,6 +315,7 @@ body::before {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: center;
   gap: 14px;
 }
 .btn-primary {
@@ -390,6 +374,7 @@ body::before {
   display: flex;
   flex-wrap: wrap;
   align-items: stretch;
+  justify-content: center;
   gap: 12px;
 }
 .store-btn {
@@ -448,6 +433,7 @@ body::before {
   margin-top: 16px;
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   gap: 8px 18px;
   font-size: 14px;
   color: var(--ink-faint);
@@ -458,6 +444,42 @@ body::before {
   font-weight: 500;
 }
 .hero-sublinks a:hover { color: var(--sea); text-decoration: underline; }
+
+/* Time-of-day atmosphere for the diorama section (matched to src/palette.ts) */
+.diorama-section {
+  --diorama-sky-top: #b8e0ee;
+  --diorama-sky-mid: #e6f2f1;
+  --diorama-sky-bottom: #fbf4e7;
+  background: linear-gradient(180deg, var(--diorama-sky-top) 0%, var(--diorama-sky-mid) 48%, var(--diorama-sky-bottom) 100%);
+  transition: background 450ms ease;
+  border-radius: 26px;
+}
+.diorama-section[data-mood="dawn"] {
+  --diorama-sky-top: #c2cce8;
+  --diorama-sky-mid: #f5d8ce;
+}
+.diorama-section[data-mood="golden"] {
+  --diorama-sky-top: #f2be9d;
+  --diorama-sky-mid: #fce5be;
+}
+.diorama-section[data-mood="dusk"] {
+  --diorama-sky-top: #8f95bd;
+  --diorama-sky-mid: #e8bcb8;
+}
+@media (prefers-color-scheme: dark) {
+  .diorama-section {
+    --diorama-sky-top: #1b364a;
+    --diorama-sky-mid: #1a2a3b;
+    --diorama-sky-bottom: #131b26;
+  }
+  .diorama-section[data-mood="dawn"] { --diorama-sky-top: #26314c; --diorama-sky-mid: #312c3c; }
+  .diorama-section[data-mood="golden"] { --diorama-sky-top: #46322b; --diorama-sky-mid: #2a2427; }
+  .diorama-section[data-mood="dusk"] { --diorama-sky-top: #1d2742; --diorama-sky-mid: #282436; }
+}
+.diorama-section .hero-stage {
+  max-width: 880px;
+  margin: 0 auto;
+}
 
 /* Hero 3D Diorama Stage */
 .hero-stage {
@@ -860,11 +882,8 @@ footer nav a:hover { color: var(--sea); text-decoration: underline; }
 
 /* ---------- Responsive ---------- */
 @media (max-width: 980px) {
-  .hero { padding: 40px 20px 88px; }
-  .hero-inner {
-    grid-template-columns: 1fr;
-    gap: 36px;
-  }
+  .hero { padding: 32px 20px 88px; }
+  .hero-splash { margin-bottom: 32px; }
   .hero-lead { max-width: 580px; }
   .pillars, .platforms { grid-template-columns: 1fr; }
   .releases { grid-template-columns: 1fr; }
@@ -873,9 +892,10 @@ footer nav a:hover { color: var(--sea); text-decoration: underline; }
   .topbar-inner { padding: 11px 16px; }
   .nav-links .nav-hide-sm { display: none; }
   .nav-links { gap: 14px; }
-  .hero { padding: 26px 16px 76px; }
-  .hero-inner { gap: 26px; }
-  .hero-lead { margin: 14px 0 22px; font-size: 16.5px; }
+  .hero { padding: 20px 16px 76px; }
+  .hero-splash { margin-bottom: 24px; }
+  .hero-splash img { border-radius: 18px; }
+  .hero-lead { margin: 14px auto 22px; font-size: 16.5px; }
   .details-grid { grid-template-columns: 1fr; gap: 22px; }
   .play-band, .community { padding: 28px 20px; border-radius: 22px; }
   .hero-actions { display: grid; grid-template-columns: 1fr auto; gap: 10px; }
@@ -886,7 +906,6 @@ footer nav a:hover { color: var(--sea); text-decoration: underline; }
   .store-name { font-size: 13.5px; }
   .hero-sublinks { margin-top: 12px; gap: 4px 14px; font-size: 13.5px; }
   .sublink-sep { display: none; }
-  .stage-bar { flex-direction: column; align-items: flex-start; }
   footer { flex-direction: column; align-items: flex-start; }
 }
 </style>
@@ -910,7 +929,10 @@ footer nav a:hover { color: var(--sea); text-decoration: underline; }
   </div>
 </div>
 
-<header class="hero" id="hero" data-mood="day">
+<header class="hero" id="hero">
+  <div class="hero-splash">
+    <img src="/hero-beach.jpg" alt="A sunny illustrated beach in beech: a red-and-white lighthouse, beach hut, striped parasol, sandcastle, shells, and gentle waves" width="2048" height="1152" fetchpriority="high" decoding="async">
+  </div>
   <div class="hero-inner">
     <div class="hero-copy">
       <p class="eyebrow">beech · a quiet place by the sea</p>
@@ -947,24 +969,6 @@ footer nav a:hover { color: var(--sea); text-decoration: underline; }
         <span>Free to play · no install needed on web</span>
         <span class="sublink-sep" aria-hidden="true">·</span>
         <a href="${esc(LANDING_SHORE_URL)}">Walk the public shore →</a>
-      </div>
-    </div>
-
-    <div class="hero-stage">
-      <div class="diorama-frame">
-        <img data-mood="day" class="is-active" src="/landing-assets/hero-day.webp" alt="beech 3D beach diorama in daylight with a lighthouse, beach hut, striped parasol, sandcastle, golden sand dollar, and turquoise waves" width="1200" height="800" fetchpriority="high" decoding="async">
-        <img data-mood="golden" src="/landing-assets/hero-golden.webp" alt="beech 3D beach diorama in warm golden hour sunlight" width="1200" height="800" loading="lazy" decoding="async">
-        <img data-mood="dawn" src="/landing-assets/hero-dawn.webp" alt="beech 3D beach diorama in soft pastel dawn light" width="1200" height="800" loading="lazy" decoding="async">
-        <img data-mood="dusk" src="/landing-assets/hero-dusk.webp" alt="beech 3D beach diorama in rose and indigo dusk light" width="1200" height="800" loading="lazy" decoding="async">
-      </div>
-      <div class="stage-bar">
-        <p class="stage-caption">In-game · live sky &amp; tide</p>
-        <div class="mood-picker" role="group" aria-label="Preview time of day">
-          <button id="mood-dawn" type="button" class="mood-btn" data-set-mood="dawn" aria-pressed="false"><span class="mood-swatch dawn" aria-hidden="true"></span>Dawn</button>
-          <button id="mood-day" type="button" class="mood-btn" data-set-mood="day" aria-pressed="true"><span class="mood-swatch day" aria-hidden="true"></span>Day</button>
-          <button id="mood-golden" type="button" class="mood-btn" data-set-mood="golden" aria-pressed="false"><span class="mood-swatch golden" aria-hidden="true"></span>Golden</button>
-          <button id="mood-dusk" type="button" class="mood-btn" data-set-mood="dusk" aria-pressed="false"><span class="mood-swatch dusk" aria-hidden="true"></span>Dusk</button>
-        </div>
       </div>
     </div>
   </div>
@@ -1024,6 +1028,45 @@ footer nav a:hover { color: var(--sea); text-decoration: underline; }
         <p>Rocks, driftwood, shells, sea glass, and flags are free and never run out. Collect a deckchair, parasol, surfboard, tiki torches, sandcastle, beach hut, and lighthouse — with card checkout, gift cards, and promo codes on the web.</p>
       </div>
     </div>
+  </section>
+
+  <section class="section" id="updates" aria-labelledby="updates-heading">
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">Fresh off the tide</p>
+        <h2 id="updates-heading">What’s new</h2>
+      </div>
+      <a class="section-link" href="/guide/releases">All release notes →</a>
+    </div>
+    <div class="releases">
+      ${whatsNew}
+    </div>
+  </section>
+
+  <section class="section diorama-section" id="diorama" data-mood="day" aria-labelledby="diorama-heading">
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">Live preview</p>
+        <h2 id="diorama-heading">A beach that follows the day.</h2>
+        <p class="section-sub">The same beach, under a real sky — pick a time of day and watch the light change.</p>
+      </div>
+    </div>
+    <div class="hero-stage">
+      <div class="diorama-frame">
+        <img data-mood="day" class="is-active" src="/landing-assets/hero-day.webp" alt="beech 3D beach diorama in daylight with a lighthouse, beach hut, striped parasol, sandcastle, golden sand dollar, and turquoise waves" width="1200" height="800" fetchpriority="high" decoding="async">
+        <img data-mood="golden" src="/landing-assets/hero-golden.webp" alt="beech 3D beach diorama in warm golden hour sunlight" width="1200" height="800" loading="lazy" decoding="async">
+        <img data-mood="dawn" src="/landing-assets/hero-dawn.webp" alt="beech 3D beach diorama in soft pastel dawn light" width="1200" height="800" loading="lazy" decoding="async">
+        <img data-mood="dusk" src="/landing-assets/hero-dusk.webp" alt="beech 3D beach diorama in rose and indigo dusk light" width="1200" height="800" loading="lazy" decoding="async">
+      </div>
+      <div class="stage-bar">
+        <p class="stage-caption">In-game · live sky &amp; tide</p>
+        <div class="mood-picker" role="group" aria-label="Preview time of day">
+          <button id="mood-dawn" type="button" class="mood-btn" data-set-mood="dawn" aria-pressed="false"><span class="mood-swatch dawn" aria-hidden="true"></span>Dawn</button>
+          <button id="mood-day" type="button" class="mood-btn" data-set-mood="day" aria-pressed="true"><span class="mood-swatch day" aria-hidden="true"></span>Day</button>
+          <button id="mood-golden" type="button" class="mood-btn" data-set-mood="golden" aria-pressed="false"><span class="mood-swatch golden" aria-hidden="true"></span>Golden</button>
+          <button id="mood-dusk" type="button" class="mood-btn" data-set-mood="dusk" aria-pressed="false"><span class="mood-swatch dusk" aria-hidden="true"></span>Dusk</button>
+        </div>
+      </div>
   </section>
 
   <section class="section" id="play" aria-labelledby="play-heading">
@@ -1086,19 +1129,6 @@ footer nav a:hover { color: var(--sea); text-decoration: underline; }
     </div>
   </section>
 
-  <section class="section" id="updates" aria-labelledby="updates-heading">
-    <div class="section-head">
-      <div>
-        <p class="eyebrow">Fresh off the tide</p>
-        <h2 id="updates-heading">What’s new</h2>
-      </div>
-      <a class="section-link" href="/guide/releases">All release notes →</a>
-    </div>
-    <div class="releases">
-      ${whatsNew}
-    </div>
-  </section>
-
   <section class="section" aria-labelledby="community-heading">
     <div class="community">
       <div>
@@ -1134,14 +1164,15 @@ footer nav a:hover { color: var(--sea); text-decoration: underline; }
   </nav>
 </footer>
 
+
 <script>
 (() => {
-  const hero = document.getElementById('hero');
-  if (!hero) return;
-  const imgs = hero.querySelectorAll('.diorama-frame img[data-mood]');
-  const btns = hero.querySelectorAll('[data-set-mood]');
+  const diorama = document.getElementById('diorama');
+  if (!diorama) return;
+  const imgs = diorama.querySelectorAll('.diorama-frame img[data-mood]');
+  const btns = diorama.querySelectorAll('[data-set-mood]');
   const setMood = (mood) => {
-    hero.dataset.mood = mood;
+    diorama.dataset.mood = mood;
     imgs.forEach((img) => img.classList.toggle('is-active', img.dataset.mood === mood));
     btns.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.setMood === mood)));
   };
