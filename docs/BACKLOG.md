@@ -63,10 +63,6 @@ _(nothing right now)_
   customize a detailed sandcastle (towers, walls, moat, decorations)
   rather than adding more preset shapes. The shop sandcastle ($1.99,
   legendary) stays as is.
-- [ ] **Store items: palm tree, beach towel, bonfire, hammock,
-  lifeguard tower**: Rose, Discord #feedback 2026-11-23. Five new shop
-  items (catalog entry, kind, mesh, icon and product each; pricing per
-  PRICING.md).
 - [ ] **Free item: footprints**: Rose, Discord #feedback 2026-11-23.
   Footprints left in the sand, plus a little figure walking the
   waterline (promoted from Ideas).
@@ -113,6 +109,14 @@ _(nothing right now)_
 
 ## Done (recent)
 
+- [x] **Shop centrepieces: palm tree, lifeguard tower, bonfire,
+  hammock, towel** (2026-11-24, PR #66): five new shop items — a palm
+  tree (legendary, $2.99, the tallest of the five), a lifeguard tower
+  (legendary, $2.99, with a cabin and a ramp), a bonfire (rare, $1.49,
+  its flame glows like the tiki torch's), a hammock (rare, $1.49) and
+  a beach towel (rare, $0.99) — five new kinds (`palmtree`,
+  `lifeguardtower`, `bonfire`, `hammock`, `towel`), each the only item
+  of its kind.
 - [x] **Claw prizes: coral and coconut** (2026-11-24, PR #65): two new
   claw-machine prizes — a branching coral fragment (rare, tumbles like
   a shell) and a coconut (common, floats like a bottle, riding high).
