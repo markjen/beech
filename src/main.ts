@@ -43,7 +43,7 @@ import { shareLink } from './ui/shareSheet';
 import { BeachSync, countItems } from './net/beachSync';
 import { AccountPanel } from './ui/accountPanel';
 import { Leaderboard } from './ui/leaderboard';
-import { NEIGHBOR_OFFSET, NeighborView } from './render/neighbors';
+import { NeighborView } from './render/neighbors';
 import { loadSettings, saveSettings, type Settings } from './ui/settingsStore';
 import { initTelemetry } from './net/telemetry';
 import { loadLocalBeach, saveLocalBeach } from './net/localStore';
@@ -658,7 +658,7 @@ async function boot() {
   /** the beach under the view, along the shore (null: your own) */
   const beachHere = () => {
     if (!neighbors) return null;
-    const i = Math.round(cam.focusX / NEIGHBOR_OFFSET);
+    const i = neighbors.nearestIndex(cam.focusX);
     return i === 0 && !neighbors.visiting ? null : neighbors.beachAt(i);
   };
   const goHome = async () => {
@@ -974,8 +974,7 @@ async function boot() {
     updateShoreBar();
     if (cam.mode === 'chair') {
       // the static shore starts where the drawn beaches end
-      const [from, to] = neighbors?.window ?? [0, 0];
-      horizon.setExtent(from, to, NEIGHBOR_OFFSET);
+      horizon.setExtent(neighbors?.windowCenters() ?? [0]);
       horizon.update(palette, cam.forward(), simTime, info.tide, amp);
     }
     const sk = liveState.sky;
