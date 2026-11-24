@@ -2,7 +2,7 @@ import { Constants } from '@babylonjs/core/Engines/constants';
 import { Effect } from '@babylonjs/core/Materials/effect';
 import { ShaderMaterial } from '@babylonjs/core/Materials/shaderMaterial';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
-import { Vector3, Vector4 } from '@babylonjs/core/Maths/math.vector';
+import { Vector2, Vector3, Vector4 } from '@babylonjs/core/Maths/math.vector';
 import { Mesh } from '@babylonjs/core/Meshes/mesh';
 import { VertexData } from '@babylonjs/core/Meshes/mesh.vertexData';
 import type { Scene } from '@babylonjs/core/scene';
@@ -41,13 +41,13 @@ export class Horizon {
     private readonly scene: Scene,
     private readonly swell: Swell,
     private readonly seed: number,
-    private readonly dx: number,
+    dx: number,
   ) {
     // the beachOcean / beachFlat shaders are registered by BeachRenderer
     this.seaMat = new ShaderMaterial('openSea', scene, 'beachOcean', {
       attributes: ['position'],
       uniforms: ['world', 'viewProjection', ...LIGHT, 'swellA', 'swellW', 'swellP', 'swellK', 'swellEnv', 'simTime', 'tide', 'zEdge', 'waveSpeed',
-        'oceanCol', 'deepCol', 'foamCol', 'fogCol', 'halfX', 'centerX', 'fadeNear', 'fadeFar', 'apron', 'slabA', 'slabB', 'slabHalf'],
+        'oceanCol', 'deepCol', 'foamCol', 'fogCol', 'halfX', 'centerX', 'fadeNear', 'fadeFar', 'apron', 'linkedSides', 'slabA', 'slabB', 'slabHalf'],
       samplers: [],
     });
     this.seaMat.needAlphaBlending = () => true;
@@ -55,16 +55,17 @@ export class Horizon {
     this.seaMat.backFaceCulling = false;
     // meet the simulated water exactly at its outermost row (no overlap band)
     const edgeZ = ORIGIN_Z + dx * 0.5;
-    const edge = WORLD_SIZE_X / 2 - dx * 0.5;
+    const edge = WORLD_SIZE_X / 2;
     this.extent = { minX: -edge, maxX: edge };
     this.seaMat.setFloat('zEdge', edgeZ);
     this.seaMat.setFloat('waveSpeed', WAVES.farSpeed);
     this.seaMat.setFloat('fadeNear', 40);
     this.seaMat.setFloat('fadeFar', 900);
     this.seaMat.setFloat('apron', 0);
+    this.seaMat.setVector2('linkedSides', new Vector2(0, 0));
     this.seaMat.setFloat('halfX', 1e6);
     this.seaMat.setFloat('centerX', 0);
-    this.seaMat.setFloat('slabHalf', edge);
+    this.seaMat.setFloat('slabHalf', edge + 0.01);
 
     Effect.ShadersStore['beachShoreVertexShader'] = flatVertex;
     Effect.ShadersStore['beachShoreFragmentShader'] = shoreFragment;
@@ -96,7 +97,7 @@ export class Horizon {
     if (sorted.length === this.centers.length && sorted.every((c, i) => c === this.centers[i])) {
       return;
     }
-    const edge = WORLD_SIZE_X / 2 - this.dx * 0.5;
+    const edge = WORLD_SIZE_X / 2;
     this.centers = sorted;
     this.extent = { minX: sorted[0] - edge, maxX: sorted[sorted.length - 1] + edge };
     this.buildShores();
@@ -180,7 +181,7 @@ export class Horizon {
     // the gaps between the drawn beaches (the diorama's island spacing) are
     // sand too when you're sitting on the beach — linked neighbours have no
     // gap, so there is nothing to fill between them
-    const edge = WORLD_SIZE_X / 2 - this.dx * 0.5;
+    const edge = WORLD_SIZE_X / 2;
     for (let k = 0; k + 1 < this.centers.length; k++) {
       const x0 = this.centers[k] + edge;
       const len = this.centers[k + 1] - edge - x0;

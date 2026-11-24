@@ -12,7 +12,7 @@ import type { Swell } from '../sim/waves';
 import { beachById } from '../world/locations';
 import { BeachRenderer, ORIGIN_Z } from './beachRenderer';
 import { ObjectView } from './objects';
-import { nearestShoreIndex, shoreLayout, UNLINKED_STEP, windowBeachCenters } from './shoreSpacing';
+import { boundaryLinked, nearestShoreIndex, shoreLayout, UNLINKED_STEP, windowBeachCenters } from './shoreSpacing';
 import { placeTag } from '../ui/tagPlace';
 /** how far down the shore to load at first, each way */
 const DEPTH = 6;
@@ -75,7 +75,6 @@ export class NeighborView {
   /** world-X centre of each entry (linked neighbours touch, the rest keep the diorama gap) */
   private pos = new Map<number, number>();
   private tide = 0;
-  private lastTideRefresh = 0;
   private listeners: ((n: Neighbors | null) => void)[] = [];
   private favListeners: (() => void)[] = [];
   /** bumps on every refresh/clear so a slow, older refresh can't overwrite a newer one */
@@ -95,6 +94,7 @@ export class NeighborView {
     private readonly cam: CameraController,
     private readonly uiRoot: HTMLElement,
     private readonly account: Account,
+    private readonly ownRenderer?: BeachRenderer,
   ) {
     this.api = new NeighborApi(account);
   }
@@ -128,6 +128,23 @@ export class NeighborView {
     for (const e of this.entries.values()) {
       if (e.slot && e.slot.renderer.offsetX !== this.xFor(e.index)) this.dropSlot(e);
     }
+    this.syncSeams();
+  }
+
+  /** Link adjacent rendered beaches along linked-neighbour boundaries so sand, water and waves blend seamlessly. */
+  private syncSeams(): void {
+    const active = new Map<number, BeachRenderer>();
+    if (this.ownRenderer && this.ownVisible) active.set(0, this.ownRenderer);
+    for (const e of this.entries.values()) {
+      if (e.slot) active.set(e.index, e.slot.renderer);
+    }
+    const isLinked = (k: number) => this.entries.get(k)?.beach.linked === true;
+    for (const [i, r] of active) {
+      const neg = boundaryLinked(i - 1, isLinked) ? active.get(i - 1) ?? null : null;
+      const pos = boundaryLinked(i, isLinked) ? active.get(i + 1) ?? null : null;
+      r.setNeighbors(neg, pos);
+    }
+    if (this.ownRenderer && !active.has(0)) this.ownRenderer.setNeighbors(null, null);
   }
 
   /** The beaches currently drawn, as shore indices [from, to] (0 = the middle one). */
@@ -465,6 +482,7 @@ export class NeighborView {
     this.paintStar(e);
     this.paintAsk(e);
     this.repaint(e);
+    this.syncSeams();
   }
 
   private paintStar(e: Entry): void {
@@ -539,6 +557,7 @@ export class NeighborView {
     e.slot.renderer.dispose();
     e.slot.label.remove();
     e.slot = undefined;
+    this.syncSeams();
   }
 
   private repaint(e: Entry): void {
@@ -599,25 +618,22 @@ export class NeighborView {
     r.showStatic(buf);
   }
 
-  /** Per frame: which beaches to draw, shared lighting/sea, slow tide refresh, name tags. */
+  /** Per frame: which beaches to draw, shared lighting/sea, animated neighbor waves, name tags. */
   update(p: Palette, camForward: Vector3, time: number, simTime: number, tide: number, amp: number): void {
+    this.tide = tide;
     if (!this.entries.size) {
       this.win = [0, 0];
+      this.syncSeams();
       return;
     }
     void this.fillWindow();
+    this.syncSeams();
     // infinite scroll: keep the shore loaded a few beaches past the view
     const c = this.nearestIndex(this.cam.focusX);
     const ext = this.extent;
     if (ext.left - c < AHEAD) void this.more('left');
     if (ext.right + c < AHEAD) void this.more('right');
-    const now = performance.now();
     const slots = [...this.entries.values()].filter((e) => e.slot);
-    if (Math.abs(tide - this.tide) > 0.01 && now - this.lastTideRefresh > 5000) {
-      this.tide = tide;
-      this.lastTideRefresh = now;
-      for (const e of slots) this.repaint(e);
-    }
     const engine = this.scene.getEngine();
     const cam = this.scene.activeCamera!;
     const vp = cam.viewport.toGlobal(engine.getRenderWidth(), engine.getRenderHeight());

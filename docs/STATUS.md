@@ -328,11 +328,17 @@ accepted the repo's default branch, so the deploy job ran only there.
 ## The shore, visiting and favorites (added after item sizes)
 
 - **The shore** follows neighbor links: your left neighbor, their left
-  neighbor, and so on, each way, then on into everyone else (`GET /api/shore`). Beach `k`
-  sits at x = k × 33.6 m. Only the beaches within 2 of the one under the view
-  are drawn (`RENDER`). Beaches within 5 stay decoded in memory, and the rest
-  load as you approach. Your own live beach is hidden once it's outside that
-  window, and digging is off.
+  neighbor, and so on, each way, then on into everyone else (`GET /api/shore`).
+  Linked neighbors sit 32 m apart (zero gap) and unlinked beaches keep the
+  1.6 m diorama gap (`src/render/shoreSpacing.ts`). Along a linked boundary,
+  the outer mesh columns meet flush at ±16 m, internal skirts and apron side
+  fades are suppressed, neighbor beaches animate rolling waves, swash and
+  foam on the GPU in sync with the live swell, and sand, normals, wetness,
+  water depth and foam blend smoothly across 1.75 m on each side
+  (`BeachRenderer.setNeighbors`, `src/render/shaders.ts`). Only the beaches
+  within 2 of the one under the view are drawn (`RENDER`). Beaches within 5
+  stay decoded in memory, and the rest load as you approach. Your own live
+  beach is hidden once it's outside that window, and digging is off.
 - **Walking:** pan along it in the diorama, or walk in the chair view (hold ‹
   › or Q/E). After a second of holding, walking speeds up to 4×. In the chair
   view the static shore fills the gaps between drawn beaches and runs on past
