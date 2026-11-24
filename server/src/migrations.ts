@@ -455,6 +455,73 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX steam_orders_user ON steam_orders (user_id, created_at DESC);
   `,
+
+  // 20: community item submissions (beechshore.com/submit), approval queue
+  // (admin console), and 30% creator royalty credits on purchases.
+  // Credits are non-cashable beech account credit (users.credit_cents),
+  // logged in credit_ledger as 'creator_royalty'. creator_royalties enforces
+  // idempotency per (submission_id, purchase_ref) so retries never double-pay.
+  `
+  ALTER TABLE credit_ledger DROP CONSTRAINT credit_ledger_kind_check;
+  ALTER TABLE credit_ledger ADD CONSTRAINT credit_ledger_kind_check
+    CHECK (kind IN ('gift_card', 'spend', 'creator_royalty'));
+
+  CREATE TABLE item_submissions (
+    id UUID PRIMARY KEY,
+    submitter_user_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    submitter_beach_code TEXT NOT NULL,
+    name TEXT NOT NULL,
+    slug TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    behavior TEXT NOT NULL CHECK (behavior IN ('fixed', 'tumble', 'float', 'rock')),
+    size_min DOUBLE PRECISION NOT NULL CHECK (size_min > 0),
+    size_max DOUBLE PRECISION NOT NULL CHECK (size_max >= size_min),
+    fixed_size BOOLEAN NOT NULL DEFAULT true,
+    proposed_price_cents INTEGER NOT NULL CHECK (proposed_price_cents >= 0 AND proposed_price_cents <= 99999),
+    proposed_frequency TEXT NOT NULL CHECK (proposed_frequency IN ('shop', 'limited', 'common', 'uncommon', 'rare', 'legendary', 'unique')),
+    frequency_note TEXT NOT NULL DEFAULT '',
+    asset_format TEXT NOT NULL CHECK (asset_format IN ('beech-json', 'glb', 'gltf', 'ts')),
+    asset_filename TEXT NOT NULL,
+    asset_mime TEXT NOT NULL,
+    asset_bytes BYTEA NOT NULL,
+    asset_size INTEGER NOT NULL CHECK (asset_size > 0),
+    asset_summary JSONB NOT NULL DEFAULT '{}',
+    preview_mime TEXT,
+    preview_bytes BYTEA,
+    terms_accepted BOOLEAN NOT NULL CHECK (terms_accepted = true),
+    terms_version TEXT NOT NULL,
+    terms_accepted_at BIGINT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+    approved_price_cents INTEGER CHECK (approved_price_cents IS NULL OR approved_price_cents >= 0),
+    approved_frequency TEXT CHECK (approved_frequency IS NULL OR approved_frequency IN ('shop', 'limited', 'common', 'uncommon', 'rare', 'legendary', 'unique')),
+    product_id TEXT,
+    item_id TEXT,
+    admin_note TEXT NOT NULL DEFAULT '',
+    reviewed_by TEXT,
+    reviewed_at BIGINT,
+    sales_count INTEGER NOT NULL DEFAULT 0 CHECK (sales_count >= 0),
+    total_credit_earned_cents INTEGER NOT NULL DEFAULT 0 CHECK (total_credit_earned_cents >= 0),
+    created_at BIGINT NOT NULL,
+    updated_at BIGINT NOT NULL
+  );
+  CREATE INDEX item_submissions_status ON item_submissions (status, created_at DESC);
+  CREATE INDEX item_submissions_user ON item_submissions (submitter_user_id, created_at DESC);
+  CREATE INDEX item_submissions_product ON item_submissions (product_id) WHERE status = 'approved' AND product_id IS NOT NULL;
+
+  CREATE TABLE creator_royalties (
+    id BIGSERIAL PRIMARY KEY,
+    submission_id UUID NOT NULL REFERENCES item_submissions (id) ON DELETE CASCADE,
+    creator_user_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    buyer_user_id UUID REFERENCES users (id) ON DELETE SET NULL,
+    product_id TEXT NOT NULL,
+    purchase_ref TEXT NOT NULL,
+    sale_price_cents INTEGER NOT NULL CHECK (sale_price_cents >= 0),
+    credit_cents INTEGER NOT NULL CHECK (credit_cents > 0),
+    created_at BIGINT NOT NULL,
+    UNIQUE (submission_id, purchase_ref)
+  );
+  CREATE INDEX creator_royalties_creator ON creator_royalties (creator_user_id, created_at DESC);
+  `,
 ];
 
 /** Apply migrations up to `upTo` (default: all). Tests use `upTo` to check a migration on older data. */

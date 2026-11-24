@@ -8,7 +8,6 @@ import { shortfall, type Short } from '../world/checkpointFit';
 import { itemById } from '../world/items';
 import { decodeSand, fitWorld } from '../sim/sandCodec';
 import { drawMap } from './beachFileDialog';
-import { unlockSteamAchievement } from '../platform/steamFeatures';
 
 /** A checkpoint's thumbnail from its saved bytes (a small top-down map), as an image URL. */
 export async function thumbnailOf(bytes: Uint8Array, size = 72): Promise<string> {
@@ -101,7 +100,6 @@ export class CheckpointsSection {
       if (beachId === this.account.beachId) await this.host.saveNow();
       const cp = await this.api.save(beachId, name.trim());
       this.host.toast(`Saved checkpoint “${cp.name}”`);
-      unlockSteamAchievement('CHECKPOINT_SAVED');
     });
   }
 
