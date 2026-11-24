@@ -761,3 +761,65 @@ void main() {
   gl_FragColor = vec4(col, 1.0);
 }
 `;
+
+// ------------------------------------------------------------------ beach animals
+
+/**
+ * Single-draw-call flat-shaded animal mesh with per-vertex colours and
+ * lightweight GPU animation packed into `uv`:
+ *   uv.x: leg gait group (-1 or +1 for alternating legs, 0 for body/claws)
+ *   uv.y: claw wave weight (1 on claws, 0 elsewhere)
+ */
+export const animalVertex = /* glsl */ `
+precision highp float;
+attribute vec3 position;
+attribute vec3 normal;
+attribute vec4 color;
+attribute vec2 uv;
+uniform mat4 world;
+uniform mat4 viewProjection;
+uniform float scuttlePhase;
+uniform float scuttleAmp;
+uniform float clawWave;
+varying vec3 vNormal;
+varying vec3 vWorld;
+varying vec3 vColor;
+void main() {
+  vec3 pos = position;
+  if (abs(uv.x) > 0.5 && scuttleAmp > 0.001) {
+    float ph = scuttlePhase + (uv.x > 0.0 ? 0.0 : 3.14159265);
+    float lift = max(0.0, sin(ph)) * 0.14 * scuttleAmp;
+    float stride = cos(ph) * 0.11 * scuttleAmp;
+    pos.y += lift;
+    pos.z += stride * sign(pos.x);
+  }
+  if (uv.y > 0.05 && clawWave > 0.001) {
+    float wave = sin(scuttlePhase * 0.7 + (pos.x > 0.0 ? 0.0 : 1.4)) * 0.12 * clawWave * uv.y;
+    pos.y += max(0.0, wave) + 0.05 * clawWave * uv.y;
+  }
+  vec4 wp = world * vec4(pos, 1.0);
+  vWorld = wp.xyz;
+  vNormal = normalize(mat3(world) * normal);
+  vColor = color.rgb;
+  gl_Position = viewProjection * wp;
+}
+`;
+
+export const animalFragment = /* glsl */ `
+precision highp float;
+varying vec3 vNormal;
+varying vec3 vWorld;
+varying vec3 vColor;
+${LIGHT_UNIFORMS}
+uniform float shine;
+void main() {
+  vec3 N = normalize(vNormal);
+  float ndl = dot(N, -sunDir);
+  float lit = 0.5 + 0.5 * smoothstep(-0.2, 0.5, ndl);
+  vec3 col = vColor * mix(shadowCol, sunCol, lit);
+  float spec = pow(max(dot(reflect(sunDir, N), -cameraDir), 0.0), 24.0) * shine;
+  col += sunCol * spec;
+  gl_FragColor = vec4(col, 1.0);
+}
+`;
+

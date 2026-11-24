@@ -13,9 +13,11 @@ import { Haptics } from './platform/haptics';
 import { registerServiceWorker } from './platform/pwa';
 import { tierFromBench } from './platform/quality';
 import { BeachRenderer, ORIGIN_X, ORIGIN_Z } from './render/beachRenderer';
+import type { AnimalView } from './render/animals';
 import { ObjectView } from './render/objects';
 import { Horizon } from './render/horizon';
 import { Sky, type SkyDisc } from './render/sky';
+import { AnimalController, type AnimalEnv, type AnimalObstacle } from './world/animals';
 import { LiveConditions } from './world/live';
 import { BEACHES, beachById, defaultBeach, nearestBeach, type Beach } from './world/locations';
 import type { BrushMode, ClearingMode, SandMode } from './sim/beachSim';
@@ -37,7 +39,7 @@ import { Shop } from './ui/shop';
 import { ShopApi, webOrderFromUrl, withoutWebOrderParams } from './net/shop';
 import { VendingMachine } from './ui/vendingMachine';
 import { DEFAULT_SIZE, ITEMS, rollPlacement, type Item } from './world/items';
-import { ACCOUNTS_ENABLED, Account, CheckpointApi, DigFindApi, GiftApi, PullApi } from './net/account';
+import { ACCOUNTS_ENABLED, Account, AnimalsApi, CheckpointApi, DigFindApi, GiftApi, PullApi } from './net/account';
 import { beachShareText, shoreBeachUrl, SHORE_URL, visitCodeFromUrl, withoutVisitParam } from './net/share';
 import { shareLink } from './ui/shareSheet';
 import { BeachSync, countItems } from './net/beachSync';
@@ -51,6 +53,7 @@ import { LocalCheckpointsSection } from './ui/localCheckpoints';
 import { watchForNewVersion } from './platform/version';
 import { isPackagedApp, isSteam, steamBridge } from './platform/runtime';
 import { unlockSteamAchievement, updateSteamRichPresence } from './platform/steamFeatures';
+import { schedulePetHungerReminder } from './platform/petNotify';
 import { GamepadController } from './input/gamepad';
 import { BeachFileDialog, beachFileName, pickFile, saveText, type BeachFileHost } from './ui/beachFileDialog';
 import { parseBeachFile, writeBeachFile } from './world/beachFile';
@@ -181,6 +184,43 @@ async function boot() {
   };
   const horizon = new Horizon(scene, swell, seed, grid.dx);
   const objectView = new ObjectView(scene, renderer);
+  const animals = new AnimalController();
+  let animalView: AnimalView | null = null;
+  let animalViewLoading = false;
+  const ensureAnimalView = () => {
+    if (animalView || animalViewLoading) return;
+    animalViewLoading = true;
+    void import('./render/animals').then(({ AnimalView: View }) => {
+      animalView = new View(scene, renderer);
+    });
+  };
+  const animalBrush = { x: 0, z: 0, active: false };
+  const animalObstacles: AnimalObstacle[] = [];
+  const animalEnv: AnimalEnv = {
+    heightAt: (x, z) => picker.heightAt(x, z),
+    waterAt: (x, z) => picker.waterAt(x, z),
+    brush: animalBrush,
+    obstacles: animalObstacles,
+  };
+  const syncAnimalObstacles = () => {
+    let n = 0;
+    for (let i = 0; i < objectStates.length; i++) {
+      const o = objectStates[i];
+      if (o.kind !== 'rock' && o.size < 0.7) continue;
+      const wx = o.x + ORIGIN_X;
+      const wz = o.y + ORIGIN_Z;
+      const r = o.kind === 'rock' ? o.size : 0.7;
+      if (n < animalObstacles.length) {
+        animalObstacles[n].x = wx;
+        animalObstacles[n].z = wz;
+        animalObstacles[n].radius = r;
+      } else {
+        animalObstacles.push({ x: wx, z: wz, radius: r });
+      }
+      n++;
+    }
+    animalObstacles.length = n;
+  };
   const audio = new Ambience();
   const haptics = new Haptics();
   haptics.enabled = settings.haptics;
@@ -745,11 +785,13 @@ async function boot() {
   // the shore bar (top right): who you're visiting, and the way home
   const shoreBar = document.createElement('div');
   shoreBar.className = 'shore-bar';
-  shoreBar.innerHTML = `<span class="sb-where"></span><button type="button" class="sb-fav"></button><button type="button" class="sb-home" data-act="home">⌂ <span>my beach</span></button>`;
+  shoreBar.innerHTML = `<span class="sb-where"></span><button type="button" class="sb-pet" hidden>Feed pet</button><button type="button" class="sb-fav"></button><button type="button" class="sb-home" data-act="home">⌂ <span>my beach</span></button>`;
   hud.root.appendChild(shoreBar);
   const sbWhere = shoreBar.querySelector<HTMLElement>('.sb-where')!;
+  const sbPet = shoreBar.querySelector<HTMLButtonElement>('.sb-pet')!;
   const sbFav = shoreBar.querySelector<HTMLButtonElement>('.sb-fav')!;
   let shoreKey = '';
+  const visitedPetCache = new Map<string, { name: string } | null>();
   /** the beach under the view, along the shore (null: your own) */
   const beachHere = () => {
     if (!neighbors) return null;
@@ -770,6 +812,24 @@ async function boot() {
     const b = beachHere();
     if (b && neighbors) void neighbors.toggleFavorite(b).catch(() => {});
   });
+  sbPet.addEventListener('click', () => {
+    const b = beachHere();
+    if (!b || !animalsApi) return;
+    if (!animalsApi.signedIn) {
+      showToast(uiRoot, 'Sign in to feed pets.');
+      return;
+    }
+    void animalsApi
+      .feedVisitorPet(b.code)
+      .then((res) => {
+        if (res.usedFood) refreshOwned();
+        haptics.impact('light');
+        showToast(uiRoot, res.pet.name ? `Fed ${res.pet.name}!` : 'Fed their sand crab!');
+      })
+      .catch((err: unknown) => {
+        showToast(uiRoot, err instanceof Error ? err.message : 'Could not feed pet.');
+      });
+  });
   const updateShoreBar = () => {
     const away = !!neighbors && (!!neighbors.visiting || Math.abs(cam.focusX) > WORLD_SIZE_X / 2 + 2);
     const b = away ? beachHere() : null;
@@ -785,6 +845,28 @@ async function boot() {
     sbFav.textContent = fav ? '★' : '☆';
     sbFav.classList.toggle('on', fav);
     sbFav.setAttribute('aria-label', fav ? 'Remove from favorites' : 'Add to favorites');
+    sbPet.hidden = true;
+    if (b && animalsApi) {
+      const cached = visitedPetCache.get(b.code);
+      if (cached !== undefined) {
+        if (cached) {
+          sbPet.textContent = cached.name ? `Feed ${cached.name}` : 'Feed pet';
+          sbPet.hidden = false;
+        }
+      } else {
+        const code = b.code;
+        void animalsApi
+          .getBeachPet(code)
+          .then((r) => {
+            visitedPetCache.set(code, r.pet ? { name: r.pet.name } : null);
+            if (beachHere()?.code === code && r.pet) {
+              sbPet.textContent = r.pet.name ? `Feed ${r.pet.name}` : 'Feed pet';
+              sbPet.hidden = false;
+            }
+          })
+          .catch(() => {});
+      }
+    }
   };
 
   // chair: hold ‹ or › to walk the chair along the beach (and over to the neighbors)
@@ -1178,6 +1260,16 @@ async function boot() {
       objectView.touch();
     }
     objectView.update(dt);
+    animalBrush.active = digging && lastHit !== null;
+    if (lastHit) {
+      animalBrush.x = lastHit.x;
+      animalBrush.z = lastHit.z;
+    }
+    if (animals.snapshot().active) syncAnimalObstacles();
+    animals.update(dt, animalEnv);
+    const animalSnap = animals.snapshot();
+    if (animalSnap.active || animalSnap.food.active) ensureAnimalView();
+    animalView?.update(animalSnap, ownShown);
     if (digging) haptics.dig(info.digIntensity);
     cam.camera.getDirectionToRef(Vector3.Right(), right);
     audio.update(dt, {
@@ -1201,8 +1293,96 @@ async function boot() {
   // ---------------------------------------------------------------- accounts
   let account: Account | null = null;
   let sync: BeachSync | null = null;
+  let animalsApi: AnimalsApi | null = null;
   if (ACCOUNTS_ENABLED) {
     account = new Account();
+    animalsApi = new AnimalsApi(account);
+    const applyPet = (pet: { species: 'crab'; name: string; mood: 'happy' | 'peckish' | 'hungry' | 'sleepy'; lastFedAt: number } | null) => {
+      syncAnimalObstacles();
+      animals.setPet(pet ? { species: pet.species, name: pet.name, mood: pet.mood } : null, animalEnv);
+      if (pet) void schedulePetHungerReminder(pet.name, beach.name, pet.lastFedAt);
+    };
+    const refreshPet = () => {
+      if (!animalsApi?.signedIn) {
+        animals.setPet(null);
+        return;
+      }
+      const bId = account?.beachId ?? undefined;
+      void animalsApi
+        .getPet(bId)
+        .then((r) => {
+          applyPet(r.pet);
+          const latest = r.recentFeeders?.[0];
+          if (r.pet && latest) {
+            const key = `beech.petFeedSeen.${r.pet.beachId}`;
+            const prev = Number(localStorage.getItem(key) ?? 0);
+            if (latest.at > prev) {
+              try {
+                localStorage.setItem(key, String(latest.at));
+              } catch {
+                /* storage unavailable */
+              }
+              showToast(uiRoot, `${latest.name} fed ${r.pet.name || 'your sand crab'}!`);
+            }
+          }
+        })
+        .catch(() => {});
+    };
+    account.onChange(() => refreshPet());
+    inventory.onUseExtra = (id) => {
+      if (!animalsApi?.signedIn) {
+        showToast(uiRoot, 'Sign in first.');
+        return;
+      }
+      if (neighbors && !neighbors.ownVisible) {
+        showToast(uiRoot, 'Head back to your beach first.');
+        return;
+      }
+      const activeBeachId = account?.beachId ?? undefined;
+      if (id === 'pet-crab') {
+        void animalsApi
+          .adoptPet({ mode: 'shop', beachId: activeBeachId })
+          .then((pet) => {
+            applyPet(pet);
+            refreshOwned();
+            haptics.impact('medium');
+            showToast(uiRoot, 'A sand crab moved onto your beach!');
+          })
+          .catch((err: unknown) => {
+            showToast(uiRoot, err instanceof Error ? err.message : 'Could not adopt pet.');
+          });
+        return;
+      }
+      if (id !== 'crab-treat') return;
+      void animalsApi
+        .feed(activeBeachId)
+        .then((res) => {
+          syncAnimalObstacles();
+          animals.dropFood(animalEnv);
+          refreshOwned();
+          haptics.impact('light');
+          if (res.pet) {
+            applyPet(res.pet);
+            showToast(uiRoot, res.pet.name ? `Fed ${res.pet.name}!` : 'Fed your sand crab!');
+          } else if (res.bond?.ready) {
+            showActionToast(uiRoot, 'A wild sand crab wants to stay on your beach!', 'Adopt', () => {
+              void animalsApi
+                ?.adoptPet({ mode: 'befriend', beachId: activeBeachId })
+                .then((pet) => {
+                  applyPet(pet);
+                  haptics.impact('medium');
+                  showToast(uiRoot, 'Your new sand crab moved in!');
+                })
+                .catch((err: unknown) => showToast(uiRoot, err instanceof Error ? err.message : 'Could not adopt pet.'));
+            });
+          } else {
+            showToast(uiRoot, 'Beach snack tossed on the sand.');
+          }
+        })
+        .catch((err: unknown) => {
+          showToast(uiRoot, err instanceof Error ? err.message : 'No beach snacks left.');
+        });
+    };
     sync = new BeachSync(account, {
       getSand,
       setSand: (delta, objects, cover) => {
@@ -1673,6 +1853,18 @@ async function boot() {
     leaderboard: () => leaderboard,
     vending: () => vendingMachine,
     objectView,
+    animals: {
+      snapshot: () => ({ ...animals.snapshot(), food: { ...animals.snapshot().food } }),
+      spawn: (pos?: { x: number; z: number }, species: 'crab' | 'dolphin' = 'crab') => {
+        syncAnimalObstacles();
+        return animals.spawnNow(animalEnv, pos, species);
+      },
+      dropFood: (pos?: { x: number; z: number }) => {
+        syncAnimalObstacles();
+        return animals.dropFood(animalEnv, pos);
+      },
+      despawn: () => animals.despawnNow(),
+    },
     audio,
     pickTool,
     setCollapsed,
@@ -1691,7 +1883,30 @@ async function boot() {
 
   if (params.has('debug')) {
     const { setupDebug } = await import('./ui/debug');
-    await setupDebug(send, () => info, () => cam.brushRadius());
+    await setupDebug(send, () => info, () => cam.brushRadius(), {
+      spawn: () => {
+        syncAnimalObstacles();
+        return animals.spawnNow(animalEnv, undefined, 'crab');
+      },
+      spawnDolphin: () => {
+        syncAnimalObstacles();
+        return animals.spawnNow(animalEnv, undefined, 'dolphin');
+      },
+      dropFood: () => {
+        syncAnimalObstacles();
+        return animals.dropFood(animalEnv);
+      },
+      despawn: () => animals.despawnNow(),
+      status: () => {
+        const s = animals.snapshot();
+        const foodTag = s.food.active ? ` · food ${s.food.timeLeft.toFixed(0)}s` : '';
+        return (
+          (s.active
+            ? `${s.species} ${s.phase} (${s.x.toFixed(1)}, ${s.z.toFixed(1)}) left ${s.visitLeft.toFixed(0)}s`
+            : `absent (next roll ${s.nextSpawnIn.toFixed(0)}s)`) + foodTag
+        );
+      },
+    });
   }
   // start seated (TV / ?view=chair) once everything the view switch touches exists
   if (tv || params.get('view') === 'chair') cam.setMode('chair', false);

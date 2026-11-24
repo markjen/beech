@@ -97,6 +97,7 @@ const NAV_SECTIONS: [string, string][] = [
   ['tools', 'Tools'],
   ['bag', 'Your bag'],
   ['finds', 'Digging finds'],
+  ['animals', 'Animals'],
   ['claw', 'Claw machine'],
   ['vending', 'Vending machine'],
   ['beaches', 'Your beaches'],
@@ -154,6 +155,12 @@ export function guideHtml(now: number): string {
 
 <h2 id="finds">Digging finds</h2>
 <p>A good dig (dragging at least 2 m, or holding in one place for a second) has a ${pct(DIG_FIND_CHANCE)} chance to turn up something buried, drawn from this week’s <a href="#vending">vending set</a> at the vending odds. At most one try every ${DIG_FIND_ROLL_COOLDOWN_MS / 1000} seconds, and at most ${DIG_FIND_DAILY_CAP} finds a day (the day turns over at midnight UTC). Signed in only.</p>
+
+<h2 id="animals">Animals</h2>
+<p>Now and then a wild sand crab pops out of the sand, scurries sideways across the beach, dodges incoming waves and your digging brush, and burrows back down after a minute or two — or a dolphin cruises through the deeper water offshore and leaps across the surf. Most of the time the beach is quiet with no animal around.</p>
+<p><b>Beach snacks:</b> toss a snack from your bag onto the sand to draw a visiting crab over and keep it around longer, or leave one out as bait so a crab visits sooner. You can buy snack packs in the shop, and digging up buried finds occasionally turns up a free snack too.</p>
+<p><b>Resident pets:</b> feed wild crabs on a beach enough times (10 feeds) and one will offer to move in permanently — or adopt a Pet sand crab straight from the shop. Pets stay on your beach, never leave, and tuck into a cozy sand burrow to nap if unfed for a couple of days until you feed them again.</p>
+<p><b>Visitor feeding:</b> when you visit another beach with a pet, you can give it one free snack a day (UTC) from the bar at the top, or feed it again anytime with a beach snack from your own bag.</p>
 
 <h2 id="claw">Claw machine</h2>
 <p>Free to play when you’re signed in: open the bag and tap the claw machine. Hold the button to steer, let go to drop.</p>

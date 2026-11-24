@@ -803,3 +803,47 @@ catalog product. Linked paid items credit the creator 30% of each
 completed sale. Assets and availability ship through the existing
 catalog release process. The public specification includes an example
 prompt, JSON Schema and sample asset.
+
+## Animals — A1 wild sand crab (2026-11-24)
+
+- **Rare wild visitor** ([ANIMALS.md](ANIMALS.md)): a single sand crab
+  occasionally emerges from the sand (4–12 min quiet wait, 65% roll, 45–120 s
+  visit, empty most of the time), scurries sideways in short bursts, pauses to
+  wave its claws, flees incoming waves and the player's digging brush, steers
+  around placed rocks/large objects, and burrows back into the sand.
+- **Implementation:** pure-TS state machine in `src/world/animals.ts` (unit
+  tested in `tests/animals.test.ts`), tuning constants in `ANIMALS`
+  (`src/config.ts`), colours in `ANIMAL_COLORS` (`src/palette.ts`), and a
+  single-draw-call vertex-coloured procedural mesh with GPU leg-scuttle and
+  claw-wave animation in `src/render/animals.ts` (`beachAnimal` shader in
+  `src/render/shaders.ts`, disabled when absent so idle draw calls stay
+  unchanged). `?debug=1` adds **Spawn sand crab** / **Despawn** and a status
+  readout.
+
+- **Food & feeding (A2)** (2026-11-24): `crab-treat` ("Beach snacks") added to
+  `EXTRAS` and the shop (`food_pack_10` $0.99, `food_pack_35` $2.99) plus a
+  25% free bonus treat trickle on digging finds. Tossing a snack from the bag
+  calls `POST /api/animals/feed` (atomic server decrement), drops a visible
+  treat pile on the sand, speeds up wild spawns 4× while empty, and draws an
+  active crab over to eat (extending its visit and calming it around the
+  brush).
+- **Resident pets (A3)** (2026-11-24): migration 21 adds `beach_pets`,
+  `wild_feed_progress`, and `pet_feed_log`. Players can adopt one pet per beach
+  either by feeding wild crabs 10 times (`POST /api/pet/adopt { mode:
+  'befriend' }`) or buying `pet_crab` ($1.99) in the shop (`mode: 'shop'`).
+  Mood (`happy` / `peckish` / `hungry` / `sleepy`) is computed from
+  `last_fed_at`; sleepy pets nap half-burrowed until fed and never leave.
+  `src/platform/petNotify.ts` schedules local hunger reminders at +24 h
+  respecting 22:00–08:00 quiet hours.
+- **Visitor feeding (A4)** (2026-11-24): `GET /api/beaches/:code/pet` and
+  `POST /api/beaches/:code/pet/feed` let signed-in visitors feed another
+  beach's pet (1 free feed per beach per UTC day, or spend 1 `crab-treat` from
+  their own bag anytime). The shore bar shows a **Feed pet** button when
+  visiting a beach with a pet, and owners see a quiet toast (`X fed Barnaby!`)
+  when visitors feed theirs.
+- **Second species — offshore dolphin (A5)** (2026-11-24): added `'dolphin'`
+  to `AnimalController` (`src/world/animals.ts`) and `buildDolphinMesh`
+  (`src/render/animals.ts`, single draw call, lazy-loaded, 0 idle draws). On
+  unbaited wild visit rolls, 35% of visits are an offshore dolphin cruising
+  alongshore in deep water (`depth >= 0.6 m`) with periodic parabolic breaching
+  arcs and nose pitch; `?debug=1` adds **Spawn dolphin**.

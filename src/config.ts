@@ -186,3 +186,51 @@ export const GUIDE_URL = 'https://beech.games/guide';
 
 export const SIM_HZ = 30;
 export const UNDO_DEPTH = 32;
+
+/** Rare wild beach visitors (docs/ANIMALS.md). */
+export const ANIMALS = {
+  /** quiet wait between wild visit rolls (seconds): empty most of the time */
+  waitMin: 240,
+  waitMax: 720,
+  /** probability a visit actually starts when the quiet wait expires */
+  visitChance: 0.65,
+  /** how long a wild sand crab stays before burrowing away (seconds) */
+  visitMin: 45,
+  visitMax: 120,
+  /** crab carapace width (metres — slightly larger than life so it reads in diorama view) */
+  crabSize: 0.32,
+  /** crab movement speeds (m/s): normal scurry and startled flee */
+  crabSpeed: 0.95,
+  crabFleeSpeed: 1.9,
+  /** water depth (m) that makes the crab dart upslope toward drier sand */
+  crabWetDepth: 0.035,
+  /** distance (m) at which an active digging/building brush startles the crab */
+  crabFleeRadius: 2.5,
+  /** number of brush startles before the crab burrows away early */
+  crabMaxStartles: 3,
+  /** margin (m) kept inside the 32x32 slab edges */
+  edgeMargin: 1.5,
+  /** how long an uneaten dropped snack lasts before expiring (seconds) */
+  foodDuration: 900,
+  /** spawn-wait speedup while dropped food is acting as bait */
+  foodBaitMultiplier: 4,
+  /** distance (m) at which an active crab smells and seeks dropped food */
+  foodNoticeRadius: 12,
+  /** extra visit time (seconds) added when a wild crab eats a treat */
+  foodExtendSec: 240,
+  /** cap on remaining visit time (seconds) after feeding */
+  foodMaxVisit: 420,
+  /** seconds after eating during which the crab is calm around the brush */
+  foodCalmSec: 60,
+  /** share of unbaited wild visits that are an offshore dolphin instead of a sand crab */
+  dolphinChance: 0.35,
+  /** dolphin length scale (metres) */
+  dolphinSize: 1.55,
+  /** dolphin cruising speed alongshore (m/s) */
+  dolphinSpeed: 2.4,
+  /** minimum water depth (m) where a dolphin will swim */
+  dolphinMinDepth: 0.6,
+  /** peak height (m) of a dolphin breach arc above the water surface */
+  dolphinBreachHeight: 1.15,
+};
+

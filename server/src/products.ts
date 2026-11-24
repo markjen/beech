@@ -55,6 +55,9 @@ export const PRODUCTS: Product[] = [
   { id: 'item_bonfire', steamItemId: 1013, name: 'Bonfire', grants: [{ item: 'bonfire', quantity: 1 }], usd: 1.49, blurb: 'Stones, logs and a flickering flame' },
   { id: 'item_hammock', steamItemId: 1014, name: 'Hammock', grants: [{ item: 'hammock', quantity: 1 }], usd: 1.49, blurb: 'Two posts and a slung cloth, made for naps' },
   { id: 'item_towel', steamItemId: 1015, name: 'Beach towel', grants: [{ item: 'towel', quantity: 1 }], usd: 0.99, blurb: 'Striped, lying flat on the sand' },
+  { id: 'food_pack_10', steamItemId: 1016, name: 'Beach snacks (10)', grants: [{ item: 'crab-treat', quantity: 10 }], usd: 0.99, blurb: 'Ten treats to attract and feed beach animals' },
+  { id: 'food_pack_35', steamItemId: 1017, name: 'Beach snacks (35)', grants: [{ item: 'crab-treat', quantity: 35 }], usd: 2.99, blurb: 'Thirty-five treats to attract and feed beach animals' },
+  { id: 'pet_crab', steamItemId: 1018, name: 'Pet sand crab', grants: [{ item: 'pet-crab', quantity: 1 }], usd: 1.99, blurb: 'Adopt a sand crab to live on your beach permanently' },
 ];
 
 export const productById = (id: string): Product | undefined => PRODUCTS.find((p) => p.id === id);
