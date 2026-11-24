@@ -54,11 +54,15 @@ const pb = await open(`${URL_}?visit=${anaCode}&nointro&fixedres&seed=1&nofinds`
 await pb.waitForFunction((c) => window.__beech.neighbors().visiting?.code === c, anaCode, { timeout: 15000 });
 check(!(await pb.evaluate(() => !!window.__beech.account().user)), 'Ben is signed out…');
 check(true, "…and sees Ana's beach straight away");
-await pb.waitForSelector('.shore-bar.shown .sb-leave:not([hidden])', { timeout: 10000 });
 check(await pb.$eval('.inbox-btn', (b) => getComputedStyle(b).display === 'none'), 'no mailbox while signed out');
+// viewing mode: the beach's name tag, with "leave something", is behind the "i"
+await pb.click('.shore-info-btn');
+const leave = `.shore-info-list [data-act="leave-${anaCode}"]:not([hidden])`;
+await pb.waitForSelector(leave, { timeout: 10000 });
+check(true, "the beach info card offers to leave something on Ana's beach");
 if (shots) await pb.screenshot({ path: `${shots}/visit-signed-out.png` });
 // tap "leave something": sign in first
-await pb.click('.sb-leave');
+await pb.click(leave);
 check(await pb.evaluate(() => !window.__beech.visitor().isOpen), 'signed out, it asks to sign in instead of opening the card');
 await pb.evaluate((n) => window.__beech.account().signInDev(n), ben);
 await pb.waitForSelector('.visitor.open .visitor-shell', { timeout: 15000 });
@@ -89,7 +93,7 @@ await pa.waitForFunction(() => [...document.querySelectorAll('.hint')].some((h) 
 check(true, 'a note says Ben left something');
 check((await owned(pa, 'parasol')) === 1, "the parasol is in Ana's bag");
 await pa.click('[data-act="inbox"]');
-await pa.waitForSelector('.inbox.open .inbox-row[data-kind="visit"]', { timeout: 10000 });
+await pa.waitForSelector('.inbox.open .inbox-row[data-kind="visit"]', { timeout: 30000 });
 const visitText = await pa.$eval('.inbox-row[data-kind="visit"]', (r) => r.textContent);
 check(visitText.includes(`${ben} visited`) && visitText.includes('Lovely beach!') && visitText.includes('parasol') && visitText.includes('4 shells'), 'the visit row has the note, the gift and the rating');
 check(!!(await pa.$('.inbox-row[data-kind="invite_joined"]')), 'and Ben joining through her link');

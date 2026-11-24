@@ -40,14 +40,13 @@ import { ShopApi, webOrderFromUrl, withoutWebOrderParams } from './net/shop';
 import { VendingMachine } from './ui/vendingMachine';
 import { DEFAULT_SIZE, ITEMS, rollPlacement, type Item } from './world/items';
 import { ACCOUNTS_ENABLED, Account, AnimalsApi, ApiError, CheckpointApi, DigFindApi, GiftApi, GuideApi, InboxApi, PullApi, ReferralApi } from './net/account';
-import { InboxPanel } from './ui/inbox';
-import { ANNOUNCE, announce } from './ui/inboxText';
-import { VisitorCard } from './ui/visitorCard';
+import type { InboxPanel } from './ui/inbox';
+import type { VisitorCard } from './ui/visitorCard';
 import type { IconName } from './ui/hud';
 import { beachShareText, inviteCodeFromUrl, shoreBeachUrl, SHORE_URL, visitCodeFromUrl, withoutInviteParam, withoutVisitParam } from './net/share';
 import { shareLink } from './ui/shareSheet';
 import { BeachGuide, type GuideHost } from './ui/guide';
-import { InvitePanel } from './ui/invite';
+import type { InvitePanel } from './ui/invite';
 import { extraById, itemById, prizeName } from './world/items';
 import { BeachSync, countItems } from './net/beachSync';
 import { AccountPanel } from './ui/accountPanel';
@@ -848,21 +847,11 @@ async function boot() {
   // the shore bar (top right): who you're visiting, and the way home
   const shoreBar = document.createElement('div');
   shoreBar.className = 'shore-bar';
-  shoreBar.innerHTML = `<span class="sb-where"></span><span class="sb-rating" hidden></span><button type="button" class="sb-pet" hidden>Feed pet</button><button type="button" class="sb-fav"></button><button type="button" class="sb-leave" data-act="leave" aria-label="Leave something" title="Leave something"></button><button type="button" class="sb-home" data-act="home">⌂ <span>my beach</span></button>`;
+  shoreBar.innerHTML = `<span class="sb-where"></span><button type="button" class="sb-pet" hidden>Feed pet</button><button type="button" class="sb-fav"></button><button type="button" class="sb-home" data-act="home">⌂ <span>my beach</span></button>`;
   hud.root.appendChild(shoreBar);
   const sbWhere = shoreBar.querySelector<HTMLElement>('.sb-where')!;
   const sbPet = shoreBar.querySelector<HTMLButtonElement>('.sb-pet')!;
   const sbFav = shoreBar.querySelector<HTMLButtonElement>('.sb-fav')!;
-  // visitors (docs/INBOX_NOTIFICATIONS.md): rate, write and give; set up with the account layer
-  const sbLeave = shoreBar.querySelector<HTMLButtonElement>('.sb-leave')!;
-  const sbRating = shoreBar.querySelector<HTMLElement>('.sb-rating')!;
-  sbLeave.innerHTML = hud.button('gift', '').innerHTML;
-  let leaveHere: (code: string, owner: string, beachName?: string) => void = () => {};
-  let ratingFor: (code: string) => void = () => {};
-  sbLeave.addEventListener('click', () => {
-    const b = beachHere();
-    if (b) leaveHere(b.code, b.name, b.beachName);
-  });
   let shoreKey = '';
   const visitedPetCache = new Map<string, { name: string } | null>();
   /** the beach under the view, along the shore (null: your own) */
@@ -946,9 +935,6 @@ async function boot() {
           .catch(() => {});
       }
     }
-    sbLeave.hidden = !b;
-    sbRating.hidden = true;
-    if (b) ratingFor(b.code);
   };
 
   // chair: hold ‹ or › to walk the chair along the beach (and over to the neighbors)
@@ -1810,21 +1796,31 @@ async function boot() {
       void loadOwned();
     });
     // ---- the beach guide and invites (docs/INVITES_GUIDE.md)
+    // The panels only signed-in players use (invites, the inbox, the visitor
+    // card) load in their own chunk, off the start-up bundle (perf/budget.json).
+    // If that fails (a first visit while offline), the game carries on
+    // without them; account features need the network anyway.
+    const social = await Promise.all([import('./ui/invite'), import('./ui/inbox'), import('./ui/visitorCard'), import('./ui/inboxText')]).then(
+      ([invite, inbox, visitorCard, inboxText]) => ({ ...invite, ...inbox, ...visitorCard, ...inboxText }),
+      () => null,
+    );
     const guideApi = new GuideApi(acct);
     const referralApi = new ReferralApi(acct);
-    const invites = new InvitePanel(uiRoot, {
-      signedIn: () => !!acct.user,
-      signIn: () => sheet.show(),
-      name: () => acct.user?.name ?? '',
-      load: () => referralApi.status(),
-    });
+    const invites = social
+      ? new social.InvitePanel(uiRoot, {
+          signedIn: () => !!acct.user,
+          signIn: () => sheet.show(),
+          name: () => acct.user?.name ?? '',
+          load: () => referralApi.status(),
+        })
+      : null;
     invitePanel = invites;
     guideHost.signedIn = () => !!acct.user;
     guideHost.load = () => guideApi.done();
     guideHost.complete = (step) => guideApi.complete(step);
     guideHost.openInvite = () => {
       sheet.hide();
-      void invites.open();
+      void invites?.open();
     };
     panel.invite = guideHost.openInvite;
     panel.render();
@@ -1903,7 +1899,7 @@ async function boot() {
       const f = gifts[gifts.length - 1];
       const reward = f.reward === 'beach' ? 'an extra beach is yours' : `a ${prizeName(f.reward!).toLowerCase()} is in your bag`;
       const more = gifts.length > 1 ? ` (and ${gifts.length - 1} more friend${gifts.length > 2 ? 's' : ''})` : '';
-      showActionToast(uiRoot, `${f.name} settled in${more}: ${reward}`, 'Invite more', () => void invites.open(), 12000);
+      showActionToast(uiRoot, `${f.name} settled in${more}: ${reward}`, 'Invite more', () => void invites?.open(), 12000);
     };
     acct.onChange((u) => {
       if (!u) return guide.signedOut();
@@ -1912,83 +1908,72 @@ async function boot() {
       void checkReferrals();
     });
     // ---- visitors and the inbox (docs/INBOX_NOTIFICATIONS.md)
-    const inboxApi = new InboxApi(acct);
-    const inboxPanel = new InboxPanel(uiRoot, hud.root, (n, l) => hud.button(n, l), inboxApi, {
-      signedIn: () => !!acct.user,
-      signIn: () => sheet.show(),
-      visit: (code) =>
-        void nv
-          .visit(code)
-          .then(() => cam.goTo(0, true))
-          .catch(() => showToast(uiRoot, 'No beach has that code')),
-      neighborsChanged: () => void nv.refresh(),
-      toast: (t) => showToast(uiRoot, t),
-    });
-    inboxUi = inboxPanel;
-    const visitor = new VisitorCard(uiRoot, inboxApi, {
-      giftable: () => {
-        const out: { id: string; name: string; icon: IconName; count: number }[] = [];
-        for (const [id, n] of inventory.ownedItems()) {
-          const it = itemById(id);
-          if (n <= 0 || (it ? it.unlimited : !extraById(id))) continue;
-          out.push({ id, name: prizeName(id), icon: (it ? id : 'beach') as IconName, count: n });
+    if (social) {
+      const { InboxPanel, VisitorCard, ANNOUNCE, announce } = social;
+      const inboxApi = new InboxApi(acct);
+      const inboxPanel = new InboxPanel(uiRoot, hud.root, (n, l) => hud.button(n, l), inboxApi, {
+        signedIn: () => !!acct.user,
+        signIn: () => sheet.show(),
+        visit: (code) =>
+          void nv
+            .visit(code)
+            .then(() => cam.goTo(0, true))
+            .catch(() => showToast(uiRoot, 'No beach has that code')),
+        neighborsChanged: () => void nv.refresh(),
+        toast: (t) => showToast(uiRoot, t),
+      });
+      inboxUi = inboxPanel;
+      const visitor = new VisitorCard(uiRoot, inboxApi, {
+        giftable: () => {
+          const out: { id: string; name: string; icon: IconName; count: number }[] = [];
+          for (const [id, n] of inventory.ownedItems()) {
+            const it = itemById(id);
+            if (n <= 0 || (it ? it.unlimited : !extraById(id))) continue;
+            out.push({ id, name: prizeName(id), icon: (it ? id : 'beach') as IconName, count: n });
+          }
+          return out;
+        },
+        gifted: () => refreshOwned(),
+        toast: (t) => showToast(uiRoot, t),
+      });
+      visitorUi = visitor;
+      // signed out, "leave something" signs in first, then opens the card
+      let cardAfterSignIn: { code: string; owner: string; beachName?: string } | null = null;
+      // "leave something" on each beach's name tag (and so in the viewing-mode card)
+      nv.onLeave = (b) => {
+        if (!acct.user) {
+          cardAfterSignIn = { code: b.code, owner: b.name, beachName: b.beachName };
+          sheet.show();
+          return;
         }
-        return out;
-      },
-      gifted: () => refreshOwned(),
-      toast: (t) => showToast(uiRoot, t),
-    });
-    visitorUi = visitor;
-    // signed out, "leave something" signs in first, then opens the card
-    let cardAfterSignIn: { code: string; owner: string; beachName?: string } | null = null;
-    leaveHere = (code, owner, beachName) => {
-      if (!acct.user) {
-        cardAfterSignIn = { code, owner, beachName };
-        sheet.show();
-        return;
-      }
-      void visitor.open(code, owner, beachName);
-    };
-    // the beach's average in the shore bar (signed in; shown from a few ratings)
-    let ratingGen = 0;
-    ratingFor = (code) => {
-      if (!acct.user) return;
-      const gen = ++ratingGen;
-      void inboxApi
-        .card(code)
-        .then((c) => {
-          if (gen !== ratingGen || c.average === null) return;
-          sbRating.hidden = false;
-          sbRating.textContent = `${c.average}`;
-          sbRating.title = `${c.average} shells from ${c.count}`;
-        })
-        .catch(() => {});
-    };
-    // the poll carries the inbox: the badge, and a note for what matters
-    let announced = -1;
-    nv.onChange((n) => {
-      inboxPanel.setSummary(acct.user ? (n?.inbox ?? { unread: 0, latest: null }) : null);
-      const latest = n?.inbox?.latest;
-      if (!latest) return;
-      if (announced >= 0 && latest.id > announced && ANNOUNCE.has(latest.kind) && !inboxPanel.isOpen) {
-        showActionToast(uiRoot, announce(latest.kind, latest.name), 'open', () => void inboxPanel.open(), 10000);
-        if (latest.kind === 'visit' || latest.kind === 'gift' || latest.kind === 'invite_settled') refreshOwned();
-      }
-      announced = Math.max(announced, latest.id);
-    });
-    acct.onChange((u) => {
-      if (!u) {
-        announced = -1;
-        inboxPanel.setSummary(null);
-        return;
-      }
-      inboxPanel.setSummary({ unread: 0, latest: null });
-      if (cardAfterSignIn) {
-        const c = cardAfterSignIn;
-        cardAfterSignIn = null;
-        void visitor.open(c.code, c.owner, c.beachName);
-      }
-    });
+        void visitor.open(b.code, b.name, b.beachName);
+      };
+      // the poll carries the inbox: the badge, and a note for what matters
+      let announced = -1;
+      nv.onChange((n) => {
+        inboxPanel.setSummary(acct.user ? (n?.inbox ?? { unread: 0, latest: null }) : null);
+        const latest = n?.inbox?.latest;
+        if (!latest) return;
+        if (announced >= 0 && latest.id > announced && ANNOUNCE.has(latest.kind) && !inboxPanel.isOpen) {
+          showActionToast(uiRoot, announce(latest.kind, latest.name), 'open', () => void inboxPanel.open(), 10000);
+          if (latest.kind === 'visit' || latest.kind === 'gift' || latest.kind === 'invite_settled') refreshOwned();
+        }
+        announced = Math.max(announced, latest.id);
+      });
+      acct.onChange((u) => {
+        if (!u) {
+          announced = -1;
+          inboxPanel.setSummary(null);
+          return;
+        }
+        inboxPanel.setSummary({ unread: 0, latest: null });
+        if (cardAfterSignIn) {
+          const c = cardAfterSignIn;
+          cardAfterSignIn = null;
+          void visitor.open(c.code, c.owner, c.beachName);
+        }
+      });
+    }
 
     // a link opened signed out: open the beach read-only in 3D if it's
     // public on the shore (and let them walk the public shore); an off-shore

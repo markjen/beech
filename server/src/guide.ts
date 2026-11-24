@@ -215,9 +215,9 @@ ${
 <h2 id="visitors">Visitors and your inbox</h2>
 <p>A link to a beach opens it straight away, even before you sign in, as long as the beach is on the shore. To leave anything, sign in.</p>
 <h3>Leaving something</h3>
-<p>On someone else’s beach, the gift button in the bar at the top opens a card where you can leave any of these, all at once:</p>
+<p>On someone else’s beach, tap the “i” at the bottom, then <b>leave something</b> next to the beach’s name. A card opens where you can leave any of these, all at once:</p>
 <ul>
-  <li><b>A rating</b>, one to five shells. One rating per beach; you can change it once a day. A beach shows its average (in the top bar) once it has ${RATING_SHOWN_AT} ratings. Ratings are separate from stars: a star keeps a beach in your favorites and counts on the leaderboard.</li>
+  <li><b>A rating</b>, one to five shells. One rating per beach; you can change it once a day. The card shows a beach’s average once it has ${RATING_SHOWN_AT} ratings. Ratings are separate from stars: a star keeps a beach in your favorites and counts on the leaderboard.</li>
   <li><b>A note</b> of up to ${NOTE_MAX} characters, or one of the quick notes (${QUICK_NOTES.map((q) => `“${esc(q)}”`).join(', ')}). Only the beach’s owner can read it. Notes can’t contain links, usernames, phone numbers or rude words. For your first day only quick notes can be sent. At most ${NOTES_PER_HOUR} notes an hour, and ${NOTES_PER_BEACH_DAY} a day to the same beach.</li>
   <li><b>A gift</b> from your bag: anything you won or bought that you still have. Free things (rocks, driftwood, shells, sea glass, flags) aren’t listed, because everyone has as many as they like. It arrives at once.</li>
 </ul>

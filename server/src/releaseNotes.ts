@@ -21,7 +21,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     changes: [
       'The beach guide (the compass): a list of things to try, from digging to the claw machine. Each one you do leaves a small gift in your bag the first time.',
       'Invite friends from settings. A friend who joins through your link gets a parasol, and you get a gift once they’ve settled in, climbing to an extra beach at three friends.',
-      'Visitors can leave something: a rating in shells, a note, or a gift from their bag, from the gift button in the top bar while on someone’s beach.',
+      'Visitors can leave something: a rating in shells, a note, or a gift from their bag, from “leave something” next to the beach’s name (the “i” at the bottom).',
       'Your inbox (the envelope, top right) shows who visited and what they left, gifts, neighbor requests, stars and ratings. Say thanks, report a note or block someone from there.',
       'Someone who signs up from a link to your beach counts as your invite.',
       'Wild dolphins now occasionally cruise through the deeper water in front of your beach and leap across the waves.',

@@ -7,8 +7,8 @@
     "scenes.2000.meshes": 115,
     "scenes.2000.thingDrawCalls": 105,
     "scenes.2000.touchedPerFrame": 25,
-    "bundle.mainJsGzipKB": 340,
-    "bundle.totalJsGzipKB": 440
+    "bundle.mainJsGzipKB": 345,
+    "bundle.totalJsGzipKB": 450
   },
   "timings": {
     "scenes.2000.mainThingsMsPerFrame": 5,

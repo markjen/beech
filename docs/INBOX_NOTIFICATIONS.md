@@ -10,9 +10,11 @@ need keys and console setup from the owner. Owner decisions are at the end.
 - **No explanations in the game** (CLAUDE.md, a rule added after this
   spec): the card and the inbox show labels and status only, with a "how it
   works" link to the web guide (`/guide#visitors`, `server/src/guide.ts`).
-- The beach's **average shows in the shore bar** (from 3 ratings), not on
-  the name tags along the shore (a follow-up: it needs the rating in the
-  shore walk's JSON).
+- **"Leave something" is on each beach's name tag**, not the shore bar:
+  main's viewing mode hides the shore bar while you're visiting and shows
+  the name tags in the "i" card instead. The beach's **average shows in
+  the visitor card** (from 3 ratings); on the name tags is a follow-up (it
+  needs the rating in the shore walk's JSON).
 - The **blocked list** is at the bottom of the inbox, not in settings.
 - The admin can **hide** a reported note or **dismiss** the report.
   "Suspend the sender's notes" isn't built: block-by-admin is a follow-up.

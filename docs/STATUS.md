@@ -455,12 +455,15 @@ Phases V1–V4 are built; push (V5 web, V6 native) is not.
   `?invite=` link opens the inviter's beach the same way, and a sign-up
   from a plain `?visit=` link claims that beach's owner as the inviter.
   Signed out, `NeighborApi.get` no longer asks the server every 30 s.
-- **The visitor card** (the gift button in the shore bar): 1–5 shells, a
+- **The visitor card** ("leave something" on a beach's name tag, which
+  main's viewing mode shows in the "i" card while visiting): 1–5 shells, a
   note (280 characters, or quick notes; quick only for an account's first
   day) and a gift from the bag (owned, non-free things only). Signed out,
   the button opens sign-in, then the card. One inbox row per visit; ratings
-  alone fold into one row a day. The beach's average shows in the shore bar
-  from 3 ratings.
+  alone fold into one row a day. The card shows the beach's average from
+  3 ratings. The invite panel, inbox and visitor card load in their own
+  chunk after sign-in (bundle budgets raised 340→345 / 440→450, see
+  perf/budget.json).
 - **The inbox** (envelope, top right, signed in): unread badge from the
   30 s neighbors poll (`inbox` in `GET /api/neighbors`), a note over the
   beach for visits, gifts, neighbor requests and links, and friends settling

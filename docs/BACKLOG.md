@@ -122,7 +122,7 @@ _(nothing right now)_
   `@capacitor/push-notifications`). [INBOX_NOTIFICATIONS.md](INBOX_NOTIFICATIONS.md),
   section 3. Owner setup first.
 - [ ] **Ratings on name tags**: the shore walk's JSON carries each beach's
-  average, shown on the name tags along the shore (today: the shore bar).
+  average, shown on the name tags along the shore (today: in the visitor card).
 - [ ] **Admin: suspend a sender's notes** after repeated reports (today
   the admin can hide a note or dismiss the report).
 - [ ] **Flaky tests**: `server/test/digFinds.test.ts` "three finds a day"

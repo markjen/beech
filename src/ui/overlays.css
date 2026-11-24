@@ -597,8 +597,23 @@ body.ambient-idle {
   cursor: pointer;
 }
 
-.neighbor-tag .ask[hidden] {
+.neighbor-tag .ask[hidden],
+.neighbor-tag .leave[hidden] {
   display: none;
+}
+
+/* "leave something" (docs/INBOX_NOTIFICATIONS.md): like "ask", filled */
+.neighbor-tag .leave {
+  pointer-events: auto;
+  border: 1.5px solid currentColor;
+  border-radius: 999px;
+  padding: 2px 9px;
+  color: var(--ui-bg);
+  background: var(--ui-fg);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 .neighbor-tag .fav.on,
@@ -990,41 +1005,3 @@ body.ambient-idle .shore-info {
 }
 
 /* ---- visitors and the inbox (docs/INBOX_NOTIFICATIONS.md) ---- */
-.shore-bar .sb-leave {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  padding: 0;
-  border: none;
-  border-radius: 50%;
-  color: inherit;
-  background: none;
-  cursor: pointer;
-}
-
-.shore-bar .sb-leave svg {
-  width: 20px;
-  height: 20px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.7;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.shore-bar .sb-leave[hidden],
-.shore-bar .sb-rating[hidden] {
-  display: none;
-}
-
-.shore-bar .sb-rating {
-  font-size: 12px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  opacity: 0.8;
-}
-
-.shore-bar .sb-rating::before {
-  content: '🐚 ';
-}
