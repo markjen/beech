@@ -18,22 +18,25 @@ Unlimited, yours from the start. Place as many as you like.
 | Driftwood | `driftwood` | common | 0.5–3.2 | 6 | float | `src/render/objects.ts` |
 | Shell | `shell` | common | 0.05–0.5 | 8 | tumble | `src/render/objects.ts` |
 | Sea glass | `seaglass` | common | 0.05–0.16 | 4 | tumble | `src/render/objects.ts` |
+| Trash | `trash` | common | 0.08–0.25 | 3 | tumble | `src/render/objects.ts` |
+| Seaweed | `seaweed` | common | 0.15–0.6 | 3 | tumble | `src/render/objects.ts` |
+| Cowrie | `shell` | rare | 0.05–0.2 | 3 | tumble | `src/render/objects.ts` |
 | Flag | `flag` | common | 0.4 fixed | 4 | fixed | `src/render/objects.ts` |
 
 ## Wash-ashore finds
 
 Things the sea brings in on its own (`washIn` in `src/sim/objects.ts`,
-at most 6 wild things at a time). Pick one up and put it down and it's
-yours — the bag's "Found" section lists what you've kept from the sea,
-with counts, through the generic found mechanism (no item-specific
-work needed). Trash is kept rarer than shells so the beach doesn't fill
-with it; cowries are rare.
+at most 6 wild things at a time). Pick one up and put it down to keep it.
+The bag's "Found" section lists how many of each item you've kept from the sea.
 
 | Item | Kind | Rarity | Size (m) | Variants | Behaviour | Mesh |
 |---|---|---|---|---|---|---|
+| Driftwood | `driftwood` | common | 0.7–1.8 | 6 | float | `src/render/objects.ts` |
+| Shell | `shell` | common | 0.07–0.13 | 6 | tumble | `src/render/objects.ts` |
+| Sea glass | `seaglass` | common | 0.07–0.11 | 4 | tumble | `src/render/objects.ts` |
 | Trash | `trash` | common | 0.08–0.25 | 3 | tumble | `src/render/objects.ts` |
 | Seaweed | `seaweed` | common | 0.15–0.6 | 3 | tumble | `src/render/objects.ts` |
-| Cowrie | `shell` | rare | 0.05–0.2 | 3 | tumble | `src/render/objects.ts` (shell mesh, its own colours) |
+| Cowrie | `shell` | rare | 0.05–0.2 | 3 | tumble | `src/render/objects.ts` (shell mesh with spots) |
 
 Wash-in weights (of each thing the sea brings in): driftwood 35%,
 shell 22%, sea glass 15%, seaweed 12%, cowrie 8%, trash 8%.
@@ -91,8 +94,8 @@ filling the tiers the new items can't (see
 ## Shop
 
 Centrepieces, one-off purchases (`server/src/products.ts`, prices in
-`docs/PRICING.md`). All fixed size, one variant, behaviour `fixed`;
-mesh in `src/render/storeMeshes.ts`.
+`docs/PRICING.md`). All fixed size, behaviour `fixed`, and one variant
+except the deckchair, which has three. Meshes are in `src/render/storeMeshes.ts`.
 
 | Item | Kind | Rarity | Product | US price |
 |---|---|---|---|---|
@@ -137,15 +140,15 @@ sand, pauses the sea, and shoots the whole beach plus a close-up each):
 - Per item: `items/renders/<item-id>.png` (e.g.
   [pink-shell](items/renders/pink-shell.png)).
 
-Regenerate them whenever an item's look changes, and add renders for new
-items in the same PR that adds them (`node scripts/render-items.mjs
---only <new-id,...>`).
+Regenerate individual renders when an item's look changes with
+`node scripts/render-items.mjs --only <id,...>`. Run without `--only` to
+refresh the full beach and contact sheet after adding items.
 
 ## Adding an item
 
-The checklist, so the next one doesn't have to be rediscovered. The
-tests in `tests/items.test.ts` and `tests/specialItems.test.ts` fail if
-a step is missed.
+`tests/items.test.ts` checks the catalog, pools and products.
+`tests/specialItems.test.ts` checks distinct item finishes and matching
+shore-picture colours.
 
 1. **Catalog** — a row in `ITEMS` (`src/world/items.ts`): id, name,
    kind, rarity, source (`free` / `shop` / `pull`), `unlimited`,

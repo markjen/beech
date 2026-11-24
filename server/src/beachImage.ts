@@ -683,6 +683,8 @@ const C = (h: string) => hex(h);
 export const SHELLS = ['#f7ead8', '#efe4d2', '#e8d9c0', '#f5e1cf', '#e6cfa8', '#f2e3c2', '#dfc49a', '#efe0c0'].map(C);
 const GLASS = ['#9fd8c1', '#8cc7de', '#b7e0a8', '#d3eef0'].map(C);
 const FLAGS = ['#e2574c', '#f2b134', '#4a90d9', '#55b27a'].map(C);
+const TRASH = ['#e63329', '#1f8fff', '#22b573', '#ffcf00'].map(C);
+const WEED = ['#4a5d23', '#3d4a1f', '#5d6b2a', '#6b5e2f'].map(C);
 
 /** Prize items draw in their own colours (a copy of src/palette.ts ITEM_LOOKS). */
 export const ITEM_COLORS: Record<string, string[]> = {
@@ -734,9 +736,18 @@ function drawThings(img: Uint8Array, W: number, H: number, things: Thing[], look
         parts.push([rect(px, py, m(t.size / 2, 4), m(0.07 + t.size * 0.02, 1.3), a), C('#a08566')]);
         break;
       case 'shell':
-      case 'conch':
-        parts.push([circle(px, py, m(Math.max(0.1, t.size * 0.5), 3), 10), itemColor(t.item, v) ?? SHELLS[v % SHELLS.length]]);
+      case 'conch': {
+        const r = m(Math.max(0.1, t.size * 0.5), 3);
+        parts.push([circle(px, py, r, 10), itemColor(t.item, v) ?? SHELLS[v % SHELLS.length]]);
+        if (t.item === 'cowrie') {
+          const spot = itemColor(t.item, v + 1)!;
+          for (let k = 0; k < 5; k++) {
+            const angle = a + (k / 5) * Math.PI * 2;
+            parts.push([circle(px + Math.cos(angle) * r * 0.55, py + Math.sin(angle) * r * 0.55, r * 0.17, 6), spot]);
+          }
+        }
         break;
+      }
       case 'sanddollar':
         parts.push([circle(px, py, m(Math.max(0.08, t.size * 0.5), 2), 12), itemColor(t.item, v) ?? C('#eee6d4')]);
         break;
@@ -748,7 +759,6 @@ function drawThings(img: Uint8Array, W: number, H: number, things: Thing[], look
         break;
       case 'trash': {
         // a crumpled bright bottle: a short body with a neck, in vivid plastic colours
-        const TRASH = ['#e63329', '#1f8fff', '#22b573', '#ffcf00'].map(C);
         const c = TRASH[v % TRASH.length];
         parts.push([rect(px, py, m(0.13, 2.5), m(0.055, 1.2), a), c]);
         parts.push([rect(px + Math.cos(a) * m(0.15, 2.5), py - Math.sin(a) * m(0.15, 2.5), m(0.05, 1), m(0.04, 0.8), a), lighten(c, 0.3)]);
@@ -756,7 +766,6 @@ function drawThings(img: Uint8Array, W: number, H: number, things: Thing[], look
       }
       case 'seaweed': {
         // a dark green strand: three thin arms radiating from the middle
-        const WEED = ['#4a5d23', '#3d4a1f', '#5d6b2a', '#6b5e2f'].map(C);
         const c = WEED[v % WEED.length];
         for (let k = 0; k < 3; k++) {
           const aa = a + (k / 3) * Math.PI * 2;
