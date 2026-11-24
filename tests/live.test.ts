@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { diorama, LiveConditions, sceneDirection } from '../src/world/live';
+import { diorama, LiveConditions, sceneDirection, tideWaveScale } from '../src/world/live';
 import { BEACHES, beachById, defaultBeach, nearestBeach } from '../src/world/locations';
 
 describe('real-world beach', () => {
@@ -17,6 +17,22 @@ describe('real-world beach', () => {
     expect(diorama(-0.2)).toBeLessThan(0);
     expect(diorama(3)).toBeLessThan(0.3);
     expect(diorama(3) / 3).toBeLessThan(diorama(0.3) / 0.3);
+  });
+
+  it('scales default waves stronger at high tide and weaker at low tide', () => {
+    expect(tideWaveScale(0.9, 1.0, 1.0)).toBeGreaterThan(0.9);
+    expect(tideWaveScale(0.9, -1.0, 1.0)).toBeLessThan(0.9);
+    expect(tideWaveScale(0.9, 0, 1.0)).toBeCloseTo(0.9, 6);
+    // beaches with almost no tide stay at their baseline
+    expect(tideWaveScale(0.45, 0.05, 0.08)).toBe(0.45);
+    // live schedule follows actual high and low tide extremes
+    const brighton = beachById('brighton')!;
+    const live = new LiveConditions(brighton);
+    const s0 = live.compute(new Date('2026-11-22T12:00:00Z'));
+    const high = s0.next.find((e) => e.kind === 'high')!;
+    const low = s0.next.find((e) => e.kind === 'low')!;
+    expect(live.compute(high.time).waves).toBeGreaterThan(brighton.waves);
+    expect(live.compute(low.time).waves).toBeLessThan(brighton.waves);
   });
 
   it('every beach has tide data from a nearby gauge', () => {

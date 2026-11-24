@@ -5,9 +5,9 @@ const ICONS = {
   redo: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 7h4V3" /><path d="M18.4 7.2A8 8 0 1 0 19.7 14" /></svg>`,
   wave: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 14c2.5 0 2.5-3 5-3s2.5 3 5 3 2.5-3 5-3 2.5 3 5 3" /><path d="M2 19c2.5 0 2.5-3 5-3s2.5 3 5 3 2.5-3 5-3 2.5 3 5 3" opacity=".55"/></svg>`,
   calm: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 13h18" /><path d="M5 18h14" opacity=".55"/></svg>`,
-  dig: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 15c3 3.5 13 3.5 16 0" /><path d="M7 15.5c2 1.6 8 1.6 10 0" opacity=".55"/><path d="M12 3v8" /><path d="M9.5 8.5 12 11l2.5-2.5" /></svg>`,
-  build: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 18h18" /><path d="M6 18l3.2-7h5.6L18 18" /><path d="M9.2 11V7.5h5.6V11" /><path d="M9.2 7.5V5.5M12 7.5V5.5M14.8 7.5V5.5" /></svg>`,
-  smooth: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 16c3-1.5 6-1.5 9 0s6 1.5 9 0" /><path d="M7 11.5c1.6-.8 3.4-.8 5 0" opacity=".55"/></svg>`,
+  dig: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.5 5.5l3 3 1.8-1.8a2.1 2.1 0 0 0-3-3z" /><path d="M17 7l-6 6" /><path d="M9 11l4 4-3.5 3.5c-1.5 1.5-4 1.8-5 1.5-.3-1 0-3.5 1.5-5z" /></svg>`,
+  build: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 18.5h19" /><path d="M3 18.5C6.5 18.5 8 10 12.5 9c3.5-.7 5.5 5.5 8.5 9.5" /><path d="M12.5 9c-.8 3 .5 6.2 2.5 9.5" opacity=".55"/><path d="M15.2 12.2c1.4-1.6 3-1.4 5.3 2.3" opacity=".55"/></svg>`,
+  smooth: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11" /><path d="M5 14h14" /><path d="M5.5 14v5.5M9.8 14v5.5M14.2 14v5.5M18.5 14v5.5" /><path d="M12 11l-3 3M12 11l3 3" opacity=".55"/></svg>`,
   chair: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4l3 9h7" /><path d="M10 13l-2 7M17 13l2 7" /><path d="M5 13h14" opacity=".55"/></svg>`,
   diorama: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l8 4.5-8 4.5-8-4.5z" /><path d="M4 8.5V14l8 4.5 8-4.5V8.5" /><path d="M12 13v5.5" /></svg>`,
   bag: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 9h14l-1.2 10.5a1.5 1.5 0 0 1-1.5 1.3H7.7a1.5 1.5 0 0 1-1.5-1.3z" /><path d="M9 9V7a3 3 0 0 1 6 0v2" /></svg>`,
@@ -50,7 +50,7 @@ const ICONS = {
   hand: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 12.5V5.8a1.4 1.4 0 0 1 2.8 0V11" /><path d="M10.8 10.5V4.4a1.4 1.4 0 0 1 2.8 0v6.1" /><path d="M13.6 10.6V5.6a1.4 1.4 0 0 1 2.8 0v6.4" /><path d="M16.4 9.4a1.4 1.4 0 0 1 2.8 0V14a7 7 0 0 1-7 7h-.6a6 6 0 0 1-4.7-2.3L4 15.4a1.5 1.5 0 0 1 2.2-2l1.8 1.8" /></svg>`,
   dozer: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17.5h11" /><circle cx="5.5" cy="17.5" r="2" /><circle cx="11.5" cy="17.5" r="2" /><path d="M4 15.5v-4h6l2 4" /><path d="M6.5 11.5V8.5h3" /><path d="M14 15.5l4-1.5M18 10v8l3 1" /></svg>`,
   blade: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 14h18" /><path d="M12 14V6" /><path d="M9 9l3-3 3 3" /></svg>`,
-  vacuum: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="7" cy="17" r="3.5" /><path d="M10 14.5c3-.8 5-2.8 6.2-5.5" /><path d="M16.2 9L20 6.5 19 10z" /></svg>`,
+  vacuum: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 4h3l4 13" /><path d="M9 8.5l3.5-1 2.2 7.2-3.5 1z" /><circle cx="11.5" cy="18.5" r="2" /><path d="M13.5 19.5h6.5v-2l-3.5-1.5h-3.8" /></svg>`,
   deckchair: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 20l4.5-9.5L17 5" /><path d="M8.5 15h8l2.5 5" /><path d="M10.5 10.5c2 1 4 3 6 4.5" opacity=".55"/></svg>`,
   beach: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 16.5c3.5-3 15.5-3 19 0" /><path d="M2.5 19.5c3-1.4 6-1.4 9.5 0s6.5 1.4 9.5 0" opacity=".55"/><path d="M12 13V6" /><path d="M12 6c-2.8 0-5 1.5-6 3.5h12C17 7.5 14.8 6 12 6z" /></svg>`,
   'crab-treat': `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="14.5" r="3" /><circle cx="15.5" cy="15" r="2.5" /><circle cx="12.5" cy="10" r="2.5" /><path d="M6 19c3.5-1 8.5-1 12 0" opacity=".55" /></svg>`,
@@ -71,6 +71,8 @@ const ICONS = {
   share: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5v11" /><path d="M7.5 8 12 3.5 16.5 8" /><path d="M5 12.5v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" /></svg>`,
   trophy: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 4h9v5a4.5 4.5 0 0 1-9 0z" /><path d="M7.5 6H4.5c0 3 1.3 4.5 3.4 4.8M16.5 6h3c0 3-1.3 4.5-3.4 4.8" opacity=".55"/><path d="M12 13.5V17M8.5 20.5h7M9.5 20.5l.6-3.5h3.8l.6 3.5" /></svg>`,
   menu: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2" /><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1" /></svg>`,
+  eye: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z" /><circle cx="12" cy="12" r="2.8" /></svg>`,
+  eyeOff: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18" /><path d="M10.6 6.2A9.7 9.7 0 0 1 12 6c6 0 9.5 6 9.5 6a16.5 16.5 0 0 1-3.2 3.8M6.5 8.5A16 16 0 0 0 2.5 12s3.5 6 9.5 6a9.6 9.6 0 0 0 3.7-.7" /></svg>`,
 };
 
 export type IconName = keyof typeof ICONS;
@@ -236,7 +238,7 @@ export class Hud {
       b.classList.toggle('active', on);
       b.setAttribute('aria-checked', String(on));
       if (b.dataset.mode !== undefined) {
-        const mon = b.dataset.mode === mode;
+        const mon = b.dataset.mode === mode && b.closest<HTMLElement>('.hud-modes')?.dataset.forTool === id;
         b.classList.toggle('active', mon);
         b.setAttribute('aria-checked', String(mon));
       }

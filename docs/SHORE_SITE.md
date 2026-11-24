@@ -16,9 +16,11 @@ review from the shore.
 | `/at/bondi` (any place id) | Beaches built at one real beach. |
 | `/find?q=...` | Jump straight to a 6-letter beach code, or search public beaches by beach or owner name. |
 | `/random` | A random beach ("Walk the shore", "Surprise me"). |
-| `/K7F2QX` | One beach: its picture, owner, place, stars, neighbors, **Visit in beech →** (`GAME_URL/?visit=K7F2QX`), a **Share & Snapshot Studio** (`#share`: live Postcard, Square, Story, and Clean PNG snapshots with Web Share file attachment, clipboard image copy, PNG download, editable caption, and direct buttons for X, Bluesky, Threads, Reddit, WhatsApp, Facebook, and Text), and the stretch of shore either side (← → to walk). |
+| `/K7F2QX` | One beach: its picture (with a Flat / 3D / From the sea switch — see below), owner, place, stars, neighbors, **Visit in beech →** (`GAME_URL/?visit=K7F2QX`), a **Share & Snapshot Studio** (`#share`: live Postcard, Square, Story, and Clean PNG snapshots with Web Share file attachment, clipboard image copy, PNG download, editable caption, and direct buttons for X, Bluesky, Threads, Reddit, WhatsApp, Facebook, and Text), and the stretch of shore either side (← → to walk). |
 | `/img/K7F2QX.png` | The beach's 1200×630 card, used as `og:image` (also by the game's own `?visit=` links). |
 | `/img/K7F2QX/thumb.png` | 480×300 thumbnail. |
+| `/img/K7F2QX/iso.png` | The beach in 3D, 1200×630: an isometric view from the land, looking out toward the sea — the real heightfield, water below sea level, things standing on the sand — with one public beach either side (linked flush at 32 m, unlinked keeping the 1.6 m gap; no public neighbor on a side means no shore there at all). Only public beaches ever appear. |
+| `/img/K7F2QX/iso-ocean.png` | The same beach in 3D from the other direction, 1200×630: camera offshore and elevated, looking landward — sea in the foreground, beach rising away. The walk-left/right neighbours mirror: a neighbour on the picture's left here is on the right in the land view. Only public beaches ever appear. |
 | `/img/shore.png` | The site card (an untouched beach). |
 | `/submit` | Connect a Beech account, upload an item with a proposed price and frequency, and see your review status and creator credits. |
 | `/submit/spec` | Asset requirements, prompt example, JSON Schema and example file for creators and AI agents. |
@@ -79,6 +81,44 @@ with `node:zlib` (about 300 KB a card, 90 KB a thumbnail; a few tens of ms).
 The beach shape, day palette and place tints are copies of the app's;
 `tests/beachImage.test.ts` fails if they drift.
 
+**The 3D views** (`renderIsoBeach`/`beachIsoPng`, same file) draw the same
+saved beach as an isometric diorama from either side: the real heightfield
+(rest profile + saved sand deltas), water as a flat surface below sea
+level with swell lines and waterline lace, sand with a slow grain so even
+a dark sand reads as sand, and things as vertical billboards (tall kinds)
+or flat ground marks, so a lighthouse or parasol stands up instead of
+lying flat. Billboards are drawn at the ground scale, so a sandcastle
+reads at the same size relative to the beach whatever the frame fits.
+`iso.png` is the land-side view, camera on the land looking out toward
+the sea; `iso-ocean.png` is the reverse, camera offshore and elevated,
+looking landward — sea in the foreground, beach rising away — and is the
+fancy hero angle. From the sea the picture is mirrored alongshore so the
+walk-left neighbor (+x) is on the picture's left, matching the top-down
+card and the beach-page strip; from the land the neighbours appear on the
+opposite sides, because you are looking from the other direction. One
+public beach shows on each side — linked flush at 32 m, unlinked keeping
+the 1.6 m gap of untouched shore — and the frame fits the centre beach
+plus a 14 m slice of each neighbour, so the beach is the subject instead
+of a thin strip in a void; a side with no public neighbor shows no shore
+at all, with no faded empty-shore filler. A non-public neighbor never
+appears: the route only ever fetches neighbours through `shoreGraph.walk`
+with `keep=isPublic`, and the cache key carries the neighbours' save
+times. The beach page has three small buttons on the hero picture — Flat,
+3D, From the sea — that swap the image in place (no reload); they change
+no URL, og tag, or share link, and `og:image` stays the top-down card.
+First render is around 100 ms (1200×630, ~15k terrain quads) and cached
+like the card; samples in `docs/shore-iso-sample.png` (ocean) and
+`docs/shore-iso-land-sample.png` (land), re-rendered from a constructed
+player-like beach by `server/scripts/render-iso-samples.ts`.
+
+The top-down card is exactly the beach edge to edge: the 32 m beach is
+stretched alongshore to fill the 1200 px width (37.5 px/m alongshore,
+30.7 px/m cross-shore), so there are no pale bands of empty shore
+flanking it. Things keep their size and shape, but terrain features
+stretch 1.22× horizontally — a dug moat reads as an ellipse rather than a
+circle — so nothing at the back of the beach is cropped out of the card.
+Before/after in `docs/shore-card-before.png` and `docs/shore-card-after.png`.
+
 ## Cross links
 
 - **Game → shore:** a share button (bottom left, accounts builds) shares the
@@ -124,6 +164,8 @@ Nothing else changes: the server already answers to those hosts.
 - **Indexes at scale:** migration 17 adds partial indexes on
   `beach (updated_at DESC, id)` and `beach (location, updated_at DESC, id)`
   `WHERE on_shore AND sand IS NOT NULL`.
-- **Image drawing rate limits:** uncached PNG draws on `/img/:CODE.png` and
-  `/img/:CODE/thumb.png` are limited to 60 per minute per client IP
-  (`429` with `Retry-After: 60`); cache hits are not limited.
+- **Image drawing rate limits:** uncached PNG draws on `/img/:CODE.png`,
+  `/img/:CODE/thumb.png`, `/img/:CODE/iso.png`, and `/img/:CODE/iso-ocean.png` are limited to 60 per
+  minute per client IP (`429` with `Retry-After: 60`); cache hits are not
+  limited. The 3D view's cache key carries the neighbours' save times too, so
+  a neighbour rebuilding changes the picture.

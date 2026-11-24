@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BeachSim, CLEARING_MODES, isClearingMode, type BrushMode } from '../src/sim/beachSim';
+import { BeachSim, CLEARING_MODES, SAND_MODES, isClearingMode, isSandMode, type BrushMode } from '../src/sim/beachSim';
 import { GRID_TIERS, PROFILE } from '../src/config';
 
 const grid = GRID_TIERS.low;
@@ -66,10 +66,13 @@ function setRow(sim: BeachSim) {
 }
 
 describe('clearing modes', () => {
-  it('are exactly flatten, dozer, and vacuum', () => {
-    expect(CLEARING_MODES).toEqual(['flatten', 'dozer', 'vacuum']);
-    for (const m of ['flatten', 'dozer', 'vacuum']) expect(isClearingMode(m)).toBe(true);
-    for (const m of ['look', 'dig', 'pile', 'smooth', 'place']) expect(isClearingMode(m)).toBe(false);
+  it('are dozer (default), flatten, and vacuum; sand modes are dig (default), pile, and smooth', () => {
+    expect(CLEARING_MODES).toEqual(['dozer', 'flatten', 'vacuum']);
+    for (const m of ['dozer', 'flatten', 'vacuum']) expect(isClearingMode(m)).toBe(true);
+    for (const m of ['look', 'sand', 'dig', 'pile', 'smooth', 'place']) expect(isClearingMode(m)).toBe(false);
+    expect(SAND_MODES).toEqual(['dig', 'pile', 'smooth']);
+    for (const m of ['dig', 'pile', 'smooth']) expect(isSandMode(m)).toBe(true);
+    for (const m of ['look', 'clearing', 'dozer', 'flatten', 'vacuum', 'place']) expect(isSandMode(m)).toBe(false);
   });
 
   it('flatten flattens the sand and leaves items where they are', () => {

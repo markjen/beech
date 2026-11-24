@@ -68,6 +68,13 @@ export const WAVES = {
   bigSet: { amp: 0.55, period: 330, sharpness: 8 },
   /** amplitude multiplier while "calm waves" is on */
   calmFactor: 0.25,
+  /** wave strength swing along the tide schedule: weaker at low tide (1 - swing),
+   * stronger at high tide (1 + swing), skipped on near-tideless beaches */
+  tideWaveSwing: 0.28,
+  /** minimum tide excursion (m) before the tide modulates default wave strength */
+  tideWaveMinRange: 0.15,
+  /** upper clamp on waveScale passed into the sim */
+  maxScale: 1.4,
   /** tide amplitude (m) and period (s) */
   tideAmp: 0.18,
   tidePeriod: 600,
@@ -147,8 +154,8 @@ export const BRUSH = {
   rimFraction: 0.85,
   /** minimum world radius in grid cells; zoom-in is limited so the brush never goes below this */
   minCells: 2.0,
-  /** maximum world radius (m) at full zoom-out */
-  maxRadius: 1.4,
+  /** maximum world radius (m) on the sand; past full zoom-out the brush stops growing on the sand */
+  maxRadius: 2.2,
 };
 
 export const CAMERA = {
@@ -156,8 +163,10 @@ export const CAMERA = {
   elevation: 34,
   /** default rotation around the vertical axis (radians) */
   alpha: Math.PI * 0.75,
-  /** largest allowed ortho half-height (m) */
-  maxHalfHeight: 17,
+  /** largest allowed ortho half-height (m) on wide screens */
+  maxHalfHeight: 28,
+  /** multiplier on single-beach fit height for max zoom-out on narrow screens */
+  maxFitScale: 1.5,
   /** closest zoom: ortho half-height (m). Past the brush's own limit the brush
    * stops shrinking on the sand (it grows on screen instead). */
   minHalfHeight: 0.45,
@@ -165,7 +174,7 @@ export const CAMERA = {
   defaultHalfHeight: 11,
   /** rotation snap step after a twist (radians) */
   snapStep: Math.PI / 4,
-  radius: 80,
+  radius: 120,
 };
 
 /**

@@ -283,14 +283,72 @@ export interface ImageOptions {
   location?: string | null;
 }
 
+/** A saved beach's sand deltas with buried-rock cover lifted over the rocks (BCH3), as the pictures use them. Returns a copy; the input is untouched. */
+export function effectiveDelta(sand: SavedSand): Float32Array {
+  const nx = sand.nx;
+  const ny = sand.ny;
+  const dx = WORLD / nx;
+  const dy = WORLD / ny;
+  const effDelta = sand.delta.slice();
+  if (!sand.cover) return effDelta;
+  const cover = sand.cover;
+  const terrain = new Float32Array(nx * ny);
+  for (let j = 0; j < ny; j++) {
+    for (let i = 0; i < nx; i++) {
+      const k = j * nx + i;
+      terrain[k] = restHeight((i + 0.5) * dx, (j + 0.5) * dy) + effDelta[k] - cover[k];
+    }
+  }
+  const topMax = new Float32Array(nx * ny).fill(-Infinity);
+  for (const t of sand.things) {
+    if (t.kind !== 'rock') continue;
+    const rx = t.size * 0.88;
+    const frac = t.variant * 0.618 - Math.floor(t.variant * 0.618);
+    const ry = t.size * (0.7 + 0.3 * frac) * 0.88;
+    const Hr = t.size * 0.8 * 0.75;
+    const c = Math.cos(t.angle);
+    const s = Math.sin(t.angle);
+    const ci = Math.min(nx - 1, Math.max(0, Math.floor(t.x / dx)));
+    const cj = Math.min(ny - 1, Math.max(0, Math.floor(t.y / dy)));
+    const base = t.base ?? terrain[cj * nx + ci];
+    const r = Math.ceil(rx / Math.min(dx, dy)) + 1;
+    for (let j = Math.max(0, cj - r); j <= Math.min(ny - 1, cj + r); j++) {
+      for (let i = Math.max(0, ci - r); i <= Math.min(nx - 1, ci + r); i++) {
+        const px = (i + 0.5) * dx - t.x;
+        const py = (j + 0.5) * dy - t.y;
+        const u = (px * c + py * s) / rx;
+        const v = (-px * s + py * c) / ry;
+        const q = u * u + v * v;
+        if (q >= 1) continue;
+        const top = base + Hr * Math.sqrt(1 - q);
+        const k = j * nx + i;
+        if (top > topMax[k]) topMax[k] = top;
+      }
+    }
+  }
+  for (let j = 0; j < ny; j++) {
+    for (let i = 0; i < nx; i++) {
+      const k = j * nx + i;
+      if (cover[k] > 0 && topMax[k] > -Infinity) {
+        const lifted = topMax[k] + cover[k] - restHeight((i + 0.5) * dx, (j + 0.5) * dy);
+        if (lifted > effDelta[k]) effDelta[k] = lifted;
+      }
+    }
+  }
+  return effDelta;
+}
+
 /** cross-shore window drawn: from a little out to sea to the back of the beach */
 const VIEW_Y0 = 11.5;
 const VIEW_Y1 = WORLD;
 
 /**
  * Draw a saved beach (or the untouched beach, `sand` null) as RGB pixels.
- * The picture always shows the whole depth of the beach; wider pictures
- * show the shore carrying on either side, a little faded.
+ * The picture always shows the whole depth of the beach, edge to edge:
+ * the card is exactly the beach, sea at the top and sand to the sides.
+ * Alongshore the card spans the beach's 32 m exactly (no continuation
+ * shore flanking it); cross-shore it spans VIEW_Y0..VIEW_Y1, so the two
+ * scales differ a little (the card is wider than the beach is deep).
  */
 export function renderBeach(sand: SavedSand | null, opts: ImageOptions): Uint8Array {
   const { width: W, height: H } = opts;
@@ -305,53 +363,7 @@ export function renderBeach(sand: SavedSand | null, opts: ImageOptions): Uint8Ar
   const gy = ny + 2;
   const hgt = new Float32Array(gx * gy);
   const dug = new Float32Array(gx * gy);
-  const effDelta = sand ? sand.delta.slice() : null;
-  if (sand?.cover && effDelta) {
-    const cover = sand.cover;
-    const terrain = new Float32Array(nx * ny);
-    for (let j = 0; j < ny; j++) {
-      for (let i = 0; i < nx; i++) {
-        const k = j * nx + i;
-        terrain[k] = restHeight((i + 0.5) * dx, (j + 0.5) * dy) + effDelta[k] - cover[k];
-      }
-    }
-    const topMax = new Float32Array(nx * ny).fill(-Infinity);
-    for (const t of sand.things) {
-      if (t.kind !== 'rock') continue;
-      const rx = t.size * 0.88;
-      const frac = t.variant * 0.618 - Math.floor(t.variant * 0.618);
-      const ry = t.size * (0.7 + 0.3 * frac) * 0.88;
-      const Hr = t.size * 0.8 * 0.75;
-      const c = Math.cos(t.angle);
-      const s = Math.sin(t.angle);
-      const ci = Math.min(nx - 1, Math.max(0, Math.floor(t.x / dx)));
-      const cj = Math.min(ny - 1, Math.max(0, Math.floor(t.y / dy)));
-      const base = t.base ?? terrain[cj * nx + ci];
-      const r = Math.ceil(rx / Math.min(dx, dy)) + 1;
-      for (let j = Math.max(0, cj - r); j <= Math.min(ny - 1, cj + r); j++) {
-        for (let i = Math.max(0, ci - r); i <= Math.min(nx - 1, ci + r); i++) {
-          const px = (i + 0.5) * dx - t.x;
-          const py = (j + 0.5) * dy - t.y;
-          const u = (px * c + py * s) / rx;
-          const v = (-px * s + py * c) / ry;
-          const q = u * u + v * v;
-          if (q >= 1) continue;
-          const top = base + Hr * Math.sqrt(1 - q);
-          const k = j * nx + i;
-          if (top > topMax[k]) topMax[k] = top;
-        }
-      }
-    }
-    for (let j = 0; j < ny; j++) {
-      for (let i = 0; i < nx; i++) {
-        const k = j * nx + i;
-        if (cover[k] > 0 && topMax[k] > -Infinity) {
-          const lifted = topMax[k] + cover[k] - restHeight((i + 0.5) * dx, (j + 0.5) * dy);
-          if (lifted > effDelta[k]) effDelta[k] = lifted;
-        }
-      }
-    }
-  }
+  const effDelta = sand ? effectiveDelta(sand) : null;
   const gridWob = new Float64Array(gx);
   for (let i = -1; i <= nx; i++) gridWob[i + 1] = wobbleAt((i + 0.5) * dx);
   for (let j = -1; j <= ny; j++) {
@@ -387,9 +399,11 @@ export function renderBeach(sand: SavedSand | null, opts: ImageOptions): Uint8Ar
     const c = f[k + gx];
     return (a + (f[k + 1] - a) * tx) * (1 - ty) + (c + (f[k + gx + 1] - c) * tx) * ty;
   };
-  const scale = H / (VIEW_Y1 - VIEW_Y0); // px per metre
+  const scaleX = W / WORLD; // px per metre, alongshore: exactly the beach
+  const scaleY = H / (VIEW_Y1 - VIEW_Y0); // px per metre, cross-shore
   const cx = W / 2;
-  const invScale = 1 / scale;
+  const invScaleX = 1 / scaleX;
+  const invScaleY = 1 / scaleY;
   const out = new Uint8Array(W * H * 3);
   // light from the top left of the picture (offshore, +x)
   const L = norm3([-0.55, -0.55, 0.63]);
@@ -409,16 +423,9 @@ export function renderBeach(sand: SavedSand | null, opts: ImageOptions): Uint8Ar
   const sl = lighten(look.sandDry, 0.15);
   const sl0 = sl[0], sl1 = sl[1], sl2 = sl[2];
   const fm0 = look.foam[0], fm1 = look.foam[1], fm2 = look.foam[2];
-  const fg0 = look.fog[0], fg1 = look.fog[1], fg2 = look.fog[2];
 
   // Precompute per-column values and bilinear x indices (independent of py)
-  const colX = new Float64Array(W);
-  const colOff = new Uint8Array(W);
   const colWave = new Float64Array(W);
-  const colFog = new Float64Array(W);
-  const colWob = new Float64Array(W);
-  const colWobP = new Float64Array(W);
-  const colWobM = new Float64Array(W);
   const colI = new Int32Array(W);
   const colTx = new Float64Array(W);
   const colIp = new Int32Array(W);
@@ -426,37 +433,27 @@ export function renderBeach(sand: SavedSand | null, opts: ImageOptions): Uint8Ar
   const colIm = new Int32Array(W);
   const colTxm = new Float64Array(W);
   for (let px = 0; px < W; px++) {
-    // facing the sea, left is +x: the picture is mirrored alongshore
-    const x = WORLD / 2 - (px + 0.5 - cx) * invScale;
-    colX[px] = x;
-    const isOff = x < 0 || x > WORLD ? 1 : 0;
-    colOff[px] = isOff;
+    // facing the sea, left is +x: the picture is mirrored alongshore, and
+    // the card is exactly the beach edge to edge (no continuation shore)
+    const x = WORLD / 2 - (px + 0.5 - cx) * invScaleX;
     colWave[px] = Math.sin(x * 0.35) * 0.9 + noise1(x * 0.6, 3) * 2;
-    const edge = Math.max(-x, x - WORLD);
-    colFog[px] = edge > -0.6 ? 0.5 * smoothstep(-0.6, 5, edge) : 0;
-    if (isOff) {
-      colWob[px] = wobbleAt(x);
-      colWobP[px] = wobbleAt(x + e);
-      colWobM[px] = wobbleAt(x - e);
-    } else {
-      let fx = x * invDx + 0.5;
-      if (fx < 0) fx = 0; else if (fx > maxGx) fx = maxGx;
-      colI[px] = fx | 0;
-      colTx[px] = fx - (fx | 0);
-      let fxp = (x + e) * invDx + 0.5;
-      if (fxp < 0) fxp = 0; else if (fxp > maxGx) fxp = maxGx;
-      colIp[px] = fxp | 0;
-      colTxp[px] = fxp - (fxp | 0);
-      let fxm = (x - e) * invDx + 0.5;
-      if (fxm < 0) fxm = 0; else if (fxm > maxGx) fxm = maxGx;
-      colIm[px] = fxm | 0;
-      colTxm[px] = fxm - (fxm | 0);
-    }
+    let fx = x * invDx + 0.5;
+    if (fx < 0) fx = 0; else if (fx > maxGx) fx = maxGx;
+    colI[px] = fx | 0;
+    colTx[px] = fx - (fx | 0);
+    let fxp = (x + e) * invDx + 0.5;
+    if (fxp < 0) fxp = 0; else if (fxp > maxGx) fxp = maxGx;
+    colIp[px] = fxp | 0;
+    colTxp[px] = fxp - (fxp | 0);
+    let fxm = (x - e) * invDx + 0.5;
+    if (fxm < 0) fxm = 0; else if (fxm > maxGx) fxm = maxGx;
+    colIm[px] = fxm | 0;
+    colTxm[px] = fxm - (fxm | 0);
   }
 
   let kOut = 0;
   for (let py = 0; py < H; py++) {
-    const y = VIEW_Y0 + (py + 0.5) * invScale;
+    const y = VIEW_Y0 + (py + 0.5) * invScaleY;
     const waveY = (y - PROFILE.shoreline) * 2.2;
     let fy = y * invDy + 0.5;
     if (fy < 0) fy = 0; else if (fy > maxGy) fy = maxGy;
@@ -480,11 +477,8 @@ export function renderBeach(sand: SavedSand | null, opts: ImageOptions): Uint8Ar
     const rm = jm * gx;
 
     for (let px = 0; px < W; px++) {
-      const off = colOff[px];
       let h: number;
-      if (off) {
-        h = restHeightW(colX[px], y, colWob[px]);
-      } else {
+      {
         const k = r0 + colI[px];
         const tx = colTx[px];
         const a = hgt[k];
@@ -525,12 +519,7 @@ export function renderBeach(sand: SavedSand | null, opts: ImageOptions): Uint8Ar
       } else {
         let hx: number;
         let hy: number;
-        if (off) {
-          const x = colX[px];
-          const w = colWob[px];
-          hx = (restHeightW(x + e, y, colWobP[px]) - restHeightW(x - e, y, colWobM[px])) * inv2e;
-          hy = (restHeightW(x, y + e, w) - restHeightW(x, y - e, w)) * inv2e;
-        } else {
+        {
           const kp = r0 + colIp[px];
           const txp = colTxp[px];
           const hp = (hgt[kp] + (hgt[kp + 1] - hgt[kp]) * txp) * ity0 + (hgt[kp + gx] + (hgt[kp + gx + 1] - hgt[kp + gx]) * txp) * ty0;
@@ -557,7 +546,7 @@ export function renderBeach(sand: SavedSand | null, opts: ImageOptions): Uint8Ar
         r = sw0 + (sd0 - sw0) * ts;
         g = sw1 + (sd1 - sw1) * ts;
         b = sw2 + (sd2 - sw2) * ts;
-        if (!off) {
+        {
           const k = r0 + colI[px];
           const tx = colTx[px];
           const d = (dug[k] + (dug[k + 1] - dug[k]) * tx) * ity0 + (dug[k + gx] + (dug[k + gx + 1] - dug[k + gx]) * tx) * ty0;
@@ -579,13 +568,6 @@ export function renderBeach(sand: SavedSand | null, opts: ImageOptions): Uint8Ar
         g *= shade;
         b *= shade;
       }
-      // the shore carries on past the beach, faded into the haze
-      const fogT = colFog[px];
-      if (fogT > 0) {
-        r += (fg0 - r) * fogT;
-        g += (fg1 - g) * fogT;
-        b += (fg2 - b) * fogT;
-      }
       out[kOut++] = r <= 0 ? 0 : r >= 1 ? 255 : Math.round(r * 255);
       out[kOut++] = g <= 0 ? 0 : g >= 1 ? 255 : Math.round(g * 255);
       out[kOut++] = b <= 0 ? 0 : b >= 1 ? 255 : Math.round(b * 255);
@@ -595,7 +577,7 @@ export function renderBeach(sand: SavedSand | null, opts: ImageOptions): Uint8Ar
     const visible = sand.cover
       ? sand.things.filter((t) => !(t.kind === 'rock' && t.base !== undefined && sample(hgt, t.x, t.y) > t.base + t.size * 0.8))
       : sand.things;
-    drawThings(out, W, H, visible, look, (x, y) => [cx - (x - WORLD / 2) * scale, (y - VIEW_Y0) * scale], scale);
+    drawThings(out, W, H, visible, look, (x, y) => [cx - (x - WORLD / 2) * scaleX, (y - VIEW_Y0) * scaleY], scaleY);
   }
   return out;
 }
@@ -938,6 +920,575 @@ function drawThings(img: Uint8Array, W: number, H: number, things: Thing[], look
     for (const [pts] of parts.slice(0, 1)) fillPoly(img, W, H, pts.map(([x, y]) => [x + sh, y + sh] as Pt), shadow, 0.28);
     for (const [pts, c] of parts) fillPoly(img, W, H, pts, c);
   }
+}
+
+// ---------------------------------------------------------------- the 3D view (beechshore share snapshot)
+//
+// An isometric diorama of a beach and the shore either side of it: the
+// camera offshore, looking landward, the sea in the foreground and the beach
+// rising away — the same angled look as the game. One beach either side,
+// from the walk; a linked neighbour sits flush, an unlinked one keeps the
+// 1.6 m diorama gap, and where there is no public neighbour the frame ends
+// at the centre beach — no faded filler shore on any side. The frame shows
+// the centre beach plus a slice (14 m) of each neighbour, so the beach is
+// the subject instead of a thin strip in a void.
+//
+// Alongshore the picture is mirrored against a literal offshore camera so
+// left and right match the top-down card (facing the sea, left is +x, so
+// the walk-left neighbour is on the picture's left).
+
+export interface IsoPanel {
+  /** null: untouched shore in this slot */
+  sand: SavedSand | null;
+  location?: string | null;
+  /** a real neighbour of the beach before it along the shore */
+  linked: boolean;
+}
+
+/** which side the isometric camera sits on */
+export type IsoDir = 'land' | 'ocean';
+
+const ISO_TILT = (20 * Math.PI) / 180;
+const ISO_A = Math.cos(ISO_TILT); // screen x per metre of (x + y)
+const ISO_B = Math.sin(ISO_TILT); // screen y per metre of (x - y)
+const ISO_Z = 2.0; // vertical exaggeration, × scale
+const ISO_CELL = 0.5; // m between height samples (0.4 looked the same; 0.5 is ~35% fewer quads)
+const ISO_GAP = 1.6; // m of untouched shore past an unlinked neighbour
+
+interface IsoCam {
+  s: number;
+  A: number;
+  B: number;
+  C: number;
+  ox: number;
+  oy: number;
+  /** +1: camera offshore looking landward (sea in front); -1: camera inland looking seaward */
+  sgn: 1 | -1;
+}
+/** metres of each neighbour shown either side of the centre beach */
+const ISO_SHOW = 14;
+/** Fit the frame to the centre beach plus a slice of each neighbour (fx0..fx1 are the strip's ends, 0/32 with no neighbours). The beach is the subject — the frame does not fit the whole 96 m strip, which reads as a thin diagonal in a void. A side with no neighbour ends at the centre beach, with no filler shore past it. */
+const isoCam = (W: number, H: number, fx0: number, fx1: number, dir: IsoDir): IsoCam => {
+  const vx0 = Math.max(fx0, -ISO_SHOW);
+  const vx1 = Math.min(fx1, WORLD + ISO_SHOW);
+  const span = vx1 - vx0 + WORLD;
+  const mx = 20;
+  const myTop = 80;
+  const myBot = 16;
+  const topH = 1.6; // metres of terrain + billboard allowance above sea level
+  const s = Math.min((W - 2 * mx) / (span * ISO_A), (H - myTop - myBot) / (span * ISO_B + topH * ISO_Z));
+  const A = ISO_A * s;
+  const B = ISO_B * s;
+  const C = ISO_Z * s;
+  const sgn = dir === 'ocean' ? 1 : -1;
+  // centre the ground diamond on the view window; the land view mirrors it alongshore, so a
+  // neighbour that is on the left from the sea is on the right from the land
+  const ox = (W + sgn * (vx0 + vx1 + WORLD) * A) / 2;
+  const oy = myTop + topH * C + (sgn > 0 ? WORLD - vx0 : vx1) * B;
+  return { s, A, B, C, ox, oy, sgn };
+};
+/** world (x alongshore, y offshore→land, h height) → screen, y down */
+const isoPt = (cam: IsoCam, x: number, y: number, h: number): Pt => [
+  cam.ox - cam.sgn * (x + y) * cam.A,
+  cam.oy + cam.sgn * (x - y) * cam.B - h * cam.C,
+];
+
+/** screen position of a world point in the iso view (for tests); fx0/fx1 are the strip's ends, 0/32 with no neighbours */
+export function isoScreenPoint(W: number, H: number, dir: IsoDir, x: number, y: number, h: number, fx0 = 0, fx1 = WORLD): Pt {
+  return isoPt(isoCam(W, H, fx0, fx1, dir), x, y, h);
+}
+
+interface Panel {
+  delta: Float32Array | null;
+  nx: number;
+  ny: number;
+  dx: number;
+  dy: number;
+  look: Look;
+  start: number;
+  things: Thing[];
+}
+
+const deltaAt = (delta: Float32Array, nx: number, ny: number, dx: number, dy: number, x: number, y: number): number => {
+  let fx = x / dx - 0.5;
+  if (fx < 0) fx = 0;
+  else if (fx > nx - 1.001) fx = nx - 1.001;
+  let fy = y / dy - 0.5;
+  if (fy < 0) fy = 0;
+  else if (fy > ny - 1.001) fy = ny - 1.001;
+  const i = fx | 0;
+  const j = fy | 0;
+  const tx = fx - i;
+  const ty = fy - j;
+  const k = j * nx + i;
+  return (delta[k] + (delta[k + 1] - delta[k]) * tx) * (1 - ty) + (delta[k + nx] + (delta[k + nx + 1] - delta[k + nx]) * tx) * ty;
+};
+
+const toPanel = (sand: SavedSand | null, location: string | null | undefined, start: number): Panel => {
+  const look = lookFor(location);
+  if (!sand) return { delta: null, nx: 0, ny: 0, dx: 1, dy: 1, look, start, things: [] };
+  const delta = effectiveDelta(sand);
+  const dx = WORLD / sand.nx;
+  const dy = WORLD / sand.ny;
+  // buried rocks stay hidden, as in the top-down picture
+  const things = sand.cover
+    ? sand.things.filter((t) => {
+        if (t.kind !== 'rock' || t.base === undefined) return true;
+        const h = restHeight(t.x, t.y) + deltaAt(delta, sand.nx, sand.ny, dx, dy, t.x, t.y);
+        return h <= t.base + t.size * 0.8;
+      })
+    : sand.things;
+  return { delta, nx: sand.nx, ny: sand.ny, dx, dy, look, start, things };
+};
+
+/** fill a triangle, opaque, no anti-aliasing (the terrain is small quads) */
+function fillTri(img: Uint8Array, W: number, H: number, ax: number, ay: number, bx: number, by: number, cx: number, cy: number, r: number, g: number, b: number) {
+  const minX = Math.max(0, Math.floor(Math.min(ax, bx, cx)));
+  const maxX = Math.min(W - 1, Math.ceil(Math.max(ax, bx, cx)));
+  const minY = Math.max(0, Math.floor(Math.min(ay, by, cy)));
+  const maxY = Math.min(H - 1, Math.ceil(Math.max(ay, by, cy)));
+  if (minX > maxX || minY > maxY) return;
+  const d = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+  if (d === 0) return;
+  for (let py = minY; py <= maxY; py++) {
+    const y = py + 0.5;
+    for (let px = minX; px <= maxX; px++) {
+      const x = px + 0.5;
+      const w0 = (bx - x) * (cy - y) - (by - y) * (cx - x);
+      const w1 = (cx - x) * (ay - y) - (cy - y) * (ax - x);
+      const w2 = (ax - x) * (by - y) - (ay - y) * (bx - x);
+      if ((w0 >= 0 && w1 >= 0 && w2 >= 0) || (w0 <= 0 && w1 <= 0 && w2 <= 0)) {
+        const k = (py * W + px) * 3;
+        img[k] = r;
+        img[k + 1] = g;
+        img[k + 2] = b;
+      }
+    }
+  }
+}
+
+/** fill a convex quad (two triangles), grown a touch so neighbours share no hairline */
+function fillQuad(img: Uint8Array, W: number, H: number, pts: Pt[], r: number, g: number, b: number) {
+  let cx = 0;
+  let cy = 0;
+  for (const [x, y] of pts) {
+    cx += x;
+    cy += y;
+  }
+  cx /= pts.length;
+  cy /= pts.length;
+  const q = pts.map(([x, y]) => {
+    const dx = x - cx;
+    const dy = y - cy;
+    const l = Math.hypot(dx, dy) || 1;
+    return [x + (dx / l) * 0.5, y + (dy / l) * 0.5] as Pt;
+  });
+  fillTri(img, W, H, q[0][0], q[0][1], q[1][0], q[1][1], q[2][0], q[2][1], r, g, b);
+  fillTri(img, W, H, q[0][0], q[0][1], q[2][0], q[2][1], q[3][0], q[3][1], r, g, b);
+}
+
+/**
+ * Draw a beach and the public beaches either side of it as an isometric
+ * diorama, 1200×630 or any size. `ocean` is the view from the sea: the sea
+ * in the foreground, the beach rising away, the walk-left neighbour on the
+ * picture's left. `land` is the view from the land side, looking out toward
+ * the sea: the beach in the foreground, the sea far away, and the neighbours
+ * mirrored — the walk-left neighbour is on the picture's right. The frame
+ * fits the centre beach plus a slice of each neighbour; a side with no
+ * public neighbour ends at the centre beach, with no filler shore past it.
+ */
+export function renderIsoBeach(
+  center: IsoPanel,
+  left: IsoPanel | null,
+  right: IsoPanel | null,
+  opts: ImageOptions,
+  dir: IsoDir,
+): Uint8Array {
+  const { width: W, height: H } = opts;
+  const panels: Panel[] = [toPanel(center.sand, center.location, 0)];
+  // facing the sea, left is world +x (the game, and the top-down card)
+  if (left) panels.push(toPanel(left.sand, left.location, left.linked ? WORLD : WORLD + ISO_GAP));
+  if (right) panels.push(toPanel(right.sand, right.location, right.linked ? -WORLD : -(WORLD + ISO_GAP)));
+  const fx0 = Math.min(...panels.map((p) => p.start));
+  const fx1 = Math.max(...panels.map((p) => p.start + WORLD));
+  const cam = isoCam(W, H, fx0, fx1, dir);
+  const out = new Uint8Array(W * H * 3);
+  // billboards are drawn at the ground scale, so things read at the same
+  // size relative to the beach whatever the frame fits (13 px/m at least,
+  // so they still read on a small picture)
+  const bs = Math.min(24, Math.max(13, cam.s));
+
+  // sky: pale blue up top, warm haze at the horizon
+  const skyTop = hex('#cfe6ee');
+  const skyBot = hex('#f7ead9');
+  for (let py = 0; py < H; py++) {
+    const t = py / Math.max(1, H - 1);
+    const r = Math.round((skyTop[0] + (skyBot[0] - skyTop[0]) * t) * 255);
+    const g = Math.round((skyTop[1] + (skyBot[1] - skyTop[1]) * t) * 255);
+    const b = Math.round((skyTop[2] + (skyBot[2] - skyTop[2]) * t) * 255);
+    let k = py * W * 3;
+    for (let px = 0; px < W; px++) {
+      out[k++] = r;
+      out[k++] = g;
+      out[k++] = b;
+    }
+  }
+
+  const sampleAt = (x: number, y: number): { h: number; d: number; look: Look } => {
+    for (const p of panels) {
+      if (x >= p.start && x < p.start + WORLD) {
+        const lx = x - p.start;
+        const d = p.delta ? deltaAt(p.delta, p.nx, p.ny, p.dx, p.dy, lx, y) : 0;
+        return { h: restHeight(lx, y) + d, d, look: p.look };
+      }
+    }
+    return { h: restHeight(x, y), d: 0, look: panels[0].look };
+  };
+
+  // heights on the grid, over exactly the beaches present
+  const cols = Math.round((fx1 - fx0) / ISO_CELL);
+  const rows = Math.round(WORLD / ISO_CELL);
+  const hn = new Float32Array((cols + 1) * (rows + 1));
+  for (let j = 0; j <= rows; j++) {
+    const y = j * ISO_CELL;
+    const row = j * (cols + 1);
+    for (let i = 0; i <= cols; i++) hn[row + i] = sampleAt(fx0 + i * ISO_CELL, y).h;
+  }
+  // light from the upper left of the picture
+  const L = norm3([0.5, 0.35, 0.79]);
+  const shadeScale = 0.3 / (1 - L[2] + 1e-6);
+
+  // things, bucketed by cell so they paint in the same back-to-front order
+  interface Placed {
+    t: Thing;
+    bx: number;
+    by: number;
+    look: Look;
+  }
+  const byCell: Placed[][] = Array.from({ length: cols * rows }, () => []);
+  for (const p of panels) {
+    for (const t of p.things) {
+      const gx = p.start + t.x;
+      const ground = sampleAt(gx, t.y).h;
+      const [bx, by] = isoPt(cam, gx, t.y, ground);
+      const i = Math.min(cols - 1, Math.max(0, Math.floor((gx - fx0) / ISO_CELL)));
+      const j = Math.min(rows - 1, Math.max(0, Math.floor(t.y / ISO_CELL)));
+      byCell[j * cols + i].push({ t, bx, by, look: p.look });
+    }
+  }
+
+  // painter's order: far rows first, then across the row. From the sea the
+  // far side is the land (high y) and the row runs low x to high x; from
+  // the land it is the other way round (low y, high x to low x).
+  const jFirst = dir === 'ocean' ? rows - 1 : 0;
+  const jLast = dir === 'ocean' ? -1 : rows;
+  const jStep = dir === 'ocean' ? -1 : 1;
+  const iFirst = dir === 'ocean' ? 0 : cols - 1;
+  const iLast = dir === 'ocean' ? cols : -1;
+  const iStep = dir === 'ocean' ? 1 : -1;
+  for (let j = jFirst; j !== jLast; j += jStep) {
+    const y0 = j * ISO_CELL;
+    const y1 = y0 + ISO_CELL;
+    for (let i = iFirst; i !== iLast; i += iStep) {
+      const x0 = fx0 + i * ISO_CELL;
+      const x1 = x0 + ISO_CELL;
+      const k00 = j * (cols + 1) + i;
+      const h00 = hn[k00];
+      const h10 = hn[k00 + 1];
+      const h11 = hn[k00 + cols + 2];
+      const h01 = hn[k00 + cols + 1];
+      const hc = (h00 + h10 + h11 + h01) / 4;
+      const xc = x0 + ISO_CELL / 2;
+      const yc = y0 + ISO_CELL / 2;
+      const mid = sampleAt(xc, yc);
+      const look = mid.look;
+      let r: number;
+      let g: number;
+      let b: number;
+      let pts: Pt[];
+      if (hc < -0.02) {
+        // open water: a flat surface at sea level, coloured by depth
+        const depth = -hc;
+        const t1 = smoothstep(0.02, 1.1, depth);
+        r = look.waterShallow[0] + (look.waterDeep[0] - look.waterShallow[0]) * t1;
+        g = look.waterShallow[1] + (look.waterDeep[1] - look.waterShallow[1]) * t1;
+        b = look.waterShallow[2] + (look.waterDeep[2] - look.waterShallow[2]) * t1;
+        const t2 = smoothstep(0, 0.12, depth) * 0.75 + 0.25;
+        r = look.sandWet[0] + (r - look.sandWet[0]) * t2;
+        g = look.sandWet[1] + (g - look.sandWet[1]) * t2;
+        b = look.sandWet[2] + (b - look.sandWet[2]) * t2;
+        if (depth > 0.15) {
+          const wave = Math.sin((yc - PROFILE.shoreline) * 2.2 + Math.sin(xc * 0.35) * 0.9 + noise1(xc * 0.6, 3) * 2);
+          if (wave > 0.75) {
+            // stronger than the flat card's swell lines: in the diorama the
+            // sea is compressed, so the card's 0.16 blend barely shows
+            const t3 = (wave - 0.75) * 1.4 * smoothstep(0.15, 0.6, depth);
+            r += (look.foam[0] - r) * t3;
+            g += (look.foam[1] - g) * t3;
+            b += (look.foam[2] - b) * t3;
+          }
+        }
+        if (depth < 0.035) {
+          const t4 = (1 - smoothstep(0, 0.035, depth)) * 0.75;
+          r += (look.foam[0] - r) * t4;
+          g += (look.foam[1] - g) * t4;
+          b += (look.foam[2] - b) * t4;
+        }
+        pts = [isoPt(cam, x0, y0, 0), isoPt(cam, x1, y0, 0), isoPt(cam, x1, y1, 0), isoPt(cam, x0, y1, 0)];
+      } else {
+        // sand: wet near the water, dry up the beach, dug and piled tinted
+        const ts = smoothstep(0.04, 0.32, hc);
+        r = look.sandWet[0] + (look.sandDry[0] - look.sandWet[0]) * ts;
+        g = look.sandWet[1] + (look.sandDry[1] - look.sandWet[1]) * ts;
+        b = look.sandWet[2] + (look.sandDry[2] - look.sandWet[2]) * ts;
+        const d = mid.d;
+        if (d < -0.04) {
+          const td = smoothstep(0.04, 0.3, -d) * 0.6;
+          r += (look.sandDeep[0] - r) * td;
+          g += (look.sandDeep[1] - g) * td;
+          b += (look.sandDeep[2] - b) * td;
+        } else if (d > 0.06) {
+          const sl = lighten(look.sandDry, 0.15);
+          const tl = smoothstep(0.06, 0.4, d) * 0.4;
+          r += (sl[0] - r) * tl;
+          g += (sl[1] - g) * tl;
+          b += (sl[2] - b) * tl;
+        }
+        // shade from the slope, like the top-down picture
+        const gx = ((h10 + h11) / 2 - (h00 + h01) / 2) / ISO_CELL;
+        const gy = ((h01 + h11) / 2 - (h00 + h10) / 2) / ISO_CELL;
+        const n = norm3([-gx * 2.2, -gy * 2.2, 1]);
+        const lambert = Math.max(0, n[0] * L[0] + n[1] * L[1] + n[2] * L[2]);
+        let shade = 1 + (lambert - L[2]) * shadeScale;
+        if (shade < 0.62) shade = 0.62;
+        r *= shade;
+        g *= shade;
+        b *= shade;
+        if (hc < 0.08) {
+          const t4 = (1 - smoothstep(0, 0.08, hc)) * 0.6;
+          r += (look.foam[0] - r) * t4;
+          g += (look.foam[1] - g) * t4;
+          b += (look.foam[2] - b) * t4;
+        }
+        // sand grain: a slow, smooth mottle, so sand reads as sand even
+        // where the location tint is dark (Piha's black sand rendered as
+        // one flat slab before this — the rest profile's bands were the
+        // only variation). Smooth on purpose: a per-cell speckle read as
+        // a checkerboard of square blocks at this zoom. Additive, so it
+        // shows on dark sand too.
+        const grain = ((noise1(xc * 1.8, 5) - 0.5) + (noise1(yc * 1.8, 6) - 0.5)) * 0.1;
+        r += grain;
+        g += grain;
+        b += grain;
+        pts = [isoPt(cam, x0, y0, h00), isoPt(cam, x1, y0, h10), isoPt(cam, x1, y1, h11), isoPt(cam, x0, y1, h01)];
+      }
+      fillQuad(out, W, H, pts, to8(r), to8(g), to8(b));
+      for (const pl of byCell[j * cols + i]) drawIsoThing(out, W, H, pl, bs);
+    }
+  }
+  return out;
+}
+
+/** px per metre for billboards — the ground scale, passed in so things stay in proportion to the beach whatever the frame fits (13 px/m at least, so they still read on a small picture) */
+const ISO_SHADOW: RGB = [0.18, 0.14, 0.1];
+const ellipsePts = (cx: number, cy: number, rx: number, ry: number, n = 16): Pt[] =>
+  Array.from({ length: n }, (_, i) => [cx + Math.cos((i / n) * Math.PI * 2) * rx, cy + Math.sin((i / n) * Math.PI * 2) * ry] as Pt);
+
+/**
+ * One thing on the beach, drawn as a vertical billboard standing on the
+ * sand (tall things) or a small flat mark on the ground (shells, rocks and
+ * the rest). Same colours as the top-down picture.
+ */
+function drawIsoThing(img: Uint8Array, W: number, H: number, pl: { t: Thing; bx: number; by: number; look: Look }, bs: number) {
+  const { t, bx, by, look } = pl;
+  const v = Math.abs(Math.floor(t.variant));
+  const vendingVariant = Math.max(0, v - 1);
+  const color = itemColor(t.item, v);
+  const shadow = (w: number) => fillPoly(img, W, H, ellipsePts(bx + 2, by + 1, w * 0.55, w * 0.26), ISO_SHADOW, 0.25);
+  // [height factor, width factor, minimum height px] for tall things
+  const tall: Record<string, [number, number, number]> = {
+    lighthouse: [2.2, 0.5, 20],
+    parasol: [1.0, 1.8, 12],
+    palmtree: [2.4, 1.5, 20],
+    sandcastle: [1.1, 1.3, 12],
+    beachhut: [1.4, 1.4, 14],
+    lifeguardtower: [2.0, 1.2, 18],
+    deckchair: [0.8, 1.3, 9],
+    flag: [2.0, 0.5, 14],
+    tikitorch: [1.8, 0.35, 12],
+    bonfire: [0.9, 1.1, 10],
+    hammock: [1.0, 2.0, 10],
+  };
+  const spec = tall[t.kind];
+  if (!spec) {
+    // flat on the ground: a small mark in the thing's own colour
+    let c: RGB;
+    switch (t.kind) {
+      case 'rock':
+        c = color ?? lerp3(look.rock, [0.55, 0.5, 0.45], hash2(v, 1, 9) * 0.5);
+        break;
+      case 'shell':
+      case 'conch':
+        c = color ?? SHELLS[v % SHELLS.length];
+        break;
+      case 'sanddollar':
+        c = color ?? C('#eee6d4');
+        break;
+      case 'nautilus':
+        c = color ?? C('#f1e2cc');
+        break;
+      case 'seaglass':
+        c = color ?? GLASS[v % GLASS.length];
+        break;
+      case 'starfish':
+        c = color ?? C('#f08a4b');
+        break;
+      case 'trash':
+        c = TRASH[v % TRASH.length];
+        break;
+      case 'seaweed':
+        c = WEED[v % WEED.length];
+        break;
+      case 'coral':
+        c = CORAL[v % CORAL.length];
+        break;
+      case 'coconut':
+        c = NUT[v % NUT.length];
+        break;
+      case 'bottle':
+        c = color ?? C('#5fa67a');
+        break;
+      case 'driftwood':
+        c = C('#a08566');
+        break;
+      case 'towel':
+        c = C('#2f8f7a');
+        break;
+      case 'sandals':
+        c = SANDAL_SOLES[vendingVariant % SANDAL_SOLES.length];
+        break;
+      case 'bucket':
+        c = BUCKET_RIMS[vendingVariant % BUCKET_RIMS.length];
+        break;
+      case 'beachball':
+        c = C('#fbf3e4');
+        break;
+      case 'surfboard':
+        c = C('#f2c14e');
+        break;
+      default:
+        c = C('#d9c7a8');
+    }
+    const rx = Math.max(2.5, t.size * bs * 0.5);
+    const ry = rx * 0.45;
+    if (t.kind === 'starfish') {
+      fillPoly(img, W, H, star(bx, by, rx, -t.angle), c);
+    } else {
+      fillPoly(img, W, H, ellipsePts(bx, by, rx, ry), c);
+    }
+    return;
+  }
+  const [kf, wf, minH] = spec;
+  const h = Math.min(56, Math.max(minH, t.size * bs * kf));
+  const w = Math.min(48, Math.max(6, t.size * bs * wf));
+  const top = by - h;
+  shadow(w);
+  const R = (x: number, y: number, hw: number, hh: number): Pt[] => [
+    [x - hw, y - hh],
+    [x + hw, y - hh],
+    [x + hw, y + hh],
+    [x - hw, y + hh],
+  ];
+  switch (t.kind) {
+    case 'lighthouse':
+      fillPoly(img, W, H, R(bx, top + h / 2, w / 2, h / 2), C('#ffffff'));
+      fillPoly(img, W, H, R(bx, top + h * 0.55, w / 2, h * 0.16), C('#e2574c'));
+      fillPoly(img, W, H, circle(bx, top + 1, Math.max(1.5, w * 0.18), 8), C('#f7d774'));
+      break;
+    case 'parasol': {
+      const poleH = h * 0.55;
+      fillPoly(img, W, H, R(bx, by - poleH / 2, 1, poleH / 2), C('#8a6b4a'));
+      const cy = by - poleH;
+      const r = w / 2;
+      fillPoly(img, W, H, [[bx - r, cy], [bx, cy - r * 0.55], [bx + r, cy]], C('#e2574c'));
+      fillPoly(img, W, H, [[bx - r * 0.33, cy], [bx, cy - r * 0.55], [bx + r * 0.33, cy]], C('#ffffff'));
+      break;
+    }
+    case 'palmtree': {
+      fillPoly(img, W, H, R(bx, by - h * 0.35, 1.5, h * 0.35), C('#6b4a2f'));
+      const tx = bx;
+      const ty = by - h * 0.7;
+      for (let k = 0; k < 4; k++) {
+        const a = -Math.PI / 2 + (k - 1.5) * 0.55;
+        const ex = tx + Math.cos(a) * w * 0.75;
+        const ey = ty + Math.sin(a) * w * 0.45;
+        fillPoly(img, W, H, [[tx, ty], [ex, ey], [tx + Math.cos(a + 0.5) * w * 0.4, ty + Math.sin(a + 0.5) * w * 0.3]], k % 2 ? C('#4a9e5c') : C('#3f8f4f'));
+      }
+      break;
+    }
+    case 'sandcastle':
+      fillPoly(img, W, H, R(bx, top + h / 2, w / 2, h / 2), lighten(look.sandDeep, 0.1));
+      for (const sgn of [-1, 1]) fillPoly(img, W, H, circle(bx + sgn * w * 0.32, top + 1, Math.max(1.5, w * 0.16), 8), lighten(look.sandDry, 0.2));
+      fillPoly(img, W, H, circle(bx, top + h * 0.45, Math.max(1.5, w * 0.2), 8), lighten(look.sandDry, 0.3));
+      break;
+    case 'beachhut':
+      fillPoly(img, W, H, R(bx, top + h / 2, w / 2, h / 2), C('#4a90d9'));
+      fillPoly(img, W, H, R(bx, top + h * 0.3, w / 2, h * 0.08), C('#ffffff'));
+      break;
+    case 'lifeguardtower':
+      fillPoly(img, W, H, R(bx - w * 0.3, by - h * 0.2, 1, h * 0.2), C('#f2f0e8'));
+      fillPoly(img, W, H, R(bx + w * 0.3, by - h * 0.2, 1, h * 0.2), C('#f2f0e8'));
+      fillPoly(img, W, H, R(bx, top + h * 0.3, w / 2, h * 0.3), C('#f2f0e8'));
+      fillPoly(img, W, H, R(bx, top + h * 0.3, w * 0.3, h * 0.18), C('#2f4a6b'));
+      break;
+    case 'deckchair':
+      fillPoly(img, W, H, rect(bx, by - h * 0.4, w / 2, h * 0.4, 0.5), C('#3f7fc4'));
+      fillPoly(img, W, H, rect(bx, by - h * 0.4, w / 2, h * 0.12, 0.5), C('#ffffff'));
+      break;
+    case 'flag':
+      fillPoly(img, W, H, R(bx, by - h / 2, 1, h / 2), C('#6b5a48'));
+      fillPoly(img, W, H, [[bx, top], [bx + w, top + h * 0.2], [bx, top + h * 0.4]], FLAGS[v % FLAGS.length]);
+      break;
+    case 'tikitorch':
+      fillPoly(img, W, H, R(bx, by - h / 2, 1, h / 2), C('#7a5a3a'));
+      fillPoly(img, W, H, circle(bx, top + 2, Math.max(1.5, w * 0.22), 8), C('#ffb347'));
+      break;
+    case 'bonfire':
+      fillPoly(img, W, H, ellipsePts(bx, by - 1, w * 0.5, w * 0.2), C('#9aa0a8'));
+      fillPoly(img, W, H, [[bx - w * 0.22, by - h * 0.3], [bx, by - h], [bx + w * 0.22, by - h * 0.3]], C('#ff8c2e'));
+      break;
+    case 'hammock': {
+      const px = w / 2;
+      fillPoly(img, W, H, circle(bx - px, by - h * 0.75, 1.5, 6), C('#8a6b4a'));
+      fillPoly(img, W, H, circle(bx + px, by - h * 0.75, 1.5, 6), C('#8a6b4a'));
+      fillPoly(img, W, H, [[bx - px, by - h * 0.75], [bx + px, by - h * 0.75], [bx + px * 0.7, by - h * 0.2], [bx - px * 0.7, by - h * 0.2]], C('#e86a5a'));
+      break;
+    }
+  }
+}
+
+/** One beach's saved bytes (or null: untouched) plus its neighbours → an isometric PNG. */
+export function beachIsoPng(
+  center: { bytes: Uint8Array | null; location?: string | null },
+  left: { bytes: Uint8Array | null; location?: string | null; linked: boolean } | null,
+  right: { bytes: Uint8Array | null; location?: string | null; linked: boolean } | null,
+  opts: ImageOptions,
+  dir: IsoDir,
+): Buffer {
+  const dec = (b: { bytes: Uint8Array | null; location?: string | null; linked?: boolean } | null): IsoPanel | null => {
+    if (!b) return null;
+    let sand: SavedSand | null = null;
+    if (b.bytes) {
+      try {
+        sand = decodeSavedBeach(b.bytes);
+      } catch {
+        sand = null;
+      }
+    }
+    return { sand, location: b.location, linked: b.linked ?? false };
+  };
+  const c = dec(center);
+  return encodePng(renderIsoBeach(c ?? { sand: null, linked: false }, dec(left), dec(right), opts, dir), opts.width, opts.height);
 }
 
 function footprint(t: Thing): number {

@@ -32,9 +32,12 @@
   a three-band toon ramp. Pure facets looked speckled at cell scale because of
   the alternating triangle diagonals.
 - **Zoom goes in to a 0.45 m half-height** (`CAMERA.minHalfHeight`), close
-  enough to look at a shell. Past the point where the 24 px brush would
-  cover fewer than 2 cells, the brush stays 2 cells on the sand and grows on
-  screen. The chair view zooms to a 0.12 rad field of view.
+  enough to look at a shell, and **out to 28 m** (`CAMERA.maxHalfHeight`, or
+  1.5× the single-beach fit height on narrow screens via `CAMERA.maxFitScale`)
+  so neighbouring beaches along the shore fit in view at once. Past either
+  brush bound, `brushRadiusOnSand` clamps the brush on the sand between 2 grid
+  cells and `BRUSH.maxRadius` (2.2 m). The chair view zooms to a 0.12 rad field
+  of view.
 - **Minimum brush is 2 grid cells** (25 cm at the medium tier). This caps
   zoom-in, so the finest dig still looks clean on a 12.5 cm grid.
 - **Dry sand angle of repose is 36°** (not 33°), so held digs in dry sand
@@ -360,6 +363,28 @@ accepted the repo's default branch, so the deploy job ran only there.
   buttons (`favorites` table, migration 4).
 - The neighbor tags poll every 30 s across the whole shore.
 - `npm run e2e:shore` covers walking, home, visiting by code, and favorites.
+- **The 3D views (2026-11-24):** every beach page has Flat / 3D / From the
+  sea buttons on its picture, and `GET /img/:CODE/iso.png` (from the land)
+  and `GET /img/:CODE/iso-ocean.png` (from the sea) serve the 3D isometric
+  views (1200×630, same cache behaviour as the card, keyed on the beach's
+  and its neighbours' save times). The real heightfield, water with swell
+  lines, sand with a slow grain, and billboarded things at the ground
+  scale show with one public beach either side — linked flush, unlinked
+  with the 1.6 m gap — and the neighbours mirror between the two views,
+  because you are looking from opposite directions. The frame fits the
+  centre beach plus a 14 m slice of each neighbour, so the beach is the
+  subject; a side with no public neighbour shows no shore at all, with no
+  faded filler. Only public beaches ever appear; a non-public neighbour
+  renders as untouched shore.
+  `og:image` stays the top-down card. Samples: `docs/shore-iso-sample.png`
+  (ocean) and `docs/shore-iso-land-sample.png` (land), re-rendered from a
+  constructed player-like beach by `server/scripts/render-iso-samples.ts`.
+- **The flat card has no shoulders (2026-11-24):** the top-down card is
+  exactly the beach edge to edge — the 32 m beach is stretched alongshore
+  to fill the 1200 px width, so the pale bands of empty shore that flanked
+  it are gone. Things keep their size and shape; terrain features stretch
+  1.22× horizontally (a dug moat reads as an ellipse). Before/after:
+  `docs/shore-card-before.png` and `docs/shore-card-after.png`.
 
 ## Leaderboard (added after more than one beach)
 
@@ -750,6 +775,13 @@ here: it needs the service's URL on the web OAuth client.
   the only item of its kind. The render layout keeps the expanded
   catalog on dry sand. The payment-provider setup uses the product
   IDs in `server/src/products.ts` and the Steam IDs in `docs/STEAM.md`.
+
+- **Signed-out public shore** (2026-11-24): when signed out (and not visiting a
+  `?visit=` code), `GET /api/public/shore` without `code` anchors on the top
+  public beach and walks both directions (`center: null`, unlinked at the edges
+  beside index 0), so `NeighborView` renders public sections of the beechshore
+  next to the player's empty beach for inspiration and supports infinite scroll
+  and returning home from a visit.
 
 ## Verification
 

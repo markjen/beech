@@ -109,15 +109,17 @@ export function createRootApp(db: Db, api: Hono<any, any, any>, publicDir: strin
       const u = new URL(c.req.url);
       return c.redirect(`${landing.url.replace(/\/$/, '')}${u.pathname}${u.search}`, 301);
     }
-    // the guide, the privacy policy, and the landing page's own icons/artwork
-    // still answer on this host; everything else here is the landing page
-    // (including /api — the game API is not served on the landing hosts)
+    // the guide, the privacy policy, and the landing page's own icons,
+    // artwork, and hero image still answer on this host; everything else
+    // here is the landing page (including /api — the game API is not
+    // served on the landing hosts)
     const p = c.req.path;
     if (
       p === '/guide' || p === '/guide/' || p.startsWith('/guide/') ||
       p === '/help' || p === '/releases' ||
       p === '/privacy.html' || p === '/privacy' ||
       p.startsWith('/icons/') || p.startsWith('/landing-assets/') ||
+      p === '/hero-beach.jpg' ||
       p === '/favicon-32.png' || p === '/apple-touch-icon.png'
     ) return next();
     return landingPage(c);

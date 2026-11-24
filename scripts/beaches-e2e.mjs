@@ -34,7 +34,7 @@ async function device(label) {
   return page;
 }
 const dig = async (page, y) => {
-  await page.click('button[data-tool="dig"]');
+  await page.click('button[data-tool="sand"]');
   await page.mouse.move(300, y);
   await page.mouse.down();
   for (let i = 0; i < 20; i++) {

@@ -168,7 +168,7 @@ await showSheet(a);
 await a.click(`button[data-act="cp-restore-${one.id}"]`);
 await a.waitForFunction(() => window.__beech.info().objects.some((o) => o.item === 'lighthouse'), null, { timeout: 20000 });
 // B digs and saves: its save is refused and B loads the restored beach instead
-await b.click('button[data-tool="dig"]');
+await b.click('button[data-tool="sand"]');
 await b.mouse.move(300, 500);
 await b.mouse.down();
 for (let i = 0; i < 12; i++) await b.mouse.move(300 + i * 8, 500);

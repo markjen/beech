@@ -56,7 +56,7 @@ check(true, 'first save created the beach on the server');
 await page.evaluate(() => window.__beech.sheet.hide());
 
 // pick a beach and dig
-await page.click('button[data-tool="dig"]');
+await page.click('button[data-tool="sand"]');
 await page.evaluate(() => window.__beech.setBeach('piha'));
 await page.mouse.move(300, 560);
 await page.mouse.down();
@@ -135,7 +135,7 @@ await page.waitForTimeout(800);
 check((await countOf(prizeId)) === 1, 'and you can only put down as many as you own');
 const again = await page.evaluate(() => window.__beech.account().fetch('/api/pulls/daily', { method: 'POST' }).then((r) => r.status));
 check(again === 409, 'then the claw rests');
-await page.click('button[data-tool="dig"]');
+await page.click('button[data-tool="sand"]');
 
 // the shop (a development build uses a pretend store): buy an extra beach and a parasol
 await page.click('button[data-tool="place"]');
@@ -155,7 +155,7 @@ await page.click('button[data-tool="place"]');
 await page.waitForSelector('.inv-tray.open', { timeout: 5000 });
 check((await page.textContent('.inv-tray'))?.includes('Parasol'), 'the parasol is in the bag');
 await page.click('button[data-tool="place"]');
-await page.click('button[data-tool="dig"]');
+await page.click('button[data-tool="sand"]');
 
 // beach files: import a designed beach (more parasols than the bag holds), then export it
 {

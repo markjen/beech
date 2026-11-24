@@ -32,6 +32,7 @@ beforeAll(async () => {
     path.join(publicDir, 'privacy.html'),
     '<!doctype html><html><head><title>Privacy Policy — beech</title></head><body>privacy-policy-marker</body></html>',
   );
+  fs.writeFileSync(path.join(publicDir, 'hero-beach.jpg'), 'hero-beach-marker');
   fs.mkdirSync(path.join(publicDir, 'landing-assets'), { recursive: true });
   fs.writeFileSync(path.join(publicDir, 'landing-assets', 'hero-day.webp'), 'landing-asset-marker');
   root = createRootApp(db, api, publicDir);
@@ -164,6 +165,39 @@ describe('the landing page and host routing', () => {
     const r = await on('/landing-assets/hero-day.webp', 'beech.games');
     expect(r.status).toBe(200);
     expect(await r.text()).toBe('landing-asset-marker');
+  });
+
+  it('the hero splash answers on a landing host, and the landing page shows it', async () => {
+    const r = await on('/hero-beach.jpg', 'beech.games');
+    expect(r.status).toBe(200);
+    expect(r.headers.get('Content-Type')).toContain('image/jpeg');
+    expect(await r.text()).toBe('hero-beach-marker');
+    // and on the game host too — it is a static file, not a landing-only route
+    expect((await root.request('/hero-beach.jpg')).status).toBe(200);
+    const html = await (await on('/', 'beech.games')).text();
+    expect(html).toContain('<img src="/hero-beach.jpg"');
+    expect(html).toContain('https://beech.games/hero-beach.jpg');
+    // the hero splash is full-bleed, not boxed in the centred column:
+    // the img comes before the centred hero-inner, the hero has no side
+    // padding, and the splash scales with the viewport via cover over a
+    // viewport-relative height (zooming in/out with screen size)
+    expect(html.indexOf('<img src="/hero-beach.jpg"')).toBeLessThan(html.indexOf('<div class="hero-inner">'));
+    expect(html).toContain('padding: 0 0 104px;');
+    expect(html).toContain('height: clamp(240px, 42vw, 640px);');
+    expect(html).toContain('object-fit: cover;');
+    expect(html).not.toContain('max-width: 1180px;\n  margin: 0 auto 40px;');
+    // the time-of-day diorama is still there, lower on the page: after
+    // What's new, before Where to play
+    expect(html).toContain('id="diorama"');
+    expect(html).toContain('data-set-mood');
+    expect(html).toContain('hero-day.webp');
+    expect(html).toContain('A beach that follows the day.');
+    const updatesAt = html.indexOf('id="updates-heading"');
+    const dioramaAt = html.indexOf('id="diorama"');
+    const playAt = html.indexOf('id="play-heading"');
+    expect(updatesAt).toBeGreaterThan(-1);
+    expect(dioramaAt).toBeGreaterThan(updatesAt);
+    expect(playAt).toBeGreaterThan(dioramaAt);
   });
 
   it('the privacy policy answers on a landing host, and /privacy redirects to it', async () => {

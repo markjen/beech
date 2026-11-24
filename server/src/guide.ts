@@ -119,8 +119,8 @@ export function guideHtml(now: number): string {
   const body = `
 <h2 id="start">Getting started</h2>
 <p>beech is a stretch of sand by the sea. Dig, build, and set things down, and watch the waves rework it. Tap or click the title screen to begin; sound starts then too.</p>
-<p>Sign in (settings, at the top) to keep your beach, have neighbors, and play the machines. Without signing in, the beach lives on this device only.</p>
-<p>The sea follows a real beach: its tide, sun and moon, at that place’s time of day. Pick the beach in settings, or “near me” for the closest one.</p>
+<p>Sign in (settings, at the top) to keep your beach, have neighbors, and play the machines. Without signing in, your beach lives on this device only, though you can still pan along the shore beside it to see other people’s public beaches.</p>
+<p>The sea follows a real beach: its tide, sun and moon, at that place’s time of day, with waves growing stronger toward high tide and gentler toward low tide. Pick the beach in settings, or “near me” for the closest one.</p>
 
 <h2 id="controls">Controls</h2>
 <h3>Touch</h3>
@@ -134,7 +134,7 @@ export function guideHtml(now: number): string {
   <li>Drag to look around or use the tool; the wheel zooms; right-drag turns and tilts.</li>
   <li><kbd>1</kbd>–<kbd>5</kbd> pick a tool; <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or the arrow keys pan; <kbd>Q</kbd>/<kbd>E</kbd> turn 45°; <kbd>R</kbd>/<kbd>F</kbd> tilt; <kbd>+</kbd>/<kbd>-</kbd> zoom.</li>
   <li><kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Z</kbd> undo, with <kbd>Shift</kbd> (or <kbd>Ctrl</kbd>+<kbd>Y</kbd>) to redo.</li>
-  <li><kbd>V</kbd> switches between the diorama and the chair view.</li>
+  <li><kbd>V</kbd> switches between the diorama and the chair view; <kbd>H</kbd> (or the eye button) collapses the toolbars so you can pan around with minimal overlay.</li>
 </ul>
 <h3>The chair view</h3>
 <p>The chair button sits you on the sand facing the open sea. Hold ‹ › (or <kbd>Q</kbd>/<kbd>E</kbd>) to walk along the beach and on across your neighbors’; after a second of holding you walk faster.</p>
@@ -143,10 +143,8 @@ export function guideHtml(now: number): string {
 <p>The tool column sits above the undo button.</p>
 <ul>
   <li><b>Look</b> (the hand): move around without touching the sand.</li>
-  <li><b>Dig</b>: hold to dig deeper; drag to dig a trench.</li>
-  <li><b>Build</b>: adds sand where you drag (from a bucket, not from nearby).</li>
-  <li><b>Smooth</b>: softens edges and bumps.</li>
-  <li><b>Clearing</b>: three modes — <b>flatten</b> pushes the sand back to the untouched beach, the <b>bulldozer</b> flattens and scoops up things in its path, and the <b>vacuum</b> picks things up with a tap or along a drag.</li>
+  <li><b>Sand</b>: three modes — <b>dig</b> (shovel) digs deeper or carves a trench, <b>build</b> (sand dune) adds sand where you drag, and <b>blend</b> (rake) softens edges and bumps.</li>
+  <li><b>Clearing</b>: three modes — the <b>bulldozer</b> flattens and scoops up things in its path, <b>flatten</b> pushes the sand back to the untouched beach, and the <b>vacuum</b> picks things up with a tap or along a drag.</li>
 </ul>
 <p>Every stroke can be undone. Waves wear down what you build, and the sea fills holes near the water.</p>
 

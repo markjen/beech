@@ -7,10 +7,12 @@ export interface ScreenRect {
 }
 
 /**
- * Where a neighbor's name tag goes: centred above (x, y), its beach's
- * projected top, but kept on screen and off the HUD in `keepOut` (the place
- * card, the tool column). A tag overlapping one is pushed out the shorter
- * way. Returns the tag's top-left corner.
+ * Where a neighbor's name tag goes: floating along the side edge of the screen
+ * (left edge for beaches on the left/center, right edge for beaches on the
+ * right) so it never sits over and blocks viewing of the beach. Vertically it
+ * tracks the beach's projected y while staying on-screen and off any HUD or
+ * already-placed tags in `keepOut` by shifting vertically along the edge. If
+ * the preferred edge has no room, it falls back to the opposite edge.
  */
 export function placeTag(
   x: number,
@@ -20,24 +22,36 @@ export function placeTag(
   screenW: number,
   screenH: number,
   keepOut: readonly ScreenRect[],
-  margin = 8,
+  margin = 14,
+  gap = 8,
 ): { left: number; top: number } {
   const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
-  let left = clamp(x - w / 2, margin, Math.max(margin, screenW - margin - w));
-  let top = clamp(y - h, margin, Math.max(margin, screenH - margin - h));
-  for (const r of keepOut) {
-    const overlaps = left < r.right + margin && left + w > r.left - margin && top < r.bottom + margin && top + h > r.top - margin;
-    if (!overlaps) continue;
-    // the cheapest way out: below, above, left of or right of the rectangle
-    const moves = [
-      { left, top: r.bottom + margin },
-      { left, top: r.top - margin - h },
-      { left: r.left - margin - w, top },
-      { left: r.right + margin, top },
-    ].filter((m) => m.left >= margin && m.left + w <= screenW - margin && m.top >= margin && m.top + h <= screenH - margin);
-    if (!moves.length) continue;
-    moves.sort((a, b) => Math.abs(a.left - left) + Math.abs(a.top - top) - (Math.abs(b.left - left) + Math.abs(b.top - top)));
-    ({ left, top } = moves[0]);
+  const minTop = margin;
+  const maxTop = Math.max(margin, screenH - margin - h);
+  const leftEdge = margin;
+  const rightEdge = Math.max(margin, screenW - margin - w);
+  const preferRight = x > screenW / 2;
+  const edges = preferRight ? [rightEdge, leftEdge] : [leftEdge, rightEdge];
+  const idealTop = clamp(y - h / 2, minTop, maxTop);
+
+  const hits = (left: number, top: number) =>
+    keepOut.some(
+      (r) => left < r.right + gap && left + w > r.left - gap && top < r.bottom + gap && top + h > r.top - gap,
+    );
+
+  for (const edgeLeft of edges) {
+    if (!hits(edgeLeft, idealTop)) return { left: edgeLeft, top: idealTop };
+    const candidates: number[] = [minTop, maxTop];
+    for (const r of keepOut) {
+      if (edgeLeft < r.right + gap && edgeLeft + w > r.left - gap) {
+        candidates.push(r.bottom + gap, r.top - gap - h);
+      }
+    }
+    const valid = candidates
+      .filter((t) => t >= minTop && t <= maxTop && !hits(edgeLeft, t))
+      .sort((a, b) => Math.abs(a - idealTop) - Math.abs(b - idealTop));
+    if (valid.length) return { left: edgeLeft, top: valid[0] };
   }
-  return { left, top };
+
+  return { left: edges[0], top: idealTop };
 }

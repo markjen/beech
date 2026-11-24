@@ -20,8 +20,8 @@ import { Sky, type SkyDisc } from './render/sky';
 import { AnimalController, type AnimalEnv, type AnimalObstacle } from './world/animals';
 import { LiveConditions } from './world/live';
 import { BEACHES, beachById, defaultBeach, nearestBeach, type Beach } from './world/locations';
-import type { BrushMode, ClearingMode } from './sim/beachSim';
-import { isClearingMode } from './sim/beachSim';
+import type { BrushMode, ClearingMode, SandMode } from './sim/beachSim';
+import { isClearingMode, isSandMode } from './sim/beachSim';
 import { DIG_FIND_ROLL_COOLDOWN_MS, qualifiesForFind } from './sim/digFinds';
 import { POS_STRIDE, type ObjectState, type PlacedObject } from './sim/objects';
 import type { FrameInfo, FromWorker, ToWorker } from './sim/protocol';
@@ -162,7 +162,7 @@ async function boot() {
   let beach: Beach = beachById(params.get('beach')) ?? beachById(settings.beach) ?? defaultBeach();
   const live = new LiveConditions(beach);
   let liveState = live.compute(clockNow());
-  const sendSea = () => send({ type: 'sea', tide: liveState.simTide, waves: beach.waves });
+  const sendSea = () => send({ type: 'sea', tide: liveState.simTide, waves: liveState.waves });
   sendSea();
   const sky = new Sky(scene);
   const picker = new SandPicker(grid, ready.rest);
@@ -580,54 +580,86 @@ async function boot() {
   };
   updatePlace(true);
   // the look tool (the default) only moves the view: pan, zoom, tilt, turn.
-  // clearing is one top-level tool with three modes: flatten the sand, bulldoze
-  // (flatten + scoop up what's in the blade's path), or vacuum items up.
-  const CLEARING_MODE_DEFS: { id: ClearingMode; icon: 'blade' | 'dozer' | 'vacuum'; label: string }[] = [
-    { id: 'flatten', icon: 'blade', label: 'Flatten the sand back to the beach' },
+  // sand is one top-level tool with three modes: dig (shovel), build up (dune),
+  // or blend (rake). clearing is one top-level tool with three modes: bulldozer
+  // (flatten + scoop up items), flatten the sand, or vacuum items up.
+  const SAND_MODE_DEFS: { id: SandMode; icon: 'dig' | 'build' | 'smooth'; label: string }[] = [
+    { id: 'dig', icon: 'dig', label: 'Dig' },
+    { id: 'pile', icon: 'build', label: 'Build up sand' },
+    { id: 'smooth', icon: 'smooth', label: 'Blend sand' },
+  ];
+  const CLEARING_MODE_DEFS: { id: ClearingMode; icon: 'dozer' | 'blade' | 'vacuum'; label: string }[] = [
     { id: 'dozer', icon: 'dozer', label: 'Bulldozer: flatten and scoop up items' },
+    { id: 'flatten', icon: 'blade', label: 'Flatten the sand back to the beach' },
     { id: 'vacuum', icon: 'vacuum', label: 'Vacuum: pick items up' },
   ];
   const TOOLS: ToolDef[] = [
     { id: 'look', icon: 'hand', label: 'Look around' },
-    { id: 'dig', icon: 'dig', label: 'Dig' },
-    { id: 'pile', icon: 'build', label: 'Build up sand' },
-    { id: 'smooth', icon: 'smooth', label: 'Smooth' },
+    { id: 'sand', icon: 'dig', label: 'Sand', modes: SAND_MODE_DEFS },
     { id: 'clearing', icon: 'dozer', label: 'Clearing', modes: CLEARING_MODE_DEFS },
   ];
+  /** number keys 1-5: look, dig, build, blend, bulldozer */
+  const KEY_TOOLS = ['look', 'dig', 'pile', 'smooth', 'clearing'] as const;
   let tool = 'look';
-  /** the clearing tool's mode; 'flatten' is the old bulldozer tool's behaviour */
-  let clearingMode: ClearingMode = 'flatten';
-  /** highlight the active tool (and, for clearing, the active mode) */
-  const syncToolUI = () => hud.setTool(placing ? 'place' : tool, clearingMode);
+  let sandMode: SandMode = 'dig';
+  let clearingMode: ClearingMode = 'dozer';
+  let collapsed = false;
+  /** highlight the active tool (and, for grouped tools, the active sub-mode) */
+  const syncToolUI = () =>
+    hud.setTool(placing ? 'place' : tool, tool === 'sand' ? sandMode : tool === 'clearing' ? clearingMode : undefined);
+  const syncLookOnly = () => {
+    gestures.lookOnly = collapsed || (!placing && tool === 'look');
+  };
+  const setSandMode = (mode: SandMode) => {
+    tool = 'sand';
+    sandMode = mode;
+    brushMode = mode;
+    placing = null;
+    inventory.deselect();
+    placeBar.show(null, DEFAULT_SIZE);
+    syncLookOnly();
+    syncToolUI();
+    haptics.impact('light');
+  };
   const setClearingMode = (mode: ClearingMode) => {
+    tool = 'clearing';
     clearingMode = mode;
-    if (tool === 'clearing') brushMode = mode;
+    brushMode = mode;
+    placing = null;
+    inventory.deselect();
+    placeBar.show(null, DEFAULT_SIZE);
+    syncLookOnly();
     syncToolUI();
     haptics.impact('light');
   };
   const pickTool = (id: string) => {
+    if (isSandMode(id)) {
+      setSandMode(id);
+      return;
+    }
+    if (isClearingMode(id)) {
+      setClearingMode(id);
+      return;
+    }
     tool = id;
-    if (id === 'clearing') brushMode = clearingMode;
-    else if (id !== 'look') brushMode = id as BrushMode;
-    gestures.lookOnly = id === 'look';
+    if (id === 'sand') brushMode = sandMode;
+    else if (id === 'clearing') brushMode = clearingMode;
     placing = null;
     inventory.deselect();
     placeBar.show(null, DEFAULT_SIZE);
+    syncLookOnly();
     syncToolUI();
     haptics.impact('light');
   };
-  /** one callback for tool buttons and clearing-mode buttons */
-  const pick = (id: string) => {
-    if (isClearingMode(id)) setClearingMode(id);
-    else pickTool(id);
-  };
+  /** one callback for tool buttons and sub-mode buttons */
+  const pick = (id: string) => pickTool(id);
   hud.setTools(TOOLS, tool, pick);
   syncToolUI();
 
   // the bag: rocks and driftwood (free, unlimited) for now
   const inventory = new InventoryTray((n, l, c) => hud.button(n, l, c), hud.root, ITEMS, (item) => {
     placing = item;
-    gestures.lookOnly = !item && tool === 'look';
+    syncLookOnly();
     syncToolUI();
     placeBar.show(item, DEFAULT_SIZE);
     haptics.impact('light');
@@ -721,6 +753,35 @@ async function boot() {
   const viewBtn = hud.button('chair', 'Sit on the beach');
   hud.leftGroup.appendChild(viewBtn);
   viewBtn.addEventListener('click', () => cam.toggleMode());
+
+  // collapse all toolbars for distraction-free panning around the beach
+  const collapseBtn = hud.button('eye', 'Hide toolbars', 'hud-btn hud-collapse');
+  collapseBtn.setAttribute('aria-pressed', 'false');
+  hud.leftGroup.appendChild(collapseBtn);
+  const setCollapsed = (on: boolean) => {
+    if (collapsed === on) return;
+    collapsed = on;
+    uiRoot.classList.toggle('ui-collapsed', on);
+    hud.root.classList.toggle('collapsed', on);
+    hud.setIcon(collapseBtn, on ? 'eyeOff' : 'eye');
+    const label = on ? 'Show toolbars' : 'Hide toolbars';
+    collapseBtn.setAttribute('aria-label', label);
+    collapseBtn.title = label;
+    collapseBtn.setAttribute('aria-pressed', String(on));
+    if (on) {
+      inventory.setOpen(false);
+      sheet.hide();
+      if (placing) {
+        placing = null;
+        inventory.deselect();
+        placeBar.show(null, DEFAULT_SIZE);
+        syncToolUI();
+      }
+    }
+    syncLookOnly();
+    haptics.impact('light');
+  };
+  collapseBtn.addEventListener('click', () => setCollapsed(!collapsed));
   // the shore bar (top right): who you're visiting, and the way home
   const shoreBar = document.createElement('div');
   shoreBar.className = 'shore-bar';
@@ -966,8 +1027,12 @@ async function boot() {
     },
     undo,
     redo,
-    tool: (i) => TOOLS[i] && pickTool(TOOLS[i].id),
+    tool: (i) => KEY_TOOLS[i] && pickTool(KEY_TOOLS[i]),
     view: () => cam.toggleMode(),
+    toggleCollapse: () => setCollapsed(!collapsed),
+    exitCollapse: () => {
+      if (collapsed) setCollapsed(false);
+    },
     interacted: () => {
       // any input (including when there is no start screen) unlocks audio
       if (!start?.visible) audio.start();
@@ -1162,7 +1227,7 @@ async function boot() {
     const mix = Math.min(1, (now - frameAt) / (1000 / SIM_HZ));
     renderer.setFrameMix(mix);
     const simTime = prevT + (info.t - prevT) * mix;
-    const amp = (1 - (1 - WAVES.calmFactor) * info.calmMix) * beach.waves;
+    const amp = (1 - (1 - WAVES.calmFactor) * info.calmMix) * liveState.waves;
     const camFwd = cam.forward();
     renderer.update(palette, camFwd, (now - t0) / 1000, simTime, info.tide, amp);
     neighbors?.update(palette, camFwd, (now - t0) / 1000, simTime, info.tide, amp);
@@ -1382,6 +1447,7 @@ async function boot() {
         void applyPendingVisit();
       } else if (!u) {
         nv.clear();
+        if (signedInAs) void nv.refresh();
       }
       signedInAs = u?.id ?? null;
     });
@@ -1672,7 +1738,11 @@ async function boot() {
           }
         }
       }
-      if (u || !visitCode) return;
+      if (u) return;
+      if (!visitCode) {
+        void nv.refresh();
+        return;
+      }
       const code = visitCode;
       try {
         await nv.visit(code);
@@ -1681,6 +1751,7 @@ async function boot() {
         cam.goTo(0, true);
       } catch {
         showToast(uiRoot, 'Sign in (settings) to visit this beach');
+        void nv.refresh();
       }
     });
   }
@@ -1796,6 +1867,8 @@ async function boot() {
     },
     audio,
     pickTool,
+    setCollapsed,
+    collapsed: () => collapsed,
     view: (m?: 'diorama' | 'chair') => (m ? cam.setMode(m) : cam.toggleMode()),
     beach: () => beach,
     account: () => account,

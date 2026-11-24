@@ -80,7 +80,7 @@ try {
     if (Math.abs(d1 - d0) > 0.05 || Math.abs(t1 - t0) < 0.3) fail(`look tool: sand Δ ${(d1 - d0).toFixed(3)}, view moved ${(t1 - t0).toFixed(2)}`);
     else console.log(`look tool ok (view moved ${(t1 - t0).toFixed(2)} m, sand untouched)`);
     await page.evaluate(() => { const c = window.__beech.cam; c.camera.target.x = 0; c.stopGlide(); });
-    await page.click('button[data-tool="dig"]');
+    await page.click('button[data-tool="sand"]');
   }
 
   // touch: one finger down, a second finger 60 ms later -> the dig is cancelled
@@ -252,7 +252,7 @@ try {
     const n3 = await count();
     if (!(n1 === n0 + 1 && n2 === n0 && n3 === n0 + 1)) fail(`placing a rock: ${n0} -> ${n1} -> ${n2} -> undo ${n3}`);
     else console.log('place / pick up / undo ok');
-    await page.click('button[data-tool="dig"]');
+    await page.click('button[data-tool="sand"]');
   }
 
   // phone (GitHub issues #4, #5, #6): the settings sheet scrolls by touch and

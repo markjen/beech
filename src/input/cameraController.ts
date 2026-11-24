@@ -240,7 +240,7 @@ export class CameraController {
     const p = this.chairCam.position;
     const dist = at ? Math.hypot(at.x - p.x, at.y - p.y, at.z - p.z) : 6;
     const wpp = (2 * dist * Math.tan(this.fov / 2)) / (this.canvas.clientHeight || 1);
-    return Math.min(2.2, Math.max(BRUSH.minCells * this.cellSize, BRUSH.screenRadiusPx * wpp));
+    return Math.min(BRUSH.maxRadius, Math.max(BRUSH.minCells * this.cellSize, BRUSH.screenRadiusPx * wpp));
   }
 
   zoomLimits(): { min: number; max: number } {

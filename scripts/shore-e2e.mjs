@@ -125,7 +125,7 @@ await page.waitForFunction(() => document.querySelector('.shore-bar .sb-where')?
 check((await page.textContent('.shore-bar .sb-where'))?.startsWith('Visiting'), 'the bar says Visiting');
 check(!(await page.evaluate(() => window.__beech.neighbors().ownVisible)), 'your own beach is hidden while visiting');
 // you can't dig someone else's beach
-await page.click('button[data-tool="dig"]');
+await page.click('button[data-tool="sand"]');
 const d0 = await page.evaluate(() => window.__beech.info().undoCount);
 await page.mouse.move(500, 450);
 await page.mouse.down();
@@ -145,6 +145,17 @@ check(true, 'visited Cleo from favorites');
 await page.click('.shore-bar .sb-home');
 await page.waitForFunction(() => window.__beech.neighbors().visiting === null && window.__beech.neighbors().ownVisible, null, { timeout: 15000 });
 check((await page.evaluate(() => window.__beech.neighbors().beachAt(1)?.name)) === names.ana, 'home: Ana is next door again');
+
+// signed out: other sections of the public shore still render beside the empty beach
+await page.evaluate(() => window.__beech.account().signOut());
+await page.waitForFunction(() => !window.__beech.account().user && window.__beech.neighbors().snapshot(1) !== null, null, { timeout: 15000 });
+const signedOut = await page.evaluate(() => ({
+  ownVisible: window.__beech.neighbors().ownVisible,
+  ext: window.__beech.neighbors().extent,
+  left: window.__beech.neighbors().beachAt(1)?.name ?? null,
+  maxX: window.__beech.cam.maxX,
+}));
+check(signedOut.ownVisible && signedOut.ext.left > 0 && !!signedOut.left && signedOut.maxX > 40, `signed out: public shore renders next to empty beach (${JSON.stringify(signedOut)})`);
 
 check(errors.length === 0, `no page errors ${errors.join(' | ')}`);
 await browser.close();
