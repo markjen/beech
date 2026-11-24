@@ -6,8 +6,10 @@ import path from 'node:path';
 
 import { createApp } from '../src/app.js';
 import { createPgliteDb, type Db } from '../src/db.js';
+import { CATALOG_ITEMS, catalogGroup } from '../src/itemCatalog.js';
 import { migrate } from '../src/migrations.js';
 import { createRootApp } from '../src/rootApp.js';
+import { ITEMS } from '../../src/world/items';
 
 let db: Db;
 let root: ReturnType<typeof createRootApp>;
@@ -53,6 +55,33 @@ const json = (p: string, method: string, token?: string, body?: unknown) =>
     headers: { ...bearer(token), ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
+
+describe('the mirror matches the catalog', () => {
+  // The server cannot import src/world/items.ts, so itemCatalog.ts mirrors
+  // it. These two tests are what keep the mirror honest — they live here,
+  // in the server suite, because the root suite has no server dependencies
+  // and its typecheck must not follow imports into server/src.
+  it('lists every catalog item, field for field', () => {
+    expect(CATALOG_ITEMS.map((i) => i.id)).toEqual(ITEMS.map((i) => i.id));
+    for (const it of ITEMS) {
+      const mirror = CATALOG_ITEMS.find((m) => m.id === it.id)!;
+      expect(mirror.name, it.id).toBe(it.name);
+      expect(mirror.rarity, it.id).toBe(it.rarity);
+      expect(mirror.source, it.id).toBe(it.source);
+      expect(mirror.size, it.id).toEqual(it.size);
+      expect(mirror.variants, it.id).toBe(it.variants);
+      expect(mirror.fixedSize ?? false, it.id).toBe(it.fixedSize ?? false);
+      expect(mirror.product, it.id).toBe(it.product);
+    }
+  });
+
+  it('every pull item is in the claw pool or a vending set, never both', () => {
+    for (const it of ITEMS.filter((i) => i.source === 'pull')) {
+      const mirror = CATALOG_ITEMS.find((m) => m.id === it.id)!;
+      expect(['claw', 'vending']).toContain(catalogGroup(mirror));
+    }
+  });
+});
 
 describe('item catalog pages', () => {
   it('lists every item, grouped by how you get it, with links to each page', async () => {

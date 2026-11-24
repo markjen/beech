@@ -5,8 +5,8 @@
 // The app's catalog (src/world/items.ts) is the source of truth; this
 // mirror exists because the server bundle can't import it
 // (server/tsconfig rootDir is server/src, and the Docker server stage only
-// copies server/src). tests/items.test.ts keeps the two equal, field for
-// field — the same arrangement as PRIZE_NAMES and PRODUCTS.
+// copies server/src). server/test/itemCatalog.test.ts keeps the two equal,
+// field for field — the same arrangement as PRIZE_NAMES and PRODUCTS.
 //
 // Grouping comes from the same data the game uses: the claw pool
 // (server/src/pulls.ts), the vending sets (server/src/vending.ts) and the

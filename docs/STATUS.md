@@ -780,9 +780,10 @@ here: it needs the service's URL on the web OAuth client.
   delete). The guide links to it instead of duplicating it. The
   catalog data is a server-side mirror in
   `server/src/itemCatalog.ts` (the server cannot import
-  `src/world/items.ts`); `tests/items.test.ts` keeps the mirror
-  field-for-field equal to the catalog and checks every item has a
-  render in `docs/items/renders/` and a copy in `public/items/`.
+  `src/world/items.ts`); `server/test/itemCatalog.test.ts` keeps the
+  mirror field-for-field equal to the catalog, and
+  `tests/items.test.ts` checks every item has a render in
+  `docs/items/renders/` and a copy in `public/items/`.
   Migration 21 adds `item_votes` and `item_comments`. Admins cannot
   delete other players' comments from the game server — the admin
   email list lives only in the admin service.
