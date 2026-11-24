@@ -1,0 +1,438 @@
+// Wild beach visitors — pure TypeScript state machine & steering (no DOM or
+// Babylon imports, so it runs cleanly in Vitest and on the main thread).
+//
+// Phase 1 (A1, docs/ANIMALS.md): a single sand crab that occasionally emerges
+// from the sand, scurries sideways in short bursts, pauses to wave its claws,
+// dodges incoming waves and the player's brush, and burrows back into the sand.
+// Most of the time, the beach has no animal at all.
+
+import { ANIMALS, PROFILE, WORLD_SIZE_X, WORLD_SIZE_Z } from '../config';
+
+export type AnimalSpecies = 'crab';
+
+export type AnimalPhase = 'absent' | 'emerging' | 'wandering' | 'pausing' | 'fleeing' | 'burrowing';
+
+export interface AnimalObstacle {
+  x: number;
+  z: number;
+  radius: number;
+}
+
+export interface AnimalEnv {
+  /** Sand height at world (x, z), or NaN outside the beach slab. */
+  heightAt(x: number, z: number): number;
+  /** Water depth at world (x, z), in metres. */
+  waterAt(x: number, z: number): number;
+  /** Active player brush in world coordinates, if any. */
+  brush?: { x: number; z: number; active: boolean };
+  /** Placed rocks and large objects to steer around. */
+  obstacles?: readonly AnimalObstacle[];
+}
+
+export interface AnimalSnapshot {
+  species: AnimalSpecies;
+  active: boolean;
+  phase: AnimalPhase;
+  /** world coordinates */
+  x: number;
+  y: number;
+  z: number;
+  /** body yaw (radians); front (+Z in mesh space) faces this heading */
+  facing: number;
+  /** current horizontal speed (m/s) */
+  speed: number;
+  /** accumulated leg-scuttle phase (radians) */
+  scuttlePhase: number;
+  /** 0 = underground/burrowed, 1 = fully on top of the sand */
+  emerge: number;
+  /** 0..1 claw wave animation intensity while pausing */
+  clawWave: number;
+  /** carapace width (m) */
+  size: number;
+  /** seconds until next spawn roll while absent */
+  nextSpawnIn: number;
+  /** seconds remaining in the current visit */
+  visitLeft: number;
+  /** how many times the brush startled this visitor */
+  startles: number;
+}
+
+const HALF_X = WORLD_SIZE_X / 2;
+const HALF_Z = WORLD_SIZE_Z / 2;
+const SHORELINE_Z = -HALF_Z + PROFILE.shoreline; // ~0.5 m in world Z
+const EMERGE_DURATION = 0.85;
+const BURROW_DURATION = 0.95;
+
+function clamp(v: number, lo: number, hi: number): number {
+  return v < lo ? lo : v > hi ? hi : v;
+}
+
+function wrapAngle(a: number): number {
+  let r = (a + Math.PI) % (Math.PI * 2);
+  if (r < 0) r += Math.PI * 2;
+  return r - Math.PI;
+}
+
+function lerpAngle(cur: number, target: number, t: number): number {
+  return cur + wrapAngle(target - cur) * clamp(t, 0, 1);
+}
+
+/**
+ * Controls rare wild animal visits on the player's beach.
+ * Designed around a species-agnostic snapshot so future species (dolphins,
+ * birds) and Phase 2/3 (food, resident pets) plug into the same seam.
+ */
+export class AnimalController {
+  private readonly rand: () => number;
+  private readonly snap: AnimalSnapshot;
+
+  private waitTimer = 0;
+  private phaseTimer = 0;
+  private startleCooldown = 0;
+  private targetX = 0;
+  private targetZ = 4;
+  /** +1 or -1: which side the crab faces relative to its travel direction */
+  private sideSign = 1;
+
+  constructor(rand: () => number = Math.random) {
+    this.rand = rand;
+    this.waitTimer = this.rollWait();
+    this.snap = {
+      species: 'crab',
+      active: false,
+      phase: 'absent',
+      x: 0,
+      y: 0,
+      z: 4,
+      facing: 0,
+      speed: 0,
+      scuttlePhase: 0,
+      emerge: 0,
+      clawWave: 0,
+      size: ANIMALS.crabSize,
+      nextSpawnIn: this.waitTimer,
+      visitLeft: 0,
+      startles: 0,
+    };
+  }
+
+  /** Read-only view of the current animal state (reused object — zero allocations per frame). */
+  snapshot(): Readonly<AnimalSnapshot> {
+    return this.snap;
+  }
+
+  /** Immediately spawn a sand crab on dry/damp sand (used by ?debug=1 and tests). */
+  spawnNow(env: AnimalEnv, pos?: { x: number; z: number }): boolean {
+    const spot = pos ? this.validateSpot(pos.x, pos.z, env) : this.pickSpawnSpot(env);
+    if (!spot) return false;
+    const s = this.snap;
+    s.species = 'crab';
+    s.active = true;
+    s.phase = 'emerging';
+    s.x = spot.x;
+    s.y = spot.y;
+    s.z = spot.z;
+    // face roughly toward the sea (-Z) with a slight natural turn
+    s.facing = Math.PI + (this.rand() - 0.5) * 1.1;
+    s.speed = 0;
+    s.scuttlePhase = 0;
+    s.emerge = 0;
+    s.clawWave = 0;
+    s.size = ANIMALS.crabSize * (0.9 + this.rand() * 0.2);
+    s.visitLeft = ANIMALS.visitMin + this.rand() * (ANIMALS.visitMax - ANIMALS.visitMin);
+    s.nextSpawnIn = 0;
+    s.startles = 0;
+    this.phaseTimer = EMERGE_DURATION;
+    this.startleCooldown = 0;
+    this.sideSign = this.rand() < 0.5 ? 1 : -1;
+    this.targetX = spot.x;
+    this.targetZ = spot.z;
+    return true;
+  }
+
+  /** Immediately clear any active visitor and start a fresh quiet wait. */
+  despawnNow(): void {
+    const s = this.snap;
+    s.active = false;
+    s.phase = 'absent';
+    s.speed = 0;
+    s.emerge = 0;
+    s.clawWave = 0;
+    s.visitLeft = 0;
+    s.startles = 0;
+    this.waitTimer = this.rollWait();
+    s.nextSpawnIn = this.waitTimer;
+  }
+
+  /** Advance the state machine by `dt` seconds. */
+  update(dt: number, env: AnimalEnv): void {
+    if (dt <= 0) return;
+    const step = Math.min(dt, 0.1);
+    const s = this.snap;
+
+    if (s.phase === 'absent') {
+      this.waitTimer -= step;
+      s.nextSpawnIn = Math.max(0, this.waitTimer);
+      if (this.waitTimer <= 0) {
+        if (this.rand() < ANIMALS.visitChance && this.spawnNow(env)) {
+          return;
+        }
+        // quiet miss — wait another interval so the beach stays empty most of the time
+        this.waitTimer = this.rollWait();
+        s.nextSpawnIn = this.waitTimer;
+      }
+      return;
+    }
+
+    if (this.startleCooldown > 0) this.startleCooldown = Math.max(0, this.startleCooldown - step);
+
+    if (s.phase === 'emerging') {
+      this.phaseTimer -= step;
+      s.emerge = clamp(1 - this.phaseTimer / EMERGE_DURATION, 0, 1);
+      s.scuttlePhase += step * 10;
+      s.speed = 0;
+      s.clawWave = 0;
+      this.syncHeight(env);
+      if (this.phaseTimer <= 0) {
+        s.emerge = 1;
+        this.enterPause(0.7 + this.rand() * 0.9);
+      }
+      return;
+    }
+
+    if (s.phase === 'burrowing') {
+      this.phaseTimer -= step;
+      s.emerge = clamp(this.phaseTimer / BURROW_DURATION, 0, 1);
+      s.scuttlePhase += step * 14;
+      s.speed = 0;
+      s.clawWave = 0;
+      this.syncHeight(env);
+      if (this.phaseTimer <= 0) {
+        this.despawnNow();
+      }
+      return;
+    }
+
+    // Active surface phases: pausing, wandering, fleeing
+    s.visitLeft = Math.max(0, s.visitLeft - step);
+    if (s.visitLeft <= 0 && env.waterAt(s.x, s.z) < ANIMALS.crabWetDepth) {
+      this.enterBurrow();
+      return;
+    }
+
+    // React to player brush
+    if (env.brush?.active) {
+      const dx = s.x - env.brush.x;
+      const dz = s.z - env.brush.z;
+      const d = Math.hypot(dx, dz);
+      if (d < ANIMALS.crabFleeRadius) {
+        if (this.startleCooldown <= 0) {
+          s.startles++;
+          this.startleCooldown = 1.6;
+          if (s.startles >= ANIMALS.crabMaxStartles) {
+            s.visitLeft = Math.min(s.visitLeft, 1.4);
+          }
+        }
+        const awayAngle = d > 0.01 ? Math.atan2(dz, dx) : (this.rand() - 0.5) * Math.PI;
+        const fleeDist = 3.2 + this.rand() * 2.0;
+        this.enterFlee(
+          this.clampX(s.x + Math.cos(awayAngle) * fleeDist),
+          this.clampZ(s.z + Math.sin(awayAngle) * fleeDist),
+        );
+      }
+    }
+
+    // React to incoming wave wash
+    if (env.waterAt(s.x, s.z) > ANIMALS.crabWetDepth && s.phase !== 'fleeing') {
+      const upslopeZ = this.clampZ(s.z + 2.2 + this.rand() * 1.8);
+      const sideX = this.clampX(s.x + (this.rand() - 0.5) * 2.4);
+      this.enterFlee(sideX, upslopeZ);
+    }
+
+    if (s.phase === 'pausing') {
+      this.phaseTimer -= step;
+      s.speed = 0;
+      // gentle claw wave during the middle of a pause
+      s.clawWave = Math.sin(clamp(this.phaseTimer * 2.5, 0, Math.PI));
+      this.syncHeight(env);
+      if (this.phaseTimer <= 0) {
+        if (s.visitLeft <= 0) {
+          this.enterBurrow();
+        } else {
+          this.pickWanderTarget(env);
+        }
+      }
+      return;
+    }
+
+    // Moving: wandering or fleeing
+    const maxSpeed = s.phase === 'fleeing' ? ANIMALS.crabFleeSpeed : ANIMALS.crabSpeed;
+    const dx = this.targetX - s.x;
+    const dz = this.targetZ - s.z;
+    const dist = Math.hypot(dx, dz);
+
+    if (dist < 0.14 || this.phaseTimer <= 0) {
+      if (s.visitLeft <= 0 && env.waterAt(s.x, s.z) < ANIMALS.crabWetDepth) {
+        this.enterBurrow();
+      } else {
+        this.enterPause(s.phase === 'fleeing' ? 0.5 + this.rand() * 0.8 : 1.0 + this.rand() * 3.0);
+      }
+      return;
+    }
+
+    this.phaseTimer -= step;
+    let dirX = dx / dist;
+    let dirZ = dz / dist;
+
+    // Softly deflect around rocks and large placed objects
+    if (env.obstacles) {
+      for (let i = 0; i < env.obstacles.length; i++) {
+        const o = env.obstacles[i];
+        const ox = s.x - o.x;
+        const oz = s.z - o.z;
+        const minD = o.radius + s.size * 0.75;
+        const od2 = ox * ox + oz * oz;
+        if (od2 > 1e-6 && od2 < minD * minD) {
+          const od = Math.sqrt(od2);
+          const push = (minD - od) / minD;
+          dirX += (ox / od) * push * 2.2;
+          dirZ += (oz / od) * push * 2.2;
+        }
+      }
+      const norm = Math.hypot(dirX, dirZ);
+      if (norm > 1e-4) {
+        dirX /= norm;
+        dirZ /= norm;
+      }
+    }
+
+    const moveDist = Math.min(dist, maxSpeed * step);
+    const nx = this.clampX(s.x + dirX * moveDist);
+    const nz = this.clampZ(s.z + dirZ * moveDist);
+
+    // Don't voluntarily walk into deep water; turn upslope instead
+    const nextWater = env.waterAt(nx, nz);
+    const curWater = env.waterAt(s.x, s.z);
+    if (nextWater > ANIMALS.crabWetDepth * 2 && nextWater > curWater) {
+      this.enterFlee(this.clampX(s.x + (this.rand() - 0.5) * 2.0), this.clampZ(s.z + 2.5));
+      return;
+    }
+
+    const nextH = env.heightAt(nx, nz);
+    if (Number.isFinite(nextH)) {
+      s.x = nx;
+      s.z = nz;
+      s.y = nextH;
+    } else {
+      this.enterPause(0.8);
+      return;
+    }
+
+    s.speed = moveDist / step;
+    s.scuttlePhase += s.speed * step * 26;
+    s.clawWave = 0;
+
+    // Sideways crab gait: face perpendicular to movement direction
+    const moveYaw = Math.atan2(dirX, dirZ);
+    const desiredFacing = moveYaw + this.sideSign * (Math.PI * 0.5);
+    s.facing = lerpAngle(s.facing, desiredFacing, step * 8);
+  }
+
+  private rollWait(): number {
+    return ANIMALS.waitMin + this.rand() * (ANIMALS.waitMax - ANIMALS.waitMin);
+  }
+
+  private clampX(x: number): number {
+    return clamp(x, -HALF_X + ANIMALS.edgeMargin, HALF_X - ANIMALS.edgeMargin);
+  }
+
+  private clampZ(z: number): number {
+    // stay on the beach side of the slab (never wander off the offshore edge)
+    const minZ = Math.max(-HALF_Z + ANIMALS.edgeMargin, SHORELINE_Z - 1.5);
+    return clamp(z, minZ, HALF_Z - ANIMALS.edgeMargin);
+  }
+
+  private syncHeight(env: AnimalEnv): void {
+    const h = env.heightAt(this.snap.x, this.snap.z);
+    if (Number.isFinite(h)) this.snap.y = h;
+  }
+
+  private enterPause(duration: number): void {
+    this.snap.phase = 'pausing';
+    this.snap.speed = 0;
+    this.phaseTimer = duration;
+  }
+
+  private enterFlee(tx: number, tz: number): void {
+    this.snap.phase = 'fleeing';
+    this.targetX = tx;
+    this.targetZ = tz;
+    this.phaseTimer = 2.6;
+  }
+
+  private enterBurrow(): void {
+    this.snap.phase = 'burrowing';
+    this.snap.speed = 0;
+    this.snap.clawWave = 0;
+    this.phaseTimer = BURROW_DURATION;
+  }
+
+  private pickWanderTarget(env: AnimalEnv): void {
+    const s = this.snap;
+    if (this.rand() < 0.35) this.sideSign = -this.sideSign;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const angle = this.rand() * Math.PI * 2;
+      const dist = 1.1 + this.rand() * 3.2;
+      const tx = this.clampX(s.x + Math.cos(angle) * dist);
+      const tz = this.clampZ(s.z + Math.sin(angle) * dist);
+      if (env.waterAt(tx, tz) < ANIMALS.crabWetDepth && Number.isFinite(env.heightAt(tx, tz))) {
+        s.phase = 'wandering';
+        this.targetX = tx;
+        this.targetZ = tz;
+        this.phaseTimer = dist / ANIMALS.crabSpeed + 1.0;
+        return;
+      }
+    }
+    // Fallback: move upslope toward dry sand
+    s.phase = 'wandering';
+    this.targetX = this.clampX(s.x + (this.rand() - 0.5) * 2.0);
+    this.targetZ = this.clampZ(s.z + 2.0);
+    this.phaseTimer = 2.5;
+  }
+
+  private validateSpot(x: number, z: number, env: AnimalEnv): { x: number; y: number; z: number } | null {
+    const cx = this.clampX(x);
+    const cz = this.clampZ(z);
+    const y = env.heightAt(cx, cz);
+    if (!Number.isFinite(y)) return null;
+    return { x: cx, y, z: cz };
+  }
+
+  private pickSpawnSpot(env: AnimalEnv): { x: number; y: number; z: number } | null {
+    // Prefer the lively damp-to-dry band between the waterline and the upper berm
+    const zLo = Math.max(-HALF_Z + ANIMALS.edgeMargin, SHORELINE_Z + 1.0);
+    const zHi = HALF_Z - ANIMALS.edgeMargin - 1.0;
+    for (let attempt = 0; attempt < 24; attempt++) {
+      const x = -HALF_X + ANIMALS.edgeMargin + this.rand() * (WORLD_SIZE_X - ANIMALS.edgeMargin * 2);
+      const z = zLo + this.rand() * Math.max(0.5, zHi - zLo);
+      if (env.waterAt(x, z) > 0.02) continue;
+      if (this.insideObstacle(x, z, env.obstacles)) continue;
+      const y = env.heightAt(x, z);
+      if (Number.isFinite(y)) return { x, y, z };
+    }
+    // Fallback near the dry mid-beach
+    return this.validateSpot(0, Math.min(zHi, SHORELINE_Z + 5.5), env);
+  }
+
+  private insideObstacle(x: number, z: number, obstacles?: readonly AnimalObstacle[]): boolean {
+    if (!obstacles) return false;
+    for (let i = 0; i < obstacles.length; i++) {
+      const o = obstacles[i];
+      const r = o.radius + ANIMALS.crabSize;
+      const dx = x - o.x;
+      const dz = z - o.z;
+      if (dx * dx + dz * dz < r * r) return true;
+    }
+    return false;
+  }
+}

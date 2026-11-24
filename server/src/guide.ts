@@ -97,6 +97,7 @@ const NAV_SECTIONS: [string, string][] = [
   ['tools', 'Tools'],
   ['bag', 'Your bag'],
   ['finds', 'Digging finds'],
+  ['animals', 'Animals'],
   ['claw', 'Claw machine'],
   ['vending', 'Vending machine'],
   ['beaches', 'Your beaches'],
@@ -156,6 +157,9 @@ export function guideHtml(now: number): string {
 
 <h2 id="finds">Digging finds</h2>
 <p>A good dig (dragging at least 2 m, or holding in one place for a second) has a ${pct(DIG_FIND_CHANCE)} chance to turn up something buried, drawn from this week’s <a href="#vending">vending set</a> at the vending odds. At most one try every ${DIG_FIND_ROLL_COOLDOWN_MS / 1000} seconds, and at most ${DIG_FIND_DAILY_CAP} finds a day (the day turns over at midnight UTC). Signed in only.</p>
+
+<h2 id="animals">Animals</h2>
+<p>Now and then a wild sand crab pops out of the sand, scurries sideways across the beach, dodges incoming waves and your digging brush, and burrows back down after a minute or two. Most of the time the beach is quiet with no animal around.</p>
 
 <h2 id="claw">Claw machine</h2>
 <p>Free to play when you’re signed in: open the bag and tap the claw machine. Hold the button to steer, let go to drop.</p>

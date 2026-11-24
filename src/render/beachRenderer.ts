@@ -117,6 +117,8 @@ export class BeachRenderer {
     Effect.ShadersStore['beachSkirtFragmentShader'] = S.skirtFragment;
     Effect.ShadersStore['beachFlatVertexShader'] = S.flatVertex;
     Effect.ShadersStore['beachFlatFragmentShader'] = S.flatFragment;
+    Effect.ShadersStore['beachAnimalVertexShader'] = S.animalVertex;
+    Effect.ShadersStore['beachAnimalFragmentShader'] = S.animalFragment;
 
     const light = ['sunDir', 'sunCol', 'ambCol', 'shadowCol', 'cameraDir'];
     const swellUniforms = ['swellA', 'swellW', 'swellP', 'swellK', 'swellEnv', 'simTime', 'tide', 'zEdge'];
@@ -272,6 +274,28 @@ export class BeachRenderer {
     m.setColor3('fogCol', c3(color));
     m.setFloat('fadeTop', -40);
     m.setFloat('fadeBottom', -50);
+    m.setFloat('shine', shine);
+    m.backFaceCulling = false;
+    if (this.hasLitState) {
+      m.setVector3('sunDir', this._sun);
+      m.setColor3('sunCol', this._sunCol);
+      m.setColor3('ambCol', this._ambCol);
+      m.setColor3('shadowCol', this._shadowCol);
+      m.setVector3('cameraDir', this._camDir);
+    }
+    return m;
+  }
+
+  /** A flat-shaded vertex-coloured lit material for beach animals with GPU scuttle/claw uniforms. */
+  createAnimalMaterial(shine = 0.25): ShaderMaterial {
+    const m = this.material('beachAnimal', {
+      attributes: ['position', 'normal', 'color', 'uv'],
+      uniforms: ['sunDir', 'sunCol', 'ambCol', 'shadowCol', 'cameraDir', 'scuttlePhase', 'scuttleAmp', 'clawWave', 'shine'],
+      samplers: [],
+    });
+    m.setFloat('scuttlePhase', 0);
+    m.setFloat('scuttleAmp', 0);
+    m.setFloat('clawWave', 0);
     m.setFloat('shine', shine);
     m.backFaceCulling = false;
     if (this.hasLitState) {

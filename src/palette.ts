@@ -284,3 +284,15 @@ export function itemLook(itemId: string, kind: keyof typeof PROP_COLORS): ItemLo
   if (own) return own;
   return { colors: PROP_COLORS[kind] as RGB[], gloss: 0 };
 }
+
+/** Fixed colours for beach animals (lit by the scene's light, src/render/animals.ts). */
+export const ANIMAL_COLORS = {
+  crab: {
+    shell: hex('#e05b40'),
+    claws: hex('#f26e4a'),
+    legs: hex('#d47a54'),
+    belly: hex('#f2cbb0'),
+    eyes: hex('#231e24'),
+  },
+};
+

@@ -771,3 +771,20 @@ catalog product. Linked paid items credit the creator 30% of each
 completed sale. Assets and availability ship through the existing
 catalog release process. The public specification includes an example
 prompt, JSON Schema and sample asset.
+
+## Animals — A1 wild sand crab (2026-11-24)
+
+- **Rare wild visitor** ([ANIMALS.md](ANIMALS.md)): a single sand crab
+  occasionally emerges from the sand (4–12 min quiet wait, 65% roll, 45–120 s
+  visit, empty most of the time), scurries sideways in short bursts, pauses to
+  wave its claws, flees incoming waves and the player's digging brush, steers
+  around placed rocks/large objects, and burrows back into the sand.
+- **Implementation:** pure-TS state machine in `src/world/animals.ts` (unit
+  tested in `tests/animals.test.ts`), tuning constants in `ANIMALS`
+  (`src/config.ts`), colours in `ANIMAL_COLORS` (`src/palette.ts`), and a
+  single-draw-call vertex-coloured procedural mesh with GPU leg-scuttle and
+  claw-wave animation in `src/render/animals.ts` (`beachAnimal` shader in
+  `src/render/shaders.ts`, disabled when absent so idle draw calls stay
+  unchanged). `?debug=1` adds **Spawn sand crab** / **Despawn** and a status
+  readout.
+

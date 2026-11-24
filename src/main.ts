@@ -13,9 +13,11 @@ import { Haptics } from './platform/haptics';
 import { registerServiceWorker } from './platform/pwa';
 import { tierFromBench } from './platform/quality';
 import { BeachRenderer, ORIGIN_X, ORIGIN_Z } from './render/beachRenderer';
+import type { AnimalView } from './render/animals';
 import { ObjectView } from './render/objects';
 import { Horizon } from './render/horizon';
 import { Sky, type SkyDisc } from './render/sky';
+import { AnimalController, type AnimalEnv, type AnimalObstacle } from './world/animals';
 import { LiveConditions } from './world/live';
 import { BEACHES, beachById, defaultBeach, nearestBeach, type Beach } from './world/locations';
 import type { BrushMode, ClearingMode } from './sim/beachSim';
@@ -181,6 +183,43 @@ async function boot() {
   };
   const horizon = new Horizon(scene, swell, seed, grid.dx);
   const objectView = new ObjectView(scene, renderer);
+  const animals = new AnimalController();
+  let animalView: AnimalView | null = null;
+  let animalViewLoading = false;
+  const ensureAnimalView = () => {
+    if (animalView || animalViewLoading) return;
+    animalViewLoading = true;
+    void import('./render/animals').then(({ AnimalView: View }) => {
+      animalView = new View(scene, renderer);
+    });
+  };
+  const animalBrush = { x: 0, z: 0, active: false };
+  const animalObstacles: AnimalObstacle[] = [];
+  const animalEnv: AnimalEnv = {
+    heightAt: (x, z) => picker.heightAt(x, z),
+    waterAt: (x, z) => picker.waterAt(x, z),
+    brush: animalBrush,
+    obstacles: animalObstacles,
+  };
+  const syncAnimalObstacles = () => {
+    let n = 0;
+    for (let i = 0; i < objectStates.length; i++) {
+      const o = objectStates[i];
+      if (o.kind !== 'rock' && o.size < 0.7) continue;
+      const wx = o.x + ORIGIN_X;
+      const wz = o.y + ORIGIN_Z;
+      const r = o.kind === 'rock' ? o.size : 0.7;
+      if (n < animalObstacles.length) {
+        animalObstacles[n].x = wx;
+        animalObstacles[n].z = wz;
+        animalObstacles[n].radius = r;
+      } else {
+        animalObstacles.push({ x: wx, z: wz, radius: r });
+      }
+      n++;
+    }
+    animalObstacles.length = n;
+  };
   const audio = new Ambience();
   const haptics = new Haptics();
   haptics.enabled = settings.haptics;
@@ -1113,6 +1152,16 @@ async function boot() {
       objectView.touch();
     }
     objectView.update(dt);
+    animalBrush.active = digging && lastHit !== null;
+    if (lastHit) {
+      animalBrush.x = lastHit.x;
+      animalBrush.z = lastHit.z;
+    }
+    if (animals.snapshot().active) syncAnimalObstacles();
+    animals.update(dt, animalEnv);
+    const animalSnap = animals.snapshot();
+    if (animalSnap.active) ensureAnimalView();
+    animalView?.update(animalSnap, ownShown);
     if (digging) haptics.dig(info.digIntensity);
     cam.camera.getDirectionToRef(Vector3.Right(), right);
     audio.update(dt, {
@@ -1602,6 +1651,14 @@ async function boot() {
     leaderboard: () => leaderboard,
     vending: () => vendingMachine,
     objectView,
+    animals: {
+      snapshot: () => ({ ...animals.snapshot() }),
+      spawn: (pos?: { x: number; z: number }) => {
+        syncAnimalObstacles();
+        return animals.spawnNow(animalEnv, pos);
+      },
+      despawn: () => animals.despawnNow(),
+    },
     audio,
     pickTool,
     view: (m?: 'diorama' | 'chair') => (m ? cam.setMode(m) : cam.toggleMode()),
@@ -1618,7 +1675,19 @@ async function boot() {
 
   if (params.has('debug')) {
     const { setupDebug } = await import('./ui/debug');
-    await setupDebug(send, () => info, () => cam.brushRadius());
+    await setupDebug(send, () => info, () => cam.brushRadius(), {
+      spawn: () => {
+        syncAnimalObstacles();
+        return animals.spawnNow(animalEnv);
+      },
+      despawn: () => animals.despawnNow(),
+      status: () => {
+        const s = animals.snapshot();
+        return s.active
+          ? `${s.species} ${s.phase} (${s.x.toFixed(1)}, ${s.z.toFixed(1)}) left ${s.visitLeft.toFixed(0)}s`
+          : `absent (next roll ${s.nextSpawnIn.toFixed(0)}s)`;
+      },
+    });
   }
   // start seated (TV / ?view=chair) once everything the view switch touches exists
   if (tv || params.get('view') === 'chair') cam.setMode('chair', false);

@@ -19,6 +19,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     date: '2026-11-24',
     title: 'Linked beaches, shiny prizes, and rocks that stay put',
     changes: [
+      'A wild sand crab now pops out of the sand from time to time, scurries sideways across the beach, dodges waves and your brush, and burrows back down.',
       'Design an item for Beech and submit it on beechshore.com. Propose a price and availability, follow its review, and earn Beech shop credit when your approved item sells.',
       'beechshore.com has a refreshed look, a beach finder (by code or name), and a share studio on every beach page: grab a Postcard, Square, Story, or Clean preview snapshot to share directly, copy to your clipboard, or download for Instagram, X, Bluesky, Threads, Reddit, Discord, WhatsApp, Facebook, and Messages.',
       'Refreshed the beech.games home page with a live time-of-day beach preview, a Play now on web button, a Google Play link, and an iOS coming soon note.',

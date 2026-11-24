@@ -1,12 +1,23 @@
 import * as CONFIG from '../config';
 import type { FrameInfo, TunableSection, ToWorker } from '../sim/protocol';
 
+export interface DebugAnimalsHandle {
+  spawn: () => boolean;
+  despawn: () => void;
+  status: () => string;
+}
+
 /**
  * ?debug=1: a live tuning panel (lil-gui, loaded on demand) plus a small stats
  * overlay. Every change is applied to the main thread's config and mirrored
  * into the worker.
  */
-export async function setupDebug(send: (m: ToWorker) => void, getInfo: () => FrameInfo, getBrush: () => number) {
+export async function setupDebug(
+  send: (m: ToWorker) => void,
+  getInfo: () => FrameInfo,
+  getBrush: () => number,
+  animals?: DebugAnimalsHandle,
+) {
   const { default: GUI } = await import('lil-gui');
   const gui = new GUI({ title: 'beech tuning' });
   gui.close();
@@ -56,6 +67,12 @@ export async function setupDebug(send: (m: ToWorker) => void, getInfo: () => Fra
     }
   }
 
+  if (animals) {
+    const af = gui.addFolder('ANIMALS');
+    af.add({ spawnCrab: () => animals.spawn() }, 'spawnCrab').name('Spawn sand crab');
+    af.add({ despawn: () => animals.despawn() }, 'despawn').name('Despawn');
+  }
+
   const hud = document.createElement('pre');
   hud.style.cssText =
     'position:fixed;left:8px;top:8px;margin:0;padding:6px 8px;font:11px/1.35 ui-monospace,monospace;' +
@@ -76,7 +93,8 @@ export async function setupDebug(send: (m: ToWorker) => void, getInfo: () => Fra
         `fps ${fps.toFixed(0)}  sim ${i.tickMs.toFixed(1)} ms\n` +
         `t ${i.t.toFixed(1)}s  sea ${i.eta.toFixed(2)} m  tide ${i.tide.toFixed(2)} m\n` +
         (i.stats ? `sand ${i.stats.totalSand.toFixed(2)} m³  water ${i.stats.totalWater.toFixed(1)} m³\n` : '') +
-        `brush r ${getBrush().toFixed(2)} m  undo ${i.undoCount}/${i.redoCount}`;
+        `brush r ${getBrush().toFixed(2)} m  undo ${i.undoCount}/${i.redoCount}` +
+        (animals ? `\nanimal ${animals.status()}` : '');
     }
     requestAnimationFrame(tick);
   };
