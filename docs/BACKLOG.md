@@ -80,13 +80,9 @@ _(nothing right now)_
 - [ ] **Free item: footprints**: Rose, Discord #feedback 2026-11-23.
   Footprints left in the sand, plus a little figure walking the
   waterline (promoted from Ideas).
-- [ ] **Steam S4 (Steamworks polish & Steam Deck)**: Steam Achievements, Rich
-  Presence, lightweight Gamepad API adapter (`src/input/gamepad.ts`) +
-  Steam Input layout, and `1280×800` Steam Deck UI pass. See
-  [STEAM.md](STEAM.md).
 - [ ] **Steam S6 (Storefront & launch)**: 2024+ Steam capsule & library
-  assets, 1080p screenshots/trailer, `public/privacy.html` Steam update,
-  Coming Soon page (≥14 days), and Valve Build Review. See
+  assets, 1080p screenshots/trailer, Coming Soon page (≥14 days), and Valve
+  Build Review (`public/privacy.html` already updated). See
   [STEAM.md](STEAM.md).
 - [ ] **Release setup for native sign-in** (DevOps): Android and iOS OAuth
   clients, build env vars, the Info.plist URL scheme, the Apple capability,

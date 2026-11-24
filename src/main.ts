@@ -50,6 +50,8 @@ import { loadLocalBeach, saveLocalBeach } from './net/localStore';
 import { LocalCheckpointsSection } from './ui/localCheckpoints';
 import { watchForNewVersion } from './platform/version';
 import { isPackagedApp, isSteam, steamBridge } from './platform/runtime';
+import { unlockSteamAchievement, updateSteamRichPresence } from './platform/steamFeatures';
+import { GamepadController } from './input/gamepad';
 import { BeachFileDialog, beachFileName, pickFile, saveText, type BeachFileHost } from './ui/beachFileDialog';
 import { parseBeachFile, writeBeachFile } from './world/beachFile';
 import { version as APP_VERSION } from '../package.json';
@@ -401,6 +403,7 @@ async function boot() {
     if (!res.found || !res.item || !res.rarity) return;
     refreshOwned();
     digFind.show({ item: res.item, rarity: res.rarity }, res.findsLeft ?? 0);
+    unlockSteamAchievement('BURIED_FIND');
     audio.whoosh(true);
     haptics.impact('medium');
   };
@@ -468,6 +471,7 @@ async function boot() {
     saveSettings(settings);
     sheet.setSettings(settings);
     updatePlace(true);
+    updateSteamRichPresence(b.name, cam.mode);
   };
   const sheet = new SettingsSheet(uiRoot, settings, {
     nearMe: () => {
@@ -847,7 +851,10 @@ async function boot() {
       }
       digging = false;
       strokeOpen = false;
-      if (wasDig) void tryDigFind(pathM, durationMs);
+      if (wasDig) {
+        unlockSteamAchievement('FIRST_DIG');
+        void tryDigFind(pathM, durationMs);
+      }
     },
     grabAt: (sx, sy) => {
       // look mode: a long-press on a thing picks it up
@@ -885,6 +892,54 @@ async function boot() {
     },
   });
   gestures.lookOnly = true;
+
+  const gamepad = new GamepadController(canvas, cam, {
+    digStart: (sx, sy) => {
+      if (cam.animating) return;
+      if (neighbors && (neighbors.visiting || !neighbors.ownVisible)) return;
+      if (placing) {
+        putDown(sx, sy);
+        return;
+      }
+      startDig(sx, sy);
+    },
+    digMove: (sx, sy) => {
+      if (digging) strokeTo(sx, sy);
+    },
+    digEnd: () => {
+      const wasDig = strokeOpen && brushMode === 'dig';
+      const pathM = digPathM;
+      const durationMs = performance.now() - digStrokeStart;
+      if (strokeOpen) {
+        send({ type: 'brush', phase: 'end' });
+        markDirty();
+      }
+      digging = false;
+      strokeOpen = false;
+      if (wasDig) {
+        unlockSteamAchievement('FIRST_DIG');
+        void tryDigFind(pathM, durationMs);
+      }
+    },
+    hover: (sx, sy) => {
+      hover = pickAt(sx, sy);
+    },
+    undo,
+    cycleTool: (delta) => {
+      // Derive the index from the current tool on each press: the mouse /
+      // touch UI can change it, so a stored index would drift and LB/RB
+      // would jump to the wrong tool.
+      const current = Math.max(0, TOOLS.findIndex((t) => t.id === tool));
+      const next = (current + delta + TOOLS.length) % TOOLS.length;
+      if (TOOLS[next]) pickTool(TOOLS[next].id);
+    },
+    toggleView: () => cam.toggleMode(),
+    toggleSettings: () => sheet.toggleOpen(),
+    interacted: () => {
+      if (start?.visible) begin();
+      else audio.start();
+    },
+  });
 
   /** Brush ring: under the finger while digging, under the mouse on hover, centre after a zoom. */
   const updateRing = (dt: number, palette: Palette) => {
@@ -1004,8 +1059,13 @@ async function boot() {
     if (!document.hidden && !params.has('fixedres')) adaptResolution(dt);
 
     const palette = liveState.palette;
+    gamepad.poll(dt);
     cam.update(dt, gestures.cameraActive);
     updateRing(dt, palette);
+    updateSteamRichPresence(beach.name, cam.mode);
+    if (cam.mode === 'chair') unlockSteamAchievement('CHAIR_VIEW');
+    if (liveState.sky.night > 0.5) unlockSteamAchievement('NIGHT_BEACH');
+    if (neighbors && !neighbors.ownVisible) unlockSteamAchievement('WALK_SHORE');
     hud.setUndoState(info.undoCount, info.redoCount);
     applyUiColors(palette);
 
@@ -1175,6 +1235,7 @@ async function boot() {
       const bytes = await encodeSand(b.delta, b.nx, b.ny, b.objects, b.cover);
       const cp = await cpApi.import(bytes, (b.name || fallback || 'Imported beach').slice(0, 40), b.location);
       showToast(uiRoot, `Kept “${cp.name}” as a checkpoint`);
+      unlockSteamAchievement('CHECKPOINT_SAVED');
       await checkpoints.load();
     };
     // beach files and checkpoints (BEACH_FILE.md, E5)
@@ -1344,6 +1405,7 @@ async function boot() {
       },
     });
     const claw = new ClawMachine(uiRoot, new PullApi(acct), (item, place) => {
+      unlockSteamAchievement('CLAW_WIN');
       void loadOwned().then(() => {
         if (place) inventory.select(item);
       });
@@ -1389,6 +1451,7 @@ async function boot() {
     });
     inventory.setClaw(acct.user ? 'play' : 'signin');
     const vending = new VendingMachine(uiRoot, new PullApi(acct), (item, place) => {
+      unlockSteamAchievement('VENDING_PULL');
       void loadOwned().then(() => {
         if (place) inventory.select(item);
       });
