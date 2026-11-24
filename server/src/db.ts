@@ -13,6 +13,10 @@ export interface Db {
   exec(sql: string): Promise<void>;
   /** run fn holding a session-level advisory lock (one migrator at a time) */
   withLock<T>(key: number, fn: () => Promise<T>): Promise<T>;
+  /** run fn inside one transaction (COMMIT on success, ROLLBACK on error).
+      fn receives a Db bound to that transaction; a nested call joins the
+      same transaction instead of opening another. */
+  withTransaction<T>(fn: (tx: Db) => Promise<T>): Promise<T>;
   close(): Promise<void>;
   /** query counters + latency percentiles (null pool fields for PGlite) */
   stats?: () => DbStatsSnapshot;
@@ -64,6 +68,51 @@ export function createPgDb(cfg: PgConfig): Db {
         client.release();
       }
     },
+    async withTransaction(fn) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const tx: Db = {
+          query: async (sql, params = []) => {
+            // Same timed wrapper as the pool query above, bound to this
+            // transaction's client instead of the pool.
+            const start = performance.now();
+            try {
+              const rows = (await client.query(sql, params)).rows;
+              stats.record(performance.now() - start, true);
+              return rows;
+            } catch (e) {
+              const ms = performance.now() - start;
+              stats.record(ms, false);
+              logEvent('db_error', { duration_ms: Math.round(ms), code: String((e as { code?: unknown })?.code ?? 'unknown') }, 'ERROR');
+              throw e;
+            }
+          },
+          exec: async (sql) => {
+            await client.query(sql);
+          },
+          withLock: async (key, f) => {
+            await client.query('SELECT pg_advisory_lock($1)', [key]);
+            try {
+              return await f();
+            } finally {
+              await client.query('SELECT pg_advisory_unlock($1)', [key]).catch(() => {});
+            }
+          },
+          withTransaction: (f) => f(tx),
+          close: () => Promise.resolve(),
+          stats: () => stats.snapshot(),
+        };
+        const result = await fn(tx);
+        await client.query('COMMIT');
+        return result;
+      } catch (e) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw e;
+      } finally {
+        client.release();
+      }
+    },
     close: () => pool.end(),
     stats: () => stats.snapshot(),
   };
@@ -75,7 +124,7 @@ export async function createPgliteDb(dataDir?: string): Promise<Db> {
   const db = new PGlite(dataDir);
   await db.waitReady;
   const stats: DbStats = createDbStats();
-  return {
+  const pgliteDb: Db = {
     async query(sql, params = []) {
       const start = performance.now();
       try {
@@ -93,9 +142,22 @@ export async function createPgliteDb(dataDir?: string): Promise<Db> {
       await db.exec(sql);
     },
     withLock: (_key, fn) => fn(), // single connection: nothing to race with
+    async withTransaction(fn) {
+      // Single connection, so BEGIN/COMMIT bracket the same queries fn runs.
+      await db.exec('BEGIN');
+      try {
+        const result = await fn(pgliteDb);
+        await db.exec('COMMIT');
+        return result;
+      } catch (e) {
+        await db.exec('ROLLBACK').catch(() => {});
+        throw e;
+      }
+    },
     close: () => db.close(),
     stats: () => stats.snapshot(),
   };
+  return pgliteDb;
 }
 
 /** bytea comes back as a Buffer (pg) or Uint8Array (PGlite) */

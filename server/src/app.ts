@@ -447,27 +447,59 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const targetId = row.user_id;
     if (targetId === currentId) fail(400, 'this device is already signed into that account');
 
-    // Only merge a fresh/empty account so nobody loses a saved beach or purchases.
-    const [beaches, items, purchases] = await Promise.all([
+    // Only merge a fresh/empty account so nobody loses saved data. Stars,
+    // favorites, neighbor links/requests, and checkpoints are all lost on
+    // the merge (the user row is deleted; those tables cascade), so they
+    // count toward "not empty" too — a fresh Steam account has none of them.
+    const [beaches, items, purchases, stars, favorites, neighbors, requests, checkpoints] = await Promise.all([
       db.query<{ count: string; saved: string }>(
         'SELECT COUNT(*)::text AS count, COUNT(*) FILTER (WHERE sand IS NOT NULL)::text AS saved FROM beach WHERE owner_id = $1',
         [currentId],
       ),
       db.query<{ count: string }>('SELECT COUNT(*)::text AS count FROM inventory WHERE user_id = $1 AND quantity > 0', [currentId]),
       db.query<{ count: string }>('SELECT COUNT(*)::text AS count FROM purchases WHERE user_id = $1', [currentId]),
+      db.query<{ count: string }>('SELECT COUNT(*)::text AS count FROM star_first WHERE user_id = $1', [currentId]),
+      db.query<{ count: string }>('SELECT COUNT(*)::text AS count FROM favorites WHERE user_id = $1', [currentId]),
+      // Neighbor links/requests name beaches, not users (migration 7), so
+      // they are checked through the account's beaches.
+      db.query<{ count: string }>(
+        'SELECT COUNT(*)::text AS count FROM neighbors WHERE beach_id IN (SELECT id FROM beach WHERE owner_id = $1) OR neighbor_beach_id IN (SELECT id FROM beach WHERE owner_id = $1)',
+        [currentId],
+      ),
+      db.query<{ count: string }>(
+        'SELECT COUNT(*)::text AS count FROM neighbor_requests WHERE from_beach IN (SELECT id FROM beach WHERE owner_id = $1) OR to_beach IN (SELECT id FROM beach WHERE owner_id = $1)',
+        [currentId],
+      ),
+      db.query<{ count: string }>('SELECT COUNT(*)::text AS count FROM checkpoints WHERE owner_id = $1', [currentId]),
     ]);
-    if (Number(beaches[0]?.count ?? 0) > 1 || Number(beaches[0]?.saved ?? 0) > 0 || Number(items[0]?.count ?? 0) > 0 || Number(purchases[0]?.count ?? 0) > 0) {
-      fail(409, 'this account already has a saved beach or items; delete it first to link another account');
+    const nonEmpty =
+      Number(beaches[0]?.count ?? 0) > 1 ||
+      Number(beaches[0]?.saved ?? 0) > 0 ||
+      Number(items[0]?.count ?? 0) > 0 ||
+      Number(purchases[0]?.count ?? 0) > 0 ||
+      Number(stars[0]?.count ?? 0) > 0 ||
+      Number(favorites[0]?.count ?? 0) > 0 ||
+      Number(neighbors[0]?.count ?? 0) > 0 ||
+      Number(requests[0]?.count ?? 0) > 0 ||
+      Number(checkpoints[0]?.count ?? 0) > 0;
+    if (nonEmpty) {
+      fail(409, 'this account already has a saved beach, items, stars, neighbors, or checkpoints; delete it first to link another account');
     }
 
     // Consume the one-time code, move identities to targetId, and drop the empty user row.
-    const claimed = await db.query<{ user_id: string }>(
-      'DELETE FROM account_link_codes WHERE code_hash = $1 AND expires_at > $2 RETURNING user_id',
-      [codeHash, now],
-    );
+    // One transaction: a crash between the identity move and the user delete
+    // would orphan a user row with no identities (and a spent link code).
+    const claimed = await db.withTransaction(async (tx) => {
+      const rows = await tx.query<{ user_id: string }>(
+        'DELETE FROM account_link_codes WHERE code_hash = $1 AND expires_at > $2 RETURNING user_id',
+        [codeHash, now],
+      );
+      if (!rows.length) return rows;
+      await tx.query('UPDATE user_identities SET user_id = $1 WHERE user_id = $2', [targetId, currentId]);
+      await tx.query('DELETE FROM users WHERE id = $1', [currentId]);
+      return rows;
+    });
     if (!claimed.length) fail(404, 'that link code is invalid or has expired');
-    await db.query('UPDATE user_identities SET user_id = $1 WHERE user_id = $2', [targetId, currentId]);
-    await db.query('DELETE FROM users WHERE id = $1', [currentId]);
 
     const targetRows = await db.query<User>('SELECT id, name FROM users WHERE id = $1', [targetId]);
     const targetUser = targetRows[0];
