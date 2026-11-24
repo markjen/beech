@@ -58,7 +58,8 @@ _(nothing right now)_
 ## Up next (engineering)
 
 - [ ] **Animals (A1–A5)**: start with one rare wild visitor (**sand crab**),
-  then food & feeding (free trickle + shop packs), then resident pets (cozy
+  then food & feeding (free trickle + shop packs), then resident pets (adopt
+  by buying in the shop or feeding wild visitors enough to befriend one; cozy
   hunger/burrow model, local notifications, and visitor feeding 1 free/day +
   own food). Spec in [ANIMALS.md](ANIMALS.md).
 - [ ] **Sandcastle mini-game: customize detailed sandcastles**: Rose

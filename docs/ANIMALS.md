@@ -192,6 +192,20 @@ no subscriptions, no pay-to-win. Food uses a **free + shop** mix:
 asks to be fed via gentle notifications, and can also be fed by friends and
 visitors walking the shore.
 
+### Adoption (two paths)
+
+Players can get a resident pet on a beach in either of two ways:
+
+1. **Befriend by feeding (free path):** Each time you feed a wild visitor of a
+   species on a beach, the server increments a per-beach bond counter
+   (`wild_feed_progress`, e.g. threshold of ~10–15 feeds). Once you reach the
+   threshold (and the beach doesn't already have a pet), the wild animal decides
+   to stay and offers to become your beach's resident pet (with an optional
+   name).
+2. **Adopt in the shop (instant path):** Buy a pet directly in the shop (like a
+   centrepiece, e.g. **$1.99–$2.99**) to adopt one immediately on any beach
+   without waiting to befriend a wild visitor.
+
 ### Pet lifecycle & cozy rules
 
 - **One pet per beach** to start (keeps the shore uncrowded even across a long
@@ -213,7 +227,7 @@ visitors walking the shore.
 
 ### Data model (server)
 
-Keep pet state in its own table — **not** inside the `BCH3` sand blob — so a
+Keep pet state in its own tables — **not** inside the `BCH3` sand blob — so a
 visitor feeding your pet never races with your device saving sand:
 
 ```sql
@@ -223,10 +237,19 @@ CREATE TABLE beach_pets (
   species TEXT NOT NULL,                  -- 'crab', ...
   name TEXT NOT NULL DEFAULT '',          -- optional short pet name
   variant SMALLINT NOT NULL DEFAULT 0,    -- colour/look variant
+  source TEXT NOT NULL,                   -- 'befriended' | 'shop'
   last_fed_at BIGINT NOT NULL,
   last_fed_by UUID REFERENCES users (id) ON DELETE SET NULL,
   fed_count INTEGER NOT NULL DEFAULT 0,
   created_at BIGINT NOT NULL
+);
+
+CREATE TABLE wild_feed_progress (
+  beach_id UUID NOT NULL REFERENCES beach (id) ON DELETE CASCADE,
+  species TEXT NOT NULL,
+  feed_count INTEGER NOT NULL DEFAULT 0,
+  updated_at BIGINT NOT NULL,
+  PRIMARY KEY (beach_id, species)
 );
 
 CREATE TABLE pet_feed_log (
@@ -288,10 +311,11 @@ Each milestone keeps the app playable, tested, and within `perf/budget.json`.
 - **A2 — Animal food & feeding (Phase 2):** Food item in catalog/bag (free
   trickle + shop packs), drop on sand to bait or extend a visit, happy eat
   animation, server consumable inventory.
-- **A3 — Resident pets (Phase 3a):** Adopt/place one pet per beach,
-  `beach_pets` table, cozy mood states from `last_fed_at` (sleepy/burrowed
-  after 48 h, never leaves), visible on neighbors' beaches, local hunger
-  notifications on iOS/Android.
+- **A3 — Resident pets (Phase 3a):** Adopt one pet per beach either by
+  befriending wild visitors through feeding (`wild_feed_progress`) or buying
+  directly in the shop; `beach_pets` table, cozy mood states from
+  `last_fed_at` (sleepy/burrowed after 48 h, never leaves), visible on
+  neighbors' beaches, local hunger notifications on iOS/Android.
 - **A4 — Visitor feeding & activity (Phase 3b):** Visitors can feed a beach's
   pet (`POST /api/beaches/:code/pet/feed` — 1 free/day per beach, or spend own
   food anytime), owner "X fed your pet" cue, optional remote push later.
@@ -305,13 +329,9 @@ Each milestone keeps the app playable, tested, and within `perf/budget.json`.
 - **First species:** Sand crab.
 - **Food acquisition (Phase 2):** Both — occasional free treats (claw / vending
   / digging) plus consumable packs in the shop.
+- **Pet adoption (Phase 3):** Both — buy a pet directly in the shop, or feed
+  wild visitors enough times on a beach that one decides to stay as your pet.
 - **Visitor feeding (Phase 3):** 1 free feed per day per beach, plus visitors
   can spend their own food anytime.
 - **Pet hunger tone (Phase 3):** Cozy — gets sleepy / burrowed until fed, never
   dies or leaves.
-
-## Remaining open questions (for Phase 3)
-
-1. **Pet adoption:** Unlocked via the shop (like a centrepiece, e.g.
-   $1.99–$2.99), or one free starter pet per account with extra pets/species in
-   the shop?
