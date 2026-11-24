@@ -1,3 +1,5 @@
+import { steamBridge } from '../platform/runtime';
+
 // Ambient ("TV") mode: after a few quiet seconds the controls fade away and
 // the screen is kept awake, so the beach can sit on a TV or a tablet stand
 // like a window. Any touch, mouse move or key (TV remote) brings them back.
@@ -46,6 +48,15 @@ export class Ambient {
 }
 
 export async function toggleFullscreen(): Promise<void> {
+  const steam = steamBridge();
+  if (steam) {
+    try {
+      await steam.toggleFullscreen();
+    } catch {
+      /* ignore */
+    }
+    return;
+  }
   try {
     if (!document.fullscreenElement) await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
     else await document.exitFullscreen();

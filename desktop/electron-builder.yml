@@ -1,0 +1,32 @@
+appId: app.beech.beach
+productName: beech
+copyright: Copyright © Jenerator Labs
+asar: true
+asarUnpack:
+  - "**/node_modules/steamworks.js/**"
+
+directories:
+  output: release
+
+files:
+  - build/**
+  - package.json
+  - from: ../dist
+    to: web
+    filter:
+      - "**/*"
+
+win:
+  target:
+    - target: dir
+      arch:
+        - x64
+  icon: ../public/icons/icon-512.png
+
+linux:
+  target:
+    - target: dir
+      arch:
+        - x64
+  category: Game
+  icon: ../public/icons/icon-512.png

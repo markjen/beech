@@ -3,7 +3,7 @@
 // The format is docs/BEACH_FILE.md; reading and writing live in
 // src/world/beachFile.ts.
 
-import { Capacitor } from '@capacitor/core';
+import { isMobileApp, steamBridge } from '../platform/runtime';
 import { PROFILE, WORLD_SIZE_X } from '../config';
 import { applyRockCover, type PlacedObject } from '../sim/objects';
 import { buildRestProfile, restHeight } from '../sim/profile';
@@ -40,7 +40,7 @@ export function pickFile(accept = '.json,.beach.json,application/json'): Promise
     // the phone pickers grey out files whose type they can't map from the
     // extension (".beach.json" is often unknown), so let any file be picked
     // there; the reader says if it isn't a beach file
-    if (!Capacitor.isNativePlatform()) input.accept = accept;
+    if (!isMobileApp()) input.accept = accept;
     input.style.display = 'none';
     document.body.appendChild(input);
     let done = false;
@@ -58,10 +58,15 @@ export function pickFile(accept = '.json,.beach.json,application/json'): Promise
 
 /**
  * Save a beach file: the share sheet in the phone apps (a download can't
- * leave their WebView), a download on the web.
+ * leave their WebView), the OS save dialog on Steam, or a download on the web.
  */
 export async function saveText(name: string, text: string): Promise<void> {
-  if (Capacitor.isNativePlatform()) {
+  const steam = steamBridge();
+  if (steam) {
+    await steam.saveBeachFile(name, text);
+    return;
+  }
+  if (isMobileApp()) {
     const [{ Filesystem, Directory, Encoding }, { Share }] = await Promise.all([import('@capacitor/filesystem'), import('@capacitor/share')]);
     const { uri } = await Filesystem.writeFile({ path: name, data: text, directory: Directory.Cache, encoding: Encoding.UTF8 });
     try {

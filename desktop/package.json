@@ -1,0 +1,22 @@
+{
+  "name": "beech-desktop",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Steam desktop shell (Electron + Steamworks) for beech",
+  "main": "build/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "npm run build && electron .",
+    "pack:win": "npm run build && electron-builder --win --x64 --dir",
+    "pack:linux": "npm run build && electron-builder --linux --x64 --dir"
+  },
+  "dependencies": {
+    "steamworks.js": "^0.4.0"
+  },
+  "devDependencies": {
+    "electron": "^35.0.0",
+    "electron-builder": "^26.0.12",
+    "typescript": "^5.9.3"
+  }
+}

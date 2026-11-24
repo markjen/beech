@@ -1,6 +1,7 @@
 import './overlays.css';
 
 import { GUIDE_URL, type QualityTier } from '../config';
+import { steamBridge } from '../platform/runtime';
 import type { Beach } from '../world/locations';
 import type { PaletteChoice, Settings } from './settingsStore';
 
@@ -154,10 +155,19 @@ export class SettingsSheet {
           <button type="button" class="action" data-act="smooth">smooth the beach</button>
           <button type="button" class="action" data-act="export">export beach</button>
           <button type="button" class="action" data-act="import">import beach</button>
-          <a class="action" href="${GUIDE_URL}" target="_blank" rel="noopener">guide &amp; help</a>
+          <a class="action" data-act="guide" href="${GUIDE_URL}" target="_blank" rel="noopener">guide &amp; help</a>
+          ${steamBridge() ? '<button type="button" class="action" data-act="quit">quit</button>' : ''}
         </div>
       </div>`;
     parent.appendChild(this.el);
+    const steam = steamBridge();
+    if (steam) {
+      this.el.querySelector<HTMLAnchorElement>('a[data-act="guide"]')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        steam.openExternal(GUIDE_URL);
+      });
+      this.el.querySelector<HTMLButtonElement>('button[data-act="quit"]')?.addEventListener('click', () => steam.quit());
+    }
     this.el.querySelector('.sheet-scrim')!.addEventListener('pointerdown', () => this.hide());
     this.el.querySelector('.sheet-close')!.addEventListener('click', () => this.hide());
     for (const input of this.el.querySelectorAll<HTMLInputElement>('input[data-key]')) {

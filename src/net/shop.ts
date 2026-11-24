@@ -1,17 +1,16 @@
 import { Capacitor } from '@capacitor/core';
 
+import { isMobileApp, isSteam } from '../platform/runtime';
 import { DEV_AUTH, type Account } from './account';
 import { reportError, reportEvent } from './telemetry';
 
 // Buying from the shop. In the apps the purchase goes through Apple or Google
-// (StoreKit 2 / Google Play Billing, via @capgo/native-purchases); we never
-// see card details. The app hands the store's proof (a signed transaction on
-// iOS, a purchase token on Android) to the server, which checks it with the
-// store and adds what you bought to your bag. On the web, when the server
-// has web checkout switched on, you pay on Xsolla's Pay Station page
-// (Xsolla is the merchant of record; docs/WEB_PAYMENTS.md) and Xsolla tells
-// the server, which adds the item to your bag; otherwise the web shop sends
-// you to the app.
+// (StoreKit 2 / Google Play Billing, via @capgo/native-purchases); on Steam it
+// goes through Steam Wallet (ISteamMicroTxn); we never see card details. On
+// the web, when the server has web checkout switched on, you pay on Xsolla's
+// Pay Station page (Xsolla is the merchant of record; docs/WEB_PAYMENTS.md)
+// and Xsolla tells the server, which adds the item to your bag; otherwise the
+// web shop sends you to the app.
 
 export interface ShopProduct {
   id: string;
@@ -24,24 +23,25 @@ export interface ShopProduct {
   price?: string;
 }
 
-export type ShopMode = 'native' | 'dev' | 'web';
+export type ShopMode = 'native' | 'steam' | 'dev' | 'web';
 
-/** In the apps: buy here. Development builds: a pretend store. The web: get the app. */
+/** In the mobile apps: StoreKit/Play. On Steam: Steam Wallet. Dev builds: pretend store. Web: Xsolla or app links. */
 export function shopMode(): ShopMode {
-  if (Capacitor.isNativePlatform()) return 'native';
+  if (isSteam()) return 'steam';
+  if (isMobileApp()) return 'native';
   if (DEV_AUTH) return 'dev';
   return 'web';
 }
 
 /**
  * Gift card and promo codes, and spending the credit they give: the web
- * (and development builds) only. In the iOS and Android apps, digital items
- * must be bought through the store (App Store guideline 3.1.1, Google
- * Play's payments policy), so the apps show neither the code fields nor
- * "Buy with credit". Credit someone has still works on the web.
+ * (and development builds) only. In the iOS, Android, and Steam apps, digital
+ * items must be bought through the platform store (App Store guideline 3.1.1,
+ * Google Play's payments policy, Steamworks microtransaction rules), so those
+ * builds show neither the code fields nor "Buy with credit".
  */
 export function codesAllowed(mode: ShopMode = shopMode()): boolean {
-  return mode !== 'native';
+  return mode !== 'native' && mode !== 'steam';
 }
 
 const env = import.meta.env;

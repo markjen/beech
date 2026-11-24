@@ -5,6 +5,7 @@ describe('quality tier', () => {
   it('maps benchmark time to a tier', () => {
     expect(tierFromBench(1.0, false)).toBe('high');
     expect(tierFromBench(1.0, true)).toBe('medium');
+    expect(tierFromBench(1.0, true, true)).toBe('high');
     expect(tierFromBench(3.0, true)).toBe('medium');
     expect(tierFromBench(8.0, false)).toBe('low');
   });

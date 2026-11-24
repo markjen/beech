@@ -20,6 +20,7 @@ const edit = (file, fn) => {
 };
 
 edit('package.json', (s) => s.replace(/"version": "[^"]+"/, `"version": "${version}"`));
+edit('desktop/package.json', (s) => s.replace(/"version": "[^"]+"/, `"version": "${version}"`));
 edit('android/app/build.gradle', (s) =>
   s.replace(/versionCode \d+/, `versionCode ${build}`).replace(/versionName "[^"]+"/, `versionName "${version}"`),
 );

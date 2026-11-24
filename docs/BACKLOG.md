@@ -40,6 +40,12 @@ The single list of what's left to do, for the owner and for agents.
   draft, via the release workflow — no manual upload was needed). Still
   manual in Play Console: listing text, content rating, data safety,
   target audience (13+), testers, promoting the draft. See MOBILE.md.
+- [ ] **Steamworks Partner account & AppID**: register Jenerator Labs on
+  Steamworks, complete tax/banking, pay the $100 Steam Direct fee for
+  `STEAM_APP_ID` and Depot IDs, create a Publisher Web API Key (User Auth +
+  Microtransaction permissions) in Secret Manager (`beech-steam-web-api-key`),
+  and create a restricted Steam Build Account (`STEAM_BUILD_USERNAME`,
+  `STEAM_BUILD_PASSWORD`, `STEAM_CONFIG_VDF`). See [STEAM.md](STEAM.md).
 - [ ] **Create the Discord server**: the feedback channel for players.
   Server created 2026-11-23; its permanent invite
   (`https://discord.gg/y7EGw2yg2d`) is in PR #40 (draft) — tick this once
@@ -75,6 +81,22 @@ _(nothing right now)_
   Footprints left in the sand, plus a little figure walking the
   waterline (promoted from Ideas).
 
+- [ ] **Steam S2 (Auth & cross-platform account linking)**: `POST
+  /api/auth/steam` (`ISteamUserAuth/AuthenticateUserTicket/v1`), auto-sign-in
+  with offline fallback, and migration 17 (`user_identities`) + 8-char link
+  code so web/mobile/Steam share one account. See [STEAM.md](STEAM.md).
+- [ ] **Steam S3 (Microtransactions)**: `ISteamMicroTxn` (`InitTxn/v3`,
+  `FinalizeTxn/v2`, `QueryTxn/v3`), migration 18 (`steam_orders`,
+  `purchases.store` allows `'steam'`), client `'steam'` shop flow, and
+  hourly `GetReport/v5` refund/chargeback sync. See [STEAM.md](STEAM.md).
+- [ ] **Steam S4 (Steamworks polish & Steam Deck)**: Steam Achievements, Rich
+  Presence, lightweight Gamepad API adapter (`src/input/gamepad.ts`) +
+  Steam Input layout, and `1280×800` Steam Deck UI pass. See
+  [STEAM.md](STEAM.md).
+- [ ] **Steam S6 (Storefront & launch)**: 2024+ Steam capsule & library
+  assets, 1080p screenshots/trailer, `public/privacy.html` Steam update,
+  Coming Soon page (≥14 days), and Valve Build Review. See
+  [STEAM.md](STEAM.md).
 - [ ] **Release setup for native sign-in** (DevOps): Android and iOS OAuth
   clients, build env vars, the Info.plist URL scheme, the Apple capability,
   and server client IDs. Steps are in BACKEND.md, "Phone apps". Then test on
