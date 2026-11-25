@@ -53,7 +53,9 @@ export class BeachRenderer {
   private waterSkirt!: Mesh;
   private brush = new Vector4(0, 0, 0.3, 0);
   private brushCol = new Color3(1, 1, 1);
-  private isStatic = false;
+  /** 1: snapshot water (analytic waves over still sand); 0: the simulation's; between: easing from one to the other */
+  private staticMix = 0;
+  private ease: { t0: number; ms: number } | null = null;
   private negNeighbor: BeachRenderer | null = null;
   private posNeighbor: BeachRenderer | null = null;
   private readonly edgeZ: number;
@@ -589,8 +591,6 @@ export class BeachRenderer {
       this.oceanMat.setVector2('linkedSides', this._linked);
       for (const m of this.fieldMats) {
         m.setVector2('linkedSides', this._linked);
-        m.setFloat('negStatic', neg?.isStatic ? 1 : 0);
-        m.setFloat('posStatic', pos?.isStatic ? 1 : 0);
       }
     }
     if (negChanged) {
@@ -613,11 +613,19 @@ export class BeachRenderer {
     }
     if (neg || refsChanged) {
       const nm = neg ? neg.frameMix : 1;
-      for (const m of this.fieldMats) m.setFloat('negMix', nm);
+      const ns = neg ? neg.staticMix : 0;
+      for (const m of this.fieldMats) {
+        m.setFloat('negMix', nm);
+        m.setFloat('negStatic', ns);
+      }
     }
     if (pos || refsChanged) {
       const pm = pos ? pos.frameMix : 1;
-      for (const m of this.fieldMats) m.setFloat('posMix', pm);
+      const ps = pos ? pos.staticMix : 0;
+      for (const m of this.fieldMats) {
+        m.setFloat('posMix', pm);
+        m.setFloat('posStatic', ps);
+      }
     }
   }
 
@@ -645,11 +653,28 @@ export class BeachRenderer {
 
   /** Show a neighbor snapshot: static sand, with rolling waves and foam animated in the shader. */
   showStatic(buf: Float32Array): void {
-    this.isStatic = true;
-    for (const m of this.fieldMats) m.setFloat('staticWater', 1);
+    this.ease = null;
+    this.setStaticMix(1);
     this.uploadFrame(buf);
     this.uploadFrame(buf);
     this.frameMix = 1;
+  }
+
+  /**
+   * The waves just moved onto this beach (docs/BEACH_STORE.md): start from
+   * the snapshot's water, as the snapshot drew it a moment ago, and ease to
+   * the simulation's over `ms` instead of swapping in one frame.
+   */
+  easeFromStatic(ms: number): void {
+    this.setStaticMix(1);
+    this.ease = ms > 0 ? { t0: performance.now(), ms } : null;
+    if (!this.ease) this.setStaticMix(0);
+  }
+
+  private setStaticMix(v: number): void {
+    if (v === this.staticMix) return;
+    this.staticMix = v;
+    for (const m of this.fieldMats) m.setFloat('staticWater', v);
   }
 
   dispose(): void {
@@ -739,6 +764,11 @@ export class BeachRenderer {
     }
     const swellEnv = swellEnvelope(simTime, sw);
 
+    if (this.ease) {
+      const u = Math.min(1, (performance.now() - this.ease.t0) / this.ease.ms);
+      this.setStaticMix(1 - u * u * (3 - 2 * u));
+      if (u >= 1) this.ease = null;
+    }
     for (const m of this.fieldMats) {
       m.setFloat('frameMix', this.frameMix);
       if (ampChanged) m.setVector3('swellA', this._swellA);

@@ -225,6 +225,12 @@ export class NeighborView {
     this.syncSeams();
   }
 
+  /** Is this beach drawn as a snapshot right now (so the waves moving onto it can ease from it)? */
+  showsSnapshot(id: string): boolean {
+    for (const e of this.entries.values()) if (e.beach.id === id && e.slot?.renderer) return true;
+    return false;
+  }
+
   /** Shore index of the live beach, if it's on this shore. */
   get liveIndex(): number | null {
     return this.liveId ? this.indexOfBeach(this.liveId) : null;

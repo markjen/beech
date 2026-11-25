@@ -83,11 +83,6 @@ with their TLA+ spec ([STATE_MACHINES.md](STATE_MACHINES.md#model-first-workflow
 CLAUDE.md "Model first"). Gameplay ideas below get the same once they're
 picked up.
 
-- [ ] **Beach store, next** (docs/BEACH_STORE.md): keep the store's
-  snapshots of other people's beaches across a re-anchor *and* page
-  reloads (IndexedDB, keyed by id + version), and ease the live renderer
-  between beaches instead of a one-frame swap when the waves move.
-
 - [ ] **Palm-first UI, follow-ups**: real weather (temperature, sky) for
   the status pane's first line; credit, stars and finds-today chips in
   the expanded pane (they need their own requests); decide whether the
@@ -154,6 +149,9 @@ picked up.
 - [ ] **Flaky tests**: `npm run e2e:checkpoints` times out at varying
   steps in the cloud container, also on main (so do `neighbors`, `live`,
   `shore`, `beaches` and `leaderboard`: signing a second device in).
+  `shore` also times out at its first sign-in: the first save lands ~10 s
+  after `signInDev` in the container, against a 15 s wait that includes
+  the shore loading.
 - [ ] **Invites: open in the apps**: Universal Links / App Links so
   `?invite=` and `?visit=` links open the phone apps (the invite code is
   kept in `localStorage`, so the claim works the same once it lands).
@@ -184,6 +182,13 @@ picked up.
   shower night.
 
 ## Done (recent)
+
+- [x] **Beach store, next** (2026-11-25): other people's beaches kept on
+  the device (IndexedDB, by id, checked against the shore's save time) so
+  reloads and re-anchors don't refetch them; the waves ease onto a beach
+  from its snapshot's water instead of a one-frame swap
+  ([BEACH_STORE.md](BEACH_STORE.md)). Also fixed `e2e:sandbox`, which read
+  the sand before the hide-save and the first worker frame had landed.
 
 - [x] **Game state machines in TLA+** (2026-11-25): snacks and pets,
   editing beaches and neighbor links modelled and checked with TLC, mapped

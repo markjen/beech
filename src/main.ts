@@ -56,6 +56,7 @@ import { extraById, itemById, prizeName } from './world/items';
 import { BeachSync, countItems, type SyncState } from './net/beachSync';
 import { BeachStore, LOCAL_BEACH, type BeachRef } from './net/beachStore';
 import { beachBackend } from './net/storeBackends';
+import { idbSnapshotCache } from './net/snapshotCache';
 import { snapshotBeforeBigEdit } from './net/bigEditSnapshot';
 import { AccountPanel } from './ui/accountPanel';
 import { Leaderboard } from './ui/leaderboard';
@@ -359,7 +360,9 @@ async function boot() {
   // "current" beach. The worker simulates whichever beach of yours the view
   // is on (`sync.id`), drawn by the live renderer at that beach's place.
   const account: Account | null = ACCOUNTS_ENABLED ? new Account() : null;
-  const store = new BeachStore(grid, ready.rest, beachBackend(account, { saveLocal: !ACCOUNTS_ENABLED, fresh: params.has('fresh') }), seed);
+  // other people's beaches are kept on the device between visits (docs/BEACH_STORE.md)
+  const snapshots = ACCOUNTS_ENABLED ? idbSnapshotCache() : undefined;
+  const store = new BeachStore(grid, ready.rest, beachBackend(account, { saveLocal: !ACCOUNTS_ENABLED, fresh: params.has('fresh'), snapshots }), seed);
   store.canSave = () => !account || !!account.user;
   /** the live renderer is waiting for the worker's first frame of the beach it just got */
   let awaitingLoad = 0;
@@ -2008,6 +2011,8 @@ async function boot() {
   /** the worker's first frame of the bound beach arrived: draw it where it belongs */
   const liveArrived = () => {
     const id = sync.id;
+    // the waves moved onto a beach drawn as a snapshot: ease from its water, not a one-frame swap
+    if (id && neighbors?.showsSnapshot(id)) renderer.easeFromStatic(BEACH_STORE.liveEaseMs);
     neighbors?.setLive(id, renderer);
     const x = id && neighbors ? neighbors.xForBeach(id) : 0;
     placeLive(x ?? 0);
@@ -2535,7 +2540,11 @@ async function boot() {
         // signed out: the account's shore goes away, but the public shore
         // still runs past your (local-only) beach — load it
         nv.clear();
-        if (signedInAs) void s.resetToLocal().then(() => nv.refresh());
+        if (signedInAs) {
+          // a shared device: the beaches you looked at go with you
+          void snapshots?.clear();
+          void s.resetToLocal().then(() => nv.refresh());
+        }
       }
       signedInAs = u?.id ?? null;
     });
