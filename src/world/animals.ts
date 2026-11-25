@@ -239,6 +239,13 @@ export class AnimalController {
     return true;
   }
 
+  /** Take back a dropped snack (e.g. the feed it stood for didn't go through). */
+  clearFood(): void {
+    this.snap.food.active = false;
+    this.snap.food.timeLeft = 0;
+    this.foodWetTimer = 0;
+  }
+
   /** Immediately spawn a wild animal (`'crab'` or `'dolphin'`, used by ?debug=1 and tests). */
   spawnNow(env: AnimalEnv, pos?: { x: number; z: number }, species: AnimalSpecies = 'crab'): boolean {
     if (species === 'dolphin') return this.spawnDolphin(env, pos);

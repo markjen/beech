@@ -1093,6 +1093,15 @@ prompt, JSON Schema and sample asset.
   their own bag anytime). The shore bar shows a **Feed pet** button when
   visiting a beach with a pet, and owners see a quiet toast (`X fed Barnaby!`)
   when visitors feed theirs.
+- **Visitors see pets; feeding puts the snack down** (2026-11-25): while away,
+  the pet of the other beach under the view is drawn on its snapshot sand by a
+  second `AnimalController` + `AnimalView` in `main.ts` (`updateVisitPet`;
+  env from `NeighborView.heightAtWorld` / `waterAtWorld`, still water at the
+  tide; lazy, 0 draws when no pet in view). **Feed** now arms a placement
+  (button reads *cancel*, gestures stop being look-only); the next tap on that
+  beach (`NeighborView.pickBeach`) drops the treat there, the pet walks over
+  and eats it, and the feed call goes out (treat taken back with `clearFood`
+  if it fails). Pet state is client-only for visitors (not synced to owner).
 - **Second species — offshore dolphin (A5)** (2026-11-24): added `'dolphin'`
   to `AnimalController` (`src/world/animals.ts`) and `buildDolphinMesh`
   (`src/render/animals.ts`, single draw call, lazy-loaded, 0 idle draws). On

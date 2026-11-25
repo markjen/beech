@@ -289,7 +289,7 @@ export function guideHtml(now: number): string {
 <p>Now and then a wild sand crab pops out of the sand, scurries sideways across the beach, dodges incoming waves and your digging brush, and burrows back down after a couple of minutes — or a dolphin cruises through the deeper water offshore and leaps across the surf. An animal is around roughly half the time, and the first one usually shows up within a minute of opening the game.</p>
 <p><b>Beach snacks:</b> toss a snack from your bag onto the sand to draw a visiting crab over and keep it around longer, or leave one out as bait so a crab visits sooner. You can buy snack packs in the shop, and digging up buried finds occasionally turns up a free snack too.</p>
 <p><b>Resident pets:</b> feed wild crabs on a beach enough times (10 feeds) and one will offer to move in permanently — or adopt a Pet sand crab straight from the shop. Pets stay on your beach, never leave, and tuck into a cozy sand burrow to nap if unfed for a couple of days until you feed them again.</p>
-<p><b>Visitor feeding:</b> when you visit another beach with a pet, you can give it one free snack a day (UTC) from the bar at the top, or feed it again anytime with a beach snack from your own bag.</p>
+<p><b>Visitor feeding:</b> when you visit another beach with a pet, you’ll see it out on their sand. Tap <b>Feed</b> in the bar at the top, then tap a spot on their sand to put the snack down, and the pet scurries over to eat it (<b>cancel</b> puts the snack away). You can give each pet one free snack a day (UTC), or feed it again anytime with a beach snack from your own bag.</p>
 
 <h2 id="claw">Claw machine</h2>
 <p>Free to play when you’re signed in: open Shop and tap Claw machine. Hold the button to steer, let go to drop.</p>

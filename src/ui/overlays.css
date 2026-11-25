@@ -850,6 +850,13 @@ body.ambient-idle {
   cursor: pointer;
 }
 
+/* holding a snack for their pet: the button reads "cancel" */
+.shore-bar .sb-pet.on {
+  color: var(--ui-bg);
+  background: var(--ui-fg);
+  border-color: var(--ui-fg);
+}
+
 .shore-bar .sb-home {
   border: none;
   border-radius: 999px;

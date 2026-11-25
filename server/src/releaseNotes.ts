@@ -19,6 +19,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     date: '2026-11-25',
     title: 'Live beaches, visitors, your inbox, new controls, and sandcastle molds',
     changes: [
+      'Pets show up on their own beaches when you visit, so you can see someone’s sand crab out on their sand. Feeding it now lets you put the snack down where you tap, and the pet scurries over to eat it.',
       'The waves follow you along the shore: pan onto another of your beaches and the sea comes alive there, and Undo now steps back through edits on all your beaches in order. Moving between your beaches no longer reloads them.',
       'A new, quieter screen: at rest it’s just the beach and a palm button in the lower right. Tap the palm to open the toolbar; it turns into a × that closes everything again (this replaces the eye button).',
       'The toolbar is one column: Inbox, Hand, Dirt, Bag, Store, View and Manage, with Undo just above the ×. It always opens on the hand. On a phone on its side it lies along the bottom.',
