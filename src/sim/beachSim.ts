@@ -276,6 +276,23 @@ export class BeachSim {
     this.measureSwash();
   }
 
+  /** True while an undo/redo ease animation is in progress. */
+  get easingActive(): boolean {
+    return this.easing.length > 0;
+  }
+
+  /**
+   * Lightweight step for editing an adjacent owned beach: applies the active
+   * brush, undo easing, object settling, and angle-of-repose slumping without
+   * running the shallow-water wave solver.
+   */
+  stepEdit(dt: number): void {
+    this.applyBrush(dt);
+    this.applyUndoEasing();
+    this.objects.step(dt, false);
+    this.slump();
+  }
+
   private measureSwash(): void {
     const { nx, rest, water, restRowMax } = this;
     const level = this.meanLevel() - 0.05;

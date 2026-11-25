@@ -967,3 +967,8 @@ prompt, JSON Schema and sample asset.
   arcs and nose pitch; `?debug=1` adds **Spawn dolphin**.
 
 - **Cloud SQL recovery** (2026-11-25): Terraform enables point-in-time recovery with seven days of transaction logs and seven daily backups. Production takes on these settings when the configuration is applied.
+
+- **Direct multi-beach editing, tabbed settings, and 1-click shore connecting** (2026-11-25):
+  - Any of your own beaches visible in the 3D shore view can now be edited directly (dig, build, blend, dozer, flatten, vacuum, place/drag items, undo/redo — including seamlessly crossing linked seams between adjacent owned beaches). `NeighborView` lazily spins up a lightweight `BeachSim` (`stepEdit`) per edited owned beach and auto-saves writes to that beach's ID (`PUT /api/beaches/mine/:id/sand`) regardless of which beach is selected in settings.
+  - `SettingsSheet` is now organized into sticky tabs (**Beach**, **Shore**, **Display**, **Account**; **Beach** + **Display** in sandbox builds). Selecting a beach in **Beach** only configures its settings (name, place, code, smooth, checkpoints, neighbors) without switching the 3D scene unless you tap **go there** (which glides smoothly if already on the current shore).
+  - **Shore** includes a visual **Your beaches on the shore** stretch connector (`src/ui/shoreConnect.ts`) to snap your own beaches side by side or disconnect them in one tap without copying codes or flipping beaches.

@@ -78,42 +78,51 @@ export class SandPicker {
 
   /** First hit of the ray with the sand surface, as world {x, z, y}. */
   pick(ray: Ray): { x: number; y: number; z: number } | null {
-    const o = ray.origin;
-    const d = ray.direction;
-    if (d.y >= -1e-4) return null;
-    const yTop = 2.5;
-    const yBot = -3;
-    const t0 = (yTop - o.y) / d.y;
-    const t1 = (yBot - o.y) / d.y;
-    const hm = Math.max(0.15, Math.hypot(d.x, d.z));
-    const ds = (this.g.dx * 0.5) / hm;
-    let tPrev = t0;
-    let wasInside = false;
-    for (let t = t0; t <= t1; t += ds) {
-      const x = o.x + d.x * t;
-      const y = o.y + d.y * t;
-      const z = o.z + d.z * t;
-      const h = this.heightAt(x, z);
-      if (Number.isNaN(h)) {
-        if (wasInside) break;
-        tPrev = t;
-        continue;
-      }
-      wasInside = true;
-      if (y <= h) {
-        // refine between tPrev and t
-        let a = tPrev;
-        let b = t;
-        for (let it = 0; it < 8; it++) {
-          const m = (a + b) / 2;
-          const hy = this.heightAt(o.x + d.x * m, o.z + d.z * m);
-          if (!Number.isNaN(hy) && o.y + d.y * m <= hy) b = m;
-          else a = m;
-        }
-        return { x: o.x + d.x * b, y: o.y + d.y * b, z: o.z + d.z * b };
-      }
-      tPrev = t;
-    }
-    return null;
+    return pickHeightfield(ray, this.g.dx, (x, z) => this.heightAt(x, z));
   }
+}
+
+/** First hit of a ray with any heightfield `heightAt(x, z)` (returns NaN outside its bounds). */
+export function pickHeightfield(
+  ray: Ray,
+  dx: number,
+  heightAt: (x: number, z: number) => number,
+): { x: number; y: number; z: number } | null {
+  const o = ray.origin;
+  const d = ray.direction;
+  if (d.y >= -1e-4) return null;
+  const yTop = 2.5;
+  const yBot = -3;
+  const t0 = (yTop - o.y) / d.y;
+  const t1 = (yBot - o.y) / d.y;
+  const hm = Math.max(0.15, Math.hypot(d.x, d.z));
+  const ds = (dx * 0.5) / hm;
+  let tPrev = t0;
+  let wasInside = false;
+  for (let t = t0; t <= t1; t += ds) {
+    const x = o.x + d.x * t;
+    const y = o.y + d.y * t;
+    const z = o.z + d.z * t;
+    const h = heightAt(x, z);
+    if (Number.isNaN(h)) {
+      if (wasInside) break;
+      tPrev = t;
+      continue;
+    }
+    wasInside = true;
+    if (y <= h) {
+      // refine between tPrev and t
+      let a = tPrev;
+      let b = t;
+      for (let it = 0; it < 8; it++) {
+        const m = (a + b) / 2;
+        const hy = heightAt(o.x + d.x * m, o.z + d.z * m);
+        if (!Number.isNaN(hy) && o.y + d.y * m <= hy) b = m;
+        else a = m;
+      }
+      return { x: o.x + d.x * b, y: o.y + d.y * b, z: o.z + d.z * b };
+    }
+    tPrev = t;
+  }
+  return null;
 }

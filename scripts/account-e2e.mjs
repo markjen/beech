@@ -212,7 +212,7 @@ await page.click('button[data-tool="sand"]');
 }
 
 // delete the account (two taps)
-await page.evaluate(() => window.__beech.sheet.show());
+await page.evaluate(() => window.__beech.sheet.show('account'));
 await page.waitForTimeout(300);
 // both taps in one go: headless rendering is slow enough to miss the confirm window
 await page.evaluate(() => {

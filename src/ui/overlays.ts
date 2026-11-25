@@ -99,6 +99,7 @@ export interface SettingsHandlers {
   /** "near me": ask for the device location and pick the closest beach */
   nearMe(): void;
   smooth(): void;
+  smoothTarget(): string | null;
   share(): void;
   fullscreen(): void;
   /** one tap for the TV: ambient + seated view + fullscreen */
@@ -124,51 +125,81 @@ const QUALITY_LABELS: [QualityTier | 'auto', string][] = [
   ['high', 'fine'],
 ];
 
-/** Bottom sheet with the few preferences the toy has. */
+export type SettingsTab = 'beach' | 'shore' | 'display' | 'account';
+
+/** Bottom sheet with tabbed settings: Beach, Shore, Display, and Account. */
 export class SettingsSheet {
   readonly el: HTMLDivElement;
   private open = false;
+  private activeTab: SettingsTab = 'beach';
+  private readonly hasAccounts: boolean;
 
   constructor(
     parent: HTMLElement,
     private settings: Settings,
     private readonly h: SettingsHandlers,
     beaches: Beach[],
+    options: { accounts?: boolean } = {},
   ) {
+    this.hasAccounts = !!options.accounts;
     this.el = document.createElement('div');
     this.el.className = 'sheet-wrap';
+    const tabsHtml = this.hasAccounts
+      ? `<button type="button" role="tab" data-tab="beach" aria-selected="true">Beach</button>
+         <button type="button" role="tab" data-tab="shore" aria-selected="false">Shore<span class="tab-dot" hidden></span></button>
+         <button type="button" role="tab" data-tab="display" aria-selected="false">Display</button>
+         <button type="button" role="tab" data-tab="account" aria-selected="false">Account</button>`
+      : `<button type="button" role="tab" data-tab="beach" aria-selected="true">Beach</button>
+         <button type="button" role="tab" data-tab="display" aria-selected="false">Display</button>`;
     this.el.innerHTML = `
       <div class="sheet-scrim"></div>
       <div class="sheet" role="dialog" aria-label="Settings">
-        <div class="sheet-grip"></div>
-        <button type="button" class="sheet-close" data-act="close" aria-label="Close settings">×</button>
-        <div class="account-slot"></div>
-        <div class="row col"><span>beach</span><div class="chips" data-key="beach">${beaches
-          .map((b) => `<button type="button" data-v="${b.id}" title="${b.place}">${b.name}</button>`)
-          .join('')}<button type="button" class="near" data-act="near">near me</button></div></div>
-        <div class="row"><span>sound</span>${this.toggle('sound')}</div>
-        <div class="row"><span>music</span>${this.toggle('music')}</div>
-        <div class="row"><span>haptics</span>${this.toggle('haptics')}</div>
-        <div class="row"><span>battery saver</span>${this.toggle('batterySaver')}</div>
-        <div class="row"><span>ambient (for a TV)</span>${this.toggle('ambient')}</div>
-        <div class="row col"><span>light</span><div class="chips" data-key="palette">${PALETTE_LABELS.map(
-          ([v, l]) => `<button type="button" data-v="${v}">${l}</button>`,
-        ).join('')}</div></div>
-        <div class="row col"><span>detail</span><div class="chips" data-key="quality">${QUALITY_LABELS.map(
-          ([v, l]) => `<button type="button" data-v="${v}">${l}</button>`,
-        ).join('')}</div></div>
-        <div class="row actions">
-          <button type="button" class="action" data-act="tv">watch on TV</button>
-          <button type="button" class="action" data-act="fullscreen">full screen</button>
-          <button type="button" class="action" data-act="share">save a picture</button>
-          <button type="button" class="action" data-act="smooth">smooth the beach</button>
-          <button type="button" class="action" data-act="export">export beach</button>
-          <button type="button" class="action" data-act="import">import beach</button>
-          <a class="action" data-act="guide" href="${GUIDE_URL}" target="_blank" rel="noopener">guide &amp; help</a>
-          ${steamBridge() ? '<button type="button" class="action" data-act="quit">quit</button>' : ''}
+        <div class="sheet-head">
+          <div class="sheet-grip"></div>
+          <div class="sheet-top">
+            <div class="sheet-tabs" role="tablist" aria-label="Settings sections">${tabsHtml}</div>
+            <button type="button" class="sheet-close" data-act="close" aria-label="Close settings">×</button>
+          </div>
         </div>
+        <div class="sheet-pane" data-pane="beach" role="tabpanel">
+          <div class="beach-slot"></div>
+          <div class="row col"><span>place</span><div class="chips" data-key="beach">${beaches
+            .map((b) => `<button type="button" data-v="${b.id}" title="${b.place}">${b.name}</button>`)
+            .join('')}<button type="button" class="near" data-act="near">near me</button></div></div>
+          <div class="row actions">
+            <button type="button" class="action" data-act="share">save a picture</button>
+            <button type="button" class="action" data-act="smooth">smooth the beach</button>
+            <button type="button" class="action" data-act="export">export beach</button>
+            <button type="button" class="action" data-act="import">import beach</button>
+          </div>
+          <div class="checkpoints-slot"></div>
+        </div>
+        ${this.hasAccounts ? `<div class="sheet-pane" data-pane="shore" role="tabpanel" hidden><div class="shore-slot"></div></div>` : ''}
+        <div class="sheet-pane" data-pane="display" role="tabpanel" hidden>
+          <div class="row"><span>sound</span>${this.toggle('sound')}</div>
+          <div class="row"><span>music</span>${this.toggle('music')}</div>
+          <div class="row"><span>haptics</span>${this.toggle('haptics')}</div>
+          <div class="row"><span>battery saver</span>${this.toggle('batterySaver')}</div>
+          <div class="row"><span>ambient (for a TV)</span>${this.toggle('ambient')}</div>
+          <div class="row col"><span>light</span><div class="chips" data-key="palette">${PALETTE_LABELS.map(
+            ([v, l]) => `<button type="button" data-v="${v}">${l}</button>`,
+          ).join('')}</div></div>
+          <div class="row col"><span>detail</span><div class="chips" data-key="quality">${QUALITY_LABELS.map(
+            ([v, l]) => `<button type="button" data-v="${v}">${l}</button>`,
+          ).join('')}</div></div>
+          <div class="row actions">
+            <button type="button" class="action" data-act="tv">watch on TV</button>
+            <button type="button" class="action" data-act="fullscreen">full screen</button>
+            <a class="action" data-act="guide" href="${GUIDE_URL}" target="_blank" rel="noopener">guide &amp; help</a>
+            ${steamBridge() ? '<button type="button" class="action" data-act="quit">quit</button>' : ''}
+          </div>
+        </div>
+        ${this.hasAccounts ? `<div class="sheet-pane" data-pane="account" role="tabpanel" hidden><div class="account-slot"></div></div>` : ''}
       </div>`;
     parent.appendChild(this.el);
+    for (const btn of this.el.querySelectorAll<HTMLButtonElement>('.sheet-tabs button[data-tab]')) {
+      btn.addEventListener('click', () => this.setTab(btn.dataset.tab as SettingsTab));
+    }
     const steam = steamBridge();
     if (steam) {
       this.el.querySelector<HTMLAnchorElement>('a[data-act="guide"]')?.addEventListener('click', (e) => {
@@ -212,7 +243,7 @@ export class SettingsSheet {
         else this.h.importBeach();
       });
     }
-    let confirmSmooth = 0;
+    let confirmSmooth: { target: string | null; expires: number } | undefined;
     for (const b of this.el.querySelectorAll<HTMLButtonElement>('button[data-act="share"], button[data-act="smooth"]')) {
       b.addEventListener('click', () => {
         if (b.dataset.act === 'share') {
@@ -220,16 +251,22 @@ export class SettingsSheet {
           this.h.share();
           return;
         }
-        // smoothing wipes everything, so ask for a second tap
-        if (performance.now() - confirmSmooth < 2500) {
-          confirmSmooth = 0;
+        // Confirm a second tap for the same beach.
+        const target = this.h.smoothTarget();
+        if (confirmSmooth && confirmSmooth.target === target && performance.now() < confirmSmooth.expires) {
+          confirmSmooth = undefined;
           b.textContent = 'smooth the beach';
           this.hide();
           this.h.smooth();
         } else {
-          confirmSmooth = performance.now();
+          const confirmation = { target, expires: performance.now() + 2500 };
+          confirmSmooth = confirmation;
           b.textContent = 'tap again to smooth';
-          window.setTimeout(() => (b.textContent = 'smooth the beach'), 2500);
+          window.setTimeout(() => {
+            if (confirmSmooth !== confirmation) return;
+            confirmSmooth = undefined;
+            b.textContent = 'smooth the beach';
+          }, 2500);
         }
       });
     }
@@ -252,6 +289,15 @@ export class SettingsSheet {
     }
   }
 
+  /** Highlight a specific real-world place chip (e.g. for the beach selected in settings). */
+  setBeachLocation(id: string): void {
+    const group = this.el.querySelector<HTMLDivElement>('.chips[data-key="beach"]');
+    if (!group) return;
+    for (const b of group.querySelectorAll<HTMLButtonElement>('button[data-v]')) {
+      b.classList.toggle('on', b.dataset.v === id);
+    }
+  }
+
   /** Reflect a change made outside the sheet (e.g. "near me" or the default beach). */
   setSettings(s: Settings): void {
     this.settings = s;
@@ -262,9 +308,49 @@ export class SettingsSheet {
     this.sync();
   }
 
-  /** Where the account panel renders (empty in the sandbox build). */
+  setTab(tab: SettingsTab): void {
+    if (!this.hasAccounts && (tab === 'shore' || tab === 'account')) tab = 'beach';
+    this.activeTab = tab;
+    for (const btn of this.el.querySelectorAll<HTMLButtonElement>('.sheet-tabs button[data-tab]')) {
+      const on = btn.dataset.tab === tab;
+      btn.classList.toggle('on', on);
+      btn.setAttribute('aria-selected', String(on));
+    }
+    for (const pane of this.el.querySelectorAll<HTMLElement>('.sheet-pane')) {
+      pane.hidden = pane.dataset.pane !== tab;
+    }
+    const sheet = this.el.querySelector<HTMLElement>('.sheet');
+    if (sheet) sheet.scrollTop = 0;
+  }
+
+  get tab(): SettingsTab {
+    return this.activeTab;
+  }
+
+  /** Show a small indicator dot on the Shore tab when there are incoming neighbor requests. */
+  setShoreBadge(count: number): void {
+    const dot = this.el.querySelector<HTMLElement>('.sheet-tabs [data-tab="shore"] .tab-dot');
+    if (dot) dot.hidden = count <= 0;
+  }
+
+  /** Top of the Beach tab: beach selector, map, selected beach actions & code. */
+  get beachSlot(): HTMLDivElement {
+    return this.el.querySelector<HTMLDivElement>('.beach-slot')!;
+  }
+
+  /** Bottom of the Beach tab: checkpoints. */
+  get checkpointsSlot(): HTMLDivElement {
+    return this.el.querySelector<HTMLDivElement>('.checkpoints-slot')!;
+  }
+
+  /** Shore tab: connect your beaches, neighbors, visit & favorites. */
+  get shoreSlot(): HTMLDivElement | null {
+    return this.el.querySelector<HTMLDivElement>('.shore-slot');
+  }
+
+  /** Account tab (or checkpointsSlot fallback in sandbox builds). */
   get accountSlot(): HTMLDivElement {
-    return this.el.querySelector<HTMLDivElement>('.account-slot')!;
+    return this.el.querySelector<HTMLDivElement>('.account-slot') ?? this.checkpointsSlot;
   }
 
   toggleOpen(): void {
@@ -272,7 +358,8 @@ export class SettingsSheet {
     else this.show();
   }
 
-  show(): void {
+  show(tab?: SettingsTab): void {
+    if (tab) this.setTab(tab);
     this.open = true;
     this.el.classList.add('open');
   }

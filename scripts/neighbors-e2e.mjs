@@ -59,12 +59,12 @@ await page.evaluate(async () => {
   await nv.api.remove('left');
   await nv.refresh();
 });
-await page.evaluate(() => window.__beech.sheet.show());
-await page.waitForSelector('#neighbor-left', { timeout: 8000 }).catch(async (e) => { console.log('PANEL', await page.evaluate(() => document.querySelector('.account')?.innerText), JSON.stringify(await page.evaluate(() => window.__beech.neighbors().state))); throw e; });
+await page.evaluate(() => window.__beech.sheet.show('shore'));
+await page.waitForSelector('#neighbor-left', { timeout: 8000 }).catch(async (e) => { console.log('PANEL', await page.evaluate(() => document.querySelector('.shore-slot')?.innerText), JSON.stringify(await page.evaluate(() => window.__beech.neighbors().state))); throw e; });
 await page.fill('#neighbor-left', anaCode.toLowerCase());
 await page.click('button[data-act="add-left"]');
 await page.waitForFunction((n) => window.__beech.neighbors().state?.asked?.left?.name === n, anaName, { timeout: 15000 });
-check((await page.textContent('.account .neighbor-section'))?.includes(`waiting for ${anaName}`), 'Ben asked Ana; the sheet says it is waiting for her');
+check((await page.textContent('.shore-slot .neighbor-section'))?.includes(`waiting for ${anaName}`), 'Ben asked Ana; the sheet says it is waiting for her');
 check((await page.evaluate(() => window.__beech.neighbors().state.left)) === null, 'not neighbors until she accepts');
 const benCode = await page.evaluate(() => window.__beech.neighbors().state.code);
 await page.evaluate(() => window.__beech.sheet.hide());
@@ -76,7 +76,7 @@ await page.evaluate(async (n) => {
 }, anaName);
 await page.waitForFunction(() => window.__beech.neighbors()?.state?.requests?.length > 0, null, { timeout: 15000 });
 check(await page.evaluate(() => document.querySelector('.hud-btn.badge') !== null), 'Ana gets a dot on the settings button');
-await page.evaluate(() => window.__beech.sheet.show());
+await page.evaluate(() => window.__beech.sheet.show('shore'));
 await page.click(`button[data-act="accept-${benCode}"]`);
 await page.waitForFunction((n) => window.__beech.neighbors().state?.right?.name === n, benName, { timeout: 15000 });
 check(true, 'Ana accepted: Ben is on her right');

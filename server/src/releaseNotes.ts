@@ -17,12 +17,14 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: '2026-11-25',
-    title: 'Visitors and your inbox',
+    title: 'Visitors, your inbox, and editing the shore',
     changes: [
       'The beach guide (the compass) now keeps its how-tos in the web guide. In the game, you’ll see the checklist and your progress.',
       'Visitors can leave something: a rating in shells, a note, or a gift from their bag, from “leave something” next to the beach’s name (the “i” at the bottom).',
       'Your inbox (the envelope, top right) shows who visited and what they left, gifts, neighbor requests, stars and ratings. Say thanks, report a note or block someone from there.',
       'Someone who signs up from a link to your beach counts as your invite.',
+      'Edit any of your beaches you can see. Dig, build, clear or drag things across the seam, and each beach saves as you play.',
+      'Settings has Beach, Shore, Display and Account tabs. Open Shore to connect your own beaches side by side in one step.',
     ],
   },
   {

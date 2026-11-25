@@ -414,5 +414,36 @@ describe('the water step skips dry rows above the swash', () => {
     expect(maxDiff).toBeLessThan(1e-5);
     expect(simB.objects.count).toBe(4);
   });
+
+  it('stepEdit digs, eases undo/redo, and conserves sand during slump without running the wave solver', () => {
+    const sim = new BeachSim(grid, 1, { waves: false, tide: false, erosion: false, healing: false, seep: false });
+    const before = sandPlusSediment(sim);
+    const y = PROFILE.shoreline + 8;
+    sim.beginStroke(14, y, 0.9, 'dig');
+    for (let i = 0; i < 12; i++) {
+      sim.moveStroke(14 + i * 0.25, y, 0.9);
+      sim.stepEdit(DT);
+    }
+    sim.endStroke();
+    const afterDig = sim.sandDelta();
+    let dug = 0;
+    for (let k = 0; k < afterDig.length; k++) dug += Math.abs(afterDig[k]);
+    expect(dug).toBeGreaterThan(0.5);
+
+    // Additional stepEdit ticks with no active stroke conserve sand (slump only)
+    const afterStrokeTotal = sandPlusSediment(sim);
+    for (let i = 0; i < 10; i++) sim.stepEdit(DT);
+    expect(sandPlusSediment(sim)).toBeCloseTo(afterStrokeTotal, 3);
+
+    expect(sim.undoStroke(true)).toBe(true);
+    expect(sim.easingActive).toBe(true);
+    for (let i = 0; i < 40 && sim.easingActive; i++) sim.stepEdit(DT);
+    expect(sim.easingActive).toBe(false);
+    let residual = 0;
+    const afterUndo = sim.sandDelta();
+    for (let k = 0; k < afterUndo.length; k++) residual += Math.abs(afterUndo[k]);
+    expect(residual).toBeLessThan(dug * 0.15);
+    expect(sandPlusSediment(sim)).toBeCloseTo(before, 2);
+  });
 });
 

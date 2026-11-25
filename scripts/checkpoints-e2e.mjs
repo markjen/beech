@@ -160,6 +160,7 @@ const b = await device('B');
 check((await b.evaluate(() => window.__beech.account().beachId)) === home, 'B opens home');
 // open the second beach on B the way the panel does
 await showSheet(b);
+await b.click(`button[data-act="select-beach-${second}"]`);
 await b.click(`button[data-act="open-${second}"]`);
 await b.waitForFunction(() => window.__beech.sync().state === 'saved' && window.__beech.info().objects.some((o) => o.item === 'rock'), null, { timeout: 20000 }).catch(() => {});
 await b.evaluate(() => window.__beech.sheet.hide());
