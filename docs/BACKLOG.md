@@ -78,6 +78,11 @@ _(nothing right now)_
 
 ## Up next (engineering)
 
+Items marked **(model first)** change state the server keeps: they start
+with their TLA+ spec ([STATE_MACHINES.md](STATE_MACHINES.md#model-first-workflow),
+CLAUDE.md "Model first"). Gameplay ideas below get the same once they're
+picked up.
+
 - [ ] **Beach store, next** (docs/BEACH_STORE.md): keep the store's
   snapshots of other people's beaches across a re-anchor *and* page
   reloads (IndexedDB, keyed by id + version), and ease the live renderer
@@ -92,9 +97,11 @@ _(nothing right now)_
 - [ ] **Live beaches, next**: ease a viewer's sand to each new save instead
   of swapping it; SSE instead of polling if the 5 s polls show up in
   Cloud Run costs; catch up the beechshore.com page pictures too; one
-  saving device per owner (a lease) if two devices fighting shows up. See
+  saving device per owner (a lease) if two devices fighting shows up
+  **(model first: extend `specs/tla/BeachEditing.tla`)**. See
   [LIVE_SIM.md](LIVE_SIM.md).
-- [ ] **Sandcastle mini-game: customize detailed sandcastles**: Rose
+- [ ] **Sandcastle mini-game: customize detailed sandcastles**
+  **(model first, if castles are saved, unlocked or spent)**: Rose
   asked for more sandcastle shapes (Discord #feedback, 2026-11-23);
   Mark (2026-11-24) chose a mini-game instead — let users build and
   customize a detailed sandcastle (towers, walls, moat, decorations)
@@ -160,6 +167,11 @@ _(nothing right now)_
 
 ## Ideas
 
+- Model more state machines the same way: the claw machine (goes,
+  cooldowns, starter gifts), dig finds (daily cap), shop orders and refunds
+  (Xsolla, Steam, Apple and Google), checkpoints (limits, the auto slot),
+  and the app's BeachStore save pipeline (see STATE_MACHINES.md).
+
 - Verify more with LemmaScript: the app's copy of the restore check
   (`src/world/checkpointFit.ts`), item-size and beach-capacity limits,
   referral ladder rewards. See [VERIFICATION.md](VERIFICATION.md).
@@ -172,6 +184,12 @@ _(nothing right now)_
   shower night.
 
 ## Done (recent)
+
+- [x] **Game state machines in TLA+** (2026-11-25): snacks and pets,
+  editing beaches and neighbor links modelled and checked with TLC, mapped
+  to the routes, and tested without a browser (transition tests, replayed
+  counterexamples, random walks against a model). Five races found and
+  fixed ([STATE_MACHINES.md](STATE_MACHINES.md)).
 
 - [x] **Free shop items** (2026-11-25): an approved creator item priced
   $0 is free (a Free button on every platform, granted by the server);

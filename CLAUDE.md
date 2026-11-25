@@ -28,9 +28,28 @@ Read these first:
    `.claude/skills/lemmascript*` (load `lemmascript` first); cloud sessions
    install `lsc` and `dafny`. If `LemmaScript-files.txt` exists,
    `lsc check --backend=dafny` must pass before every commit.
+8. [docs/STATE_MACHINES.md](docs/STATE_MACHINES.md): TLA+ models of the
+   game's state machines (snacks and pets, editing beaches, neighbor links)
+   in `specs/tla/`, mapped to the routes, with fast server tests in
+   `server/test/stateMachines/` (`npm run test:state`, no browser). Its
+   **model-first workflow** is how gameplay and features get built (see the
+   ground rule below, and the `model-first` skill).
 
 ## Ground rules
 
+- **Model first.** New gameplay, a new feature, or a change to how one
+  works starts with its state machine, before any code: write or extend
+  the TLA+ spec in `specs/tla/` (the state, one action per request with a
+  step for each separate statement, and the game's rules as invariants),
+  run `specs/tla/check.sh` until the design holds, and let the model decide
+  the code (which steps must be one transaction, under which lock) and the
+  tests (transition tests, replays of what TLC found, a random walk against
+  a TypeScript port of the spec). Add the action-to-route mapping to
+  [docs/STATE_MACHINES.md](docs/STATE_MACHINES.md) in the same change. The
+  steps, and when a model isn't needed (rendering, copy, tuning, anything
+  with no shared state), are in its "Model-first workflow" section and the
+  `model-first` skill. A feature design doc gets a "State machine" section
+  naming its spec.
 - **Git & PR workflow:** Always push finished work to GitHub. For bigger or higher-risk changes, push a feature branch and open a pull request. For smaller, high-confidence changes, push directly to `main`.
 - `npm test` and `npm run build` must pass before every commit. CI runs both.
 - The simulation (`src/sim/`) is plain TypeScript with no DOM or Babylon

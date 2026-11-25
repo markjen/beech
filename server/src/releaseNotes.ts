@@ -19,6 +19,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     date: '2026-11-25',
     title: 'Live beaches, visitors, your inbox, new controls, and sandcastle molds',
     changes: [
+      'Fixed some rare timing problems: a crab could be befriended for one snack less if you picked up your last snack at the same moment, a visitor could get two free pet feeds in a day, a save from a device that had just lost editing could still go through, and two beaches could end up as each other’s neighbors on both sides.',
       'Free things in the shop: some shop pieces can now be free. Tap Free and it goes straight into your bag, on any device.',
       'Paying by card in the web shop now works on more mobile connections.',
       'Pets show up on their own beaches when you visit, so you can see someone’s sand crab out on their sand. Feeding it now lets you put the snack down where you tap, and the pet scurries over to eat it.',

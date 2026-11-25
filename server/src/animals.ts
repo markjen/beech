@@ -195,11 +195,24 @@ export async function feedBeachPet(
   return toPetDto(rows[0], now);
 }
 
-/** Adopt a pet via either befriending wild visitors or consuming a shop `pet-crab`. */
-export async function adoptPet(
-  db: Db,
-  opts: { beachId: string; userId: string; species: string; name: string; mode: 'befriend' | 'shop'; now: number },
-): Promise<{ ok: true; pet: PetDto } | { ok: false; status: 409; error: string }> {
+type AdoptOpts = { beachId: string; userId: string; species: string; name: string; mode: 'befriend' | 'shop'; now: number };
+type AdoptResult = { ok: true; pet: PetDto } | { ok: false; status: 409; error: string };
+
+/**
+ * Adopt a pet via either befriending wild visitors or consuming a shop `pet-crab`.
+ * One transaction holding the beach lock, like a toss and a pickup: otherwise
+ * a snack picked up between reading the bond and inserting the pet would
+ * leave a crab befriended for one feed less, with the snack back in the bag
+ * (specs/tla/Snacks.tla, BefriendedFairly).
+ */
+export function adoptPet(db: Db, opts: AdoptOpts): Promise<AdoptResult> {
+  return db.withTransaction(async (tx) => {
+    await tx.query('SELECT id FROM beach WHERE id = $1 FOR NO KEY UPDATE', [opts.beachId]);
+    return adoptLocked(tx, opts);
+  });
+}
+
+async function adoptLocked(db: Db, opts: AdoptOpts): Promise<AdoptResult> {
   const existing = await getBeachPet(db, opts.beachId, opts.now);
   if (existing) return { ok: false, status: 409, error: 'this beach already has a pet' };
 
@@ -298,18 +311,26 @@ export async function recentPetFeeders(db: Db, beachId: string, ownerId?: string
   return rows.map((r) => ({ name: r.feeder_name || 'A visitor', at: Number(r.fed_at) }));
 }
 
+type VisitOpts = { beachId: string; visitorId: string; visitorName: string; useFood?: boolean; now: number };
+type VisitResult =
+  | { ok: true; pet: PetDto; usedFood: boolean; remaining?: number; freeUsedToday: true }
+  | { ok: false; status: 404 | 409; error: string; freeUsedToday?: boolean };
+
 /**
  * Visitor feeds a beach's resident pet:
  *  - 1 free feed per beach per UTC day (no snack required), OR
  *  - spend 1 `crab-treat` from the visitor's own bag anytime.
+ * One transaction holding the beach lock: two requests at once must not both
+ * see "not fed today" (specs/tla/Snacks.tla, OneFreeFeedADay).
  */
-export async function visitorFeedPet(
-  db: Db,
-  opts: { beachId: string; visitorId: string; visitorName: string; useFood?: boolean; now: number },
-): Promise<
-  | { ok: true; pet: PetDto; usedFood: boolean; remaining?: number; freeUsedToday: true }
-  | { ok: false; status: 404 | 409; error: string; freeUsedToday?: boolean }
-> {
+export function visitorFeedPet(db: Db, opts: VisitOpts): Promise<VisitResult> {
+  return db.withTransaction(async (tx) => {
+    await tx.query('SELECT id FROM beach WHERE id = $1 FOR NO KEY UPDATE', [opts.beachId]);
+    return visitLocked(tx, opts);
+  });
+}
+
+async function visitLocked(db: Db, opts: VisitOpts): Promise<VisitResult> {
   const existing = await getBeachPet(db, opts.beachId, opts.now);
   if (!existing) return { ok: false, status: 404, error: 'no pet on this beach' };
 

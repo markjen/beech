@@ -1,0 +1,26 @@
+name: Specs
+
+# TLA+ models of the game's state machines (docs/STATE_MACHINES.md): every
+# spec's design must hold. Runs when a spec or the server changes.
+on:
+  push:
+    paths: ['specs/**', 'server/src/**', '.github/workflows/specs.yml']
+  pull_request:
+    paths: ['specs/**', 'server/src/**', '.github/workflows/specs.yml']
+
+jobs:
+  tlc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/tla
+          key: tla2tools-1.7.4
+      - name: Model-check every spec (specs/tla/check.sh)
+        run: specs/tla/check.sh
