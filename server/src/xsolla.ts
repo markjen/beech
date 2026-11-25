@@ -13,6 +13,7 @@
 // Kept free of the app and the database so it can be unit tested on its own.
 
 import { createHash, timingSafeEqual } from 'node:crypto';
+import { isIPv4 } from 'node:net';
 
 export interface XsollaConfig {
   projectId: string;
@@ -58,9 +59,9 @@ export interface TokenRequest {
   sku: string;
   /** our web order id: settings.external_id and custom_parameters.web_order */
   webOrderId: string;
-  /** two-letter country, when known (Xsolla needs a country or the player's IPv4) */
+  /** Two-letter locale region to use when there is no IPv4 address. */
   country?: string;
-  /** the player's IPv4, passed as X-User-Ip when there is no country */
+  /** Client address. A valid IPv4 goes in X-User-Ip. */
   ip?: string;
 }
 
@@ -90,11 +91,13 @@ export const createPaymentToken: CreateToken = async (cfg, req) => {
     'Content-Type': 'application/json',
     Authorization: `Basic ${Buffer.from(`${cfg.projectId}:${cfg.apiKey}`).toString('base64')}`,
   };
-  if (!req.country && req.ip && /^\d{1,3}(\.\d{1,3}){3}$/.test(req.ip)) headers['X-User-Ip'] = req.ip;
+  const ipv4 = req.ip && isIPv4(req.ip) ? req.ip : undefined;
+  if (ipv4) headers['X-User-Ip'] = ipv4;
   const res = await fetch(`${STORE_API}/v3/project/${encodeURIComponent(cfg.projectId)}/admin/payment/token`, {
     method: 'POST',
     headers,
-    body: JSON.stringify(tokenBody(cfg, req)),
+    // Xsolla gives the body country precedence, so omit it when sending IPv4.
+    body: JSON.stringify(tokenBody(cfg, ipv4 ? { ...req, country: undefined } : req)),
     signal: AbortSignal.timeout(10000),
   });
   const data = (await res.json().catch(() => ({}))) as { token?: string; order_id?: number | string; errorMessage?: string };

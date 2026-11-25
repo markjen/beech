@@ -296,6 +296,8 @@ accepted the repo's default branch, so the deploy job ran only there.
   340px wide, and four flex children in one row squeezed the description
   to a word per line.
   Development builds use a pretend store (`platform: dev`, DEV_AUTH only).
+  Xsolla checkout uses the player's IPv4 address when available and falls
+  back to an explicit country region from their browser locale.
 - **Refunds:** App Store Server Notifications V2 and Play RTDN expire the
   granted items (migration 8: `purchases`, `inventory.purchase_id`).
 - Not tried against the real stores yet: that needs the products set up

@@ -341,15 +341,11 @@ export class ShopApi {
    */
   async startWebCheckout(productId: string): Promise<string> {
     if (shopMode() !== 'web') throw new Error('buy in the beech app');
-    // Xsolla refuses the token unless it gets the player's country or an
-    // IPv4 address, and the server only sees an IPv6 address for many
-    // mobile connections — so send the country from the browser locale
-    // (en-US -> US) when it has a region. No region, no country sent.
+    // An explicit locale region is the fallback for buyers without IPv4.
     const country = (() => {
       try {
-        const parts = navigator.language.split('-');
-        const region = parts.length > 1 ? parts[parts.length - 1] : '';
-        return /^[A-Za-z]{2}$/.test(region) ? region.toUpperCase() : undefined;
+        const region = new Intl.Locale(navigator.language).region;
+        return region && /^[A-Z]{2}$/.test(region) ? region : undefined;
       } catch {
         return undefined;
       }

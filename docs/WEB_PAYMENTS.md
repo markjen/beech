@@ -108,18 +108,19 @@ running our own tax operation.
 
 1. **Buy** (`src/ui/shop.ts` → `ShopApi.startWebCheckout`): in web mode, when
    `GET /api/store/products` says `webCheckout: true`, the price button
-   calls `POST /api/store/web-checkout { productId }`.
+   calls `POST /api/store/web-checkout` with the product ID and an optional
+   country from the browser locale.
 2. **Checkout** (`server/src/app.ts`): the server prices the product, writes a
    `web_orders` row (`created`), and asks Xsolla for a payment token —
    `POST https://store.xsolla.com/api/v3/project/{project_id}/admin/payment/token`,
    Basic auth `project_id:api_key`, body: our user id as `user.id.value`, one
    item `{ sku: productId, quantity: 1 }`, `settings.external_id` and
    `custom_parameters.web_order` = our order id, `settings.return_url`,
-   `sandbox` (`server/src/xsolla.ts`). The player's country goes in
-   `user.country.value` — the client sends it from the browser locale
-   (en-US -> US) — or, failing that, the player's IPv4 goes in `X-User-Ip`
-   (Xsolla needs a country or an IP; the country is what saves IPv6-only
-   mobile connections, where there is no IPv4 to send). Xsolla answers `{ token, order_id }`;
+   `sandbox` (`server/src/xsolla.ts`). The player's IPv4 goes in `X-User-Ip`
+   when available. Otherwise, an explicit two-letter browser locale region
+   (such as US in en-US) goes in `user.country.value`. Xsolla requires one of
+   these values, so a regionless locale still needs an IPv4 connection.
+   Xsolla answers `{ token, order_id }`;
    the order id is stored on the row. The client is sent to
    `https://secure.xsolla.com/paystation4/?token=…` (sandbox:
    `sandbox-secure.xsolla.com`). If the token call fails, the row is deleted

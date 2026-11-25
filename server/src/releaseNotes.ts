@@ -19,6 +19,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     date: '2026-11-25',
     title: 'Live beaches, visitors, your inbox, new controls, and sandcastle molds',
     changes: [
+      'Paying by card in the web shop now works on more mobile connections.',
       'Pets show up on their own beaches when you visit, so you can see someone’s sand crab out on their sand. Feeding it now lets you put the snack down where you tap, and the pet scurries over to eat it.',
       'Local weather: the sky and light follow the beach in the middle of your view, so walking down the shore to a beach somewhere else in the world brings its own time of day, blending as you go. Turn local weather off in Settings to keep the light you pick there.',
       'Someone you’ve blocked can no longer feed your beach pet.',
