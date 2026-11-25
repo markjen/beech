@@ -67,14 +67,8 @@ resource "google_sql_database_instance" "beech_db" {
     disk_autoresize   = true
     availability_type = "ZONAL"
 
-    # Daily automated backups at 03:00 UTC, 7 retained (matches the live
-    # instance's GCP default). Point-in-time recovery is ON so a beach
-    # overwritten by a bad write can be restored to any minute in the
-    # last 7 days — without it, only the 03:00 daily snapshot exists.
-    # PITR keeps transaction logs for transaction_log_retention_days;
-    # 7 is the maximum Cloud SQL allows for Postgres, so the PITR
-    # window is 7 days. Extra cost is only the retained WAL storage
-    # on a 10 GB disk — negligible at this size.
+    # Daily automated backups at 03:00 UTC, with seven kept. Retain
+    # seven days of transaction logs for point-in-time recovery.
     backup_configuration {
       enabled                        = true
       start_time                     = "03:00"
