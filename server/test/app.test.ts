@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp, normalizeCode } from '../src/app.js';
 import type { VerifiedPurchase } from '../src/store.js';
 import { createPgDb, createPgliteDb, type Db } from '../src/db.js';
@@ -115,6 +115,35 @@ describe('accounts', () => {
     const old = await req('/beach', { method: 'PUT', body: bytes, headers: { 'X-Beach-Location': 'piha', 'X-Beach-Nx': '256', 'X-Beach-Ny': '192' } }, token);
     expect(old.status).toBe(426);
     expect((await req('/beach', {}, token)).headers.get('X-Beach-Version')).toBe('2');
+  });
+
+  it('logs beach_save and beach_load with byte size and DB time', async () => {
+    const lines: Record<string, unknown>[] = [];
+    const logSpy = vi.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
+      for (const a of args) {
+        if (typeof a === 'string' && a.startsWith('{')) {
+          try {
+            lines.push(JSON.parse(a) as Record<string, unknown>);
+          } catch {
+            /* not a JSON log line */
+          }
+        }
+      }
+    });
+    try {
+      const { token } = await signIn('saver-logged');
+      const bytes = new Uint8Array(3000).map((_, i) => i % 251);
+      expect((await putBeach(token, bytes)).status).toBe(200);
+      expect((await req('/beach', {}, token)).status).toBe(200);
+      const save = lines.find((l) => l.event === 'beach_save');
+      expect(save).toMatchObject({ bytes: 3000 });
+      expect(typeof save!.duration_ms).toBe('number');
+      const load = lines.find((l) => l.event === 'beach_load');
+      expect(load).toMatchObject({ bytes: 3000 });
+      expect(typeof load!.duration_ms).toBe('number');
+    } finally {
+      logSpy.mockRestore();
+    }
   });
 
   it('logout ends the session; delete removes everything', async () => {

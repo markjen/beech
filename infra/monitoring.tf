@@ -6,11 +6,13 @@
 #   - built-in Cloud Run / Cloud SQL metrics (free, no setup)
 #
 # Cost: uptime checks are $0.30/1,000 executions with 1M free per project
-# per month (3 checks x 1/min = ~130k/month, free). Each alert condition is
-# $0.10/month (6 conditions = $0.60/month). Dashboards, notification
-# channels and log-based metrics are free within the free tiers (log
-# ingestion: 50 GiB/project/month free). The $100/month budget is untouched
-# in practice. See docs/OBSERVABILITY.md.
+# per month (up to 5 checks x 1/min = ~216k/month, free). Each alert
+# condition is $0.10/month (11 conditions = $1.10/month, up to 14 =
+# $1.40/month once the three conditional uptime checks exist — the uptime
+# policy gains one condition per check that exists). Dashboards,
+# notification channels and log-based metrics are free within the free
+# tiers (log ingestion: 50 GiB/project/month free). The $100/month budget
+# is untouched in practice. See docs/OBSERVABILITY.md.
 #
 # Apply with the rest of infra/ (`terraform apply` from infra/). Nothing
 # here changes how traffic is served.
@@ -75,6 +77,32 @@ resource "google_logging_metric" "http_server_errors" {
   project = var.project_id
   name    = "beech_http_server_errors_total"
   filter  = "${local.beech_log_filter} AND jsonPayload.event=\"http_request\" AND jsonPayload.status>=500"
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "INT64"
+    unit        = "1"
+    labels {
+      key         = "route"
+      value_type  = "STRING"
+      description = "Matched route template"
+    }
+  }
+  label_extractors = {
+    route = "EXTRACT(jsonPayload.route)"
+  }
+
+  depends_on = [google_project_service.logging]
+}
+
+# Same, for the admin console service. The filter uses the Cloud Run
+# resource label (service_name="beech-admin"), not the jsonPayload.service
+# field — logEvent() hardcodes service "beech" in the payload, so that
+# field can't tell the services apart (known follow-up, see
+# docs/OBSERVABILITY.md); the resource label is set by Cloud Run itself.
+resource "google_logging_metric" "admin_http_server_errors" {
+  project = var.project_id
+  name    = "beech_admin_http_server_errors_total"
+  filter  = "resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"beech-admin\" AND jsonPayload.event=\"http_request\" AND jsonPayload.status>=500"
   metric_descriptor {
     metric_kind = "DELTA"
     value_type  = "INT64"
@@ -177,6 +205,38 @@ resource "google_logging_metric" "db_slow_queries" {
   depends_on = [google_project_service.logging]
 }
 
+# Client page-load timing, one distribution point per visit
+# (jsonPayload.event="client_perf", load_ms since navigation start).
+# load_ms was systematically 0 until the client fix that reads
+# performance.now() at the load handler (src/net/telemetry.ts), so points
+# before that deploy are not real load times.
+resource "google_logging_metric" "client_perf_load" {
+  project = var.project_id
+  name    = "beech_client_perf_load"
+  filter  = "${local.beech_log_filter} AND jsonPayload.event=\"client_perf\""
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "DISTRIBUTION"
+    unit        = "ms"
+    labels {
+      key         = "platform"
+      value_type  = "STRING"
+      description = "Client platform (web, android, ios)"
+    }
+  }
+  value_extractor = "EXTRACT(jsonPayload.load_ms)"
+  label_extractors = {
+    platform = "EXTRACT(jsonPayload.platform)"
+  }
+  bucket_options {
+    explicit_buckets {
+      bounds = [100, 250, 500, 1000, 2000, 5000, 10000, 30000]
+    }
+  }
+
+  depends_on = [google_project_service.logging]
+}
+
 # ------------------------------------------------- notification + uptime
 
 resource "google_monitoring_notification_channel" "email" {
@@ -250,8 +310,8 @@ resource "google_monitoring_uptime_check_config" "api" {
 # set, and only after the domain mapping exists (the check fails until the
 # DNS records are in place and the certificate is provisioned). The host is
 # the admin domain itself, so it can never drift from the mapping.
-# NOT wired into the uptime alert policy yet — see the PR body for why;
-# follow-up: add a condition for this check to google_monitoring_alert_policy.uptime.
+# Wired into the uptime alert policy by a dynamic condition below (one per
+# check that exists — none until the domain var is set at apply time).
 resource "google_monitoring_uptime_check_config" "admin" {
   count            = var.admin_custom_domain != "" ? 1 : 0
   project          = var.project_id
@@ -292,9 +352,8 @@ resource "google_monitoring_uptime_check_config" "admin" {
 # (the check fails until the DNS records are in place and the certificate
 # is provisioned). The host is the shore domain itself, so it can never
 # drift from the mapping.
-# NOT wired into the uptime alert policy yet — see the PR body for why;
-# follow-up: add a condition for this check to
-# google_monitoring_alert_policy.uptime.
+# Wired into the uptime alert policy by a dynamic condition below (one per
+# check that exists — none until the domain var is set at apply time).
 resource "google_monitoring_uptime_check_config" "shore" {
   count            = var.shore_custom_domain != "" ? 1 : 0
   project          = var.project_id
@@ -334,8 +393,8 @@ resource "google_monitoring_uptime_check_config" "shore" {
 # only after the domain mapping exists (the check fails until the DNS
 # records are in place and the certificate is provisioned). The host is the
 # www domain itself, so it can never drift from the mapping.
-# NOT wired into the uptime alert policy yet (see docs/LANDING_PAGE.md);
-# follow-up: add a condition for this check to google_monitoring_alert_policy.uptime.
+# Wired into the uptime alert policy by a dynamic condition below (one per
+# check that exists — none until the domain var is set at apply time).
 resource "google_monitoring_uptime_check_config" "landing" {
   count            = var.landing_custom_domain != "" ? 1 : 0
   project          = var.project_id
@@ -407,6 +466,59 @@ resource "google_monitoring_alert_policy" "uptime" {
       }
     }
   }
+  # The admin / shore / landing checks are conditional (count = 0 until
+  # their domain var is set at apply time), so these conditions are dynamic:
+  # one per check that exists, none when it doesn't. Live state (checked
+  # 2026-11-25) has only the web + api checks — the domain vars were empty
+  # at the last apply — so these add nothing until the vars are passed.
+  dynamic "conditions" {
+    for_each = google_monitoring_uptime_check_config.admin
+    content {
+      display_name = "admin uptime check failing"
+      condition_threshold {
+        filter          = "metric.type=\"monitoring.googleapis.com/uptime_check/check_passed\" AND resource.type=\"uptime_url\" AND metric.label.check_id=\"${conditions.value.uptime_check_id}\""
+        duration        = "120s"
+        comparison      = "COMPARISON_LT"
+        threshold_value = 1
+        aggregations {
+          alignment_period   = "120s"
+          per_series_aligner = "ALIGN_FRACTION_TRUE"
+        }
+      }
+    }
+  }
+  dynamic "conditions" {
+    for_each = google_monitoring_uptime_check_config.shore
+    content {
+      display_name = "shore uptime check failing"
+      condition_threshold {
+        filter          = "metric.type=\"monitoring.googleapis.com/uptime_check/check_passed\" AND resource.type=\"uptime_url\" AND metric.label.check_id=\"${conditions.value.uptime_check_id}\""
+        duration        = "120s"
+        comparison      = "COMPARISON_LT"
+        threshold_value = 1
+        aggregations {
+          alignment_period   = "120s"
+          per_series_aligner = "ALIGN_FRACTION_TRUE"
+        }
+      }
+    }
+  }
+  dynamic "conditions" {
+    for_each = google_monitoring_uptime_check_config.landing
+    content {
+      display_name = "landing uptime check failing"
+      condition_threshold {
+        filter          = "metric.type=\"monitoring.googleapis.com/uptime_check/check_passed\" AND resource.type=\"uptime_url\" AND metric.label.check_id=\"${conditions.value.uptime_check_id}\""
+        duration        = "120s"
+        comparison      = "COMPARISON_LT"
+        threshold_value = 1
+        aggregations {
+          alignment_period   = "120s"
+          per_series_aligner = "ALIGN_FRACTION_TRUE"
+        }
+      }
+    }
+  }
 
   depends_on = [google_project_service.monitoring]
 }
@@ -435,6 +547,32 @@ resource "google_monitoring_alert_policy" "server_errors" {
   }
 
   depends_on = [google_project_service.monitoring]
+}
+
+resource "google_monitoring_alert_policy" "admin_server_errors" {
+  project               = var.project_id
+  display_name          = "beech-admin: server errors (5xx)"
+  combiner              = "OR"
+  notification_channels = [google_monitoring_notification_channel.email.id]
+  documentation {
+    content   = "A 5xx happened on the admin console in the last 10 minutes. In Logs Explorer look for resource.type=\"cloud_run_revision\" resource.labels.service_name=\"beech-admin\" jsonPayload.event=\"http_request\" with status>=500."
+    mime_type = "text/markdown"
+  }
+  conditions {
+    display_name = "any admin 5xx in 10 minutes"
+    condition_threshold {
+      filter          = "metric.type=\"logging.googleapis.com/user/beech_admin_http_server_errors_total\" AND resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"beech-admin\""
+      duration        = "60s"
+      comparison      = "COMPARISON_GT"
+      threshold_value = 0
+      aggregations {
+        alignment_period   = "300s"
+        per_series_aligner = "ALIGN_RATE"
+      }
+    }
+  }
+
+  depends_on = [google_project_service.monitoring, google_logging_metric.admin_http_server_errors]
 }
 
 resource "google_monitoring_alert_policy" "client_errors" {
@@ -489,6 +627,58 @@ resource "google_monitoring_alert_policy" "latency" {
   depends_on = [google_project_service.monitoring]
 }
 
+resource "google_monitoring_alert_policy" "db_errors" {
+  project               = var.project_id
+  display_name          = "beech: database errors"
+  combiner              = "OR"
+  notification_channels = [google_monitoring_notification_channel.email.id]
+  documentation {
+    content   = "A database query failed in the last 10 minutes. In Logs Explorer look for jsonPayload.event=\"db_error\" — each line carries the operation label (e.g. shore.walk, beach.save), the duration and the pool state; jsonPayload.event=\"db_slow_query\" shows slow ones."
+    mime_type = "text/markdown"
+  }
+  conditions {
+    display_name = "any db error in 10 minutes"
+    condition_threshold {
+      filter          = "metric.type=\"logging.googleapis.com/user/beech_db_errors_total\" AND resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"beech\""
+      duration        = "60s"
+      comparison      = "COMPARISON_GT"
+      threshold_value = 0
+      aggregations {
+        alignment_period   = "300s"
+        per_series_aligner = "ALIGN_RATE"
+      }
+    }
+  }
+
+  depends_on = [google_project_service.monitoring, google_logging_metric.db_errors]
+}
+
+resource "google_monitoring_alert_policy" "db_slow_queries" {
+  project               = var.project_id
+  display_name          = "beech: slow database queries"
+  combiner              = "OR"
+  notification_channels = [google_monitoring_notification_channel.email.id]
+  documentation {
+    content   = "More than 5 queries over 500 ms in 10 minutes. In Logs Explorer look for jsonPayload.event=\"db_slow_query\" — each line carries the operation label (e.g. shore.linked, shore.nextStretch), the duration and the pool state at the time."
+    mime_type = "text/markdown"
+  }
+  conditions {
+    display_name = "more than 5 slow queries in 10 minutes"
+    condition_threshold {
+      filter          = "metric.type=\"logging.googleapis.com/user/beech_db_slow_queries_total\" AND resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"beech\""
+      duration        = "0s"
+      comparison      = "COMPARISON_GT"
+      threshold_value = 5
+      aggregations {
+        alignment_period   = "600s"
+        per_series_aligner = "ALIGN_SUM"
+      }
+    }
+  }
+
+  depends_on = [google_project_service.monitoring, google_logging_metric.db_slow_queries]
+}
+
 resource "google_monitoring_alert_policy" "sql_cpu" {
   project               = var.project_id
   display_name          = "beech: Cloud SQL CPU high"
@@ -531,6 +721,32 @@ resource "google_monitoring_alert_policy" "sql_connections" {
       duration        = "300s"
       comparison      = "COMPARISON_GT"
       threshold_value = 20
+      aggregations {
+        alignment_period   = "60s"
+        per_series_aligner = "ALIGN_MEAN"
+      }
+    }
+  }
+
+  depends_on = [google_project_service.monitoring]
+}
+
+resource "google_monitoring_alert_policy" "memory" {
+  project               = var.project_id
+  display_name          = "beech: Cloud Run memory high"
+  combiner              = "OR"
+  notification_channels = [google_monitoring_notification_channel.email.id]
+  documentation {
+    content   = "Cloud Run beech memory utilization is over 80% for 5 minutes. The service runs with 512Mi; if this keeps happening, raise the limit in infra/main.tf — no code changes needed. There was no memory alert before this one, so a slow leak would only have shown up as restarts."
+    mime_type = "text/markdown"
+  }
+  conditions {
+    display_name = "Cloud Run memory over 80% for 5 minutes"
+    condition_threshold {
+      filter          = "metric.type=\"run.googleapis.com/container/memory/utilization\" AND resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"beech\""
+      duration        = "300s"
+      comparison      = "COMPARISON_GT"
+      threshold_value = 0.8
       aggregations {
         alignment_period   = "60s"
         per_series_aligner = "ALIGN_MEAN"
@@ -604,6 +820,35 @@ resource "google_monitoring_dashboard" "beech" {
                 timeSeriesQuery = {
                   timeSeriesFilter = {
                     filter      = "metric.type=\"logging.googleapis.com/user/beech_http_latency\" AND resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"beech\""
+                    aggregation = { alignmentPeriod = "300s", perSeriesAligner = "ALIGN_PERCENTILE_95" }
+                  }
+                }
+                plotType   = "LINE"
+                targetAxis = "Y1"
+              },
+            ]
+            yAxis        = { label = "ms", scale = "LINEAR" }
+            chartOptions = { mode = "COLOR" }
+          }
+        },
+        {
+          title = "Client page load (p50 / p95, ms)"
+          xyChart = {
+            dataSets = [
+              {
+                timeSeriesQuery = {
+                  timeSeriesFilter = {
+                    filter      = "metric.type=\"logging.googleapis.com/user/beech_client_perf_load\" AND resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"beech\""
+                    aggregation = { alignmentPeriod = "300s", perSeriesAligner = "ALIGN_PERCENTILE_50" }
+                  }
+                }
+                plotType   = "LINE"
+                targetAxis = "Y1"
+              },
+              {
+                timeSeriesQuery = {
+                  timeSeriesFilter = {
+                    filter      = "metric.type=\"logging.googleapis.com/user/beech_client_perf_load\" AND resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"beech\""
                     aggregation = { alignmentPeriod = "300s", perSeriesAligner = "ALIGN_PERCENTILE_95" }
                   }
                 }
@@ -711,6 +956,25 @@ resource "google_monitoring_dashboard" "beech" {
               },
             ]
             yAxis        = { label = "errors/s", scale = "LINEAR" }
+            chartOptions = { mode = "COLOR" }
+          }
+        },
+        {
+          title = "Slow database queries (>500 ms)"
+          xyChart = {
+            dataSets = [
+              {
+                timeSeriesQuery = {
+                  timeSeriesFilter = {
+                    filter      = "metric.type=\"logging.googleapis.com/user/beech_db_slow_queries_total\" AND resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"beech\""
+                    aggregation = { alignmentPeriod = "60s", perSeriesAligner = "ALIGN_RATE" }
+                  }
+                }
+                plotType   = "LINE"
+                targetAxis = "Y1"
+              },
+            ]
+            yAxis        = { label = "slow queries/s", scale = "LINEAR" }
             chartOptions = { mode = "COLOR" }
           }
         },
