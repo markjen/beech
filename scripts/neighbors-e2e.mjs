@@ -63,8 +63,16 @@ await page.evaluate(async () => {
 });
 await page.evaluate(() => window.__beech.sheet.show('shore'));
 await page.waitForSelector('#neighbor-left', { timeout: 8000 }).catch(async (e) => { console.log('PANEL', await page.evaluate(() => document.querySelector('.shore-slot')?.innerText), JSON.stringify(await page.evaluate(() => window.__beech.neighbors().state))); throw e; });
-await page.fill('#neighbor-left', anaCode.toLowerCase());
-await page.click('button[data-act="add-left"]');
+// the panel can re-render while Ben's sign-in settles (replacing the input
+// just typed into, so an empty code goes out): type, ask, and check, a few times
+for (let i = 0; i < 4; i++) {
+  await page.fill('#neighbor-left', anaCode.toLowerCase());
+  await page.click('button[data-act="add-left"]');
+  const asked = await page
+    .waitForFunction((n) => window.__beech.neighbors().state?.asked?.left?.name === n, anaName, { timeout: 8000 })
+    .then(() => true, () => false);
+  if (asked) break;
+}
 await page.waitForFunction((n) => window.__beech.neighbors().state?.asked?.left?.name === n, anaName, { timeout: 15000 });
 check((await page.textContent('.shore-slot .neighbor-section'))?.includes(`waiting for ${anaName}`), 'Ben asked Ana; the sheet says it is waiting for her');
 check((await page.evaluate(() => window.__beech.neighbors().state.left)) === null, 'not neighbors until she accepts');
@@ -93,12 +101,14 @@ await page.waitForFunction((n) => window.__beech.neighbors()?.state?.left?.name 
 check(true, 'Ben added Ana as his left neighbor');
 check((await page.evaluate(() => window.__beech.neighbors().beachAt(1)?.name)) === anaName, "Ana's beach is next to his");
 
-// pan over toward the left neighbor (world +X) and look
+// pan over toward the left neighbor (world +X) and look — staying on Ben's
+// side of the seam (past halfway the view is "away", and the name tags move
+// off the sand into the status pane)
 await page.evaluate(() => {
   const b = window.__beech;
   b.cam.halfH = 15;
   b.cam.applyOrtho();
-  b.cam.camera.target.x = 17;
+  b.cam.camera.target.x = 12;
   b.cam.camera.target.z = 0;
 });
 // name tags float over the sand while the toolbar is open (with the status pane collapsed)
