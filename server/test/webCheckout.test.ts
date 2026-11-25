@@ -1,7 +1,7 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createApp } from '../src/app.js';
 import { type Db } from '../src/db.js';
-import { payStationUrl, signWebhook, tokenBody, verifyWebhookSignature, xsollaFromEnv, type TokenRequest, type XsollaConfig } from '../src/xsolla.js';
+import { createPaymentToken, payStationUrl, signWebhook, tokenBody, verifyWebhookSignature, xsollaFromEnv, type TokenRequest, type XsollaConfig } from '../src/xsolla.js';
 import { openTestDb } from './testDb.js';
 
 // Web checkout through Xsolla (docs/WEB_PAYMENTS.md): the token call is
@@ -107,6 +107,35 @@ describe('Xsolla helpers', () => {
     expect(payStationUrl('t', true)).toBe('https://sandbox-secure.xsolla.com/paystation4/?token=t');
   });
 
+  it('puts the player country in the token body when the client sent one', () => {
+    const b = tokenBody({ ...LIVE, sandbox: true }, { userId: 'u1', sku: 'beach_1', webOrderId: 'o1', country: 'US' });
+    expect((b.user as { country?: { value: string } }).country).toEqual({ value: 'US' });
+    const noCountry = tokenBody({ ...LIVE, sandbox: true }, { userId: 'u1', sku: 'beach_1', webOrderId: 'o1' });
+    expect((noCountry.user as { country?: unknown }).country).toBeUndefined();
+  });
+
+  it('uses IPv4 first and falls back to the locale country', async () => {
+    const fetch = vi.spyOn(globalThis, 'fetch');
+    fetch.mockImplementation(async () => Response.json({ token: 'token', order_id: 1 }));
+    try {
+      const req = { userId: 'u1', sku: 'beach_1', webOrderId: 'o1', country: 'US' };
+      await createPaymentToken(LIVE, { ...req, ip: '192.0.2.1' });
+      await createPaymentToken(LIVE, { ...req, ip: '2001:db8::1' });
+      await createPaymentToken(LIVE, { ...req, ip: '999.0.2.1' });
+      const sent = fetch.mock.calls.map(([, init]) => ({
+        ip: new Headers(init?.headers).get('X-User-Ip'),
+        country: JSON.parse(String(init?.body)).user.country?.value,
+      }));
+      expect(sent).toEqual([
+        { ip: '192.0.2.1', country: undefined },
+        { ip: null, country: 'US' },
+        { ip: null, country: 'US' },
+      ]);
+    } finally {
+      fetch.mockRestore();
+    }
+  });
+
   it('is on only when the project, key and webhook secret are all set', () => {
     expect(xsollaFromEnv({}).cfg).toBeNull();
     expect(xsollaFromEnv({ XSOLLA_PROJECT_ID: '1', XSOLLA_API_KEY: 'k' }).missing).toEqual(['XSOLLA_WEBHOOK_SECRET']);
@@ -134,6 +163,21 @@ describe('web checkout', () => {
     const other = await signIn('web-other-1');
     expect((await req(`/store/web-orders/${o.order}`, {}, other.token)).status).toBe(404);
     expect((await req('/store/web-orders/not-a-uuid', {}, p.token)).status).toBe(404);
+  });
+
+  it('forwards the client country to the token call, and refuses a bad one', async () => {
+    const p = await signIn('web-buyer-country');
+    tokenCalls = [];
+    const r = await req('/store/web-checkout', json('POST', { productId: 'beach_1', country: 'us' }), p.token);
+    expect(r.status).toBe(200);
+    expect(tokenCalls).toEqual([expect.objectContaining({ country: 'US' })]);
+    // a three-letter country is not a country code: no order is created
+    tokenCalls = [];
+    for (const country of ['USA', null, 42, {}, 'ß']) {
+      expect((await req('/store/web-checkout', json('POST', { productId: 'beach_1', country }), p.token)).status).toBe(400);
+    }
+    expect(tokenCalls).toEqual([]);
+    expect(await db.query('SELECT id FROM web_orders WHERE user_id = $1', [p.id])).toHaveLength(1);
   });
 
   it('a failed token call leaves no order behind', async () => {

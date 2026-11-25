@@ -341,10 +341,19 @@ export class ShopApi {
    */
   async startWebCheckout(productId: string): Promise<string> {
     if (shopMode() !== 'web') throw new Error('buy in the beech app');
+    // An explicit locale region is the fallback for buyers without IPv4.
+    const country = (() => {
+      try {
+        const region = new Intl.Locale(navigator.language).region;
+        return region && /^[A-Z]{2}$/.test(region) ? region : undefined;
+      } catch {
+        return undefined;
+      }
+    })();
     const res = await this.account.fetch('/api/store/web-checkout', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ productId }),
+      body: JSON.stringify({ productId, ...(country ? { country } : {}) }),
     });
     if (!res.ok) {
       const msg = ((await res.json().catch(() => ({}))) as { error?: string }).error;
