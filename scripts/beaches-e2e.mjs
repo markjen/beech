@@ -34,9 +34,13 @@ async function device(label) {
   await page.waitForFunction(() => window.__beech.beachId() && window.__beech.sync().state === 'saved', null, { timeout: 20000 });
   return page;
 }
+// pick a tool from the Edit popup (open it first if it's closed: a press on the sand closes it)
+const tool = async (page, id) => {
+  if (!(await page.isVisible(`button[data-tool="${id}"]`))) await page.click('[data-act="edit-menu"]');
+  await page.click(`button[data-tool="${id}"]`);
+};
 const dig = async (page, y) => {
-  await page.click('[data-act="edit-menu"]');
-  await page.click('button[data-tool="sand"]');
+  await tool(page, 'sand');
   await page.mouse.move(300, y);
   await page.mouse.down();
   for (let i = 0; i < 20; i++) {
@@ -90,6 +94,7 @@ const sands = await b.evaluate(async (ids) => {
   const get = async (id) => new Uint8Array(await (await acct.fetch(`/api/beaches/mine/${id}/sand`)).arrayBuffer()).length;
   return [await get(ids[0]), await get(ids[1])];
 }, [home, second]);
+if (process.env.DEBUG_E2E) console.log('live', await a.evaluate(() => window.__beech.liveBeach()), second);
 check(aNow > secondDug && bNow > bDug, `both devices dug at the same time (A ${secondDug.toFixed(0)}->${aNow.toFixed(0)}, B ${bDug.toFixed(0)}->${bNow.toFixed(0)})`);
 check(sands[0] > 0 && sands[1] > 0, 'each beach saved separately');
 
@@ -113,7 +118,7 @@ await b.evaluate(() => {
 });
 await b.waitForFunction(() => window.__beech.neighbors().snapshot('left') !== null, null, { timeout: 15000 });
 await b.waitForTimeout(400);
-await b.click('button[data-tool="sand"]');
+await tool(b, 'sand');
 await b.mouse.move(420, 460);
 await b.mouse.down();
 for (let i = 0; i < 18; i++) {
