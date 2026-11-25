@@ -6,7 +6,7 @@
 //   POST   /api/auth/logout                                -> 204
 //   GET    /api/me                                         -> { user }
 //   GET    /api/beach                                      -> sand bytes + X-Beach-* headers | 404
-//   PUT    /api/beach            sand bytes, X-Beach-Location/Nx/Ny -> { version, updatedAt }
+//   PUT    /api/beach            sand bytes, X-Beach-Location/Nx/Ny -> { version, updatedAt } (+ largeEdit / largeEditCheckpoint when the save reshaped the beach)
 //   DELETE /api/account                                    -> 204 (user, sessions, beach, neighbor links)
 //
 //   GET    /api/neighbors                                  -> { code, left, right, asked, requests }
@@ -94,6 +94,7 @@ import {
   countObjects,
   dropMissing,
   inspectBlob,
+  sandDiff,
   shortfall,
 } from './checkpoints.js';
 import {
@@ -678,15 +679,57 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   };
 
   /**
+   * Write the beach as it is now into its one auto checkpoint slot
+   * (migration 13): the new snapshot replaces the previous auto checkpoint
+   * rather than accumulating, it never takes a named slot, and its bytes
+   * are the same one slot already counted toward the 16 MB total. Returns
+   * false when nothing was written (no saved beach yet, the store full, an
+   * unreadable old save) — the caller decides whether that matters.
+   */
+  const writeAutoCheckpoint = async (beachId: string, userId: string, now: number, name: string): Promise<boolean> => {
+    const cur = (
+      await db.query<{ sand: unknown }>('SELECT sand FROM beach WHERE id = $1 AND sand IS NOT NULL', [beachId])
+    )[0];
+    if (!cur) return false; // first save: nothing to keep
+    const bytes = toBytes(cur.sand);
+    // the one auto slot's bytes already count toward the total; only
+    // snapshot if the replacement still fits
+    const use = (
+      await db.query<{ total: string; auto_bytes: string }>(
+        `SELECT COALESCE(SUM(bytes), 0) AS total,
+                COALESCE(SUM(bytes) FILTER (WHERE kind = 'auto' AND from_beach = $2), 0) AS auto_bytes
+           FROM checkpoints WHERE owner_id = $1`,
+        [userId, beachId],
+      )
+    )[0];
+    if (Number(use.total) - Number(use.auto_bytes) + bytes.byteLength > CHECKPOINT_BYTES_PER_USER) return false;
+    let items: Record<string, number> = {};
+    let objects = 0;
+    try {
+      ({ items, objects } = inspectBlob(bytes));
+    } catch {
+      /* an unreadable old save: keep the bytes, uncounted */
+    }
+    await db.query(
+      `INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at)
+       SELECT $1, owner_id, $2, 'auto', 'beach', id, name, location, nx, ny, sand, octet_length(sand), $3, $4, $5
+         FROM beach WHERE id = $6 AND sand IS NOT NULL
+       ON CONFLICT (from_beach) WHERE kind = 'auto' DO UPDATE SET
+         name = EXCLUDED.name, from_name = EXCLUDED.from_name, location = EXCLUDED.location, nx = EXCLUDED.nx, ny = EXCLUDED.ny,
+         sand = EXCLUDED.sand, bytes = EXCLUDED.bytes, items = EXCLUDED.items, objects = EXCLUDED.objects, created_at = EXCLUDED.created_at`,
+      [crypto.randomUUID(), name, JSON.stringify(items), objects, now, beachId],
+    );
+    return true;
+  };
+
+  /**
    * The daily auto-save (docs/CHECKPOINTS.md): before a save overwrites a
    * beach, keep the beach as it is now — but at most once per beach per day.
    * "Last one" is the beach's most recent `auto` checkpoint, whatever made
-   * it: a daily auto-save, a "before restoring" copy, or a "before import"
-   * copy all reset the clock, so a restore's undo copy is safe for a day
-   * after the restore. It reuses the beach's one auto slot (migration 13):
-   * the new snapshot replaces the previous auto checkpoint rather than
-   * accumulating, it never takes a named slot, and its bytes are the same
-   * one slot already counted toward the 16 MB total.
+   * it: a daily auto-save, a "before restoring" copy, a "before import"
+   * copy, or a "before big edit" copy all reset the clock, so a restore's
+   * undo copy — and a big edit's pre-edit copy — is safe for a day after
+   * it was made. It reuses the beach's one auto slot (migration 13).
    *
    * Fail-safe the other way: anything wrong here — no saved beach yet (a
    * first save), an unreadable old save, the 16 MB total full — skips the
@@ -704,40 +747,48 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
         )
       )[0];
       if (last && now - Number(last.created_at) < AUTO_SAVE_MS) return;
+      if (!(await writeAutoCheckpoint(beachId, userId, now, `Auto-save ${new Date(now).toISOString().slice(0, 10)}`))) return;
+    } catch {
+      logEvent('auto_checkpoint_failed', { reason: 'daily' }, 'WARNING');
+    }
+  };
+
+  /**
+   * The large-edit checkpoint (docs/CHECKPOINTS.md): before a save that
+   * reshapes a tenth of the beach, moves fifty things, or changes the grid
+   * lands, keep the beach as it is now in the same one auto slot — even if
+   * a daily auto-save fired an hour ago. The 24 h rule does not apply here:
+   * a big edit is exactly when the old beach is most at risk, and the
+   * snapshot counts as the day's auto checkpoint (see maybeAutoSave), so
+   * the pre-edit copy is not overwritten again for a day.
+   *
+   * Failure, like the daily save, never blocks the edit: the save goes
+   * ahead, the failure is logged with its reason, and the save's response
+   * says the safety copy was not kept (`largeEditCheckpoint: false`), so
+   * the app can tell the player. Blocking would strand the edit in the app
+   * for a storage limit the player did nothing to cause, and a failed
+   * snapshot here usually means the store is full or the old save is
+   * unreadable — neither is fixed by refusing the new beach.
+   */
+  const maybeLargeEditSave = async (
+    beachId: string,
+    userId: string,
+    now: number,
+    newBytes: Uint8Array,
+  ): Promise<{ large: boolean; snapshotted: boolean }> => {
+    try {
       const cur = (
         await db.query<{ sand: unknown }>('SELECT sand FROM beach WHERE id = $1 AND sand IS NOT NULL', [beachId])
       )[0];
-      if (!cur) return; // first save: nothing to keep
-      const bytes = toBytes(cur.sand);
-      // the one auto slot's bytes already count toward the total; only
-      // snapshot if the replacement still fits
-      const use = (
-        await db.query<{ total: string; auto_bytes: string }>(
-          `SELECT COALESCE(SUM(bytes), 0) AS total,
-                  COALESCE(SUM(bytes) FILTER (WHERE kind = 'auto' AND from_beach = $2), 0) AS auto_bytes
-             FROM checkpoints WHERE owner_id = $1`,
-          [userId, beachId],
-        )
-      )[0];
-      if (Number(use.total) - Number(use.auto_bytes) + bytes.byteLength > CHECKPOINT_BYTES_PER_USER) return;
-      let items: Record<string, number> = {};
-      let objects = 0;
-      try {
-        ({ items, objects } = inspectBlob(bytes));
-      } catch {
-        /* an unreadable old save: keep the bytes, uncounted */
-      }
-      await db.query(
-        `INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at)
-         SELECT $1, owner_id, $2, 'auto', 'beach', id, name, location, nx, ny, sand, octet_length(sand), $3, $4, $5
-           FROM beach WHERE id = $6 AND sand IS NOT NULL
-         ON CONFLICT (from_beach) WHERE kind = 'auto' DO UPDATE SET
-           name = EXCLUDED.name, from_name = EXCLUDED.from_name, location = EXCLUDED.location, nx = EXCLUDED.nx, ny = EXCLUDED.ny,
-           sand = EXCLUDED.sand, bytes = EXCLUDED.bytes, items = EXCLUDED.items, objects = EXCLUDED.objects, created_at = EXCLUDED.created_at`,
-        [crypto.randomUUID(), `Auto-save ${new Date(now).toISOString().slice(0, 10)}`, JSON.stringify(items), objects, now, beachId],
-      );
+      if (!cur) return { large: false, snapshotted: false }; // first save: nothing to keep
+      const diff = sandDiff(toBytes(cur.sand), newBytes);
+      if (!diff.large) return { large: false, snapshotted: false };
+      const snapshotted = await writeAutoCheckpoint(beachId, userId, now, `Before big edit ${new Date(now).toISOString().slice(0, 10)}`);
+      if (!snapshotted) logEvent('auto_checkpoint_failed', { reason: 'large-edit' }, 'WARNING');
+      return { large: true, snapshotted };
     } catch {
-      logEvent('auto_checkpoint_failed', {}, 'WARNING');
+      logEvent('auto_checkpoint_failed', { reason: 'large-edit' }, 'WARNING');
+      return { large: true, snapshotted: false };
     }
   };
 
@@ -769,13 +820,25 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       const cur = (await db.query<{ sand: unknown }>('SELECT sand FROM beach WHERE id = $1 AND sand IS NOT NULL', [beachId]))[0];
       if (cur && countObjects(toBytes(cur.sand)) > OLD_MAX_OBJECTS) outdated(c, 'no X-Beach-Max');
     }
-    // the daily auto-save (docs/CHECKPOINTS.md): before this save overwrites
-    // the beach, keep what is there now if a day has passed since its last
-    // auto checkpoint. It never blocks the save (see maybeAutoSave).
-    await maybeAutoSave(beachId, c.get('user').id, now);
     const epochHeader = c.req.header('X-Beach-Epoch');
     const epoch = epochHeader === undefined || epochHeader === '' ? null : Number(epochHeader);
     if (epoch !== null && !Number.isInteger(epoch)) fail(400, 'bad X-Beach-Epoch');
+    // a save from before a restore must be refused before anything is
+    // snapshotted: the pre-edit copy would overwrite the restore's undo
+    // copy in the one auto slot, and then the save itself is refused — the
+    // beach the player could have gone back to is gone. The UPDATE's WHERE
+    // below stays as the race backstop (a restore landing between this
+    // check and the UPDATE).
+    if (epoch !== null) {
+      const cur = (await db.query<{ epoch: number }>('SELECT epoch FROM beach WHERE id = $1', [beachId]))[0];
+      if (cur && Number(cur.epoch) > epoch) fail(409, 'restored');
+    }
+    // a big edit (a tenth of the sand reshaped, fifty things moved, a new
+    // grid) keeps the beach as it is now first, whatever the daily clock
+    // says; anything smaller gets the daily auto-save instead. Neither ever
+    // blocks the save (see maybeLargeEditSave / maybeAutoSave).
+    const big = await maybeLargeEditSave(beachId, c.get('user').id, now, bytes);
+    if (!big.large) await maybeAutoSave(beachId, c.get('user').id, now);
     const rows = await db.query<{ version: number; epoch: number }>(
       `UPDATE beach SET location = $2, nx = $3, ny = $4, version = version + 1, updated_at = $5, sand = $6, items = $7
         WHERE id = $1 AND ($8::int IS NULL OR epoch <= $8::int) RETURNING version, epoch`,
@@ -785,7 +848,12 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       if ((await db.query('SELECT 1 FROM beach WHERE id = $1', [beachId])).length) fail(409, 'restored');
       fail(404, 'no such beach');
     }
-    return c.json({ version: rows[0].version, updatedAt: now, epoch: Number(rows[0].epoch) });
+    return c.json({
+      version: rows[0].version,
+      updatedAt: now,
+      epoch: Number(rows[0].epoch),
+      ...(big.large ? { largeEdit: true, largeEditCheckpoint: big.snapshotted } : {}),
+    });
   };
 
   app.get('/beach', requireUser, async (c) => sendBeach(c, await homeOf(c.get('user').id)));

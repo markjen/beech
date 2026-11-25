@@ -49,6 +49,7 @@ import { BeachGuide, type GuideHost } from './ui/guide';
 import type { InvitePanel } from './ui/invite';
 import { extraById, itemById, prizeName } from './world/items';
 import { BeachSync, countItems } from './net/beachSync';
+import { snapshotBeforeBigEdit } from './net/bigEditSnapshot';
 import { AccountPanel } from './ui/accountPanel';
 import { Leaderboard } from './ui/leaderboard';
 import { NeighborView } from './render/neighbors';
@@ -387,6 +388,10 @@ async function boot() {
   let placing: Item | null = null;
   let digging = false;
   let strokeOpen = false;
+  /** a "before big edit" snapshot has been taken (or tried) since the last save */
+  let bigEditSnapshotAttempted = false;
+  /** set up once the account layer exists (below): snapshot before a clearing stroke */
+  let maybeBigEditSnapshot: () => void = () => {};
   /** a dig stroke's effort, for buried finds: brush travel (m) and when it started */
   let digPathM = 0;
   let digStrokeStart = 0;
@@ -539,6 +544,11 @@ async function boot() {
       strokeTarget = null;
     }
     if (hit.target.kind === 'live') {
+      // picking up a clearing tool (bulldozer, flatten, vacuum) is the
+      // intent to reshape the beach: keep it as it is now first
+      // (docs/CHECKPOINTS.md). A clearing stroke on a beach you own next
+      // door skips this — the server's save-diff backstop covers it.
+      if (!strokeOpen && isClearingMode(brushMode)) maybeBigEditSnapshot();
       send({ type: 'brush', phase: strokeOpen ? 'move' : 'start', x: s.x, y: s.y, r, mode: brushMode });
     } else if (strokeOpen) {
       neighbors?.moveStroke(hit.target.index, s.x, s.y, r);
@@ -1830,6 +1840,11 @@ async function boot() {
     s.onDropped((n) => {
       if (n) showToast(uiRoot, `Only ${MAX_OBJECTS} things are saved on a beach: the ${n} you put down last won't be kept. Take some away with the vacuum.`);
     });
+    // a big edit landed, but its safety copy could not be kept: say so,
+    // so the player can save a checkpoint by hand if they want one
+    s.onLargeEditUnprotected(() => {
+      showToast(uiRoot, 'That big edit is saved, but the copy of the beach before it couldn’t be kept — save a checkpoint from Settings if you want one to go back to.');
+    });
     let toldTooBig = false;
     s.onState((st) => {
       if (st === 'tooBig' && !toldTooBig) showToast(uiRoot, 'This beach is too big to save. Smooth some of the sand and it will save again.');
@@ -1999,6 +2014,29 @@ async function boot() {
     s.onRestoredElsewhere(() => {
       showToast(uiRoot, 'This beach was restored from a checkpoint on another device');
       void checkpoints.load();
+    });
+    // a clearing stroke is about to reshape the beach: keep it as it is now
+    // first (docs/CHECKPOINTS.md). Once per save — the next save resets the
+    // flag, so a later clearing session snapshots again. The snapshot is
+    // best-effort and never blocks the stroke: the server's save-diff
+    // backstop still gets its chance at the next save.
+    maybeBigEditSnapshot = () => {
+      if (bigEditSnapshotAttempted) return;
+      bigEditSnapshotAttempted = true;
+      void snapshotBeforeBigEdit({
+        fenced,
+        signedIn: !!acct.user,
+        beachId: acct.beachId,
+        alreadyAttempted: false,
+        flush: () => s.flush(),
+        saveAutoCheckpoint: (id, name) =>
+          cpApi.save(id, name, true).then(() => {
+            void checkpoints.load();
+          }),
+      });
+    };
+    s.onState((st) => {
+      if (st === 'saved') bigEditSnapshotAttempted = false;
     });
     panel = new AccountPanel(
       {

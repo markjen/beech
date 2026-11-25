@@ -125,8 +125,10 @@ the newest auto event wins. A restore's undo copy is safe for a day after
 the restore, because the restore's own auto write counts as the last auto
 checkpoint and the daily save only fires after 24 h without one. After
 that a daily save may replace it with a newer snapshot of the (restored)
-beach. The names tell them apart in settings → checkpoints: `Auto-save
-2026-11-24`, `Before restoring “Moat v2”`, `Before import`.
+beach. A large edit's "Before big edit" copy shares the slot the same way
+and also resets the 24 h clock — it fires regardless of the clock, and a
+daily save will not replace it for a day. The names tell them apart in settings → checkpoints: `Auto-save
+2026-11-24`, `Before restoring “Moat v2”`, `Before import`, `Before big edit 2026-11-24`.
 
 ## Sandbox build
 
@@ -165,7 +167,10 @@ cross-origin).
   over from another. Normal when someone opens a second tab; worth a
   look if a player reports losing edits.
 - `auto_checkpoint_failed` (WARNING): the daily auto-save could not
-  write; the beach save it was guarding went ahead anyway.
+  write; the beach save it was guarding went ahead anyway. Carries
+  `reason: 'daily'` or `'large-edit'` for a big edit's safety copy — the
+  save's response tells the app in that case too
+  (`largeEditCheckpoint: false`), so the player is told.
 - `stale_app_save` (WARNING, `why: 'no X-Edit-Token'`): an app too old
   to send a token tried to save.
 

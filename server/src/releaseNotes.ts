@@ -24,6 +24,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       'Your inbox (the envelope, top right) shows who visited and what they left, gifts, neighbor requests, stars and ratings. Say thanks, report a note or block someone from there.',
       'Someone who signs up from a link to your beach counts as your invite.',
       'Edit any of your beaches you can see. Dig, build, clear or drag things across the seam, and each beach saves as you play.',
+      'Starting a big clear-out with the bulldozer, flatten or vacuum — or any change that reshapes a tenth of your beach — first keeps the beach as it was, as a checkpoint you can go back to (Settings → checkpoints).',
       'Settings has Beach, Shore, Display and Account tabs. Open Shore to connect your own beaches side by side in one step.',
       'Switching between your beaches quickly no longer risks one beach’s sand overwriting another’s.',
       'Edit, Shop, Chair, Move, and Beach settings now have their own controls on the right. Settings, Help, and the leaderboard sit above them.',

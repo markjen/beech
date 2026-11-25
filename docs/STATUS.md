@@ -658,11 +658,31 @@ through). Design in [EDIT_SESSIONS.md](EDIT_SESSIONS.md).
   save keeps nothing; a failed snapshot never blocks the save (logged as
   `auto_checkpoint_failed`). It shows in settings → checkpoints as
   "auto-saved daily" and restores like any checkpoint.
+- **Large-edit checkpoint:** before a save that reshapes a tenth of the
+  beach's sand cells by ≥ 50 mm, moves ≥ 50 things, or changes the grid
+  lands, the beach as it is now is kept in the same one auto slot
+  (`Before big edit YYYY-MM-DD`) — even if a daily auto-save fired an hour
+  ago, and the copy counts as the day's auto checkpoint, so the daily clock
+  restarts from it. The server diffs every save against the beach as saved
+  (`sandDiff`, `server/src/checkpoints.ts`: `LARGE_EDIT_FRACTION` 0.1,
+  `LARGE_EDIT_MIN_HEIGHT_MM` 50, `LARGE_EDIT_MIN_OBJECTS` 50; unreadable
+  bytes count as large); picking up a clearing tool (bulldozer, flatten,
+  vacuum) also snapshots first on the client, once per save, so a long
+  clearing session is caught at intent, not only at the first chunk over
+  the threshold. A failed snapshot never blocks the edit: it is logged
+  (`auto_checkpoint_failed`, `reason: 'large-edit'`) and the save answers
+  `largeEditCheckpoint: false`, which the app tells the player about.
+  Fenced instances cannot trigger it. Design in docs/CHECKPOINTS.md.
 - **Sandbox:** unchanged — no accounts, no tokens, production-only.
 - **Checked:** 7 new server tests (`server/test/editSessions.test.ts`:
   fencing of saves/restores/dig rolls/roster, takeover both ways, no-token
   426, daily auto-save timing and slot sharing, a full store never blocking
   a save), plus the epoch test updated in `server/test/checkpoints.test.ts`.
+  Large-edit: 9 server tests (`server/test/largeEdit.test.ts`: the diff
+  thresholds and the save — big-save snapshot, daily interplay, first-save
+  and fenced cases, full store never blocking) and 3 client tests
+  (`tests/bigEditSnapshot.test.ts`: flush-then-snapshot, skips, never
+  throws).
   `npm run e2e:accounts` and `npm run e2e:checkpoints` still pass (the
   scripts drive the real app, so they claim a token the same way a player
   does).
