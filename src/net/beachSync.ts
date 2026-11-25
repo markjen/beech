@@ -71,6 +71,7 @@ export class BeachSync {
   /** your things the last save had to leave out (over MAX_OBJECTS) */
   dropped = 0;
   private droppedListeners: ((n: number) => void)[] = [];
+  private largeEditUnprotectedListeners: (() => void)[] = [];
 
   constructor(
     private readonly account: Account,
@@ -123,6 +124,11 @@ export class BeachSync {
   /** A save had to leave some of your things out (or, with 0, everything fits again). */
   onDropped(fn: (n: number) => void): void {
     this.droppedListeners.push(fn);
+  }
+
+  /** a big edit landed without its safety copy (the auto slot could not be written) */
+  onLargeEditUnprotected(fn: () => void): void {
+    this.largeEditUnprotectedListeners.push(fn);
   }
 
   private set(s: SyncState): void {
@@ -194,7 +200,7 @@ export class BeachSync {
       if (this.account.user?.id !== forUser || this.account.beachId !== forBeach || this.simBeach !== forBeach)
         return;
       const items = countItems(objects);
-      const savedAt = await this.account.saveBeach(
+      const saved = await this.account.saveBeach(
         bytes,
         this.host.location(),
         this.host.grid.nx,
@@ -204,8 +210,15 @@ export class BeachSync {
         this.epoch,
       );
       if (this.account.user?.id !== forUser || this.account.beachId !== forBeach) return;
-      this.savedAt = savedAt;
-      if (this.account.beach) Object.assign(this.account.beach, { updatedAt: savedAt, items });
+      this.savedAt = saved.updatedAt;
+      if (this.account.beach) Object.assign(this.account.beach, { updatedAt: saved.updatedAt, items });
+      if (saved.largeEdit && saved.largeEditCheckpoint === false) {
+        // the big edit is saved, but there is no checkpoint to go back to:
+        // tell the player (and log it) rather than letting the auto slot's
+        // absence pass unnoticed
+        reportError('sync', new Error('large edit saved without a checkpoint'), { source: 'beachSync:largeEdit' });
+        for (const fn of this.largeEditUnprotectedListeners) fn();
+      }
       this.dirty = false;
       const dropped = objectsToSave(objects).dropped;
       if (dropped !== this.dropped) {

@@ -24,6 +24,94 @@ export const CHECKPOINTS_PER_BEACH = 5;
 export const CHECKPOINT_BYTES_PER_USER = 16 * 1024 * 1024;
 export const CHECKPOINT_NAME_MAX = 40;
 
+/**
+ * A save counts as a large edit when it reshapes at least this share of the
+ * beach's sand cells by at least LARGE_EDIT_MIN_HEIGHT_MM, or changes at
+ * least LARGE_EDIT_MIN_OBJECTS things, or changes the grid. 10% of a beach
+ * is about 100 m² on every grid tier (low 192²: 3,686 cells × 0.028 m²;
+ * medium 256²: 6,554 × 0.016 m²; high 320²: 10,240 × 0.01 m²) — far beyond
+ * one brush stroke at the largest radius (2.2 m, ~15 m², ~1.5%), and well
+ * within what a bulldozer run across a quadrant, flattening the whole
+ * beach, or pasting a design does. A single stroke can never trip it; a
+ * session that reshapes a tenth of the beach always does.
+ */
+export const LARGE_EDIT_FRACTION = 0.1;
+/** sand stored in millimetres; a real dig moves it by tens of centimetres, while wave settling and a centimetre of drift do not count as reshaping */
+export const LARGE_EDIT_MIN_HEIGHT_MM = 50;
+/** things moved, added or removed, counting a move as two (one gone, one new) */
+export const LARGE_EDIT_MIN_OBJECTS = 50;
+
+export interface SandDiff {
+  /** cells whose height moved by at least LARGE_EDIT_MIN_HEIGHT_MM */
+  changedCells: number;
+  totalCells: number;
+  /** things added, removed or moved (symmetric difference of placed things) */
+  changedObjects: number;
+  /** the grids differ: a resample reshapes the whole beach */
+  gridChanged: boolean;
+  large: boolean;
+}
+
+function objectKey(o: RawObject): string {
+  const x = typeof o.x === 'number' ? o.x.toFixed(2) : '';
+  const y = typeof o.y === 'number' ? o.y.toFixed(2) : '';
+  const angle = typeof o.angle === 'number' ? o.angle.toFixed(2) : '';
+  const size = typeof o.size === 'number' ? o.size.toFixed(2) : '';
+  return `${typeof o.id === 'number' ? o.id : '?'}:${o.item as string}:${x}:${y}:${angle}:${size}`;
+}
+
+/**
+ * How much a new save differs from the beach as saved: sand cells moved,
+ * things moved/added/removed, and whether the grid changed. Unreadable
+ * bytes count as large — when the server cannot tell what changed, it
+ * keeps the old beach rather than risk losing it unseen. BCH1 saves have
+ * no things part, so they compare on sand alone.
+ */
+export function sandDiff(oldBytes: Uint8Array, newBytes: Uint8Array): SandDiff {
+  let oldSand: Buffer;
+  let newSand: Buffer;
+  let oldNx = 0;
+  let oldNy = 0;
+  let newNx = 0;
+  let newNy = 0;
+  let oldObjs: RawObject[] = [];
+  let newObjs: RawObject[] = [];
+  try {
+    const o = parts(oldBytes);
+    const n = parts(newBytes);
+    oldNx = o.nx;
+    oldNy = o.ny;
+    newNx = n.nx;
+    newNy = n.ny;
+    oldSand = inflate(o.sand, o.nx * o.ny * 2 + 1);
+    newSand = inflate(n.sand, n.nx * n.ny * 2 + 1);
+    if (oldSand.byteLength !== o.nx * o.ny * 2 || newSand.byteLength !== n.nx * n.ny * 2) throw new BadBlob('corrupt saved beach');
+    oldObjs = readObjects(o.objs);
+    newObjs = readObjects(n.objs);
+  } catch {
+    return { changedCells: 0, totalCells: 0, changedObjects: 0, gridChanged: false, large: true };
+  }
+  const gridChanged = oldNx !== newNx || oldNy !== newNy;
+  let changedCells = 0;
+  if (!gridChanged) {
+    for (let i = 0; i < oldNx * oldNy; i++) {
+      if (Math.abs(oldSand.readInt16LE(i * 2) - newSand.readInt16LE(i * 2)) >= LARGE_EDIT_MIN_HEIGHT_MM) changedCells++;
+    }
+  }
+  const oldKeys = new Map<string, number>();
+  for (const k of oldObjs.map(objectKey)) oldKeys.set(k, (oldKeys.get(k) ?? 0) + 1);
+  let changedObjects = 0;
+  for (const k of newObjs.map(objectKey)) {
+    const left = oldKeys.get(k) ?? 0;
+    if (left > 0) oldKeys.set(k, left - 1);
+    else changedObjects++;
+  }
+  for (const left of oldKeys.values()) changedObjects += left;
+  const totalCells = oldNx * oldNy;
+  const large = gridChanged || changedCells >= totalCells * LARGE_EDIT_FRACTION || changedObjects >= LARGE_EDIT_MIN_OBJECTS;
+  return { changedCells, totalCells, changedObjects, gridChanged, large };
+}
+
 const MAGIC1 = 'BCH1';
 const MAGIC2 = 'BCH2';
 const MAGIC3 = 'BCH3';
@@ -42,6 +130,10 @@ interface RawObject {
   id?: unknown;
   item?: unknown;
   wild?: unknown;
+  x?: unknown;
+  y?: unknown;
+  angle?: unknown;
+  size?: unknown;
 }
 
 function parts(bytes: Uint8Array): { nx: number; ny: number; sand: Uint8Array; objs: Uint8Array | null; cover: Uint8Array | null } {

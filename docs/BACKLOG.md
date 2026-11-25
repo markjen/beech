@@ -276,6 +276,15 @@ _(nothing right now)_
   the restore, then the daily save may take the slot. A failed snapshot
   never blocks the save. Shown in settings → checkpoints as "auto-saved
   daily".
+- [x] **Large-edit checkpoint** (2026-11-24): before a big edit lands for a
+  beach, the beach as it is now is kept in the same one auto slot, named
+  `Before big edit YYYY-MM-DD`. Large is a save reshaping ≥ 10% of the
+  sand cells by ≥ 50 mm, moving ≥ 50 things, or changing the grid
+  (thresholds in `server/src/checkpoints.ts`); the server diffs every save,
+  and picking up a clearing tool (bulldozer, flatten, vacuum) snapshots
+  first on the client, once per save. It fires even within a day of a daily
+  auto-save and counts as the day's auto checkpoint. A failed snapshot
+  never blocks the edit — it is logged and the app tells the player.
 - [x] **API rate limiting** (2026-11-24): per client IP, 300 requests a
   minute on the API and 20 sign-ins; the stores' webhooks are exempt. 429
   with `Retry-After`.

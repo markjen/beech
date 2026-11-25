@@ -339,7 +339,14 @@ export class Account {
     };
   }
 
-  /** `items`: how many of each non-free item are on this beach (counted across your beaches) */
+  /**
+   * `items`: how many of each non-free item are on this beach (counted across your beaches).
+   * `largeEdit` says the save reshaped the beach (a tenth of the sand, fifty
+   * things, a new grid); `largeEditCheckpoint` says the server kept the beach
+   * as it was first in the auto checkpoint slot (docs/CHECKPOINTS.md). When
+   * a large edit lands without that safety copy, the caller should say so:
+   * the beach is saved, but there is nothing to go back to.
+   */
   async saveBeach(
     bytes: Uint8Array,
     location: string,
@@ -351,7 +358,7 @@ export class Account {
     epoch?: number,
     /** which of your beaches to save (defaults to this device's active beach) */
     beachId?: string,
-  ): Promise<number> {
+  ): Promise<{ updatedAt: number; largeEdit?: boolean; largeEditCheckpoint?: boolean }> {
     const res = await this.call(this.sandPath(beachId), {
       method: 'PUT',
       headers: {
@@ -382,7 +389,7 @@ export class Account {
       }
       throw new ApiError(res.status, 'could not save your beach');
     }
-    return ((await res.json()) as { updatedAt: number }).updatedAt;
+    return (await res.json()) as { updatedAt: number; largeEdit?: boolean; largeEditCheckpoint?: boolean };
   }
 }
 

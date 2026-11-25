@@ -27,7 +27,7 @@ Migrations live in `src/migrations.ts` and are applied at startup.
 | `POST /api/edit-session` | claim this instance as the one editor: `{ token }` (fences older instances; docs/EDIT_SESSIONS.md) |
 | `GET /api/edit-session` (`X-Edit-Token`) | heartbeat: `{ active }` — whether this instance is still the editor |
 | `GET /api/beach` | your compressed sand, with `X-Beach-Location/Nx/Ny/Version/Updated/Epoch` headers; 404 if none |
-| `PUT /api/beach` | save it (body = sand bytes, plus `X-Beach-Location/Nx/Ny`); only the current editor's token saves (409 `fenced`, 426 with no token at all) |
+| `PUT /api/beach` | save it (body = sand bytes, plus `X-Beach-Location/Nx/Ny`); only the current editor's token saves (409 `fenced`, 426 with no token at all). Before it overwrites: the daily auto-save (once a day) and the large-edit checkpoint (a tenth of the sand, fifty things, a new grid — even within the day), both into the beach's one auto slot; a large save answers `largeEdit` / `largeEditCheckpoint` |
 | `DELETE /api/account` | deletes you, your sessions and beach, and you from other people's neighbor slots |
 | `GET /api/neighbors` | `{ code, left, right, asked: { left, right }, requests: [{ code, name, location, side }] }` |
 | `PUT /api/neighbors/:side { code }` | ask them to be on your `side` (`status: asked`); if they'd already asked for the matching sides, `linked` at once. 409 if either side is taken |

@@ -1073,16 +1073,18 @@ export class NeighborView {
         if (this.account.user?.id !== forUser) return;
         const items = countItems(objects);
         const loc = mine.location || e.beach.location || 'santa-monica';
-        const updatedAt = await this.account.saveBeach(
-          bytes,
-          loc,
-          this.grid.nx,
-          this.grid.ny,
-          keepalive,
-          items,
-          e.data?.epoch,
-          mine.id,
-        );
+        const updatedAt = (
+          await this.account.saveBeach(
+            bytes,
+            loc,
+            this.grid.nx,
+            this.grid.ny,
+            keepalive,
+            items,
+            e.data?.epoch,
+            mine.id,
+          )
+        ).updatedAt;
         e.dirty = e.editRevision !== revision;
         if (e.data) {
           e.data.updatedAt = updatedAt;

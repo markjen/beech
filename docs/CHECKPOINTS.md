@@ -121,7 +121,7 @@ snapshot of such a beach copies it as it is; the loader fits it. Only
 | | Free | Note |
 |---|---|---|
 | Named checkpoints | **5 per beach of allowance** (5 with one beach, up to 40 with 8) | Buying beaches buys room, so there's no new paid tier to explain (PRICING.md: no subscriptions) |
-| Auto checkpoints | 1 per beach, not counted | Replaced by the next restore of that beach, import, or daily auto-save — the newest auto event wins |
+| Auto checkpoints | 1 per beach, not counted | Replaced by the next restore of that beach, import, daily auto-save, or large edit — the newest auto event wins |
 | Size of one | 768 KB (same as a beach) | Typical beaches are a few KB to ~100 KB |
 | Total stored | 16 MB per person (named + auto) | 413 past it |
 | Name | 1–40 characters, trimmed | |
@@ -202,10 +202,11 @@ Before a save overwrites a beach, the server keeps the beach as it is now
   that beach's last auto checkpoint. The snapshot is of the beach as
   saved on the server, before this save's bytes replace it.
 - **"Last one":** the beach's most recent `auto` checkpoint, whatever made
-  it — a daily auto-save, a "before restoring" copy, or a "before import"
-  copy all reset the 24-hour clock. So a restore's undo copy is safe for
-  a day after the restore, and only then can a daily save replace it with
-  a newer snapshot of the (restored) beach.
+  it — a daily auto-save, a "before restoring" copy, a "before import"
+  copy, or a "before big edit" copy all reset the 24-hour clock. So a
+  restore's undo copy is safe for a day after the restore, and only then
+  can a daily save replace it with a newer snapshot of the (restored)
+  beach.
 - **One slot, shared:** it reuses the beach's one auto slot (migration
   13, `checkpoints_one_auto`), replacing the previous auto checkpoint
   rather than accumulating or taking a named slot. It is not a second auto
@@ -229,6 +230,107 @@ Before a save overwrites a beach, the server keeps the beach as it is now
   checkpoint ("auto-saved daily · 2 h ago"), with its thumbnail and
   things; it restores like any checkpoint, and restoring it makes its own
   "before restoring" copy, so undo still works.
+
+## Large edits: a checkpoint before the bulldozer
+
+When a big edit is coming in for a beach, the server keeps the beach as
+it is now before the edit lands (`maybeLargeEditSave` in
+`server/src/app.ts`, diff in `sandDiff` in `server/src/checkpoints.ts`).
+A big edit is exactly when the old beach is most at risk — one
+bulldozer run can flatten a beach that took weeks to build — and the
+daily auto-save alone does not cover it: a long clearing session
+autosaves in chunks, and each chunk alone can stay small while the
+session as a whole reshapes the beach.
+
+### What counts as large
+
+A save is large when **any** of these is true of the new bytes against
+the beach as saved:
+
+| Trigger | Threshold | Why that number |
+|---|---|---|
+| Sand reshaped | ≥ 10% of the grid's cells moved by ≥ 50 mm | 10% is ~100 m² on every grid tier (low 192²: 3,686 cells × 0.028 m²; medium 256²: 6,554 × 0.016 m²; high 320²: 10,240 × 0.01 m²) — far beyond one brush stroke at the largest radius (2.2 m, ~15 m², ~1.5%), and well within a bulldozer run across a quadrant or flattening the whole beach. 50 mm: a real dig moves sand by tens of centimetres; wave settling and a centimetre of drift do not count as reshaping. |
+| Things moved, added or removed | ≥ 50 (a move counts as two: one gone, one new) | Vacuuming up a beach's worth of things, or sweeping a dozer through a crowded stretch, clears dozens at once; placing a handful never trips it. |
+| Grid changed | any `nx`/`ny` change | A resample reshapes the whole beach at once. |
+
+Inherently massive operations are large by construction, not by counting:
+flattening / bulldozing the whole beach and pasting a design trip the sand
+threshold; a checkpoint restore or an import already makes its own "before
+restoring" / "Before import" copy in the same slot (see below), so they
+never need a second one. The constants live in
+`server/src/checkpoints.ts` (`LARGE_EDIT_FRACTION`,
+`LARGE_EDIT_MIN_HEIGHT_MM`, `LARGE_EDIT_MIN_OBJECTS`), not as magic
+numbers in the save path. Unreadable bytes count as large: when the server
+cannot tell what changed, it keeps the old beach rather than risk losing
+it unseen.
+
+### Two triggers, one slot
+
+- **The client, on intent:** picking up a clearing tool (bulldozer,
+  flatten, vacuum) snapshots the beach before the first stroke
+  (`snapshotBeforeBigEdit` in `src/net/bigEditSnapshot.ts`, called from
+  `strokeTo` in `src/main.ts`). It flushes first, so unsaved work — a moat
+  dug a minute ago — is in the "before" copy, then copies the saved beach
+  into the auto slot. Once per save (a save resets it), live beach only:
+  a clearing stroke on a beach you own next door relies on the server
+  backstop. Best-effort: the stroke is already under the player's finger,
+  so a failed snapshot never blocks it.
+- **The server, on the save:** the authoritative backstop. Every save is
+  diffed against the beach as saved, whatever the client is — old apps,
+  a long digging spree, a paste — and a large one snapshots the old bytes
+  before overwriting them. This is what makes the feature hold for
+  clients that never send the intent.
+
+Both write the same one auto slot, under the same name
+(`Before big edit YYYY-MM-DD`, the UTC date). A client snapshot and a
+server snapshot of the same edit hold the same beach, so the second is a
+harmless rewrite of the first.
+
+### Slot sharing, and the 24-hour clock
+
+The large-edit copy reuses the beach's one auto slot (migration 13,
+`checkpoints_one_auto`): it replaces whatever auto copy was there — a
+daily `Auto-save`, a "before restoring" undo copy, a "Before import"
+copy — and takes no named slot. Newest auto event wins, and the name
+tells them apart in settings → checkpoints.
+
+It is independent of the 24-hour rule: it fires even if a daily
+auto-save happened an hour ago. And it counts as the day's auto
+checkpoint — it *is* the beach's most recent `auto` checkpoint, so the
+daily clock restarts from it. That is on purpose: if it did not, a daily
+save an hour later would replace the pre-edit copy with the post-edit
+beach, and the safety net would be gone the same day it was needed.
+
+### Failure mode
+
+Like the daily save, a failed snapshot never blocks the edit: the save
+goes ahead, the failure is logged (`auto_checkpoint_failed`, with
+`reason: 'large-edit'`), and the save's response says the safety copy was
+not kept (`{ largeEdit: true, largeEditCheckpoint: false }`), so the app
+can tell the player ("That big edit is saved, but the copy of the beach
+before it couldn't be kept — save a checkpoint from Settings if you want
+one to go back to."). Blocking would strand the edit in the app for a
+storage limit the player did nothing to cause — a failed snapshot here
+usually means the checkpoint store is full or the old save is unreadable,
+neither of which is fixed by refusing the new beach. A first save keeps
+nothing (nothing saved yet), and a fenced instance cannot trigger a large
+edit or its snapshot at all: `requireEditToken` runs before the diff, and
+the input gates already stop a fenced instance from starting a clearing
+stroke.
+
+### Tests
+
+`server/test/largeEdit.test.ts` (PGlite and Postgres): the diff — a
+centimetre of drift is not large, five centimetres is; a tenth of the
+cells is, a twentieth is not; moving fifty things is, ten is not; a grid
+change and unreadable bytes are large. The save — a big save snapshots
+the old beach into the one auto slot (named `Before big edit …`) while a
+small save does not; a big save fires an hour after a daily auto-save and
+reuses the same slot; a first save keeps nothing and a fenced save
+snapshots nothing; a full store never blocks a big save and the response
+says `largeEditCheckpoint: false`. `tests/bigEditSnapshot.test.ts`:
+the client helper flushes before snapshotting, skips fenced / signed-out
+/ repeat attempts, and never throws.
 
 ## Live devices: the epoch
 
