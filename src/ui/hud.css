@@ -63,6 +63,7 @@
 
 .hud-popup {
   position: absolute;
+  z-index: 1;
   right: calc(var(--pad) + 78px + env(safe-area-inset-right));
   bottom: calc(var(--pad) + env(safe-area-inset-bottom));
   display: flex;
@@ -257,10 +258,11 @@
 /* ---- the bag (inventory tray) ---- */
 .inv-tray {
   position: absolute;
-  right: calc(var(--pad) + 70px + env(safe-area-inset-right));
-  bottom: calc(var(--pad) + 90px + env(safe-area-inset-bottom));
-  width: min(300px, calc(100vw - 110px));
-  max-height: calc(100vh - 130px - env(safe-area-inset-bottom));
+  z-index: 1;
+  right: calc(var(--pad) + 78px + env(safe-area-inset-right));
+  bottom: calc(var(--pad) + env(safe-area-inset-bottom));
+  width: min(300px, calc(100% - var(--pad) * 2 - 78px - env(safe-area-inset-left) - env(safe-area-inset-right)));
+  max-height: calc(100% - var(--pad) * 2 - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   overflow-y: auto;
   padding: 14px;
   border-radius: 22px;
@@ -401,14 +403,6 @@
 
 .inv-item.used {
   opacity: 0.5;
-}
-
-.inv-item.claw-tile {
-  background: linear-gradient(160deg, rgba(242, 196, 90, 0.35), rgba(142, 197, 232, 0.35));
-}
-
-.inv-item.vending-tile {
-  background: linear-gradient(160deg, rgba(168, 216, 160, 0.35), rgba(192, 111, 214, 0.35));
 }
 
 /* ---- claw machine ---- */
@@ -1082,9 +1076,20 @@
 
 
 /* ---- shop ---- */
+.shop {
+  max-height: 100dvh;
+  padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+    max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  grid-template-rows: minmax(0, 1fr);
+}
+
 .shop-card {
   width: min(420px, 100%);
   text-align: left;
+}
+
+.shop > .shop-card {
+  max-height: 100%;
 }
 
 .shop-card h2 {
@@ -1234,10 +1239,6 @@
   background: transparent;
   color: var(--ui-fg);
   box-shadow: inset 0 0 0 2px var(--ui-fg);
-}
-
-.inv-item.shop-tile {
-  background: linear-gradient(160deg, rgba(255, 207, 90, 0.4), rgba(255, 150, 120, 0.25));
 }
 
 /* ---- leaderboard: the most-starred beaches ---- */

@@ -17,8 +17,9 @@ const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
 page.on('dialog', (d) => void d.accept(d.type() === 'prompt' ? 'castle' : undefined));
 const open = async () => {
-  await page.goto(URL_ + '?nointro&fixedres&seed=1&nofinds');
+  await page.goto(URL_ + '?nointro&fixedres&seed=1&nofinds&quality=low', { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('body[data-ready="1"]', { timeout: 60000 });
+  await page.evaluate(() => window.__beech.engine.setHardwareScalingLevel(2));
   await page.waitForTimeout(1500);
 };
 const dug = () => page.evaluate(() => { const b = window.__beech; let d = 0; for (let k = 0; k < b.rest.length; k++) if (b.rest[k] > 0.5) d += Math.abs(b.picker.sand[k] - b.rest[k]); return d; });

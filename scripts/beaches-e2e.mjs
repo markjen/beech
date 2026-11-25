@@ -29,6 +29,7 @@ async function device(label) {
   page.on('dialog', (d) => void d.accept(d.type() === 'prompt' ? `${label} beach` : undefined));
   await page.goto(URL_ + '?nointro&quality=low&fixedres&seed=1&nofinds', { waitUntil: 'commit' });
   await page.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
+  await page.evaluate(() => window.__beech.engine.setHardwareScalingLevel(2));
   await page.evaluate((n) => window.__beech.account().signInDev(n), name);
   await page.waitForFunction(() => window.__beech.account().beachId && window.__beech.sync().state === 'saved', null, { timeout: 20000 });
   return page;
@@ -176,9 +177,14 @@ const points = await b.evaluate(() => {
     const p = V.Project(new V(x, y, z), identity, beech.scene.getTransformMatrix(), camera.viewport.toGlobal(clientWidth, clientHeight));
     return [p.x, p.y];
   };
-  const oldHeight = beech.cam.groundHeight(seam + 2, 7);
   beech.pickTool('pile');
-  return { from: project(seam - 2), to: project(seam + 2), oldHeight, seam };
+  return {
+    from: project(seam - 2),
+    to: project(seam + 2),
+    homeHeight: beech.cam.groundHeight(seam - 2, 7),
+    neighborHeight: beech.cam.groundHeight(seam + 2, 7),
+    seam,
+  };
 });
 await b.mouse.move(...points.from);
 await b.mouse.down();
@@ -188,14 +194,16 @@ await b.waitForFunction((id) => window.__beech.account().beachId === id, second,
 await b.waitForTimeout(650);
 await b.mouse.up();
 await b.evaluate(() => window.__beech.sync().flush());
-const crossed = await b.evaluate(({ oldHeight, seam }) => {
+const crossed = await b.evaluate(async ({ homeHeight, neighborHeight, seam }) => {
   const beech = window.__beech;
+  await beech.neighbors().refresh();
   return {
-    raised: beech.cam.groundHeight(2 - seam, 7) > oldHeight + 0.02,
+    homeRaised: beech.cam.groundHeight(-seam - 2, 7) > homeHeight + 0.02,
+    neighborRaised: beech.cam.groundHeight(2 - seam, 7) > neighborHeight + 0.02,
     focus: beech.cam.focusX,
   };
 }, points);
-check(crossed.raised && Math.abs(crossed.focus + points.seam) < 1, 'the drag raised the next beach and kept the camera at the seam');
+check(crossed.homeRaised && crossed.neighborRaised && Math.abs(crossed.focus + points.seam) < 1, 'one drag raised both beaches and kept the camera at the seam');
 
 // device A remembers its choice after a reload
 await a.reload({ waitUntil: 'commit' });
