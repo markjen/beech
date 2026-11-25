@@ -506,17 +506,25 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   // tabs share), and a new tab, device or app sign-in claims its own.
   // GET is the heartbeat: the holder asks every 30 s whether it still is
   // the editor, and learns promptly when another instance took over.
+  const withPlayerWriteLock = <T>(userId: string, fn: (tx: Db) => Promise<T>): Promise<T> =>
+    db.withTransaction(async (tx) => {
+      await tx.query('SELECT id FROM users WHERE id = $1 FOR NO KEY UPDATE', [userId]);
+      return fn(tx);
+    });
+
   app.post('/edit-session', requireUser, async (c) => {
     const me = c.get('user').id;
     const token = crypto.randomUUID();
-    const now = Date.now();
-    const prev = await db.query('SELECT 1 FROM edit_sessions WHERE user_id = $1', [me]);
-    await db.query(
-      `INSERT INTO edit_sessions (user_id, token, created_at, last_seen_at) VALUES ($1, $2, $3, $3)
-       ON CONFLICT (user_id) DO UPDATE SET token = EXCLUDED.token, created_at = EXCLUDED.created_at, last_seen_at = EXCLUDED.last_seen_at`,
-      [me, token, now],
-    );
-    if (prev.length) logEvent('edit_takeover', {}, 'INFO');
+    const wasEditing = await withPlayerWriteLock(me, async (tx) => {
+      const prev = await tx.query('SELECT 1 FROM edit_sessions WHERE user_id = $1', [me]);
+      await tx.query(
+        `INSERT INTO edit_sessions (user_id, token, created_at, last_seen_at) VALUES ($1, $2, $3, $3)
+         ON CONFLICT (user_id) DO UPDATE SET token = EXCLUDED.token, created_at = EXCLUDED.created_at, last_seen_at = EXCLUDED.last_seen_at`,
+        [me, token, Date.now()],
+      );
+      return prev.length > 0;
+    });
+    if (wasEditing) logEvent('edit_takeover', {}, 'INFO');
     return c.json({ token });
   });
 
@@ -545,8 +553,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
    * the write (specs/tla/BeachEditing.tla: OnlyEditorWrites, WithinBag).
    */
   const asEditor = <T>(c: Context<Env>, fn: (tx: Db) => Promise<T>): Promise<T> =>
-    db.withTransaction(async (tx) => {
-      await tx.query('SELECT id FROM users WHERE id = $1 FOR NO KEY UPDATE', [c.get('user').id]);
+    withPlayerWriteLock(c.get('user').id, async (tx) => {
       await requireEditToken(c, tx);
       return fn(tx);
     });
@@ -1042,7 +1049,6 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
 
   const { nodeById, nodeByCode, linked, walk } = shoreGraph(db);
 
-  /** Join a and b: b on a's `side`, a on b's other side. One statement, so it's all or nothing. */
   /**
    * Link `b` onto `a`'s `side` (and `a` onto `b`'s other side). One
    * transaction holding both beaches' locks: the callers' checks run before

@@ -7,8 +7,8 @@
 //   that is about to run a matching statement *outside a transaction*, so a
 //   test can run another request in the gap and then let the first one go.
 //   That is how a TLC counterexample (specs/tla) is replayed step by step.
-//   Statements inside a transaction never pause: a transaction is atomic,
-//   which is exactly what the fixed code relies on.
+//   The gate skips statements inside transactions. PostgreSQL tests can
+//   exercise row-lock contention with separate connections when needed.
 import { deflateSync } from 'node:zlib';
 import { expect } from 'vitest';
 import { createApp } from '../../src/app.js';

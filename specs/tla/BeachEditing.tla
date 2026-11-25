@@ -60,7 +60,8 @@ Init ==
     /\ badWrite = FALSE
     /\ overRestore = FALSE
 
-(* POST /edit-session: a new token replaces the old one (a takeover). *)
+(* POST /edit-session: claim takes the same player lock as SaveAtomic and
+   RestoreAtomic before it replaces the token. *)
 Claim(d) ==
     /\ tok' = d
     /\ claimed' = claimed \cup {d}

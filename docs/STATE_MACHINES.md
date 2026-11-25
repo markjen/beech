@@ -83,7 +83,7 @@ flight.
 
 | Action | Route | Code |
 | --- | --- | --- |
-| `Claim` | `POST /edit-session` | a new token replaces the old one |
+| `Claim` | `POST /edit-session` | replaces the token in a transaction holding the same player row lock as saves and restores |
 | `Load` | `GET /beaches/mine/:id/sand` | `X-Beach-Epoch` in the reply |
 | `SaveStart` .. `SaveUpd` / `SaveAtomic` | `PUT /beaches/mine/:id/sand` | `saveBeach`: `requireEditToken`, `overBag`, the `UPDATE ... WHERE epoch <= $seen`, now inside `asEditor` |
 | `RestoreStart` .. `RestoreFitWrite` / `RestoreAtomic` | `POST /beaches/mine/:id/restore` | `requireEditToken`, `oneAtATime`, `fitOf`, the `UPDATE ... epoch + 1`, now inside `asEditor` |
@@ -122,7 +122,9 @@ that fails before the fix.
 3. **A fenced device's save landing** (`OnlyEditorWrites`). The save checked
    the edit token, then took snapshots, then wrote. A takeover in between
    didn't stop the write. Fix: `asEditor` re-checks the token in the same
-   transaction as the write, holding the player's row lock.
+   transaction as the write. Taking over, saving, and restoring all hold
+   the same player row lock. A PostgreSQL test checks that a takeover waits
+   for that lock.
 4. **More placed than owned** (`WithinBag`). Two saves at once (the app
    flushes several beaches together) each passed the bag check before
    either wrote. With one lighthouse owned, both beaches got one. Fix: the

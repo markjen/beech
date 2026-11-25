@@ -1370,7 +1370,8 @@ TLC found five races, each reproduced on the server and fixed:
 - a save could still land after another device took over editing, and
 - two saves at once could place more of a thing than owned: saves and
   restores now re-check the edit token and the bag in the same transaction
-  as the write, holding the player's row lock (`asEditor`);
+  as the write, holding the player's row lock (`asEditor`). Taking over
+  holds that same lock, which the server test checks on PostgreSQL;
 - an accept and a crossing ask could link two beaches on both sides of each
   other: `link()` is one transaction holding both beaches' locks and refuses
   a second link between them.

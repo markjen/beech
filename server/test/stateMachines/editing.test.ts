@@ -1,6 +1,6 @@
 // Editing beaches from several devices, against specs/tla/BeachEditing.tla
 // (docs/STATE_MACHINES.md). Fast: the real server in-process, no rendering.
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { beachBytes, rng, startServer, type Server } from './harness.js';
 import { EditingModel, type Answer, type Device } from './editingModel.js';
 
@@ -147,6 +147,41 @@ describe('editing: one transition at a time', () => {
 });
 
 describe('editing: TLC counterexamples, replayed against the server', () => {
+  // PGlite serializes whole transactions. PostgreSQL can run them on
+  // different connections, so the takeover must wait for the editor's lock.
+  it.runIf(Boolean(process.env.TEST_DATABASE_URL))('a takeover waits for the player write lock', async () => {
+    const p = await player(1);
+    let locked!: (pid: number) => void;
+    let release!: () => void;
+    const holder = new Promise<number>((resolve) => (locked = resolve));
+    const hold = new Promise<void>((resolve) => (release = resolve));
+    const writing = s.db.withTransaction(async (tx) => {
+      const [row] = await tx.query<{ pid: number }>(
+        'SELECT pg_backend_pid() AS pid FROM users WHERE id = $1 FOR NO KEY UPDATE', [p.id],
+      );
+      locked(row.pid);
+      await hold;
+    });
+    const pid = await Promise.race([holder, writing.then(() => {
+      throw new Error('The player lock transaction ended early');
+    })]);
+    let finished = false;
+    const takeover = claim(p, 'd2').then(() => { finished = true; });
+    try {
+      await vi.waitFor(async () => {
+        const [row] = await s.db.query<{ blocked: boolean }>(
+          'SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))) AS blocked', [pid],
+        );
+        expect(row.blocked).toBe(true);
+        expect(finished).toBe(false);
+      }, { timeout: 2500 });
+    } finally {
+      release();
+      await Promise.all([writing, takeover]);
+    }
+    expect(await answer(await save(p, 'd1', p.beaches[0], 0))).toEqual({ status: 409, why: 'fenced' });
+  });
+
   // BeachEditing.cfg, OnlyEditorWrites: Claim(d1), SaveStart, SaveTok, SaveBag, Claim(d2), SaveUpd.
   it('a device that loses the edit session mid-save does not write', async () => {
     const p = await player(1);
