@@ -74,10 +74,11 @@ interface AdminBeach {
 async function player(name: string) {
   const r = await play('/auth/dev', json('POST', { name }));
   const { token, user } = (await r.json()) as { token: string; user: { id: string } };
-  const save = await play('/beach', { method: 'PUT', body: blob(), headers: { 'X-Beach-Location': 'bondi', 'X-Beach-Nx': '16', 'X-Beach-Ny': '16', 'X-Beach-Items': 'starfish=1' } }, token);
+  const edit = ((await (await play('/edit-session', { method: 'POST' }, token)).json()) as { token: string }).token;
+  const save = await play('/beach', { method: 'PUT', body: blob(), headers: { 'X-Beach-Location': 'bondi', 'X-Beach-Nx': '16', 'X-Beach-Ny': '16', 'X-Beach-Items': 'starfish=1', 'X-Edit-Token': edit } }, token);
   expect(save.status).toBe(200);
   const code = ((await (await play('/neighbors', {}, token)).json()) as { code: string }).code;
-  return { token, id: user.id, code };
+  return { token, id: user.id, code, edit };
 }
 const find = async (q: string) => ((await (await adm(`/beaches?q=${encodeURIComponent(q)}`)).json()) as { beaches: AdminBeach[] }).beaches;
 const one = async (id: string) => ((await (await adm(`/beaches/${id}`)).json()) as { beach: AdminBeach }).beach;
@@ -183,7 +184,7 @@ describe('admin beaches', () => {
     // a device still showing the old sand (old epoch) can't save it back
     const stale = await play(
       '/beach',
-      { method: 'PUT', body: blob(), headers: { 'X-Beach-Location': 'bondi', 'X-Beach-Nx': '16', 'X-Beach-Ny': '16', 'X-Beach-Epoch': String(before.epoch) } },
+      { method: 'PUT', body: blob(), headers: { 'X-Beach-Location': 'bondi', 'X-Beach-Nx': '16', 'X-Beach-Ny': '16', 'X-Beach-Epoch': String(before.epoch), 'X-Edit-Token': bob.edit } },
       bob.token,
     );
     expect(stale.status).toBe(409);
@@ -195,7 +196,7 @@ describe('admin beaches', () => {
     expect((await adm(`/beaches/${alice.id}`, { method: 'DELETE' })).status).toBe(409);
     // give alice a second beach
     await play('/dev/grant', json('POST', { item: 'beach', quantity: 1 }), alice.token);
-    const made = await play('/beaches/mine', json('POST', { name: 'Second' }), alice.token);
+    const made = await play('/beaches/mine', { ...json('POST', { name: 'Second' }), headers: { 'Content-Type': 'application/json', 'X-Edit-Token': alice.edit } }, alice.token);
     expect(made.status).toBe(200);
     const second = ((await made.json()) as { beach: { id: string } }).beach.id;
     const d = await adm(`/beaches/${second}`, { method: 'DELETE' });

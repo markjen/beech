@@ -183,7 +183,7 @@ type Env = { Variables: { user: User; tokenHash: string } };
 export const BEACH_CAP = 8;
 const BEACH_HEADERS = ['X-Beach-Location', 'X-Beach-Nx', 'X-Beach-Ny', 'X-Beach-Version', 'X-Beach-Updated', 'X-Beach-Epoch'];
 /** request-only headers the app sends cross-origin (the phone apps) */
-const REQUEST_HEADERS = ['X-Beach-Items', 'X-Beach-Max', 'X-Checkpoint-Name', 'X-App-Build'];
+const REQUEST_HEADERS = ['X-Beach-Items', 'X-Beach-Max', 'X-Checkpoint-Name', 'X-App-Build', 'X-Edit-Token'];
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O or 1/I
 
 const fail = (status: 400 | 401 | 403 | 404 | 409 | 413 | 426 | 429 | 500, message: string): never => {
@@ -475,6 +475,47 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
 
   app.get('/me', requireUser, (c) => c.json({ user: c.get('user') }));
 
+  // ---------------------------------------------------------------- edit sessions
+  // One active editor per person (docs/EDIT_SESSIONS.md). An instance
+  // claims a token when it opens your beach for editing; claiming replaces
+  // the stored token, so every older instance is fenced at once. The token
+  // lives only in that instance's memory (never localStorage, which two
+  // tabs share), and a new tab, device or app sign-in claims its own.
+  // GET is the heartbeat: the holder asks every 30 s whether it still is
+  // the editor, and learns promptly when another instance took over.
+  app.post('/edit-session', requireUser, async (c) => {
+    const me = c.get('user').id;
+    const token = crypto.randomUUID();
+    const now = Date.now();
+    const prev = await db.query('SELECT 1 FROM edit_sessions WHERE user_id = $1', [me]);
+    await db.query(
+      `INSERT INTO edit_sessions (user_id, token, created_at, last_seen_at) VALUES ($1, $2, $3, $3)
+       ON CONFLICT (user_id) DO UPDATE SET token = EXCLUDED.token, created_at = EXCLUDED.created_at, last_seen_at = EXCLUDED.last_seen_at`,
+      [me, token, now],
+    );
+    if (prev.length) logEvent('edit_takeover', {}, 'INFO');
+    return c.json({ token });
+  });
+
+  app.get('/edit-session', requireUser, async (c) => {
+    const sent = c.req.header('X-Edit-Token');
+    if (!sent) return c.json({ active: false });
+    const rows = await db.query<{ token: string }>('SELECT token FROM edit_sessions WHERE user_id = $1', [c.get('user').id]);
+    const active = !!rows[0] && rows[0].token === sent;
+    if (active) await db.query('UPDATE edit_sessions SET last_seen_at = $2 WHERE user_id = $1', [c.get('user').id, Date.now()]);
+    return c.json({ active });
+  });
+
+  /** Refuse a beach edit from an instance that isn't the current editor. */
+  const requireEditToken = async (c: Context<Env>): Promise<void> => {
+    const sent = c.req.header('X-Edit-Token');
+    // no token at all: an app from before edit sessions — it can't prove it
+    // is the editor, so it reloads to save (the same 426 as other old apps)
+    if (!sent) outdated(c, 'no X-Edit-Token');
+    const rows = await db.query<{ token: string }>('SELECT token FROM edit_sessions WHERE user_id = $1', [c.get('user').id]);
+    if (!rows[0] || rows[0].token !== sent) fail(409, 'fenced');
+  };
+
   // Cross-platform account linking (docs/STEAM.md): generate a 10-minute code on
   // your existing device (web/iOS/Android), then enter it on a fresh Steam
   // account so both share the same user_id, beaches, inventory, and purchases.
@@ -636,6 +677,70 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     return fail(426, 'this app is out of date: reload to save');
   };
 
+  /**
+   * The daily auto-save (docs/CHECKPOINTS.md): before a save overwrites a
+   * beach, keep the beach as it is now — but at most once per beach per day.
+   * "Last one" is the beach's most recent `auto` checkpoint, whatever made
+   * it: a daily auto-save, a "before restoring" copy, or a "before import"
+   * copy all reset the clock, so a restore's undo copy is safe for a day
+   * after the restore. It reuses the beach's one auto slot (migration 13):
+   * the new snapshot replaces the previous auto checkpoint rather than
+   * accumulating, it never takes a named slot, and its bytes are the same
+   * one slot already counted toward the 16 MB total.
+   *
+   * Fail-safe the other way: anything wrong here — no saved beach yet (a
+   * first save), an unreadable old save, the 16 MB total full — skips the
+   * snapshot and the beach update goes ahead. A snapshot must never lose a
+   * save, and a failed snapshot is logged, not surfaced: the player did
+   * nothing wrong, and the next save retries it.
+   */
+  const AUTO_SAVE_MS = 24 * 3600 * 1000;
+  const maybeAutoSave = async (beachId: string, userId: string, now: number): Promise<void> => {
+    try {
+      const last = (
+        await db.query<{ created_at: string }>(
+          "SELECT created_at FROM checkpoints WHERE from_beach = $1 AND kind = 'auto' ORDER BY created_at DESC LIMIT 1",
+          [beachId],
+        )
+      )[0];
+      if (last && now - Number(last.created_at) < AUTO_SAVE_MS) return;
+      const cur = (
+        await db.query<{ sand: unknown }>('SELECT sand FROM beach WHERE id = $1 AND sand IS NOT NULL', [beachId])
+      )[0];
+      if (!cur) return; // first save: nothing to keep
+      const bytes = toBytes(cur.sand);
+      // the one auto slot's bytes already count toward the total; only
+      // snapshot if the replacement still fits
+      const use = (
+        await db.query<{ total: string; auto_bytes: string }>(
+          `SELECT COALESCE(SUM(bytes), 0) AS total,
+                  COALESCE(SUM(bytes) FILTER (WHERE kind = 'auto' AND from_beach = $2), 0) AS auto_bytes
+             FROM checkpoints WHERE owner_id = $1`,
+          [userId, beachId],
+        )
+      )[0];
+      if (Number(use.total) - Number(use.auto_bytes) + bytes.byteLength > CHECKPOINT_BYTES_PER_USER) return;
+      let items: Record<string, number> = {};
+      let objects = 0;
+      try {
+        ({ items, objects } = inspectBlob(bytes));
+      } catch {
+        /* an unreadable old save: keep the bytes, uncounted */
+      }
+      await db.query(
+        `INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at)
+         SELECT $1, owner_id, $2, 'auto', 'beach', id, name, location, nx, ny, sand, octet_length(sand), $3, $4, $5
+           FROM beach WHERE id = $6 AND sand IS NOT NULL
+         ON CONFLICT (from_beach) WHERE kind = 'auto' DO UPDATE SET
+           name = EXCLUDED.name, from_name = EXCLUDED.from_name, location = EXCLUDED.location, nx = EXCLUDED.nx, ny = EXCLUDED.ny,
+           sand = EXCLUDED.sand, bytes = EXCLUDED.bytes, items = EXCLUDED.items, objects = EXCLUDED.objects, created_at = EXCLUDED.created_at`,
+        [crypto.randomUUID(), `Auto-save ${new Date(now).toISOString().slice(0, 10)}`, JSON.stringify(items), objects, now, beachId],
+      );
+    } catch {
+      logEvent('auto_checkpoint_failed', {}, 'WARNING');
+    }
+  };
+
   const saveBeach = async (c: Context<Env>, beachId: string) => {
     const location = (c.req.header('X-Beach-Location') ?? '').slice(0, 40);
     const nx = Number(c.req.header('X-Beach-Nx'));
@@ -650,8 +755,13 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const bytes = new Uint8Array(await c.req.arrayBuffer());
     if (bytes.byteLength === 0 || bytes.byteLength > MAX_BEACH_BYTES) fail(413, 'beach too large');
     const now = Date.now();
+    // only the current editor may save: an older tab or device, or an app too
+    // old to send the token, must not overwrite what the editor has since done
+    await requireEditToken(c);
     // a save made before a restore (another device still showing the old
-    // sand) mustn't overwrite it. An app too old to send the epoch is let through.
+    // sand) mustn't overwrite it. The epoch header is still checked when
+    // sent (every current app sends it); the edit token above is what closes
+    // the old hole — a save with neither token nor epoch is refused outright.
     // Apps from before the object limit went up (OLD_MAX_OBJECTS) send no
     // X-Beach-Max. Loading a beach that holds more, they kept only the first
     // 400, so their save would drop the rest for good: refuse it ("reload").
@@ -659,6 +769,10 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       const cur = (await db.query<{ sand: unknown }>('SELECT sand FROM beach WHERE id = $1 AND sand IS NOT NULL', [beachId]))[0];
       if (cur && countObjects(toBytes(cur.sand)) > OLD_MAX_OBJECTS) outdated(c, 'no X-Beach-Max');
     }
+    // the daily auto-save (docs/CHECKPOINTS.md): before this save overwrites
+    // the beach, keep what is there now if a day has passed since its last
+    // auto checkpoint. It never blocks the save (see maybeAutoSave).
+    await maybeAutoSave(beachId, c.get('user').id, now);
     const epochHeader = c.req.header('X-Beach-Epoch');
     const epoch = epochHeader === undefined || epochHeader === '' ? null : Number(epochHeader);
     if (epoch !== null && !Number.isInteger(epoch)) fail(400, 'bad X-Beach-Epoch');
@@ -1256,6 +1370,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     if (!Number.isFinite(pathM) || !Number.isFinite(durationMs) || pathM! < 0 || durationMs! < 0)
       fail(400, 'expected { pathM, durationMs }');
     if (!qualifiesForFind(pathM!, durationMs!)) fail(409, 'dig a little more first');
+    // digging changes the beach: only the current editor rolls for a find
+    await requireEditToken(c);
     const set = currentSet(now) ?? fail(409, 'nothing buried here yet');
     const today = pullDay(now);
     // the cap and the cooldown, before the roll (the claim below re-checks,
@@ -1493,6 +1609,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   // make another beach (if your allowance has room)
   app.post('/beaches/mine', requireUser, async (c) => {
     const me = c.get('user').id;
+    await requireEditToken(c);
     const { name, location } = await body<{ name?: string; location?: string }>(c);
     const loc = (location ?? '').slice(0, 40);
     if (loc && !/^[a-z0-9-]+$/.test(loc)) fail(400, 'bad location');
@@ -1520,6 +1637,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   app.patch('/beaches/mine/:id', requireUser, async (c) => {
     const me = c.get('user').id;
     const id = await mine(c, c.req.param('id'));
+    await requireEditToken(c);
     const p = await body<{ name?: string; location?: string; home?: boolean }>(c);
     if (p.location !== undefined && !/^[a-z0-9-]{1,40}$/.test(p.location)) fail(400, 'bad location');
     if (p.name !== undefined) await db.query('UPDATE beach SET name = $1 WHERE id = $2', [String(p.name).trim().slice(0, 30), id]);
@@ -1533,6 +1651,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
 
   app.delete('/beaches/mine/:id', requireUser, async (c) => {
     const id = await mine(c, c.req.param('id'));
+    await requireEditToken(c);
     // links, requests and favorites go with it (ON DELETE CASCADE)
     const rows = await db.query('DELETE FROM beach WHERE id = $1 AND NOT home RETURNING id', [id]);
     if (!rows.length) fail(400, "your home beach can't be removed (make another one home first)");
@@ -1785,6 +1904,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const target = await mine(c, c.req.param('id'));
     const { checkpoint, mode = 'strict' } = await body<{ checkpoint?: string; mode?: 'strict' | 'drop-missing' }>(c);
     if (mode !== 'strict' && mode !== 'drop-missing') fail(400, 'mode must be strict or drop-missing');
+    // a restore replaces the beach: only the current editor may do it
+    await requireEditToken(c);
     const cp = await myCheckpoint(c, checkpoint);
     if (!restoreLimiter(me)) fail(429, 'too many restores: try again later');
     return oneAtATime(me, async () => {

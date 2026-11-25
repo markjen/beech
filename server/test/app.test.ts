@@ -63,7 +63,24 @@ async function signIn(name: string) {
   return (await r.json()) as { token: string; user: { id: string; name: string } };
 }
 const putBeach = (token: string, bytes: Uint8Array, location = 'bondi') =>
-  req('/beach', { method: 'PUT', body: bytes, headers: { 'X-Beach-Location': location, 'X-Beach-Nx': '256', 'X-Beach-Ny': '256' } }, token);
+  reqE('/beach', { method: 'PUT', body: bytes, headers: { 'X-Beach-Location': location, 'X-Beach-Nx': '256', 'X-Beach-Ny': '256' } }, token);
+
+/** one edit token per bearer token: claim once, reuse (a new claim would fence the old one) */
+const editTokens = new Map<string, string>();
+const editToken = async (t: string) => {
+  const hit = editTokens.get(t);
+  if (hit) return hit;
+  const r = await req('/edit-session', { method: 'POST' }, t);
+  expect(r.status).toBe(200);
+  const { token } = (await r.json()) as { token: string };
+  editTokens.set(t, token);
+  return token;
+};
+/** a request from the current editor (saves, restores, the beach roster, dig rolls) */
+const reqE = async (path: string, init: RequestInit = {}, token?: string) => {
+  const headers = { ...(init.headers as Record<string, string>), ...(token ? { 'X-Edit-Token': await editToken(token) } : {}) };
+  return req(path, { ...init, headers }, token);
+};
 
 describe('accounts', () => {
   it('health and auth required', async () => {
@@ -231,17 +248,17 @@ describe('more than one beach', () => {
     expect(m.beaches[0]).toMatchObject({ home: true, id: eve.user.id });
     const homeCode = m.beaches[0].code;
     // no room yet
-    expect((await req('/beaches/mine', json('POST', { name: 'Bondi', location: 'bondi' }), eve.token)).status).toBe(409);
+    expect((await reqE('/beaches/mine', json('POST', { name: 'Bondi', location: 'bondi' }), eve.token)).status).toBe(409);
     await giveBeach(eve.user.id);
-    const made = await req('/beaches/mine', json('POST', { name: 'Bondi', location: 'bondi' }), eve.token);
+    const made = await reqE('/beaches/mine', json('POST', { name: 'Bondi', location: 'bondi' }), eve.token);
     expect(made.status).toBe(200);
     const second = ((await made.json()) as { beach: Mine['beaches'][0] }).beach;
     expect(second).toMatchObject({ name: 'Bondi', home: false });
     expect(second.code).not.toBe(homeCode);
-    expect((await req('/beaches/mine', json('POST', { name: 'Third' }), eve.token)).status).toBe(409); // allowance 2
+    expect((await reqE('/beaches/mine', json('POST', { name: 'Third' }), eve.token)).status).toBe(409); // allowance 2
 
     // its own sand (and item counts), separate from home
-    const save = await req(
+    const save = await reqE(
       `/beaches/mine/${second.id}/sand`,
       { method: 'PUT', body: new Uint8Array([7, 7]), headers: { 'X-Beach-Location': 'bondi', 'X-Beach-Nx': '256', 'X-Beach-Ny': '256', 'X-Beach-Items': 'starfish=1,deckchair=2,bad item=3' } },
       eve.token,
@@ -281,18 +298,18 @@ describe('more than one beach', () => {
     expect(shore.right.slice(0, 2).map((b) => b.code)).toEqual([second.code, malCode]);
 
     // rename, make it home (onShore can't be toggled off by the owner)
-    expect((await req(`/beaches/mine/${second.id}`, json('PATCH', { name: 'Bondi Bay', onShore: false }), eve.token)).status).toBe(200);
+    expect((await reqE(`/beaches/mine/${second.id}`, json('PATCH', { name: 'Bondi Bay', onShore: false }), eve.token)).status).toBe(200);
     m = await mine();
     expect(m.beaches.find((b) => b.id === second.id)).toMatchObject({ name: 'Bondi Bay', onShore: true });
-    expect((await req(`/beaches/mine/${second.id}`, json('PATCH', { location: 'NOT OK' }), eve.token)).status).toBe(400);
-    expect((await req(`/beaches/mine/${second.id}`, json('PATCH', { home: true }), eve.token)).status).toBe(200);
+    expect((await reqE(`/beaches/mine/${second.id}`, json('PATCH', { location: 'NOT OK' }), eve.token)).status).toBe(400);
+    expect((await reqE(`/beaches/mine/${second.id}`, json('PATCH', { home: true }), eve.token)).status).toBe(200);
     m = await mine();
     expect(m.beaches.filter((b) => b.home).map((b) => b.id)).toEqual([second.id]);
-    expect((await req(`/beaches/mine/${second.id}`, { method: 'DELETE' }, eve.token)).status).toBe(400); // it's home now
-    expect((await req(`/beaches/mine/${second.id}`, json('PATCH', { home: false }), eve.token)).status).toBe(200);
-    expect((await req(`/beaches/mine/${eve.user.id}`, json('PATCH', { home: true }), eve.token)).status).toBe(200);
+    expect((await reqE(`/beaches/mine/${second.id}`, { method: 'DELETE' }, eve.token)).status).toBe(400); // it's home now
+    expect((await reqE(`/beaches/mine/${second.id}`, json('PATCH', { home: false }), eve.token)).status).toBe(200);
+    expect((await reqE(`/beaches/mine/${eve.user.id}`, json('PATCH', { home: true }), eve.token)).status).toBe(200);
     // removing it takes its links with it
-    expect((await req(`/beaches/mine/${second.id}`, { method: 'DELETE' }, eve.token)).status).toBe(204);
+    expect((await reqE(`/beaches/mine/${second.id}`, { method: 'DELETE' }, eve.token)).status).toBe(204);
     m = await mine();
     expect(m.beaches).toHaveLength(1);
     expect(m.beaches[0].right).toBeNull();
@@ -303,7 +320,7 @@ describe('more than one beach', () => {
     const fay = await signIn('Fay');
     const gus = await signIn('Gus');
     await giveBeach(fay.user.id);
-    const second = ((await (await req('/beaches/mine', json('POST', { name: 'Two' }), fay.token)).json()) as { beach: { id: string; code: string } }).beach;
+    const second = ((await (await reqE('/beaches/mine', json('POST', { name: 'Two' }), fay.token)).json()) as { beach: { id: string; code: string } }).beach;
     const gusCode = ((await (await req('/neighbors', {}, gus.token)).json()) as { code: string }).code;
     const fayCode = ((await (await req('/neighbors', {}, fay.token)).json()) as { code: string }).code;
     // Fay's home - Gus - Fay's second: Gus between them

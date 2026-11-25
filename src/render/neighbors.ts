@@ -110,7 +110,7 @@ export class NeighborView {
   /** fired when an edited owned neighbor's items or save state change */
   onOwnedChanged?: () => void;
   /** fired when saving an edited owned neighbor hits a terminal error or external restore */
-  onSaveError?: (kind: 'tooBig' | 'outdated' | 'restored') => void;
+  onSaveError?: (kind: 'tooBig' | 'outdated' | 'restored' | 'fenced') => void;
   /** the visitor card for a beach (set by main once accounts exist); unset: no button */
   onLeave?: (b: ShoreBeach) => void;
   readonly favorites = new Map<string, ShoreBeach>();
@@ -1099,7 +1099,8 @@ export class NeighborView {
           e.sim = undefined;
           e.data = undefined;
           void this.fetch(e);
-          this.onSaveError?.('restored');
+          // a fenced save is not a restore: this instance is view-only now
+          this.onSaveError?.(err.message === 'fenced' ? 'fenced' : 'restored');
           return;
         }
         if (err instanceof ApiError && err.status === 426) {

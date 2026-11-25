@@ -24,8 +24,10 @@ Migrations live in `src/migrations.ts` and are applied at startup.
 | `POST /api/auth/dev { name }` | local development only (`DEV_AUTH=1`; refused when `NODE_ENV=production`) |
 | `POST /api/auth/logout` | ends this session |
 | `GET /api/me` | `{ user }` |
+| `POST /api/edit-session` | claim this instance as the one editor: `{ token }` (fences older instances; docs/EDIT_SESSIONS.md) |
+| `GET /api/edit-session` (`X-Edit-Token`) | heartbeat: `{ active }` — whether this instance is still the editor |
 | `GET /api/beach` | your compressed sand, with `X-Beach-Location/Nx/Ny/Version/Updated/Epoch` headers; 404 if none |
-| `PUT /api/beach` | save it (body = sand bytes, plus `X-Beach-Location/Nx/Ny`); last write wins |
+| `PUT /api/beach` | save it (body = sand bytes, plus `X-Beach-Location/Nx/Ny`); only the current editor's token saves (409 `fenced`, 426 with no token at all) |
 | `DELETE /api/account` | deletes you, your sessions and beach, and you from other people's neighbor slots |
 | `GET /api/neighbors` | `{ code, left, right, asked: { left, right }, requests: [{ code, name, location, side }] }` |
 | `PUT /api/neighbors/:side { code }` | ask them to be on your `side` (`status: asked`); if they'd already asked for the matching sides, `linked` at once. 409 if either side is taken |
@@ -50,7 +52,7 @@ Migrations live in `src/migrations.ts` and are applied at startup.
 | `POST /api/checkpoints` | import a beach as a checkpoint: body = saved-beach bytes, `X-Checkpoint-Name` (URL-encoded), optional `X-Beach-Location`. The server reads and counts it itself |
 | `GET /api/checkpoints/:id/sand`, `PATCH /api/checkpoints/:id { name }`, `DELETE /api/checkpoints/:id` | its bytes; rename; delete |
 | `GET /api/checkpoints/:id/fit?beach=` | would it fit there: `{ ok, need, owned, elsewhere, short }` |
-| `POST /api/beaches/mine/:id/restore { checkpoint, mode: strict \| drop-missing }` | put it on that beach (one at a time per person). The beach as it was becomes its "before restoring" checkpoint (`undo`). Strict and short: 409 `{ error: 'short', short }`. Bumps the beach's epoch: a save sending an older `X-Beach-Epoch` gets 409 `restored` |
+| `POST /api/beaches/mine/:id/restore { checkpoint, mode: strict \| drop-missing }` | put it on that beach (one at a time per person). The beach as it was becomes its "before restoring" checkpoint (`undo`). Strict and short: 409 `{ error: 'short', short }`. Bumps the beach's epoch: a save sending an older `X-Beach-Epoch` gets 409 `restored`. Only the current editor's token restores (409 `fenced`) |
 | `POST /api/gifts { code, item }` | give one of your items to someone else, by their neighbor code — instant, one atomic statement, 20 an hour (see [SHARING_GIFTING.md](SHARING_GIFTING.md)). |
 | `GET /api/guide`, `POST /api/guide/:step` | the beach guide: steps done; mark one done (once, with its gift; claw, star and invite are checked on the server, 409 until true). See [INVITES_GUIDE.md](INVITES_GUIDE.md) |
 | `GET /api/invites/:code` | who an invite link is from (no session, 30/min per IP): `{ name, welcomeGift }` |
@@ -153,7 +155,10 @@ every 30 s, and refetches a beach only when its `updatedAt` changed.
 - `src/net/beachSync.ts`: restores your beach when someone signs in, then
   saves 6 s after changes, every 90 s while changing, and when the app goes to
   the background. Switching accounts drops anything queued for the previous
-  person.
+  person. Only one instance edits at a time (docs/EDIT_SESSIONS.md): it
+  claims an edit token when it opens the beach, sends it on every save, asks
+  every 30 s whether it is still the editor, and turns view-only — banner
+  plus "Take over editing" — when another instance takes over.
 - `src/render/neighbors.ts`: the neighbor slabs and tags. A refresh
   "generation" makes sure a slow older load can't overwrite a newer one.
 - `src/ui/leaderboard.ts`: the leaderboard panel (trophy button, bottom

@@ -554,9 +554,20 @@ async function boot() {
   /** refresh the bag from the server (set up with the account layer) */
   let refreshOwned: () => void = () => {};
 
+  /**
+   * View-only after a takeover (docs/EDIT_SESSIONS.md): another tab or
+   * device is editing this beach, so this instance can look, not touch.
+   * Set by BeachSync's onFenced handler below; the banner (with its
+   * "Take over editing" action) is assigned there too, and digging, picking
+   * things up, placing, undo and redo all check this flag first.
+   */
+  let fenced = false;
+  let showFencedBanner: () => void = () => {};
+
   /** At the end of a good dig, ask the server whether something was buried there. */
   const tryDigFind = async (pathM: number, durationMs: number) => {
     if (!digFindApi || !digFindApi.signedIn || !digFind) return; // signed out, or the sandbox build
+    if (fenced) return; // view-only: digging is off, so there is no roll
     // for tests (the e2e scripts): ?nofinds never rolls, so a 1-in-10 find
     // can't pop up over whatever the test does next
     if (params.has('nofinds')) return;
@@ -579,6 +590,10 @@ async function boot() {
   };
 
   const replayEdit = (action: 'undo' | 'redo') => {
+    if (fenced) {
+      showFencedBanner();
+      return;
+    }
     const past = action === 'undo' ? undoTargets : redoTargets;
     const future = action === 'undo' ? redoTargets : undoTargets;
     const liveCount = action === 'undo' ? info.undoCount : info.redoCount;
@@ -1224,6 +1239,10 @@ async function boot() {
         if (neighbors && neighbors.viewing) neighbors.nudgeInfo();
         return;
       }
+      if (fenced) {
+        showFencedBanner();
+        return;
+      }
       inventory.setOpen(false);
       if (placing) {
         putDown(sx, sy);
@@ -1356,6 +1375,7 @@ async function boot() {
     },
     grabAt: (sx, sy) => {
       // look mode: a long-press on a thing picks it up (on any of your visible beaches)
+      if (fenced) return false;
       const found = thingAt(sx, sy);
       if (!found) return false;
       const { obj, target } = found;
@@ -1401,6 +1421,7 @@ async function boot() {
   const gamepad = new GamepadController(canvas, cam, {
     digStart: (sx, sy) => {
       if (cam.animating) return;
+      if (fenced) return;
       const hit = pickAt(sx, sy);
       if (!hit) return;
       if (placing) {
@@ -1776,6 +1797,34 @@ async function boot() {
     s.onState((st) => {
       if (st === 'outdated') offerReload();
     });
+    // another tab or device took over editing: this one is view-only, with
+    // a way back — the banner stays up until editing is taken over here
+    let fencedHide: (() => void) | null = null;
+    showFencedBanner = () => {
+      fencedHide?.();
+      fencedHide = showActionToast(
+        uiRoot,
+        'Another tab or device is editing this beach — you’re viewing it.',
+        'Take over editing',
+        () => {
+          void s
+            .takeOver()
+            .then(() => {
+              fenced = false;
+              fencedHide?.();
+              fencedHide = null;
+              showToast(uiRoot, 'You’re editing this beach here now.');
+            })
+            .catch(() => showToast(uiRoot, 'Couldn’t take over editing — check you’re online and try again.'));
+        },
+        24 * 3600 * 1000,
+      );
+    };
+    s.onFenced(() => {
+      fenced = true;
+      placing = null;
+      showFencedBanner();
+    });
     // say so when a save can't hold everything (an undo can bring a full
     // beach past the limit), and when the server refuses one as too big
     s.onDropped((n) => {
@@ -1798,7 +1847,11 @@ async function boot() {
     nv.onSaveError = (kind) => {
       if (kind === 'outdated') offerReload();
       else if (kind === 'tooBig') showToast(uiRoot, 'This beach is too big to save. Smooth some of the sand and it will save again.');
-      else if (kind === 'restored') {
+      else if (kind === 'fenced') {
+        fenced = true;
+        placing = null;
+        showFencedBanner();
+      } else if (kind === 'restored') {
         showToast(uiRoot, 'This beach was restored from a checkpoint on another device');
         void checkpoints.load();
       }
@@ -1829,7 +1882,9 @@ async function boot() {
         // then its sand and its stretch of shore
         void (async () => {
           await acct.loadBeaches().catch(() => {});
-          await s.restoreOrCreate().catch(() => {});
+          // a new sign-in (or a saved session coming back) takes over
+          // editing here, fencing any older tab or device
+          await s.restoreOrCreate(false, true).catch(() => {});
           await nv.refresh();
         })();
         void nv.loadFavorites();
@@ -1891,6 +1946,7 @@ async function boot() {
     beachFileHost.beforeApply = async () => {
       const here = acct.beachId;
       if (!acct.user || !here) return;
+      if (s.fenced) throw new Error('Another tab or device is editing this beach — take over editing there first.');
       await s.flush();
       if (!acct.beaches.find((b) => b.id === here)?.updatedAt && !s.savedAt) return; // nothing saved to keep
       await cpApi.save(here, 'Before import', true);

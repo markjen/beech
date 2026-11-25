@@ -94,7 +94,10 @@ ALTER TABLE beach ADD COLUMN epoch INTEGER NOT NULL DEFAULT 0;
   seaglass, flag). Any other id, including unknown ones, needs inventory. A
   client test keeps `FREE_ITEMS` in step with the catalog's `unlimited`
   items, the way `tests/items.test.ts` keeps the pools in step.
-- One `auto` row per beach (the unique index): a new one replaces the old.
+- One `auto` row per beach (the unique index): a new one replaces the old,
+  whether it is a "before restoring" copy, a "before import" copy, or the
+  daily auto-save — the newest auto event wins (see "The daily auto-save"
+  below). The name tells them apart in settings → checkpoints.
 
 ### Reading a blob on the server
 
@@ -118,7 +121,7 @@ snapshot of such a beach copies it as it is; the loader fits it. Only
 | | Free | Note |
 |---|---|---|
 | Named checkpoints | **5 per beach of allowance** (5 with one beach, up to 40 with 8) | Buying beaches buys room, so there's no new paid tier to explain (PRICING.md: no subscriptions) |
-| Auto checkpoints | 1 per beach, not counted | Replaced by the next restore of that beach |
+| Auto checkpoints | 1 per beach, not counted | Replaced by the next restore of that beach, import, or daily auto-save — the newest auto event wins |
 | Size of one | 768 KB (same as a beach) | Typical beaches are a few KB to ~100 KB |
 | Total stored | 16 MB per person (named + auto) | 413 past it |
 | Name | 1–40 characters, trimmed | |
@@ -188,14 +191,55 @@ with `inspectBlob` too and drop the header.
    updated_at = now, epoch = epoch + 1 WHERE id = T`. T's location stays.
 5. Return the new version, epoch and the auto checkpoint's id.
 
+## The daily auto-save
+
+Before a save overwrites a beach, the server keeps the beach as it is now
+— but at most once per beach per day (`maybeAutoSave` in
+`server/src/app.ts`).
+
+- **When it fires:** on a save (`PUT /api/beach` or
+  `PUT /beaches/mine/:id/sand`), if it has been more than 24 hours since
+  that beach's last auto checkpoint. The snapshot is of the beach as
+  saved on the server, before this save's bytes replace it.
+- **"Last one":** the beach's most recent `auto` checkpoint, whatever made
+  it — a daily auto-save, a "before restoring" copy, or a "before import"
+  copy all reset the 24-hour clock. So a restore's undo copy is safe for
+  a day after the restore, and only then can a daily save replace it with
+  a newer snapshot of the (restored) beach.
+- **One slot, shared:** it reuses the beach's one auto slot (migration
+  13, `checkpoints_one_auto`), replacing the previous auto checkpoint
+  rather than accumulating or taking a named slot. It is not a second auto
+  slot: the newest auto event wins, and the name tells them apart —
+  `Auto-save 2026-11-24` (the UTC date), `Before restoring “Moat v2”`,
+  `Before import`. Its bytes are the same one slot already counted toward
+  the 16 MB total; if the replacement would not fit, the snapshot is
+  skipped.
+- **First save:** a beach with nothing saved yet has nothing to keep, so
+  no snapshot is made.
+- **Rate:** at most one auto checkpoint per beach per 24 h, however many
+  saves happen — the check is the last auto checkpoint's `created_at`, so
+  two saves racing at the boundary both write the same slot and the last
+  one wins, harmlessly.
+- **Failure mode:** a snapshot must never lose a save. If anything goes
+  wrong — no saved beach, an unreadable old save, the store full, a
+  database error — the snapshot is skipped, the failure is logged
+  (`auto_checkpoint_failed`), and the beach update goes ahead. The next
+  save retries it.
+- **Surfacing:** settings → checkpoints lists it like any auto
+  checkpoint ("auto-saved daily · 2 h ago"), with its thumbnail and
+  things; it restores like any checkpoint, and restoring it makes its own
+  "before restoring" copy, so undo still works.
+
 ## Live devices: the epoch
 
 - `GET` beach sand adds `X-Beach-Epoch`. `BeachSync` keeps it and sends it
   back on every `PUT` as `X-Beach-Epoch`.
 - `saveBeach` refuses a save whose epoch is older than the beach's: 409
-  `{ error: 'restored' }`. A save without the header (an older app) is still
-  accepted, so an old app left open can overwrite a restore. The "reload
-  stale tabs" backlog item closes that.
+  `{ error: 'restored' }`. A save without an edit token is refused outright
+  (426 for an app too old to send one, 409 `fenced` for a stale one), so
+  the old hole — a save with no epoch header silently overwriting a
+  restore — is closed by the edit token, not the epoch (docs/EDIT_SESSIONS.md).
+  The epoch stays as a second guard for saves that carry it.
 - On `restored`, `BeachSync` drops what it had queued, calls
   `restoreOrCreate()` to load the restored beach, and the app shows "This
   beach was restored from 'Moat v2'" (the name comes from the auto
@@ -230,7 +274,7 @@ with `inspectBlob` too and drop the header.
 | Storage filling | count and byte limits, 768 KB each, rate limits |
 | Restore churn to spam neighbors' repaints | 30 restores an hour; repaint cost is the same as a save |
 | Restore onto a beach that's over the allowance (read-only after a refund, MULTI_BEACH.md) | 403 once read-only beaches are enforced, like their saves |
-| Old app open on the target | its save goes through (no epoch header): documented; fixed by "reload stale tabs" |
+| Old app open on the target | its saves are refused (426, no edit token): it must reload or update to save again (docs/EDIT_SESSIONS.md) |
 | Checkpoint from a deleted beach | still listed ("from Bondi, removed"), still restorable |
 | Account deleted | checkpoints go with it (`ON DELETE CASCADE`) |
 
@@ -281,8 +325,13 @@ with `inspectBlob` too and drop the header.
   location kept;
 - two restores at once onto two beaches with one lighthouse: exactly one
   succeeds;
-- saves: a stale epoch is 409 `restored`; no header is accepted; the current
-  epoch is accepted;
+- saves: a stale epoch is 409 `restored`; no edit token is 426; a stale edit
+  token is 409 `fenced` and writes nothing; the current epoch is accepted;
+- the daily auto-save (`server/test/editSessions.test.ts`): a first save
+  keeps nothing, a second save keeps the beach as it was in the one auto
+  slot, a third save the same day leaves it alone, a day later the same
+  slot is replaced; a restore's undo copy survives a day, then the daily
+  save takes the slot; a full checkpoint store never blocks the save;
 - deleting a beach keeps its checkpoints; deleting the account removes them.
 
 **Client** (Vitest): `shortfall()` with the shared fixtures; `countItems`

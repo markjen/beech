@@ -71,6 +71,8 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       'beechshore.com now has an item catalog: every item with a picture, its size and price, and how to get it. Vote for the ones you like and leave a comment — it’s linked from the guide.',
       'Footprints are free now: press a trail of them into the sand, as many as you like.',
       'Invite friends to Beech: anyone who joins from your invite starts with a parasol, and you earn a gift each time a friend settles in — up to ten friends.',
+      'Only one tab or device edits your beach at a time now: opening it somewhere else takes over editing there, and the older one turns view-only, with a button to take editing back.',
+      'Your beach is now auto-saved once a day as a checkpoint, so you can always go back to yesterday’s beach (Settings → checkpoints).',
     ],
   },
   {
