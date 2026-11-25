@@ -86,8 +86,8 @@ picked up.
 - [ ] **Copy a beach** onto one of your own, from the shore bar and
   beechshore.com; when short, buy what's missing or copy without them
   **(model first: `specs/tla/BeachCopy.tla`, written and checked)**.
-  Phases K1 to K4 in [COPY_BEACH.md](COPY_BEACH.md); owner decisions at
-  its end.
+  Phases K1 to K4 in [COPY_BEACH.md](COPY_BEACH.md); owner decisions
+  taken (no allow-copies setting; copy counts and owner notifications on).
 - [ ] **Palm-first UI, follow-ups**: real weather (temperature, sky) for
   the status pane's first line; credit, stars and finds-today chips in
   the expanded pane (they need their own requests); decide whether the

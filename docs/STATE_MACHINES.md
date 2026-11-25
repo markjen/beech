@@ -117,7 +117,7 @@ holds, and each copy request's step, target, mode and pinned version.
 | --- | --- | --- |
 | `CopyStart` | `GET /beaches/:code/copy-fit`, then Copy | the app pins the previewed `version` |
 | `CopyRead` .. `CopyWrite` / `CopyAtomic` | `POST /beaches/mine/copy` | `oneAtATime` + `asEditor`; source row `FOR SHARE`; `fitOf`, the allowance, `dropMissing`, then `writeOnto` (shared with restore) |
-| `SourceEdit`, `SourceShore` | the owner's save, `PATCH ... { onShore, allowCopies }`, an admin hide | |
+| `SourceEdit`, `SourceShore` | the owner's save, `PATCH ... { onShore }`, an admin hide | |
 | `Buy` | a store grant | |
 | `Save` | the copier's other device saving | `saveBeach` |
 

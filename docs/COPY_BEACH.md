@@ -65,7 +65,7 @@ are the two that matter most to a visitor, so `ask to be neighbors` moves
 into the beach-name menu first.
 
 **Not shown when:** it's your own beach (use duplicate), the beach isn't
-public, or its owner turned copies off (see [Privacy](#privacy-and-consent)).
+public (see [Privacy](#privacy-and-consent)).
 
 ## The copy sheet
 
@@ -206,14 +206,13 @@ unique key, written in the same transaction as the copy.
 - Only **public** beaches can be copied (`isPublic`: on the shore and
   saved; not hidden by an admin). That is the same set anyone can already
   see on beechshore.com.
-- **"Allow copies"** per beach (`beach.allow_copies`, default on), a toggle
-  in settings → your beaches under "on the shore". Turned off, the copy
-  button doesn't show and the server refuses (404, the same answer as for a
-  beach that isn't public).
+- **Every public beach can be copied.** There is no per-beach "allow
+  copies" setting: a beach on the shore is public, and keeping it off the
+  shore is how an owner keeps it to themselves (owner decision,
+  2026-11-25).
 - **Your own beaches** (duplicate) can be copied whether or not they're
-  public or allow copies.
-- The owner taking a beach off the shore, or turning copies off, takes
-  effect at once, even for a copy sheet someone already has open. The
+  public.
+- The owner taking a beach off the shore takes effect at once, even for a copy sheet someone already has open. The
   model checks this (`NoCopyOffShore`).
 
 ## State machine
@@ -232,9 +231,9 @@ repeated here: a copy runs through the same `asEditor`.
 | Action | Route | Code |
 | --- | --- | --- |
 | `CopyStart` | `GET /beaches/:code/copy-fit`, then tapping Copy | the app pins the `version` it previewed |
-| `CopyAtomic` | `POST /beaches/mine/copy` | `oneAtATime(me, asEditor(tx => ...))`: the source row `FOR SHARE` (public, allows copies, `version = $pin`), `fitOf`, the allowance, `dropMissing`, then the insert or the restore's `WITH snap ... UPDATE beach` |
+| `CopyAtomic` | `POST /beaches/mine/copy` | `oneAtATime(me, asEditor(tx => ...))`: the source row `FOR SHARE` (public, `version = $pin`), `fitOf`, the allowance, `dropMissing`, then the insert or the restore's `WITH snap ... UPDATE beach` |
 | `SourceEdit` | the owner's `PUT /beaches/mine/:id/sand` | |
-| `SourceShore` | the owner's `PATCH /beaches/mine/:id { onShore, allowCopies }`, an admin hide | |
+| `SourceShore` | the owner's `PATCH /beaches/mine/:id { onShore }`, an admin hide | |
 | `Buy` | a store grant (receipt, webhook, credit) | grants only add |
 | `Save` | the copier's other device saving | `BeachEditing`'s `SaveAtomic` |
 
@@ -277,7 +276,7 @@ New routes, all behind `requireUser`:
 
 | | |
 |---|---|
-| `GET /api/beaches/:code/copy-fit?target=<id>\|new` | `{ version, name, owner, location, nx, ny, items, need, owned, elsewhere, short: [{ item, short, buy?: { product, quantity, usd } }], room, basket: { items, usd } }`. 404 if not public or copies are off (unless it's yours). |
+| `GET /api/beaches/:code/copy-fit?target=<id>\|new` | `{ version, name, owner, location, nx, ny, items, need, owned, elsewhere, short: [{ item, short, buy?: { product, quantity, usd } }], room, basket: { items, usd } }`. 404 if not public (unless it's yours). |
 | `POST /api/beaches/mine/copy { from: code, version, target: id \| 'new', mode: 'strict' \| 'drop-missing', name?, location? }` | 200 `{ beach, version, epoch, updatedAt, undo, dropped }`. 409 `{ error: 'short', short }` (strict), 409 `{ error: 'changed', version }` (the source has a newer save: the app re-previews), 409 `{ error: 'room' }`, 404 gone, 429. |
 | `POST /api/checkpoints/copy { from: code, version }` | "keep as a checkpoint": a checkpoint with `source = 'copy'`, `from_name` = the source's name. No bag check (a checkpoint holds things, it doesn't place them). Counts toward the checkpoint limits. |
 | `POST /api/store/credit-purchase`, `POST /api/store/web-checkout` | accept `items: [{ product, quantity }]` as well as the single product they take today |
@@ -293,7 +292,7 @@ Building it:
 - `requireEditToken` first (a copy replaces a beach). Rate limit
   `copyLimiter`: 20 an hour per person.
 - Migration (appended): `beach.copied_from UUID`, `copied_from_code TEXT`,
-  `copied_version INTEGER`, `allow_copies BOOLEAN NOT NULL DEFAULT true`;
+  `copied_version INTEGER`;
   `beach_copies`.
 
 ## App
@@ -309,14 +308,14 @@ Building it:
 - **Pending copy** across a web checkout: localStorage
   `beech.pendingCopy = { code, version, target, mode, at }`, dropped after
   a day.
-- Settings → your beaches: **duplicate** on each saved beach, and the
-  **allow copies** toggle.
+- Settings → your beaches: **duplicate** on each saved beach.
 
 ## Guide and release notes
 
 - Guide (`server/src/guide.ts`): a "Copying a beach" section covering what
   comes along, what doesn't, the two choices when you're short, "not in the
-  shop" things, keeping a copy as a checkpoint, Undo, and allow copies.
+  shop" things, keeping a copy as a checkpoint, Undo, and that
+  any beach on the shore can be copied (keep it off the shore to prevent it).
 - Release note when it ships: "Copy any beach on the shore onto one of
   your own, from the shore bar or beechshore.com."
 
@@ -331,7 +330,7 @@ Building it:
   extra beach) from the shared fixture, in both suites.
 - **Server:** copy onto an existing beach, onto a new one, at the
   allowance, strict and drop-missing, a changed source, an off-shore
-  source, allow copies off, duplicating your own off-shore beach, the
+  source, duplicating your own off-shore beach, the
   `beach_copies` row written once, Undo.
 - **E2E:** a step in `scripts/` (`e2e:checkpoints` is the closest): visit
   a beach, copy it short, copy without them, Undo; then grant the missing
@@ -347,21 +346,17 @@ Each one leaves the app playable.
 | **K1** | Server copy | `writeOnto` shared with restore; `copy-fit`, `copy`, checkpoint copy; migration; state-machine tests green; TLC in CI. No UI. |
 | **K2** | Copy in the game | Shore-bar button, the sheet, Copy / Copy without them / keep as a checkpoint, new beach, Undo toast, guide. |
 | **K3** | Buy what's missing | Basket in `copy-fit`; credit and web basket purchases; native one-by-one; pending copy across the web checkout return. |
-| **K4** | Shore site and credit | "Copy to my beach" on beechshore.com, `?copy=1`, duplicate in your beaches, allow copies toggle, "copied N times", inbox message, "copied from". |
+| **K4** | Shore site and credit | "Copy to my beach" on beechshore.com, `?copy=1`, duplicate in your beaches, "copied N times", inbox message, "copied from". |
 
-## Decisions for the owner
+## Decisions (owner, 2026-11-25)
 
-- **Allow copies: on by default, or opt-in?** Suggested: on. Public beaches
-  are already public, and being copied is a compliment. The toggle is
-  there for anyone who minds.
-- **Tell the owner** ("Sam copied your beach") and **show "copied N
-  times"**? Suggested: yes to both. It's the social reward for building
-  something good.
-- **Show "copied from" on the copy's page?** Suggested: yes, linking back.
-- **Copies on the leaderboard:** near-identical copies of a top beach could
-  crowd "just built". Suggested: leave it alone until it happens. If it
-  does, hide a beach from "just built" while its sand is unchanged since the
-  copy (`copied_version` and its save count tell us).
-- **A basket discount** for buying everything a beach needs? Suggested:
-  no. Prices stay the shop's prices, and the Founder's pack is already the
-  value bundle.
+- **Allow copies:** no setting. Every beach on the shore is public, so
+  every one can be copied. Off the shore is the way to keep a beach to
+  yourself.
+- **Tell the owner and show "copied N times":** yes, both.
+- **Copies on the leaderboard:** no special handling. Copies are not hidden
+  from "just built" or any other list.
+- **A basket discount:** no. The basket uses the shop's prices.
+- **"copied from" on the copy's page:** not asked yet. Built as suggested
+  (a link back to the original while it's public) unless the owner says
+  otherwise.
