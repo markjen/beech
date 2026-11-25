@@ -177,11 +177,12 @@ export function adminConsoleHtml(opts: { nonce: string; email: string; appUrl: s
         <label><span>Frequency</span><select name="frequency">${options(FREQUENCIES)}</select></label>
         <label><span>Availability details</span><input name="frequencyNote" maxlength="500"></label>
         <label><span>Price (USD)</span><input name="price" type="number" min="0" max="21474836.47" step=".01"></label>
+        <label><span>Not for sale</span><input name="notForSale" type="checkbox" value="true"></label>
         <label><span>Replacement asset</span><input name="replacement" type="file" accept=".json,.glb,.gltf,.ts"></label>
         <label><span>Product SKU</span><input name="productId" list="submission-products" maxlength="80" placeholder="e.g. item_tide_pool_pot"></label>
         <datalist id="submission-products"></datalist>
         <label><span>Catalog item ID</span><input name="itemId" maxlength="40" placeholder="e.g. tide-pool-pot"></label>
-        <p class="muted">Leave both IDs blank to approve before linking to the shop. A positive price lists the linked product when its item ships. Clear the price or enter 0 to take it out of the shop. Asset and availability changes ship through the game catalog.</p>
+        <p class="muted">Leave both IDs blank to approve before linking to the shop. A price lists the linked product when its item ships; 0 makes it free. Tick “Not for sale” to keep it out of the shop. Asset and availability changes ship through the game catalog.</p>
         <label><span>Admin note</span><textarea name="adminNote" rows="3" maxlength="1500"></textarea></label>
         <div class="row">
           <button type="submit" value="approved" class="primary">Save approval</button>
@@ -452,6 +453,7 @@ async function openSubmission(id) {
     if (key !== 'fixedSize') fields[key].value = value;
   }
   fields.fixedSize.checked = approved.fixedSize ?? row.fixed_size;
+  fields.notForSale.checked = !!row.approved_item && row.for_sale === false;
   fields.productId.readOnly = fields.itemId.readOnly = !!row.product_id;
   $('submission-products').replaceChildren(...products.map((p) => new Option(p.itemId, p.id)));
   $('submission-review').hidden = false;

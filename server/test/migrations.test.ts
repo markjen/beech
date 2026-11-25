@@ -126,3 +126,36 @@ describe('migration 13: checkpoints', () => {
     }
   });
 });
+
+describe('migration 28: not for sale is its own choice', () => {
+  it('keeps approvals priced blank or 0 out of the shop, and the rest for sale', async () => {
+    const db = await openEmptyTestDb();
+    try {
+      await migrate(db, 27);
+      const u = '00000000-0000-4000-8000-0000000000e1';
+      await db.query("INSERT INTO users (id, provider, provider_sub, name, neighbor_code, created_at) VALUES ($1, 'dev', 'e', 'e', 'EEEEEE', 1)", [u]);
+      const add = (n: number, price: number | null) =>
+        db.query(
+          `INSERT INTO item_submissions (id, submitter_user_id, submitter_beach_code, name, slug, behavior, size_min, size_max,
+             proposed_price_cents, proposed_frequency, asset_format, asset_filename, asset_mime, asset_bytes, asset_size,
+             terms_accepted, terms_version, terms_accepted_at, created_at, updated_at, status, approved_price_cents)
+           VALUES ($1, $2, 'EEEEEE', 'x', 'x', 'fixed', 1, 1, 0, 'shop', 'glb', 'x.glb', 'model/gltf-binary', $3, 1, true, 'v', 1, 1, 1, 'approved', $4)`,
+          [`00000000-0000-4000-8000-0000000000f${n}`, u, new Uint8Array([1]), price],
+        );
+      await add(1, null);
+      await add(2, 0);
+      await add(3, 250);
+      await migrate(db);
+      const rows = await db.query<{ approved_price_cents: number | null; for_sale: boolean }>(
+        'SELECT approved_price_cents, for_sale FROM item_submissions ORDER BY id',
+      );
+      expect(rows).toEqual([
+        { approved_price_cents: null, for_sale: false },
+        { approved_price_cents: 0, for_sale: false },
+        { approved_price_cents: 250, for_sale: true },
+      ]);
+    } finally {
+      await db.close();
+    }
+  });
+});

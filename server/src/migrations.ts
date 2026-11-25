@@ -781,6 +781,14 @@ const MIGRATIONS: string[] = [
     pet_prev_fed_at BIGINT             -- the pet's feed before this one (pet fed)
   );
   `,
+
+  // 28: "not for sale" is its own choice on an approved creator item, so a
+  // price of 0 can mean free. Until now a blank or 0 price both meant
+  // "out of the shop"; those keep that meaning here.
+  `
+  ALTER TABLE item_submissions ADD COLUMN for_sale BOOLEAN NOT NULL DEFAULT true;
+  UPDATE item_submissions SET for_sale = false WHERE approved_price_cents IS NULL OR approved_price_cents = 0;
+  `,
 ];
 
 /** Apply migrations up to `upTo` (default: all). Tests use `upTo` to check a migration on older data. */

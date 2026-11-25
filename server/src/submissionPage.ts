@@ -117,9 +117,11 @@ export function submissionContent(href: (p: string) => string, config: { endpoin
       const name = document.createElement('strong');
       name.textContent = row.approved_name || row.name;
       const state = row.status === 'pending' ? 'in review' : row.status;
-      const price = row.approved_price_cents === 0 ? 'free' : '$' + (row.approved_price_cents / 100).toFixed(2);
+      const price = !row.for_sale ? 'not for sale'
+        : row.approved_price_cents === null ? ''
+        : row.approved_price_cents === 0 ? 'free' : '$' + (row.approved_price_cents / 100).toFixed(2);
       const decision = row.status === 'approved'
-        ? ' · ' + row.approved_frequency + (row.approved_price_cents === null ? '' : ' · ' + price)
+        ? ' · ' + row.approved_frequency + (price ? ' · ' + price : '')
         : '';
       const credits = row.status === 'approved' || row.sales_count > 0
         ? ' · ' + row.sales_count + ' sales · $' + (row.total_credit_earned_cents / 100).toFixed(2) + ' earned'

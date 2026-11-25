@@ -158,8 +158,9 @@ export class ShopApi {
           const mine = list.find((x) => x.id === sp.identifier);
           if (mine) mine.price = sp.priceString;
         }
-        // only what the store actually offers here can be bought
-        return list.filter((x) => x.price);
+        // only what the store actually offers here can be bought; free
+        // things are claimed from the server, with no store involved
+        return list.filter((x) => x.price || x.usd === 0);
       } catch (e) {
         reportError('shop', e, { source: 'shop:getProducts' });
         /* store unreachable: show US prices, buying will say why it can't */

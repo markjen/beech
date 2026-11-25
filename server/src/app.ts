@@ -2358,6 +2358,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const now = clock();
     const offer = await creatorOffer(db, product!);
     const amount = salePriceCents(product!, offer) ?? fail(404, 'that product is not for sale');
+    // a free item has nothing to pay: it's claimed through /store/credit-purchase
+    if (amount === 0) fail(400, 'that one is free: claim it in the shop');
     await db.query(
       `INSERT INTO web_orders (id, user_id, product_id, amount_cents, sandbox, created_at, creator_submission_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7)`,
@@ -2560,6 +2562,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const now = clock();
     const offer = await creatorOffer(db, product!);
     const amountCents = salePriceCents(product!, offer) ?? fail(404, 'that product is not for sale');
+    if (amountCents === 0) fail(400, 'that one is free: claim it in the shop');
     const inserted = await db.query<{ order_id: string }>(
       `INSERT INTO steam_orders (user_id, steam_id, product_id, amount_cents, sandbox, created_at, creator_submission_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING order_id::text AS order_id`,

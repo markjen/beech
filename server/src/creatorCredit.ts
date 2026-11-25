@@ -7,6 +7,7 @@ interface Offer {
   product_id: string;
   item_id: string;
   approved_price_cents: number | null;
+  for_sale: boolean;
   status: 'approved' | 'pending' | 'rejected';
 }
 
@@ -16,10 +17,16 @@ function matches(offer: Offer, product: Product) {
     offer.product_id === product.id && offer.item_id === product.grants[0].item;
 }
 
-const OFFER_FIELDS = 'id, submitter_user_id, product_id, item_id, approved_price_cents, status';
+const OFFER_FIELDS = 'id, submitter_user_id, product_id, item_id, approved_price_cents, for_sale, status';
+/**
+ * What a product sells for in USD cents, or null when it isn't for sale. A
+ * creator item sells only once approved and marked for sale, at its
+ * approved price; 0 means free (claimed with no payment, through
+ * /store/credit-purchase).
+ */
 export function salePriceCents(product: Product, offer?: Offer): number | null {
   if (!offer) return Math.round(product.usd * 100);
-  return offer.status === 'approved' && offer.approved_price_cents ? offer.approved_price_cents : null;
+  return offer.status === 'approved' && offer.for_sale && offer.approved_price_cents !== null ? offer.approved_price_cents : null;
 }
 
 export async function creatorOffers(db: Db) {

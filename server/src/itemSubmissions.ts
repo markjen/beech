@@ -146,7 +146,7 @@ export const requireSubmissionSession = (db: Db) => createMiddleware<{ Variables
 
 export function creatorSubmissions(db: Db, userId: string) {
   return db.query(
-    `SELECT id, name, status, approved_item->>'name' AS approved_name, approved_price_cents, approved_frequency,
+    `SELECT id, name, status, approved_item->>'name' AS approved_name, approved_price_cents, for_sale, approved_frequency,
             sales_count, total_credit_earned_cents, created_at
        FROM item_submissions WHERE submitter_user_id = $1 ORDER BY created_at DESC, id DESC LIMIT 50`,
     [userId],
@@ -165,7 +165,7 @@ export const adminSubmission = async (db: Db, id: string) => (await db.query(
   `SELECT id, submitter_beach_code, name, slug, description, behavior, size_min, size_max, fixed_size,
           proposed_price_cents, proposed_frequency, frequency_note, asset_format, asset_filename, asset_size,
           asset_summary, (preview_bytes IS NOT NULL) AS has_preview, terms_version, terms_accepted_at,
-          status, approved_price_cents, approved_frequency, approved_item, product_id, item_id, replacement_filename,
+          status, approved_price_cents, for_sale, approved_frequency, approved_item, product_id, item_id, replacement_filename,
           admin_note, sales_count, total_credit_earned_cents, reviewed_by, reviewed_at
      FROM item_submissions WHERE id = $1`, [id],
 ))[0];
@@ -194,6 +194,7 @@ export async function reviewSubmission(db: Db, id: string, form: FormData, actor
 
   const item = itemFields(form);
   const price = cents(form, 'priceCents');
+  const forSale = form.get('notForSale') !== 'true';
   const frequency = choice(field(form, 'frequency', 16), FREQUENCIES, 'frequency');
   const requestedProduct = field(form, 'productId', 80);
   const productId = requestedProduct || previous.product_id;
@@ -211,6 +212,9 @@ export async function reviewSubmission(db: Db, id: string, form: FormData, actor
       return badSubmission('The catalog product must grant the linked item.');
     }
   }
+  if (productId && forSale && price === null) {
+    return badSubmission('Enter a price (0 for free), or mark it not for sale.');
+  }
   const file = form.get('replacement');
   const replacement = file && (typeof file === 'string' || file.size || file.name) ? await readAsset(file) : null;
 
@@ -219,10 +223,10 @@ export async function reviewSubmission(db: Db, id: string, form: FormData, actor
       `UPDATE item_submissions SET status = $2, approved_item = $3, approved_price_cents = $4, approved_frequency = $5,
          product_id = $6, item_id = $7,
          replacement_filename = COALESCE($9, replacement_filename), replacement_bytes = COALESCE($10, replacement_bytes),
-         admin_note = $11, reviewed_by = $12, reviewed_at = $8, updated_at = $8
+         admin_note = $11, reviewed_by = $12, reviewed_at = $8, updated_at = $8, for_sale = $13
        WHERE id = $1`,
       [id, status, JSON.stringify(item), price, frequency, productId, itemId, now,
-        replacement?.filename ?? null, replacement?.bytes ?? null, adminNote, actor],
+        replacement?.filename ?? null, replacement?.bytes ?? null, adminNote, actor, forSale],
     );
   } catch (err) {
     if ((err as { code?: string }).code === '23505') throw new HTTPException(409, { message: 'That product is already linked to a submission.' });
@@ -230,7 +234,8 @@ export async function reviewSubmission(db: Db, id: string, form: FormData, actor
   }
   if (productId) await db.query(
     'INSERT INTO creator_price_history (submission_id, price_cents, changed_at) VALUES ($1, $2, $3)',
-    [id, price || null, now],
+    // royalties on app-store receipts price from here; free and off-sale earn none
+    [id, forSale && price ? price : null, now],
   );
-  return { status, price, frequency, productId, itemId };
+  return { status, price, forSale, frequency, productId, itemId };
 }
