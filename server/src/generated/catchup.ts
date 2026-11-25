@@ -2415,5 +2415,6 @@ async function catchUpSaved(bytes, location, from, to, maxGapDays = CATCHUP.maxG
 }
 export {
   CATCHUP_DEFAULTS,
-  catchUpSaved
+  catchUpSaved,
+  sanitizeObjects
 };

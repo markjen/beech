@@ -97,7 +97,7 @@ export interface BeachState {
 
 /** `tooBig`: refused as too large; `outdated`: this app is too old (426); `fenced`: another instance edits now */
 export type SyncState = 'idle' | 'saving' | 'saved' | 'offline' | 'tooBig' | 'outdated' | 'fenced';
-export type SaveProblem = 'tooBig' | 'outdated' | 'restored' | 'fenced';
+export type SaveProblem = 'tooBig' | 'outdated' | 'restored' | 'fenced' | 'short';
 
 /**
  * How many of each non-free item are on a beach (so your bag can count across
@@ -120,6 +120,8 @@ export class BeachStore {
   private readonly saving = new Map<string, Promise<void>>();
   private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly sources = new Map<string, SandSource>();
+  /** beaches whose save was refused as over the bag, and are being retried once */
+  private readonly shortRetry = new Set<string>();
   private retained = new Set<string>();
   private clock = 0;
   /** bumps on reset (another person): late answers for the last one are dropped */
@@ -533,6 +535,7 @@ export class BeachStore {
         epoch: st.epoch,
       });
       if (gen !== this.generation) return;
+      this.shortRetry.delete(id);
       st.savedRevision = Math.max(st.savedRevision, revision);
       st.updatedAt = r.updatedAt;
       st.fresh = false;
@@ -553,6 +556,24 @@ export class BeachStore {
       const message = (e as Error | null)?.message;
       if (status === 409 && message === 'fenced') {
         this.enterFenced(id);
+        return;
+      }
+      if (status === 409 && message === 'short' && !this.shortRetry.has(id)) {
+        // more of something than the bag holds. Usually a thing moved across
+        // a seam whose new beach saved before the one it left: save the
+        // others, then try once more
+        this.shortRetry.add(id);
+        this.set('idle');
+        setTimeout(() => void this.retryShort(id, gen), 0);
+        return;
+      }
+      if (status === 409 && message === 'short') {
+        // still over the bag: the server's copy stands
+        this.shortRetry.delete(id);
+        st.savedRevision = st.revision;
+        this.set('idle');
+        for (const fn of this.listeners.problem) fn(id, 'short');
+        void this.reload({ id, code: st.code, owned: st.owned }, true);
         return;
       }
       if (status === 409) {
@@ -577,6 +598,13 @@ export class BeachStore {
       this.set('offline');
       this.timers.set(id, setTimeout(() => void this.flush(id), BEACH_STORE.retryMs));
     }
+  }
+
+  private async retryShort(id: string, gen: number): Promise<void> {
+    const others = [...this.states.keys()].filter((o) => o !== id && (this.isDirty(o) || this.saving.has(o)));
+    await Promise.all(others.map((o) => this.flush(o)));
+    if (gen !== this.generation) return;
+    await this.flush(id);
   }
 
   /** Another instance took over editing: nothing here saves until it takes over again. */
