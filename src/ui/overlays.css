@@ -432,8 +432,8 @@ a.action {
 .place {
   position: fixed;
   left: calc(16px + env(safe-area-inset-left));
-  top: calc(14px + env(safe-area-inset-top));
-  max-width: calc(100vw - 32px);
+  top: calc(70px + env(safe-area-inset-top));
+  max-width: calc(100vw - 100px - env(safe-area-inset-left) - env(safe-area-inset-right));
   padding: 8px 14px 9px;
   border: none;
   border-radius: 16px;
@@ -444,8 +444,6 @@ a.action {
   box-shadow: 0 6px 18px var(--ui-shadow);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  pointer-events: auto;
-  cursor: pointer;
   transition: opacity 0.4s ease;
 }
 
@@ -708,8 +706,8 @@ body.ambient-idle {
 
 .shore-bar {
   position: fixed;
-  top: calc(14px + env(safe-area-inset-top));
-  right: calc(14px + env(safe-area-inset-right));
+  top: calc(140px + env(safe-area-inset-top));
+  left: calc(16px + env(safe-area-inset-left));
   display: flex;
   align-items: center;
   gap: 6px;
@@ -766,13 +764,12 @@ body.ambient-idle {
   cursor: pointer;
 }
 
-@media (max-width: 520px) {
-  /* below the place label on phones */
-  .shore-bar {
-    top: calc(76px + env(safe-area-inset-top));
-    left: calc(14px + env(safe-area-inset-left));
-    right: auto;
-  }
+.hud-help dt {
+  font-weight: 600;
+}
+
+.hud-help dd {
+  margin: 2px 0 10px;
 }
 
 /* ---------------------------------------------------------- viewing mode:

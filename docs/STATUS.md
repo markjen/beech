@@ -972,3 +972,16 @@ prompt, JSON Schema and sample asset.
   - Any of your own beaches visible in the 3D shore view can now be edited directly (dig, build, blend, dozer, flatten, vacuum, place/drag items, undo/redo — including seamlessly crossing linked seams between adjacent owned beaches). `NeighborView` lazily spins up a lightweight `BeachSim` (`stepEdit`) per edited owned beach and auto-saves writes to that beach's ID (`PUT /api/beaches/mine/:id/sand`) regardless of which beach is selected in settings.
   - `SettingsSheet` is now organized into sticky tabs (**Beach**, **Shore**, **Display**, **Account**; **Beach** + **Display** in sandbox builds). Selecting a beach in **Beach** only configures its settings (name, place, code, smooth, checkpoints, neighbors) without switching the 3D scene unless you tap **go there** (which glides smoothly if already on the current shore).
   - **Shore** includes a visual **Your beaches on the shore** stretch connector (`src/ui/shoreConnect.ts`) to snap your own beaches side by side or disconnect them in one tap without copying codes or flipping beaches.
+
+## HUD, sandcastle molds and adjacent editing (2026-11-25)
+
+- The right-hand controls group Edit, Shop, Chair, Move and Beach settings. Help
+  opens the controls summary and links to the full guide. Account settings
+  hold sign-in and device preferences. Beach settings hold location, light,
+  saved beaches, checkpoints and neighbors. The bag and paid shop scroll
+  within the available viewport.
+- Cylinder and square sandcastle molds raise editable terrain. The sand
+  tools can add walls and moats, and items from the bag can decorate them.
+- Touching a linked beach you own with an edit tool opens it in the same
+  view. A brush drag can continue across the seam. Each beach is saved
+  separately before handing the live simulation to its neighbor.

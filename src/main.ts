@@ -20,7 +20,7 @@ import { Sky, type SkyDisc } from './render/sky';
 import { AnimalController, type AnimalEnv, type AnimalObstacle } from './world/animals';
 import { LiveConditions } from './world/live';
 import { BEACHES, beachById, defaultBeach, nearestBeach, type Beach } from './world/locations';
-import type { BrushMode, ClearingMode, SandMode } from './sim/beachSim';
+import type { BrushMode, CastleShape, ClearingMode, SandMode } from './sim/beachSim';
 import { isClearingMode, isSandMode } from './sim/beachSim';
 import { DIG_FIND_ROLL_COOLDOWN_MS, qualifiesForFind } from './sim/digFinds';
 import { POS_STRIDE, type ObjectState, type PlacedObject } from './sim/objects';
@@ -29,7 +29,7 @@ import { makeSwell } from './sim/waves';
 import { MAX_OBJECTS, decodeSand, encodeSand, fitWorld, resampleField } from './sim/sandCodec';
 import { restHeight } from './sim/profile';
 import { Ambient, toggleFullscreen } from './ui/ambient';
-import { Hud, type ToolDef } from './ui/hud';
+import { Hud, icon, type ToolDef } from './ui/hud';
 import { SettingsSheet, StartScreen, showActionToast, showToast } from './ui/overlays';
 import { CheckpointsSection } from './ui/checkpoints';
 import { InventoryTray, PlaceBar } from './ui/inventory';
@@ -299,6 +299,7 @@ async function boot() {
   let frameAt = performance.now();
   let frames = 0;
   let swashRate = 0;
+  let loadId = 0;
 
   let pendingBuf: Float32Array | null = null;
   let pendingTouch = false;
@@ -511,18 +512,17 @@ async function boot() {
     else neighbors?.cancelStroke(t.index);
   };
 
-  const startDig = (sx: number, sy: number) => {
+  const startDig = (sx: number, sy: number, hit?: Hit) => {
     digging = true;
     strokeOpen = false;
     strokeTarget = null;
     digPathM = 0;
     digStrokeStart = performance.now();
-    hover = null;
-    strokeTo(sx, sy);
+    hover = lastHit = null;
+    strokeTo(sx, sy, hit);
   };
 
-  const strokeTo = (sx: number, sy: number) => {
-    const hit = pickAt(sx, sy);
+  const strokeTo = (sx: number, sy: number, hit = pickAt(sx, sy)) => {
     if (!hit) return;
     // a dig stroke's effort, for buried finds: how far the brush travelled
     if (digging && brushMode === 'dig' && lastHit) {
@@ -716,7 +716,6 @@ async function boot() {
   const place = document.createElement('button');
   place.type = 'button';
   place.className = 'place';
-  place.setAttribute('aria-label', 'Choose a beach');
   uiRoot.appendChild(place);
   place.addEventListener('click', () => sheet.show('beach'));
   let placeText = '';
@@ -750,18 +749,30 @@ async function boot() {
     { id: 'look', icon: 'hand', label: 'Look around' },
     { id: 'sand', icon: 'dig', label: 'Sand', modes: SAND_MODE_DEFS },
     { id: 'clearing', icon: 'dozer', label: 'Clearing', modes: CLEARING_MODE_DEFS },
+    { id: 'castle', icon: 'sandcastle', label: 'Sandcastles', modes: [
+      { id: 'round', icon: 'castleRound', label: 'Cylinder sandcastle' },
+      { id: 'square', icon: 'castleSquare', label: 'Square sandcastle' },
+    ] },
   ];
   /** number keys 1-5: look, dig, build, blend, bulldozer */
   const KEY_TOOLS = ['look', 'dig', 'pile', 'smooth', 'clearing'] as const;
   let tool = 'look';
   let sandMode: SandMode = 'dig';
   let clearingMode: ClearingMode = 'dozer';
+  let castleShape: CastleShape = 'round';
   let collapsed = false;
   /** highlight the active tool (and, for grouped tools, the active sub-mode) */
   const syncToolUI = () =>
-    hud.setTool(placing ? 'place' : tool, tool === 'sand' ? sandMode : tool === 'clearing' ? clearingMode : undefined);
+    hud.setTool(placing ? 'place' : tool,
+      tool === 'sand' ? sandMode : tool === 'clearing' ? clearingMode : tool === 'castle' ? castleShape : undefined);
+  const syncMoveButton = () => {
+    const button = hud.rightGroup.querySelector<HTMLButtonElement>('[data-tool="look"]');
+    button?.setAttribute('aria-pressed', String(!placing && tool === 'look'));
+    button?.classList.toggle('active', !placing && tool === 'look');
+  };
   const syncLookOnly = () => {
     gestures.lookOnly = collapsed || (!placing && tool === 'look');
+    syncMoveButton();
   };
   const setSandMode = (mode: SandMode) => {
     tool = 'sand';
@@ -794,7 +805,8 @@ async function boot() {
       setClearingMode(id);
       return;
     }
-    tool = id;
+    if (id === 'round' || id === 'square') castleShape = id;
+    tool = id === 'round' || id === 'square' ? 'castle' : id;
     if (id === 'sand') brushMode = sandMode;
     else if (id === 'clearing') brushMode = clearingMode;
     placing = null;
@@ -858,9 +870,18 @@ async function boot() {
     },
     () => pickTool(tool),
   );
-  hud.toolGroup.prepend(inventory.button);
-  // the look tool sits at the very top, above the bag
-  hud.toolGroup.prepend(hud.toolGroup.querySelector('button[data-tool="look"]')!);
+  const moldCastle = (hit: Hit | null) => {
+    if (!hit) return;
+    const s = toSim(hit);
+    if (hit.target.kind === 'live') {
+      send({ type: 'castle', ...s, shape: castleShape });
+      markDirty();
+    } else {
+      neighbors?.moldCastle(hit.target.index, s.x, s.y, castleShape);
+    }
+    recordEditTarget(hit.target);
+    haptics.impact('medium');
+  };
 
   /** Tap with an item in hand: set the item down. Picking things back up is
    * the vacuum's job now — the item tool only places. */
@@ -902,25 +923,87 @@ async function boot() {
   };
 
   const menuBtn = hud.button('menu', 'Settings');
+  const helpBtn = hud.button('help', 'Help');
+  const beachBtn = hud.button('palmtree', 'Beach settings', 'hud-btn hud-big');
+  const editBtn = hud.button('edit', 'Edit');
+  editBtn.dataset.act = 'edit-menu';
+  const shopBtn = hud.button('bag', 'Shop');
+  shopBtn.dataset.act = 'shop-menu';
+  const moveBtn = hud.toolGroup.querySelector<HTMLButtonElement>('[data-tool="look"]')!;
+  moveBtn.removeAttribute('role');
+  moveBtn.removeAttribute('aria-checked');
+  hud.topGroup.append(menuBtn, helpBtn);
   menuBtn.addEventListener('click', () => sheet.toggleOpen());
-  hud.leftGroup.appendChild(menuBtn);
-  hud.leftGroup.appendChild(calmBtn);
+  helpBtn.addEventListener('click', () => sheet.show('help'));
+  beachBtn.addEventListener('click', () => sheet.show('beach'));
 
-  // ambient / TV: controls fade when idle, screen stays awake.
-  // ?tv=1 starts there, sitting on the beach.
+  const profile = document.createElement('div');
+  profile.className = 'hud-profile';
+  profile.innerHTML = icon('profile') + '<span>Guest</span>';
+  hud.root.appendChild(profile);
+
+  const editPanel = document.createElement('div');
+  editPanel.className = 'hud-popup hud-edit';
+  editPanel.setAttribute('role', 'group');
+  editPanel.setAttribute('aria-label', 'Edit tools');
+  editPanel.append(hud.toolGroup, inventory.button, calmBtn);
+  const shopPanel = document.createElement('div');
+  shopPanel.className = 'hud-popup hud-shop';
+  shopPanel.setAttribute('role', 'group');
+  shopPanel.setAttribute('aria-label', 'Shop options');
+  hud.root.append(editPanel, shopPanel);
+
+  const attachPopup = (button: HTMLButtonElement, popup: HTMLElement) => {
+    const setOpen = (on: boolean) => {
+      popup.hidden = !on;
+      button.setAttribute('aria-expanded', String(on));
+    };
+    popup.id = button.dataset.act + '-panel';
+    button.setAttribute('aria-controls', popup.id);
+    setOpen(false);
+    button.addEventListener('click', () => {
+      const on = popup.hidden;
+      setOpen(on);
+      if (on) popup.querySelector('button')?.focus({ preventScroll: true });
+    });
+    window.addEventListener('pointerdown', (event) => {
+      if (!popup.hidden && event.target instanceof Node && !popup.contains(event.target) && !button.contains(event.target)) setOpen(false);
+    });
+    window.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && !popup.hidden) {
+        setOpen(false);
+        button.focus();
+      }
+    });
+    return setOpen;
+  };
+  const showEdit = attachPopup(editBtn, editPanel);
+  const showShop = attachPopup(shopBtn, shopPanel);
+  inventory.button.addEventListener('click', () => {
+    if (inventory.isOpen) showEdit(false);
+  });
+
+  // ambient / TV: controls fade when idle, screen stays awake
   const tv = params.has('tv');
   const ambient = new Ambient();
   ambient.setEnabled(settings.ambient || tv);
 
   // diorama <-> chair (sitting on the sand, looking out to sea)
   const viewBtn = hud.button('chair', 'Sit on the beach');
-  hud.leftGroup.appendChild(viewBtn);
+  hud.rightGroup.append(editBtn);
+  if (ACCOUNTS_ENABLED) hud.rightGroup.append(shopBtn);
+  hud.rightGroup.append(viewBtn, moveBtn, beachBtn);
+  // Undo stays in the right group, always visible: the Edit popup closes on
+  // any outside pointerdown, so Undo would vanish after digging on touch.
+  hud.rightGroup.append(hud.undoBtn);
+  syncMoveButton();
   viewBtn.addEventListener('click', () => cam.toggleMode());
 
   // collapse all toolbars for distraction-free panning around the beach
   const collapseBtn = hud.button('eye', 'Hide toolbars', 'hud-btn hud-collapse');
   collapseBtn.setAttribute('aria-pressed', 'false');
-  hud.leftGroup.appendChild(collapseBtn);
+  collapseBtn.classList.add('hud-corner');
+  hud.root.appendChild(collapseBtn);
   const setCollapsed = (on: boolean) => {
     if (collapsed === on) return;
     collapsed = on;
@@ -933,6 +1016,8 @@ async function boot() {
     collapseBtn.setAttribute('aria-pressed', String(on));
     if (on) {
       inventory.setOpen(false);
+      showEdit(false);
+      showShop(false);
       sheet.hide();
       if (placing) {
         placing = null;
@@ -962,7 +1047,12 @@ async function boot() {
   };
   // the coach card is onboarding: ?nointro / ?smoke (the test scripts) leave it out, like the start screen
   const guide = new BeachGuide(uiRoot, hud.root, (n, l) => hud.button(n, l), guideHost, !(params.has('smoke') || params.has('nointro')));
-  hud.toolGroup.parentElement!.prepend(guide.button);
+  const guideLink = sheet.el.querySelector('[data-act="guide"]')!;
+  const helpActions = document.createElement('div');
+  helpActions.className = 'row actions';
+  guideLink.replaceWith(helpActions);
+  helpActions.append(guide.button, guideLink);
+  guide.button.addEventListener('click', () => sheet.hide());
 
   // the shore bar (top right): who you're visiting, and the way home
   const shoreBar = document.createElement('div');
@@ -1109,6 +1199,10 @@ async function boot() {
       inventory.setOpen(false);
       if (placing) {
         putDown(sx, sy);
+        return;
+      }
+      if (tool === 'castle') {
+        moldCastle(hit);
         return;
       }
       // pressing on a thing: hold still to pick it up (a move or a quick tap digs)
@@ -1279,9 +1373,14 @@ async function boot() {
   const gamepad = new GamepadController(canvas, cam, {
     digStart: (sx, sy) => {
       if (cam.animating) return;
-      if (!pickAt(sx, sy)) return;
+      const hit = pickAt(sx, sy);
+      if (!hit) return;
       if (placing) {
         putDown(sx, sy);
+        return;
+      }
+      if (tool === 'castle') {
+        moldCastle(hit);
         return;
       }
       startDig(sx, sy);
@@ -1633,7 +1732,8 @@ async function boot() {
         redoTargets.length = 0;
         const xfer: Transferable[] = [delta.buffer];
         if (cover) xfer.push(cover.buffer);
-        send({ type: 'setSand', delta, objects, ...(cover ? { cover } : {}) }, xfer);
+        settling = null;
+        send({ type: 'setSand', loadId: ++loadId, delta, objects, ...(cover ? { cover } : {}) }, xfer);
       },
       grid: { nx: grid.nx, ny: grid.ny },
       location: () => beach.id,
@@ -1689,6 +1789,7 @@ async function boot() {
     // back their beach and their neighbors
     let signedInAs: string | null = null;
     account.onChange((u) => {
+      profile.querySelector('span')!.textContent = u?.name || (u ? 'Player' : 'Guest');
       if (u && u.id !== signedInAs) {
         // your beaches first (this device opens the one it had, else home),
         // then its sand and its stretch of shore
@@ -1710,7 +1811,10 @@ async function boot() {
     // another of your beaches opened on this device: the shore moves to it
     let shownBeach: string | null = null;
     acct.onBeach((id) => {
-      if (shownBeach && id && id !== shownBeach) void nv.recentre();
+      if (shownBeach && id && id !== shownBeach) {
+        void nv.recentre();
+        refreshPet();
+      }
       shownBeach = id;
       updateElsewhere();
     });
@@ -1891,7 +1995,25 @@ async function boot() {
     // the leaderboard: the most-starred beaches, to visit and star
     const boardBtn = hud.button('trophy', 'Most-starred beaches');
     boardBtn.dataset.act = 'leaderboard';
-    hud.leftGroup.appendChild(boardBtn);
+    hud.topGroup.appendChild(boardBtn);
+    for (const [id, symbol, label, open] of [
+      ['vending', 'vending', 'Item capsule', () => void vendingMachine?.open()],
+      ['claw', 'claw', 'Claw machine', () => void clawMachine?.open()],
+      ['shop', 'bag', 'Paid shop', () => void shopDialog?.open()],
+    ] as const) {
+      const button = hud.button(symbol, label);
+      button.dataset.act = id;
+      const text = document.createElement('span');
+      text.textContent = label;
+      button.appendChild(text);
+      button.addEventListener('click', () => {
+        showShop(false);
+        if (acct.user) open();
+        else sheet.show();
+      });
+      shopPanel.appendChild(button);
+    }
+
     const board = new Leaderboard(uiRoot, {
       signedIn: () => !!acct.user,
       signIn: () => sheet.show(),
@@ -1918,7 +2040,7 @@ async function boot() {
     // which previews with a picture and opens for anyone, signed in or not
     const shareBtn = hud.button('share', 'Share this beach');
     shareBtn.dataset.act = 'share';
-    hud.leftGroup.appendChild(shareBtn);
+    hud.topGroup.appendChild(shareBtn);
     shareBtn.addEventListener('click', () => void (async () => {
       if (!acct.user) {
         sheet.show();
@@ -1978,7 +2100,6 @@ async function boot() {
     });
     clawMachine = claw;
     claw.onClosed = () => guide.mark('claw');
-    inventory.onClaw = () => (acct.user ? void claw.open() : sheet.show());
     // the shop: paid through Apple / Google in the apps (src/net/shop.ts)
     const shopApi = new ShopApi(acct);
     const shop = new Shop(uiRoot, shopApi, () => {
@@ -1986,7 +2107,6 @@ async function boot() {
       void acct.loadBeaches().catch(() => {});
     });
     shopDialog = shop;
-    inventory.onShop = () => (acct.user ? void shop.open() : sheet.show());
     // back from web checkout (Pay Station adds ?web_order=…): once signed
     // in, wait for Xsolla's webhook to land, then say so and refresh the bag
     let returnedOrder = webOrderFromUrl(location.search);
@@ -2016,7 +2136,6 @@ async function boot() {
         });
       if (u) void settleReturnedOrder();
     });
-    inventory.setClaw(acct.user ? 'play' : 'signin');
     const vending = new VendingMachine(uiRoot, new PullApi(acct), (item, place) => {
       unlockSteamAchievement('VENDING_PULL');
       void loadOwned().then(() => {
@@ -2024,7 +2143,6 @@ async function boot() {
       });
     });
     vendingMachine = vending;
-    inventory.onVending = () => (acct.user ? void vending.open() : sheet.show());
     // digging finds: a good dig can turn up something buried (the server
     // rolls); the dialog offers to put it on the beach or keep it in the bag
     digFindApi = new DigFindApi(acct);
@@ -2036,12 +2154,7 @@ async function boot() {
     refreshOwned = () => {
       void loadOwned();
     };
-    inventory.setVending(acct.user ? 'play' : 'signin');
-    acct.onChange((u) => {
-      inventory.setClaw(u ? 'play' : 'signin');
-      inventory.setVending(u ? 'play' : 'signin');
-      void loadOwned();
-    });
+    acct.onChange(() => void loadOwned());
     // ---- the beach guide and invites (docs/INVITES_GUIDE.md)
     // The panels only signed-in players use (invites, the inbox, the visitor
     // card) load in their own chunk, off the start-up bundle (perf/budget.json).

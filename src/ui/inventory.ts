@@ -1,16 +1,6 @@
 import { icon, itemIcon, type IconName } from './hud';
 import { EXTRAS, isAvailable, type Item } from '../world/items';
 
-/** What's planned but not here yet, shown greyed out so the tray reads as a beginning. */
-// (the shop and the vending machine, once listed here, are both built now)
-const COMING: { name: string; note: string }[] = [];
-
-/** How the claw machine tile behaves: play, ask to sign in, or not here (sandbox). */
-export type ClawState = 'play' | 'signin' | 'none';
-
-/** How the vending machine tile behaves: the same three states. */
-export type VendingState = 'play' | 'signin' | 'none';
-
 /**
  * The bag: a small tray of things you can put on the beach. Pick one, then
  * tap the sand to set it down; tap something already there to pick it back up.
@@ -30,14 +20,6 @@ export class InventoryTray {
   private placed = new Map<string, number>();
   /** how many of each are on your other beaches (as of their last saves) */
   private elsewhere = new Map<string, number>();
-  private claw: ClawState = 'none';
-  /** opens the claw machine (or the sign-in sheet) */
-  onClaw: () => void = () => {};
-  private vending: VendingState = 'none';
-  /** opens the vending machine (or the sign-in sheet) */
-  onVending: () => void = () => {};
-  /** opens the shop (or the sign-in sheet) */
-  onShop: () => void = () => {};
   /** uses an actionable extra from the bag (e.g. tossing a beach snack) */
   onUseExtra: (id: string) => void = () => {};
 
@@ -55,6 +37,7 @@ export class InventoryTray {
 
     this.tray = document.createElement('div');
     this.tray.className = 'inv-tray';
+    this.tray.inert = true;
     this.tray.setAttribute('role', 'dialog');
     this.tray.setAttribute('aria-label', 'Your bag');
     parent.appendChild(this.tray);
@@ -98,18 +81,6 @@ export class InventoryTray {
 
   setElsewhere(m: Map<string, number>): void {
     this.elsewhere = m;
-    this.render();
-  }
-
-  setClaw(state: ClawState): void {
-    if (state === this.claw) return;
-    this.claw = state;
-    this.render();
-  }
-
-  setVending(state: VendingState): void {
-    if (state === this.vending) return;
-    this.vending = state;
     this.render();
   }
 
@@ -157,6 +128,7 @@ export class InventoryTray {
   setOpen(on: boolean): void {
     this.open = on;
     this.tray.classList.toggle('open', on);
+    this.tray.inert = !on;
     this.button.setAttribute('aria-expanded', String(on));
     if (on) this.tray.querySelector<HTMLButtonElement>('.inv-item')?.focus({ preventScroll: true });
   }
@@ -229,63 +201,6 @@ export class InventoryTray {
       });
       grid.appendChild(b);
     }
-    if (this.claw !== 'none') {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'inv-item claw-tile';
-      b.dataset.act = 'claw';
-      b.innerHTML = `${icon('claw')}<b>Claw machine</b><span>${this.claw === 'play' ? 'Free goes' : 'Sign in to play'}</span>`;
-      b.addEventListener('click', () => {
-        this.setOpen(false);
-        this.onClaw();
-      });
-      grid.appendChild(b);
-    } else {
-      const d = document.createElement('div');
-      d.className = 'inv-item soon';
-      d.innerHTML = `<b>Claw machine</b><span>Coming soon</span>`;
-      grid.appendChild(d);
-    }
-    if (this.vending !== 'none') {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'inv-item vending-tile';
-      b.dataset.act = 'vending';
-      b.innerHTML = `${icon('vending')}<b>Vending machine</b><span>${this.vending === 'play' ? 'A free ball a day' : 'Sign in to play'}</span>`;
-      b.addEventListener('click', () => {
-        this.setOpen(false);
-        this.onVending();
-      });
-      grid.appendChild(b);
-    } else {
-      const d = document.createElement('div');
-      d.className = 'inv-item soon';
-      d.innerHTML = `<b>Vending machine</b><span>Coming soon</span>`;
-      grid.appendChild(d);
-    }
-    if (this.claw !== 'none') {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'inv-item shop-tile';
-      b.dataset.act = 'shop';
-      b.innerHTML = `${icon('bag')}<b>Shop</b><span>${this.claw === 'play' ? 'Beaches and more' : 'Sign in to shop'}</span>`;
-      b.addEventListener('click', () => {
-        this.setOpen(false);
-        this.onShop();
-      });
-      grid.appendChild(b);
-    } else {
-      const d = document.createElement('div');
-      d.className = 'inv-item soon';
-      d.innerHTML = `<b>Shop</b><span>In the app</span>`;
-      grid.appendChild(d);
-    }
-    for (const c of COMING) {
-      const d = document.createElement('div');
-      d.className = 'inv-item soon';
-      d.innerHTML = `<b>${c.name}</b><span>Coming soon</span>`;
-      grid.appendChild(d);
-    }
     this.tray.appendChild(grid);
     this.tray.appendChild(this.foundSection());
     // things you own that don't go on the sand (an extra beach, beach snacks)
@@ -302,13 +217,13 @@ export class InventoryTray {
           this.setOpen(false);
           this.onUseExtra(x.id);
         });
-        grid.insertBefore(b, grid.querySelector('.claw-tile, .soon'));
+        grid.appendChild(b);
       } else {
         const b = document.createElement('div');
         b.className = `inv-item extra rarity-${x.rarity}`;
         b.dataset.extra = x.id;
         b.innerHTML = `${icon(x.id as IconName)}<b>${x.name}</b><span>${n > 1 ? `${n} owned` : 'yours'}</span>`;
-        grid.insertBefore(b, grid.querySelector('.claw-tile, .soon'));
+        grid.appendChild(b);
       }
     }
   }

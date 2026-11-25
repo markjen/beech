@@ -1,5 +1,5 @@
 import type { GridSpec } from '../config';
-import type { BrushMode, SimFlags, SimStats } from './beachSim';
+import type { BrushMode, CastleShape, SimFlags, SimStats } from './beachSim';
 import type { ObjectState, PlacedObject } from './objects';
 
 /** Config sections the debug panel may change live (they're mirrored into the worker). */
@@ -10,6 +10,7 @@ export type ToWorker =
   | { type: 'init'; grid: GridSpec; seed: number; flags: Partial<SimFlags> }
   | { type: 'brush'; phase: 'start' | 'move'; x: number; y: number; r: number; mode: BrushMode }
   | { type: 'brush'; phase: 'end' | 'cancel' }
+  | { type: 'castle'; x: number; y: number; shape: CastleShape }
   | { type: 'undo' }
   | { type: 'redo' }
   | { type: 'reset' }
@@ -21,7 +22,7 @@ export type ToWorker =
   /** ask for the player's sand (minus the rest beach) for saving */
   | { type: 'getSand'; id: number }
   /** replace the sand with a saved beach (same grid size) */
-  | { type: 'setSand'; delta: Float32Array; objects?: PlacedObject[]; cover?: Float32Array }
+  | { type: 'setSand'; loadId?: number; delta: Float32Array; objects?: PlacedObject[]; cover?: Float32Array }
   /** replace the whole beach with an imported one, as one undo step */
   | { type: 'importBeach'; delta: Float32Array; objects: PlacedObject[]; cover?: Float32Array }
   /** put an inventory item on the beach (undoable) */
@@ -64,6 +65,7 @@ export type FromWorker =
       objPos: Float32Array;
       /** bumped when things are added or removed */
       rosterVersion: number;
+      loadId: number;
       /** what's on the beach: only sent when rosterVersion changes */
       roster?: PlacedObject[];
     } & Omit<FrameInfo, 'objects'>);

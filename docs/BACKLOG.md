@@ -155,6 +155,13 @@ _(nothing right now)_
 
 ## Done (recent)
 
+- [x] **HUD and mobile menus** (#48, #49): grouped right-side controls,
+  a help panel, separate beach settings, and scrollable bag and shop.
+- [x] **Sandcastle molds** (#50): round and square towers shaped from the
+  beach terrain, with existing sand and placement tools for customization.
+- [x] **Adjacent beach editing** (#68): edit across linked beaches you own
+  from one view.
+
 - [x] **Free item: footprints** (2026-11-24, PR #81): a trail of
   footprints pressed into the sand — free and unlimited, kind
   `footprints`, behaviour `fixed`, 0.5–2.0 m, 3 variants, darker

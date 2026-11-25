@@ -291,7 +291,7 @@ export class Account {
     return id ? `/api/beaches/mine/${id}/sand` : '/api/beach';
   }
 
-  async loadBeach(beachId?: string): Promise<SavedBeach | null> {
+  async loadBeach(beachId?: string | null): Promise<SavedBeach | null> {
     const res = await this.call(this.sandPath(beachId));
     if (res.status === 404) return null;
     if (!res.ok) throw new ApiError(res.status, 'could not load your beach');

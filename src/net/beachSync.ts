@@ -34,7 +34,7 @@ export interface SyncHost {
 /**
  * Keeps the signed-in person's beach saved: after strokes (debounced), every
  * so often while things change, and when the app goes to the background.
- * Last write wins: one beach per person.
+ * Each beach saves independently.
  */
 export class BeachSync {
   state: SyncState = 'idle';
@@ -134,10 +134,10 @@ export class BeachSync {
   private async save(keepalive: boolean): Promise<void> {
     if (!this.account.user) return;
     const forUser = this.account.user.id;
+    const forBeach = this.account.beachId;
     window.clearTimeout(this.timer);
     this.set('saving');
     try {
-      const forBeach = this.account.beachId;
       // the sim still shows another beach (a switch is loading it in):
       // this sand isn't forBeach's, so don't write it under that id
       if (this.simBeach !== forBeach) return;
@@ -146,15 +146,19 @@ export class BeachSync {
       // switched accounts or beaches mid-save: this sand isn't theirs
       if (this.account.user?.id !== forUser || this.account.beachId !== forBeach || this.simBeach !== forBeach)
         return;
-      this.savedAt = await this.account.saveBeach(
+      const items = countItems(objects);
+      const savedAt = await this.account.saveBeach(
         bytes,
         this.host.location(),
         this.host.grid.nx,
         this.host.grid.ny,
         keepalive,
-        countItems(objects),
+        items,
         this.epoch,
       );
+      if (this.account.user?.id !== forUser || this.account.beachId !== forBeach) return;
+      this.savedAt = savedAt;
+      if (this.account.beach) Object.assign(this.account.beach, { updatedAt: savedAt, items });
       this.dirty = false;
       const dropped = objectsToSave(objects).dropped;
       if (dropped !== this.dropped) {
@@ -163,6 +167,7 @@ export class BeachSync {
       }
       this.set('saved');
     } catch (e) {
+      if (this.account.user?.id !== forUser || this.account.beachId !== forBeach) return;
       if (e instanceof ApiError && e.status === 409) {
         // a checkpoint was restored onto this beach since it loaded here:
         // don't save the old sand over it; load the restored beach instead

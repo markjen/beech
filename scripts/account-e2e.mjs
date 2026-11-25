@@ -56,6 +56,7 @@ check(true, 'first save created the beach on the server');
 await page.evaluate(() => window.__beech.sheet.hide());
 
 // pick a beach and dig
+await page.click('[data-act="edit-menu"]');
 await page.click('button[data-tool="sand"]');
 await page.evaluate(() => window.__beech.setBeach('piha'));
 await page.mouse.move(300, 560);
@@ -92,7 +93,7 @@ check((await page.evaluate(() => window.__beech.beach().id)) === 'piha', 'and it
 check((await page.evaluate(() => window.__beech.account().user?.name)) === 'tester', 'still signed in');
 
 // the claw machine: one free go, the prize goes in the bag and onto the beach
-await page.click('button[data-tool="place"]');
+await page.click('[data-act="shop-menu"]');
 await page.click('button[data-act="claw"]');
 await page.waitForSelector('.claw.open .claw-go:not([disabled])', { timeout: 10000 });
 check((await page.getAttribute('.claw .guide-link', 'href'))?.endsWith('/guide#claw'), 'the machine links to its odds in the guide');
@@ -135,10 +136,11 @@ await page.waitForTimeout(800);
 check((await countOf(prizeId)) === 1, 'and you can only put down as many as you own');
 const again = await page.evaluate(() => window.__beech.account().fetch('/api/pulls/daily', { method: 'POST' }).then((r) => r.status));
 check(again === 409, 'then the claw rests');
+await page.click('[data-act="edit-menu"]');
 await page.click('button[data-tool="sand"]');
 
 // the shop (a development build uses a pretend store): buy an extra beach and a parasol
-await page.click('button[data-tool="place"]');
+await page.click('[data-act="shop-menu"]');
 await page.click('button[data-act="shop"]');
 await page.waitForSelector('.shop.open .shop-buy[data-product="beach_1"]', { timeout: 10000 });
 check((await page.$$('.shop-item')).length >= 8, 'the shop lists its products');
@@ -151,10 +153,11 @@ check(true, `bought an extra beach (allowance ${allowanceBefore} -> ${await page
 await page.click('.shop-buy[data-product="item_parasol"]');
 await page.waitForFunction(() => document.querySelector('.shop-note')?.textContent?.includes('Parasol: added'), null, { timeout: 15000 });
 await page.click('.shop .claw-close');
+await page.click('[data-act="edit-menu"]');
 await page.click('button[data-tool="place"]');
 await page.waitForSelector('.inv-tray.open', { timeout: 5000 });
 check((await page.textContent('.inv-tray'))?.includes('Parasol'), 'the parasol is in the bag');
-await page.click('button[data-tool="place"]');
+await page.click('[data-act="edit-menu"]');
 await page.click('button[data-tool="sand"]');
 
 // beach files: import a designed beach (more parasols than the bag holds), then export it
@@ -178,7 +181,7 @@ await page.click('button[data-tool="sand"]');
       ],
     }),
   );
-  await page.evaluate(() => window.__beech.sheet.show());
+  await page.evaluate(() => window.__beech.sheet.show('beach'));
   await page.waitForTimeout(300);
   const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.click('button[data-act="import"]')]);
   await chooser.setFiles(file);
@@ -198,7 +201,7 @@ await page.click('button[data-tool="sand"]');
   await page.waitForTimeout(800);
   const back = await page.evaluate(() => window.__beech.info().objects.filter((o) => !o.wild).map((o) => o.item).sort().join());
   check(back === 'parasol,rock', `the import was saved and came back after a reload (${back})`);
-  await page.evaluate(() => window.__beech.sheet.show());
+  await page.evaluate(() => window.__beech.sheet.show('beach'));
   await page.waitForTimeout(300);
   const [dl] = await Promise.all([page.waitForEvent('download'), page.click('button[data-act="export"]')]);
   const out = path.join(dir, 'out.beach.json');
