@@ -767,10 +767,10 @@ export class NeighborView {
     this.store.edited(beachId, false);
   }
 
-  placeObject(beachId: string, obj: Omit<PlacedObject, 'id'>): PlacedObject | null {
+  placeObject(beachId: string, obj: Omit<PlacedObject, 'id'>, group?: string): PlacedObject | null {
     const sim = this.sim(beachId);
     if (!sim) return null;
-    const placed = sim.placeObject(obj);
+    const placed = sim.placeObject(obj, group);
     sim.stepEdit(1 / SIM_HZ);
     this.store.edited(beachId);
     return placed;

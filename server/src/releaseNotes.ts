@@ -44,6 +44,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       'Dig and build across linked beaches you own without opening each one in Beach settings.',
       'The bag no longer slides up underneath the beach name at the top, and the beach info moved from the floating “i” into the beach name itself — tap it while visiting to see whose beach it is and get home.',
       'Beach names no longer float all over the sand: while you’re looking at someone else’s beach they stack under the beach name at the top left, with the way home and the feed-pet button right there.',
+      'Footprints are now a trail you draw: pick them from the bag and drag across the sand, and prints follow the path you draw, one step after another. Undo takes the whole trail back at once.',
     ],
   },
   {

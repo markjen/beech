@@ -1017,6 +1017,12 @@ here: it needs the service's URL on the web OAuth client.
   subsystem rather than an item, and stays a backlog to-do. Renders
   are in `docs/items/renders/` (footprints, full beach, contact
   sheet).
+- **Footprints: drag to leave a trail** (2026-11-25): dragging with
+  footprints in hand lays one trail per stride along the path, each
+  running in the direction of travel with its prints alternating
+  left and right across the joins, up to 100 trails per drag; undo
+  takes the whole drag back as one step. A render of a dragged trail
+  is in `docs/items/renders/footprints-drag.png`.
 
 ## Verification
 

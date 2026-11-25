@@ -4,7 +4,7 @@ import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { Scene } from '@babylonjs/core/scene';
 
 import { Ambience } from './audio/ambience';
-import { BEACH_STORE, GRID_TIERS, SIM_HZ, WAVES, WORLD_SIZE_X, type QualityTier } from './config';
+import { BEACH_STORE, FOOTPRINTS_PER_STROKE_MAX, GRID_TIERS, SIM_HZ, WAVES, WORLD_SIZE_X, type QualityTier } from './config';
 import { CameraController } from './input/cameraController';
 import { Gestures, HOLD_SLOP_PX, LONG_PRESS_MS } from './input/gestures';
 import { SandPicker } from './input/sandPicker';
@@ -42,6 +42,7 @@ import { Shop } from './ui/shop';
 import { ShopApi, webOrderFromUrl, withoutWebOrderParams } from './net/shop';
 import { VendingMachine } from './ui/vendingMachine';
 import { DEFAULT_SIZE, ITEMS, rollPlacement, type Item } from './world/items';
+import { footprintDrag, footprintFarSide, type FootprintStroke } from './world/footprints';
 import { ACCOUNTS_ENABLED, Account, AnimalsApi, ApiError, CheckpointApi, DigFindApi, GiftApi, GuideApi, InboxApi, PullApi, ReferralApi, type ShoreBeach } from './net/account';
 import type { InboxPanel } from './ui/inbox';
 import type { VisitorCard } from './ui/visitorCard';
@@ -432,6 +433,12 @@ async function boot() {
   let brushMode: BrushMode = 'dig';
   /** an inventory item in hand: taps set it down instead of digging */
   let placing: Item | null = null;
+  /** A footprints drag in progress: the stroke so far, for laying trails
+   * along the path. Cleared when the pointer lifts, the tool changes, or
+   * the item in hand changes. */
+  let footprintsStroke: (FootprintStroke & { group: string }) | null = null;
+  let footprintsSize01 = DEFAULT_SIZE;
+  let footprintStrokeSeq = 0;
   let digging = false;
   let strokeOpen = false;
   /** a "before big edit" snapshot has been taken (or tried) since the last save */
@@ -929,6 +936,7 @@ async function boot() {
     }
     if (tool !== 'look') lastDirt = id;
     placing = null;
+    footprintsStroke = null;
     inventory.deselect();
     placeBar.show(null, DEFAULT_SIZE);
     syncLookOnly();
@@ -946,6 +954,7 @@ async function boot() {
   // the bag: rocks and driftwood (free, unlimited) for now
   const inventory = new InventoryTray((n, l, c) => hud.button(n, l, c), hud.root, ITEMS, (item) => {
     placing = item;
+    footprintsStroke = null;
     syncLookOnly();
     syncToolUI();
     placeBar.show(item, DEFAULT_SIZE);
@@ -1020,28 +1029,71 @@ async function boot() {
     }
     return false;
   };
+  /** Set one item down at a sim point on a beach (live or one of yours
+   * beside it). `group` ties placements of one drag stroke together, so
+   * they undo and redo as one step. Returns false when nothing went down. */
+  const placeItem = (target: EditTarget, x: number, y: number, r: { size: number; variant: number; angle: number }, group?: string): boolean => {
+    if (!placing) return false;
+    if (!inventory.canPlace(placing.id)) {
+      // all of them are already on the beach
+      haptics.impact('light');
+      return false;
+    }
+    if (!hasRoom(target)) return false;
+    const obj = { kind: placing.kind, item: placing.id, x, y, ...r };
+    if (isLive(target.beachId)) {
+      send({ type: 'placeObject', obj, ...(group ? { group } : {}) });
+      markDirty();
+    } else {
+      if (!neighbors?.placeObject(target.beachId, obj, group)) return false;
+    }
+    recordEditTarget(target);
+    guide.mark('place');
+    if (placing.kind === 'rock' || placing.kind === 'driftwood') audio.thunk(placing.kind === 'rock');
+    return true;
+  };
   const putDown = (sx: number, sy: number) => {
     if (!placing) return;
     const hit = pickAt(sx, sy);
     if (!hit) return;
     const p = toSim(hit);
-    if (!inventory.canPlace(placing.id)) {
-      // all of them are already on the beach
-      haptics.impact('light');
-      return;
-    }
-    if (!hasRoom(hit.target)) return;
     const r = rollPlacement(placing, sizeOf(placing.id));
-    if (isLive(hit.target.beachId)) {
-      send({ type: 'placeObject', obj: { kind: placing.kind, item: placing.id, x: p.x, y: p.y, ...r } });
-      markDirty();
-    } else {
-      if (!neighbors?.placeObject(hit.target.beachId, { kind: placing.kind, item: placing.id, x: p.x, y: p.y, ...r })) return;
+    if (!placeItem(hit.target, p.x, p.y, r)) return;
+    if (placing.id === 'footprints') {
+      // the tap lays the first trail; dragging from here extends it
+      footprintsStroke = {
+        group: `footprints-${++footprintStrokeSeq}`,
+        anchor: { x: p.x, y: p.y },
+        farSide: footprintFarSide(r.variant, false),
+        count: 1,
+      };
+      footprintsSize01 = sizeOf(placing.id);
     }
-    recordEditTarget(hit.target);
-    guide.mark('place');
-    if (placing.kind === 'rock' || placing.kind === 'driftwood') audio.thunk(placing.kind === 'rock');
     haptics.impact(placing.kind === 'rock' ? 'medium' : 'light');
+  };
+
+  /** Drag with footprints in hand: lay trails along the path, one stride
+   * at a time, until the pointer catches up or the stroke is full. */
+  const dragFootprints = (sx: number, sy: number) => {
+    if (!placing || placing.id !== 'footprints' || !footprintsStroke) return;
+    const hit = pickAt(sx, sy);
+    if (!hit) return;
+    const p = toSim(hit);
+    const { placements, stroke } = footprintDrag(
+      footprintsStroke,
+      p,
+      footprintsSize01,
+      (size01) => rollPlacement(placing!, size01),
+      FOOTPRINTS_PER_STROKE_MAX,
+    );
+    for (const s of placements) {
+      if (!placeItem(hit.target, s.x, s.y, s, footprintsStroke.group)) {
+        // the beach is full (or the sim is gone): the trail ends here
+        footprintsStroke = null;
+        return;
+      }
+    }
+    footprintsStroke = placements.length ? { ...stroke, group: footprintsStroke.group } : footprintsStroke;
   };
 
   // the rail, top to bottom: inbox (added once signed-in builds load it),
@@ -1381,6 +1433,10 @@ async function boot() {
       startDig(sx, sy);
     },
     digMove: (sx, sy) => {
+      if (placing?.id === 'footprints' && footprintsStroke) {
+        dragFootprints(sx, sy);
+        return;
+      }
       if (press) {
         // moved before the long-press: it's a dig after all
         if (Math.hypot(sx - press.sx, sy - press.sy) > HOLD_SLOP_PX) {
@@ -1410,6 +1466,8 @@ async function boot() {
       if (digging) strokeTo(sx, sy);
     },
     digEnd: () => {
+      // the pointer lifted: a footprints trail ends here
+      footprintsStroke = null;
       if (press) {
         // a quick tap on a thing: dig there, as a tap anywhere else does
         const p = press;
@@ -1493,6 +1551,7 @@ async function boot() {
       return true;
     },
     digCancel: () => {
+      footprintsStroke = null;
       if (press) {
         window.clearTimeout(press.timer);
         press = null;
@@ -2003,6 +2062,7 @@ async function boot() {
       if (kind === 'fenced') {
         fenced = true;
         placing = null;
+        footprintsStroke = null;
         showFencedBanner();
       } else if (kind === 'restored') {
         showToast(uiRoot, 'This beach was restored from a checkpoint on another device');

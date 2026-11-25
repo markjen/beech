@@ -1301,6 +1301,7 @@ export class BeachSim {
     if (!e) return false;
     if (e.swap) return this.applySwap(e, -1);
     if (e.obj) this.applyObject(e.obj, -1);
+    if (e.added) this.applyAdded(e.added, -1);
     if (e.removed) this.applyRemoved(e.removed, -1);
     if (e.w > 0 && e.h > 0) this.scheduleDelta(e, -1, ease);
     return true;
@@ -1312,6 +1313,7 @@ export class BeachSim {
     if (!e) return false;
     if (e.swap) return this.applySwap(e, 1);
     if (e.obj) this.applyObject(e.obj, 1);
+    if (e.added) this.applyAdded(e.added, 1);
     if (e.removed) this.applyRemoved(e.removed, 1);
     if (e.w > 0 && e.h > 0) this.scheduleDelta(e, 1, ease);
     return true;
@@ -1327,10 +1329,22 @@ export class BeachSim {
 
   // ---------------------------------------------------------------- objects
 
-  /** Place an item on the beach (undoable). */
-  placeObject(o: Omit<PlacedObject, 'id'>): PlacedObject {
+  /** Place an item on the beach (undoable). Placements that share a `group`
+   * — one drag stroke laying footprints — land in a single undo entry, so
+   * undo takes the whole trail back at once instead of one stride at a time. */
+  placeObject(o: Omit<PlacedObject, 'id'>, group?: string): PlacedObject {
     if (this.stroke) this.endStroke();
     const data = this.objects.add(o);
+    if (group !== undefined) {
+      const top = this.undo.top();
+      if (top?.added && top.group === group) {
+        top.added.push({ ...data });
+        this.undo.clearRedo();
+        return data;
+      }
+      this.undo.push({ i0: 0, j0: 0, w: 0, h: 0, delta: new Float32Array(0), added: [{ ...data }], group });
+      return data;
+    }
     this.undo.push({ i0: 0, j0: 0, w: 0, h: 0, delta: new Float32Array(0), obj: { op: 'add', data: { ...data } } });
     return data;
   }
@@ -1386,6 +1400,15 @@ export class BeachSim {
       for (const o of removed) this.objects.add({ ...o });
     } else {
       for (const o of removed) this.objects.remove(o.id);
+    }
+  }
+
+  /** Undo of a grouped placement takes all its objects off; redo puts them back. */
+  private applyAdded(added: PlacedObject[], sign: number): void {
+    if (sign < 0) {
+      for (const o of added) this.objects.remove(o.id);
+    } else {
+      for (const o of added) this.objects.add({ ...o });
     }
   }
 
