@@ -132,9 +132,8 @@ const code = (await api('/neighbors', {}, token)).body.code;
 await ben.evaluate((c) => window.__beech.neighbors().visit(c), code);
 await ben.waitForFunction(() => window.__beech.neighbors().snapshot(0) !== null, null, { timeout: 20000 });
 const seen0 = await ben.evaluate(() => window.__beech.neighbors().snapshot(0).updatedAt);
-// Trigger Ana's heartbeat now instead of waiting up to 20s for HERE_EVERY_MS
-await page.evaluate(() => window.__beech.sync().beat());
-await page.waitForFunction(() => window.__beech.sync().watched, null, { timeout: 10000 }).catch(() => {});
+// Ana learns about the visitor on her next scheduled heartbeat (every 20s).
+await page.waitForFunction(() => window.__beech.sync().watched, null, { timeout: 30000 });
 check(await page.evaluate(() => window.__beech.sync().watched), "Ana's app knows someone is watching");
 await page.evaluate(() => window.__beech.setRail(true));
 await page.click('[data-act="dirt"]');

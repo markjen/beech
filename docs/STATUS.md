@@ -1183,10 +1183,9 @@ the HUD layout in the section above.
   GHA layer caching; `.github/workflows/perf.yml` caches the Playwright
   Chromium binary.
 - **E2E tests (`scripts/lib/e2e.mjs`, `scripts/run-e2e.mjs`, `npm run e2e`):**
-  all E2E scripts pass `quality=low`, plus `?norender&fast` when not capturing
-  screenshots (skips continuous SwiftShader WebGL draws while keeping CPU
-  picking, camera matrices, sim worker, sync and UI live, and speeds up the
-  claw animation). `BeachSync.beat()` is exposed so `live-e2e.mjs` doesn't wait
-  20 s for the heartbeat timer. `npm run e2e` runs all 9 server E2E scripts in
-  parallel over one shared Chromium server.
-
+  the default run uses low quality with rendering enabled. Set
+  `E2E_RENDER=0` to skip continuous WebGL draws and speed up the claw for
+  runs without screenshots. The live-viewer test waits for the scheduled
+  heartbeat. `npm run e2e` runs all 9 server E2E scripts over one shared
+  Chromium server, with 3 concurrent scripts by default. Set `E2E_JOBS` or
+  pass `--jobs` to choose a positive integer concurrency limit.

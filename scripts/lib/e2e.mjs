@@ -1,9 +1,9 @@
 // Shared helpers for the browser E2E scripts (scripts/*-e2e.mjs).
 // - Always forces quality=low so fresh contexts skip the startup benchmark and
 //   stay on the 192x192 grid.
-// - Unless screenshots are requested (or E2E_RENDER=1), adds ?norender&fast so
-//   Babylon skips continuous SwiftShader WebGL draws while CPU picking, camera
-//   matrices, sim worker, sync, and UI all run normally (~15-25x faster).
+// - E2E_RENDER=0 opts into ?norender&fast when no screenshots are requested.
+//   This skips continuous SwiftShader WebGL draws while keeping CPU picking,
+//   camera matrices, the sim worker, sync, and UI live.
 // - When invoked through scripts/run-e2e.mjs, connects to a shared Chromium
 //   server via E2E_WS_ENDPOINT instead of launching a new browser per script.
 import { createRequire } from 'node:module';
@@ -51,14 +51,14 @@ export async function openBrowser() {
 }
 
 /**
- * Append E2E speed flags (quality=low, plus norender&fast unless screenshots
- * are requested or E2E_RENDER=1) to an app URL without duplicating params.
+ * Set low quality by default. E2E_RENDER=0 enables the faster test path
+ * when screenshots are disabled.
  */
 export function e2eUrl(base, query = 'nointro&fixedres&seed=1&nofinds', { shots = false } = {}) {
   const parts = query.replace(/^\?/, '').split('&').filter(Boolean);
   const has = (k) => parts.some((p) => p === k || p.startsWith(`${k}=`));
   if (!has('quality')) parts.push('quality=low');
-  if (!shots && !process.env.E2E_RENDER) {
+  if (!shots && process.env.E2E_RENDER === '0') {
     if (!has('norender')) parts.push('norender');
     if (!has('fast')) parts.push('fast');
   }

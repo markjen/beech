@@ -22,15 +22,24 @@ const ALL = [
   'live-e2e',
 ];
 
-let jobs = Math.max(1, Number(process.env.E2E_JOBS ?? 3));
+let jobCount = process.env.E2E_JOBS ?? '3';
 const filters = [];
 for (let i = 2; i < process.argv.length; i++) {
   const a = process.argv[i];
-  if ((a === '--jobs' || a === '-j') && process.argv[i + 1]) {
-    jobs = Math.max(1, Number(process.argv[++i]));
-  } else if (!a.startsWith('-')) {
+  if (a === '--jobs' || a === '-j') {
+    jobCount = process.argv[++i];
+  } else if (a.startsWith('-')) {
+    console.error(`Unknown E2E option: ${a}`);
+    process.exit(2);
+  } else {
     filters.push(a);
   }
+}
+
+const jobs = Number(jobCount);
+if (!Number.isSafeInteger(jobs) || jobs < 1) {
+  console.error('E2E job count must be a positive integer (--jobs or E2E_JOBS).');
+  process.exit(2);
 }
 
 const scripts = filters.length ? ALL.filter((s) => filters.some((f) => s.includes(f))) : ALL;
