@@ -67,9 +67,18 @@ resource "google_sql_database_instance" "beech_db" {
     disk_autoresize   = true
     availability_type = "ZONAL"
 
+    # Daily automated backups at 03:00 UTC, with seven kept. Retain
+    # seven days of transaction logs for point-in-time recovery.
     backup_configuration {
-      enabled    = true
-      start_time = "03:00"
+      enabled                        = true
+      start_time                     = "03:00"
+      point_in_time_recovery_enabled = true
+      transaction_log_retention_days = 7
+
+      backup_retention_settings {
+        retained_backups = 7
+        retention_unit   = "COUNT"
+      }
     }
   }
 

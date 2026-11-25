@@ -197,8 +197,12 @@ Behind a TLS-inspecting proxy (like the agent sandbox), build with
 ## Operations
 
 - **Logs:** Cloud Run → beech → Logs (stdout).
-- **Backups:** daily Cloud SQL backups (configured above). Enable
-  point-in-time recovery once there are real players.
+- **Backups:** Terraform configures daily Cloud SQL backups at 03:00 UTC
+  and retains seven backups. Applying this configuration enables
+  point-in-time recovery with seven days of transaction log retention.
+  The available restore window grows as logs accumulate. Check the live
+  configuration with `gcloud sql instances describe beech-db --format='yaml(settings.backupConfiguration)'`
+  and check backup status with `gcloud sql backups list --instance=beech-db`.
 - **Abuse:** add Cloud Armor rate limiting on `/api/*` once you're behind a
   load balancer, or a per-IP limit in the app.
 - **Scaling:** raise `--max-instances` and the Cloud SQL tier. Each

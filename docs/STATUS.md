@@ -965,3 +965,5 @@ prompt, JSON Schema and sample asset.
   unbaited wild visit rolls, 35% of visits are an offshore dolphin cruising
   alongshore in deep water (`depth >= 0.6 m`) with periodic parabolic breaching
   arcs and nose pitch; `?debug=1` adds **Spawn dolphin**.
+
+- **Cloud SQL recovery** (2026-11-25): Terraform enables point-in-time recovery with seven days of transaction logs and seven daily backups. Production takes on these settings when the configuration is applied.
