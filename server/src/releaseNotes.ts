@@ -20,7 +20,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     title: 'Visitors, your inbox, new controls, and sandcastle molds',
     changes: [
       'The beach guide (the compass) now keeps its how-tos in the web guide. In the game, you’ll see the checklist and your progress.',
-      'Visitors can leave something: a rating in shells, a note, or a gift from their bag, from “leave something” next to the beach’s name (the “i” at the bottom).',
+      'Visitors can leave something: a rating in shells, a note, or a gift from their bag, from “leave something” next to the beach’s name (tap the name, top left).',
       'Your inbox (the envelope, top right) shows who visited and what they left, gifts, neighbor requests, stars and ratings. Say thanks, report a note or block someone from there.',
       'Someone who signs up from a link to your beach counts as your invite.',
       'Edit any of your beaches you can see. Dig, build, clear or drag things across the seam, and each beach saves as you play.',
@@ -30,6 +30,8 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       'The bag and paid shop now fit on short phone screens and scroll to the last item.',
       'Mold round or square sandcastle towers from Edit and use the sand tools to build walls or dig a moat.',
       'Dig and build across linked beaches you own without opening each one in Beach settings.',
+      'The bag no longer slides up underneath the beach name at the top, and the beach info moved from the floating “i” into the beach name itself — tap it while visiting to see whose beach it is and get home.',
+      'Beach names no longer float all over the sand: while you’re looking at someone else’s beach they stack under the beach name at the top left, with the way home and the feed-pet button right there.',
     ],
   },
   {

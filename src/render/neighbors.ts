@@ -107,8 +107,6 @@ export class NeighborView {
   state: Neighbors | null = null;
   /** the beach you're visiting (by code), or null when at home */
   visiting: ShoreBeach | null = null;
-  /** "⌂ my beach" from the viewing-mode info card */
-  onHome?: () => void;
   /** fired when an edited owned neighbor's items or save state change */
   onOwnedChanged?: () => void;
   /** fired when saving an edited owned neighbor hits a terminal error or external restore */
@@ -127,7 +125,7 @@ export class NeighborView {
   private chairView = false;
   private pollTimer = 0;
   private win: [number, number] = [0, 0];
-  /** the viewing-mode info control: the "i" button and its card */
+  /** the viewing-mode info: the card tucked under the top-left header */
   private readonly shoreInfo: ShoreInfo;
   /** a direction where the whole world has been walked (the shore came round) */
   private exhausted = new Set<Side>();
@@ -146,9 +144,20 @@ export class NeighborView {
     private readonly account: Account,
     private readonly ownRenderer?: BeachRenderer,
     private readonly seed = 1,
+    opts?: {
+      /** where the viewing-mode info card mounts, under the top-left header */
+      infoSlot?: HTMLElement;
+      /** the header button, pulsed when the viewer tries to dig here */
+      infoHeader?: HTMLElement;
+      /** told whenever the info card opens or closes */
+      onInfoToggle?: (open: boolean) => void;
+    },
   ) {
     this.api = new NeighborApi(account);
-    this.shoreInfo = new ShoreInfo(uiRoot, { onHome: () => this.onHome?.() });
+    this.shoreInfo = new ShoreInfo(uiRoot, opts?.infoSlot ?? uiRoot, {
+      header: opts?.infoHeader,
+      onToggle: opts?.onInfoToggle,
+    });
   }
 
   onChange(fn: (n: Neighbors | null) => void): void {
@@ -237,9 +246,30 @@ export class NeighborView {
     return isViewingMode(!!this.visiting, this.anyOwnVisible);
   }
 
-  /** Point at the "i" button: the viewer tried to dig on someone else's beach. */
+  /**
+   * Away from home: the view is on someone else's beach (visiting, or
+   * scrolled past the seam). The name tags belong in the header card
+   * here too, not floating over the sand — viewing is the stricter case
+   * where your own beach has left the window entirely. Your own other
+   * beaches don't count as away: you're still home on those.
+   */
+  get away(): boolean {
+    if (this.visiting) return true;
+    const i = this.nearestIndex(this.cam.focusX);
+    if (i === 0) return false;
+    const b = this.beachAt(i);
+    return !b || !this.ownedBeach(b);
+  }
+
+  /** Point at the header: the viewer tried to dig on someone else's beach. */
   nudgeInfo(): void {
     this.shoreInfo.nudge();
+  }
+
+  /** The header's info section: open or closed. Only shown while away from home. */
+  toggleInfo(): void {
+    if (!this.shoreInfo.isVisible) return;
+    this.shoreInfo.setOpen(!this.shoreInfo.isOpen);
   }
 
   /** How many beaches the shore has each way (for tests and the UI). */
@@ -602,6 +632,9 @@ export class NeighborView {
     const objects = new ObjectView(this.scene, renderer, x);
     const label = document.createElement('div');
     label.className = 'neighbor-tag';
+    // hidden until the next frame places it: a fresh tag must not flash
+    // over the sand for a frame while the view is away from home
+    label.style.display = 'none';
     label.innerHTML = `<span class="name"></span>`;
     label.querySelector('.name')!.textContent = this.title(e.beach);
     const yours = document.createElement('span');
@@ -1196,10 +1229,11 @@ export class NeighborView {
       this.shoreInfo.setVisible(false);
       return;
     }
-    // viewing mode: the floating name tags go away and the beach info
-    // lives behind the "i" button at the bottom instead
-    const viewing = this.viewing;
-    this.shoreInfo.setVisible(viewing);
+    // away from home, the floating name tags go away and the beach info
+    // lives under the top-left header instead — viewing is the stricter
+    // case, where your own beach has left the window entirely
+    const stacked = this.viewing || this.away;
+    this.shoreInfo.setVisible(stacked);
     const engine = this.scene.getEngine();
     const cam = this.scene.activeCamera!;
     const vp = cam.viewport.toGlobal(engine.getRenderWidth(), engine.getRenderHeight());
@@ -1207,14 +1241,14 @@ export class NeighborView {
     const transform = this.scene.getTransformMatrix();
     const identity = Matrix.IdentityReadOnly;
     // the HUD the name tags must not cover: when collapsed, only the subtle
-    // restore button stays visible; otherwise avoid the place card, shore bar,
+    // restore button stays visible; otherwise avoid the top-left cluster
     // and both bottom HUD clusters. Measure at most every 250 ms to avoid
     // per-frame reflow.
     if (now - this.keepOutAt > 250) {
       this.keepOutAt = now;
       const sel = this.uiRoot.classList.contains('ui-collapsed')
         ? '.hud-collapse'
-        : '.place, .shore-bar.shown, .hud-right, .hud-top, .hud-profile, .hud-corner, .hud-popup, .inv-tray.open';
+        : '.place-wrap, .hud-right, .hud-top, .hud-profile, .hud-corner, .hud-popup, .inv-tray.open';
       this.keepOutCache = [...this.uiRoot.querySelectorAll<HTMLElement>(sel)]
         .map((el) => el.getBoundingClientRect())
         .filter((r) => r.width > 0 && r.height > 0);
@@ -1226,9 +1260,10 @@ export class NeighborView {
       const s = e.slot;
       if (!s) continue;
       s.renderer.update(p, camForward, time, simTime, tide, amp);
-      if (viewing) {
-        // no floating tags in viewing mode (unless the tag is sitting in
-        // the open info card, where the card's CSS lays it out as a row)
+      if (stacked) {
+        // no floating tags while the info is stacked (unless the tag is
+        // sitting in the open info card, where the card's CSS lays it out
+        // as a row)
         if (!this.shoreInfo.isInCard(s.label)) s.label.style.display = 'none';
         continue;
       }
@@ -1247,7 +1282,7 @@ export class NeighborView {
       const tf = `translate(${Math.round(at2.left)}px, ${Math.round(at2.top)}px)`;
       if (s.label.style.transform !== tf) s.label.style.transform = tf;
     }
-    if (viewing) this.syncInfoRows();
+    if (this.shoreInfo.isOpen) this.syncInfoRows();
   }
 
   /** The open info card's rows: the drawn beaches, nearest the view first. */
@@ -1255,7 +1290,16 @@ export class NeighborView {
     if (!this.shoreInfo.isOpen) return;
     const focus = this.nearestIndex(this.cam.focusX);
     const indices = [...this.entries.values()].filter((e) => e.slot).map((e) => e.index);
-    const labels = orderInfoRows(indices, focus).map((i) => this.entries.get(i)!.slot!.label);
+    // one row per beach: the same beach can't appear twice in one walk,
+    // but a stale entry can linger beside a fresh one after a relink
+    const seen = new Set<string>();
+    const labels: HTMLElement[] = [];
+    for (const i of orderInfoRows(indices, focus)) {
+      const e = this.entries.get(i)!;
+      if (seen.has(e.beach.code)) continue;
+      seen.add(e.beach.code);
+      labels.push(e.slot!.label);
+    }
     this.shoreInfo.setRows(labels);
   }
 }

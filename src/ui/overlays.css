@@ -428,12 +428,19 @@ a.action {
 }
 
 /* ---------------------------------------------------------- place label */
-
-.place {
+/* top left, under the top row of controls: the beach you're looking at,
+   and — while you're visiting someone else's — the beach info tucked
+   underneath it, collapsed until you tap the header */
+.place-wrap {
   position: fixed;
   left: calc(16px + env(safe-area-inset-left));
   top: calc(70px + env(safe-area-inset-top));
   max-width: calc(100vw - 100px - env(safe-area-inset-left) - env(safe-area-inset-right));
+  z-index: 5;
+}
+
+.place {
+  width: 100%;
   padding: 8px 14px 9px;
   border: none;
   border-radius: 16px;
@@ -445,6 +452,27 @@ a.action {
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   transition: opacity 0.4s ease;
+}
+
+/* the header opens the info underneath while you're away: say so */
+.place-wrap.info .place b::after {
+  content: ' ▾';
+  opacity: 0.6;
+}
+
+.place-wrap.info.open .place b::after {
+  content: ' ▴';
+}
+
+/* tried to dig on someone else's beach: point at the header */
+.place.nudge {
+  animation: place-nudge 0.5s ease;
+}
+
+@keyframes place-nudge {
+  30% {
+    transform: scale(1.05);
+  }
 }
 
 .place b {
@@ -619,20 +647,19 @@ a.action {
 /* ---------------------------------------------------------- ambient (TV) */
 
 .hud,
-.place,
+.place-wrap,
 .hint {
   transition: opacity 1.2s ease;
 }
 
 body.ambient-idle .hud,
-body.ambient-idle .place,
+body.ambient-idle .place-wrap,
 body.ambient-idle .hint {
   opacity: 0;
   pointer-events: none;
 }
 
-.ui-collapsed .place,
-.ui-collapsed .shore-bar {
+.ui-collapsed .place-wrap {
   opacity: 0;
   pointer-events: none;
   transform: translateY(-10px);
@@ -705,10 +732,13 @@ body.ambient-idle {
 /* ---------------------------------------------------------- down the shore */
 
 .shore-bar {
-  position: fixed;
-  top: calc(140px + env(safe-area-inset-top));
-  left: calc(16px + env(safe-area-inset-left));
-  display: flex;
+  /* in the header cluster, under the beach name: who you're visiting, and
+     the way home — not a separate pill floating on its own.
+     display none until shown, so the hidden bar takes no space in the stack */
+  display: none;
+  margin-top: 8px;
+  width: 100%;
+  box-sizing: border-box;
   align-items: center;
   gap: 6px;
   max-width: calc(100vw - 28px);
@@ -729,6 +759,7 @@ body.ambient-idle {
 }
 
 .shore-bar.shown {
+  display: flex;
   opacity: 1;
   transform: none;
   pointer-events: auto;
@@ -773,74 +804,20 @@ body.ambient-idle {
 }
 
 /* ---------------------------------------------------------- viewing mode:
-   the beach info lives behind a small "i" at the bottom, not floating
-   over the sand. The name cards open only when the viewer taps it. */
+   the beach info lives under the top-left header, not floating over the
+   sand. The name cards open only when the viewer taps the header. */
 
 .shore-info {
-  position: fixed;
-  left: 50%;
-  bottom: calc(18px + env(safe-area-inset-bottom));
-  transform: translateX(-50%);
-  display: flex;
-  flex-direction: column-reverse;
-  align-items: center;
-  gap: 8px;
-  max-width: calc(100vw - 32px);
   pointer-events: none;
-  z-index: 5;
 }
 
 .shore-info[hidden] {
   display: none;
 }
 
-/* hide with the rest of the HUD when the toolbars are collapsed, and
-   while the ambient screen is idle */
-.ui-collapsed .shore-info,
-body.ambient-idle .shore-info {
-  opacity: 0;
-  pointer-events: none;
-}
-
-/* above the walk buttons in the chair view */
-.hud.chair ~ .shore-info {
-  bottom: calc(18px + 70px + env(safe-area-inset-bottom));
-}
-
-.shore-info-btn {
-  pointer-events: auto;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  border: none;
-  padding: 0;
-  display: grid;
-  place-items: center;
-  font-family: Georgia, 'Times New Roman', serif;
-  font-size: 21px;
-  font-style: italic;
-  line-height: 1;
-  color: var(--ui-fg);
-  background: var(--ui-bg);
-  box-shadow: 0 6px 18px var(--ui-shadow);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  cursor: pointer;
-}
-
-/* tried to dig on someone else's beach: point at the info button */
-.shore-info-btn.nudge {
-  animation: shore-info-nudge 0.5s ease;
-}
-
-@keyframes shore-info-nudge {
-  30% {
-    transform: scale(1.12);
-  }
-}
-
 .shore-info-card {
   pointer-events: auto;
+  margin-top: 8px;
   width: min(420px, calc(100vw - 32px));
   max-height: min(50vh, 420px);
   overflow-y: auto;
@@ -855,19 +832,6 @@ body.ambient-idle .shore-info {
 
 .shore-info-card[hidden] {
   display: none;
-}
-
-.shore-info-home {
-  border: none;
-  border-radius: 999px;
-  padding: 8px 14px;
-  margin: 6px 0 2px;
-  color: var(--ui-bg);
-  background: var(--ui-fg);
-  font: inherit;
-  font-weight: 600;
-  white-space: nowrap;
-  cursor: pointer;
 }
 
 /* name tags moved into the card lay out as rows, not floating pills */

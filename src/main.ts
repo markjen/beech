@@ -712,12 +712,27 @@ async function boot() {
   );
   sheet.setSettings({ ...settings, beach: beach.id });
 
-  // place + time + tide, top left; tapping it opens the Beach settings tab
+  // place + time + tide, top left — the header for the beach you're
+  // looking at. On your own beach, tapping it opens the Beach settings
+  // tab; while you're away from home, it opens the beach info (their
+  // name card, the way home) tucked underneath it, collapsed until you
+  // tap. The settings button opens the picker either way.
+  const placeWrap = document.createElement('div');
+  placeWrap.className = 'place-wrap';
   const place = document.createElement('button');
   place.type = 'button';
   place.className = 'place';
-  uiRoot.appendChild(place);
-  place.addEventListener('click', () => sheet.show('beach'));
+  place.setAttribute('aria-label', 'Choose a beach');
+  place.setAttribute('aria-expanded', 'false');
+  placeWrap.appendChild(place);
+  const infoSlot = document.createElement('div');
+  infoSlot.className = 'place-info';
+  placeWrap.appendChild(infoSlot);
+  uiRoot.appendChild(placeWrap);
+  place.addEventListener('click', () => {
+    if (neighbors && (neighbors.viewing || neighbors.away)) neighbors.toggleInfo();
+    else sheet.show('beach');
+  });
   let placeText = '';
   let placeAt = 0;
   const updatePlace = (force = false) => {
@@ -1054,11 +1069,15 @@ async function boot() {
   helpActions.append(guide.button, guideLink);
   guide.button.addEventListener('click', () => sheet.hide());
 
-  // the shore bar (top right): who you're visiting, and the way home
+  // the shore bar: who you're visiting, and the way home — stacked under
+  // the header, not floating at the top right
   const shoreBar = document.createElement('div');
   shoreBar.className = 'shore-bar';
   shoreBar.innerHTML = `<span class="sb-where"></span><button type="button" class="sb-pet" hidden>Feed pet</button><button type="button" class="sb-fav"></button><button type="button" class="sb-home" data-act="home">⌂ <span>my beach</span></button>`;
-  hud.root.appendChild(shoreBar);
+  // the shore bar stacks under the header, not floating at the top right:
+  // move it into the header cluster, above the info card (it stays hidden
+  // until you're away from home)
+  placeWrap.insertBefore(shoreBar, infoSlot);
   const sbWhere = shoreBar.querySelector<HTMLElement>('.sb-where')!;
   const sbPet = shoreBar.querySelector<HTMLButtonElement>('.sb-pet')!;
   const sbFav = shoreBar.querySelector<HTMLButtonElement>('.sb-fav')!;
@@ -1104,21 +1123,30 @@ async function boot() {
       });
   });
   const updateShoreBar = () => {
-    const away = !!neighbors && (!!neighbors.visiting || Math.abs(cam.focusX) > WORLD_SIZE_X / 2 + 2);
+    // away is the NeighborView's call (past the seam to another beach),
+    // not a focus threshold here — the two must agree, or the header says
+    // "choose a beach" while the name tags have already moved into it
+    const away = !!neighbors && neighbors.away;
     const b = away ? beachHere() : null;
     const fav = !!b && !!neighbors?.favorites.has(b.code);
     const signedIn = !!account?.user;
-    // in viewing mode the shore bar's pill is gone too: the beach info
-    // lives behind the "i" button at the bottom instead
+    // away from home the shore bar shows, stacked under the header: the
+    // beach info lives there too, in the card under it
     const viewing = !!neighbors && neighbors.viewing;
     const key = `${away}|${b?.code}|${b?.name}|${fav}|${!!neighbors?.visiting}|${signedIn}|${viewing}`;
     if (key === shoreKey) return;
     shoreKey = key;
-    shoreBar.classList.toggle('shown', away && !viewing);
+    shoreBar.classList.toggle('shown', away);
+    // the header is the info toggle while you're away from home: say so,
+    // and start closed
+    const info = viewing || (neighbors?.away ?? false);
+    placeWrap.classList.toggle('info', info);
+    place.setAttribute('aria-label', info ? 'Beach info' : 'Choose a beach');
+    place.title = info ? 'Beach info' : 'Choose a beach';
     if (b) guide.mark('visit');
     guide.render();
-    const place = b?.location ? beachById(b.location) : undefined;
-    sbWhere.textContent = b ? `${neighbors?.visiting ? 'Visiting ' : ''}${b.name || 'a beach'}${place ? ` · ${place.name}` : ''}` : 'Down the shore';
+    const placeBeach = b?.location ? beachById(b.location) : undefined;
+    sbWhere.textContent = b ? `${neighbors?.visiting ? 'Visiting ' : ''}${b.name || 'a beach'}${placeBeach ? ` · ${placeBeach.name}` : ''}` : 'Down the shore';
     sbFav.hidden = !b || !signedIn || !!neighbors?.ownedBeach(b);
     sbFav.textContent = fav ? '★' : '☆';
     sbFav.classList.toggle('on', fav);
@@ -1758,9 +1786,15 @@ async function boot() {
       if (st === 'tooBig' && !toldTooBig) showToast(uiRoot, 'This beach is too big to save. Smooth some of the sand and it will save again.');
       toldTooBig = st === 'tooBig';
     });
-    neighbors = new NeighborView(scene, grid, ready.rest, swell, cam, uiRoot, account, renderer, seed);
+    neighbors = new NeighborView(scene, grid, ready.rest, swell, cam, uiRoot, account, renderer, seed, {
+      infoSlot,
+      infoHeader: place,
+      onInfoToggle: (open) => {
+        place.setAttribute('aria-expanded', String(open));
+        placeWrap.classList.toggle('open', open);
+      },
+    });
     const nv = neighbors;
-    nv.onHome = () => void goHome();
     nv.onSaveError = (kind) => {
       if (kind === 'outdated') offerReload();
       else if (kind === 'tooBig') showToast(uiRoot, 'This beach is too big to save. Smooth some of the sand and it will save again.');

@@ -56,8 +56,9 @@ await pb.waitForFunction((c) => window.__beech.neighbors().visiting?.code === c,
 check(!(await pb.evaluate(() => !!window.__beech.account().user)), 'Ben is signed out…');
 check(true, "…and sees Ana's beach straight away");
 check(await pb.$eval('.inbox-btn', (b) => getComputedStyle(b).display === 'none'), 'no mailbox while signed out');
-// viewing mode: the beach's name tag, with "leave something", is behind the "i"
-await pb.click('.shore-info-btn');
+// viewing mode: the beach's name tag, with "leave something", is behind the
+// beach name at the top left — tap it to open the info card
+await pb.click('.place');
 const leave = `.shore-info-list [data-act="leave-${anaCode}"]:not([hidden])`;
 await pb.waitForSelector(leave, { timeout: 60000 });
 check(true, "the beach info card offers to leave something on Ana's beach");
