@@ -114,6 +114,29 @@ describe('animals feeding (A2)', () => {
     expect(await again.json()).toMatchObject({ ok: true, remaining: 0, bond: { feedCount: 1 } });
   });
 
+  it('rolls back a toss or pickup if one of its database writes fails', async () => {
+    const u = await signIn('SnackRetry');
+    await req('/dev/grant', json('POST', { item: TREAT_ITEM_ID, quantity: 1 }), u.token);
+    const toss = () => req('/animals/feed', { method: 'POST' }, u.token);
+    const pickup = () => req('/animals/feed/return', { method: 'POST' }, u.token);
+
+    await db.exec('ALTER TABLE beach_snacks ADD CONSTRAINT reject_snack CHECK (false) NOT VALID');
+    try {
+      expect((await toss()).status).toBe(500);
+    } finally {
+      await db.exec('ALTER TABLE beach_snacks DROP CONSTRAINT reject_snack');
+    }
+    expect(await (await toss()).json()).toMatchObject({ remaining: 0, bond: { feedCount: 1 } });
+
+    await db.exec('ALTER TABLE inventory ADD CONSTRAINT reject_refund CHECK (quantity = 0) NOT VALID');
+    try {
+      expect((await pickup()).status).toBe(500);
+    } finally {
+      await db.exec('ALTER TABLE inventory DROP CONSTRAINT reject_refund');
+    }
+    expect(await (await pickup()).json()).toMatchObject({ remaining: 1, bond: { feedCount: 0 } });
+  });
+
   it("can't pick up someone else's snack or one on a beach that isn't yours", async () => {
     const owner = await signIn('SnackKeeper');
     const other = await signIn('SnackGrabber');
