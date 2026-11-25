@@ -52,8 +52,12 @@ export interface SaveResult {
 
 /** Where beaches come from and go to (the server, the device, or a test). */
 export interface StoreBackend {
-  /** The saved beach, or null when there is none. Throws when it can't be reached. */
-  load(ref: BeachRef): Promise<Saved | null>;
+  /**
+   * The saved beach, or null when there is none. Throws when it can't be
+   * reached. `reload`: the store already holds a copy, so ask the source
+   * itself (never a copy kept on the device).
+   */
+  load(ref: BeachRef, opts?: { reload?: boolean }): Promise<Saved | null>;
   /** Save one of your beaches. Throws an error with `status` (409 / 413 / 426…) when refused. */
   save(
     ref: BeachRef,
@@ -287,10 +291,11 @@ export class BeachStore {
     const inflight = this.loading.get(ref.id);
     if (inflight) return inflight;
     const gen = this.generation;
+    const reload = this.states.has(ref.id);
     const p = (async () => {
       let saved: Saved | null;
       try {
-        saved = await this.backend.load(ref);
+        saved = await this.backend.load(ref, { reload });
       } catch {
         return gen === this.generation ? this.states.get(ref.id) ?? null : null;
       }
