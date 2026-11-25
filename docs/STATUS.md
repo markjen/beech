@@ -13,6 +13,9 @@
 | M6 | Ship (benchmark quality tiers, dynamic resolution, PWA/offline, icons, Capacitor iOS + Android projects, mobile CI + store release workflow, docs) | done |
 | M7 | Stretch (water table seepage, build + smooth tools, shells washing in, save/share a picture) | done |
 
+Vacuuming shows which items were picked up when a stroke finishes. The claw
+and vending prize cards can be closed while keeping the prize in the bag.
+
 ## Decisions that differ from PLAN.md
 
 - **WebGL2 is the default renderer.** The custom shaders are written in
@@ -1202,3 +1205,6 @@ the HUD layout in the section above.
   worker starts, and failed requests. Set `E2E_CHROMIUM_PATH` to run against
   a local Chromium executable and `DEBUG_E2E=1` to stream test output.
   Rendered tests pause existing tabs while another WebGL context initializes.
+- The shore E2E waits for the destination beach view and its label.
+  The multi-beach save race waits for the camera's pending beach transition
+  before holding a save response.

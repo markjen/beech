@@ -62,13 +62,20 @@ export function routeLabel(c: Context): string {
  * One JSON line per request: method, route template, status and latency.
  * 5xx lines are severity ERROR, 4xx WARNING, so they are easy to find in
  * Logs Explorer and so the log-based metrics can count them.
+ *
+ * The first request a process serves carries cold_start: true — with
+ * min-instances 0 the service cold-starts often, and a slow first request
+ * is the container starting, not the route being slow.
  */
+let coldStart = true;
 export const httpLogger: MiddlewareHandler = async (c, next) => {
   const start = performance.now();
   try {
     await next();
   } finally {
     const status = c.res?.status ?? 500;
+    const isColdStart = coldStart;
+    coldStart = false;
     logEvent(
       'http_request',
       {
@@ -76,6 +83,7 @@ export const httpLogger: MiddlewareHandler = async (c, next) => {
         route: routeLabel(c),
         status,
         duration_ms: Math.round((performance.now() - start) * 10) / 10,
+        ...(isColdStart ? { cold_start: true } : {}),
       },
       status >= 500 ? 'ERROR' : status >= 400 ? 'WARNING' : 'INFO',
     );
@@ -96,8 +104,15 @@ export interface DbStatsSnapshot {
 }
 
 export interface DbStats {
-  record(durationMs: number, ok: boolean): void;
+  /**
+   * operation is a low-cardinality label for the query (e.g. 'shore.walk',
+   * 'beach.save'); it defaults to 'db.query'. It is never SQL text or a
+   * param — those can hold user data.
+   */
+  record(durationMs: number, ok: boolean, operation?: string): void;
   snapshot(): DbStatsSnapshot;
+  /** current pool state, or null when there is no pool (PGlite) */
+  pool(): { total: number; idle: number; waiting: number } | null;
 }
 
 /** Rolling query counters + latency percentiles, summarised every minute by server.ts. */
@@ -109,15 +124,32 @@ export function createDbStats(
   let slow = 0;
   const durations: number[] = []; // last 1000, for p50/p95
   return {
-    record(durationMs, ok) {
+    record(durationMs, ok, operation = 'db.query') {
       queries++;
       if (!ok) errors++;
       if (durationMs > SLOW_QUERY_MS) {
         slow++;
-        logEvent('db_slow_query', { duration_ms: Math.round(durationMs) }, 'WARNING');
+        // The operation label + pool state are what make a slow query
+        // attributable: which code path issued it, and whether the pool
+        // was saturated when it ran. No SQL text, no params, no ids.
+        const pool = getPool?.() ?? null;
+        logEvent(
+          'db_slow_query',
+          {
+            operation,
+            duration_ms: Math.round(durationMs),
+            pool_total: pool?.total ?? null,
+            pool_idle: pool?.idle ?? null,
+            pool_waiting: pool?.waiting ?? null,
+          },
+          'WARNING',
+        );
       }
       durations.push(durationMs);
       if (durations.length > 1000) durations.shift();
+    },
+    pool() {
+      return getPool?.() ?? null;
     },
     snapshot() {
       const sorted = [...durations].sort((a, b) => a - b);

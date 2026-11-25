@@ -76,10 +76,14 @@ await page.evaluate(() => {
   const b = window.__beech;
   b.cam.halfH = 14;
   b.cam.applyOrtho();
-  b.cam.goTo(2 * 33.6, true);
+  b.cam.goTo(b.neighbors().xFor(2), true);
 });
-await page.waitForFunction(() => window.__beech.neighbors().snapshot(2) !== null, null, { timeout: 15000 });
-await page.waitForTimeout(800);
+await page.waitForFunction((name) => {
+  const shore = window.__beech.neighbors();
+  const [first, last] = shore.window;
+  const label = document.querySelector('.shore-bar.shown .sb-where');
+  return first <= 2 && last >= 2 && shore.snapshot(2) && label?.textContent?.includes(name);
+}, names.cleo, { polling: 100, timeout: 15000 });
 const where = await page.textContent('.shore-bar .sb-where');
 check(await page.isVisible('.shore-bar.shown'), 'down the shore: the home button shows');
 check(where?.includes(names.cleo), `it says whose beach this is (${where})`);
@@ -92,14 +96,19 @@ await page.waitForFunction((c) => window.__beech.neighbors().favorites.has(c), c
 check(true, "starred Cleo's beach");
 // and home
 await page.click('.shore-bar .sb-home');
-await page.waitForFunction(() => Math.abs(window.__beech.cam.focusX) < 0.5, null, { timeout: 15000 });
+await page.waitForFunction(() => {
+  const app = window.__beech;
+  const shore = app.neighbors();
+  return shore.nearestIndex(app.cam.focusX) === 0 && shore.liveVisible
+    && !document.querySelector('.shore-bar.shown');
+}, null, { polling: 100, timeout: 30000 });
 check(await page.evaluate(() => window.__beech.neighbors().liveVisible), 'home again: your beach is drawn');
 
 // infinite scroll: head right past what's loaded and more of the shore loads
 {
   const before = await page.evaluate(() => window.__beech.neighbors().extent.right);
   if (before > 0) {
-    await page.evaluate((n) => window.__beech.cam.goTo(-n * 33.6, true), before);
+    await page.evaluate((n) => window.__beech.cam.goTo(window.__beech.neighbors().xFor(-n), true), before);
     await page.waitForFunction((n) => window.__beech.neighbors().extent.right > n, before, { timeout: 8000 }).catch(() => {});
     const after = await page.evaluate(() => window.__beech.neighbors().extent.right);
     check(after >= before, `scrolling right loads more of the shore when there is more (${before} -> ${after})`);

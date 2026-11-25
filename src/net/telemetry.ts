@@ -139,13 +139,21 @@ export function errorEvent(
   return e;
 }
 
-/** Build a perf payload from a navigation timing entry. Pure: testable in node. */
+/**
+ * Build a perf payload from a navigation timing entry. Pure: testable in node.
+ *
+ * `loadMs` is the caller-supplied load time (performance.now() at the load
+ * handler, i.e. ms since navigation start). It must be passed: inside the
+ * load handler `nav.loadEventEnd` is still 0 — the load event hasn't ended
+ * yet — so reading it there reported load_ms: 0 for every visit. Without
+ * loadMs, the timing entry's loadEventEnd is used as before.
+ */
 export function perfEvent(
   nav: { loadEventEnd: number; domContentLoadedEventEnd: number } | null,
-  extra?: { tier?: 'low' | 'medium' | 'high'; bench_ms?: number; context?: ClientContext },
+  extra?: { tier?: 'low' | 'medium' | 'high'; bench_ms?: number; context?: ClientContext; loadMs?: number },
 ): ClientPerfEvent | null {
   if (!nav) return null;
-  const load_ms = Math.round(nav.loadEventEnd);
+  const load_ms = Math.round(extra?.loadMs ?? nav.loadEventEnd);
   const dcl_ms = Math.round(nav.domContentLoadedEventEnd);
   if (!Number.isFinite(load_ms) || !Number.isFinite(dcl_ms) || load_ms < 0 || dcl_ms < 0) return null;
   const e: ClientPerfEvent = { kind: 'perf', load_ms, dcl_ms, ...(extra?.context ?? {}) };
@@ -255,7 +263,10 @@ export function initTelemetry(base = DEFAULT_API): void {
   });
   window.addEventListener('load', () => {
     const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
-    const perf = perfEvent(nav ?? null, { context: clientContext() });
+    // performance.now() here is the real load time: nav.loadEventEnd is
+    // still 0 inside the load handler (the event hasn't ended yet), which
+    // used to report load_ms: 0 for every visit.
+    const perf = perfEvent(nav ?? null, { loadMs: performance.now(), context: clientContext() });
     if (perf) sendClientEvent(perf);
   });
 }

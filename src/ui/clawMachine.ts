@@ -241,11 +241,15 @@ export class ClawMachine {
       <div class="claw-prize">${itemIcon(p.item)}</div>
       <b>${prizeName(p.item)}</b>
       <span>${RARITY_NAME[p.rarity as Rarity] ?? p.rarity}</span>
-      <button type="button" class="claw-place">${placeable ? 'Put it on the beach' : 'Keep it'}</button>`;
+      <button type="button" class="claw-place">${placeable ? 'Put it on the beach' : 'Keep it'}</button>
+      <button type="button" class="claw-dismiss">Close</button>`;
     this.reveal.querySelector('.claw-place')!.addEventListener('click', () => {
       this.close();
       this.won(p.item, placeable);
     });
+    // the prize is already in the bag (won with place=false below), so
+    // closing here loses nothing — it just skips placing it right now
+    this.reveal.querySelector('.claw-dismiss')!.addEventListener('click', () => this.close());
     this.won(p.item, false);
     this.renderInfo();
   }

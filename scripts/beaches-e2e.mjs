@@ -128,6 +128,13 @@ const afterSecondUpdated = await b.evaluate(async (id) => {
 check((await b.evaluate(() => window.__beech.beachId())) === second, 'on B the waves moved with the view onto the second beach');
 check(afterSecondUpdated > beforeSecondUpdated, `editing the adjacent beach saved automatically into the second beach (${beforeSecondUpdated} -> ${afterSecondUpdated})`);
 
+// back home: the second beach is a snapshot again, edited through the store by its id
+await b.evaluate(() => window.__beech.cam.goTo(0, true));
+await b.waitForFunction((h) => window.__beech.beachId() === h, home, { timeout: 15000 });
+// Switching beaches can flush a pending save. Wait for it before holding
+// the response to the test edit, so the switch cannot wait on our route.
+await b.evaluate(() => window.__beech.store().flushAll());
+
 // Hold the response to the first save while the player edits the same beach again.
 let releaseSave;
 const waitForRelease = new Promise((resolve) => { releaseSave = resolve; });
@@ -141,9 +148,6 @@ await b.route(savePath, async (route) => {
   await waitForRelease;
   await route.fulfill({ response });
 });
-// back home: the second beach is a snapshot again, edited through the store by its id
-await b.evaluate(() => window.__beech.cam.goTo(0, true));
-await b.waitForFunction((h) => window.__beech.beachId() === h, home, { timeout: 15000 });
 await b.evaluate((id) => {
   window.__beech.neighbors().placeObject(id, { kind: 'rock', item: 'rock', x: 8, y: 3, size: 0.5, angle: 0, variant: 0 });
   void window.__beech.store().flushAll();
