@@ -1266,3 +1266,31 @@ the HUD layout in the section above.
 - The shore E2E waits for the destination beach view and its label.
   The multi-beach save race waits for the camera's pending beach transition
   before holding a save response.
+
+## Local weather: the light follows the view along the shore (2026-11-25)
+
+- With **local weather** on (Settings, default on), the sky, sun, moon, stars
+  and scene light are those of the real place of the shore beach nearest the
+  centre of the view, not only the live (simulated) beach's.
+  `shoreLightMix` (`src/world/shoreLight.ts`) picks the two drawn beaches
+  either side of `cam.focusX`; each keeps its own light around its centre and
+  the light crosses over in the middle `SHORE_LIGHT.blendSpan` (60 %) of the
+  gap with a smoothstep. `mixLive` blends palette, sun/moon direction and
+  night. main.ts keeps one `LiveConditions` per place (refreshed every
+  500 ms) and caches the blend, so the palette object (and the renderers'
+  uniform uploads) only changes when the light does.
+- A beach's place is its stored location (`store.peek(id).location`, else
+  the shore record's); a beach with none shares the live beach's. `?beach=`
+  pins everything to that place (screenshots).
+- The tide and swell sent to the worker stay the live beach's (that's the sea
+  being simulated). The status pane's sky glyph, time and tide line follow the
+  viewed place.
+- With local weather **off**, every beach uses the light pinned under
+  **light** (dawn/day/golden/dusk/night; its chips dim while local weather is
+  on). Settings migrate: old `palette: 'live'` → local weather on + day;
+  an old pinned mood → local weather off with that mood (`migrateSettings`).
+- There is still no forecast data: "weather" is the place's sky and light.
+  Clouds/rain stay in the backlog.
+- `window.__beech.light()` reports the view's light (`place`, palette name,
+  local time); `scripts/shore-e2e.mjs` checks a Waikiki neighbor next to a
+  Brighton home and the off switch.

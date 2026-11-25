@@ -143,7 +143,6 @@ export interface SettingsHandlers {
 }
 
 const PALETTE_LABELS: [PaletteChoice, string][] = [
-  ['live', 'live'],
   ['dawn', 'dawn'],
   ['day', 'day'],
   ['golden', 'golden'],
@@ -220,6 +219,7 @@ export class SettingsSheet {
           <div class="row"><span>haptics</span>${this.toggle('haptics')}</div>
           <div class="row"><span>battery saver</span>${this.toggle('batterySaver')}</div>
           <div class="row"><span>ambient (for a TV)</span>${this.toggle('ambient')}</div>
+          <div class="row"><span>local weather</span>${this.toggle('localWeather')}</div>
           <div class="row col"><span>light</span><div class="chips" data-key="palette">${PALETTE_LABELS.map(
             ([v, l]) => `<button type="button" data-v="${v}">${l}</button>`,
           ).join('')}</div></div>
@@ -264,8 +264,9 @@ export class SettingsSheet {
     this.el.querySelector('.sheet-close')!.addEventListener('click', () => this.hide());
     for (const input of this.el.querySelectorAll<HTMLInputElement>('input[data-key]')) {
       input.addEventListener('change', () => {
-        const key = input.dataset.key as 'sound' | 'music' | 'haptics' | 'batterySaver' | 'ambient';
+        const key = input.dataset.key as 'sound' | 'music' | 'haptics' | 'batterySaver' | 'ambient' | 'localWeather';
         this.settings = { ...this.settings, [key]: input.checked };
+        this.sync();
         this.h.change(this.settings, key);
       });
     }
@@ -340,6 +341,8 @@ export class SettingsSheet {
         b.classList.toggle('on', b.dataset.v === v);
       }
     }
+    // the pinned light waits in the background while local weather is on
+    this.el.querySelector('.chips[data-key="palette"]')?.classList.toggle('standby', this.settings.localWeather);
   }
 
   /** Highlight a specific real-world place chip (e.g. for the beach selected in settings). */

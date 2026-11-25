@@ -18,7 +18,8 @@ import { ObjectView } from './render/objects';
 import { Horizon } from './render/horizon';
 import { Sky, type SkyDisc } from './render/sky';
 import { AnimalController, type AnimalEnv, type AnimalObstacle } from './world/animals';
-import { LiveConditions } from './world/live';
+import { LiveConditions, type LiveState } from './world/live';
+import { mixLive, shoreLightMix } from './world/shoreLight';
 import { BEACHES, beachById, defaultBeach, nearestBeach, type Beach } from './world/locations';
 import type { BrushMode, CastleShape, ClearingMode, SandMode } from './sim/beachSim';
 import { isClearingMode, isSandMode } from './sim/beachSim';
@@ -207,6 +208,14 @@ async function boot() {
   let beach: Beach = beachById(params.get('beach')) ?? beachById(settings.beach) ?? defaultBeach();
   const live = new LiveConditions(beach);
   let liveState = live.compute(clockNow());
+  /**
+   * The light you see: the real place of the beach in the middle of the view
+   * (blended across the gap while you scroll along the shore). The tide and
+   * swell stay the live beach's (`liveState`): that's the sea being simulated.
+   */
+  let viewState: LiveState = liveState;
+  /** the conditions of the place nearest the view (for the status pane) */
+  let viewConditions: LiveConditions = live;
   const sendSea = () => send({ type: 'sea', tide: liveState.simTide, waves: liveState.waves });
   sendSea();
   const sky = new Sky(scene);
@@ -947,10 +956,10 @@ async function boot() {
     if (!force && t - placeAt < 1000) return;
     placeAt = t;
     const owner = paneOwner();
-    const sun = liveState.sky.sun.elevation;
+    const sun = viewState.sky.sun.elevation;
     const glyph = SKY.find(([e]) => sun < e)![1];
-    const text = `<b>${esc(owner.title)}</b><span>${glyph} ${liveState.localTime} · ${swellWord()}</span>`;
-    const detail = live.describe(liveState).split(' · ').slice(1).join(' · ');
+    const text = `<b>${esc(owner.title)}</b><span>${glyph} ${viewState.localTime} · ${swellWord()}</span>`;
+    const detail = viewConditions.describe(viewState).split(' · ').slice(1).join(' · ');
     const chips = [`wave · ${waveStrength()}`, ...paneChips()];
     const key = text + detail + chips.join('|') + owner.away;
     if (key !== placeText) {
@@ -1910,6 +1919,43 @@ async function boot() {
   let liveAt = -Infinity;
   let liveFixed: string | undefined;
   let liveBeachId = '';
+  /** each other place's light along the shore, refreshed like the live one */
+  const placeLights = new Map<string, { lc: LiveConditions; state: LiveState | null; at: number; fixed?: string }>();
+  const conditionsAt = (loc: Beach, now0: Date, nowMs: number, fixed: string | undefined) => {
+    if (loc.id === beach.id) return { lc: live, state: liveState };
+    let e = placeLights.get(loc.id);
+    if (!e) placeLights.set(loc.id, (e = { lc: new LiveConditions(loc), state: null, at: -Infinity }));
+    if (!e.state || Math.abs(nowMs - e.at) >= 500 || e.fixed !== fixed) {
+      e.state = e.lc.compute(now0, fixed);
+      e.at = nowMs;
+      e.fixed = fixed;
+    }
+    return { lc: e.lc, state: e.state };
+  };
+  /** the real place of a beach on the shore (one not placed yet shares the live beach's) */
+  const placeOf = (b: ShoreBeach): Beach => beachById(store.peek(b.id)?.location ?? b.location) ?? beach;
+  let lastMix: { a: LiveState; b: LiveState; t: number; out: LiveState } | null = null;
+  /** the light under the middle of the view (local weather), else the live beach's */
+  const updateViewLight = (now0: Date, nowMs: number, fixed: string | undefined) => {
+    const nv = neighbors;
+    const mix = nv && !params.get('beach')
+      ? shoreLightMix(cam.focusX, nv.drawnBeaches().map((d) => ({ x: d.x, location: placeOf(d.beach).id })))
+      : null;
+    if (!mix) {
+      viewState = liveState;
+      viewConditions = live;
+      return;
+    }
+    const a = conditionsAt(beachById(mix.a) ?? beach, now0, nowMs, fixed);
+    const b = mix.t > 0 ? conditionsAt(beachById(mix.b) ?? beach, now0, nowMs, fixed) : a;
+    viewConditions = mix.t < 0.5 ? a.lc : b.lc;
+    if (lastMix && lastMix.a === a.state && lastMix.b === b.state && lastMix.t === mix.t) {
+      viewState = lastMix.out;
+      return;
+    }
+    viewState = mixLive(a.state, b.state, mix.t);
+    lastMix = { a: a.state, b: b.state, t: mix.t, out: viewState };
+  };
   let slowTime = 0;
   let fastTime = 0;
   let reportedResDrop = false;
@@ -1947,13 +1993,14 @@ async function boot() {
     last = now;
     const now0 = clockNow();
     const nowMs = now0.getTime();
-    const fixed = fixedPalette ?? (settings.palette !== 'live' ? settings.palette : undefined);
+    const fixed = fixedPalette ?? (settings.localWeather ? undefined : settings.palette);
     if (Math.abs(nowMs - liveAt) >= 500 || fixed !== liveFixed || beach.id !== liveBeachId) {
       liveState = live.compute(now0, fixed);
       liveAt = nowMs;
       liveFixed = fixed;
       liveBeachId = beach.id;
     }
+    updateViewLight(now0, nowMs, fixed);
     if (now - seaSentAt > 2000) {
       seaSentAt = now;
       sendSea();
@@ -1961,13 +2008,13 @@ async function boot() {
     updatePlace();
     if (!noRender && !document.hidden && !params.has('fixedres')) adaptResolution(dt);
 
-    const palette = liveState.palette;
+    const palette = viewState.palette;
     gamepad.poll(dt);
     cam.update(dt, gestures.cameraActive);
     updateRing(dt, palette);
     updateSteamRichPresence(beach.name, cam.mode);
     if (cam.mode === 'chair') unlockSteamAchievement('CHAIR_VIEW');
-    if (liveState.sky.night > 0.5) unlockSteamAchievement('NIGHT_BEACH');
+    if (viewState.sky.night > 0.5) unlockSteamAchievement('NIGHT_BEACH');
     if (neighbors && !neighbors.anyOwnVisible) unlockSteamAchievement('WALK_SHORE');
     chooseLive();
     // every edit, on any beach, is in the undo order (each beach keeps its own history)
@@ -1999,7 +2046,7 @@ async function boot() {
       horizon.setExtent(neighbors?.windowCenters() ?? [0]);
       horizon.update(palette, camFwd, simTime, info.tide, amp);
     }
-    const sk = liveState.sky;
+    const sk = viewState.sky;
     const moonDisc = skyDisc(sk.moon.dir, sk.moon.elevation);
     sky.update(
       palette,
@@ -2041,7 +2088,7 @@ async function boot() {
       seaPan: -right.z,
       zoomOut: cam.zoomOut01(),
       calm: Math.min(1, Math.max(0, (1 - info.waveMul) / (1 - WAVES.levels.calm))),
-      daylight: 1 - liveState.sky.night,
+      daylight: 1 - viewState.sky.night,
     });
 
     if (noRender) {
@@ -3155,6 +3202,8 @@ async function boot() {
     /** the beach of yours in front of you, once your beaches are in (null before, or signed out) */
     beachId: () => (sync.id && sync.id !== LOCAL_BEACH ? sync.id : null),
     live: () => ({ ...liveState, palette: undefined }),
+    /** the light you see (local weather: the place of the beach in the middle of the view) */
+    light: () => ({ ...viewState, palette: viewState.palette.name, place: viewConditions.beach.id }),
     setBeach: (id: string) => {
       const b = beachById(id);
       if (b) setBeach(b);

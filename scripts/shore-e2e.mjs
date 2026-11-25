@@ -16,7 +16,7 @@ const { browser, close: closeBrowser } = await openBrowser();
 const page = await browser.newPage({ viewport: { width: 1100, height: 700 } });
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
-await openApp(page, e2eUrl(URL_, 'nointro&fixedres&seed=1&nofinds', { shots: Boolean(shot) }));
+await openApp(page, e2eUrl(URL_, 'nointro&fixedres&seed=1&nofinds&time=2026-11-25T23:00:00Z', { shots: Boolean(shot) }));
 
 const tag = `sh${Date.now() % 10000}${process.pid % 100}`;
 const names = { ana: `ana${tag}`, ben: `ben${tag}`, cleo: `cleo${tag}`, dot: `dot${tag}` };
@@ -31,7 +31,12 @@ const become = async (name) => {
   return page.evaluate(() => window.__beech.neighbors().api.get().then((n) => n.code));
 };
 const codes = {};
-for (const k of ['cleo', 'dot', 'ana', 'ben']) codes[k] = await become(names[k]);
+// Cleo's beach is in Waikiki, Ben's in Brighton: the light follows the view
+const places = { cleo: 'waikiki', ben: 'brighton' };
+for (const k of ['cleo', 'dot', 'ana', 'ben']) {
+  codes[k] = await become(names[k]);
+  if (places[k]) await page.evaluate((loc) => window.__beech.account().updateBeach(window.__beech.beachId(), { location: loc }), places[k]);
+}
 // Ana's left is Cleo; Ben's left is Ana (each asked, the other accepted)
 const ask = (side, c) => page.evaluate(({ side, c }) => window.__beech.neighbors().api.set(side, c), { side, c });
 const accept = (c) => page.evaluate((c) => window.__beech.neighbors().api.accept(c), c);
@@ -90,6 +95,23 @@ check(where?.includes(names.cleo), `it says whose beach this is (${where})`);
 const win = await page.evaluate(() => window.__beech.neighbors().window);
 check(win[0] <= 2 && win[1] >= 2, `Cleo's beach is drawn (beaches ${win.join('..')})`);
 if (shot) await page.screenshot({ path: shot });
+await page.waitForFunction(() => window.__beech.light().place === 'waikiki', null, { timeout: 5000 }).catch(() => {});
+check((await page.evaluate(() => window.__beech.light().place)) === 'waikiki', "local weather: Cleo's beach has Waikiki's sky");
+check((await page.evaluate(() => window.__beech.live().localTime !== window.__beech.light().localTime)), 'its own local time, not the live beach’s');
+// local weather off: the pinned light, wherever you look
+{
+  const localWeather = page.locator('input[data-key="localWeather"]');
+  await page.evaluate(() => window.__beech.sheet.show('settings'));
+  check(await localWeather.isChecked(), 'local weather is on by default');
+  check((await page.evaluate(() => window.__beech.light().palette)) !== 'night', 'Waikiki starts in daylight');
+  await page.locator('.chips[data-key="palette"] button[data-v="night"]').click();
+  await localWeather.uncheck();
+  await page.waitForFunction(() => window.__beech.light().palette === 'night', null, { polling: 100, timeout: 5000 });
+  check(true, 'turned off, the light pinned in settings shows');
+  await localWeather.check();
+  await page.waitForFunction(() => window.__beech.light().palette !== 'night', null, { polling: 100, timeout: 5000 });
+  await page.evaluate(() => window.__beech.sheet.hide());
+}
 // star Cleo's beach from the bar
 await page.click('.shore-bar .sb-fav');
 await page.waitForFunction((c) => window.__beech.neighbors().favorites.has(c), codes.cleo, { timeout: 5000 });
