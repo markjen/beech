@@ -512,6 +512,13 @@ export interface Neighbors {
   asked: { left: Neighbor | null; right: Neighbor | null };
   /** people asking to move in next to you; `side` is where they'd be on your beach */
   requests: (Neighbor & { side: Side })[];
+  /** the inbox, carried on the 30 s poll (docs/INBOX_NOTIFICATIONS.md) */
+  inbox?: InboxSummary;
+}
+
+export interface InboxSummary {
+  unread: number;
+  latest: { id: number; kind: InboxKind; name: string | null } | null;
 }
 
 export interface OwnedItem {
@@ -543,6 +550,7 @@ export class NeighborApi {
   }
 
   async get(beachId?: string): Promise<Neighbors> {
+    if (!this.account.user) throw new ApiError(401, 'sign in first');
     const res = await this.account.fetch(`/api/neighbors${this.q('?', beachId)}`);
     if (!res.ok) throw await errorOf(res, 'could not load your neighbors');
     return (await res.json()) as Neighbors;
@@ -818,6 +826,108 @@ export class ReferralApi {
   async status(): Promise<Referrals> {
     const res = await this.account.fetch('/api/referrals');
     if (!res.ok) throw await errorOf(res, 'could not load your invites');
+    return res.json();
+  }
+}
+
+// ------------------------------------------------------------------ visitors and the inbox
+// docs/INBOX_NOTIFICATIONS.md
+
+export type InboxKind = 'visit' | 'gift' | 'neighbor_request' | 'neighbor_linked' | 'star' | 'rating' | 'invite_joined' | 'invite_settled' | 'system';
+
+export interface InboxEntry {
+  id: number;
+  kind: InboxKind;
+  /** null: the sender deleted their account */
+  from: { name: string; code: string | null } | null;
+  beach: { code: string; name: string | null } | null;
+  item: string | null;
+  shells: number | null;
+  note: { id: number; text?: string; removed?: boolean } | null;
+  /** batched rows (stars, ratings): how many that day */
+  count: number;
+  rating?: { count: number; average: number | null };
+  payload: { code?: string; side?: Side; beach?: string };
+  at: number;
+  read: boolean;
+}
+
+/** What the visitor card needs for a beach. */
+export interface VisitCard {
+  count: number;
+  /** null until the beach has a few ratings */
+  average: number | null;
+  mine: number | null;
+  yours: boolean;
+  quickNotes: string[];
+  /** false: quick notes only (a brand-new account) */
+  freeText: boolean;
+}
+
+export class InboxApi {
+  constructor(private readonly account: Account) {}
+
+  async list(before?: number): Promise<InboxSummary & { entries: InboxEntry[] }> {
+    const res = await this.account.fetch(`/api/inbox${before ? `?before=${before}` : ''}`);
+    if (!res.ok) throw await errorOf(res, 'could not load your inbox');
+    return res.json();
+  }
+
+  async read(upTo: number): Promise<InboxSummary> {
+    const res = await this.account.fetch('/api/inbox/read', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ upTo }),
+    });
+    if (!res.ok) throw await errorOf(res, 'could not update your inbox');
+    return res.json();
+  }
+
+  async report(noteId: number, reason = ''): Promise<void> {
+    const res = await this.account.fetch(`/api/notes/${noteId}/report`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason }),
+    });
+    if (!res.ok) throw await errorOf(res, 'could not report that');
+  }
+
+  async blocks(): Promise<{ name: string; code: string | null }[]> {
+    const res = await this.account.fetch('/api/blocks');
+    if (!res.ok) throw await errorOf(res, 'could not load who you blocked');
+    return ((await res.json()) as { blocked: { name: string; code: string | null }[] }).blocked;
+  }
+
+  async block(code: string, on: boolean): Promise<void> {
+    const res = await this.account.fetch(`/api/blocks/${encodeURIComponent(code)}`, { method: on ? 'PUT' : 'DELETE' });
+    if (!res.ok) throw await errorOf(res, on ? 'could not block them' : 'could not unblock them');
+  }
+
+  /** Accept a neighbor request from the inbox (on the beach it was for). */
+  async accept(code: string, beach?: string): Promise<void> {
+    const res = await this.account.fetch(`/api/neighbors/requests/${encodeURIComponent(code)}/accept${beach ? `?beach=${encodeURIComponent(beach)}` : ''}`, { method: 'POST' });
+    if (!res.ok) throw await errorOf(res, 'could not accept');
+  }
+
+  async decline(code: string, beach?: string): Promise<void> {
+    const res = await this.account.fetch(`/api/neighbors/requests/${encodeURIComponent(code)}${beach ? `?beach=${encodeURIComponent(beach)}` : ''}`, { method: 'DELETE' });
+    if (!res.ok) throw await errorOf(res, 'could not decline');
+  }
+
+  async card(code: string): Promise<VisitCard> {
+    const res = await this.account.fetch(`/api/beaches/${encodeURIComponent(code)}/rating`);
+    if (!res.ok) throw await errorOf(res, 'could not load that beach');
+    return res.json();
+  }
+
+  /** Leave something on someone's beach: any of a rating, a note, a gift. */
+  async leave(code: string, what: { shells?: number; note?: string; quick?: boolean; item?: string }): Promise<{ rating: { count: number; average: number | null } }> {
+    const res = await this.account.fetch(`/api/beaches/${encodeURIComponent(code)}/visit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(what),
+    });
+    if (!res.ok) throw await errorOf(res, 'that didn’t go through');
     return res.json();
   }
 }

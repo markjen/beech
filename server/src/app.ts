@@ -28,6 +28,12 @@
 //   GET    /api/invites/:code    (no session)              -> { name, welcomeGift }
 //   POST   /api/referrals/claim  { code }                  -> { inviter: { name, code }, gift }
 //   GET    /api/referrals                                  -> { code, joined, settled, friends, ladder, ... }
+//   GET    /api/beaches/:code/rating                       -> { count, average, mine, yours, quickNotes, freeText }
+//   POST   /api/beaches/:code/visit { shells?, note?, quick?, item? } -> { rated, noted, gifted, rating }
+//   GET    /api/inbox?before=                              -> { unread, latest, entries }
+//   POST   /api/inbox/read       { upTo }                  -> { unread, latest }
+//   POST   /api/notes/:id/report { reason }                -> 204
+//   GET    /api/blocks, PUT/DELETE /api/blocks/:code       block someone (by any beach code of theirs)
 //
 // Auth: `Authorization: Bearer <token>`; only the token's SHA-256 is stored.
 
@@ -90,6 +96,18 @@ import {
   inspectBlob,
   shortfall,
 } from './checkpoints.js';
+import {
+  FREE_TEXT_AFTER_MS,
+  INBOX_KEEP,
+  INBOX_READ_TTL_MS,
+  NOTES_PER_BEACH_DAY,
+  NOTES_PER_HOUR,
+  QUICK_NOTES,
+  RATING_EVERY_MS,
+  RATING_SHOWN_AT,
+  checkNote,
+  utcDay,
+} from './inbox.js';
 import {
   BONUS_STEPS,
   CLAIM_WINDOW_MS,
@@ -745,6 +763,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       asked: { left: out('left'), right: out('right') },
       // who's asking you; `side` is where they'd be on YOUR beach
       requests: incoming.map((r) => ({ ...beachJson(r), side: opposite(r.side) })),
+      // the inbox, for the app's poll (docs/INBOX_NOTIFICATIONS.md)
+      inbox: await inboxSummary(c.get('user').id),
     });
   });
 
@@ -761,6 +781,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     if (await linked(me, side)) fail(409, `you already have a ${side} neighbor: move them away first`);
     if ((await linked(me, opposite(side)))?.id === them!.id) fail(409, `they're already your ${opposite(side)} neighbor`);
     if (await linked(them!.id, opposite(side))) fail(409, `their ${opposite(side)} side is taken`);
+    if (await blocked(them!.owner_id, c.get('user').id)) fail(403, 'that didn’t go through');
     const theirs = await db.query('SELECT 1 FROM neighbor_requests WHERE from_beach = $1 AND to_beach = $2 AND side = $3', [
       them!.id,
       me,
@@ -768,12 +789,21 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     ]);
     if (theirs.length || them!.owner_id === c.get('user').id) {
       await link(me, side, them!.id);
+      // they asked first: tell them it happened (not for your own beaches)
+      if (them!.owner_id !== c.get('user').id) await inboxRow(them!.owner_id, 'neighbor_linked', c.get('user').id, them!.id, { code: (await nodeById(me))?.code });
       return c.json({ status: 'linked', neighbor: beachJson(them!) });
     }
+    // the request and its inbox row in one statement
+    const mineNode = await nodeById(me);
     await db.query(
-      `INSERT INTO neighbor_requests (from_beach, to_beach, side, created_at) VALUES ($1, $2, $3, $4)
-       ON CONFLICT (from_beach, side) DO UPDATE SET to_beach = EXCLUDED.to_beach, created_at = EXCLUDED.created_at`,
-      [me, them!.id, side, Date.now()],
+      `WITH r AS (
+         INSERT INTO neighbor_requests (from_beach, to_beach, side, created_at) VALUES ($1, $2, $3, $4)
+         ON CONFLICT (from_beach, side) DO UPDATE SET to_beach = EXCLUDED.to_beach, created_at = EXCLUDED.created_at
+         RETURNING 1
+       )
+       INSERT INTO inbox (user_id, kind, actor_id, beach_id, payload, created_at)
+       SELECT $5, 'neighbor_request', $6, $2, $7::jsonb, $4 FROM r`,
+      [me, them!.id, side, Date.now(), them!.owner_id, c.get('user').id, JSON.stringify({ code: mineNode?.code, side: opposite(side), beach: them!.id })],
     );
     return c.json({ status: 'asked', neighbor: beachJson(them!) });
   });
@@ -790,6 +820,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     // they asked for me on their req.side, so they go on my other side
     if (await linked(me, opposite(req!.side))) fail(409, `your ${opposite(req!.side)} side is taken: move them away first`);
     await link(them!.id, req!.side, me);
+    if (them!.owner_id !== c.get('user').id) await inboxRow(them!.owner_id, 'neighbor_linked', c.get('user').id, them!.id, { code: (await nodeById(me))?.code });
     return c.json({ side: opposite(req!.side), neighbor: beachJson(them!) });
   });
 
@@ -946,10 +977,17 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const at = clock();
     // star_first remembers the first time, so un-starring and starring again
     // doesn't count as a new star on the rising board
+    // a first-ever star from this person also tells the owner, folded into
+    // one inbox row per beach per day (not from someone they've blocked)
     await db.query(
-      `WITH f AS (INSERT INTO favorites (user_id, beach_id, created_at) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING)
-       INSERT INTO star_first (user_id, beach_id, at) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
-      [c.get('user').id, who.id, at],
+      `WITH f AS (INSERT INTO favorites (user_id, beach_id, created_at) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING),
+            s AS (INSERT INTO star_first (user_id, beach_id, at) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING RETURNING 1)
+       INSERT INTO inbox (user_id, kind, actor_id, beach_id, day, created_at)
+       SELECT $4, 'star', $1, $2, $5, $3 FROM s
+        WHERE NOT EXISTS (SELECT 1 FROM blocks WHERE blocker_id = $4 AND blocked_id = $1)
+       ON CONFLICT (user_id, kind, beach_id, day) WHERE day IS NOT NULL
+       DO UPDATE SET id = EXCLUDED.id, count = inbox.count + 1, actor_id = EXCLUDED.actor_id, created_at = EXCLUDED.created_at, read_at = NULL`,
+      [c.get('user').id, who.id, at, who.owner_id, utcDay(at)],
     );
     return c.json({ favorite: shoreJson(who) });
   });
@@ -2446,23 +2484,14 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   // there is nothing to give (everyone already has them). The row on the
   // sand is untouched: gifting moves what you own, not what's placed.
   const GIFT_PER_HOUR = 20;
-  app.post('/gifts', requireUser, async (c) => {
-    const { code, item } = await body<{ code?: string; item?: string }>(c);
-    if (normalizeCode(code ?? '').length !== 6) fail(400, 'neighbor codes are 6 letters and numbers');
-    if (!item || typeof item !== 'string' || item.length > 40) fail(400, 'say which item to give');
-    const me = c.get('user').id;
-    const them = await nodeByCode(code!);
-    if (!them) fail(404, 'no beach has that code');
-    if (them!.owner_id === me) fail(400, "that's your own code");
-    const now = Date.now();
-    const recent = await db.query<{ n: string }>(
-      'SELECT COUNT(*) AS n FROM gifts WHERE from_id = $1 AND created_at > $2',
-      [me, now - 3600000],
-    );
-    if (Number(recent[0].n) >= GIFT_PER_HOUR) fail(429, 'slow down: 20 gifts an hour is the limit');
-    // take your oldest unexpired row of that item (one statement, so a race
-    // on the last one leaves the second gift with nothing to move)
-    const rows = await db.query<{ moved: string }>(
+  /**
+   * Move one of `me`'s `item` to `to` (the owner of `beach`), log it, and
+   * write its inbox row, all in one statement. The oldest unexpired row
+   * goes, so a race on the last one leaves the second gift with nothing to
+   * move. Returns the inbox row's id, or null when there was nothing to give.
+   */
+  const giveOne = async (tx: Db, me: string, item: string, to: string, beach: string, now: number): Promise<string | null> => {
+    const rows = await tx.query<{ inbox: string | null }>(
       `WITH giver AS (
          UPDATE inventory SET quantity = quantity - 1
           WHERE id = (
@@ -2487,11 +2516,36 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
          -- a one-of-a-kind item changes owner with it
          UPDATE unique_items SET owner_id = $4 WHERE item_id = $2 AND owner_id = $1 AND EXISTS (SELECT 1 FROM giver)
          RETURNING item_id
+       ), told AS (
+         INSERT INTO inbox (user_id, kind, actor_id, beach_id, item_id, created_at)
+         SELECT $4, 'gift', $1, $5, item_id, $3 FROM giver
+         RETURNING id
        )
-       SELECT (SELECT COUNT(*) FROM giver) AS moved`,
-      [me, item, now, them!.owner_id],
+       SELECT (SELECT id FROM told) AS inbox`,
+      [me, item, now, to, beach],
     );
-    if (Number(rows[0].moved) === 0) fail(409, "you don't have one of those to give");
+    return rows[0]?.inbox ?? null;
+  };
+  const giftsThisHour = async (tx: Db, me: string, now: number) =>
+    Number((await tx.query<{ n: string }>('SELECT COUNT(*) AS n FROM gifts WHERE from_id = $1 AND created_at > $2', [me, now - 3600000]))[0].n);
+
+  app.post('/gifts', requireUser, async (c) => {
+    const { code, item } = await body<{ code?: string; item?: string }>(c);
+    if (normalizeCode(code ?? '').length !== 6) fail(400, 'neighbor codes are 6 letters and numbers');
+    if (!item || typeof item !== 'string' || item.length > 40) fail(400, 'say which item to give');
+    const me = c.get('user').id;
+    const them = await nodeByCode(code!);
+    if (!them) fail(404, 'no beach has that code');
+    if (them!.owner_id === me) fail(400, "that's your own code");
+    if (await blocked(them!.owner_id, me)) fail(403, 'that didn’t go through');
+    await db.withTransaction(async (tx) => {
+      // Share the sender lock with visitor gifts so the hourly limit holds
+      // when both actions happen at once.
+      await tx.query('SELECT 1 FROM users WHERE id = $1 FOR NO KEY UPDATE', [me]);
+      const now = clock();
+      if ((await giftsThisHour(tx, me, now)) >= GIFT_PER_HOUR) fail(429, 'slow down: 20 gifts an hour is the limit');
+      if (!(await giveOne(tx, me, item!, them!.owner_id, them!.id, now))) fail(409, "you don't have one of those to give");
+    });
     return c.json({ item, to: { name: them!.name, code: them!.code } });
   });
 
@@ -2537,6 +2591,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
              RETURNING inviter_id
            ), g AS (
              ${REWARD_ROW} SELECT inviter_id, $4, 1, 'reward', $2 FROM q WHERE $4::text IS NOT NULL RETURNING 1
+           ), told AS (
+             INSERT INTO inbox (user_id, kind, actor_id, item_id, created_at) SELECT inviter_id, 'invite_settled', $1, $4, $2 FROM q RETURNING 1
            )
            SELECT (SELECT COUNT(*) FROM q) AS n`,
           [invitee, clock(), rank, item],
@@ -2628,6 +2684,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
          -- the inviter's guide: a friend joined
          INSERT INTO guide_steps (user_id, step, done_at) SELECT inviter_id, 'invite', $4 FROM r
          ON CONFLICT DO NOTHING RETURNING 1
+       ), told AS (
+         INSERT INTO inbox (user_id, kind, actor_id, created_at) SELECT inviter_id, 'invite_joined', $1, $4 FROM r RETURNING 1
        )
        SELECT (SELECT COUNT(*) FROM r) AS n`,
       [me, them!.owner_id, them!.code, now, WELCOME_GIFT],
@@ -2665,6 +2723,282 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       welcomeGift: WELCOME_GIFT,
       steps: GUIDE_STEPS.length,
     });
+  });
+
+
+  // ---------------------------------------------------------------- visitors and the inbox
+  // docs/INBOX_NOTIFICATIONS.md. A visitor can leave a rating (shells), a
+  // note and a gift on someone's beach; everything that happens to you lands
+  // in your inbox, written in the same statement as the thing itself.
+
+  /** has `owner` blocked `actor`? (blocked people can't reach you; they're told only "didn't go through") */
+  const blocked = async (owner: string, actor: string): Promise<boolean> =>
+    (await db.query('SELECT 1 FROM blocks WHERE blocker_id = $1 AND blocked_id = $2', [owner, actor])).length > 0;
+
+  /** one inbox row on its own (for actions with no statement to join) */
+  const inboxRow = async (user: string, kind: string, actor: string | null, beach: string | null, payload: Record<string, unknown> = {}) => {
+    await db.query('INSERT INTO inbox (user_id, kind, actor_id, beach_id, payload, created_at) VALUES ($1, $2, $3, $4, $5::jsonb, $6)', [
+      user,
+      kind,
+      actor,
+      beach,
+      JSON.stringify(payload),
+      clock(),
+    ]);
+  };
+
+  /** the unread count and the newest row, for the 30 s poll */
+  const inboxSummary = async (user: string) => {
+    const rows = await db.query<{ unread: string; id: string | null; kind: string | null; name: string | null }>(
+      `SELECT (SELECT COUNT(*) FROM inbox i WHERE i.user_id = $1 AND i.read_at IS NULL
+                 AND NOT EXISTS (SELECT 1 FROM blocks k WHERE k.blocker_id = $1 AND k.blocked_id = i.actor_id)) AS unread,
+              l.id, l.kind, u.name
+         FROM (SELECT 1) one
+         LEFT JOIN LATERAL (
+           SELECT i.id, i.kind, i.actor_id FROM inbox i
+            WHERE i.user_id = $1 AND NOT EXISTS (SELECT 1 FROM blocks k WHERE k.blocker_id = $1 AND k.blocked_id = i.actor_id)
+            ORDER BY i.id DESC LIMIT 1
+         ) l ON true
+         LEFT JOIN users u ON u.id = l.actor_id`,
+      [user],
+    );
+    const r = rows[0];
+    return {
+      unread: Number(r?.unread ?? 0),
+      latest: r?.id ? { id: Number(r.id), kind: r.kind, name: r.name?.trim() || null } : null,
+    };
+  };
+
+  /** a beach's average, in shells (null until it has RATING_SHOWN_AT ratings) */
+  const ratingOf = async (beach: string) => {
+    const r = (await db.query<{ n: string; avg: string | null }>('SELECT COUNT(*) AS n, AVG(shells) AS avg FROM ratings WHERE beach_id = $1', [beach]))[0];
+    const count = Number(r?.n ?? 0);
+    return { count, average: count >= RATING_SHOWN_AT && r?.avg ? Math.round(Number(r.avg) * 10) / 10 : null };
+  };
+
+  const isNewAccount = async (user: string, now: number) =>
+    now - Number((await db.query<{ created_at: string }>('SELECT created_at FROM users WHERE id = $1', [user]))[0]?.created_at ?? 0) < FREE_TEXT_AFTER_MS;
+
+  // GET /beaches/:code/rating: the visitor card's numbers
+  app.get('/beaches/:code/rating', requireUser, async (c) => {
+    const them = await nodeByCode(c.req.param('code') ?? '');
+    if (!them) return c.json({ error: 'no beach with that code' }, 404);
+    const me = c.get('user').id;
+    const mineRow = (await db.query<{ shells: number }>('SELECT shells FROM ratings WHERE rater_id = $1 AND beach_id = $2', [me, them.id]))[0];
+    return c.json({
+      ...(await ratingOf(them.id)),
+      mine: mineRow ? Number(mineRow.shells) : null,
+      yours: them.owner_id === me,
+      quickNotes: QUICK_NOTES,
+      freeText: !(await isNewAccount(me, clock())),
+    });
+  });
+
+  // POST /beaches/:code/visit { shells?, note?, quick?, item? }: leave something
+  app.post('/beaches/:code/visit', requireUser, async (c) => {
+    const b = await body<{ shells?: unknown; note?: unknown; quick?: unknown; item?: unknown }>(c);
+    const them = await nodeByCode(c.req.param('code') ?? '');
+    if (!them) fail(404, 'no beach has that code');
+    const me = c.get('user').id;
+    if (them!.owner_id === me) fail(400, "that's your own beach");
+    if (await blocked(them!.owner_id, me)) fail(403, 'that didn’t go through');
+    const now = clock();
+    const shells = b.shells === undefined || b.shells === null ? null : Number(b.shells);
+    if (shells !== null && !(Number.isInteger(shells) && shells >= 1 && shells <= 5)) fail(400, 'a rating is 1 to 5 shells');
+    const item = b.item === undefined || b.item === null || b.item === '' ? null : String(b.item);
+    if (item !== null && item.length > 40) fail(400, 'say which item to give');
+    let note: string | null = null;
+    const quick = b.quick === true;
+    if (b.note !== undefined && b.note !== null && b.note !== '') {
+      if (quick) {
+        if (!QUICK_NOTES.includes(String(b.note))) fail(400, 'that isn’t one of the quick notes');
+        note = String(b.note);
+      } else {
+        const chk = checkNote(b.note);
+        if (!chk.ok) fail(400, chk.reason);
+        if (await isNewAccount(me, now)) fail(403, 'quick notes only for now');
+        note = (chk as { text: string }).text;
+      }
+    }
+    if (shells === null && note === null && item === null) fail(400, 'leave a rating, a note or a gift');
+    await db.withTransaction(async (tx) => {
+      // Serialize a sender’s limits and commit the gift, note, rating and inbox together.
+      await tx.query('SELECT 1 FROM users WHERE id = $1 FOR NO KEY UPDATE', [me]);
+      if (note !== null) {
+        const n = (
+          await tx.query<{ hour: string; here: string }>(
+            `SELECT COUNT(*) FILTER (WHERE created_at > $2) AS hour,
+                    COUNT(*) FILTER (WHERE created_at > $3 AND beach_id = $4) AS here
+               FROM notes WHERE from_id = $1 AND created_at > LEAST($2, $3)`,
+            [me, now - 3600000, now - 86400000, them!.id],
+          )
+        )[0];
+        if (Number(n.hour) >= NOTES_PER_HOUR) fail(429, `${NOTES_PER_HOUR} notes an hour at most`);
+        if (Number(n.here) >= NOTES_PER_BEACH_DAY) fail(429, `${NOTES_PER_BEACH_DAY} notes a day to one beach at most`);
+      }
+      let changedRating = shells;
+      if (shells !== null) {
+        const prev = (await tx.query<{ shells: number; updated_at: string }>('SELECT shells, updated_at FROM ratings WHERE rater_id = $1 AND beach_id = $2', [me, them!.id]))[0];
+        if (prev) {
+          if (Number(prev.shells) === shells) changedRating = null;
+          else if (now - Number(prev.updated_at) < RATING_EVERY_MS) fail(429, 'one rating change a day');
+        }
+      }
+      if (item !== null && (await giftsThisHour(tx, me, now)) >= GIFT_PER_HOUR) fail(429, 'slow down: 20 gifts an hour is the limit');
+
+      // the gift first: it moves (with its own inbox row) or nothing happens at all
+      let giftRow: string | null = null;
+      if (item !== null) {
+        giftRow = await giveOne(tx, me, item, them!.owner_id, them!.id, now);
+        if (!giftRow) fail(409, "you don't have one of those to give");
+      }
+      // the note, the rating and the inbox row together. With a gift its row
+      // becomes the visit; a rating alone folds into the day's "ratings" row.
+      const alone = note === null && giftRow === null;
+      await tx.query(
+        `WITH n AS (
+           INSERT INTO notes (from_id, to_id, beach_id, body, quick, created_at)
+           SELECT $1, $2, $3, $4, $5, $7 WHERE $4::text IS NOT NULL
+           RETURNING id
+         ), r AS (
+           INSERT INTO ratings (rater_id, beach_id, shells, updated_at)
+           SELECT $1, $3, $11, $7 WHERE $11::int IS NOT NULL
+           ON CONFLICT (rater_id, beach_id) DO UPDATE SET shells = EXCLUDED.shells, updated_at = EXCLUDED.updated_at
+           RETURNING 1
+         ), upd AS (
+           UPDATE inbox SET kind = 'visit', shells = $6, note_id = (SELECT id FROM n)
+            WHERE id = $8::bigint
+           RETURNING 1
+         ), visit AS (
+           INSERT INTO inbox (user_id, kind, actor_id, beach_id, shells, note_id, created_at)
+           SELECT $2, 'visit', $1, $3, $6, (SELECT id FROM n), $7
+            WHERE $8::bigint IS NULL AND NOT $9::boolean
+           RETURNING 1
+         ), rated AS (
+           INSERT INTO inbox (user_id, kind, actor_id, beach_id, day, created_at)
+           SELECT $2, 'rating', $1, $3, $10, $7 WHERE $9::boolean AND $11::int IS NOT NULL
+           ON CONFLICT (user_id, kind, beach_id, day) WHERE day IS NOT NULL
+           DO UPDATE SET id = EXCLUDED.id, count = inbox.count + 1, actor_id = EXCLUDED.actor_id, created_at = EXCLUDED.created_at, read_at = NULL
+           RETURNING 1
+         )
+         SELECT (SELECT COUNT(*) FROM n) AS noted`,
+        [me, them!.owner_id, them!.id, note, quick, shells, now, giftRow, alone, utcDay(now), changedRating],
+      );
+    });
+    return c.json({ rated: shells !== null, noted: note !== null, gifted: item, rating: await ratingOf(them!.id) });
+  });
+
+  // GET /inbox?before=ID: newest first, 30 a page; trims old rows as it goes
+  app.get('/inbox', requireUser, async (c) => {
+    const me = c.get('user').id;
+    const now = clock();
+    await db.query(
+      `DELETE FROM inbox WHERE user_id = $1 AND (
+         (read_at IS NOT NULL AND created_at < $2)
+         OR id < (SELECT MIN(id) FROM (SELECT id FROM inbox WHERE user_id = $1 ORDER BY id DESC LIMIT $3) keep)
+       )`,
+      [me, now - INBOX_READ_TTL_MS, INBOX_KEEP],
+    );
+    const before = Number(c.req.query('before') ?? 0);
+    const rows = await db.query<{
+      id: string; kind: string; actor_id: string | null; actor_name: string | null; actor_code: string | null;
+      beach_id: string | null; beach_code: string | null; beach_name: string | null; item_id: string | null; shells: number | null;
+      note_id: string | null; note: string | null; note_hidden: string | null; count: number; payload: Record<string, unknown>;
+      created_at: string; read_at: string | null;
+    }>(
+      `SELECT i.id, i.kind, i.actor_id, u.name AS actor_name, h.code AS actor_code,
+              i.beach_id, b.code AS beach_code, b.name AS beach_name, i.item_id, i.shells,
+              i.note_id, n.body AS note, n.hidden_at AS note_hidden, i.count, i.payload, i.created_at, i.read_at
+         FROM inbox i
+         LEFT JOIN users u ON u.id = i.actor_id
+         LEFT JOIN beach h ON h.id = i.actor_id
+         LEFT JOIN beach b ON b.id = i.beach_id
+         LEFT JOIN notes n ON n.id = i.note_id
+        WHERE i.user_id = $1 AND ($2::bigint = 0 OR i.id < $2::bigint)
+          AND NOT EXISTS (SELECT 1 FROM blocks k WHERE k.blocker_id = $1 AND k.blocked_id = i.actor_id)
+        ORDER BY i.id DESC LIMIT 30`,
+      [me, Number.isSafeInteger(before) && before > 0 ? before : 0],
+    );
+    const ratings = new Map<string, { count: number; average: number | null }>();
+    const entries = [];
+    for (const r of rows) {
+      let rating: { count: number; average: number | null } | undefined;
+      if (r.kind === 'rating' && r.beach_id) {
+        rating = ratings.get(r.beach_id) ?? (await ratingOf(r.beach_id));
+        ratings.set(r.beach_id, rating);
+      }
+      entries.push({
+        id: Number(r.id),
+        kind: r.kind,
+        // a deleted sender: no name, no code (the app says "a former visitor")
+        from: r.actor_id ? { name: r.actor_name?.trim() || 'Someone', code: r.actor_code } : null,
+        beach: r.beach_code ? { code: r.beach_code, name: r.beach_name || null } : null,
+        item: r.item_id,
+        shells: r.shells === null ? null : Number(r.shells),
+        note: r.note_id ? (r.note_hidden ? { id: Number(r.note_id), removed: true } : { id: Number(r.note_id), text: r.note }) : null,
+        count: Number(r.count),
+        rating,
+        payload: r.payload ?? {},
+        at: Number(r.created_at),
+        read: r.read_at !== null,
+      });
+    }
+    return c.json({ ...(await inboxSummary(me)), entries });
+  });
+
+  // POST /inbox/read { upTo }: everything up to that row has been seen
+  app.post('/inbox/read', requireUser, async (c) => {
+    const { upTo } = await body<{ upTo?: number }>(c);
+    if (!Number.isSafeInteger(upTo)) fail(400, 'upTo is a row id');
+    await db.query('UPDATE inbox SET read_at = $3 WHERE user_id = $1 AND id <= $2 AND read_at IS NULL', [c.get('user').id, upTo, clock()]);
+    return c.json(await inboxSummary(c.get('user').id));
+  });
+
+  // POST /notes/:id/report { reason }: only the note's recipient can report it
+  app.post('/notes/:id/report', requireUser, async (c) => {
+    const id = Number(c.req.param('id'));
+    if (!Number.isSafeInteger(id)) fail(404, 'no such note');
+    const { reason } = await body<{ reason?: string }>(c);
+    const note = (await db.query<{ to_id: string }>('SELECT to_id FROM notes WHERE id = $1', [id]))[0];
+    if (!note || note.to_id !== c.get('user').id) fail(404, 'no such note');
+    await db.query(
+      `INSERT INTO reports (reporter_id, note_id, reason, created_at) VALUES ($1, $2, $3, $4) ON CONFLICT (reporter_id, note_id) DO NOTHING`,
+      [c.get('user').id, id, String(reason ?? '').slice(0, 200), clock()],
+    );
+    logEvent('note_reported', { note: id });
+    return c.body(null, 204);
+  });
+
+  // blocks: by any beach code of theirs. Silent: they're never told.
+  app.get('/blocks', requireUser, async (c) => {
+    const rows = await db.query<{ name: string; code: string | null }>(
+      `SELECT u.name, h.code FROM blocks k JOIN users u ON u.id = k.blocked_id LEFT JOIN beach h ON h.id = k.blocked_id
+        WHERE k.blocker_id = $1 ORDER BY k.created_at DESC`,
+      [c.get('user').id],
+    );
+    return c.json({ blocked: rows.map((r) => ({ name: r.name?.trim() || 'Someone', code: r.code })) });
+  });
+  app.put('/blocks/:code', requireUser, async (c) => {
+    const them = await nodeByCode(c.req.param('code') ?? '');
+    if (!them) fail(404, 'no beach has that code');
+    if (them!.owner_id === c.get('user').id) fail(400, "that's you");
+    await db.query('INSERT INTO blocks (blocker_id, blocked_id, created_at) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING', [
+      c.get('user').id,
+      them!.owner_id,
+      clock(),
+    ]);
+    // their pending requests to you go too
+    await db.query(
+      `DELETE FROM neighbor_requests r USING beach f, beach t
+        WHERE f.id = r.from_beach AND t.id = r.to_beach AND f.owner_id = $2 AND t.owner_id = $1`,
+      [c.get('user').id, them!.owner_id],
+    );
+    return c.body(null, 204);
+  });
+  app.delete('/blocks/:code', requireUser, async (c) => {
+    const them = await nodeByCode(c.req.param('code') ?? '');
+    if (them) await db.query('DELETE FROM blocks WHERE blocker_id = $1 AND blocked_id = $2', [c.get('user').id, them.owner_id]);
+    return c.body(null, 204);
   });
 
   return app;

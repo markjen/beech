@@ -20,6 +20,8 @@ import { BEACH_CAP } from './app.js';
 import { CHECKPOINTS_PER_BEACH, FREE_ITEMS } from './checkpoints.js';
 import { DIG_FIND_CHANCE, DIG_FIND_DAILY_CAP, DIG_FIND_ROLL_COOLDOWN_MS } from './digFinds.js';
 import { COOLDOWN_MAX_MS, COOLDOWN_MIN_MS, GRAB_CHANCE, POOLS, type Rarity } from './pulls.js';
+import { NOTE_MAX, NOTES_PER_BEACH_DAY, NOTES_PER_HOUR, QUICK_NOTES, RATING_SHOWN_AT } from './inbox.js';
+import { CLAIM_WINDOW_MS, GUIDE_BONUS, GUIDE_STEPS, REWARD_CAP, SETTLE_STEPS, WELCOME_GIFT, ladder } from './referrals.js';
 import { RELEASE_NOTES } from './releaseNotes.js';
 import { behaviourOfKind, displayName, itemGlows, itemKind, itemRarity, type ItemBehaviour } from './prizeNames.js';
 import { PRODUCTS } from './products.js';
@@ -28,6 +30,27 @@ import { VENDING_SETS, currentSet, nextUtcMidnight, type VendingSet } from './ve
 
 const RARITY: Record<Rarity, string> = { common: 'Common', uncommon: 'Uncommon', rare: 'Rare', legendary: 'Legendary', unique: 'One of a kind' };
 const ORDER: Rarity[] = ['common', 'uncommon', 'rare', 'legendary', 'unique'];
+
+/** "a parasol", "an extra beach" */
+const aName = (id: string) => {
+  if (id === 'beach') return 'an extra beach';
+  const name = displayName(id).toLowerCase();
+  return `${/^[aeiou]/i.test(name) ? 'an' : 'a'} ${esc(name)}`;
+};
+const ordinal = (n: number) => `${n}${n % 10 === 1 && n % 100 !== 11 ? 'st' : n % 10 === 2 && n % 100 !== 12 ? 'nd' : n % 10 === 3 && n % 100 !== 13 ? 'rd' : 'th'}`;
+
+/** the invite ladder as list items, folding runs of the same reward */
+function ladderItems(): string {
+  const lines: { from: number; to: number; item: string }[] = [];
+  for (const r of ladder()) {
+    const last = lines[lines.length - 1];
+    if (last && last.item === r.item) last.to = r.rank;
+    else lines.push({ from: r.rank, to: r.rank, item: r.item });
+  }
+  return lines
+    .map((l) => `<li>${l.from === l.to ? `Your ${ordinal(l.from)} friend` : `Your ${ordinal(l.from)} to ${ordinal(l.to)} friends`}: ${aName(l.item)}${l.from === l.to ? '' : ' each'}</li>`)
+    .join('');
+}
 
 const pct = (v: number) => `${Math.round(v * 1000) / 10}%`;
 const names = (ids: string[]) => ids.map((id) => esc(displayName(id))).join(', ');
@@ -192,6 +215,9 @@ const NAV_SECTIONS: [string, string][] = [
   ['beaches', 'Your beaches'],
   ['shore', 'Neighbors and the shore'],
   ['leaderboard', 'Leaderboard'],
+  ['visitors', 'Visitors and your inbox'],
+  ['beach-guide', 'Beach guide'],
+  ['invites', 'Invites'],
   ['checkpoints', 'Checkpoints'],
   ['files', 'Beach files'],
   ['shop', 'Shop'],
@@ -281,6 +307,33 @@ ${catalogSection(now)}
 <h2 id="leaderboard">Leaderboard</h2>
 <p>The trophy button shows the most-starred beaches. <b>All time</b> counts every star a beach has now. <b>Rising</b> counts stars from the past week, and the newest count most (a star’s weight halves every 2 days). Visit or star a beach from its row. Signed in only.</p>
 
+<h2 id="visitors">Visitors and your inbox</h2>
+<p>A link to a beach opens it straight away, even before you sign in, as long as the beach is on the shore. To leave anything, sign in.</p>
+<h3>Leaving something</h3>
+<p>On someone else’s beach, tap the “i” at the bottom, then <b>leave something</b> next to the beach’s name. A card opens where you can leave any of these, all at once:</p>
+<ul>
+  <li><b>A rating</b>, one to five shells. One rating per beach; you can change it once a day. The card shows a beach’s average once it has ${RATING_SHOWN_AT} ratings. Ratings are separate from stars: a star keeps a beach in your favorites and counts on the leaderboard.</li>
+  <li><b>A note</b> of up to ${NOTE_MAX} characters, or one of the quick notes (${QUICK_NOTES.map((q) => `“${esc(q)}”`).join(', ')}). Only the beach’s owner can read it. Notes can’t contain links, usernames, phone numbers or rude words. For your first day only quick notes can be sent. At most ${NOTES_PER_HOUR} notes an hour, and ${NOTES_PER_BEACH_DAY} a day to the same beach.</li>
+  <li><b>A gift</b> from your bag: anything you won or bought that you still have. Free things (rocks, driftwood, shells, sea glass, flags) aren’t listed, because everyone has as many as they like. It arrives at once.</li>
+</ul>
+<h3>Your inbox</h3>
+<p>The envelope at the top right is your inbox. A red number says how many things are new. In it: visitors and what they left, gifts, neighbor requests (accept or decline right there), new neighbors, stars and ratings (gathered into one line a day), and friends who joined through your invite. When something arrives while you’re playing, a short line says so. Opening the inbox marks everything in it as seen. It keeps your newest 500 things; things you’ve seen go after 180 days.</p>
+<p>On each line you can <b>say thanks</b> (sends a quick “thank you” note back), <b>visit</b> the sender’s beach, <b>report</b> a note, or <b>block</b> the sender. Someone you block can no longer rate, write to, give to or ask to be next to you, and what they sent disappears from your inbox; they aren’t told. Unblock them from “blocked” at the bottom of the inbox. Reported notes are looked at by the beech team and removed if they break the rules.</p>
+
+<h2 id="beach-guide">Beach guide</h2>
+<p>The compass at the top of the tool column is the beach guide: a list of things to try, one at a time, with how many you’ve done. The card above the round buttons shows the next one; tap it to open the list, or × to hide it (the list stays under the compass). Signed in, each step leaves a small gift in your bag the first time.</p>
+<table><thead><tr><th>Step</th><th>How</th><th>Gift</th></tr></thead><tbody>
+${GUIDE_STEPS.map((st) => `<tr><td>${esc(st.title)}</td><td>${esc(st.how)}</td><td>${st.gift ? esc(displayName(st.gift)) : st.id === 'claw' ? 'the claw’s own prize' : st.id === 'invite' ? 'see <a href="#invites">invites</a>' : ''}</td></tr>`).join('')}
+</tbody></table>
+<p>Do the first ${GUIDE_STEPS.length - 1} and you also get ${aName(GUIDE_BONUS)}. Without signing in, the steps that need an account (the machines, visiting, stars and invites) wait, and steps you do before signing in still count, with their gifts, once you sign in.</p>
+
+<h2 id="invites">Invites</h2>
+<p>Settings → <b>Beach</b> → “invite friends” (or the last step of the beach guide) gives you your invite link, to share or copy. A link to your beach (from “share”) works as an invite too.</p>
+<p><b>Your friend</b> sees who invited them, lands on your beach, and gets ${aName(WELCOME_GIFT)} as soon as they sign in for the first time, with a button to ask to be your neighbor. Invites are for new players: an account more than ${Math.round(CLAIM_WINDOW_MS / 86400000)} days old can’t use one, and each player can join through one invite only.</p>
+<p><b>You</b> get a gift once your friend has settled in: when they’ve done ${SETTLE_STEPS} steps of the beach guide. The gifts climb:</p>
+<ul>${ladderItems()}</ul>
+<p>After ${REWARD_CAP} friends the gifts stop, but friends still join and still get their welcome gift. The next time you open the game after a friend settles in, it tells you what you got. The invite panel lists who joined and who has settled in.</p>
+
 <h2 id="checkpoints">Checkpoints</h2>
 <p>A checkpoint keeps a beach as it is now — its sand and its things — to come back to later or to put on another of your beaches. Up to ${CHECKPOINTS_PER_BEACH} per beach. Restoring needs your bag to cover the things on it; if it can’t, you can restore without them. The beach as it was is kept as a “before restoring” checkpoint, and Undo brings it back. Other devices showing that beach reload.</p>
 
@@ -298,7 +351,7 @@ ${catalogSection(now)}
 
 <h2 id="settings">Settings</h2>
 <ul>
-  <li><b>Beach</b>: choose which of your beaches to configure, its real-world <b>place</b> (“near me” uses your location once), code and share links, <b>save a picture</b>, <b>smooth the beach</b>, <b>export</b> / <b>import</b>, and <b>checkpoints</b>.</li>
+  <li><b>Beach</b>: choose which of your beaches to configure, its real-world <b>place</b> (“near me” uses your location once), code and share links, <b>save a picture</b>, <b>smooth the beach</b> when it’s in view, <b>export</b> / <b>import</b>, and <b>checkpoints</b>.</li>
   <li><b>Shore</b>: snap your own beaches side by side in one tap, manage left/right neighbors and requests, visit by code, and open favorite beaches.</li>
   <li><b>Display</b>: <b>sound, music, haptics</b>, <b>battery saver</b> (draws every other frame), <b>ambient (for a TV)</b>, <b>light</b>, <b>detail</b> (takes effect next start), <b>watch on TV</b>, and <b>full screen</b>.</li>
   <li><b>Account</b>: sign in or out, save status, link another device, and delete account.</li>

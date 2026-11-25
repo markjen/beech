@@ -55,6 +55,10 @@ Migrations live in `src/migrations.ts` and are applied at startup.
 | `GET /api/guide`, `POST /api/guide/:step` | the beach guide: steps done; mark one done (once, with its gift; claw, star and invite are checked on the server, 409 until true). See [INVITES_GUIDE.md](INVITES_GUIDE.md) |
 | `GET /api/invites/:code` | who an invite link is from (no session, 30/min per IP): `{ name, welcomeGift }` |
 | `POST /api/referrals/claim { code }` | a new player (account under 7 days old) claims the invite they came through, once: the welcome gift. 400 own code, 404 unknown, 409 already invited or too old |
+| `GET /api/beaches/:code/rating` | the visitor card: `{ count, average (from 3), mine, yours, quickNotes, freeText }` |
+| `POST /api/beaches/:code/visit { shells?, note?, quick?, item? }` | leave a rating, a note and/or a gift (one inbox row). 400 bad or filtered note, 403 blocked or a new account's typed note, 409 no such item, 429 limits. See [INBOX_NOTIFICATIONS.md](INBOX_NOTIFICATIONS.md) |
+| `GET /api/inbox?before=`, `POST /api/inbox/read { upTo }` | your inbox, newest first (30 a page), and marking it seen; `GET /api/neighbors` also carries `inbox: { unread, latest }` |
+| `POST /api/notes/:id/report`, `GET /api/blocks`, `PUT`/`DELETE /api/blocks/:code` | report a note you got; block / unblock someone by any beach code of theirs |
 | `GET /api/referrals` | your invites: `{ code, joined, settled, friends, ladder, cap, settleSteps, welcomeGift }`. A friend settles in after 3 guide steps; the inviter then gets the next rung (parasol, surfboard, extra beach, …, 10 at most) |
 
 Every request from a client IP (Cloud Run's `x-forwarded-for`) is rate
@@ -169,6 +173,7 @@ npm run e2e:neighbors                   # Ana saves; Ben adds her code on his le
 npm run e2e:shore                       # walk down a 3-beach shore, head home, visit by code, favorites
 npm run e2e:leaderboard                 # fans star beaches; the board orders them; star and visit from it
 npm run e2e:invites                     # Fran joins through Ana's link, settles in; Ana is rewarded
+npm run e2e:inbox                       # Ben visits signed out, signs in, leaves a note and a gift; Ana's inbox
 ```
 
 CI runs the server tests on PGlite and on a Postgres 16 service, builds the

@@ -445,6 +445,47 @@ accepted the repo's default branch, so the deploy job ran only there.
   Play** store link (`app.beech.beach`), and an **iOS coming soon** badge
   (docs/LANDING_PAGE.md).
 
+## Visitors and the inbox (2026-11-24)
+
+Design, as-built notes and decisions in [INBOX_NOTIFICATIONS.md](INBOX_NOTIFICATIONS.md).
+Phases V1–V4 are built; push (V5 web, V6 native) is not.
+
+- **Signed-out visits** use main's read-only 3D visits (the beechshore
+  follow-ups: `/api/public/…`, strictly `isPublic`). On top of that, an
+  `?invite=` link opens the inviter's beach the same way, and a sign-up
+  from a plain `?visit=` link claims that beach's owner as the inviter.
+  Signed out, `NeighborApi.get` no longer asks the server every 30 s.
+- **The visitor card** ("leave something" on a beach's name tag, which
+  main's viewing mode shows in the "i" card while visiting): 1–5 shells, a
+  note (280 characters, or quick notes; quick only for an account's first
+  day) and a gift from the bag (owned, non-free things only). Signed out,
+  the button opens sign-in, then the card. One inbox row per visit; ratings
+  alone fold into one row a day. The card shows the beach's average from
+  3 ratings. The invite panel, inbox and visitor card load in their own
+  chunk after sign-in (bundle budgets raised 340→345 / 440→450, see
+  perf/budget.json).
+- **The inbox** (envelope, top right, signed in): unread badge from the
+  30 s neighbors poll (`inbox` in `GET /api/neighbors`), a note over the
+  beach for visits, gifts, neighbor requests and links, and friends settling
+  in. Rows for visits, gifts, neighbor requests (accept / decline in place),
+  new neighbors, stars and ratings (per day), and invites. Say thanks,
+  visit, report a note, block (two taps); unblock from "blocked".
+- **Safety:** a server-side note filter (links, handles, phone numbers,
+  blocked words with masked vowels), rate limits (10 notes an hour, 3 a day
+  to one beach, a rating change a day, gifts 20 an hour), blocks (silent;
+  they stop ratings, notes, gifts and neighbor requests, and hide past
+  rows), reports, and the admin console's **Reports** tab (hide the note
+  or dismiss; audited).
+- Gifts from the bag, neighbor requests and links, first stars and invite
+  joins / settles now each write their inbox row in the same statement.
+- Migration 24: `notes`, `ratings`, `blocks`, `reports`, `inbox`.
+- Tests: `server/test/inbox.test.ts` (17), a reports test in
+  `server/test/admin.test.ts`, `tests/inboxText.test.ts`,
+  `npm run e2e:inbox` (two browsers, the whole loop).
+- **No notes in the game:** the guide's coach card, checklist and invite
+  panel lost their explanations (they're in the web guide now, Beach guide,
+  Invites and Visitors sections), per the CLAUDE.md rule merged from main.
+
 ## Invites and the beach guide (2026-11-23)
 
 Design and decisions in [INVITES_GUIDE.md](INVITES_GUIDE.md).
@@ -924,7 +965,10 @@ prompt, JSON Schema and sample asset.
   unbaited wild visit rolls, 35% of visits are an offshore dolphin cruising
   alongshore in deep water (`depth >= 0.6 m`) with periodic parabolic breaching
   arcs and nose pitch; `?debug=1` adds **Spawn dolphin**.
-- **Direct multi-beach editing, tabbed settings, and 1-click shore connecting** (2026-11-24):
+
+- **Cloud SQL recovery** (2026-11-25): Terraform enables point-in-time recovery with seven days of transaction logs and seven daily backups. Production takes on these settings when the configuration is applied.
+
+- **Direct multi-beach editing, tabbed settings, and 1-click shore connecting** (2026-11-25):
   - Any of your own beaches visible in the 3D shore view can now be edited directly (dig, build, blend, dozer, flatten, vacuum, place/drag items, undo/redo — including seamlessly crossing linked seams between adjacent owned beaches). `NeighborView` lazily spins up a lightweight `BeachSim` (`stepEdit`) per edited owned beach and auto-saves writes to that beach's ID (`PUT /api/beaches/mine/:id/sand`) regardless of which beach is selected in settings.
   - `SettingsSheet` is now organized into sticky tabs (**Beach**, **Shore**, **Display**, **Account**; **Beach** + **Display** in sandbox builds). Selecting a beach in **Beach** only configures its settings (name, place, code, smooth, checkpoints, neighbors) without switching the 3D scene unless you tap **go there** (which glides smoothly if already on the current shore).
   - **Shore** includes a visual **Your beaches on the shore** stretch connector (`src/ui/shoreConnect.ts`) to snap your own beaches side by side or disconnect them in one tap without copying codes or flipping beaches.

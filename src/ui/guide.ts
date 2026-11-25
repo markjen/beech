@@ -10,8 +10,9 @@
 //   earn their gifts, then forgotten locally.
 
 import type { GuideStepResult } from '../net/account';
-import { GUIDE_BONUS, guideStepById, guideSteps, nextStep, progress, type GuideStep, type GuideStepId } from '../world/guide';
+import { guideStepById, guideSteps, nextStep, progress, type GuideStep, type GuideStepId } from '../world/guide';
 import { prizeName } from '../world/items';
+import { GUIDE_URL } from '../config';
 import { icon, type IconName } from './hud';
 
 export interface GuideHost {
@@ -28,8 +29,6 @@ export interface GuideHost {
   toast(text: string): void;
   /** the bag changed (a gift arrived) */
   gifted(): void;
-  /** looking at someone else's beach (digging there does nothing) */
-  visiting(): string | null;
 }
 
 /** the steps the server checks for itself: only marked done when it says so */
@@ -120,7 +119,7 @@ export class BeachGuide {
       <div class="board-card">
         <button type="button" class="dlg-close" aria-label="Close">×</button>
         <h2>Beach guide</h2>
-        <p class="board-blurb"></p>
+        <p class="board-blurb"><a class="guide-link" href="${GUIDE_URL}#beach-guide" target="_blank" rel="noopener">how it works</a></p>
         <ol class="board-list guide-list"></ol>
         <p class="board-note guide-foot"></p>
       </div>`;
@@ -264,10 +263,6 @@ export class BeachGuide {
     this.renderCoach();
     if (!this.isOpen) return;
 
-    const blurb = this.root.querySelector<HTMLElement>('.board-blurb')!;
-    blurb.textContent = accounts
-      ? 'Learn the beach one step at a time. Each step leaves a small gift in your bag.'
-      : 'Learn the beach one step at a time.';
     const next = nextStep(done, accounts);
     const signedIn = this.host.signedIn();
     this.list.innerHTML = '';
@@ -283,9 +278,7 @@ export class BeachGuide {
       who.className = 'board-who guide-who';
       const b = document.createElement('b');
       b.textContent = s.title;
-      const how = document.createElement('small');
-      how.textContent = s.how;
-      who.append(b, how);
+      who.append(b);
       li.append(mark, who);
       const gift = accounts ? s.gift : null;
       if (s.id === 'invite' && accounts) {
@@ -315,16 +308,11 @@ export class BeachGuide {
     }
 
     this.foot.innerHTML = '';
-    if (accounts) {
-      const t = document.createElement('span');
-      t.textContent = p.done >= p.total ? 'All done. Thank you for learning the beach! ' : `Finish the first eight for ${article(prizeName(GUIDE_BONUS)).toLowerCase()} ${prizeName(GUIDE_BONUS).toLowerCase()}. `;
-      this.foot.appendChild(t);
-    }
     const toggle = document.createElement('button');
     toggle.type = 'button';
     toggle.className = 'action';
     toggle.dataset.act = 'guide-coach';
-    toggle.textContent = this.stored.hidden ? 'show the tips' : 'hide the tips';
+    toggle.textContent = this.stored.hidden ? 'show the next step' : 'hide the next step';
     toggle.addEventListener('click', () => this.setHidden(!this.stored.hidden));
     this.foot.appendChild(toggle);
   }
@@ -341,22 +329,16 @@ export class BeachGuide {
       return;
     }
     const step = next!;
-    const visiting = this.host.visiting();
-    // digging on someone else's beach does nothing: say how to get home first
-    const away = visiting && ['dig', 'pile', 'undo', 'place'].includes(step.id);
     const signIn = step.needsAccount && !this.host.signedIn();
     this.coach.innerHTML = `
       <button type="button" class="guide-coach-open" data-act="guide-coach-open">
         <span class="guide-coach-icon">${icon(step.icon)}</span>
         <span class="guide-coach-text"><b></b><small></small></span>
       </button>
-      <button type="button" class="guide-coach-hide" aria-label="Hide the tips">×</button>`;
-    this.coach.querySelector('b')!.textContent = away ? `You’re visiting ${visiting}` : step.title;
-    this.coach.querySelector('small')!.textContent = away
-      ? 'Tap ⌂ my beach to dig on your own.'
-      : signIn
-        ? 'Sign in to keep going. Your beach and your gifts come with you.'
-        : step.how;
+      <button type="button" class="guide-coach-hide" aria-label="Hide the next step">×</button>`;
+    // labels only (CLAUDE.md, no notes in the game): how to do it is in the web guide
+    this.coach.querySelector('b')!.textContent = step.title;
+    this.coach.querySelector('small')!.textContent = signIn ? 'sign in' : '';
     this.coach.querySelector('.guide-coach-open')!.addEventListener('click', () => {
       if (signIn) this.host.signIn();
       else if (step.id === 'invite') this.host.openInvite();

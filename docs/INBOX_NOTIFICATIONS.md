@@ -1,6 +1,39 @@
 # Visitors, the inbox and notifications
 
-Status: **designed, not built** (2026-11-23). Owner decisions at the end.
+Status: **phases V1–V4 built** (2026-11-24): the inbox, the visitor card
+(ratings, notes, gifts), filter / report / block with the admin Reports tab,
+and signed-out visits. **V5–V6 (web and native push) are not built**: they
+need keys and console setup from the owner. Owner decisions are at the end.
+
+### As built (where it differs from the design below)
+
+- **No explanations in the game** (CLAUDE.md, a rule added after this
+  spec): the card and the inbox show labels and status only, with a "how it
+  works" link to the web guide (`/guide#visitors`, `server/src/guide.ts`).
+- **"Leave something" is on each beach's name tag**, not the shore bar:
+  main's viewing mode hides the shore bar while you're visiting and shows
+  the name tags in the "i" card instead. The beach's **average shows in
+  the visitor card** (from 3 ratings); on the name tags is a follow-up (it
+  needs the rating in the shore walk's JSON).
+- The **blocked list** is at the bottom of the inbox, not in settings.
+- The admin can **hide** a reported note or **dismiss** the report.
+  "Suspend the sender's notes" isn't built: block-by-admin is a follow-up.
+- Ratings with no note fold into a "N new ratings" row per day, as
+  designed. A rating that comes with a note or a gift is part of that
+  visit's row.
+- The visitor card's gift list counts **owned** items, not what's left
+  after placing: a gift moves what you own (SHARING_GIFTING.md), and the
+  thing on your sand stays.
+- **Signed-out visits** were built on main at the same time (the
+  beechshore follow-ups, `/api/public/shore`, `/api/public/shore/more`,
+  `/api/public/beaches/:code`, docs/SHORE_SITE.md); this work uses those.
+- Code: `server/src/inbox.ts` (limits, quick notes, the filter), the
+  endpoints in `server/src/app.ts`, migration 24, the Reports tab in
+  `adminApp.ts` / `adminPage.ts`; the app's `src/ui/inbox.ts`,
+  `src/ui/visitorCard.ts`, `src/ui/inboxText.ts` (the wording), and
+  `InboxApi` in `src/net/account.ts`. Tests: `server/test/inbox.test.ts`,
+  the reports test in `server/test/admin.test.ts`,
+  `tests/inboxText.test.ts`, and `npm run e2e:inbox`.
 
 When someone visits your beach they should be able to **sign in**, **rate
 it**, **leave a note** and **give you something from their bag**. You
@@ -155,6 +188,94 @@ Each one is a phase.
   the hourly limit and quiet hours. Failed endpoints (410 Gone) are
   removed.
 
+### Turning on push: owner steps
+
+Push needs keys and console setup that only the owner can do. None of it
+goes in the repo. Do these, then hand back to an agent to build V5/V6 (the
+engineering side is in BACKLOG.md). Everything here is free.
+
+**The plan:** web push uses VAPID keys (a key pair we make ourselves; the
+browsers' push services need no account). The iOS and Android apps both go
+through **Firebase Cloud Messaging (FCM)**, added to the existing
+`beech-prod` project: Apple's push key is uploaded to Firebase, and the
+server sends with its own Cloud Run identity, so no Firebase key file
+exists anywhere.
+
+**A. Web push (V5)**
+
+1. Make the key pair (on your machine, not in the repo):
+   ```bash
+   npx web-push generate-vapid-keys --json > /tmp/vapid.json
+   ```
+2. Keep the private key in Secret Manager, readable by the game server
+   (same pattern as GCP.md, "One-time setup"):
+   ```bash
+   PROJECT=beech-prod; REGION=us-central1
+   RUN_SA=beech-run@$PROJECT.iam.gserviceaccount.com
+   node -e "process.stdout.write(require('/tmp/vapid.json').privateKey)" \
+     | gcloud secrets create beech-vapid-private-key --data-file=-
+   gcloud secrets add-iam-policy-binding beech-vapid-private-key \
+     --member=serviceAccount:$RUN_SA --role=roles/secretmanager.secretAccessor
+   rm /tmp/vapid.json   # after copying the public key (next step)
+   ```
+3. GitHub → Settings → Secrets and variables → Actions → **Variables**:
+   `VAPID_PUBLIC_KEY` = the public key (it's public: the web app needs it
+   to subscribe), and `VAPID_SUBJECT` = `mailto:` plus an address the push
+   services can write to (a support address, not a personal one).
+4. A once-a-minute tick for the send queue (hourly limit, quiet hours):
+   ```bash
+   gcloud services enable cloudscheduler.googleapis.com
+   gcloud iam service-accounts create beech-scheduler
+   SCHED_SA=beech-scheduler@$PROJECT.iam.gserviceaccount.com
+   gcloud run services add-iam-policy-binding beech --region=$REGION \
+     --member=serviceAccount:$SCHED_SA --role=roles/run.invoker
+   ```
+   (The job itself, `gcloud scheduler jobs create http beech-push-tick …`,
+   comes with the V5 change, because it needs the endpoint to exist first.)
+
+Note: on iPhone, web push only works once the site is **added to the Home
+Screen** (iOS 16.4 and later). The app store apps use native push (B).
+
+**B. Native push in the apps (V6)**
+
+1. **Firebase on the existing project.** https://console.firebase.google.com
+   → Add project → pick **beech-prod** (not a new project), so billing and
+   IAM stay in one place. Analytics can be off.
+2. **Android app in Firebase:** package `app.beech.beach`. Download
+   `google-services.json`. Don't commit it: add it as a GitHub Actions
+   **secret** `GOOGLE_SERVICES_JSON` (base64: `base64 -w0 google-services.json`)
+   for the mobile CI, and put it at `android/app/google-services.json`
+   for local builds (the Android build already applies the plugin when the
+   file is there).
+3. **iOS app in Firebase:** bundle ID `app.beech.beach`. Download
+   `GoogleService-Info.plist` and add it as the secret
+   `GOOGLE_SERVICE_INFO_PLIST` (base64), the same way.
+4. **Apple push key.** developer.apple.com → Certificates, IDs & Profiles →
+   **Keys** → + → tick **Apple Push Notifications service (APNs)** →
+   download the `.p8` (Apple lets you download it **once**; keep it in your
+   password manager). Note its **Key ID** and your **Team ID**.
+5. **Give the key to Firebase:** Firebase → Project settings → Cloud
+   Messaging → Apple app configuration → APNs Authentication Key → upload
+   the `.p8` with the Key ID and Team ID. (It lives in Firebase, not in our
+   Secret Manager or the repo.)
+6. **Turn on the capability:** developer.apple.com → Identifiers →
+   `app.beech.beach` → **Push Notifications** on. If you use manual
+   provisioning profiles, regenerate them.
+7. **Let the server send:**
+   ```bash
+   gcloud services enable fcm.googleapis.com
+   gcloud projects add-iam-policy-binding $PROJECT \
+     --member=serviceAccount:$RUN_SA --role=roles/firebasecloudmessaging.admin
+   ```
+8. **Store forms** (MOBILE.md, "Store forms"): Play's Data safety form gains
+   "Device or other IDs: collected, for app functionality, not shared"
+   (the push token). Apple's privacy label needs no new data type for push
+   tokens, but the review notes should say push is opt-in and only for
+   gifts, notes, neighbors and invites.
+
+When both are done, tell the agent which of A and B is ready; each phase
+ships on its own.
+
 ## 4. Safety (user-generated content)
 
 Free-text notes from strangers are user-generated content. Both stores
@@ -179,7 +300,7 @@ require, before the update ships (App Store 1.2; Play UGC policy):
   setting (and the default for unknown ages) of **quick notes only**,
   inbound and outbound.
 
-## 5. Data (migration 17+)
+## 5. Data (migration 24)
 
 ```sql
 inbox (id BIGSERIAL, user_id, kind, actor_id NULL, beach_id NULL,
@@ -243,6 +364,11 @@ to the stores without the filter, report and block in the same release.
   blocks Ben; Ben's next note doesn't go through.
 
 ## Decisions for the owner
+
+Decided (2026-11-24): **3 — yes**, signed-out visitors see on-shore
+beaches through a link; **4 — yes**, a sign-up from a plain visit link
+counts as an invite. The rest were built with the defaults below; say if
+any should change.
 
 1. **Notes are private** (only the owner reads them). A public guestbook
    later?

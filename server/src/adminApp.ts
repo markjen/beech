@@ -706,6 +706,66 @@ export function createAdminApp(db: Db, cfg: AdminConfig): Hono<Env> {
     return c.body(null, 204);
   });
 
+  // ---- reports: notes players reported (docs/INBOX_NOTIFICATIONS.md, "Safety")
+  api.get('/reports', async (c) => {
+    const open = c.req.query('all') !== '1';
+    const rows = await db.query<{
+      id: string; note_id: string; body: string; hidden_at: string | null; reason: string; created_at: string;
+      resolved_at: string | null; resolution: string | null; resolved_by: string | null;
+      from_name: string | null; from_email: string | null; from_code: string | null; to_name: string; to_code: string | null;
+      sender_reports: string;
+    }>(
+      `SELECT r.id, r.note_id, n.body, n.hidden_at, r.reason, r.created_at, r.resolved_at, r.resolution, r.resolved_by,
+              f.name AS from_name, f.email AS from_email, fh.code AS from_code, t.name AS to_name, th.code AS to_code,
+              (SELECT COUNT(*) FROM reports r2 JOIN notes n2 ON n2.id = r2.note_id WHERE n2.from_id = n.from_id) AS sender_reports
+         FROM reports r
+         JOIN notes n ON n.id = r.note_id
+         LEFT JOIN users f ON f.id = n.from_id
+         LEFT JOIN beach fh ON fh.id = n.from_id
+         JOIN users t ON t.id = n.to_id
+         LEFT JOIN beach th ON th.id = n.to_id
+        WHERE ($1::boolean = false OR r.resolved_at IS NULL)
+        ORDER BY r.created_at DESC LIMIT 200`,
+      [open],
+    );
+    return c.json({
+      reports: rows.map((r) => ({
+        id: Number(r.id),
+        noteId: Number(r.note_id),
+        note: r.body,
+        hidden: r.hidden_at !== null,
+        reason: r.reason,
+        at: Number(r.created_at),
+        resolvedAt: r.resolved_at === null ? null : Number(r.resolved_at),
+        resolution: r.resolution,
+        resolvedBy: r.resolved_by,
+        from: r.from_name === null ? null : { name: r.from_name, email: r.from_email, code: r.from_code },
+        to: { name: r.to_name, code: r.to_code },
+        senderReports: Number(r.sender_reports),
+      })),
+    });
+  });
+
+  // hide the note (the recipient's inbox then says it was removed) or dismiss
+  // the report; either way every open report on that note is closed
+  api.post('/reports/:id/resolve', async (c) => {
+    const id = Number(c.req.param('id'));
+    if (!Number.isSafeInteger(id)) fail(404, 'no such report');
+    const { action } = (await c.req.json().catch(() => ({}))) as { action?: string };
+    if (action !== 'hide' && action !== 'dismiss') fail(400, 'action is hide or dismiss');
+    const rep = (await db.query<{ note_id: string }>('SELECT note_id FROM reports WHERE id = $1', [id]))[0];
+    if (!rep) fail(404, 'no such report');
+    const now = Date.now();
+    const actor = c.get('actor');
+    if (action === 'hide') await db.query('UPDATE notes SET hidden_at = $2 WHERE id = $1 AND hidden_at IS NULL', [rep!.note_id, now]);
+    await db.query(
+      `UPDATE reports SET resolved_at = $2, resolution = $3, resolved_by = $4 WHERE note_id = $1 AND resolved_at IS NULL`,
+      [rep!.note_id, now, action === 'hide' ? 'hidden' : 'dismissed', actor],
+    );
+    await audit(actor, `report.${action}`, 'note', String(rep!.note_id), { report: id });
+    return c.json({ id, resolution: action === 'hide' ? 'hidden' : 'dismissed' });
+  });
+
   api.get('/audit', async (c) => {
     const rows = await db.query<{ actor: string; action: string; target_type: string; target_id: string; detail: unknown; created_at: string }>(
       'SELECT actor, action, target_type, target_id, detail, created_at FROM admin_audit ORDER BY created_at DESC, id DESC LIMIT 100',

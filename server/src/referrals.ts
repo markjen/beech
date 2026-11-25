@@ -11,6 +11,10 @@
 
 export interface GuideStepDef {
   id: string;
+  /** the step's name, as the game shows it (src/world/guide.ts has the same) */
+  title: string;
+  /** how to do it: shown in the web guide only (server/src/guide.ts), never in the game */
+  how: string;
   /** what finishing it gives (null: nothing beyond what the step itself gives) */
   gift: string | null;
   /** the server checks it's true before counting it, instead of trusting the app */
@@ -18,15 +22,15 @@ export interface GuideStepDef {
 }
 
 export const GUIDE_STEPS: GuideStepDef[] = [
-  { id: 'dig', gift: 'conch', serverChecked: false },
-  { id: 'pile', gift: 'sanddollar', serverChecked: false },
-  { id: 'undo', gift: 'conch', serverChecked: false },
-  { id: 'place', gift: 'sanddollar', serverChecked: false },
-  { id: 'chair', gift: 'conch', serverChecked: false },
-  { id: 'claw', gift: null, serverChecked: true }, // the claw gives its own prize
-  { id: 'visit', gift: 'sanddollar', serverChecked: false },
-  { id: 'star', gift: 'conch', serverChecked: true },
-  { id: 'invite', gift: null, serverChecked: true }, // the invite ladder is the reward
+  { id: 'dig', title: 'Dig in the sand', how: 'Pick the Sand tool in dig mode (the shovel) and drag on the sand. Hold still to dig deeper.', gift: 'conch', serverChecked: false },
+  { id: 'pile', title: 'Build a mound', how: 'Switch the Sand tool to build (the sand dune) and drag to heap the sand up. The waves will wear it down.', gift: 'sanddollar', serverChecked: false },
+  { id: 'undo', title: 'Take it back', how: 'Tap undo to take back your last stroke.', gift: 'conch', serverChecked: false },
+  { id: 'place', title: 'Put something on the sand', how: 'Open the bag, pick a rock or a shell, and tap the sand.', gift: 'sanddollar', serverChecked: false },
+  { id: 'chair', title: 'Sit on the beach', how: 'Tap the chair to sit and look out to sea. Hold ‹ › to walk along the shore.', gift: 'conch', serverChecked: false },
+  { id: 'claw', title: 'Play the claw machine', how: 'Open the bag and play the claw machine. It’s free.', gift: null, serverChecked: true }, // the claw gives its own prize
+  { id: 'visit', title: 'Visit someone’s beach', how: 'Walk down the shore, or open the most-starred beaches and pick one.', gift: 'sanddollar', serverChecked: false },
+  { id: 'star', title: 'Star a beach you like', how: 'Tap ☆ on someone’s beach to star it.', gift: 'conch', serverChecked: true },
+  { id: 'invite', title: 'Invite a friend', how: 'Share your invite link. Your friend gets a gift, and so do you.', gift: null, serverChecked: true }, // the invite ladder is the reward
 ];
 
 export const guideStep = (id: string): GuideStepDef | undefined => GUIDE_STEPS.find((s) => s.id === id);

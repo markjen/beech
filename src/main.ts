@@ -39,12 +39,15 @@ import { Shop } from './ui/shop';
 import { ShopApi, webOrderFromUrl, withoutWebOrderParams } from './net/shop';
 import { VendingMachine } from './ui/vendingMachine';
 import { DEFAULT_SIZE, ITEMS, rollPlacement, type Item } from './world/items';
-import { ACCOUNTS_ENABLED, Account, AnimalsApi, ApiError, CheckpointApi, DigFindApi, GiftApi, GuideApi, PullApi, ReferralApi } from './net/account';
+import { ACCOUNTS_ENABLED, Account, AnimalsApi, ApiError, CheckpointApi, DigFindApi, GiftApi, GuideApi, InboxApi, PullApi, ReferralApi } from './net/account';
+import type { InboxPanel } from './ui/inbox';
+import type { VisitorCard } from './ui/visitorCard';
+import type { IconName } from './ui/hud';
 import { beachShareText, inviteCodeFromUrl, shoreBeachUrl, SHORE_URL, visitCodeFromUrl, withoutInviteParam, withoutVisitParam } from './net/share';
 import { shareLink } from './ui/shareSheet';
 import { BeachGuide, type GuideHost } from './ui/guide';
-import { InvitePanel } from './ui/invite';
-import { prizeName } from './world/items';
+import type { InvitePanel } from './ui/invite';
+import { extraById, itemById, prizeName } from './world/items';
 import { BeachSync, countItems } from './net/beachSync';
 import { AccountPanel } from './ui/accountPanel';
 import { Leaderboard } from './ui/leaderboard';
@@ -211,6 +214,8 @@ async function boot() {
   let leaderboard: Leaderboard | null = null;
   let vendingMachine: VendingMachine | null = null;
   let invitePanel: InvitePanel | null = null;
+  let inboxUi: InboxPanel | null = null;
+  let visitorUi: VisitorCard | null = null;
   // your sand, else a neighbor's, else the untouched shore (the chair can walk along all of it)
   cam.groundHeight = (x, z) => {
     const h = picker.heightAt(x, z);
@@ -686,6 +691,7 @@ async function boot() {
         if (key === 'ambient') ambient.setEnabled(s.ambient);
       },
       smooth: () => smoothSelectedBeach(),
+      smoothTarget: () => settingsBeachId(),
       share: () => void share(),
       exportBeach: () => void exportBeach(),
       importBeach: () => void beachFiles.pick(),
@@ -953,7 +959,6 @@ async function boot() {
     openInvite: () => sheet.show(),
     toast: (t) => showToast(uiRoot, t),
     gifted: () => refreshOwned(),
-    visiting: () => (neighbors?.visiting ? neighbors.visiting.name || 'a beach' : null),
   };
   // the coach card is onboarding: ?nointro / ?smoke (the test scripts) leave it out, like the start screen
   const guide = new BeachGuide(uiRoot, hud.root, (n, l) => hud.button(n, l), guideHost, !(params.has('smoke') || params.has('nointro')));
@@ -986,6 +991,7 @@ async function boot() {
   };
   shoreBar.querySelector('.sb-home')!.addEventListener('click', () => void goHome());
   sbFav.addEventListener('click', () => {
+    if (ACCOUNTS_ENABLED && !account?.user) return sheet.show(); // stars need an account
     const b = beachHere();
     if (b && neighbors) void neighbors.toggleFavorite(b).catch(() => {});
   });
@@ -1854,7 +1860,13 @@ async function boot() {
       const targetId = settingsBeachId();
       if (acct.user && targetId && targetId !== acct.beachId) {
         sheet.setBeachLocation(b.id);
-        void acct.updateBeach(targetId, { location: b.id }).then(() => nv.refresh()).catch(() => {});
+        void nv.flushAll()
+          .then(() => acct.updateBeach(targetId, { location: b.id }))
+          .then(() => nv.refresh())
+          .catch((error) => {
+            panel?.render();
+            showToast(uiRoot, (error as Error).message);
+          });
         return;
       }
       setBeach(b);
@@ -1862,11 +1874,13 @@ async function boot() {
     smoothSelectedBeach = () => {
       const targetId = settingsBeachId();
       if (acct.user && targetId && targetId !== acct.beachId) {
-        if (nv.resetOwned(targetId)) {
-          recordEditTarget({ kind: 'neighbor', index: nv.indexOfBeach(targetId) ?? 0, beachId: targetId, offsetX: 0 });
-          audio.whoosh(false);
+        if (!nv.resetOwned(targetId)) {
+          showToast(uiRoot, 'Go to this beach to smooth it');
           return;
         }
+        recordEditTarget({ kind: 'neighbor', index: nv.indexOfBeach(targetId) ?? 0, beachId: targetId, offsetX: 0 });
+        audio.whoosh(false);
+        return;
       }
       markDirty(1500);
       send({ type: 'reset' });
@@ -2029,21 +2043,31 @@ async function boot() {
       void loadOwned();
     });
     // ---- the beach guide and invites (docs/INVITES_GUIDE.md)
+    // The panels only signed-in players use (invites, the inbox, the visitor
+    // card) load in their own chunk, off the start-up bundle (perf/budget.json).
+    // If that fails (a first visit while offline), the game carries on
+    // without them; account features need the network anyway.
+    const social = await Promise.all([import('./ui/invite'), import('./ui/inbox'), import('./ui/visitorCard'), import('./ui/inboxText')]).then(
+      ([invite, inbox, visitorCard, inboxText]) => ({ ...invite, ...inbox, ...visitorCard, ...inboxText }),
+      () => null,
+    );
     const guideApi = new GuideApi(acct);
     const referralApi = new ReferralApi(acct);
-    const invites = new InvitePanel(uiRoot, {
-      signedIn: () => !!acct.user,
-      signIn: () => sheet.show(),
-      name: () => acct.user?.name ?? '',
-      load: () => referralApi.status(),
-    });
+    const invites = social
+      ? new social.InvitePanel(uiRoot, {
+          signedIn: () => !!acct.user,
+          signIn: () => sheet.show(),
+          name: () => acct.user?.name ?? '',
+          load: () => referralApi.status(),
+        })
+      : null;
     invitePanel = invites;
     guideHost.signedIn = () => !!acct.user;
     guideHost.load = () => guideApi.done();
     guideHost.complete = (step) => guideApi.complete(step);
     guideHost.openInvite = () => {
       sheet.hide();
-      void invites.open();
+      void invites?.open();
     };
     panel.invite = guideHost.openInvite;
     panel.render();
@@ -2054,7 +2078,7 @@ async function boot() {
         .then((who) => {
           if (!who) return writeInvite(null);
           start?.setInvite(who.name, prizeName(who.welcomeGift).toLowerCase());
-          panel.signInNote = `${who.name} invited you: sign in to get your welcome ${prizeName(who.welcomeGift).toLowerCase()}`;
+          panel.signInNote = `${who.name} invited you`;
           panel.render();
         })
         .catch(() => {});
@@ -2084,10 +2108,10 @@ async function boot() {
     const askToBeNeighbors = async (code: string, name: string) => {
       const st = nv.state ?? (await nv.api.get().catch(() => null));
       const side = !st ? 'right' : !st.right && !st.asked.right ? 'right' : !st.left && !st.asked.left ? 'left' : null;
-      if (!side) return showToast(uiRoot, 'Both sides of your beach are taken. Make room in settings, then ask again.');
+      if (!side) return showToast(uiRoot, 'Both sides of your beach are taken');
       try {
         const res = await nv.api.set(side, code);
-        showToast(uiRoot, res.status === 'linked' ? `You and ${name} are neighbors now.` : `Asked ${name} to be your neighbor. You’ll be side by side once they say yes.`);
+        showToast(uiRoot, res.status === 'linked' ? `You and ${name} are neighbors now` : `Asked ${name} to be your neighbor`);
         void nv.refresh();
       } catch (e) {
         showToast(uiRoot, (e as Error).message);
@@ -2122,7 +2146,7 @@ async function boot() {
       const f = gifts[gifts.length - 1];
       const reward = f.reward === 'beach' ? 'an extra beach is yours' : `a ${prizeName(f.reward!).toLowerCase()} is in your bag`;
       const more = gifts.length > 1 ? ` (and ${gifts.length - 1} more friend${gifts.length > 2 ? 's' : ''})` : '';
-      showActionToast(uiRoot, `${f.name} settled in${more}: ${reward}. Thank you for inviting them!`, 'Invite more', () => void invites.open(), 12000);
+      showActionToast(uiRoot, `${f.name} settled in${more}: ${reward}`, 'Invite more', () => void invites?.open(), 12000);
     };
     acct.onChange((u) => {
       if (!u) return guide.signedOut();
@@ -2130,9 +2154,78 @@ async function boot() {
       void claimInvite().then(() => guide.sync());
       void checkReferrals();
     });
-    // a share link opened signed out: open the beach read-only in 3D if it's
+    // ---- visitors and the inbox (docs/INBOX_NOTIFICATIONS.md)
+    if (social) {
+      const { InboxPanel, VisitorCard, ANNOUNCE, announce } = social;
+      const inboxApi = new InboxApi(acct);
+      const inboxPanel = new InboxPanel(uiRoot, hud.root, (n, l) => hud.button(n, l), inboxApi, {
+        signedIn: () => !!acct.user,
+        signIn: () => sheet.show(),
+        visit: (code) =>
+          void nv
+            .visit(code)
+            .then(() => cam.goTo(0, true))
+            .catch(() => showToast(uiRoot, 'No beach has that code')),
+        neighborsChanged: () => void nv.refresh(),
+        toast: (t) => showToast(uiRoot, t),
+      });
+      inboxUi = inboxPanel;
+      const visitor = new VisitorCard(uiRoot, inboxApi, {
+        giftable: () => {
+          const out: { id: string; name: string; icon: IconName; count: number }[] = [];
+          for (const [id, n] of inventory.ownedItems()) {
+            const it = itemById(id);
+            if (n <= 0 || (it ? it.unlimited : !extraById(id))) continue;
+            out.push({ id, name: prizeName(id), icon: (it ? id : 'beach') as IconName, count: n });
+          }
+          return out;
+        },
+        gifted: () => refreshOwned(),
+        toast: (t) => showToast(uiRoot, t),
+      });
+      visitorUi = visitor;
+      // signed out, "leave something" signs in first, then opens the card
+      let cardAfterSignIn: { code: string; owner: string; beachName?: string } | null = null;
+      // "leave something" on each beach's name tag (and so in the viewing-mode card)
+      nv.onLeave = (b) => {
+        if (!acct.user) {
+          cardAfterSignIn = { code: b.code, owner: b.name, beachName: b.beachName };
+          sheet.show();
+          return;
+        }
+        void visitor.open(b.code, b.name, b.beachName);
+      };
+      // the poll carries the inbox: the badge, and a note for what matters
+      let announced = -1;
+      nv.onChange((n) => {
+        inboxPanel.setSummary(acct.user ? (n?.inbox ?? { unread: 0, latest: null }) : null);
+        const latest = n?.inbox?.latest;
+        if (!latest) return;
+        if (announced >= 0 && latest.id > announced && ANNOUNCE.has(latest.kind) && !inboxPanel.isOpen) {
+          showActionToast(uiRoot, announce(latest.kind, latest.name), 'open', () => void inboxPanel.open(), 10000);
+          if (latest.kind === 'visit' || latest.kind === 'gift' || latest.kind === 'invite_settled') refreshOwned();
+        }
+        announced = Math.max(announced, latest.id);
+      });
+      acct.onChange((u) => {
+        if (!u) {
+          announced = -1;
+          inboxPanel.setSummary(null);
+          return;
+        }
+        inboxPanel.setSummary({ unread: 0, latest: null });
+        if (cardAfterSignIn) {
+          const c = cardAfterSignIn;
+          cardAfterSignIn = null;
+          void visitor.open(c.code, c.owner, c.beachName);
+        }
+      });
+    }
+
+    // a link opened signed out: open the beach read-only in 3D if it's
     // public on the shore (and let them walk the public shore); an off-shore
-    // beach still waits for sign-in
+    // beach still waits for sign-in. A sign-up from a plain visit link counts
+    // as an invite of that beach's owner (docs/INBOX_NOTIFICATIONS.md).
     void account.restore().then(async (u) => {
       if (!u && isSteam()) {
         const steam = steamBridge();
@@ -2148,14 +2241,13 @@ async function boot() {
         }
       }
       if (u) return;
-      if (!visitCode) {
-        // signed out with no shared beach to open: your beach is local-only,
-        // but the public shore still runs past it — load it, so the beaches
-        // either side show and the whole world is a scroll away
+      // a sign-up from a plain visit link counts as an invite of that beach's owner
+      if (visitCode && !readInvite()) writeInvite(visitCode);
+      const code = visitCode ?? inviteFromLink;
+      if (!code) {
         void nv.refresh();
         return;
       }
-      const code = visitCode;
       try {
         await nv.visit(code);
         pendingVisit = null;
@@ -2269,6 +2361,8 @@ async function boot() {
     vending: () => vendingMachine,
     guide,
     invites: () => invitePanel,
+    inbox: () => inboxUi,
+    visitor: () => visitorUi,
     objectView,
     animals: {
       snapshot: () => ({ ...animals.snapshot(), food: { ...animals.snapshot().food } }),

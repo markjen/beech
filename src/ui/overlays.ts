@@ -99,6 +99,7 @@ export interface SettingsHandlers {
   /** "near me": ask for the device location and pick the closest beach */
   nearMe(): void;
   smooth(): void;
+  smoothTarget(): string | null;
   share(): void;
   fullscreen(): void;
   /** one tap for the TV: ambient + seated view + fullscreen */
@@ -242,7 +243,7 @@ export class SettingsSheet {
         else this.h.importBeach();
       });
     }
-    let confirmSmooth = 0;
+    let confirmSmooth: { target: string | null; expires: number } | undefined;
     for (const b of this.el.querySelectorAll<HTMLButtonElement>('button[data-act="share"], button[data-act="smooth"]')) {
       b.addEventListener('click', () => {
         if (b.dataset.act === 'share') {
@@ -250,16 +251,22 @@ export class SettingsSheet {
           this.h.share();
           return;
         }
-        // smoothing wipes everything, so ask for a second tap
-        if (performance.now() - confirmSmooth < 2500) {
-          confirmSmooth = 0;
+        // Confirm a second tap for the same beach.
+        const target = this.h.smoothTarget();
+        if (confirmSmooth && confirmSmooth.target === target && performance.now() < confirmSmooth.expires) {
+          confirmSmooth = undefined;
           b.textContent = 'smooth the beach';
           this.hide();
           this.h.smooth();
         } else {
-          confirmSmooth = performance.now();
+          const confirmation = { target, expires: performance.now() + 2500 };
+          confirmSmooth = confirmation;
           b.textContent = 'tap again to smooth';
-          window.setTimeout(() => (b.textContent = 'smooth the beach'), 2500);
+          window.setTimeout(() => {
+            if (confirmSmooth !== confirmation) return;
+            confirmSmooth = undefined;
+            b.textContent = 'smooth the beach';
+          }, 2500);
         }
       });
     }

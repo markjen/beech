@@ -1655,6 +1655,269 @@
   opacity: 0.7;
 }
 
+/* the inbox: a mailbox, top right (docs/INBOX_NOTIFICATIONS.md) */
+.inbox-btn {
+  position: absolute;
+  top: calc(14px + env(safe-area-inset-top));
+  right: calc(14px + env(safe-area-inset-right));
+  display: none;
+}
+
+.inbox-btn.shown {
+  display: grid;
+}
+
+.inbox-badge {
+  position: absolute;
+  right: -4px;
+  top: -4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 18px;
+  color: #fff;
+  background: #d9534f;
+  pointer-events: none;
+}
+
+.inbox-badge[hidden] {
+  display: none;
+}
+
+/* the shore bar sits left of the mailbox (on phones it's lower down, on the left) */
+@media (min-width: 521px) {
+  .hud.inbox-shown .shore-bar {
+    right: calc(74px + env(safe-area-inset-right));
+  }
+}
+
+.inbox-row {
+  align-items: flex-start;
+}
+
+.inbox-row.unread .inbox-body b::before {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin: 0 6px 1px 0;
+  border-radius: 50%;
+  background: #d9534f;
+}
+
+.inbox-icon {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+
+.inbox-icon svg,
+.visitor-shell svg,
+.visitor-gift svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.inbox-body small {
+  white-space: normal;
+}
+
+.inbox-body .inbox-note {
+  font-size: 13px;
+  opacity: 0.95;
+  font-style: italic;
+}
+
+.inbox-when {
+  font-size: 11px;
+  opacity: 0.55;
+}
+
+.inbox-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.inbox-acts .inbox-act,
+.inbox-foot .inbox-act,
+.inbox-blocked .inbox-act {
+  flex: none;
+  white-space: nowrap;
+  min-height: 30px;
+  padding: 4px 11px;
+  font-size: 12px;
+}
+
+.inbox-foot {
+  margin-top: 8px;
+  font-size: 13px;
+}
+
+.inbox-foot .inbox-act {
+  margin-bottom: 6px;
+}
+
+.inbox-blocked summary {
+  cursor: pointer;
+  opacity: 0.75;
+}
+
+.inbox-blocked-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+/* the visitor card */
+.visitor-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.visitor-section {
+  margin: 4px 0 12px;
+}
+
+.visitor-section h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  opacity: 0.8;
+}
+
+.visitor-shells {
+  display: flex;
+  gap: 6px;
+}
+
+.visitor-shell {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border: 1.5px solid color-mix(in srgb, currentColor 35%, transparent);
+  border-radius: 50%;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+  opacity: 0.6;
+}
+
+.visitor-shell.on {
+  opacity: 1;
+  color: #5a4630;
+  border-color: #f2c45a;
+  background: #f2c45a;
+}
+
+.visitor-avg {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.visitor-note {
+  width: 100%;
+  min-height: 56px;
+  padding: 8px 12px;
+  border-radius: 14px;
+  border: 1.5px solid color-mix(in srgb, currentColor 35%, transparent);
+  font: inherit;
+  font-size: 14px;
+  color: inherit;
+  background: color-mix(in srgb, currentColor 6%, transparent);
+  resize: vertical;
+}
+
+.visitor-count {
+  display: block;
+  text-align: right;
+  font-size: 11px;
+  opacity: 0.6;
+}
+
+.visitor-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.visitor-quick .action {
+  flex: none;
+  min-height: 30px;
+  padding: 4px 11px;
+  font-size: 12px;
+}
+
+.visitor-quick .action.on,
+.visitor-gift.on {
+  opacity: 1;
+  color: var(--ui-bg);
+  background: var(--ui-fg);
+  border-color: var(--ui-fg);
+}
+
+.visitor-gifts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.visitor-gift {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 4px 12px 4px 8px;
+  border: 1.5px solid color-mix(in srgb, currentColor 35%, transparent);
+  border-radius: 999px;
+  font: inherit;
+  font-size: 13px;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.visitor-gift small {
+  opacity: 0.7;
+}
+
+.visitor .visitor-go {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  opacity: 1;
+  font-weight: 600;
+  color: var(--ui-bg);
+  background: var(--ui-fg);
+  border-color: var(--ui-fg);
+}
+
+.visitor .visitor-go:disabled {
+  opacity: 0.4;
+}
+
 /* the start screen: who invited you */
 .start-invite {
   margin-top: 18px;
