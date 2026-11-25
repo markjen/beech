@@ -6,7 +6,7 @@
 // home and does three guide steps (dig, build, undo). Ana comes back: she's
 // told Fran settled in, the parasol is in her bag, and the panel shows Fran.
 //   node scripts/invites-e2e.mjs [screenshot-dir]
-import { e2eUrl, openBrowser } from './lib/e2e.mjs';
+import { e2eUrl, openBrowser, waitForApp } from './lib/e2e.mjs';
 
 const URL_ = process.env.BEECH_URL ?? 'http://127.0.0.1:8787/';
 const shots = process.argv[2];
@@ -24,7 +24,7 @@ const open = async (query, viewport = { width: 1100, height: 700 }) => {
   page.setDefaultTimeout(30000);
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(e2eUrl(URL_, query, { shots: Boolean(shots) }), { waitUntil: 'commit' });
-  await page.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
+  await waitForApp(page);
   return page;
 };
 const signIn = (page, name) =>
@@ -85,18 +85,42 @@ if (shots) await pf.screenshot({ path: `${shots}/invite-welcome.png` });
 await pf.waitForFunction(() => window.__beech.guide.done.has('visit'), null, { timeout: 60000 });
 check(true, 'visiting Ana counts as the guide’s visit step');
 
-// home, then three guide steps
+// Home, then three guide steps. Wait for the home simulation to bind
+// before hitting sand, and aim at dry land in the portrait viewport.
+await pf.bringToFront();
 await pf.evaluate(async () => {
   await window.__beech.neighbors().visit(null);
   window.__beech.cam.goTo(0, true);
 });
-await pf.waitForTimeout(800);
+await pf.waitForFunction(() => {
+  const app = window.__beech;
+  return !app.neighbors().visiting && app.beachId() === app.account().home?.id && app.sync().state === 'saved';
+});
 const drag = async (tool) => {
-  await pf.evaluate((t) => window.__beech.pickTool(t), tool);
-  await pf.mouse.move(195, 430);
+  const [from, to] = await pf.evaluate((tool) => {
+    const app = window.__beech;
+    app.setRail(true);
+    app.pickTool(tool);
+    const scene = app.scene;
+    const camera = scene.activeCamera;
+    const canvas = app.engine.getRenderingCanvas();
+    camera.getViewMatrix(true);
+    camera.getProjectionMatrix(true);
+    scene.updateTransformMatrix();
+    const Vector = camera.position.constructor;
+    const world = camera.getWorldMatrix().constructor.Identity();
+    const viewport = camera.viewport.toGlobal(canvas.clientWidth, canvas.clientHeight);
+    return [-1, 2].map((x) => {
+      const z = 7;
+      const y = app.cam.groundHeight(x, z);
+      const point = Vector.Project(new Vector(x, y, z), world, scene.getTransformMatrix(), viewport);
+      return [point.x, point.y];
+    });
+  }, tool);
+  await pf.mouse.move(...from);
   await pf.mouse.down();
-  for (let i = 0; i < 16; i++) {
-    await pf.mouse.move(195 + i * 5, 430 + i * 2);
+  for (let i = 1; i <= 16; i++) {
+    await pf.mouse.move(from[0] + (to[0] - from[0]) * i / 16, from[1] + (to[1] - from[1]) * i / 16);
     await pf.waitForTimeout(30);
   }
   await pf.mouse.up();

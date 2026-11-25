@@ -1198,3 +1198,6 @@ the HUD layout in the section above.
   The live-viewer test waits for the scheduled heartbeat. `npm run e2e` runs all 9 server E2E scripts over one shared
   Chromium server, with 3 concurrent scripts by default. Set `E2E_JOBS` or
   pass `--jobs` to choose a positive integer concurrency limit.
+- Browser startup failures now include recent page errors, script responses,
+  worker starts, and failed requests. Set `E2E_CHROMIUM_PATH` to run against
+  a local Chromium executable and `DEBUG_E2E=1` to stream test output.

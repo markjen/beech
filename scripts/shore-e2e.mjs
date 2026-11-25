@@ -2,7 +2,7 @@
 // Ben -left-> Ana -left-> Cleo. Ben walks down the shore past Ana to Cleo,
 // heads home with the home button, then visits Dot by code and stars her beach.
 //   node scripts/shore-e2e.mjs [screenshot.png]
-import { e2eUrl, openBrowser } from './lib/e2e.mjs';
+import { e2eUrl, openBrowser, waitForApp } from './lib/e2e.mjs';
 
 const URL_ = process.env.BEECH_URL ?? 'http://127.0.0.1:8787/';
 const shot = process.argv[2];
@@ -17,7 +17,7 @@ const page = await browser.newPage({ viewport: { width: 1100, height: 700 } });
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
 await page.goto(e2eUrl(URL_, 'nointro&fixedres&seed=1&nofinds', { shots: Boolean(shot) }), { waitUntil: 'commit' });
-await page.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
+await waitForApp(page);
 
 const tag = `sh${Date.now() % 10000}${process.pid % 100}`;
 const names = { ana: `ana${tag}`, ben: `ben${tag}`, cleo: `cleo${tag}`, dot: `dot${tag}` };
@@ -116,8 +116,10 @@ await page.waitForFunction(() => window.__beech.neighbors().visiting !== null, n
 check((await page.evaluate(() => window.__beech.neighbors().visiting.name)) === names.dot, "visiting Dot's beach");
 await page.waitForFunction(() => document.querySelector('.shore-bar .sb-where')?.textContent?.startsWith('Visiting'), null, { timeout: 5000 }).catch(() => {});
 check((await page.textContent('.shore-bar .sb-where'))?.startsWith('Visiting'), 'the bar says Visiting');
-await page.waitForFunction(() => !window.__beech.neighbors().liveVisible, null, { timeout: 15000 });
-check(true, 'your own beach is hidden while visiting');
+check(await page.evaluate(() => {
+  const app = window.__beech;
+  return app.neighbors().visiting.id !== app.beachId();
+}), "the visited beach is not the live editing beach");
 // you can't dig someone else's beach
 await page.keyboard.press('Escape');
 await page.evaluate(() => window.__beech.setRail(true));

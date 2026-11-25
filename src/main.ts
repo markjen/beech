@@ -2706,7 +2706,10 @@ async function boot() {
       nv.onChange((n) => {
         inboxPanel.setSummary(acct.user ? (n?.inbox ?? { unread: 0, latest: null }) : null);
         const latest = n?.inbox?.latest;
-        if (!latest) return;
+        if (!latest) {
+          if (n?.inbox && announced < 0) announced = 0;
+          return;
+        }
         if (announced >= 0 && latest.id > announced && ANNOUNCE.has(latest.kind) && !inboxPanel.isOpen) {
           showActionToast(uiRoot, announce(latest.kind, latest.name), 'open', () => void inboxPanel.open(), 10000);
           if (latest.kind === 'visit' || latest.kind === 'gift' || latest.kind === 'invite_settled') refreshOwned();
@@ -2746,7 +2749,7 @@ async function boot() {
           }
         }
       }
-      if (u) return;
+      if (u || acct.user) return;
       // a sign-up from a plain visit link counts as an invite of that beach's owner
       if (visitCode && !readInvite()) writeInvite(visitCode);
       const code = visitCode ?? inviteFromLink;
@@ -2756,7 +2759,7 @@ async function boot() {
       }
       try {
         await nv.visit(code);
-        pendingVisit = null;
+        if (acct.user) return;
         history.replaceState(null, '', location.pathname + withoutVisitParam(location.search) + location.hash);
         cam.goTo(0, true);
       } catch {
@@ -2925,6 +2928,7 @@ registerServiceWorker();
 boot().catch((err) => {
   console.error(err);
   reportError('boot', err, { source: 'main:boot' });
+  document.body.dataset.bootError = '1';
   document.body.innerHTML = `<p style="font-family:sans-serif;padding:2em;color:#6b5a6e">Sorry — this device couldn't start the beach (${String(
     err?.message ?? err,
   )}).</p>`;

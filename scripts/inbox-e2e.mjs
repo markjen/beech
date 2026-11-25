@@ -7,7 +7,7 @@
 // parasol. Ana's mailbox shows it; she opens the inbox, says thanks, reports
 // the note and blocks Ben; Ben's next visit doesn't go through.
 //   node scripts/inbox-e2e.mjs [screenshot-dir]
-import { e2eUrl, openBrowser } from './lib/e2e.mjs';
+import { e2eUrl, openBrowser, waitForApp } from './lib/e2e.mjs';
 
 const URL_ = process.env.BEECH_URL ?? 'http://127.0.0.1:8787/';
 const shots = process.argv[2];
@@ -25,7 +25,7 @@ const open = async (query, viewport) => {
   page.setDefaultTimeout(30000);
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(e2eUrl(URL_, query, { shots: Boolean(shots) }), { waitUntil: 'commit' });
-  await page.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
+  await waitForApp(page);
   return page;
 };
 const owned = (page, item) =>
@@ -80,6 +80,7 @@ check((await hints(pb)).some((h) => h.includes('parasol') && h.includes('4 shell
 check((await owned(pb, 'parasol')) === 0, 'the parasol left his bag');
 
 // ---- Ana's inbox
+await pa.bringToFront();
 await pa.evaluate(() => window.__beech.neighbors().refresh()); // the 30 s poll, now
 await pa.waitForFunction(() => Number(document.querySelector('.inbox-badge')?.textContent) >= 2, null, { timeout: 60000 });
 check(true, 'the mailbox counts what arrived');

@@ -2,7 +2,7 @@
 // server (npm run server:dev, which has DEV_AUTH for /api/dev/grant):
 // one person on two devices, each running a different beach at the same time.
 //   node scripts/beaches-e2e.mjs
-import { e2eUrl, openBrowser } from './lib/e2e.mjs';
+import { e2eUrl, openBrowser, waitForApp } from './lib/e2e.mjs';
 
 const URL_ = process.env.BEECH_URL ?? 'http://127.0.0.1:8787/';
 let failed = 0;
@@ -21,7 +21,7 @@ async function device(label) {
   page.on('pageerror', (e) => errors.push(`${label}: ${e.message}`));
   page.on('dialog', (d) => void d.accept(d.type() === 'prompt' ? `${label} beach` : undefined));
   await page.goto(e2eUrl(URL_, 'nointro&quality=low&fixedres&seed=1&nofinds'), { waitUntil: 'commit' });
-  await page.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
+  await waitForApp(page);
   await page.evaluate(() => window.__beech.engine.setHardwareScalingLevel(2));
   await page.evaluate((n) => window.__beech.account().signInDev(n), name);
   await page.waitForFunction(() => window.__beech.beachId() && window.__beech.sync().state === 'saved', null, { timeout: 20000 });
@@ -207,7 +207,7 @@ check(crossed.homeRaised && crossed.neighborRaised && Math.abs(crossed.focus - p
 
 // device A remembers which beach it was looking at after a reload (a view bookmark)
 await a.reload({ waitUntil: 'commit' });
-await a.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
+await waitForApp(a);
 await a.waitForFunction(() => window.__beech.beachId() && window.__beech.sync().state === 'saved', null, { timeout: 20000 });
 check((await a.evaluate(() => window.__beech.beachId())) === second, 'A still opens the second beach after a reload');
 

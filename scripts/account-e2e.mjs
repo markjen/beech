@@ -4,7 +4,7 @@
 //   node scripts/account-e2e.mjs            # BEECH_URL defaults to http://127.0.0.1:8787/
 // Signs in (dev), digs, saves, reloads and checks the beach comes back, then
 // deletes the account.
-import { e2eUrl, openBrowser } from './lib/e2e.mjs';
+import { e2eUrl, openBrowser, waitForApp } from './lib/e2e.mjs';
 
 const URL_ = process.env.BEECH_URL ?? 'http://127.0.0.1:8787/';
 const shots = Boolean(process.env.SHOT_DIR);
@@ -20,7 +20,7 @@ const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
 const open = async () => {
   await page.goto(e2eUrl(URL_, 'nointro&fixedres&seed=1&nofinds', { shots }), { waitUntil: 'commit' });
-  await page.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
+  await waitForApp(page);
   await page.waitForTimeout(250);
 };
 const dug = () =>

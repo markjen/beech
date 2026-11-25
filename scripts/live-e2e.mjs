@@ -6,7 +6,7 @@
 // down, taken the nautilus (back in her bag) and washed things up. "While you
 // were away" says so once, and "Put it back as it was" brings it all back.
 import { deflateSync } from 'node:zlib';
-import { e2eUrl, openBrowser } from './lib/e2e.mjs';
+import { e2eUrl, openBrowser, waitForApp } from './lib/e2e.mjs';
 
 const URL_ = process.env.BEECH_URL ?? 'http://127.0.0.1:8787/';
 let failed = 0;
@@ -63,7 +63,7 @@ const errors = [];
 const page = await (await browser.newContext({ viewport: { width: 1000, height: 760 } })).newPage();
 page.on('pageerror', (e) => errors.push(e.message));
 await page.goto(e2eUrl(URL_, 'nointro&fixedres&seed=1&nofinds'), { waitUntil: 'commit' });
-await page.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
+await waitForApp(page);
 await page.evaluate((n) => window.__beech.account().signInDev(n), who);
 await page.waitForFunction(() => window.__beech.beachId() && window.__beech.sync().state === 'saved', null, { timeout: 45000 });
 
@@ -111,7 +111,7 @@ check(back > 0.25, `and the castle (${back.toFixed(2)} m, from 0.5)`);
 
 // only once
 await page.reload({ waitUntil: 'commit' });
-await page.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
+await waitForApp(page);
 await page.waitForFunction(() => window.__beech.beachId() && window.__beech.sync().state === 'saved', null, { timeout: 45000 });
 await page.waitForTimeout(3000);
 check(!(await page.$('.hint.choice')), 'the card shows once, not again on the next visit');
@@ -122,12 +122,19 @@ const device = async (name) => {
   const p = await (await browser.newContext({ viewport: { width: 1000, height: 760 } })).newPage();
   p.on('pageerror', (e) => errors.push(`${name}: ${e.message}`));
   await p.goto(e2eUrl(URL_, 'nointro&fixedres&seed=1&nofinds'), { waitUntil: 'commit' });
-  await p.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
+  await waitForApp(p);
   await p.evaluate((n) => window.__beech.account().signInDev(n), name);
   await p.waitForFunction(() => window.__beech.beachId() && window.__beech.sync().state === 'saved', null, { timeout: 45000 });
   return p;
 };
-const ben = await device(`${who}b`);
+// Let the second WebGL context initialize without competing with Ana’s render loop.
+await page.evaluate(() => { window.__beech.engine.skipFrameRender = true; });
+let ben;
+try {
+  ben = await device(`${who}b`);
+} finally {
+  await page.evaluate(() => { window.__beech.engine.skipFrameRender = false; });
+}
 const code = (await api('/neighbors', {}, token)).body.code;
 await ben.evaluate((c) => window.__beech.neighbors().visit(c), code);
 await ben.waitForFunction(() => window.__beech.neighbors().snapshot(0) !== null, null, { timeout: 20000 });
@@ -149,6 +156,7 @@ const got = await ben
 check(got, `Ben sees Ana's dig ${((Date.now() - dugAt) / 1000).toFixed(1)} s later`);
 
 check(errors.length === 0, `no page errors ${errors.join('; ')}`);
+await Promise.all([page, ben].map((p) => p.evaluate(() => { window.__beech.engine.skipFrameRender = true; })));
 await closeBrowser();
 console.log(failed ? `LIVE E2E: ${failed} FAILED` : 'LIVE E2E PASS');
 process.exit(failed ? 1 : 0);

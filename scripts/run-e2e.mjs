@@ -49,7 +49,7 @@ if (!scripts.length) {
 }
 
 const { chromium } = await loadPlaywright();
-const server = await chromium.launchServer({ args: CHROMIUM_ARGS });
+const server = await chromium.launchServer({ args: CHROMIUM_ARGS, executablePath: process.env.E2E_CHROMIUM_PATH });
 const wsEndpoint = server.wsEndpoint();
 
 const tAll = Date.now();
@@ -65,14 +65,19 @@ function runOne(name) {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     let out = '';
-    child.stdout.on('data', (d) => (out += d));
-    child.stderr.on('data', (d) => (out += d));
+    const record = (chunk) => {
+      if (process.env.DEBUG_E2E) process.stdout.write(chunk);
+      else out += chunk;
+    };
+    child.stdout.on('data', record);
+    child.stderr.on('data', record);
+    child.on('error', (error) => record(`Could not start ${name}: ${error.message}\n`));
     child.on('close', (code) => {
       const ms = Date.now() - t0;
       const ok = code === 0;
       const tag = ok ? 'PASS' : 'FAIL';
       console.log(`${tag}  ${name.padEnd(18)} ${(ms / 1000).toFixed(2).padStart(6)}s`);
-      if (!ok) {
+      if (!ok && out) {
         console.log(`--- ${name} output ---\n${out.trim()}\n---`);
       }
       resolve({ name, ok, ms, out });
