@@ -262,7 +262,11 @@ export class CheckpointsSection {
     meta.className = 'cp-meta';
     const from =
       cp.kind === 'auto'
-        ? 'kept before a restore'
+        ? cp.name.startsWith('Auto-save ')
+          ? 'auto-saved daily'
+          : cp.name.startsWith('Before import')
+            ? 'kept before an import'
+            : 'kept before a restore'
         : cp.source === 'import'
           ? 'imported'
           : `from ${cp.fromBeach?.name || cp.fromName || (cp.fromBeach?.id === a.beaches.find((b) => b.home)?.id ? 'home' : 'a beach')}${cp.fromBeach ? '' : ' (removed)'}`;

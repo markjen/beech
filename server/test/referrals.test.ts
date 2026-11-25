@@ -185,7 +185,8 @@ describe('invites', () => {
     expect(got[2]).toBe('beach');
     expect(ladderReward(REWARD_CAP + 1)).toBeNull();
     // the extra beach is a real allowance: one more beach can be made
-    expect((await req('/beaches/mine', json('POST', { name: 'Second', location: 'bondi' }), a.token)).status).toBe(200);
+    const aEdit = ((await (await req('/edit-session', { method: 'POST' }, a.token)).json()) as { token: string }).token;
+    expect((await req('/beaches/mine', { ...json('POST', { name: 'Second', location: 'bondi' }), headers: { 'Content-Type': 'application/json', 'X-Edit-Token': aEdit } }, a.token)).status).toBe(200);
     const mine = (await (await req('/referrals', {}, a.token)).json()) as { joined: number; settled: number };
     expect(mine).toMatchObject({ joined: REWARD_CAP + 2, settled: REWARD_CAP + 2 });
   });

@@ -55,8 +55,24 @@ async function signIn(name: string) {
   return (await r.json()) as { token: string; user: { id: string } };
 }
 const grant = (t: string, item: string, quantity = 1) => req('/dev/grant', json('POST', { item, quantity }), t);
-const save = (t: string, beach: string, bytes: Uint8Array, items: Record<string, number> = {}, epoch?: number) =>
-  req(
+/** one edit token per bearer token: claim once, reuse (a new claim would fence the old one) */
+const editTokens = new Map<string, string>();
+const editToken = async (t: string) => {
+  const hit = editTokens.get(t);
+  if (hit) return hit;
+  const r = await req('/edit-session', { method: 'POST' }, t);
+  expect(r.status).toBe(200);
+  const { token } = (await r.json()) as { token: string };
+  editTokens.set(t, token);
+  return token;
+};
+/** a request from the current editor (saves, restores, the beach roster, dig rolls) */
+const reqE = async (path: string, init: RequestInit = {}, token?: string) => {
+  const headers = { ...(init.headers as Record<string, string>), ...(token ? { 'X-Edit-Token': await editToken(token) } : {}) };
+  return req(path, { ...init, headers }, token);
+};
+const save = async (t: string, beach: string, bytes: Uint8Array, items: Record<string, number> = {}, epoch?: number) =>
+  reqE(
     `/beaches/mine/${beach}/sand`,
     {
       method: 'PUT',
@@ -76,14 +92,14 @@ const checkpoint = async (t: string, beach: string, name: string) => {
   expect(r.status).toBe(201);
   return ((await r.json()) as { checkpoint: { id: string; items: Record<string, number> } }).checkpoint;
 };
-const restore = (t: string, beach: string, id: string, mode?: string) => req(`/beaches/mine/${beach}/restore`, json('POST', { checkpoint: id, mode }), t);
+const restore = (t: string, beach: string, id: string, mode?: string) => reqE(`/beaches/mine/${beach}/restore`, json('POST', { checkpoint: id, mode }), t);
 const sandOf = async (t: string, beach: string) => {
   const r = await req(`/beaches/mine/${beach}/sand`, {}, t);
   return { bytes: new Uint8Array(await r.arrayBuffer()), epoch: Number(r.headers.get('X-Beach-Epoch')) };
 };
 const newBeach = async (t: string, name: string) => {
   await grant(t, 'beach');
-  const r = await req('/beaches/mine', json('POST', { name }), t);
+  const r = await reqE('/beaches/mine', json('POST', { name }), t);
   expect(r.status).toBe(200);
   return ((await r.json()) as { beach: { id: string } }).beach.id;
 };
@@ -273,7 +289,7 @@ describe('checkpoints', () => {
     expect(objectsOf((await sandOf(t, two)).bytes).map((o) => o.item).sort()).toEqual(['lighthouse', 'rock']);
   });
 
-  it('a save from before a restore is refused; one from after, or from an old app, is not', async () => {
+  it('a save from before a restore is refused; one from after, or with no epoch header, is not', async () => {
     const { token: t, user } = await signIn('cp-epoch');
     await save(t, user.id, blob([], 10));
     const cp = await checkpoint(t, user.id, 'e');
@@ -284,7 +300,20 @@ describe('checkpoints', () => {
     expect(stale.status).toBe(409);
     expect(await stale.json()).toEqual({ error: 'restored' });
     expect((await save(t, user.id, blob([], 11), {}, r.epoch)).status).toBe(200);
-    expect((await save(t, user.id, blob([], 12))).status).toBe(200); // no header: an older app
+    expect((await save(t, user.id, blob([], 12))).status).toBe(200); // no epoch header, but the current edit token
+    // no edit token at all: an older app is refused outright (426, reload to save)
+    const noToken = await req(`/beaches/mine/${user.id}/sand`, {
+      method: 'PUT',
+      body: blob([], 13),
+      headers: { 'X-Beach-Location': 'bondi', 'X-Beach-Nx': '16', 'X-Beach-Ny': '16', 'X-Beach-Max': '2000' },
+    }, t);
+    expect(noToken.status).toBe(426);
+    // a stale edit token: another instance took over — 409 fenced, nothing written
+    await req('/edit-session', { method: 'POST' }, t);
+    const fencedSave = await save(t, user.id, blob([], 14), {}, r.epoch);
+    expect(fencedSave.status).toBe(409);
+    expect(await fencedSave.json()).toEqual({ error: 'fenced' });
+    expect(fillOf((await sandOf(t, user.id)).bytes)).toBe(12);
   });
 
   it('two restores at once can not both use one lighthouse', async () => {
@@ -306,7 +335,7 @@ describe('checkpoints', () => {
     const b = await newBeach(t, 'Gone soon');
     await save(t, b, blob([], 5));
     const cp = await checkpoint(t, b, 'keepsake');
-    expect((await req(`/beaches/mine/${b}`, { method: 'DELETE' }, t)).status).toBe(204);
+    expect((await reqE(`/beaches/mine/${b}`, { method: 'DELETE' }, t)).status).toBe(204);
     const list = (await (await req('/checkpoints', {}, t)).json()) as { checkpoints: { id: string; fromBeach: unknown; fromName: string }[] };
     expect(list.checkpoints.find((c) => c.id === cp.id)).toMatchObject({ fromBeach: null, fromName: 'Gone soon' });
     expect((await restore(t, user.id, cp.id)).status).toBe(200);
@@ -318,7 +347,7 @@ describe('checkpoints', () => {
     const { token: t, user } = await signIn('cp-old');
     const many = blob(Array.from({ length: OLD_MAX_OBJECTS + 50 }, (_, i) => ({ id: i + 1, item: 'rock' })));
     const put = (bytes: Uint8Array, max?: string) =>
-      req(
+      reqE(
         `/beaches/mine/${user.id}/sand`,
         { method: 'PUT', body: bytes, headers: { 'X-Beach-Location': 'bondi', 'X-Beach-Nx': '16', 'X-Beach-Ny': '16', ...(max ? { 'X-Beach-Max': max } : {}) } },
         t,
@@ -336,7 +365,7 @@ describe('checkpoints', () => {
   it('lets the phone apps send its headers and PATCH', async () => {
     const r = await req('/checkpoints', { method: 'OPTIONS', headers: { Origin: 'capacitor://localhost' } });
     const allow = r.headers.get('Access-Control-Allow-Headers') ?? '';
-    for (const h of ['X-Beach-Items', 'X-Beach-Epoch', 'X-Beach-Max', 'X-Checkpoint-Name']) expect(allow).toContain(h);
+    for (const h of ['X-Beach-Items', 'X-Beach-Epoch', 'X-Beach-Max', 'X-Checkpoint-Name', 'X-Edit-Token']) expect(allow).toContain(h);
     expect(r.headers.get('Access-Control-Allow-Methods')).toContain('PATCH');
     expect(r.headers.get('Access-Control-Expose-Headers')).toContain('X-Beach-Epoch');
   });

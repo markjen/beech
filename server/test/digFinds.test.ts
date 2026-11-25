@@ -46,8 +46,24 @@ async function owned(token: string, item: string): Promise<number> {
   const items = ((await r.json()) as { items: { item: string; quantity: number }[] }).items;
   return items.filter((i) => i.item === item).reduce((s, i) => s + i.quantity, 0);
 }
+/** one edit token per bearer token: claim once, reuse (a new claim would fence the old one) */
+const editTokens = new Map<string, string>();
+const editToken = async (t: string) => {
+  const hit = editTokens.get(t);
+  if (hit) return hit;
+  const r = await req('/edit-session', { method: 'POST' }, t);
+  expect(r.status).toBe(200);
+  const { token } = (await r.json()) as { token: string };
+  editTokens.set(t, token);
+  return token;
+};
+/** a request from the current editor (saves, restores, the beach roster, dig rolls) */
+const reqE = async (path: string, init: RequestInit = {}, token?: string) => {
+  const headers = { ...(init.headers as Record<string, string>), ...(token ? { 'X-Edit-Token': await editToken(token) } : {}) };
+  return req(path, { ...init, headers }, token);
+};
 /** a real dig: the brush travelled 3 m over 2 s */
-const dig = (token: string) => req('/dig-finds', json('POST', { pathM: 3, durationMs: 2000 }), token);
+const dig = (token: string) => reqE('/dig-finds', json('POST', { pathM: 3, durationMs: 2000 }), token);
 
 describe('digging finds', () => {
   it('sign-in required, and the body is checked', async () => {

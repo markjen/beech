@@ -60,11 +60,12 @@ beforeAll(async () => {
     ['<b>Eve</b>', true, true],
   ] as const) {
     const { token } = (await (await call('/auth/dev', { method: 'POST', body: JSON.stringify({ name }) })).json()) as { token: string };
+    const edit = ((await (await call('/edit-session', { method: 'POST', headers: { Authorization: `Bearer ${token}` } })).json()) as { token: string }).token;
     const { beaches } = (await (await call('/beaches/mine', {}, token)).json()) as { beaches: { id: string; code: string }[] };
     const b = beaches[0];
     if (save)
       expect(
-        (await call('/beach', { method: 'PUT', body: savedBeach() as BodyInit, headers: { 'Content-Type': 'application/octet-stream', 'X-Beach-Location': 'waikiki', 'X-Beach-Nx': '64', 'X-Beach-Ny': '64' } }, token)).status,
+        (await call('/beach', { method: 'PUT', body: savedBeach() as BodyInit, headers: { 'Content-Type': 'application/octet-stream', 'X-Beach-Location': 'waikiki', 'X-Beach-Nx': '64', 'X-Beach-Ny': '64', 'X-Edit-Token': edit } }, token)).status,
       ).toBe(200);
     if (!onShore) await db.query('UPDATE beach SET on_shore = false WHERE id = $1', [b.id]);
     people[name] = { token, code: b.code, beachId: b.id };

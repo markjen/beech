@@ -299,7 +299,7 @@ ${catalogSection(now)}
 
 <h2 id="beaches">Your beaches</h2>
 <p>You start with one beach. Each extra beach you own (from the shop or the claw machine) lets you make one more, up to ${BEACH_CAP}. Open Settings → <b>Beach</b> to pick which beach you’re configuring (its name, real-world place, code, checkpoints, or to jump to it), or make a new one.</p>
-<p>Any of your beaches visible on the shore can be edited directly — dig, build, clear, place, or drag things right across adjacent beaches, and each beach saves on its own automatically regardless of which beach is selected in Settings. Each device still remembers where it opens, so your phone and your TV can watch different beaches at the same time.</p>
+<p>Any of your beaches visible on the shore can be edited directly — dig, build, clear, place, or drag things right across adjacent beaches, and each beach saves on its own automatically regardless of which beach is selected in Settings. Each device still remembers where it opens, so your phone and your TV can watch different beaches at the same time. Only one tab or device edits at a time, though: the one you opened most recently takes over, and the others turn view-only until you take editing back there. Put one of your own beach codes next to another of yours and they link straight away, without asking.</p>
 
 <h2 id="shore">Neighbors and the shore</h2>
 <p>Open Settings → <b>Shore</b> to arrange your beaches and neighbors. When you own more than one beach, your stretches appear at the top so you can snap your own beaches side by side (or disconnect them) in one tap, with no codes to copy.</p>
@@ -337,7 +337,7 @@ ${GUIDE_STEPS.map((st) => `<tr><td>${esc(st.title)}</td><td>${esc(st.how)}</td><
 <p>After ${REWARD_CAP} friends the gifts stop, but friends still join and still get their welcome gift. The next time you open the game after a friend settles in, it tells you what you got. The invite panel lists who joined and who has settled in.</p>
 
 <h2 id="checkpoints">Checkpoints</h2>
-<p>A checkpoint keeps a beach as it is now — its sand and its things — to come back to later or to put on another of your beaches. Up to ${CHECKPOINTS_PER_BEACH} per beach. Restoring needs your bag to cover the things on it; if it can’t, you can restore without them. The beach as it was is kept as a “before restoring” checkpoint, and Undo brings it back. Other devices showing that beach reload.</p>
+<p>A checkpoint keeps a beach as it is now — its sand and its things — to come back to later or to put on another of your beaches. Up to ${CHECKPOINTS_PER_BEACH} per beach. Restoring needs your bag to cover the things on it; if it can’t, you can restore without them. The beach as it was is kept as a “before restoring” checkpoint, and Undo brings it back. Other devices showing that beach reload. Once a day, your beach is auto-saved as a checkpoint too, so you can always go back to yesterday’s beach — it sits in the same list, marked “auto-saved daily”.</p>
 
 <h2 id="files">Beach files</h2>
 <p>Settings → <b>Beach</b> → “export beach” saves your beach as a <code>.beach.json</code> file; “import beach” opens one. Before importing you see a preview: a map, the things on it, anything that was fixed while reading, and anything your bag can’t cover (import without them, or get them in the shop). Importing replaces the beach you’re on; when signed in the old one is kept as a “Before import” checkpoint, and Undo brings it back. Without an account, only free things come in.</p>

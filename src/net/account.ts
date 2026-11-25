@@ -63,6 +63,13 @@ type Listener = (user: AccountUser | null) => void;
 export class Account {
   private token: string | null = readToken();
   user: AccountUser | null = null;
+  /**
+   * This instance's edit token (docs/EDIT_SESSIONS.md): claimed when it
+   * opens your beach for editing, and what proves it is still the one
+   * editor. In memory only — never localStorage, which two tabs share —
+   * so each tab, device or app holds its own.
+   */
+  editToken: string | null = null;
   private listeners: Listener[] = [];
 
   onChange(fn: Listener): void {
@@ -71,6 +78,28 @@ export class Account {
 
   private emit(): void {
     for (const fn of this.listeners) fn(this.user);
+  }
+
+  /** Claim this instance as the one editor of your beaches (fences older instances). */
+  async claimEditSession(): Promise<string> {
+    const res = await this.call('/api/edit-session', { method: 'POST' });
+    if (!res.ok) throw await errorOf(res, 'could not start editing');
+    const { token } = (await res.json()) as { token: string };
+    this.editToken = token;
+    return token;
+  }
+
+  /** Is the token this instance holds still the current editor? (the heartbeat) */
+  async editSessionActive(): Promise<boolean> {
+    if (!this.editToken) return false;
+    const res = await this.call('/api/edit-session', { headers: { 'X-Edit-Token': this.editToken } });
+    if (!res.ok) return false;
+    return ((await res.json()) as { active: boolean }).active;
+  }
+
+  /** The header beach edits carry, when this instance holds a token. */
+  editHeaders(): Record<string, string> {
+    return this.editToken ? { 'X-Edit-Token': this.editToken } : {};
   }
 
   /** Authenticated request to the API (used by NeighborApi). */
@@ -88,6 +117,7 @@ export class Account {
     if (res.status === 401 && sent && this.token === sent) {
       // the session ended (expired, signed out elsewhere, account deleted)
       this.token = null;
+      this.editToken = null;
       writeToken(null);
       this.user = null;
       this.emit();
@@ -100,6 +130,8 @@ export class Account {
     const data = (await res.json()) as { token: string; user: AccountUser };
     this.token = data.token;
     writeToken(data.token);
+    // a new sign-in hasn't claimed editing yet (the beach load does that)
+    this.editToken = null;
     this.user = data.user;
     this.emit();
     return data.user;
@@ -181,6 +213,7 @@ export class Account {
     }
     void nativeSignOut();
     this.token = null;
+    this.editToken = null;
     writeToken(null);
     this.user = null;
     this.beaches = [];
@@ -195,6 +228,7 @@ export class Account {
     this.beaches = [];
     this.beachId = null;
     this.token = null;
+    this.editToken = null;
     writeToken(null);
     this.user = null;
     this.emit();
@@ -259,7 +293,7 @@ export class Account {
   async createBeach(name: string, location: string): Promise<MyBeach> {
     const res = await this.call('/api/beaches/mine', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...this.editHeaders() },
       body: JSON.stringify({ name, location }),
     });
     if (!res.ok) throw await errorOf(res, 'could not make a beach');
@@ -271,7 +305,7 @@ export class Account {
   async updateBeach(id: string, patch: { name?: string; location?: string; home?: boolean }): Promise<void> {
     const res = await this.call(`/api/beaches/mine/${id}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...this.editHeaders() },
       body: JSON.stringify(patch),
     });
     if (!res.ok) throw await errorOf(res, 'could not change that beach');
@@ -279,7 +313,7 @@ export class Account {
   }
 
   async removeBeach(id: string): Promise<void> {
-    const res = await this.call(`/api/beaches/mine/${id}`, { method: 'DELETE' });
+    const res = await this.call(`/api/beaches/mine/${id}`, { method: 'DELETE', headers: { ...this.editHeaders() } });
     if (!res.ok) throw await errorOf(res, 'could not remove that beach');
     if (this.beachId === id) this.beachId = null;
     await this.loadBeaches();
@@ -329,6 +363,8 @@ export class Account {
           .map(([k, v]) => `${k}=${v}`)
           .join(','),
         ...(epoch === undefined ? {} : { 'X-Beach-Epoch': String(epoch) }),
+        // the edit token: only the current editor's saves go through
+        ...this.editHeaders(),
         // how many things this app keeps (the server refuses saves from apps that keep fewer than a beach holds)
         'X-Beach-Max': String(MAX_OBJECTS),
         'X-App-Build': APP_BUILD,
@@ -337,7 +373,15 @@ export class Account {
       // keepalive lets a save finish while the page is closing (64 KB limit)
       keepalive: keepalive && bytes.byteLength < 60000,
     });
-    if (!res.ok) throw new ApiError(res.status, 'could not save your beach');
+    if (!res.ok) {
+      // a fenced save keeps its reason: BeachSync tells it apart from a
+      // restore (409 'restored') and turns this instance view-only
+      if (res.status === 409) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        if (data.error === 'fenced') throw new ApiError(409, 'fenced');
+      }
+      throw new ApiError(res.status, 'could not save your beach');
+    }
     return ((await res.json()) as { updatedAt: number }).updatedAt;
   }
 }
@@ -447,11 +491,12 @@ export class CheckpointApi {
   async restore(beachId: string, checkpoint: string, mode: 'strict' | 'drop-missing' = 'strict'): Promise<{ undo: string | null; dropped: number; epoch: number }> {
     const res = await this.account.fetch(`/api/beaches/mine/${beachId}/restore`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...this.account.editHeaders() },
       body: JSON.stringify({ checkpoint, mode }),
     });
     if (res.status === 409) {
       const data = (await res.json().catch(() => ({}))) as { error?: string; short?: Short[] };
+      if (data.error === 'fenced') throw new ApiError(409, 'Another tab or device is editing this beach — take over editing there first.');
       if (data.short) throw new ShortError(data.short);
       throw new ApiError(409, data.error ?? 'could not restore');
     }
@@ -961,7 +1006,7 @@ export class DigFindApi {
   async find(pathM: number, durationMs: number): Promise<DigFindResult> {
     const res = await this.account.fetch('/api/dig-finds', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...this.account.editHeaders() },
       body: JSON.stringify({ pathM, durationMs }),
     });
     if (!res.ok) throw await errorOf(res, 'nothing buried here');

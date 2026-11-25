@@ -74,6 +74,7 @@ describe('share page handler', () => {
       return (await r.json()) as { token: string; user: { id: string } };
     };
     const ana = await signIn('ana-share');
+    const anaEdit = ((await (await app.request('/api/edit-session', { method: 'POST', headers: { Authorization: `Bearer ${ana.token}` } })).json()) as { token: string }).token;
     const code = (await (await app.request('/api/neighbors', { headers: { Authorization: `Bearer ${ana.token}` } })).json()) as {
       code: string;
     };
@@ -83,7 +84,7 @@ describe('share page handler', () => {
       {
         method: 'PUT',
         body: new Uint8Array([1, 2, 3]),
-        headers: { Authorization: `Bearer ${ana.token}`, 'X-Beach-Location': 'bondi', 'X-Beach-Nx': '256', 'X-Beach-Ny': '256' },
+        headers: { Authorization: `Bearer ${ana.token}`, 'X-Beach-Location': 'bondi', 'X-Beach-Nx': '256', 'X-Beach-Ny': '256', 'X-Edit-Token': anaEdit },
       },
     );
   });

@@ -259,6 +259,23 @@ _(nothing right now)_
   Reload". A save refused as out of date (426) offers the same (in the
   phone apps: "update from the store"). Saves send `X-App-Build`, and the
   server logs which build was refused (`stale_app_save`).
+- [x] **One active editor** (2026-11-24): after an older instance overwrote
+  Riley's beach over a restore, only one tab/device/app edits at a time.
+  A per-user edit token (`edit_sessions`, migration 25), claimed when a
+  beach is opened for editing; a new claim fences the older instances
+  (their saves, restores, dig rolls and beach-roster edits are 409
+  `fenced`; no token at all is 426). The fenced instance stops autosaving,
+  turns view-only with a "Take over editing" banner, and learns it is
+  fenced from a 30 s heartbeat or its next save. Design in
+  docs/EDIT_SESSIONS.md; the no-epoch-header hole is closed by the token.
+- [x] **Daily auto-save checkpoint** (2026-11-24): before a save overwrites
+  a beach, if more than 24 h have passed since that beach's last auto
+  checkpoint, the beach as it is now is kept — reusing the one auto slot
+  (never a named slot, never a second auto slot), named `Auto-save
+  YYYY-MM-DD`. A restore's "before restoring" copy is safe for a day after
+  the restore, then the daily save may take the slot. A failed snapshot
+  never blocks the save. Shown in settings → checkpoints as "auto-saved
+  daily".
 - [x] **API rate limiting** (2026-11-24): per client IP, 300 requests a
   minute on the API and 20 sign-ins; the stores' webhooks are exempt. 429
   with `Retry-After`.

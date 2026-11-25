@@ -24,17 +24,18 @@ const req = (path: string, init: RequestInit = {}, token?: string) =>
   app.request(path, { ...init, headers: { ...(init.headers as Record<string, string>), ...(token ? { Authorization: `Bearer ${token}` } : {}) } });
 const json = (method: string, data: unknown): RequestInit => ({ method, body: JSON.stringify(data), headers: { 'Content-Type': 'application/json' } });
 let seq = 0;
-type Who = { token: string; user: { id: string; name: string }; code: string };
+type Who = { token: string; user: { id: string; name: string }; code: string; edit: string };
 /** a player; `old` ones are past the new-account quick-notes-only window */
 async function player(name = 'p', old = true): Promise<Who> {
   const r = await req('/auth/dev', json('POST', { name: `${name}${++seq}` }));
   const s = (await r.json()) as { token: string; user: { id: string; name: string } };
   if (old) await db.query('UPDATE users SET created_at = $2 WHERE id = $1', [s.user.id, Date.now() - FREE_TEXT_AFTER_MS - 60000]);
   const n = (await (await req('/neighbors', {}, s.token)).json()) as { code: string };
-  return { ...s, code: n.code };
+  const e = (await (await req('/edit-session', json('POST', {}), s.token)).json()) as { token: string };
+  return { ...s, code: n.code, edit: e.token };
 }
 async function save(w: Who) {
-  const r = await req('/beach', { method: 'PUT', body: new Uint8Array([1, 2, 3]), headers: { 'X-Beach-Location': 'bondi', 'X-Beach-Nx': '256', 'X-Beach-Ny': '256' } }, w.token);
+  const r = await req('/beach', { method: 'PUT', body: new Uint8Array([1, 2, 3]), headers: { 'X-Beach-Location': 'bondi', 'X-Beach-Nx': '256', 'X-Beach-Ny': '256', 'X-Edit-Token': w.edit } }, w.token);
   expect(r.status).toBe(200);
 }
 async function seed(w: Who, item: string, n = 1) {

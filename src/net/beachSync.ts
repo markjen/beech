@@ -20,7 +20,8 @@ export function countItems(objects: PlacedObject[]): Record<string, number> {
 
 /** `tooBig`: the server refused the save as too large (it keeps the last one that fit) */
 /** `outdated`: the server refused the save from this (old) app (426): it needs a reload */
-export type SyncState = 'idle' | 'saving' | 'saved' | 'offline' | 'tooBig' | 'outdated';
+/** `fenced`: another tab or device took over editing (docs/EDIT_SESSIONS.md): this one can look, not touch */
+export type SyncState = 'idle' | 'saving' | 'saved' | 'offline' | 'tooBig' | 'outdated' | 'fenced';
 
 export interface SyncHost {
   /** current sand minus the rest beach, at the live grid size, plus what's on it */
@@ -35,10 +36,15 @@ export interface SyncHost {
  * Keeps the signed-in person's beach saved: after strokes (debounced), every
  * so often while things change, and when the app goes to the background.
  * Each beach saves independently.
+ * Only one instance edits at a time (docs/EDIT_SESSIONS.md): this one claims
+ * an edit token when it opens the beach, and another instance claiming one
+ * fences this one — it stops saving and turns view-only until it takes over.
  */
 export class BeachSync {
   state: SyncState = 'idle';
   savedAt = 0;
+  /** this instance is no longer the editor: it can look, not touch */
+  fenced = false;
   private dirty = false;
   private timer = 0;
   private inflight: Promise<void> | null = null;
@@ -61,6 +67,7 @@ export class BeachSync {
   /** the beach's epoch when it was loaded here (a restore elsewhere moves it on) */
   private epoch: number | undefined;
   private restoredListeners: (() => void)[] = [];
+  private fencedListeners: (() => void)[] = [];
   /** your things the last save had to leave out (over MAX_OBJECTS) */
   dropped = 0;
   private droppedListeners: ((n: number) => void)[] = [];
@@ -79,6 +86,7 @@ export class BeachSync {
       window.clearTimeout(this.timer);
       this.dirty = false;
       this.savedAt = 0;
+      this.fenced = false;
       this.set('idle');
     });
     // waves keep reshaping the sand, so save now and then while signed in
@@ -86,10 +94,25 @@ export class BeachSync {
       if (this.account.user && this.dirty) void this.flush();
     }, 90000);
     this.simBeach = account.beachId;
+    // the edit heartbeat: every 30 s, ask whether this instance is still
+    // the editor, so a takeover elsewhere shows up promptly even while idle
+    // (offline: keep editing — the next save decides, and a save that can't
+    // reach the server reports offline, never fenced)
+    window.setInterval(() => {
+      if (!this.account.user || !this.account.editToken || this.fenced) return;
+      void this.account.editSessionActive().then((active) => {
+        if (!active) this.enterFenced();
+      }).catch(() => {});
+    }, 30000);
   }
 
   onState(fn: (s: SyncState) => void): void {
     this.listeners.push(fn);
+  }
+
+  /** Another instance took over editing: this one is view-only now. */
+  onFenced(fn: () => void): void {
+    this.fencedListeners.push(fn);
   }
 
   /** The beach was restored from a checkpoint (on another device) and has been reloaded here. */
@@ -110,7 +133,8 @@ export class BeachSync {
   /** Something changed; save a few seconds after the player pauses. */
   markDirty(delayMs = 6000): void {
     // (while another beach is loading, a timed save could put the old sand into it)
-    if (!this.account.user || this.switching) return;
+    // (fenced: this instance doesn't save at all — the editor does)
+    if (!this.account.user || this.switching || this.fenced) return;
     this.dirty = true;
     window.clearTimeout(this.timer);
     this.timer = window.setTimeout(() => void this.flush(), delayMs);
@@ -121,7 +145,7 @@ export class BeachSync {
    * it may have started before the latest change.
    */
   async flush(keepalive = false): Promise<void> {
-    if (!this.account.user) return;
+    if (!this.account.user || this.fenced) return;
     while (this.inflight) await this.inflight;
     this.inflight = this.save(keepalive);
     try {
@@ -129,6 +153,29 @@ export class BeachSync {
     } finally {
       this.inflight = null;
     }
+  }
+
+  /** This instance is no longer the editor: stop saving, and say so. */
+  private enterFenced(): void {
+    if (this.fenced) return;
+    this.fenced = true;
+    this.dirty = false;
+    window.clearTimeout(this.timer);
+    this.set('fenced');
+    for (const fn of this.fencedListeners) fn();
+  }
+
+  /**
+   * Take editing back here: claim a fresh token (fencing the other
+   * instances), then reload the beach — they may have changed it since this
+   * instance last saved, and what is on screen is not necessarily what is saved.
+   */
+  async takeOver(): Promise<void> {
+    if (!this.account.user) return;
+    await this.account.claimEditSession();
+    this.fenced = false;
+    this.set('idle');
+    await this.restoreOrCreate();
   }
 
   private async save(keepalive: boolean): Promise<void> {
@@ -168,6 +215,13 @@ export class BeachSync {
       this.set('saved');
     } catch (e) {
       if (this.account.user?.id !== forUser || this.account.beachId !== forBeach) return;
+      if (e instanceof ApiError && e.status === 409 && e.message === 'fenced') {
+        // another tab or device took over editing: don't save over it, and
+        // don't reload either — what is on screen stays to look at
+        this.dirty = false;
+        this.enterFenced();
+        return;
+      }
       if (e instanceof ApiError && e.status === 409) {
         // a checkpoint was restored onto this beach since it loaded here:
         // don't save the old sand over it; load the restored beach instead
@@ -200,9 +254,21 @@ export class BeachSync {
 
   /**
    * After signing in: bring back the saved beach, or (first time) save the
-   * beach the player is on now.
+   * beach the player is on now. `claim` takes over editing here — a new
+   * sign-in, tab or device showing up — and fences older instances. Every
+   * other load (switching beaches, reloading after a restore) keeps the
+   * token this instance already holds, so it never steals editing back
+   * from an instance that took over.
    */
-  async restoreOrCreate(fresh = false): Promise<'restored' | 'created'> {
+  async restoreOrCreate(fresh = false, claim = false): Promise<'restored' | 'created'> {
+    if (claim && this.account.user) {
+      try {
+        await this.account.claimEditSession();
+        this.fenced = false;
+      } catch {
+        /* offline: load what we have; the save will say offline, not fenced */
+      }
+    }
     const saved = await this.account.loadBeach();
     if (!saved) {
       // a brand-new extra beach starts untouched; a first sign-in keeps the

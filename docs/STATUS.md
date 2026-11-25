@@ -627,6 +627,46 @@ thumbnails and sandbox checkpoints, is optional and not built).
   drop-missing, full restore, undo, a restore under another device, beach
   removal, export, import, "Before import").
 
+## One active editor, and the daily auto-save (2026-11-24)
+
+Built after Riley's beach was overwritten by an older instance saving over
+a restore (last write wins, and a save with no epoch header was let
+through). Design in [EDIT_SESSIONS.md](EDIT_SESSIONS.md).
+
+- **Server:** migration 25 (`edit_sessions`: one row per user, the current
+  edit token). An instance claims a token when it opens your beach for
+  editing (`POST /api/edit-session`); claiming replaces the token, fencing
+  every older instance. Fenced: sand saves, checkpoint restores, dig-find
+  rolls, and the beach roster (make / rename / remove) — 409 `fenced`,
+  426 for an app too old to send a token. Not fenced: pulls, gifts,
+  favorites, neighbors, guide, invites, shop, pets, and checkpoint
+  create/import/rename/delete (they do not touch beach sand). A save with
+  a valid token but no epoch header is accepted — the token, not the
+  epoch, is what closes the no-header hole. The heartbeat is
+  `GET /api/edit-session` (every 30 s); tokens never expire.
+- **App:** `BeachSync` claims on sign-in, sends the token on every save,
+  and on `fenced` stops autosaving and turns view-only: digging, placing,
+  picking up, dragging, undo and redo are blocked, a banner offers "Take
+  over editing" (claims a fresh token and reloads the beach), and settings
+  shows "view-only: another tab or device is editing this beach".
+- **Daily auto-save:** before a save overwrites a beach, if more than 24 h
+  have passed since that beach's last auto checkpoint, the beach as it is
+  now is kept in its one auto slot (`Auto-save 2026-11-24`). It shares the
+  slot with the "before restoring" and "before import" copies — the newest
+  auto event wins — so a restore's undo copy is safe for a day, and only
+  then can a daily save replace it. At most one per beach per day; a first
+  save keeps nothing; a failed snapshot never blocks the save (logged as
+  `auto_checkpoint_failed`). It shows in settings → checkpoints as
+  "auto-saved daily" and restores like any checkpoint.
+- **Sandbox:** unchanged — no accounts, no tokens, production-only.
+- **Checked:** 7 new server tests (`server/test/editSessions.test.ts`:
+  fencing of saves/restores/dig rolls/roster, takeover both ways, no-token
+  426, daily auto-save timing and slot sharing, a full store never blocking
+  a save), plus the epoch test updated in `server/test/checkpoints.test.ts`.
+  `npm run e2e:accounts` and `npm run e2e:checkpoints` still pass (the
+  scripts drive the real app, so they claim a token the same way a player
+  does).
+
 ## Performance checks (2026-11-23)
 
 `npm run perf` (`scripts/perf.mjs`) profiles the built app at 0, 400 and

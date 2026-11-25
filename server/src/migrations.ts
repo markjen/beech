@@ -717,6 +717,22 @@ const MIGRATIONS: string[] = [
   CREATE INDEX inbox_unread ON inbox (user_id) WHERE read_at IS NULL;
   CREATE UNIQUE INDEX inbox_batch ON inbox (user_id, kind, beach_id, day) WHERE day IS NOT NULL;
   `,
+
+  // 25: one active edit session per person (docs/EDIT_SESSIONS.md). A tab,
+  // device or app claims an edit token when it opens your beach for
+  // editing; a new claim replaces the token, fencing every older instance,
+  // so only one instance can save at a time. One row per user: the token
+  // itself is the lease, and last_seen_at is when the holder last proved
+  // it is still there (the heartbeat; never used to expire a token — an
+  // offline instance that is still the holder may save when it reconnects).
+  `
+  CREATE TABLE edit_sessions (
+    user_id UUID PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,
+    token TEXT NOT NULL,
+    created_at BIGINT NOT NULL,
+    last_seen_at BIGINT NOT NULL
+  );
+  `,
 ];
 
 /** Apply migrations up to `upTo` (default: all). Tests use `upTo` to check a migration on older data. */

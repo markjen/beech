@@ -163,13 +163,15 @@ export class AccountPanel {
           ? 'offline: your beach will save when you reconnect'
           : s === 'outdated'
             ? 'a new version is ready: reload to keep saving'
-            : s === 'tooBig'
-              ? 'too big to save: smooth some of the sand to save again'
-              : this.sync.dropped
-                ? `saved, but ${this.sync.dropped} of your things didn't fit (${MAX_OBJECTS} at most)`
-                : this.sync.savedAt
-                  ? `beach saved ${ago(this.sync.savedAt)}`
-                  : 'your beach saves as you play';
+            : s === 'fenced'
+              ? 'view-only: another tab or device is editing this beach'
+              : s === 'tooBig'
+                ? 'too big to save: smooth some of the sand to save again'
+                : this.sync.dropped
+                  ? `saved, but ${this.sync.dropped} of your things didn't fit (${MAX_OBJECTS} at most)`
+                  : this.sync.savedAt
+                    ? `beach saved ${ago(this.sync.savedAt)}`
+                    : 'your beach saves as you play';
   }
 
   render(): void {

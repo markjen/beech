@@ -81,7 +81,8 @@ describe('animals feeding (A2)', () => {
 
   it('grants a free bonus beach snack when a dig find hits and the roll succeeds', async () => {
     const u = await signIn('SnackDigger');
-    const dig = await req('/dig-finds', json('POST', { pathM: 4, durationMs: 2000 }), u.token);
+    const edit = ((await (await req('/edit-session', { method: 'POST' }, u.token)).json()) as { token: string }).token;
+    const dig = await req('/dig-finds', { ...json('POST', { pathM: 4, durationMs: 2000 }), headers: { 'Content-Type': 'application/json', 'X-Edit-Token': edit } }, u.token);
     expect(dig.status).toBe(200);
     const data = (await dig.json()) as { found: boolean; bonusTreat?: boolean };
     expect(data.found).toBe(true);
