@@ -2052,6 +2052,8 @@ async function boot() {
     let signedInAs: string | null = null;
     account.onChange((u) => {
       if ((u?.id ?? null) !== signedInAs) {
+        undoTargets.length = 0;
+        redoTargets.length = 0;
         fenced = false;
         fencedHide?.();
         fencedHide = null;

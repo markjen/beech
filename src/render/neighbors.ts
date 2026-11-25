@@ -557,13 +557,15 @@ export class NeighborView {
       if (e.index >= lo && e.index <= hi) {
         inView.push(e.beach.id);
         const st = this.store.peek(e.beach.id);
-        if (!st || st.stale) pending.push(this.load(e));
-        else if (!e.slot) this.makeSlot(e);
+        if (st && !e.slot) this.makeSlot(e);
+        const id = e.beach.id;
+        const needsLoad = !st || (st.stale && !this.store.isAttached(id) && !this.store.isDirty(id));
+        if (needsLoad && (wait || !this.store.isLoading(id))) pending.push(this.load(e));
       } else {
         this.dropSlot(e);
       }
     }
-    if (moved) {
+    if (moved || wait) {
       this.store.retain(inView);
       this.store.gc();
     }
@@ -573,9 +575,8 @@ export class NeighborView {
   private load(e: Entry): Promise<void> {
     if (e.beach.id === LOCAL_BEACH && !this.store.has(LOCAL_BEACH)) return Promise.resolve();
     return this.store.load(this.refOf(e.beach)).then((st) => {
-      if (!st || this.entries.get(e.index) !== e) return;
-      if (e.slot) this.repaint(e);
-      else if (e.index >= this.win[0] && e.index <= this.win[1]) this.makeSlot(e);
+      if (st && this.entries.get(e.index) === e && e.index >= this.win[0] && e.index <= this.win[1]) this.makeSlot(e);
+      this.store.gc();
     });
   }
 
