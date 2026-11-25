@@ -110,6 +110,24 @@
   transform: translate(-50%, 0);
 }
 
+/* a hint under the status pane: in the pane's own flow, as wide as the pane,
+   left-aligned, never covering the beach info stacked above it */
+.hint.below-status {
+  position: static;
+  left: auto;
+  top: auto;
+  flex: none;
+  width: auto;
+  max-width: none;
+  margin-top: 8px;
+  transform: none;
+  text-align: left;
+}
+
+.hint.below-status.show {
+  transform: none;
+}
+
 .hint.with-action {
   display: flex;
   flex-wrap: wrap;

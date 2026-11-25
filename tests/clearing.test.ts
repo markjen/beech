@@ -279,3 +279,49 @@ describe('objects.within', () => {
     expect(sim.objects.within(26, y, 0.5).map((p) => p.id)).toEqual([o.far.id]);
   });
 });
+
+describe('vacuum reporting (for the toast under the status pane)', () => {
+  it('a tap reports exactly the one item it vacuumed', () => {
+    const sim = new BeachSim(grid, 1, FLAGS);
+    const o = setRow(sim);
+    hold(sim, 12, 3, 'vacuum'); // over the starfish
+    expect(sim.takeVacuumed().map((p) => p.id)).toEqual([o.star.id]);
+  });
+
+  it('a drag reports everything it swept, in path order, and nothing else', () => {
+    const sim = new BeachSim(grid, 1, FLAGS);
+    const o = setRow(sim);
+    drive(sim, 8, 22, 2, 'vacuum');
+    expect(sim.takeVacuumed().map((p) => p.id)).toEqual([o.chair.id, o.star.id, o.shell.id, o.wood.id, o.stray.id, o.rock.id]);
+  });
+
+  it('a dozer sweep reports nothing (only the vacuum toasts)', () => {
+    const sim = new BeachSim(grid, 1, FLAGS);
+    setRow(sim);
+    drive(sim, 8, 22, 2, 'dozer');
+    expect(sim.objects.count).toBe(1); // the sweep happened
+    expect(sim.takeVacuumed()).toEqual([]);
+  });
+
+  it('a cancelled stroke reports nothing: what it swept goes back on the beach', () => {
+    const sim = new BeachSim(grid, 1, FLAGS);
+    const o = setRow(sim);
+    sim.beginStroke(12, y, 0.5, 'vacuum');
+    sim.step(DT);
+    sim.step(DT);
+    expect(sim.objects.persisted().some((p) => p.id === o.star.id)).toBe(false); // swept already
+    sim.cancelStroke();
+    expect(sim.objects.persisted().some((p) => p.id === o.star.id)).toBe(true); // put back
+    expect(sim.takeVacuumed()).toEqual([]);
+  });
+
+  it('the report drains: a second take is empty until more is vacuumed', () => {
+    const sim = new BeachSim(grid, 1, FLAGS);
+    setRow(sim);
+    hold(sim, 12, 3, 'vacuum');
+    expect(sim.takeVacuumed().length).toBe(1);
+    expect(sim.takeVacuumed()).toEqual([]);
+    hold(sim, 14, 3, 'vacuum'); // over the shell
+    expect(sim.takeVacuumed().map((p) => p.item)).toEqual(['shell']);
+  });
+});

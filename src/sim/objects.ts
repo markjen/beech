@@ -228,6 +228,8 @@ export class BeachObjects {
   private readonly floor0: Float32Array;
   /** owned things the sea took since the last `takeLost()` */
   private lost: PlacedObject[] = [];
+  /** things the vacuum swept up since the last `takeVacuumed()` */
+  private vacuumed: PlacedObject[] = [];
 
   constructor(
     private readonly h: ObjectHost,
@@ -674,6 +676,24 @@ export class BeachObjects {
     const out = this.lost;
     this.lost = [];
     return out;
+  }
+
+  /** Remember a thing the vacuum swept up (reported, then drained). */
+  noteVacuumed(o: PlacedObject): void {
+    this.vacuumed.push(o);
+  }
+
+  /** The things the vacuum swept up since the last call (each once). */
+  takeVacuumed(): PlacedObject[] {
+    if (!this.vacuumed.length) return this.vacuumed;
+    const out = this.vacuumed;
+    this.vacuumed = [];
+    return out;
+  }
+
+  /** Drop the pending vacuum report (a cancelled stroke puts things back). */
+  clearVacuumed(): void {
+    this.vacuumed = [];
   }
 
   /** `sea`: waves are running, so the sea may bring things in. */

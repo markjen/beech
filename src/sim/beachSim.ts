@@ -1025,6 +1025,11 @@ export class BeachSim {
     }
   }
 
+  /** Things the vacuum swept up since the last call (each once). */
+  takeVacuumed(): PlacedObject[] {
+    return this.objects.takeVacuumed();
+  }
+
   /**
    * Take the sand a swept rock lifted back out of a stroke's undo delta.
    * The lift is the rock's own doing — undo re-embeds the rock, which
@@ -1055,6 +1060,8 @@ export class BeachSim {
     // against the sand it was lifted from, so it keeps the base it was
     // placed at (and the sand it was sitting on) instead of the lifted sand
     for (const o of st.swept) this.objects.add({ ...o });
+    // ... and nothing it swept is reported as vacuumed any more
+    this.objects.clearVacuumed();
     const { i0, j0, i1, j1 } = this.clipBox(st.i0, st.j0, st.i1, st.j1);
     for (let j = j0; j <= j1; j++) {
       for (let i = i0; i <= i1; i++) {
@@ -1153,6 +1160,9 @@ export class BeachSim {
       const taken = this.objects.removeWithLift(o.id);
       if (!taken) continue;
       st.swept.push(taken.data);
+      // the vacuum (not the dozer blade) reports what it took, so the app
+      // can say so under the status pane
+      if (st.mode === 'vacuum') this.objects.noteVacuumed(taken.data);
       st.lift.push(...taken.lift);
     }
   }
