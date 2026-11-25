@@ -147,6 +147,12 @@
   background: #2f7f5a;
 }
 
+/* open, the palm is the ×: the rail's own colours */
+.hud.open .hud-btn.hud-palm {
+  color: var(--ui-fg);
+  background: var(--ui-bg);
+}
+
 .hud-btn.hud-palm svg {
   width: 46%;
   height: 46%;
