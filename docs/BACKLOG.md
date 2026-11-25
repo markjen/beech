@@ -144,10 +144,9 @@ _(nothing right now)_
   average, shown on the name tags along the shore (today: in the visitor card).
 - [ ] **Admin: suspend a sender's notes** after repeated reports (today
   the admin can hide a note or dismiss the report).
-- [ ] **Flaky tests**: `server/test/digFinds.test.ts` "three finds a day"
-  fails when it starts just before midnight UTC (it skews the clock across
-  the day boundary); `npm run e2e:checkpoints` times out at varying steps
-  in the cloud container, also on main.
+- [ ] **Flaky tests**: `npm run e2e:checkpoints` times out at varying
+  steps in the cloud container, also on main (so do `neighbors`, `live`,
+  `shore`, `beaches` and `leaderboard`: signing a second device in).
 - [ ] **Invites: open in the apps**: Universal Links / App Links so
   `?invite=` and `?visit=` links open the phone apps (the invite code is
   kept in `localStorage`, so the claim works the same once it lands).
@@ -170,6 +169,21 @@ _(nothing right now)_
   shower night.
 
 ## Done (recent)
+
+- [x] **Saves within the bag** (2026-11-25): a save can't raise a thing's
+  count on a beach past what you own less your other beaches (409
+  `short`); what a beach already holds stays (given away, refunded,
+  expired). The app saves its other beaches and retries once (a move
+  across a seam), then reloads the saved beach.
+- [x] **Flaky digFinds test** (2026-11-25): "three finds a day" starts at
+  noon UTC, so it no longer crosses midnight.
+
+- [x] **Server permissions audit** (2026-11-25): only a beach's owner can
+  change it (`server/test/permissions.test.ts` tries every such call as
+  someone else); catch-up is server-only (no app code imports it). Saves
+  are now read by the server: non-beach bytes are refused, items are
+  counted from the objects (not `X-Beach-Items`). Fixed the off-shore pet
+  read and blocked people feeding a pet. Details in STATUS.md.
 
 - [x] **Client beach state by id** (2026-11-25): no more active beach. A
   `BeachStore` keeps every beach's state in memory by id with LRU

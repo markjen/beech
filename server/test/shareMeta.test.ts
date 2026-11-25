@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
 import { type Db } from '../src/db.js';
 import { createSharePageHandler, escapeHtml, injectShareMeta, shareMetaTags } from '../src/shareMeta.js';
+import { beachBlob } from './beachBlob.js';
 import { openTestDb } from './testDb.js';
 
 describe('share meta tags', () => {
@@ -77,7 +78,7 @@ describe('share page handler', () => {
       '/api/beach',
       {
         method: 'PUT',
-        body: new Uint8Array([1, 2, 3]),
+        body: beachBlob(),
         headers: { Authorization: `Bearer ${ana.token}`, 'X-Beach-Location': 'bondi', 'X-Beach-Nx': '256', 'X-Beach-Ny': '256', 'X-Edit-Token': anaEdit },
       },
     );

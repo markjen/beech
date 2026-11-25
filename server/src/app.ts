@@ -67,7 +67,9 @@ import {
   hasVisitorFedToday,
   maybeGrantBonusTreat,
   recentPetFeeders,
+  recordSnackOut,
   recordWildFeed,
+  returnSnack,
   renameBeachPet,
   visitorFeedPet,
 } from './animals.js';
@@ -96,6 +98,7 @@ import {
   inspectBlob,
   sandDiff,
   shortfall,
+  type Short,
 } from './checkpoints.js';
 import {
   FREE_TEXT_AFTER_MS,
@@ -696,16 +699,6 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     });
   };
 
-  /** `X-Beach-Items: starfish=1,deckchair=2` -> { starfish: 1, deckchair: 2 } (bad parts ignored) */
-  const parseItems = (raw: string | undefined): Record<string, number> => {
-    const out: Record<string, number> = {};
-    for (const part of (raw ?? '').split(',').slice(0, 64)) {
-      const m = /^([a-z0-9-]{1,32})=(\d{1,4})$/.exec(part.trim());
-      if (m) out[m[1]] = Number(m[2]);
-    }
-    return out;
-  };
-
   /** An out-of-date app tried to save: refuse (426, the app offers a reload), and log which build it was. */
   const outdated = (c: Context<Env>, why: string): never => {
     logEvent('stale_app_save', { why, build: (c.req.header('X-App-Build') ?? 'unknown').slice(0, 40) }, 'WARNING');
@@ -826,6 +819,28 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     }
   };
 
+  /**
+   * What a save holds beyond the bag. Only counts that go up are checked,
+   * so most saves cost no query. Whatever this beach already holds stays
+   * allowed (things since gifted away, refunded or expired keep their
+   * place), and the app saves its other beaches and retries once on a
+   * refusal, which settles a move across a seam whose two saves arrived in
+   * the wrong order (docs/MULTI_BEACH.md).
+   */
+  const overBag = async (user: string, beachId: string, placed: Record<string, number>): Promise<Short[]> => {
+    const row = (await db.query<{ items: Record<string, number> | string | null }>('SELECT items FROM beach WHERE id = $1', [beachId]))[0];
+    const stored = jsonMap(row?.items);
+    const grew = Object.entries(placed).filter(([item, n]) => n > (stored[item] ?? 0));
+    if (!grew.length) return [];
+    const [owned, elsewhere] = await Promise.all([ownedItems(user), itemsElsewhere(user, beachId)]);
+    const out: Short[] = [];
+    for (const [item, n] of grew.sort(([a], [b]) => (a < b ? -1 : 1))) {
+      const have = Math.max(stored[item] ?? 0, (owned[item] ?? 0) - (elsewhere[item] ?? 0));
+      if (n > have) out.push({ item, need: n, have });
+    }
+    return out;
+  };
+
   const saveBeach = async (c: Context<Env>, beachId: string) => {
     const location = (c.req.header('X-Beach-Location') ?? '').slice(0, 40);
     const nx = Number(c.req.header('X-Beach-Nx'));
@@ -839,6 +854,20 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     if (Number(c.req.header('Content-Length') ?? 0) > MAX_BEACH_BYTES) fail(413, 'beach too large');
     const bytes = new Uint8Array(await c.req.arrayBuffer());
     if (bytes.byteLength === 0 || bytes.byteLength > MAX_BEACH_BYTES) fail(413, 'beach too large');
+    // what's on it is counted here, never taken from the app (X-Beach-Items is
+    // ignored): the bag is "owned minus placed across your beaches", so an
+    // under-count would free things to place twice. Garbage, or a blob whose
+    // grid isn't the one in its headers, would break every viewer and the
+    // server's catch-up, so it's refused.
+    let placed: Record<string, number>;
+    try {
+      const info = inspectBlob(bytes, { strictObjects: true });
+      if (info.nx !== nx || info.ny !== ny) fail(400, 'grid size does not match the saved beach');
+      placed = info.items;
+    } catch (e) {
+      if (e instanceof BadBlob) return fail(400, `not a saved beach (${e.message})`);
+      throw e;
+    }
     const now = Date.now();
     // only the current editor may save: an older tab or device, or an app too
     // old to send the token, must not overwrite what the editor has since done
@@ -867,6 +896,13 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       const cur = (await db.query<{ epoch: number }>('SELECT epoch FROM beach WHERE id = $1', [beachId]))[0];
       if (cur && Number(cur.epoch) > epoch) fail(409, 'restored');
     }
+    // within the bag: a save can't put more of a thing on this beach than
+    // you own, less what's on your other beaches (as a restore checks)
+    const short = await overBag(c.get('user').id, beachId, placed);
+    if (short.length) {
+      logEvent('save_over_bag', { items: short.length }, 'WARNING');
+      return c.json({ error: 'short', short }, 409);
+    }
     // a big edit (a tenth of the sand reshaped, fifty things moved, a new
     // grid) keeps the beach as it is now first, whatever the daily clock
     // says; anything smaller gets the daily auto-save instead. Neither ever
@@ -877,7 +913,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const rows = await db.query<{ version: number; epoch: number }>(
       `UPDATE beach SET location = $2, nx = $3, ny = $4, version = version + 1, updated_at = $5, sand = $6, items = $7, simulated_until = $9
         WHERE id = $1 AND ($8::int IS NULL OR epoch <= $8::int) RETURNING version, epoch`,
-      [beachId, location, nx, ny, now, bytes, JSON.stringify(parseItems(c.req.header('X-Beach-Items'))), epoch, liveClock()],
+      [beachId, location, nx, ny, now, bytes, JSON.stringify(placed), epoch, liveClock()],
       'beach.save',
     );
     // Payload size + DB time, so a slow PUT /sand can be correlated with
@@ -1122,7 +1158,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const side = parseSide(c);
     const n = await linked(await mine(c, c.req.query('beach')), side);
     if (!n) return c.json({ error: 'no neighbor on that side' }, 404);
-    await live.viewed(n.id);
+    // (another of your own beaches isn't being watched by someone else)
+    if (n.owner_id !== c.get('user').id) await live.viewed(n.id);
     return sendBeach(c, n.id);
   });
 
@@ -1618,21 +1655,42 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   // ---------------------------------------------------------------- animals (A2: food & feeding, A3: resident pets)
   app.post('/animals/feed', requireUser, async (c) => {
     const user = c.get('user');
-    const now = clock();
     const b = await body<{ beachId?: string; species?: string }>(c).catch(() => ({} as { beachId?: string; species?: string }));
     const species = b.species === 'crab' || !b.species ? 'crab' : fail(400, 'unknown species');
     // resolve the beach first, so a foreign or bad beach id never spends a snack
     const beachId = await mine(c, b.beachId ?? c.req.query('beach'));
-    const res = await consumeTreat(db, user.id, now);
-    if (!res.ok) return c.json({ error: 'no beach snacks left', remaining: 0 }, 409);
+    const fed = await db.withTransaction(async (tx) => {
+      // A toss and a pickup take the same lock before touching inventory or the snack row.
+      await tx.query('SELECT id FROM beach WHERE id = $1 FOR NO KEY UPDATE', [beachId]);
+      const now = clock();
+      const res = await consumeTreat(tx, user.id, now);
+      if (!res.ok) return null;
 
-    const existingPet = await getBeachPet(db, beachId, now);
-    if (existingPet) {
-      const pet = await feedBeachPet(db, beachId, user.id, user.name, now);
-      return c.json({ ok: true, remaining: res.remaining, pet });
-    }
-    const bond = await recordWildFeed(db, beachId, species, now);
-    return c.json({ ok: true, remaining: res.remaining, bond });
+      const existingPet = await getBeachPet(tx, beachId, now);
+      if (existingPet) {
+        const pet = await feedBeachPet(tx, beachId, user.id, user.name, now);
+        await recordSnackOut(tx, { beachId, userId: user.id, inventoryId: res.rowId, now, petPrevFedAt: existingPet.lastFedAt });
+        return { remaining: res.remaining, pet };
+      }
+      const bond = await recordWildFeed(tx, beachId, species, now);
+      await recordSnackOut(tx, { beachId, userId: user.id, inventoryId: res.rowId, now, wildSpecies: species });
+      return { remaining: res.remaining, bond };
+    });
+    if (!fed) return c.json({ error: 'no beach snacks left', remaining: 0 }, 409);
+    return c.json({ ok: true, ...fed });
+  });
+
+  // pick the snack that's out back up (by hand or with the vacuum): back in the bag
+  app.post('/animals/feed/return', requireUser, async (c) => {
+    const user = c.get('user');
+    const b = await body<{ beachId?: string }>(c).catch(() => ({} as { beachId?: string }));
+    const beachId = await mine(c, b.beachId ?? c.req.query('beach'));
+    const back = await db.withTransaction(async (tx) => {
+      await tx.query('SELECT id FROM beach WHERE id = $1 FOR NO KEY UPDATE', [beachId]);
+      return returnSnack(tx, beachId, user.id, clock());
+    });
+    if (!back) return c.json({ error: 'no snack out on this beach' }, 409);
+    return c.json({ ok: true, ...back });
   });
 
   app.get('/pet', requireUser, async (c) => {
@@ -1688,7 +1746,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     if (auth?.startsWith('Bearer ')) {
       const s = await db.query<{ user_id: string }>(
         `SELECT user_id FROM sessions WHERE token_hash = $1 AND expires_at > $2`,
-        [hashToken(auth.slice(7)), now],
+        [await hashToken(auth.slice(7)), now],
       );
       viewerId = s[0]?.user_id ?? null;
     }
@@ -1712,6 +1770,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     );
     const beach = rows[0];
     if (!beach || (!beach.on_shore && beach.owner_id !== user.id)) return c.json({ error: 'beach not found' }, 404);
+    // someone the owner has blocked can't leave their name on the pet either
+    if (beach.owner_id !== user.id && (await blocked(beach.owner_id, user.id))) fail(403, 'that didn’t go through');
 
     const res = await visitorFeedPet(db, {
       beachId: beach.id,

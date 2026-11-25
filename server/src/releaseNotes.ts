@@ -20,6 +20,8 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     title: 'Live beaches, visitors, your inbox, new controls, and sandcastle molds',
     changes: [
       'Local weather: the sky and light follow the beach in the middle of your view, so walking down the shore to a beach somewhere else in the world brings its own time of day, blending as you go. Turn local weather off in Settings to keep the light you pick there.',
+      'Someone you’ve blocked can no longer feed your beach pet.',
+      'Beach snacks go where you tap: pick them in your bag, then tap the spot on your beach. Tap or long-press a snack that’s out (or vacuum it) to put it back in your bag.',
       'The waves follow you along the shore: pan onto another of your beaches and the sea comes alive there, and Undo now steps back through edits on all your beaches in order. Moving between your beaches no longer reloads them.',
       'A new, quieter screen: at rest it’s just the beach and a palm button in the lower right. Tap the palm to open the toolbar; it turns into a × that closes everything again (this replaces the eye button).',
       'The toolbar is one column: Inbox, Hand, Dirt, Bag, Store, View and Manage, with Undo just above the ×. It always opens on the hand. On a phone on its side it lies along the bottom.',

@@ -196,6 +196,53 @@ describe('BeachStore', () => {
     expect(store.isDirty('a')).toBe(false);
   });
 
+  it('over the bag (409 short): saves your other beaches, then tries once more', async () => {
+    const f = fakeBackend();
+    const store = new BeachStore(grid, rest, f.backend);
+    await store.load(mine('a'));
+    await store.load(mine('b'));
+    const problems: string[] = [];
+    store.onProblem((id, p) => problems.push(`${id}:${p}`));
+    // a thing moved from b to a across the seam; a's save reached the server first
+    store.markDirty('a', 1e9);
+    store.markDirty('b', 1e9);
+    f.failNext(409, 'short');
+    await store.flush('a');
+    await new Promise((r) => setTimeout(r, 0));
+    await store.flush('a');
+    expect(f.calls.save).toEqual(['a', 'b', 'a']);
+    expect(store.isDirty('a')).toBe(false);
+    expect(store.isDirty('b')).toBe(false);
+    expect(problems).toEqual([]);
+  });
+
+  it('still over the bag after the retry: the saved beach comes back, and says so', async () => {
+    const f = fakeBackend();
+    await seed(f.server, 'a', 0.3);
+    const store = new BeachStore(grid, rest, f.backend);
+    await store.load(mine('a'));
+    const problems: string[] = [];
+    store.onProblem((id, p) => problems.push(`${id}:${p}`));
+    let reloaded = '';
+    store.onReloaded((id) => (reloaded = id));
+    const save = f.backend.save.bind(f.backend);
+    let refusals = 0;
+    f.backend.save = async (ref, bytes, opts) => {
+      if (refusals++ < 2) throw Object.assign(new Error('short'), { status: 409 });
+      return save(ref, bytes, opts);
+    };
+    store.markDirty('a', 1e9);
+    await store.flush('a');
+    await new Promise((r) => setTimeout(r, 0));
+    await store.flush('a');
+    await new Promise((r) => setTimeout(r, 0));
+    await store.load(mine('a'));
+    expect(refusals).toBe(2);
+    expect(problems).toEqual(['a:short']);
+    expect(reloaded).toBe('a');
+    expect(store.isDirty('a')).toBe(false);
+  });
+
   it('forgets everything for the next person', async () => {
     const f = fakeBackend();
     const store = new BeachStore(grid, rest, f.backend);

@@ -343,6 +343,17 @@ export class PlaceBar {
     this.giftBtn.hidden = !this.gift || !this.gift.giftable(item);
   }
 
+  /** A beach snack in hand (no size, no gift): its name and how many are left. */
+  showSnack(name: string, left: number): void {
+    this.show(null, 0);
+    this.root.classList.add('shown');
+    this.ico.innerHTML = icon('crab-treat');
+    this.name.textContent = name;
+    this.sizeRow.hidden = true;
+    this.giftBtn.hidden = true;
+    this.giftStatus.textContent = `${left} left`;
+  }
+
   /** Add (or replace) the gifting flow after construction (once signed in). */
   setGift(gift: PlaceBarGift): void {
     this.gift = gift;

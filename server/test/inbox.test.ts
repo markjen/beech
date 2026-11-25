@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
 import { type Db } from '../src/db.js';
 import { FREE_TEXT_AFTER_MS, NOTE_MAX, NOTES_PER_BEACH_DAY, QUICK_NOTES, checkNote } from '../src/inbox.js';
+import { beachBlob } from './beachBlob.js';
 import { openTestDb } from './testDb.js';
 
 let db: Db;
@@ -29,7 +30,7 @@ async function player(name = 'p', old = true): Promise<Who> {
   return { ...s, code: n.code, edit: e.token };
 }
 async function save(w: Who) {
-  const r = await req('/beach', { method: 'PUT', body: new Uint8Array([1, 2, 3]), headers: { 'X-Beach-Location': 'bondi', 'X-Beach-Nx': '256', 'X-Beach-Ny': '256', 'X-Edit-Token': w.edit } }, w.token);
+  const r = await req('/beach', { method: 'PUT', body: beachBlob(), headers: { 'X-Beach-Location': 'bondi', 'X-Beach-Nx': '256', 'X-Beach-Ny': '256', 'X-Edit-Token': w.edit } }, w.token);
   expect(r.status).toBe(200);
 }
 async function seed(w: Who, item: string, n = 1) {
@@ -296,7 +297,7 @@ describe('signed-out visits', () => {
     const sand = await req(`/public/beaches/${ana.code}`);
     expect(sand.status).toBe(200);
     expect(sand.headers.get('X-Beach-Location')).toBe('bondi');
-    expect(new Uint8Array(await sand.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
+    expect(new Uint8Array(await sand.arrayBuffer())).toEqual(beachBlob());
     expect((await req(`/public/beaches/${ben.code}`)).status).toBe(404);
     expect((await req(`/public/beaches/${cleo.code}`)).status).toBe(404);
 

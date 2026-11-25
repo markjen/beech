@@ -16,7 +16,7 @@ const { browser, close: closeBrowser } = await openBrowser();
 const page = await browser.newPage({ viewport: { width: 1100, height: 700 } });
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
-await openApp(page, e2eUrl(URL_, 'nointro&fixedres&seed=1&nofinds', { shots: Boolean(shot) }));
+await openApp(page, e2eUrl(URL_, 'nointro&fixedres&seed=1&nofinds&time=2026-11-25T23:00:00Z', { shots: Boolean(shot) }));
 
 const tag = `sh${Date.now() % 10000}${process.pid % 100}`;
 const names = { ana: `ana${tag}`, ben: `ben${tag}`, cleo: `cleo${tag}`, dot: `dot${tag}` };
@@ -100,23 +100,17 @@ check((await page.evaluate(() => window.__beech.light().place)) === 'waikiki', "
 check((await page.evaluate(() => window.__beech.live().localTime !== window.__beech.light().localTime)), 'its own local time, not the live beach’s');
 // local weather off: the pinned light, wherever you look
 {
-  const pinned = await page.evaluate(async () => {
-    const b = window.__beech;
-    const s = JSON.parse(localStorage.getItem('beech.settings.v1') ?? '{}');
-    b.sheet.show('settings');
-    document.querySelector('input[data-key="localWeather"]').click();
-    document.querySelector('.chips[data-key="palette"] button[data-v="night"]').click();
-    b.sheet.hide();
-    await new Promise((r) => setTimeout(r, 200));
-    const name = b.light().palette;
-    // and back on
-    b.sheet.show('settings');
-    document.querySelector('input[data-key="localWeather"]').click();
-    b.sheet.hide();
-    return { name, was: s.localWeather };
-  });
-  check(pinned.was !== false, 'local weather is on by default');
-  check(pinned.name === 'night', `turned off, the light pinned in settings shows (${pinned.name})`);
+  const localWeather = page.locator('input[data-key="localWeather"]');
+  await page.evaluate(() => window.__beech.sheet.show('settings'));
+  check(await localWeather.isChecked(), 'local weather is on by default');
+  check((await page.evaluate(() => window.__beech.light().palette)) !== 'night', 'Waikiki starts in daylight');
+  await page.locator('.chips[data-key="palette"] button[data-v="night"]').click();
+  await localWeather.uncheck();
+  await page.waitForFunction(() => window.__beech.light().palette === 'night', null, { polling: 100, timeout: 5000 });
+  check(true, 'turned off, the light pinned in settings shows');
+  await localWeather.check();
+  await page.waitForFunction(() => window.__beech.light().palette !== 'night', null, { polling: 100, timeout: 5000 });
+  await page.evaluate(() => window.__beech.sheet.hide());
 }
 // star Cleo's beach from the bar
 await page.click('.shore-bar .sb-fav');

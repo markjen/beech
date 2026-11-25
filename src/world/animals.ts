@@ -239,6 +239,27 @@ export class AnimalController {
     return true;
   }
 
+  /** Is a dropped snack out on the sand within `r` m of (x, z)? */
+  foodNear(x: number, z: number, r: number): boolean {
+    const f = this.snap.food;
+    return f.active && Math.hypot(f.x - x, f.z - z) <= r;
+  }
+
+  /** Pick the dropped snack back up (a crab heading for it, or eating it, gives up). */
+  takeFood(): boolean {
+    const f = this.snap.food;
+    if (!f.active) return false;
+    f.active = false;
+    f.timeLeft = 0;
+    this.foodWetTimer = 0;
+    return true;
+  }
+
+  /** Restore a snack's remaining time (after a pick-up that didn't go through). */
+  setFoodTimeLeft(seconds: number): void {
+    if (this.snap.food.active) this.snap.food.timeLeft = Math.max(0, seconds);
+  }
+
   /** Immediately spawn a wild animal (`'crab'` or `'dolphin'`, used by ?debug=1 and tests). */
   spawnNow(env: AnimalEnv, pos?: { x: number; z: number }, species: AnimalSpecies = 'crab'): boolean {
     if (species === 'dolphin') return this.spawnDolphin(env, pos);
