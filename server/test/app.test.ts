@@ -1,9 +1,10 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createApp, normalizeCode } from '../src/app.js';
 import type { VerifiedPurchase } from '../src/store.js';
-import { createPgDb, createPgliteDb, type Db } from '../src/db.js';
+import { type Db } from '../src/db.js';
 import { migrate } from '../src/migrations.js';
 import { COOLDOWN_MAX_MS, COOLDOWN_MIN_MS, cooldownAfter, cryptoRandom } from '../src/pulls.js';
+import { openTestDb } from './testDb.js';
 
 let db: Db;
 /** the server's clock in these tests: real time plus however far a test moved it on */
@@ -13,15 +14,7 @@ let forcedRand: (() => number) | null = null;
 let app: ReturnType<typeof createApp>;
 
 beforeAll(async () => {
-  // TEST_DATABASE_URL runs the same tests against a real Postgres (the
-  // production driver path); otherwise in-memory PGlite
-  if (process.env.TEST_DATABASE_URL) {
-    db = createPgDb({ url: process.env.TEST_DATABASE_URL });
-    await db.exec('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
-  } else {
-    db = await createPgliteDb();
-  }
-  await migrate(db);
+  db = await openTestDb();
   await migrate(db); // idempotent
   app = createApp(db, {
     googleClientIds: ['web'],

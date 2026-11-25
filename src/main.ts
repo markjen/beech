@@ -149,7 +149,8 @@ async function boot() {
   let settings = loadSettings();
   const canvas = document.getElementById('scene') as HTMLCanvasElement;
   const uiRoot = document.getElementById('ui')!;
-  const engine = new Engine(canvas, true, {
+  const noRender = params.has('norender');
+  const engine = new Engine(canvas, !noRender, {
     stencil: false,
     preserveDrawingBuffer: true,
     powerPreference: 'high-performance',
@@ -1653,7 +1654,7 @@ async function boot() {
     }
   };
 
-  engine.runRenderLoop(() => {
+  const tickFrame = () => {
     const now = performance.now();
     if (settings.batterySaver) {
       skip = !skip;
@@ -1675,7 +1676,7 @@ async function boot() {
       sendSea();
     }
     updatePlace();
-    if (!document.hidden && !params.has('fixedres')) adaptResolution(dt);
+    if (!noRender && !document.hidden && !params.has('fixedres')) adaptResolution(dt);
 
     const palette = liveState.palette;
     gamepad.poll(dt);
@@ -1692,7 +1693,7 @@ async function boot() {
       const buf = pendingBuf;
       pendingBuf = null;
       picker.updateFromFrame(buf);
-      renderer.uploadFrame(buf);
+      if (!noRender) renderer.uploadFrame(buf);
       send({ type: 'return', buf }, [buf.buffer]);
     }
 
@@ -1753,8 +1754,23 @@ async function boot() {
       daylight: 1 - liveState.sky.night,
     });
 
-    scene.render();
-  });
+    if (noRender) {
+      // Keep camera & scene transform matrices fresh on CPU for ray picking
+      // and world-to-screen projection without triggering SwiftShader WebGL draws.
+      scene.activeCamera?.getViewMatrix(true);
+      scene.activeCamera?.getProjectionMatrix(true);
+      scene.updateTransformMatrix();
+    } else {
+      scene.render();
+    }
+  };
+
+  if (noRender) {
+    tickFrame();
+    window.setInterval(tickFrame, 33);
+  } else {
+    engine.runRenderLoop(tickFrame);
+  }
 
   const onResize = () => {
     engine.resize();
@@ -2315,12 +2331,17 @@ async function boot() {
         return { name: res.to.name };
       },
     });
-    const claw = new ClawMachine(uiRoot, new PullApi(acct), (item, place) => {
-      unlockSteamAchievement('CLAW_WIN');
-      void loadOwned().then(() => {
-        if (place) inventory.select(item);
-      });
-    });
+    const claw = new ClawMachine(
+      uiRoot,
+      new PullApi(acct),
+      (item, place) => {
+        unlockSteamAchievement('CLAW_WIN');
+        void loadOwned().then(() => {
+          if (place) inventory.select(item);
+        });
+      },
+      params.has('fast'),
+    );
     clawMachine = claw;
     claw.onClosed = () => guide.mark('claw');
     // the shop: paid through Apple / Google in the apps (src/net/shop.ts)

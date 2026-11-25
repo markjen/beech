@@ -4,26 +4,20 @@
 // One person, two devices: save a checkpoint, restore it onto another beach
 // (short, then without what's missing, then in full), undo, a restore under
 // another device's feet, and checkpoints outliving their beach.
-import { createRequire } from 'node:module';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { e2eUrl, openBrowser } from './lib/e2e.mjs';
 
-const require = createRequire(import.meta.url);
-let chromium;
-try {
-  ({ chromium } = require('playwright'));
-} catch {
-  ({ chromium } = await import('playwright'));
-}
 const URL_ = process.env.BEECH_URL ?? 'http://127.0.0.1:8787/';
+const shots = Boolean(process.env.SHOT_DIR);
 let failed = 0;
 const check = (cond, msg) => {
   console.log(`${cond ? 'ok  ' : 'FAIL'} ${msg}`);
   if (!cond) failed++;
 };
 
-const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const { browser, close: closeBrowser } = await openBrowser();
 const errors = [];
 const who = `cp${Date.now() % 100000}`;
 const dialogs = [];
@@ -40,7 +34,7 @@ async function device(label) {
     dialogs.push(`${label} ${d.type()}: ${d.message()}`);
     void d.accept(d.type() === 'prompt' ? page.answer : undefined);
   });
-  await page.goto(URL_ + '?nointro&fixedres&seed=1&nofinds');
+  await page.goto(e2eUrl(URL_, 'nointro&fixedres&seed=1&nofinds', { shots }), { waitUntil: 'commit' });
   await page.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
   await page.evaluate((n) => window.__beech.account().signInDev(n), who);
   await page.waitForFunction(() => window.__beech.account().beachId && window.__beech.sync().state === 'saved', null, { timeout: 20000 });
@@ -270,6 +264,6 @@ await a.evaluate(() => window.__beech.account().deleteAccount());
 fs.rmSync(dir, { recursive: true, force: true });
 check(errors.length === 0, `no page errors ${errors.join(' | ')}`);
 if (process.env.DEBUG_E2E) console.log(dialogs.join('\n'));
-await browser.close();
+await closeBrowser();
 console.log(failed ? `${failed} FAILED` : 'CHECKPOINTS E2E PASS');
 process.exit(failed ? 1 : 0);

@@ -2,15 +2,8 @@
 // server (npm run server:dev, which has DEV_AUTH for /api/dev/grant):
 // one person on two devices, each running a different beach at the same time.
 //   node scripts/beaches-e2e.mjs
-import { createRequire } from 'node:module';
+import { e2eUrl, openBrowser } from './lib/e2e.mjs';
 
-const require = createRequire(import.meta.url);
-let chromium;
-try {
-  ({ chromium } = require('playwright'));
-} catch {
-  ({ chromium } = await import('playwright'));
-}
 const URL_ = process.env.BEECH_URL ?? 'http://127.0.0.1:8787/';
 let failed = 0;
 const check = (cond, msg) => {
@@ -18,7 +11,7 @@ const check = (cond, msg) => {
   if (!cond) failed++;
 };
 
-const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const { browser, close: closeBrowser } = await openBrowser();
 const errors = [];
 const name = `multi${Date.now() % 100000}`;
 
@@ -27,9 +20,8 @@ async function device(label) {
   const page = await ctx.newPage();
   page.on('pageerror', (e) => errors.push(`${label}: ${e.message}`));
   page.on('dialog', (d) => void d.accept(d.type() === 'prompt' ? `${label} beach` : undefined));
-  await page.goto(URL_ + '?nointro&quality=low&fixedres&seed=1&nofinds', { waitUntil: 'commit' });
+  await page.goto(e2eUrl(URL_, 'nointro&quality=low&fixedres&seed=1&nofinds'), { waitUntil: 'commit' });
   await page.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
-  await page.evaluate(() => window.__beech.engine.setHardwareScalingLevel(2));
   await page.evaluate((n) => window.__beech.account().signInDev(n), name);
   await page.waitForFunction(() => window.__beech.account().beachId && window.__beech.sync().state === 'saved', null, { timeout: 20000 });
   return page;
@@ -169,7 +161,9 @@ const points = await b.evaluate(() => {
   const neighbor = beech.neighbors();
   const seam = neighbor.xFor(1) / 2;
   beech.cam.goTo(seam, true);
-  beech.scene.render();
+  beech.scene.activeCamera?.getViewMatrix(true);
+  beech.scene.activeCamera?.getProjectionMatrix(true);
+  beech.scene.updateTransformMatrix();
   const camera = beech.scene.activeCamera;
   const { clientWidth, clientHeight } = document.querySelector('canvas');
   const V = camera.position.constructor;
@@ -191,10 +185,10 @@ const points = await b.evaluate(() => {
 });
 await b.mouse.move(...points.from);
 await b.mouse.down();
-await b.waitForTimeout(400);
+await b.waitForTimeout(300);
 await b.mouse.move(...points.to, { steps: 12 });
 await b.waitForFunction((id) => window.__beech.account().beachId === id, second, { timeout: 15000 });
-await b.waitForTimeout(650);
+await b.waitForTimeout(450);
 await b.mouse.up();
 await b.evaluate(() => window.__beech.sync().flush());
 const crossed = await b.evaluate(async ({ homeHeight, neighborHeight, seam }) => {
@@ -227,6 +221,6 @@ await a.waitForFunction((id) => {
 check((await dug(a)) > homeDug * 0.8, 'removing the active beach loads the saved home beach');
 
 check(errors.length === 0, `no page errors ${errors.join(' | ')}`);
-await browser.close();
+await closeBrowser();
 console.log(failed ? `${failed} FAILED` : 'BEACHES E2E PASS');
 process.exit(failed ? 1 : 0);

@@ -6,15 +6,8 @@
 // home and does three guide steps (dig, build, undo). Ana comes back: she's
 // told Fran settled in, the parasol is in her bag, and the panel shows Fran.
 //   node scripts/invites-e2e.mjs [screenshot-dir]
-import { createRequire } from 'node:module';
+import { e2eUrl, openBrowser } from './lib/e2e.mjs';
 
-const require = createRequire(import.meta.url);
-let chromium;
-try {
-  ({ chromium } = require('playwright'));
-} catch {
-  ({ chromium } = await import('playwright'));
-}
 const URL_ = process.env.BEECH_URL ?? 'http://127.0.0.1:8787/';
 const shots = process.argv[2];
 let failed = 0;
@@ -23,15 +16,15 @@ const check = (cond, msg) => {
   if (!cond) failed++;
 };
 
-const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const { browser, close: closeBrowser } = await openBrowser();
 const errors = [];
-const open = async (url, viewport = { width: 1100, height: 700 }) => {
+const open = async (query, viewport = { width: 1100, height: 700 }) => {
   const ctx = await browser.newContext({ viewport });
   const page = await ctx.newPage();
-  page.setDefaultTimeout(60000); // the software-rendered page is slow here
+  page.setDefaultTimeout(30000);
   page.on('pageerror', (e) => errors.push(e.message));
-  await page.goto(url, { waitUntil: 'commit' });
-  await page.waitForSelector('body[data-ready="1"]', { timeout: 60000 });
+  await page.goto(e2eUrl(URL_, query, { shots: Boolean(shots) }), { waitUntil: 'commit' });
+  await page.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
   return page;
 };
 const signIn = (page, name) =>
@@ -44,23 +37,23 @@ const owned = (page, item) =>
   page.evaluate(async (i) => (await window.__beech.account().inventory()).filter((x) => x.item === i).reduce((s, x) => s + x.quantity, 0), item);
 const hints = (page) => page.$$eval('.hint', (els) => els.map((e) => e.textContent ?? ''));
 
-const tag = Date.now() % 100000;
+const tag = `iv${Date.now() % 10000}${process.pid % 100}`;
 const ana = `ana${tag}`;
 const fran = `fran${tag}`;
 
 // ---- Ana: her code and her (empty) invite panel
-const pa = await open(URL_ + '?nointro&fixedres&seed=1&nofinds');
+const pa = await open('nointro&fixedres&seed=1&nofinds');
 await signIn(pa, ana);
-await pa.waitForFunction(() => window.__beech.sync().state === 'saved', null, { timeout: 60000 });
+await pa.waitForFunction(() => window.__beech.sync().state === 'saved', null, { timeout: 30000 });
 const anaCode = await pa.evaluate(() => window.__beech.neighbors().api.get().then((n) => n.code));
 await pa.evaluate(() => window.__beech.invites().open());
-await pa.waitForSelector('.invite.open .invite-link input', { timeout: 60000 });
+await pa.waitForSelector('.invite.open .invite-link input', { timeout: 30000 });
 const link = await pa.$eval('.invite-link input', (i) => i.value);
 check(link.endsWith(`?invite=${anaCode}`), `Ana's invite link carries her code (${link})`);
 check((await pa.$eval('.invite-empty', (e) => e.textContent)).includes('nobody yet'), 'nobody has joined yet');
 
 // ---- Fran: opens the link in a fresh browser
-const pf = await open(`${URL_}?invite=${anaCode}&fixedres&seed=1&nofinds`, { width: 390, height: 844 });
+const pf = await open(`invite=${anaCode}&fixedres&seed=1&nofinds`, { width: 390, height: 844 });
 await pf.waitForSelector('.start-invite', { timeout: 60000 });
 check((await pf.$eval('.start-invite', (e) => e.textContent)).includes(`${ana} invited you`), 'the start screen says who invited her');
 check(!(await pf.evaluate(() => location.search.includes('invite'))), 'the invite is taken out of the URL');
@@ -142,12 +135,12 @@ if (shots) await pa.screenshot({ path: `${shots}/invite-panel.png` });
 await pa.evaluate(() => document.querySelectorAll('.hint').forEach((h) => h.remove()));
 await signIn(pa, `${ana}-other2`);
 await signIn(pa, ana);
-await pa.waitForTimeout(2000);
+await pa.waitForTimeout(800);
 const told = (await hints(pa)).filter((h) => h.includes('settled in')).length;
 check(told <= 1, 'she is told once');
 
 check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join(' | ')}` : ''}`);
-await browser.close();
+await closeBrowser();
 if (failed) {
   console.log(`${failed} check(s) failed`);
   process.exit(1);

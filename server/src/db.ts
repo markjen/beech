@@ -30,13 +30,29 @@ export interface PgConfig {
   user?: string;
   password?: string;
   database?: string;
+  /** optional schema for search_path (used by parallel test workers) */
+  schema?: string;
+  /** disable WAL fsync wait on commit (used by ephemeral test DBs) */
+  synchronousCommitOff?: boolean;
+  /** let Node exit when all pool connections are idle (used by tests) */
+  allowExitOnIdle?: boolean;
 }
 
 export function createPgDb(cfg: PgConfig): Db {
+  if (cfg.schema && !/^[a-z_][a-z0-9_]*$/i.test(cfg.schema)) {
+    throw new Error(`invalid Postgres schema name: ${cfg.schema}`);
+  }
+  const pgOpts: string[] = [];
+  if (cfg.schema) pgOpts.push(`-c search_path=${cfg.schema}`);
+  if (cfg.synchronousCommitOff) pgOpts.push('-c synchronous_commit=off');
+  const extra = {
+    ...(pgOpts.length ? { options: pgOpts.join(' ') } : {}),
+    ...(cfg.allowExitOnIdle ? { allowExitOnIdle: true } : {}),
+  };
   const pool = new pg.Pool(
     cfg.url
-      ? { connectionString: cfg.url, max: 5 }
-      : { host: cfg.socket, user: cfg.user, password: cfg.password, database: cfg.database, max: 5 },
+      ? { connectionString: cfg.url, max: 5, ...extra }
+      : { host: cfg.socket, user: cfg.user, password: cfg.password, database: cfg.database, max: 5, ...extra },
   );
   const stats = createDbStats(() => ({ total: pool.totalCount, idle: pool.idleCount, waiting: pool.waitingCount }));
   return {

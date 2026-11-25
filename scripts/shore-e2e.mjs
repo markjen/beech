@@ -2,15 +2,8 @@
 // Ben -left-> Ana -left-> Cleo. Ben walks down the shore past Ana to Cleo,
 // heads home with the home button, then visits Dot by code and stars her beach.
 //   node scripts/shore-e2e.mjs [screenshot.png]
-import { createRequire } from 'node:module';
+import { e2eUrl, openBrowser } from './lib/e2e.mjs';
 
-const require = createRequire(import.meta.url);
-let chromium;
-try {
-  ({ chromium } = require('playwright'));
-} catch {
-  ({ chromium } = await import('playwright'));
-}
 const URL_ = process.env.BEECH_URL ?? 'http://127.0.0.1:8787/';
 const shot = process.argv[2];
 let failed = 0;
@@ -19,14 +12,14 @@ const check = (cond, msg) => {
   if (!cond) failed++;
 };
 
-const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const { browser, close: closeBrowser } = await openBrowser();
 const page = await browser.newPage({ viewport: { width: 1100, height: 700 } });
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
-await page.goto(URL_ + '?nointro&fixedres&seed=1&nofinds');
+await page.goto(e2eUrl(URL_, 'nointro&fixedres&seed=1&nofinds', { shots: Boolean(shot) }), { waitUntil: 'commit' });
 await page.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
 
-const tag = Date.now() % 100000;
+const tag = `sh${Date.now() % 10000}${process.pid % 100}`;
 const names = { ana: `ana${tag}`, ben: `ben${tag}`, cleo: `cleo${tag}`, dot: `dot${tag}` };
 // sign in as someone, save once, and return their code
 const become = async (name) => {
@@ -160,6 +153,6 @@ const signedOut = await page.evaluate(() => ({
 check(signedOut.ownVisible && signedOut.ext.left > 0 && !!signedOut.left && signedOut.maxX > 40, `signed out: public shore renders next to empty beach (${JSON.stringify(signedOut)})`);
 
 check(errors.length === 0, `no page errors ${errors.join(' | ')}`);
-await browser.close();
+await closeBrowser();
 console.log(failed ? `${failed} FAILED` : 'SHORE E2E PASS');
 process.exit(failed ? 1 : 0);

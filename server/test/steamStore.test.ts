@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
-import { createPgliteDb, type Db } from '../src/db.js';
-import { migrate } from '../src/migrations.js';
+import { type Db } from '../src/db.js';
+import { openTestDb } from './testDb.js';
 import {
   finalizeSteamTxn,
   getSteamRefunds,
@@ -72,8 +72,7 @@ describe('Steam Wallet microtransaction routes', () => {
   let failFinalize = false;
 
   beforeAll(async () => {
-    db = await createPgliteDb();
-    await migrate(db);
+    db = await openTestDb();
     app = createApp(db, {
       googleClientIds: [],
       appleClientIds: [],

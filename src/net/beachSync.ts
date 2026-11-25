@@ -153,7 +153,7 @@ export class BeachSync {
   }
 
   /** Tell the server this app has the beach open; reload it if it moved on meanwhile. */
-  private async beat(): Promise<void> {
+  async beat(): Promise<void> {
     if (!this.account.user || this.fenced || this.switching || (typeof document !== 'undefined' && document.hidden) || this.epoch === undefined) return;
     let r: { epoch: number; watched?: boolean } | null;
     try {

@@ -5,11 +5,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { createApp } from '../src/app.js';
-import { createPgliteDb, type Db } from '../src/db.js';
+import { type Db } from '../src/db.js';
 import { CATALOG_ITEMS, catalogGroup } from '../src/itemCatalog.js';
-import { migrate } from '../src/migrations.js';
 import { createRootApp } from '../src/rootApp.js';
 import { ITEMS } from '../../src/world/items';
+import { openTestDb } from './testDb.js';
 
 let db: Db;
 let root: ReturnType<typeof createRootApp>;
@@ -24,8 +24,7 @@ const onShore = (p: string, init: RequestInit = {}) =>
 const bearer = (token?: string) => (token ? { Authorization: `Bearer ${token}` } : {});
 
 beforeAll(async () => {
-  db = await createPgliteDb();
-  await migrate(db);
+  db = await openTestDb();
   const api = createApp(db, { googleClientIds: [], appleClientIds: [], allowedOrigins: [], devAuth: true });
   publicDir = fs.mkdtempSync(path.join(process.cwd(), 'test', '.tmp-items-'));
   fs.writeFileSync(path.join(publicDir, 'index.html'), '<!doctype html><html><head><title>beech</title></head><body>beech-spa-marker</body></html>');

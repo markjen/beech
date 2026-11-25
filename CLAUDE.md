@@ -59,9 +59,10 @@ Read these first:
   `server/`, which runs on Cloud Run, see docs/GCP.md). Keep anything that needs the network behind `ACCOUNTS_ENABLED`.
 - Server changes: `cd server && npm run typecheck && npm test` (PGlite; set
   `TEST_DATABASE_URL` to also run against real Postgres), then
-  `npm run server:dev` with `npm run e2e:accounts`, `npm run e2e:neighbors`,
-  `npm run e2e:shore`, `npm run e2e:beaches`, `npm run e2e:leaderboard`,
-  `npm run e2e:checkpoints`, `npm run e2e:invites`, `npm run e2e:inbox` and `npm run e2e:live`.
+  `npm run server:dev` with `npm run e2e` (runs all 9 server E2E scripts in
+  parallel; individual scripts are `e2e:accounts`, `e2e:neighbors`, `e2e:shore`,
+  `e2e:beaches`, `e2e:leaderboard`, `e2e:checkpoints`, `e2e:invites`,
+  `e2e:inbox`, `e2e:live`).
   Schema changes are new entries appended to `server/src/migrations.ts`, never
   edits to applied ones. Never enable `DEV_AUTH` outside local development.
 - Android builds here need an SDK: install the command-line tools to a scratch

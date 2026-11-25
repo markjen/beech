@@ -3,15 +3,8 @@
 // Cleo's star is the newest). The all-time board orders them by stars; Dot
 // opens it, stars Cleo's beach from the board, then visits Ana's from it.
 //   node scripts/leaderboard-e2e.mjs [screenshot.png]
-import { createRequire } from 'node:module';
+import { e2eUrl, openBrowser } from './lib/e2e.mjs';
 
-const require = createRequire(import.meta.url);
-let chromium;
-try {
-  ({ chromium } = require('playwright'));
-} catch {
-  ({ chromium } = await import('playwright'));
-}
 const URL_ = process.env.BEECH_URL ?? 'http://127.0.0.1:8787/';
 const shot = process.argv[2];
 let failed = 0;
@@ -20,14 +13,14 @@ const check = (cond, msg) => {
   if (!cond) failed++;
 };
 
-const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const { browser, close: closeBrowser } = await openBrowser();
 const page = await browser.newPage({ viewport: { width: 1100, height: 700 } });
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
-await page.goto(URL_ + '?nointro&fixedres&seed=1&nofinds');
+await page.goto(e2eUrl(URL_, 'nointro&fixedres&seed=1&nofinds', { shots: Boolean(shot) }), { waitUntil: 'commit' });
 await page.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
 
-const tag = Date.now() % 100000;
+const tag = `lb${Date.now() % 10000}${process.pid % 100}`;
 const names = { ana: `ana${tag}`, ben: `ben${tag}`, cleo: `cleo${tag}`, dot: `dot${tag}`, f1: `fanA${tag}`, f2: `fanB${tag}` };
 // sign in as someone, save once, and return their code
 const become = async (name, save = true) => {
@@ -125,6 +118,6 @@ await page.waitForSelector('.board.open .board-signin', { timeout: 5000 });
 check((await page.$$('.board-row')).length === 0, 'signed out: no rows, just a sign-in button');
 
 check(errors.length === 0, `no page errors ${errors.join(' | ')}`);
-await browser.close();
+await closeBrowser();
 console.log(failed ? `${failed} FAILED` : 'LEADERBOARD E2E PASS');
 process.exit(failed ? 1 : 0);

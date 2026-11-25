@@ -1163,3 +1163,30 @@ the HUD layout in the section above.
   `sim.test.ts` covers conservation and stability at surf.
 - e2e scripts use `__beech.setRail(on)`, `__beech.setPane(state)` and
   `__beech.hub().show(tab)`.
+
+### Test & CI speed (2026-11-25)
+
+- **Server tests (`server/test/testDb.ts`):** all 23 DB test files share a
+  per-worker DB helper (one PGlite boot + migration per Vitest worker, or one
+  isolated Postgres schema `test_w<id>` per worker with `synchronous_commit=off`
+  and transactional `DELETE` reset). Previously 10 suites ignored
+  `TEST_DATABASE_URL` and ran PGlite sequentially during the Postgres 16 CI
+  step; now all DB suites run in parallel on real Postgres 16 too.
+- **Web unit tests:** split non-rock swash/surf object checks into
+  `tests/objectsSwash.test.ts` (one shared 120 s `BeachSim` pass) and long
+  wave checks into `tests/simWaves.test.ts` (shared untouched beach pass);
+  combined the two waterline castles in `tests/catchup.test.ts` into one live
+  sim pass.
+- **CI workflows:** `.github/workflows/ci.yml` runs Postgres 16 DB tests in
+  parallel (skipping the 6 non-DB suites already covered in PGlite) and runs
+  the Docker production image build/boot check as a parallel job with Buildx
+  GHA layer caching; `.github/workflows/perf.yml` caches the Playwright
+  Chromium binary.
+- **E2E tests (`scripts/lib/e2e.mjs`, `scripts/run-e2e.mjs`, `npm run e2e`):**
+  all E2E scripts pass `quality=low`, plus `?norender&fast` when not capturing
+  screenshots (skips continuous SwiftShader WebGL draws while keeping CPU
+  picking, camera matrices, sim worker, sync and UI live, and speeds up the
+  claw animation). `BeachSync.beat()` is exposed so `live-e2e.mjs` doesn't wait
+  20 s for the heartbeat timer. `npm run e2e` runs all 9 server E2E scripts in
+  parallel over one shared Chromium server.
+
