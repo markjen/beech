@@ -310,6 +310,7 @@ describe('vacuum reporting (for the toast under the status pane)', () => {
     sim.step(DT);
     sim.step(DT);
     expect(sim.objects.persisted().some((p) => p.id === o.star.id)).toBe(false); // swept already
+    expect(sim.takeVacuumed()).toEqual([]); // the worker can poll before the stroke finishes
     sim.cancelStroke();
     expect(sim.objects.persisted().some((p) => p.id === o.star.id)).toBe(true); // put back
     expect(sim.takeVacuumed()).toEqual([]);

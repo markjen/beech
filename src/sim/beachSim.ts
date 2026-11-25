@@ -135,6 +135,7 @@ export class BeachSim {
   private easing: { entry: UndoEntry; sign: number; ticksLeft: number }[] = [];
 
   // brush state
+  private vacuumed: PlacedObject[] = [];
   private stroke: {
     mode: BrushMode;
     x: number;
@@ -1014,6 +1015,7 @@ export class BeachSim {
     const st = this.stroke;
     if (!st) return;
     this.stroke = null;
+    if (st.mode === 'vacuum') this.vacuumed.push(...st.swept);
     let entry = this.diffRegion(st.snapshot, st.i0, st.j0, st.i1, st.j1);
     if (entry && st.lift.length) entry = this.withoutLift(entry, st.lift);
     if (entry) {
@@ -1025,9 +1027,11 @@ export class BeachSim {
     }
   }
 
-  /** Things the vacuum swept up since the last call (each once). */
+  /** Things committed by finished vacuum strokes since the last call. */
   takeVacuumed(): PlacedObject[] {
-    return this.objects.takeVacuumed();
+    const swept = this.vacuumed;
+    this.vacuumed = [];
+    return swept;
   }
 
   /**
@@ -1060,8 +1064,6 @@ export class BeachSim {
     // against the sand it was lifted from, so it keeps the base it was
     // placed at (and the sand it was sitting on) instead of the lifted sand
     for (const o of st.swept) this.objects.add({ ...o });
-    // ... and nothing it swept is reported as vacuumed any more
-    this.objects.clearVacuumed();
     const { i0, j0, i1, j1 } = this.clipBox(st.i0, st.j0, st.i1, st.j1);
     for (let j = j0; j <= j1; j++) {
       for (let i = i0; i <= i1; i++) {
@@ -1160,9 +1162,6 @@ export class BeachSim {
       const taken = this.objects.removeWithLift(o.id);
       if (!taken) continue;
       st.swept.push(taken.data);
-      // the vacuum (not the dozer blade) reports what it took, so the app
-      // can say so under the status pane
-      if (st.mode === 'vacuum') this.objects.noteVacuumed(taken.data);
       st.lift.push(...taken.lift);
     }
   }
@@ -1524,6 +1523,7 @@ export class BeachSim {
     if (delta.length !== this.n) throw new Error('grid size mismatch');
     if (cover && cover.length !== this.n) throw new Error('grid size mismatch');
     if (this.stroke) this.cancelStroke();
+    this.vacuumed = [];
     this.objects.clear();
     const appliedCover = this.applyTerrain(delta, cover);
     this.sediment.fill(0);
