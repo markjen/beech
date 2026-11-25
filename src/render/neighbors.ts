@@ -249,6 +249,16 @@ export class NeighborView {
     return best;
   }
 
+  /** The beaches drawn now (plus one either side), with their world-X centres. */
+  drawnBeaches(): { beach: ShoreBeach; x: number }[] {
+    const out: { beach: ShoreBeach; x: number }[] = [];
+    for (const e of this.entries.values()) {
+      if (e.index < this.win[0] - 1 || e.index > this.win[1] + 1) continue;
+      out.push({ beach: e.beach, x: this.xFor(e.index) });
+    }
+    return out;
+  }
+
   /** Shore index of a beach (by id) if it's on the current shore, else null. */
   indexOfBeach(beachId: string): number | null {
     let found: number | null = null;

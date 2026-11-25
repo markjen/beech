@@ -238,6 +238,7 @@ export function guideHtml(now: number): string {
 <p>At rest the screen is just the beach and a palm button in the lower right. Tap the palm to open the toolbar (and the status pane, top left); the palm turns into a × that closes it all again.</p>
 <p>Sign in (Manage → <b>Settings</b>) to keep your beach, have neighbors, and play the machines. Without signing in, your beach isn’t saved — it only lives while you play, and closing the app loses it. Sign in and it’s saved, so you can keep it on any device. You can still pan along the shore beside it to see other people’s public beaches.</p>
 <p>The sea follows a real beach: its tide, sun and moon, at that place’s time of day, with waves growing stronger toward high tide and gentler toward low tide. Pick the beach in Manage → <b>Beaches</b>, or “near me” for the closest one.</p>
+<p>With <b>local weather</b> on (Settings, on by default), the sky and light are those of the beach in the middle of your view: walk down the shore to a beach set somewhere else and the light changes to its place’s, blending as you cross between beaches, and the status pane shows that place’s time and tide. Turn local weather off to keep one light everywhere: the one picked under <b>light</b> (dawn, day, golden, dusk or night).</p>
 
 <h2 id="controls">Controls</h2>
 <h3>Touch</h3>
@@ -368,7 +369,7 @@ ${GUIDE_STEPS.map((st) => `<tr><td>${esc(st.title)}</td><td>${esc(st.how)}</td><
 <ul>
   <li><b>Beaches</b>: choose which of your beaches to configure, its real-world <b>place</b> (“near me” uses your location once), code and share links, <b>save a picture</b>, <b>smooth the beach</b> when it’s in view, <b>export</b> / <b>import</b>, snapping your own beaches side by side, and your left/right neighbors.</li>
   <li><b>Checkpoints</b>: save, restore, export and import checkpoints.</li>
-  <li><b>Settings</b>: your account (sign in or out, save status, link another device, delete account), <b>waves</b> (calm, gentle, lively — the beach’s own swell — or surf), <b>sound, music, haptics</b>, <b>battery saver</b> (draws every other frame), <b>ambient (for a TV)</b>, <b>light</b>, <b>detail</b> (takes effect next start), <b>watch on TV</b>, and <b>full screen</b>.</li>
+  <li><b>Settings</b>: your account (sign in or out, save status, link another device, delete account), <b>waves</b> (calm, gentle, lively — the beach’s own swell — or surf), <b>sound, music, haptics</b>, <b>battery saver</b> (draws every other frame), <b>ambient (for a TV)</b>, <b>local weather</b>, <b>light</b> (used when local weather is off), <b>detail</b> (takes effect next start), <b>watch on TV</b>, and <b>full screen</b>.</li>
   <li><b>Help</b>: what each toolbar button does, and a link to this guide.</li>
 </ul>
 

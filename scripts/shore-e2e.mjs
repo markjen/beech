@@ -31,7 +31,12 @@ const become = async (name) => {
   return page.evaluate(() => window.__beech.neighbors().api.get().then((n) => n.code));
 };
 const codes = {};
-for (const k of ['cleo', 'dot', 'ana', 'ben']) codes[k] = await become(names[k]);
+// Cleo's beach is in Waikiki, Ben's in Brighton: the light follows the view
+const places = { cleo: 'waikiki', ben: 'brighton' };
+for (const k of ['cleo', 'dot', 'ana', 'ben']) {
+  codes[k] = await become(names[k]);
+  if (places[k]) await page.evaluate((loc) => window.__beech.account().updateBeach(window.__beech.beachId(), { location: loc }), places[k]);
+}
 // Ana's left is Cleo; Ben's left is Ana (each asked, the other accepted)
 const ask = (side, c) => page.evaluate(({ side, c }) => window.__beech.neighbors().api.set(side, c), { side, c });
 const accept = (c) => page.evaluate((c) => window.__beech.neighbors().api.accept(c), c);
@@ -90,6 +95,29 @@ check(where?.includes(names.cleo), `it says whose beach this is (${where})`);
 const win = await page.evaluate(() => window.__beech.neighbors().window);
 check(win[0] <= 2 && win[1] >= 2, `Cleo's beach is drawn (beaches ${win.join('..')})`);
 if (shot) await page.screenshot({ path: shot });
+await page.waitForFunction(() => window.__beech.light().place === 'waikiki', null, { timeout: 5000 }).catch(() => {});
+check((await page.evaluate(() => window.__beech.light().place)) === 'waikiki', "local weather: Cleo's beach has Waikiki's sky");
+check((await page.evaluate(() => window.__beech.live().localTime !== window.__beech.light().localTime)), 'its own local time, not the live beach’s');
+// local weather off: the pinned light, wherever you look
+{
+  const pinned = await page.evaluate(async () => {
+    const b = window.__beech;
+    const s = JSON.parse(localStorage.getItem('beech.settings.v1') ?? '{}');
+    b.sheet.show('settings');
+    document.querySelector('input[data-key="localWeather"]').click();
+    document.querySelector('.chips[data-key="palette"] button[data-v="night"]').click();
+    b.sheet.hide();
+    await new Promise((r) => setTimeout(r, 200));
+    const name = b.light().palette;
+    // and back on
+    b.sheet.show('settings');
+    document.querySelector('input[data-key="localWeather"]').click();
+    b.sheet.hide();
+    return { name, was: s.localWeather };
+  });
+  check(pinned.was !== false, 'local weather is on by default');
+  check(pinned.name === 'night', `turned off, the light pinned in settings shows (${pinned.name})`);
+}
 // star Cleo's beach from the bar
 await page.click('.shore-bar .sb-fav');
 await page.waitForFunction((c) => window.__beech.neighbors().favorites.has(c), codes.cleo, { timeout: 5000 });

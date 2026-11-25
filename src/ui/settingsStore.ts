@@ -4,13 +4,16 @@ import type { QualityTier } from '../config';
 export type WaveStrength = 'calm' | 'gentle' | 'lively' | 'surf';
 export const WAVE_STRENGTHS: WaveStrength[] = ['calm', 'gentle', 'lively', 'surf'];
 
-/** 'live' follows the real sun at the chosen beach; the others pin a mood */
-export type PaletteChoice = 'live' | 'dawn' | 'day' | 'golden' | 'dusk' | 'night';
+/** a pinned mood, used when local weather is off */
+export type PaletteChoice = 'dawn' | 'day' | 'golden' | 'dusk' | 'night';
 
 export interface Settings {
   sound: boolean;
   music: boolean;
   haptics: boolean;
+  /** the sky and light follow the real place of the beach in the middle of the view */
+  localWeather: boolean;
+  /** the light to use when local weather is off */
   palette: PaletteChoice;
   /** beach id (src/world/locations.ts); unset = pick from the device's time zone */
   beach?: string;
@@ -33,7 +36,8 @@ export const DEFAULT_SETTINGS: Settings = {
   sound: true,
   music: false,
   haptics: true,
-  palette: 'live',
+  localWeather: true,
+  palette: 'day',
   quality: 'auto',
   batterySaver: false,
   seenIntro: false,
@@ -47,15 +51,29 @@ export function loadSettings(): Settings {
   try {
     const raw = localStorage.getItem(KEY);
     if (raw) {
-      const s = { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as Partial<Settings>) };
-      // older builds had a 20-minute "cycle"; it became the live sky
-      if ((s.palette as string) === 'cycle') s.palette = 'live';
-      return s;
+      return migrateSettings(JSON.parse(raw) as Partial<Settings>);
     }
   } catch {
     /* ignore */
   }
   return { ...DEFAULT_SETTINGS };
+}
+
+/**
+ * Older builds had one "light" choice: 'live' (or the even older 'cycle')
+ * followed the real sun, anything else pinned a mood. That became the local
+ * weather switch plus a pinned light for when it's off.
+ */
+export function migrateSettings(raw: Partial<Settings>): Settings {
+  const s = { ...DEFAULT_SETTINGS, ...raw };
+  const old = raw.palette as string | undefined;
+  if (old === 'live' || old === 'cycle') {
+    s.localWeather = raw.localWeather ?? true;
+    s.palette = DEFAULT_SETTINGS.palette;
+  } else if (old && raw.localWeather === undefined) {
+    s.localWeather = false;
+  }
+  return s;
 }
 
 export function saveSettings(s: Settings): void {
