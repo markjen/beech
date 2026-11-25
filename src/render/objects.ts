@@ -1105,11 +1105,14 @@ class PropBank {
     for (const s of this.sources) {
       if (!s.dirty) continue;
       s.dirty = false;
-      if (s.resized) {
-        s.resized = false;
+      const resized = s.resized;
+      s.resized = false;
+      if (resized) {
         s.mesh.thinInstanceSetBuffer('matrix', s.buf, 16, false);
-      } else s.mesh.thinInstanceBufferUpdated('matrix');
+      }
+      // Babylon uses the current count to decide how many matrices to upload.
       s.mesh.thinInstanceCount = s.count;
+      if (!resized && s.count > 0) s.mesh.thinInstanceBufferUpdated('matrix');
       s.mesh.setEnabled(s.count > 0);
     }
   }
