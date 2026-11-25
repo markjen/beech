@@ -5,6 +5,17 @@ Status: **phases V1–V4 built** (2026-11-24): the inbox, the visitor card
 and signed-out visits. **V5–V6 (web and native push) are not built**: they
 need keys and console setup from the owner. Owner decisions are at the end.
 
+### State machine (before building V5–V6)
+
+Push isn't modelled yet. Per the model-first workflow
+([STATE_MACHINES.md](STATE_MACHINES.md#model-first-workflow)), write
+`specs/tla/Push.tla` before the code: a device's subscription (subscribe,
+refresh, unsubscribe, expired by the push service), an inbox row being
+sent (queued, sent, failed, retried), and the rules to hold, e.g. "a row is
+pushed at most once per device", "nothing is pushed to a device after it
+unsubscribes or signs out", "a muted or blocked sender never reaches a
+device". Then map each action to its route or job, and derive the tests.
+
 ### As built (where it differs from the design below)
 
 - **No explanations in the game** (CLAUDE.md, a rule added after this

@@ -28,9 +28,9 @@ done
 
 meta="$(mktemp -d)"
 trap 'rm -rf "$meta"' EXIT
-run() { # spec cfg
-  java -XX:+UseParallelGC -cp "$JAR" tlc2.TLC -config "$2.cfg" -deadlock -workers auto -metadir "$meta/$2" "$1.tla" 2>&1 \
-    | grep -E "is violated|No error has been found|distinct states found" | head -2 | tr '\n' ' '
+run() { # spec cfg (TLC exits non-zero when it finds a violation: that's an answer, not a failure here)
+  { java -XX:+UseParallelGC -cp "$JAR" tlc2.TLC -config "$2.cfg" -deadlock -workers auto -metadir "$meta/$2" "$1.tla" 2>&1 || true; } \
+    | grep -v "^Progress" | grep -E "is violated|No error has been found|distinct states found|^Error" | head -2 | tr '\n' ' '
   echo
 }
 status=0

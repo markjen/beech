@@ -1,5 +1,8 @@
 # Game state machines: TLA+ models and tests
 
+New gameplay and features are designed here first: see the
+[model-first workflow](#model-first-workflow) below.
+
 The parts of the game where several requests can change the same state are
 modelled in TLA+ (`specs/tla/`), model-checked with TLC, and tested against
 the real server without a browser (`server/test/stateMachines/`). The tests
@@ -142,15 +145,143 @@ that fails before the fix.
   [VERIFICATION.md](VERIFICATION.md)).
 - Midnight (UTC) for free feeds, shop purchases and inventory expiry aren't
   modelled.
-- TLC isn't in CI (it needs Java and minutes per spec). Run
-  `specs/tla/check.sh` after changing a modelled route; the TypeScript
-  tests run in CI with the rest of the server suite.
+- CI's `Specs` workflow (`.github/workflows/specs.yml`) runs
+  `specs/tla/check.sh` (every spec's fixed form, about 8 minutes) when
+  `specs/` or `server/src/` changes; the TypeScript tests run in CI with
+  the rest of the server suite. The `--bugs` forms are for local use.
 
-## Adding to it
+## Model-first workflow
 
-Changing a modelled route: update its spec and model first, rerun
-`specs/tla/check.sh`, then make the tests agree. Modelling a new machine:
-write the spec with the handler's real steps (separate statements are
-separate steps), find the invariants the game promises, run TLC on the
-current code, then add a reference model, transition tests, replays of
-whatever TLC finds, and a random walk.
+This is how new gameplay and features are built, and how existing ones
+change (CLAUDE.md, "Model first"). The model comes before the code: it
+decides what the code has to guarantee, which steps must be atomic, and
+which tests are worth writing. An agent can also load the `model-first`
+skill, which walks through the same steps.
+
+### Does it need a model?
+
+Yes, if the change adds or alters **state the server keeps that more than
+one request can touch**: anything a player owns, spends, earns, places,
+claims or unlocks; anything with a limit, a cooldown, a daily allowance or
+a "first one wins"; anything two devices, two players, a webhook or a
+timer can reach at the same time; anything that moves through stages
+(requested, accepted, paid, refunded, expired...).
+
+No, for rendering and visuals, sound, UI layout and copy, tuning constants
+in `src/config.ts`, the guide and release notes, and pure functions with
+no stored state (those get unit tests, or a LemmaScript proof:
+[VERIFICATION.md](VERIFICATION.md)). The simulation (`src/sim/`) has its
+own conservation and stability tests (CLAUDE.md). When in doubt, write the
+model: a small one is an hour, and a race found later costs more. Say in
+the change which it was ("no model: rendering only").
+
+### Steps
+
+1. **Find the machine.** Extending an existing one (snacks, editing,
+   neighbors)? Change its spec. A new one? Start a new
+   `specs/tla/<Name>.tla` from the skeleton below. One spec per machine,
+   small enough to read in one sitting.
+2. **Write the state.** The variables are what the database holds for it
+   (tables and columns), plus what each client believes (a token, an
+   epoch). Keep values tiny: 2 or 3 players, devices or beaches, counts up
+   to 2, thresholds of 2. TLC finds races with small numbers.
+3. **Write the rules as invariants first,** in the game's words: "every
+   snack is in the bag, on the sand or eaten", "never more placed than
+   owned", "one free feed a day". Ghost variables (not in the database)
+   are fine for stating them. These become the tests' assertions.
+4. **Write the actions,** one per request or event (route, webhook,
+   timer), **split at every separate statement** that another request
+   could land between: a read then a write is two steps; one SQL statement
+   or one transaction holding a lock is one step. Add a `Fixed` (or
+   design-choice) constant when there's more than one way to build it.
+5. **Run TLC** (`specs/tla/check.sh <Name>`, or with `--bugs` for the
+   alternative forms). Every counterexample is a design bug: change the
+   design (make steps atomic, add a lock, add a condition to the write,
+   change the rule) and rerun until the version you'll build passes.
+   Commit the spec, both configs and the result.
+6. **Let the model decide the code.** For each action write down its
+   route and function, and how its steps become code: an atomic action is
+   one transaction holding a named lock (the beach row, the player row, or
+   both in id order), or one SQL statement whose `WHERE` carries the check.
+   Put the table in the machine's section of this file before writing the
+   code.
+7. **Let the model decide the tests,** in `server/test/stateMachines/`:
+   - a reference model (`<name>Model.ts`): the spec in TypeScript, the
+     version you're building, one method per action returning the HTTP
+     answer the server should give;
+   - transition tests: each action on its own, including its refusals;
+   - replays: every counterexample TLC found against the other forms,
+     forced on the server with `s.gate.pauseBefore(...)`. Pause at a
+     statement that runs outside a transaction in every form (or use
+     `orTransaction`), so the same replay shows the bug and its fix;
+   - a random walk: seeded sequences of actions applied to the server and
+     the model together, comparing the database with the model after every
+     step and checking the invariants.
+8. **Build the code** until the tests pass. If a test shows the server
+   and the model disagree, decide which is wrong. Fix the code, or change
+   the spec and rerun TLC; never loosen an invariant just to get green.
+9. **Finish:** STATUS.md and BACKLOG.md as usual, the guide and release
+   notes if players notice, and this file's table for the machine.
+
+Changing a modelled route later follows the same order: spec, TLC, model,
+tests, code.
+
+### Spec skeleton
+
+```tla
+------------------------------ MODULE Name ------------------------------
+(* What the machine is, which routes it covers (docs/STATE_MACHINES.md). *)
+EXTENDS Integers
+
+CONSTANTS Requests, Max, Fixed     \* concurrent requests; a bound; Fixed: the design choice
+
+VARIABLES
+    held,       \* what the database holds (here: how many a player has claimed)
+    pc,         \* [Requests -> "idle" | "checked"]: a request between two statements
+    granted     \* ghost: how many were handed out (for the invariants)
+
+vars == <<held, pc, granted>>
+
+Init == /\ held = 0 /\ pc = [r \in Requests |-> "idle"] /\ granted = 0
+
+Give == /\ held' = held + 1 /\ granted' = granted + 1
+
+(* POST /claim: check the limit, then write. Two steps unless Fixed. *)
+Check(r) ==
+    /\ pc[r] = "idle" /\ held < Max
+    /\ IF Fixed
+         THEN Give /\ UNCHANGED pc                  \* one transaction holding the lock
+         ELSE pc' = [pc EXCEPT ![r] = "checked"] /\ UNCHANGED <<held, granted>>
+Write(r) ==
+    /\ pc[r] = "checked"
+    /\ pc' = [pc EXCEPT ![r] = "idle"]
+    /\ Give
+
+Next == \E r \in Requests : Check(r) \/ Write(r)
+Spec == Init /\ [][Next]_vars
+
+TypeOK == held \in 0..Max + 2
+WithinMax == held <= Max            \* the game's rule: never more than Max
+=============================================================================
+```
+
+With `Name.cfg` (`Requests = {r1, r2}`, `Max = 1`, `Fixed = FALSE`) TLC
+breaks `WithinMax` in 5 states: both requests check, then both write. With
+`NameFixed.cfg` (`Fixed = TRUE`) it passes. That pair (the race, then the
+design without it) is the shape of every spec here. `check.sh` runs
+`NameFixed.cfg` always, and each invariant of `Name.cfg` on its own with
+`--bugs`. In `Name.cfg`, list only the invariants you expect the other form
+to break, or that are quick to exhaust, and add the spec to `check.sh`'s
+default list.
+
+### Checklist for a change
+
+- [ ] Model needed? If not, the change says why.
+- [ ] Spec written or updated, invariants in the game's words.
+- [ ] `specs/tla/check.sh <Name>` passes; counterexamples of the other
+      forms are understood and replayed in tests.
+- [ ] This file maps every action to its route and function.
+- [ ] Reference model, transition tests, replays and a random walk in
+      `server/test/stateMachines/`; `npm run test:state` passes.
+- [ ] The code makes each atomic action one transaction (or statement),
+      with the lock the spec assumes.

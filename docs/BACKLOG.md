@@ -78,6 +78,11 @@ _(nothing right now)_
 
 ## Up next (engineering)
 
+Items marked **(model first)** change state the server keeps: they start
+with their TLA+ spec ([STATE_MACHINES.md](STATE_MACHINES.md#model-first-workflow),
+CLAUDE.md "Model first"). Gameplay ideas below get the same once they're
+picked up.
+
 - [ ] **Beach store, next** (docs/BEACH_STORE.md): keep the store's
   snapshots of other people's beaches across a re-anchor *and* page
   reloads (IndexedDB, keyed by id + version), and ease the live renderer
@@ -92,9 +97,11 @@ _(nothing right now)_
 - [ ] **Live beaches, next**: ease a viewer's sand to each new save instead
   of swapping it; SSE instead of polling if the 5 s polls show up in
   Cloud Run costs; catch up the beechshore.com page pictures too; one
-  saving device per owner (a lease) if two devices fighting shows up. See
+  saving device per owner (a lease) if two devices fighting shows up
+  **(model first: extend `specs/tla/BeachEditing.tla`)**. See
   [LIVE_SIM.md](LIVE_SIM.md).
-- [ ] **Sandcastle mini-game: customize detailed sandcastles**: Rose
+- [ ] **Sandcastle mini-game: customize detailed sandcastles**
+  **(model first, if castles are saved, unlocked or spent)**: Rose
   asked for more sandcastle shapes (Discord #feedback, 2026-11-23);
   Mark (2026-11-24) chose a mini-game instead — let users build and
   customize a detailed sandcastle (towers, walls, moat, decorations)

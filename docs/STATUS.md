@@ -1375,4 +1375,7 @@ TLC found five races, each reproduced on the server and fixed:
   other: `link()` is one transaction holding both beaches' locks and refuses
   a second link between them.
 
-TLC isn't in CI (Java, minutes per spec); the TypeScript tests are.
+CI runs the TypeScript tests with the server suite, and TLC on every
+spec's fixed form in the `Specs` workflow when `specs/` or `server/src/`
+changes. New gameplay and features follow the model-first workflow
+(CLAUDE.md ground rule, the `model-first` skill, STATE_MACHINES.md).
