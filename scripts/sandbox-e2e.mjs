@@ -2,7 +2,7 @@
 // kept on the device between visits, and checkpoints live on the device too
 // (docs/CHECKPOINTS.md C6). Against a dev server or `vite preview`:
 //   npx vite --port 5173 &   then   npm run e2e:sandbox [screenshot.png]
-import { e2eUrl, openBrowser, waitForApp } from './lib/e2e.mjs';
+import { e2eUrl, openApp, openBrowser } from './lib/e2e.mjs';
 
 const URL_ = process.env.BEECH_URL ?? 'http://localhost:5173/';
 const shots = Boolean(process.argv[2]);
@@ -18,8 +18,7 @@ const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
 page.on('dialog', (d) => void d.accept(d.type() === 'prompt' ? 'castle' : undefined));
 const open = async () => {
-  await page.goto(e2eUrl(URL_, 'nointro&fixedres&seed=1&nofinds&quality=low', { shots }), { waitUntil: 'commit' });
-  await waitForApp(page, 60000);
+  await openApp(page, e2eUrl(URL_, 'nointro&fixedres&seed=1&nofinds&quality=low', { shots }), 60000);
   await page.evaluate(() => window.__beech.engine.setHardwareScalingLevel(2));
   await page.waitForTimeout(300);
 };

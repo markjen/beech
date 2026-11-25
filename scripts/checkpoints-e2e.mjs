@@ -7,7 +7,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { e2eUrl, openBrowser, waitForApp } from './lib/e2e.mjs';
+import { e2eUrl, openApp, openBrowser, reloadApp } from './lib/e2e.mjs';
 
 const URL_ = process.env.BEECH_URL ?? 'http://127.0.0.1:8787/';
 const shots = Boolean(process.env.SHOT_DIR);
@@ -34,8 +34,7 @@ async function device(label) {
     dialogs.push(`${label} ${d.type()}: ${d.message()}`);
     void d.accept(d.type() === 'prompt' ? page.answer : undefined);
   });
-  await page.goto(e2eUrl(URL_, 'nointro&fixedres&seed=1&nofinds', { shots }), { waitUntil: 'commit' });
-  await waitForApp(page);
+  await openApp(page, e2eUrl(URL_, 'nointro&fixedres&seed=1&nofinds', { shots }));
   await page.evaluate((n) => window.__beech.account().signInDev(n), who);
   await page.waitForFunction(() => window.__beech.beachId() && window.__beech.sync().state === 'saved', null, { timeout: 20000 });
   return page;
@@ -88,8 +87,7 @@ fs.writeFileSync(
   }),
 );
 // the bag must know about the lighthouse before importing
-await a.reload();
-await waitForApp(a);
+await reloadApp(a);
 await a.waitForFunction(() => window.__beech.sync().state === 'saved', null, { timeout: 20000 });
 await showSheet(a);
 await a.evaluate(() => window.__beech.sheet.setTab('beach'));
@@ -135,8 +133,7 @@ check((await raised(a)) > 0.4, 'and the sand of "one" is here');
 
 // ------------------------------------------------------------------ 3, 5
 await grant(a, 'lighthouse');
-await a.reload();
-await waitForApp(a);
+await reloadApp(a);
 await a.waitForFunction(() => window.__beech.sync().state === 'saved', null, { timeout: 20000 });
 check((await a.evaluate(() => window.__beech.beachId())) === second, 'A is still on the second beach');
 await showSheet(a);

@@ -1,7 +1,7 @@
 // Browser end-to-end test of neighbors against a local server (see docs/GCP.md):
 // Ana digs and saves; Ben puts Ana's beach on his left and sees it there.
 //   node scripts/neighbors-e2e.mjs [screenshot.png]
-import { e2eUrl, openBrowser, waitForApp } from './lib/e2e.mjs';
+import { e2eUrl, openApp, openBrowser } from './lib/e2e.mjs';
 
 const URL_ = process.env.BEECH_URL ?? 'http://127.0.0.1:8787/';
 const shot = process.argv[2];
@@ -19,8 +19,7 @@ if (process.env.DEBUG_E2E)
   page.on('requestfinished', async (r) => {
     if (r.url().includes('/api/')) console.log('req', r.method(), new URL(r.url()).pathname, (await r.response())?.status(), r.method() === 'GET' && r.url().endsWith('/neighbors') ? (await (await r.response()).text()).slice(0, 90) : '');
   });
-await page.goto(e2eUrl(URL_, 'nointro&fixedres&seed=1&nofinds', { shots: Boolean(shot) }), { waitUntil: 'commit' });
-await waitForApp(page);
+await openApp(page, e2eUrl(URL_, 'nointro&fixedres&seed=1&nofinds', { shots: Boolean(shot) }));
 await page.waitForTimeout(250);
 
 // Ana: sign in, dig a long trench, save
@@ -120,11 +119,11 @@ if (shot) await page.screenshot({ path: shot });
 
 // live: Ana (on another device) puts a rock down and saves; Ben's view picks it up
 {
+  await page.waitForFunction((code) => window.__beech.neighbors().snapshot('left')?.who === code, anaCode);
   const before = await page.evaluate(() => window.__beech.neighbors().snapshot('left'));
   const ctx2 = await browser.newContext({ viewport: { width: 800, height: 600 } });
   const ana = await ctx2.newPage();
-  await ana.goto(e2eUrl(URL_, 'nointro&fixedres&seed=1&nofinds'), { waitUntil: 'commit' });
-  await waitForApp(ana);
+  await openApp(ana, e2eUrl(URL_, 'nointro&fixedres&seed=1&nofinds'));
   await ana.evaluate((n) => window.__beech.account().signInDev(n), anaName);
   await ana.waitForFunction(() => window.__beech.beachId() && window.__beech.sync().state === 'saved', null, { timeout: 15000 });
   await ana.evaluate(() => window.__beech.send({ type: 'placeObject', obj: { kind: 'rock', item: 'rock', x: 12, y: 27, angle: 0, size: 0.5, variant: 2 } }));
@@ -139,17 +138,21 @@ if (shot) await page.screenshot({ path: shot });
   await ctx2.close();
   await page.bringToFront();
   await page.waitForFunction(() => !document.hidden, null, { polling: 100 });
-  await page.evaluate(() => window.__beech.neighbors().poll());
-  await page.waitForFunction((previous) => {
-    const current = window.__beech.neighbors().snapshot('left');
-    return current && current.updatedAt > previous.updatedAt && current.objects === previous.objects + 1;
-  }, before, { polling: 100, timeout: 15000 });
-  if (process.env.DEBUG_E2E) console.log('ben sees', JSON.stringify(await page.evaluate(() => window.__beech.neighbors().snapshot('left'))), 'before', JSON.stringify(before));
-  const after = await page.evaluate(() => window.__beech.neighbors().snapshot('left'));
-  check(
-    !!before && !!after && after.updatedAt > before.updatedAt && after.objects === before.objects + 1,
-    `Ben sees Ana's new save without reloading (${before?.objects} -> ${after?.objects} things)`,
-  );
+  try {
+    await page.waitForFunction(async ({ who, updatedAt }) => {
+      const app = window.__beech;
+      const shore = app.neighbors();
+      await shore.poll();
+      const current = shore.snapshot('left');
+      const beach = shore.beachAt(1);
+      const rock = beach && app.store().objectsOf(beach.id)?.some((o) => o.item === 'rock' && o.variant === 2 && !o.wild);
+      return current?.who === who && current.updatedAt > updatedAt && rock;
+    }, before, { polling: 1000, timeout: 20000 });
+  } catch (error) {
+    const after = await page.evaluate(() => window.__beech.neighbors().snapshot('left'));
+    throw new Error(`Neighbor save did not reach Ben (before ${JSON.stringify(before)}, after ${JSON.stringify(after)})`, { cause: error });
+  }
+  check(true, "Ben sees Ana’s newly saved rock without reloading");
 }
 
 // moving away removes it

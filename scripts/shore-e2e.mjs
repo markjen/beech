@@ -2,7 +2,7 @@
 // Ben -left-> Ana -left-> Cleo. Ben walks down the shore past Ana to Cleo,
 // heads home with the home button, then visits Dot by code and stars her beach.
 //   node scripts/shore-e2e.mjs [screenshot.png]
-import { e2eUrl, openBrowser, waitForApp } from './lib/e2e.mjs';
+import { e2eUrl, openApp, openBrowser } from './lib/e2e.mjs';
 
 const URL_ = process.env.BEECH_URL ?? 'http://127.0.0.1:8787/';
 const shot = process.argv[2];
@@ -16,8 +16,7 @@ const { browser, close: closeBrowser } = await openBrowser();
 const page = await browser.newPage({ viewport: { width: 1100, height: 700 } });
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
-await page.goto(e2eUrl(URL_, 'nointro&fixedres&seed=1&nofinds', { shots: Boolean(shot) }), { waitUntil: 'commit' });
-await waitForApp(page);
+await openApp(page, e2eUrl(URL_, 'nointro&fixedres&seed=1&nofinds', { shots: Boolean(shot) }));
 
 const tag = `sh${Date.now() % 10000}${process.pid % 100}`;
 const names = { ana: `ana${tag}`, ben: `ben${tag}`, cleo: `cleo${tag}`, dot: `dot${tag}` };

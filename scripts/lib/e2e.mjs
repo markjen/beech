@@ -48,7 +48,7 @@ function observePage(page) {
   page.on('crash', () => record('Page crashed'));
 }
 
-export async function waitForApp(page, timeout = 30000) {
+async function waitForApp(page, timeout = 30000) {
   try {
     // A background tab can stop advancing animation frames while it boots.
     const ready = await page.waitForFunction(
@@ -67,6 +67,39 @@ export async function waitForApp(page, timeout = 30000) {
   }
 }
 
+/** Give a new WebGL context time to start before resuming the other tabs. */
+async function navigateApp(page, url, navigate, timeout) {
+  const paused = [];
+  try {
+    if (!new URL(url).searchParams.has('norender')) {
+      const others = page.context().browser()?.contexts().flatMap((context) => context.pages()) ?? [];
+      await Promise.all(others.filter((other) => other !== page && !other.isClosed()).map(async (other) => {
+        const wasRunning = await other.evaluate(() => {
+          const engine = window.__beech?.engine;
+          if (!engine || engine.skipFrameRender) return false;
+          engine.skipFrameRender = true;
+          return true;
+        });
+        if (wasRunning) paused.push(other);
+      }));
+    }
+    await navigate();
+    await waitForApp(page, timeout);
+  } finally {
+    await Promise.allSettled(paused.map((other) => other.evaluate(() => {
+      if (window.__beech?.engine) window.__beech.engine.skipFrameRender = false;
+    })));
+  }
+}
+
+export function openApp(page, url, timeout) {
+  return navigateApp(page, url, () => page.goto(url, { waitUntil: 'commit' }), timeout);
+}
+
+export function reloadApp(page) {
+  return navigateApp(page, page.url(), () => page.reload({ waitUntil: 'commit' }));
+}
+
 export async function openBrowser() {
   const { chromium } = await loadPlaywright();
   const ws = process.env.E2E_WS_ENDPOINT;
@@ -74,6 +107,7 @@ export async function openBrowser() {
   const browser = ws ? await chromium.connect(ws) : await chromium.launch(launch);
   const contexts = new Set();
   const observeContext = (context) => {
+    if (contexts.has(context)) return;
     contexts.add(context);
     context.on('page', observePage);
     context.once('close', () => contexts.delete(context));

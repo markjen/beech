@@ -1201,3 +1201,4 @@ the HUD layout in the section above.
 - Browser startup failures now include recent page errors, script responses,
   worker starts, and failed requests. Set `E2E_CHROMIUM_PATH` to run against
   a local Chromium executable and `DEBUG_E2E=1` to stream test output.
+  Rendered tests pause existing tabs while another WebGL context initializes.

@@ -2,7 +2,7 @@
 // server (npm run server:dev, which has DEV_AUTH for /api/dev/grant):
 // one person on two devices, each running a different beach at the same time.
 //   node scripts/beaches-e2e.mjs
-import { e2eUrl, openBrowser, waitForApp } from './lib/e2e.mjs';
+import { e2eUrl, openApp, openBrowser, reloadApp } from './lib/e2e.mjs';
 
 const URL_ = process.env.BEECH_URL ?? 'http://127.0.0.1:8787/';
 let failed = 0;
@@ -20,8 +20,7 @@ async function device(label) {
   const page = await ctx.newPage();
   page.on('pageerror', (e) => errors.push(`${label}: ${e.message}`));
   page.on('dialog', (d) => void d.accept(d.type() === 'prompt' ? `${label} beach` : undefined));
-  await page.goto(e2eUrl(URL_, 'nointro&quality=low&fixedres&seed=1&nofinds'), { waitUntil: 'commit' });
-  await waitForApp(page);
+  await openApp(page, e2eUrl(URL_, 'nointro&quality=low&fixedres&seed=1&nofinds'));
   await page.evaluate(() => window.__beech.engine.setHardwareScalingLevel(2));
   await page.evaluate((n) => window.__beech.account().signInDev(n), name);
   await page.waitForFunction(() => window.__beech.beachId() && window.__beech.sync().state === 'saved', null, { timeout: 20000 });
@@ -206,8 +205,7 @@ const crossed = await b.evaluate(async ({ homeHeight, neighborHeight, seam }) =>
 check(crossed.homeRaised && crossed.neighborRaised && Math.abs(crossed.focus - points.seam) < 1, 'one drag raised both beaches and kept the camera at the seam');
 
 // device A remembers which beach it was looking at after a reload (a view bookmark)
-await a.reload({ waitUntil: 'commit' });
-await waitForApp(a);
+await reloadApp(a);
 await a.waitForFunction(() => window.__beech.beachId() && window.__beech.sync().state === 'saved', null, { timeout: 20000 });
 check((await a.evaluate(() => window.__beech.beachId())) === second, 'A still opens the second beach after a reload');
 

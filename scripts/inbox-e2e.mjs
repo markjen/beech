@@ -7,7 +7,7 @@
 // parasol. Ana's mailbox shows it; she opens the inbox, says thanks, reports
 // the note and blocks Ben; Ben's next visit doesn't go through.
 //   node scripts/inbox-e2e.mjs [screenshot-dir]
-import { e2eUrl, openBrowser, waitForApp } from './lib/e2e.mjs';
+import { e2eUrl, openApp, openBrowser } from './lib/e2e.mjs';
 
 const URL_ = process.env.BEECH_URL ?? 'http://127.0.0.1:8787/';
 const shots = process.argv[2];
@@ -24,8 +24,7 @@ const open = async (query, viewport) => {
   const page = await ctx.newPage();
   page.setDefaultTimeout(30000);
   page.on('pageerror', (e) => errors.push(e.message));
-  await page.goto(e2eUrl(URL_, query, { shots: Boolean(shots) }), { waitUntil: 'commit' });
-  await waitForApp(page);
+  await openApp(page, e2eUrl(URL_, query, { shots: Boolean(shots) }));
   return page;
 };
 const owned = (page, item) =>
