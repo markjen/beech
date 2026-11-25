@@ -1338,10 +1338,11 @@ No bugs turned up in these: the proofs went through without code changes,
 and a 20,000-case random comparison showed the reworked save/restore
 checks give the same answers as before. Not verifiable with LemmaScript:
 the sim (floating point), the claw and vending draws (randomness), and
-anything reading the database. Noted for the owner, not changed: an
-approved creator item priced 0 cents is "not for sale" in the shop
-(`salePriceCents` treats 0 as no price), while the submission page
-calls it "free"; the docs ship free items through the catalog instead.
+anything reading the database. One question came up: an approved
+creator item priced 0 cents was "not for sale" in the shop
+(`salePriceCents` read 0 as no price) while the submission page called
+it "free". Owner's call: 0 is free, and "not for sale" is its own
+checkbox (`for_sale`, migration 28); see docs/ITEM_SUBMISSIONS.md.
 
 E2E on this runner: with `E2E_RENDER=0`, all 9 scripts pass (61 s). With
 rendering on they still time out here, on main too.

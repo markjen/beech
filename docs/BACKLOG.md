@@ -163,10 +163,6 @@ _(nothing right now)_
 - Verify more with LemmaScript: the app's copy of the restore check
   (`src/world/checkpointFit.ts`), item-size and beach-capacity limits,
   referral ladder rewards. See [VERIFICATION.md](VERIFICATION.md).
-- Owner decision: should an approved creator item priced 0 cents be
-  claimable in the shop? Today it's "not for sale" there (STATUS.md,
-  formal verification).
-
 - [ ] Sand-castle bucket stamps as a fourth tool.
 - [ ] More real beaches (Reynisfjara, Whitehaven, Navagio…), maybe with
   per-beach slope and sand-grain colour.
@@ -176,6 +172,10 @@ _(nothing right now)_
   shower night.
 
 ## Done (recent)
+
+- [x] **Free shop items** (2026-11-25): an approved creator item priced
+  $0 is free (a Free button on every platform, granted by the server);
+  "not for sale" is a separate admin checkbox (migration 28).
 
 - [x] **Formal verification** (2026-11-25): LemmaScript skills vendored
   into `.claude/skills/`, Dafny + `lsc` installed at session start and in
