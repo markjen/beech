@@ -67,7 +67,9 @@ import {
   hasVisitorFedToday,
   maybeGrantBonusTreat,
   recentPetFeeders,
+  recordSnackOut,
   recordWildFeed,
+  returnSnack,
   renameBeachPet,
   visitorFeedPet,
 } from './animals.js';
@@ -1618,21 +1620,42 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   // ---------------------------------------------------------------- animals (A2: food & feeding, A3: resident pets)
   app.post('/animals/feed', requireUser, async (c) => {
     const user = c.get('user');
-    const now = clock();
     const b = await body<{ beachId?: string; species?: string }>(c).catch(() => ({} as { beachId?: string; species?: string }));
     const species = b.species === 'crab' || !b.species ? 'crab' : fail(400, 'unknown species');
     // resolve the beach first, so a foreign or bad beach id never spends a snack
     const beachId = await mine(c, b.beachId ?? c.req.query('beach'));
-    const res = await consumeTreat(db, user.id, now);
-    if (!res.ok) return c.json({ error: 'no beach snacks left', remaining: 0 }, 409);
+    const fed = await db.withTransaction(async (tx) => {
+      // A toss and a pickup take the same lock before touching inventory or the snack row.
+      await tx.query('SELECT id FROM beach WHERE id = $1 FOR NO KEY UPDATE', [beachId]);
+      const now = clock();
+      const res = await consumeTreat(tx, user.id, now);
+      if (!res.ok) return null;
 
-    const existingPet = await getBeachPet(db, beachId, now);
-    if (existingPet) {
-      const pet = await feedBeachPet(db, beachId, user.id, user.name, now);
-      return c.json({ ok: true, remaining: res.remaining, pet });
-    }
-    const bond = await recordWildFeed(db, beachId, species, now);
-    return c.json({ ok: true, remaining: res.remaining, bond });
+      const existingPet = await getBeachPet(tx, beachId, now);
+      if (existingPet) {
+        const pet = await feedBeachPet(tx, beachId, user.id, user.name, now);
+        await recordSnackOut(tx, { beachId, userId: user.id, inventoryId: res.rowId, now, petPrevFedAt: existingPet.lastFedAt });
+        return { remaining: res.remaining, pet };
+      }
+      const bond = await recordWildFeed(tx, beachId, species, now);
+      await recordSnackOut(tx, { beachId, userId: user.id, inventoryId: res.rowId, now, wildSpecies: species });
+      return { remaining: res.remaining, bond };
+    });
+    if (!fed) return c.json({ error: 'no beach snacks left', remaining: 0 }, 409);
+    return c.json({ ok: true, ...fed });
+  });
+
+  // pick the snack that's out back up (by hand or with the vacuum): back in the bag
+  app.post('/animals/feed/return', requireUser, async (c) => {
+    const user = c.get('user');
+    const b = await body<{ beachId?: string }>(c).catch(() => ({} as { beachId?: string }));
+    const beachId = await mine(c, b.beachId ?? c.req.query('beach'));
+    const back = await db.withTransaction(async (tx) => {
+      await tx.query('SELECT id FROM beach WHERE id = $1 FOR NO KEY UPDATE', [beachId]);
+      return returnSnack(tx, beachId, user.id, clock());
+    });
+    if (!back) return c.json({ error: 'no snack out on this beach' }, 409);
+    return c.json({ ok: true, ...back });
   });
 
   app.get('/pet', requireUser, async (c) => {

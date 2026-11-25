@@ -269,7 +269,7 @@ export function guideHtml(now: number): string {
   <li><b>Build up</b> (sand dune) adds sand where you drag.</li>
   <li><b>Smooth</b> (rake) softens edges and bumps.</li>
   <li><b>Flatten</b> pushes the sand back to the untouched beach.</li>
-  <li><b>Vacuum cleaner</b> picks things up with a tap or along a drag.</li>
+  <li><b>Vacuum cleaner</b> picks things up with a tap or along a drag, beach snacks included.</li>
   <li><b>Bulldozer</b> flattens and scoops up things in its path.</li>
   <li>The two <b>sandcastle molds</b>, round and square (below).</li>
 </ul>
@@ -287,7 +287,7 @@ export function guideHtml(now: number): string {
 
 <h2 id="animals">Animals</h2>
 <p>Now and then a wild sand crab pops out of the sand, scurries sideways across the beach, dodges incoming waves and your digging brush, and burrows back down after a couple of minutes — or a dolphin cruises through the deeper water offshore and leaps across the surf. An animal is around roughly half the time, and the first one usually shows up within a minute of opening the game.</p>
-<p><b>Beach snacks:</b> toss a snack from your bag onto the sand to draw a visiting crab over and keep it around longer, or leave one out as bait so a crab visits sooner. You can buy snack packs in the shop, and digging up buried finds occasionally turns up a free snack too.</p>
+<p><b>Beach snacks:</b> pick Beach snacks in your bag, then tap your beach where you want the snack to go (on dry sand). A snack draws a visiting crab over and keeps it around longer, or, left out as bait, brings a crab sooner. Changed your mind? Tap the snack again while snacks are in hand, long-press it, or run the vacuum over it, and it goes back in your bag (one that’s been eaten or washed away is gone). You can buy snack packs in the shop, and digging up buried finds occasionally turns up a free snack too.</p>
 <p><b>Resident pets:</b> feed wild crabs on a beach enough times (10 feeds) and one will offer to move in permanently — or adopt a Pet sand crab straight from the shop. Pets stay on your beach, never leave, and tuck into a cozy sand burrow to nap if unfed for a couple of days until you feed them again.</p>
 <p><b>Visitor feeding:</b> when you visit another beach with a pet, you can give it one free snack a day (UTC) from the bar at the top, or feed it again anytime with a beach snack from your own bag.</p>
 

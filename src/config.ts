@@ -296,6 +296,8 @@ export const ANIMALS = {
   foodMaxVisit: 420,
   /** seconds after eating during which the crab is calm around the brush */
   foodCalmSec: 60,
+  /** reach (m) of a tap or long-press on the snack that's out, to pick it back up */
+  snackReach: 0.3,
   /** share of unbaited wild visits that are an offshore dolphin instead of a sand crab */
   dolphinChance: 0.35,
   /** dolphin length scale (metres) */

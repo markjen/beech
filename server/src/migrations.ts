@@ -767,6 +767,20 @@ const MIGRATIONS: string[] = [
   ALTER TABLE checkpoints ADD CONSTRAINT checkpoints_kind_check CHECK (kind IN ('named', 'auto', 'tide'));
   CREATE UNIQUE INDEX checkpoints_one_tide ON checkpoints (from_beach) WHERE kind = 'tide';
   `,
+
+  // 27: the beach snack that's out on the sand (one per beach). Picking it
+  // back up (by hand or with the vacuum) returns it to the bag and undoes
+  // what tossing it did: the wild-bond count, or the pet's feed.
+  `
+  CREATE TABLE beach_snacks (
+    beach_id UUID PRIMARY KEY REFERENCES beach (id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    inventory_id BIGINT,               -- the bag row the snack came from
+    tossed_at BIGINT NOT NULL,
+    wild_species TEXT,                 -- counted toward befriending (no pet)
+    pet_prev_fed_at BIGINT             -- the pet's feed before this one (pet fed)
+  );
+  `,
 ];
 
 /** Apply migrations up to `upTo` (default: all). Tests use `upTo` to check a migration on older data. */

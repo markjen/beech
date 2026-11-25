@@ -1079,6 +1079,20 @@ prompt, JSON Schema and sample asset.
   treat pile on the sand, speeds up wild spawns 4× while empty, and draws an
   active crab over to eat (extending its visit and calming it around the
   brush).
+- **Snack placement and pick-up** (2026-11-25): picking Beach snacks in the
+  bag puts a snack in hand (`snackInHand` in `src/main.ts`, the place bar shows
+  "N left"); a tap on dry sand of the live beach calls `POST /api/animals/feed`
+  and drops the snack there (`dropFood(env, pos)`). Tapping the snack again
+  with snacks in hand, long-pressing it (any tool, look included), or a vacuum
+  stroke over it calls `POST /api/animals/feed/return` and puts it back in the
+  bag (`AnimalController.foodNear` / `takeFood`). Migration 27 adds
+  `beach_snacks` (one per beach: the bag row it came from, and whether it
+  counted toward befriending or fed the pet). A return refunds that row and
+  undoes the toss (wild feed count −1, or the pet's `last_fed_at` and feed log
+  restored if nobody fed it since), so tossing and picking up can't farm
+  bond progress. Only a snack tossed in the last 15 min can come back; one
+  eaten or washed away is gone on the client (the server row just expires),
+  and befriending a crab clears it.
 - **Resident pets (A3)** (2026-11-24): migration 21 adds `beach_pets`,
   `wild_feed_progress`, and `pet_feed_log`. Players can adopt one pet per beach
   either by feeding wild crabs 10 times (`POST /api/pet/adopt { mode:
