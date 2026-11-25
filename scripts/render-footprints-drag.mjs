@@ -5,7 +5,7 @@
 // Loads the sandbox app in headless Chromium, picks footprints from the
 // bag, and drags an S-curve across the sand with real pointer events —
 // the same path a player takes — then screenshots the trail it leaves.
-// Fails when the drag lays down fewer than three trails.
+// Checks that one Undo removes the entire drag and one Redo restores it.
 //
 // Needs playwright (not a repo dependency — install it like CI does):
 //   npm install --no-save playwright@1.63.0
@@ -96,10 +96,25 @@ try {
   const trail = await page.evaluate(() => {
     const b = window.__beech;
     const objects = b.info().objects.filter((o) => o.item === 'footprints');
+    const width = b.grid.nx * b.grid.dx;
+    const depth = b.grid.ny * b.grid.dx;
+    if (!objects.every((o) => o.x >= 0 && o.x <= width && o.y >= 0 && o.y <= depth)) {
+      throw new Error('The drag placed a trail outside the beach');
+    }
     return objects.map((o) => ({ x: o.x, y: o.y }));
   });
   console.log(`footprints trails laid down: ${trail.length}`);
   if (trail.length < 3) fail(`only ${trail.length} footprints trails after the drag`);
+  const waitForTrailCount = (count) => page.waitForFunction(
+    (n) => window.__beech.info().objects.filter((o) => o.item === 'footprints').length === n,
+    count,
+    { timeout: 10000 },
+  );
+  await page.keyboard.press('Control+z');
+  await waitForTrailCount(0);
+  await page.keyboard.press('Control+Shift+z');
+  await waitForTrailCount(trail.length);
+  console.log('one Undo clears the whole trail and one Redo restores it');
   if (errors.length) fail(`page errors: ${errors.join(' | ')}`);
 
   // freeze the sea, then frame the whole trail

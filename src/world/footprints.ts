@@ -7,18 +7,13 @@
 // travel, so the whole drag reads as one walk. Pure geometry, no DOM —
 // the sim only sees the placements, and the main thread drives this.
 //
-// The joins matter: the last print of one trail and the first print of the
-// next must be one stride apart, on opposite sides, or the walk stutters.
-// A trail's prints sit at -L/2 + k*stride (stride = L/(prints-1)), so the
-// next trail's centre goes one stride past the last print: spacing =
-// L * prints/(prints-1). And a trail turned half-way round starts with
-// its last print, so flipping the trail by PI swaps which side it starts
-// on — but only a 6-print trail (variant 1) starts on the left after the
-// turn, so a flipped trail is always variant 1.
+// The gap between trails is one stride of the next trail. A half-turn
+// reverses the print order and swaps sides, so turning an odd-length
+// trail makes it start on the opposite side from an unturned one.
 
 import { FOOTPRINT_TRAIL_M, FOOTPRINTS_PER_STROKE_MAX } from '../config';
 
-/** A point on the sand, in sim metres (x alongshore, y cross-shore). */
+/** A point on the sand, in metres (x alongshore, y cross-shore). */
 export interface SandPoint {
   x: number;
   y: number;
@@ -39,26 +34,18 @@ export function footprintPrints(variant: number): number {
  * on the right.
  */
 export function footprintFarSide(variant: number, flipped: boolean): PrintSide {
-  if (flipped) return -1;
+  if (flipped) return 1;
   return footprintPrints(variant) % 2 === 1 ? -1 : 1;
 }
 
-/**
- * The angle and variant for the next trail along `dirAngle`, keeping the
- * prints alternating left and right across the join with the previous
- * trail, whose far end sat on `prevFarSide`. When the previous trail ended
- * on the right, this one must start on the left, so it is turned half-way
- * round — and only a 6-print trail starts on the left after the turn, so
- * the variant is forced to 1. When the previous trail ended on the left,
- * an unflipped trail starts on the right, as it should.
- */
+/** Orient the next trail so its first print is opposite the previous trail's last print. */
 export function footprintOrient(
   dirAngle: number,
   prevFarSide: PrintSide,
   variant: number,
 ): { angle: number; variant: number; flipped: boolean } {
   if (prevFarSide === -1) {
-    return { angle: dirAngle + Math.PI, variant: 1, flipped: true };
+    return { angle: dirAngle + Math.PI, variant: variant % 3 === 1 ? 2 : variant, flipped: true };
   }
   return { angle: dirAngle, variant, flipped: false };
 }
@@ -78,6 +65,8 @@ export interface FootprintStroke {
   anchor: SandPoint;
   /** side the last trail's far end sits on, along its direction */
   farSide: PrintSide;
+  /** size of the last trail */
+  size: number;
   /** trails laid down so far in this stroke (the tap counts as one) */
   count: number;
 }
@@ -106,7 +95,7 @@ export function footprintDrag(
   maxCount: number = FOOTPRINTS_PER_STROKE_MAX,
 ): { placements: FootprintPlacement[]; stroke: FootprintStroke } {
   const placements: FootprintPlacement[] = [];
-  let { anchor, farSide, count } = stroke;
+  let { anchor, farSide, count, size: previousSize } = stroke;
   while (count < maxCount) {
     const dx = to.x - anchor.x;
     const dy = to.y - anchor.y;
@@ -114,14 +103,16 @@ export function footprintDrag(
     const { size, variant: rolled } = roll(size01);
     const dir = Math.atan2(dy, dx);
     const orient = footprintOrient(dir, farSide, rolled);
-    const spacing = footprintSpacing(size, orient.variant);
+    // The join spans half of each trail plus one stride of the new trail.
+    const spacing = footprintSpacing(size, orient.variant) + FOOTPRINT_TRAIL_M * (previousSize - size) / 2;
     if (dist < spacing) break;
     const nx = anchor.x + Math.cos(dir) * spacing;
     const ny = anchor.y + Math.sin(dir) * spacing;
     placements.push({ x: nx, y: ny, angle: orient.angle, size, variant: orient.variant });
     anchor = { x: nx, y: ny };
+    previousSize = size;
     farSide = footprintFarSide(orient.variant, orient.flipped);
     count++;
   }
-  return { placements, stroke: { anchor, farSide, count } };
+  return { placements, stroke: { anchor, farSide, size: previousSize, count } };
 }

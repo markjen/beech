@@ -32,38 +32,35 @@ describe('footprint geometry', () => {
     expect(footprintSpacing(0.5, 1)).toBeCloseTo(0.51, 10);
   });
 
-  it('the far side follows the print count, and a flipped trail ends on the right', () => {
+  it('the far side follows the print count, and a flipped trail swaps the side of its original first print', () => {
     expect(footprintFarSide(2, false)).toBe(-1); // 7 prints, last is print 6, side -1
     expect(footprintFarSide(1, false)).toBe(1); // 6 prints, last is print 5, side +1
     expect(footprintFarSide(3, false)).toBe(-1); // 5 prints, last is print 4, side -1
-    expect(footprintFarSide(2, true)).toBe(-1); // flipped: ends with its first print, side -1
-    expect(footprintFarSide(1, true)).toBe(-1);
+    expect(footprintFarSide(2, true)).toBe(1);
+    expect(footprintFarSide(1, true)).toBe(1);
   });
 
   it('orientation keeps the prints alternating across the join', () => {
-    // previous trail ended on the left: this one runs unflipped, starting on the right
     expect(footprintOrient(0, 1, 2)).toEqual({ angle: 0, variant: 2, flipped: false });
-    // previous trail ended on the right: this one turns half-way round and
-    // takes the only variant that starts on the left after the turn
-    expect(footprintOrient(0, -1, 2)).toEqual({ angle: Math.PI, variant: 1, flipped: true });
-    expect(footprintOrient(Math.PI / 2, -1, 3)).toEqual({ angle: Math.PI / 2 + Math.PI, variant: 1, flipped: true });
+    expect(footprintOrient(0, -1, 1)).toEqual({ angle: Math.PI, variant: 2, flipped: true });
+    expect(footprintOrient(Math.PI / 2, -1, 3)).toEqual({ angle: Math.PI / 2 + Math.PI, variant: 3, flipped: true });
   });
 });
 
 describe('footprintDrag', () => {
-  const stroke: FootprintStroke = { anchor: { x: 0, y: 0 }, farSide: -1, count: 1 };
+  const stroke: FootprintStroke = { anchor: { x: 0, y: 0 }, farSide: -1, size: 1, count: 1 };
 
   it('lays trails along a straight drag, one stride apart', () => {
     const { placements, stroke: next } = footprintDrag(stroke, { x: 5, y: 0 }, 0.35, steadyRoll);
-    // spacing is 1.02 m at size 1: 4 trails fit in 5 m, the 5th would pass the pointer
-    expect(placements).toHaveLength(4);
-    expect(placements.map((p) => p.x)).toEqual([1.02, 2.04, 3.06, 4.08].map((x) => expect.closeTo(x, 10)));
+    const spacing = footprintSpacing(1, 2);
+    expect(placements).toHaveLength(5);
+    expect(placements.map((p) => p.x)).toEqual([1, 2, 3, 4, 5].map((n) => expect.closeTo(n * spacing, 10)));
     expect(placements.every((p) => Math.abs(p.y) < 1e-9)).toBe(true);
-    // every trail is turned half-way round (the stroke kept ending on the right), so all run at PI
-    expect(placements.every((p) => Math.abs(p.angle - Math.PI) < 1e-9)).toBe(true);
-    expect(next.anchor).toEqual({ x: 4.08, y: 0 });
-    expect(next.count).toBe(5);
-    expect(next.farSide).toBe(-1);
+    expect(placements.map((p) => p.angle)).toEqual([Math.PI, 0, Math.PI, 0, Math.PI]);
+    expect(next.anchor.x).toBeCloseTo(5 * spacing, 10);
+    expect(next.anchor.y).toBe(0);
+    expect(next.count).toBe(6);
+    expect(next.farSide).toBe(1);
   });
 
   it('lays nothing when the pointer has not travelled a stride', () => {
@@ -106,7 +103,7 @@ describe('footprintDrag', () => {
     }
     let prevFar: PrintSide = footprintFarSide(tapVariant, false);
     const walk = footprintDrag(
-      { anchor: { x: 0, y: 0 }, farSide: prevFar, count: 1 },
+      { anchor: { x: 0, y: 0 }, farSide: prevFar, size: 1, count: 1 },
       { x: 10, y: 0 },
       0.35,
       // cycle the variants so the walk mixes 5-, 6- and 7-print trails
@@ -125,9 +122,8 @@ describe('footprintDrag', () => {
       const stride = 0.85 / (n - 1);
       for (let k = 0; k < n; k++) {
         const local = -0.425 + k * stride;
-        prints.push({ along: p.x + (flipped ? -local : local), side: k % 2 === 0 ? -1 : 1 });
+        prints.push({ along: p.x + (flipped ? -local : local), side: (k % 2 === 0) === flipped ? 1 : -1 });
       }
-      prevFar = footprintFarSide(p.variant, flipped);
     }
     prints.sort((a, b) => a.along - b.along);
     // every print alternates side with its neighbour, at about one stride
