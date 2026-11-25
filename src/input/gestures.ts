@@ -7,6 +7,8 @@ export interface GestureHandlers {
   digEnd(): void;
   /** the dig turned out to be the start of a camera gesture: roll it back */
   digCancel(): void;
+  /** A completed primary tap while placing an item somewhere on the beach. */
+  tap?(sx: number, sy: number): void;
   /** mouse hovering (no button) – used for the brush ring on desktop */
   hover(sx: number, sy: number): void;
   hoverEnd(): void;
@@ -34,7 +36,7 @@ export interface GestureHandlers {
 export const LONG_PRESS_MS = 420;
 export const HOLD_SLOP_PX = 9;
 
-type Mode = 'idle' | 'dig' | 'camera' | 'mousePan' | 'mouseRotate' | 'onePan';
+type Mode = 'idle' | 'dig' | 'tap' | 'camera' | 'mousePan' | 'mouseRotate' | 'onePan';
 
 export interface TwoFingers {
   mx: number;
@@ -85,6 +87,7 @@ export class Gestures {
   private pointers = new Map<number, { x: number; y: number }>();
   private digPointer = -1;
   private digStartAt = 0;
+  private tapStart: { x: number; y: number } | null = null;
   private two: TwoFingers | null = null;
   private twoStart: TwoFingers | null = null;
   private twoKind: 'tilt' | 'move' | null = null;
@@ -93,6 +96,7 @@ export class Gestures {
   enabled = true;
   /** the look tool: one finger / left button moves the view instead of digging */
   lookOnly = false;
+  tapToPlace = false;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -158,6 +162,18 @@ export class Gestures {
     this.hold = null;
   }
 
+  private startPrimary(p: { x: number; y: number }, id: number): void {
+    this.digPointer = id;
+    if (this.tapToPlace) {
+      this.mode = 'tap';
+      this.tapStart = p;
+      return;
+    }
+    this.mode = 'dig';
+    this.digStartAt = performance.now();
+    this.h.digStart(p.x, p.y);
+  }
+
   private onDown = (e: PointerEvent) => {
     this.h.interacted();
     if (!this.enabled) return;
@@ -176,9 +192,7 @@ export class Gestures {
         this.cam.stopGlide();
         this.startHold(p, e.pointerId);
       } else if (e.button === 0 && !this.space) {
-        this.mode = 'dig';
-        this.digPointer = e.pointerId;
-        this.h.digStart(p.x, p.y);
+        this.startPrimary(p, e.pointerId);
       } else if (e.button === 1 || (e.button === 0 && this.space)) {
         this.mode = 'mousePan';
         this.cam.stopGlide();
@@ -195,13 +209,11 @@ export class Gestures {
       this.cam.stopGlide();
       this.startHold(p, e.pointerId);
     } else if (this.pointers.size === 1 && this.mode === 'idle') {
-      this.mode = 'dig';
-      this.digPointer = e.pointerId;
-      this.digStartAt = performance.now();
       this.cam.stopGlide();
-      this.h.digStart(p.x, p.y);
+      this.startPrimary(p, e.pointerId);
     } else if (this.pointers.size === 2) {
       this.endHold();
+      this.tapStart = null;
       if (this.mode === 'onePan') this.cam.releasePan();
       if (this.mode === 'dig') {
         if (performance.now() - this.digStartAt < CANCEL_WINDOW_MS) this.h.digCancel();
@@ -228,6 +240,8 @@ export class Gestures {
 
   private onMove = (e: PointerEvent) => {
     const p = this.pos(e);
+    if (e.pointerId === this.digPointer && this.tapStart &&
+        Math.hypot(p.x - this.tapStart.x, p.y - this.tapStart.y) > HOLD_SLOP_PX) this.tapStart = null;
     // moved before the long-press: it's a pan after all
     if (this.hold && Math.hypot(p.x - this.hold.x, p.y - this.hold.y) > HOLD_SLOP_PX) this.endHold();
     if (e.pointerType === 'mouse') {
@@ -280,6 +294,17 @@ export class Gestures {
 
   private onUp = (e: PointerEvent) => {
     this.endHold();
+    if (this.mode === 'tap' && e.pointerId === this.digPointer) {
+      this.pointers.delete(e.pointerId);
+      const start = this.tapStart;
+      this.tapStart = null;
+      this.mode = 'idle';
+      this.digPointer = -1;
+      const p = this.pos(e);
+      if (e.type === 'pointerup' && this.tapToPlace && start &&
+          Math.hypot(p.x - start.x, p.y - start.y) <= HOLD_SLOP_PX) this.h.tap?.(p.x, p.y);
+      return;
+    }
     if (e.pointerType === 'mouse') {
       if (this.mode === 'dig') this.h.digEnd();
       if (this.mode === 'mouseRotate') this.cam.snapRotation();

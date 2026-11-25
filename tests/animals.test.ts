@@ -264,3 +264,29 @@ describe('pet hunger notification timing', () => {
     expect(scheduled3.getHours()).toBe(14);
   });
 });
+
+describe('AnimalController (visited beach pet)', () => {
+  it('walks over to a snack set down at a chosen spot and eats it', () => {
+    const ctrl = new AnimalController(seeded(7));
+    const env = flatBeach();
+    ctrl.setPet({ species: 'crab', name: 'Barnaby', mood: 'peckish' }, env);
+    advance(ctrl, env, 1.5);
+    const s = ctrl.snapshot();
+    expect(s.active).toBe(true);
+    const spot = { x: s.x + 2.5, z: s.z };
+    expect(ctrl.dropFood(env, spot)).toBe(true);
+    expect(s.food.x).toBeCloseTo(spot.x);
+    let ate = false;
+    for (let i = 0; i < 400 && !ate; i++) {
+      ctrl.update(0.05, env);
+      if (s.phase === 'eating') ate = true;
+    }
+    expect(ate).toBe(true);
+    expect(Math.hypot(s.x - spot.x, s.z - spot.z)).toBeLessThan(0.6);
+    advance(ctrl, env, 4);
+    expect(s.food.active).toBe(false);
+    expect(s.petMood).toBe('happy');
+    expect(s.active).toBe(true); // a pet never leaves
+  });
+
+});

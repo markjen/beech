@@ -44,7 +44,7 @@ import { ShopApi, webOrderFromUrl, withoutWebOrderParams } from './net/shop';
 import { VendingMachine } from './ui/vendingMachine';
 import { DEFAULT_SIZE, ITEMS, rollPlacement, type Item } from './world/items';
 import { footprintDrag, footprintFarSide, type FootprintStroke } from './world/footprints';
-import { ACCOUNTS_ENABLED, Account, AnimalsApi, ApiError, CheckpointApi, DigFindApi, GiftApi, GuideApi, InboxApi, PullApi, ReferralApi, type ShoreBeach } from './net/account';
+import { ACCOUNTS_ENABLED, Account, AnimalsApi, ApiError, CheckpointApi, DigFindApi, GiftApi, GuideApi, InboxApi, PullApi, ReferralApi, type PetDto, type ShoreBeach } from './net/account';
 import type { InboxPanel } from './ui/inbox';
 import type { VisitorCard } from './ui/visitorCard';
 import type { IconName } from './ui/hud';
@@ -256,6 +256,17 @@ async function boot() {
       animalView.offsetX = picker.offsetX;
     });
   };
+  // the pet of someone else's beach you're looking at (drawn from its snapshot sand)
+  const visitAnimals = new AnimalController();
+  let visitView: AnimalView | null = null;
+  let visitViewLoading = false;
+  /** code of the beach whose pet visitAnimals is showing, and where that beach sits */
+  let visitPetCode: string | null = null;
+  let visitPetX = 0;
+  const visitEnv: AnimalEnv = {
+    heightAt: (x, z) => neighbors?.heightAtWorld(x + visitPetX, z) ?? NaN,
+    waterAt: (x, z) => neighbors?.waterAtWorld(x + visitPetX, z) ?? 0,
+  };
   const animalBrush = { x: 0, z: 0, active: false };
   const animalObstacles: AnimalObstacle[] = [];
   // animals live in their beach's own frame (centred on x = 0); the live beach sits at picker.offsetX
@@ -466,6 +477,8 @@ async function boot() {
   let brushMode: BrushMode = 'dig';
   /** an inventory item in hand: taps set it down instead of digging */
   let placing: Item | null = null;
+  /** visiting: the code of the beach waiting for you to set a snack down for its pet */
+  let feedSpot: string | null = null;
   /** a beach snack in hand (from the bag): a tap on your beach tosses it there */
   let snackInHand = false;
   /** set up with the account layer: toss the snack in hand where you tapped, or pick the one that's out back up */
@@ -1000,7 +1013,8 @@ async function boot() {
   const syncToolUI = () =>
     hud.setTool(placing || snackInHand ? 'place' : tool === 'sand' ? sandMode : tool === 'clearing' ? clearingMode : tool === 'castle' ? castleShape : tool);
   const syncLookOnly = () => {
-    gestures.lookOnly = collapsed || (!placing && !snackInHand && tool === 'look');
+    gestures.tapToPlace = feedSpot !== null;
+    gestures.lookOnly = !feedSpot && (collapsed || (!placing && !snackInHand && tool === 'look'));
   };
   const pickTool = (id: string) => {
     if (isSandMode(id)) {
@@ -1019,6 +1033,7 @@ async function boot() {
     }
     if (tool !== 'look') lastDirt = id;
     placing = null;
+    endFeedSpot();
     snackInHand = false;
     footprintsStroke = null;
     inventory.deselect();
@@ -1038,6 +1053,7 @@ async function boot() {
   // the bag: rocks and driftwood (free, unlimited) for now
   const inventory = new InventoryTray((n, l, c) => hud.button(n, l, c), hud.root, ITEMS, (item) => {
     placing = item;
+    endFeedSpot();
     snackInHand = false;
     footprintsStroke = null;
     syncLookOnly();
@@ -1328,7 +1344,8 @@ async function boot() {
   /** opens the visitor card for another beach (filled in once the account layer loads) */
   let leaveBeach: ((b: ShoreBeach) => void) | null = null;
   let askingCode: string | null = null;
-  const visitedPetCache = new Map<string, { name: string } | null>();
+  const visitedPetCache = new Map<string, PetDto | null>();
+  const visitorFeeds = new Set<string>();
   /** the beach under the view, along the shore (null: one of your own) */
   const beachHere = () => {
     if (!neighbors) return null;
@@ -1378,24 +1395,106 @@ async function boot() {
     const b = beachHere();
     if (b && neighbors) void neighbors.toggleFavorite(b).catch(() => {});
   });
+  const petLabel = (p: PetDto | null | undefined) => (p?.name ? `Feed ${p.name}` : 'Feed pet');
+  const endFeedSpot = () => {
+    if (!feedSpot) return;
+    feedSpot = null;
+    sbPet.classList.remove('on');
+    sbPet.textContent = petLabel(visitedPetCache.get(beachHere()?.code ?? ''));
+    syncLookOnly();
+  };
+  // Feed pet: pick the spot, then the snack goes down where you tap their sand
   sbPet.addEventListener('click', () => {
+    if (feedSpot) {
+      endFeedSpot();
+      return;
+    }
     const b = beachHere();
-    if (!b || !animalsApi) return;
+    if (!b || !animalsApi || visitorFeeds.has(b.code)) return;
     if (!animalsApi.signedIn) {
       showToast(uiRoot, 'Sign in to feed pets.');
       return;
     }
+    feedSpot = b.code;
+    placing = null;
+    snackInHand = false;
+    footprintsStroke = null;
+    inventory.deselect();
+    placeBar.show(null, DEFAULT_SIZE);
+    syncToolUI();
+    sbPet.classList.add('on');
+    sbPet.textContent = 'cancel';
+    syncLookOnly();
+    haptics.impact('light');
+  });
+  /** a tap while setting a snack down: put it on their sand and feed their pet */
+  const dropVisitSnack = (sx: number, sy: number) => {
+    if (cam.animating) return;
+    const b = beachHere();
+    if (!b || b.code !== feedSpot || !neighbors || !animalsApi?.signedIn || visitorFeeds.has(b.code)) {
+      endFeedSpot();
+      return;
+    }
+    const hit = neighbors.pickBeach(cam.ray(sx, sy), b.id);
+    const code = b.code;
+    const pet = visitedPetCache.get(code);
+    if (!hit || !pet || visitPetCode !== code || visitAnimals.snapshot().food.active ||
+        neighbors.waterAtWorld(hit.x, hit.z) > ANIMALS.snackMaxWaterDepth ||
+        !visitAnimals.dropFood(visitEnv, { x: hit.x - hit.offsetX, z: hit.z })) return;
+    visitorFeeds.add(code);
+    endFeedSpot();
+    sbPet.disabled = true;
+    haptics.impact('light');
     void animalsApi
-      .feedVisitorPet(b.code)
+      .feedVisitorPet(code)
       .then((res) => {
         if (res.usedFood) refreshOwned();
-        haptics.impact('light');
+        visitedPetCache.set(code, res.pet);
+        if (visitPetCode === code) visitAnimals.setPet(res.pet, visitEnv);
         showToast(uiRoot, res.pet.name ? `Fed ${res.pet.name}!` : 'Fed their sand crab!');
       })
       .catch((err: unknown) => {
+        if (visitPetCode === code) {
+          visitAnimals.takeFood();
+          visitAnimals.setPet(pet, visitEnv);
+        }
         showToast(uiRoot, err instanceof Error ? err.message : 'Could not feed pet.');
+      })
+      .finally(() => {
+        visitorFeeds.delete(code);
+        shoreKey = '';
       });
-  });
+  };
+  /** per frame: show the pet of the other beach under the view, walking its sand */
+  const updateVisitPet = (dt: number) => {
+    const here = beachHere();
+    const pet = here ? visitedPetCache.get(here.code) : undefined;
+    const code = here && pet ? here.code : null;
+    if (code !== visitPetCode) {
+      visitAnimals.despawnNow();
+      visitAnimals.takeFood();
+      visitAnimals.setPet(null);
+      visitPetCode = code;
+      if (code && pet && neighbors) {
+        visitPetX = neighbors.xFor(neighbors.nearestIndex(cam.focusX));
+        visitAnimals.setPet({ species: pet.species, name: pet.name, mood: pet.mood }, visitEnv);
+      }
+    }
+    if (visitPetCode && neighbors) {
+      visitPetX = neighbors.xFor(neighbors.nearestIndex(cam.focusX));
+      visitAnimals.update(dt, visitEnv);
+      if (!visitView && !visitViewLoading) {
+        visitViewLoading = true;
+        void import('./render/animals').then(({ AnimalView: View }) => {
+          visitView = new View(scene, renderer);
+        });
+      }
+    }
+    if (visitView) {
+      visitView.offsetX = visitPetX;
+      visitView.update(visitAnimals.snapshot(), !!visitPetCode);
+    }
+  };
   const updateShoreBar = () => {
     const away = !!neighbors && neighbors.away;
     const idx = neighbors ? neighbors.nearestIndex(cam.focusX) : 0;
@@ -1406,7 +1505,8 @@ async function boot() {
     const isMine = !!b && (!!neighbors?.ownedBeach(b) || b.code === neighbors?.state?.code);
     const canLeave = !!b && !!leaveBeach && !isMine;
     const askSide = b && neighbors ? neighbors.askSideAt(idx) : null;
-    const key = `${away}|${here?.code}|${here?.name}|${fav}|${!!neighbors?.visiting}|${signedIn}|${canLeave}|${askSide}|${askingCode === b?.code}`;
+    if (feedSpot && (!signedIn || b?.code !== feedSpot)) endFeedSpot();
+    const key = `${away}|${here?.code}|${here?.name}|${fav}|${!!neighbors?.visiting}|${signedIn}|${canLeave}|${askSide}|${askingCode === b?.code}|${feedSpot}`;
     if (key === shoreKey) return;
     shoreKey = key;
     shoreBar.classList.toggle('shown', away);
@@ -1429,25 +1529,28 @@ async function boot() {
     sbFav.classList.toggle('on', fav);
     sbFav.setAttribute('aria-label', fav ? 'Remove from favorites' : 'Add to favorites');
     sbPet.hidden = true;
+    sbPet.disabled = !!b && visitorFeeds.has(b.code);
+    sbPet.classList.toggle('on', !!feedSpot);
     if (b && animalsApi) {
       const cached = visitedPetCache.get(b.code);
       if (cached !== undefined) {
         if (cached) {
-          sbPet.textContent = cached.name ? `Feed ${cached.name}` : 'Feed pet';
+          sbPet.textContent = feedSpot ? 'cancel' : petLabel(cached);
           sbPet.hidden = false;
         }
       } else {
         const code = b.code;
+        visitedPetCache.set(code, null); // one look per beach while it's being fetched
         void animalsApi
           .getBeachPet(code)
           .then((r) => {
-            visitedPetCache.set(code, r.pet ? { name: r.pet.name } : null);
+            visitedPetCache.set(code, r.pet);
             if (beachHere()?.code === code && r.pet) {
-              sbPet.textContent = r.pet.name ? `Feed ${r.pet.name}` : 'Feed pet';
+              sbPet.textContent = feedSpot ? 'cancel' : petLabel(r.pet);
               sbPet.hidden = false;
             }
           })
-          .catch(() => {});
+          .catch(() => visitedPetCache.delete(code));
       }
     }
   };
@@ -1512,6 +1615,7 @@ async function boot() {
   const start = skipIntro ? null : new StartScreen(uiRoot, begin, isTouch);
 
   const gestures = new Gestures(canvas, cam, {
+    tap: dropVisitSnack,
     digStart: (sx, sy) => {
       if (cam.animating) return;
       const hit = pickAt(sx, sy);
@@ -1721,6 +1825,7 @@ async function boot() {
     },
     view: () => cycleView(),
     toggleCollapse: () => setCollapsed(!collapsed),
+    exitCollapse: endFeedSpot,
     interacted: () => {
       // any input (including when there is no start screen) unlocks audio
       if (!start?.visible) audio.start();
@@ -1731,6 +1836,10 @@ async function boot() {
   const gamepad = new GamepadController(canvas, cam, {
     digStart: (sx, sy) => {
       if (cam.animating) return;
+      if (feedSpot) {
+        dropVisitSnack(sx, sy);
+        return;
+      }
       if (fenced) return;
       const hit = pickAt(sx, sy);
       if (!hit) return;
@@ -2080,6 +2189,7 @@ async function boot() {
     }
     if (animalSnap.active || animalSnap.food.active) ensureAnimalView();
     animalView?.update(animalSnap, ownShown);
+    updateVisitPet(dt);
     if (digging) haptics.dig(info.digIntensity);
     cam.camera.getDirectionToRef(Vector3.Right(), right);
     audio.update(dt, {
@@ -2177,6 +2287,7 @@ async function boot() {
       }
       if (id !== 'crab-treat') return;
       // a snack in hand: tap your beach to toss it there
+      endFeedSpot();
       placing = null;
       footprintsStroke = null;
       inventory.deselect();
@@ -2199,7 +2310,7 @@ async function boot() {
         return;
       }
       const pos = { x: hit.x - picker.offsetX, z: hit.z };
-      if (animalEnv.waterAt(pos.x, pos.z) > 0.02) {
+      if (animalEnv.waterAt(pos.x, pos.z) > ANIMALS.snackMaxWaterDepth) {
         haptics.impact('light');
         showToast(uiRoot, 'Too wet here.');
         return;
@@ -3185,6 +3296,8 @@ async function boot() {
         return animals.dropFood(animalEnv, pos);
       },
       despawn: () => animals.despawnNow(),
+      /** the pet of the other beach under the view (when away) */
+      visit: () => ({ code: visitPetCode, offsetX: visitPetX, ...visitAnimals.snapshot(), food: { ...visitAnimals.snapshot().food } }),
     },
     audio,
     pickTool,

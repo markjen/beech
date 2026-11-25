@@ -296,6 +296,8 @@ export const ANIMALS = {
   edgeMargin: 1.5,
   /** how long an uneaten dropped snack lasts before expiring (seconds) */
   foodDuration: 900,
+  /** maximum water depth (m) where a player can place a snack */
+  snackMaxWaterDepth: 0.02,
   /** spawn-wait speedup while dropped food is acting as bait */
   foodBaitMultiplier: 4,
   /** distance (m) at which an active crab smells and seeks dropped food */
