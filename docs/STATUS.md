@@ -1228,3 +1228,12 @@ the HUD layout in the section above.
 - The shore E2E waits for the destination beach view and its label.
   The multi-beach save race waits for the camera's pending beach transition
   before holding a save response.
+
+## Agent tooling: token savings (2026-11-25)
+
+Built. `.claude/settings.json` registers a SessionStart hook
+(`.claude/hooks/session-start.sh`: pinned, checksum-verified rtk 1.2.1, then
+`npm ci` for the app and server when lockfiles change; cloud sessions only)
+and a PreToolUse Bash hook (`.claude/hooks/rtk-rewrite.sh`, a no-op without
+rtk). The cloud environment's setup script also installs rtk. Guidance for
+agents is in [AGENT_TOKENS.md](AGENT_TOKENS.md). No effect on the game.

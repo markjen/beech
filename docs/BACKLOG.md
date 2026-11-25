@@ -171,6 +171,11 @@ _(nothing right now)_
 
 ## Done (recent)
 
+- [x] **Agent token savings** (2026-11-25): cloud sessions install a
+  pinned rtk and the npm dependencies at start (`.claude/hooks/`), a Bash
+  hook routes commands through rtk, and
+  [AGENT_TOKENS.md](AGENT_TOKENS.md) sets the house style for small output.
+
 - [x] **Client beach state by id** (2026-11-25): no more active beach. A
   `BeachStore` keeps every beach's state in memory by id with LRU
   eviction; the waves follow the view onto whichever beach of yours is in

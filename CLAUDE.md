@@ -17,6 +17,12 @@ Read these first:
    live viewers), and
    [docs/BEACH_FILE.md](docs/BEACH_FILE.md) (export/import file spec).
    The public shore site (beechshore.com) is in [docs/SHORE_SITE.md](docs/SHORE_SITE.md).
+6. [docs/AGENT_TOKENS.md](docs/AGENT_TOKENS.md): how to keep tool output
+   small. Cloud sessions install [rtk](https://github.com/rtk-ai/rtk), and a
+   Bash hook in `.claude/settings.json` routes commands through it; treat its
+   condensed output as complete, and use `rtk bypass <cmd>` only when a
+   result is unusable. Read big docs (STATUS.md, BACKLOG.md) by heading, not
+   whole.
 
 ## Ground rules
 
