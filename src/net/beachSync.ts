@@ -44,6 +44,19 @@ export class BeachSync {
   private inflight: Promise<void> | null = null;
   /** loading another beach: hold saves until it's in (they'd save the old sand into it) */
   private switching = false;
+  /**
+   * Switches/restores run one at a time: two overlapping switchTo() calls
+   * used to interleave their loads, so the second call's pre-switch flush
+   * saved the still-loaded old beach's sand into the first target beach.
+   */
+  private switchQueue: Promise<void> = Promise.resolve();
+  /**
+   * The beach whose sand is currently in the simulation. A save is only
+   * valid for this beach: while a switch is loading, the sim still shows
+   * the old beach even though account.beachId already names the new one,
+   * so a timer-fired save then would write the old sand under the new id.
+   */
+  private simBeach: string | null;
   private listeners: ((s: SyncState) => void)[] = [];
   /** the beach's epoch when it was loaded here (a restore elsewhere moves it on) */
   private epoch: number | undefined;
@@ -72,6 +85,7 @@ export class BeachSync {
     window.setInterval(() => {
       if (this.account.user && this.dirty) void this.flush();
     }, 90000);
+    this.simBeach = account.beachId;
   }
 
   onState(fn: (s: SyncState) => void): void {
@@ -124,10 +138,14 @@ export class BeachSync {
     this.set('saving');
     try {
       const forBeach = this.account.beachId;
+      // the sim still shows another beach (a switch is loading it in):
+      // this sand isn't forBeach's, so don't write it under that id
+      if (this.simBeach !== forBeach) return;
       const { delta, objects, cover } = await this.host.getSand();
       const bytes = await encodeSand(delta, this.host.grid.nx, this.host.grid.ny, objects, cover);
       // switched accounts or beaches mid-save: this sand isn't theirs
-      if (this.account.user?.id !== forUser || this.account.beachId !== forBeach) return;
+      if (this.account.user?.id !== forUser || this.account.beachId !== forBeach || this.simBeach !== forBeach)
+        return;
       this.savedAt = await this.account.saveBeach(
         bytes,
         this.host.location(),
@@ -186,6 +204,7 @@ export class BeachSync {
       // beach you were already playing on
       if (fresh) this.host.setSand(new Float32Array(this.host.grid.nx * this.host.grid.ny), []);
       this.epoch = 0;
+      this.simBeach = this.account.beachId;
       await this.flush();
       return 'created';
     }
@@ -194,10 +213,23 @@ export class BeachSync {
     if (saved.location) this.host.setLocation(saved.location);
     const resampledCover = cover ? resampleField(cover, nx, ny, this.host.grid.nx, this.host.grid.ny) : undefined;
     this.host.setSand(resampleField(delta, nx, ny, this.host.grid.nx, this.host.grid.ny), objects, resampledCover);
+    this.simBeach = this.account.beachId;
     this.savedAt = saved.updatedAt;
     this.dirty = false;
     this.set('saved');
     return 'restored';
+  }
+
+  /**
+   * Run switches/restores one at a time, in the order asked: a second
+   * switch waits for the first beach to finish loading, so its pre-switch
+   * flush saves that beach's own sand instead of the old beach's.
+   * A failure still lets the next one run, and the caller sees the error.
+   */
+  private runExclusive(work: () => Promise<void>): Promise<void> {
+    const run = this.switchQueue.then(work, work);
+    this.switchQueue = run.catch(() => {});
+    return run;
   }
 
   /**
@@ -206,16 +238,19 @@ export class BeachSync {
    */
   async switchTo(id: string): Promise<void> {
     if (id === this.account.beachId) return;
-    window.clearTimeout(this.timer);
-    await this.flush();
-    this.switching = true;
-    try {
-      this.account.setBeach(id);
-      this.savedAt = 0;
-      await this.restoreOrCreate(true);
-    } finally {
-      this.switching = false;
-    }
+    return this.runExclusive(async () => {
+      if (id === this.account.beachId) return;
+      window.clearTimeout(this.timer);
+      await this.flush();
+      this.switching = true;
+      try {
+        this.account.setBeach(id);
+        this.savedAt = 0;
+        await this.restoreOrCreate(true);
+      } finally {
+        this.switching = false;
+      }
+    });
   }
 
   /**
@@ -223,30 +258,33 @@ export class BeachSync {
    * what's here first, hold saves while `change` runs, then load the result.
    */
   async replaceHere(change: () => Promise<void>): Promise<void> {
-    window.clearTimeout(this.timer);
-    await this.flush();
-    this.switching = true;
-    try {
-      await change();
-      this.savedAt = 0;
-      this.dirty = false;
-      await this.restoreOrCreate();
-    } finally {
-      this.switching = false;
-    }
+    return this.runExclusive(async () => {
+      window.clearTimeout(this.timer);
+      await this.flush();
+      this.switching = true;
+      try {
+        await change();
+        this.savedAt = 0;
+        this.dirty = false;
+        await this.restoreOrCreate();
+      } finally {
+        this.switching = false;
+      }
+    });
   }
 
   private async reloadRestored(): Promise<void> {
-    if (this.switching) return;
-    this.switching = true;
-    try {
-      await this.restoreOrCreate();
-    } catch (e) {
-      reportError('sync', e, { source: 'beachSync:reloadRestored' });
-      /* offline: the next save tries again and lands here again */
-    } finally {
-      this.switching = false;
-    }
-    for (const fn of this.restoredListeners) fn();
+    return this.runExclusive(async () => {
+      this.switching = true;
+      try {
+        await this.restoreOrCreate();
+      } catch (e) {
+        reportError('sync', e, { source: 'beachSync:reloadRestored' });
+        /* offline: the next save tries again and lands here again */
+      } finally {
+        this.switching = false;
+      }
+      for (const fn of this.restoredListeners) fn();
+    });
   }
 }
