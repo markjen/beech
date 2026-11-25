@@ -1,4 +1,5 @@
 import { beachById } from '../world/locations';
+import { shoreRowOrder } from '../render/shoreSpacing';
 import { MAX_OBJECTS } from '../sim/sandCodec';
 import { renderBeachMap, sortBeachesWestToEast } from './beachMap';
 import { DEV_AUTH, googleSignInAvailable, renderGoogleButton, type Account } from '../net/account';
@@ -59,7 +60,7 @@ export class AccountPanel {
   }
 
   private renderStatus(): void {
-    const st = this.el.querySelector('.status');
+    const st = this.el.querySelector('.sync-status');
     if (!st) return;
     const s: SyncState = this.sync.state;
     st.textContent =
@@ -86,7 +87,7 @@ export class AccountPanel {
     if (u) {
       box.innerHTML = `
         <div class="who">signed in${u.name ? ` as <b></b>` : ''}</div>
-        <div class="status"></div>
+        <div class="status sync-status"></div>
         <div class="buttons">
           <button type="button" class="action" data-act="signout">sign out</button>
           <button type="button" class="action" data-act="delete">delete account</button>
@@ -117,6 +118,15 @@ export class AccountPanel {
     } else {
       box.innerHTML = `<div class="who"></div>`;
       box.querySelector('.who')!.textContent = this.signInNote || 'sign in to keep your beach';
+      // Signed out, the beach is saved nowhere — not on the server, not on
+      // this device (BeachSync only saves for a signed-in account, and the
+      // local keep is the sandbox build's). It only lives while you play,
+      // but signing in keeps the beach you're on now: the first sign-in
+      // saves it, and from then it follows you to any device.
+      const note = document.createElement('div');
+      note.className = 'status';
+      note.textContent = `this beach isn't saved yet — close the app and it's gone. sign in and it's saved, so you can keep it on any device.`;
+      box.appendChild(note);
       const buttons = document.createElement('div');
       buttons.className = 'buttons';
       const native = nativeProviders();
@@ -167,6 +177,7 @@ export class AccountPanel {
         buttons.appendChild(dev);
       }
       box.appendChild(buttons);
+      if (this.neighbors && this.onVisit) box.appendChild(this.publicShoreSection(this.neighbors, this.onVisit));
     }
     if (this.error) {
       const err = document.createElement('div');
@@ -480,10 +491,8 @@ export class AccountPanel {
     return wrap;
   }
 
-  /** Visit any beach by its code, and the beaches you've starred. */
-  private visitSection(nv: NeighborView, visit: (code: string) => Promise<void>): HTMLElement {
-    const wrap = document.createElement('div');
-    wrap.className = 'neighbors visit';
+  /** Visit any beach by its code. */
+  private visitCodeRow(visit: (code: string) => Promise<void>): HTMLElement {
     const row = document.createElement('div');
     row.className = 'slot';
     row.innerHTML = `<span>visit</span>`;
@@ -502,7 +511,59 @@ export class AccountPanel {
     go.addEventListener('click', doGo);
     input.addEventListener('keydown', (e) => e.key === 'Enter' && doGo());
     row.append(input, go);
-    wrap.appendChild(row);
+    return row;
+  }
+
+  /**
+   * Signed out: the public shore runs past your (local-only) beach — the
+   * beaches along it, nearest first, to visit in 3D, and a box to visit any
+   * beach by code. Only public beaches ever appear here: the walk comes from
+   * /api/public/shore, which only ever returns on-shore saved beaches. The
+   * list grows as you scroll the shore (the panel re-renders whenever the
+   * shore loads more).
+   */
+  private publicShoreSection(nv: NeighborView, visit: (code: string) => Promise<void>): HTMLElement {
+    const wrap = document.createElement('div');
+    wrap.className = 'neighbors visit';
+    wrap.appendChild(this.visitCodeRow(visit));
+    const { left, right } = nv.extent;
+    const h = document.createElement('div');
+    h.className = 'status';
+    if (!left && !right) {
+      h.textContent = 'beaches along the shore are loading…';
+      wrap.appendChild(h);
+      return wrap;
+    }
+    h.textContent = 'beaches along the shore';
+    wrap.appendChild(h);
+    for (const index of shoreRowOrder(left, right)) {
+      const b = nv.beachAt(index);
+      if (!b) continue;
+      const r = document.createElement('div');
+      r.className = 'slot shore-row';
+      const place = b.location ? beachById(b.location) : undefined;
+      const name = document.createElement('span');
+      name.className = 'fav-name';
+      name.textContent = `${b.name || 'a neighbor'}${place ? ` · ${place.name}` : ''}`;
+      const side = document.createElement('span');
+      side.textContent = index > 0 ? 'left' : 'right';
+      const v = document.createElement('button');
+      v.type = 'button';
+      v.className = 'action';
+      v.dataset.act = `visit-${b.code}`;
+      v.textContent = 'visit';
+      v.addEventListener('click', () => void this.guard(() => visit(b.code)));
+      r.append(side, name, v);
+      wrap.appendChild(r);
+    }
+    return wrap;
+  }
+
+  /** Visit any beach by its code, and the beaches you've starred. */
+  private visitSection(nv: NeighborView, visit: (code: string) => Promise<void>): HTMLElement {
+    const wrap = document.createElement('div');
+    wrap.className = 'neighbors visit';
+    wrap.appendChild(this.visitCodeRow(visit));
 
     const favs = sortBeachesWestToEast([...nv.favorites.values()]);
     const h = document.createElement('div');

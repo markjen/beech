@@ -210,6 +210,38 @@ function seaweedMesh(scene: Scene, o: PlacedObject): Mesh {
   return finish(scene, `seaweed${o.id}`, P, I);
 }
 
+/** A trail of footprints: flattened ovals pressed into the sand, alternating left and right along the trail. */
+function footprintsMesh(scene: Scene, o: PlacedObject): Mesh {
+  const r = rng(o.variant * 379 + 17);
+  const P: number[] = [];
+  const I: number[] = [];
+  // a size-1 trail is 1 m long; each print is a little under a fifth of that
+  const steps = 5 + (o.variant % 3); // 5–7 prints
+  const len = 0.17;
+  const wid = 0.075;
+  const stride = 0.85 / (steps - 1);
+  const seg = 10;
+  for (let k = 0; k < steps; k++) {
+    const side = k % 2 === 0 ? -1 : 1;
+    const cx = -0.425 + k * stride;
+    const cz = side * 0.055;
+    const tilt = side * 0.18 + (r() - 0.5) * 0.1;
+    const base = P.length / 3;
+    // a shallow dome: the rim sits on the sand, the middle a hair higher,
+    // so the print reads at diorama distance without z-fighting the sand
+    P.push(cx, 0.02, cz);
+    for (let s = 0; s < seg; s++) {
+      const a = (s / seg) * Math.PI * 2;
+      const ex = Math.cos(a) * (len / 2);
+      const ez = Math.sin(a) * (wid / 2);
+      P.push(cx + ex * Math.cos(tilt) - ez * Math.sin(tilt), 0.012, cz + ex * Math.sin(tilt) + ez * Math.cos(tilt));
+    }
+    for (let s = 0; s < seg; s++) I.push(base, base + 1 + s, base + 1 + ((s + 1) % seg));
+  }
+  orient(P, I, () => [0, -0.01, 0]);
+  return finish(scene, `footprints${o.id}`, P, I);
+}
+
 /** A frosted, tumbled pebble of glass. */
 function glassMesh(scene: Scene, o: PlacedObject): Mesh {
   const r = rng(o.variant * 977 + 3);
@@ -704,7 +736,7 @@ function extent(o: PlacedObject): { reach: number; height: number } {
 // The other kinds are built at size 1 and scaled, or are a fixed size.
 
 /** kinds whose every dimension is proportional to `size` */
-const LINEAR = new Set<ObjectKind>(['rock', 'shell', 'seaglass', 'trash', 'seaweed', 'conch', 'sanddollar', 'starfish', 'nautilus', 'bottle', 'beachball', 'sandals', 'bucket', 'coral', 'coconut']);
+const LINEAR = new Set<ObjectKind>(['rock', 'shell', 'seaglass', 'trash', 'seaweed', 'conch', 'sanddollar', 'starfish', 'nautilus', 'bottle', 'beachball', 'sandals', 'bucket', 'coral', 'coconut', 'footprints']);
 /**
  * Driftwood's thickness isn't proportional to its length: it's built in
  * size buckets and stretched to the exact length along the log and to
@@ -1007,6 +1039,7 @@ class PropBank {
         : o.kind === 'nautilus' ? nautilusMesh(this.scene, o)
         : o.kind === 'trash' ? trashMesh(this.scene, o)
         : o.kind === 'seaweed' ? seaweedMesh(this.scene, o)
+        : o.kind === 'footprints' ? footprintsMesh(this.scene, o)
         : glassMesh(this.scene, o);
       root.material = mat;
     }

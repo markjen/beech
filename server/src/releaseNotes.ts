@@ -16,14 +16,20 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
-    date: '2026-11-24',
-    title: 'Invites, a beach guide, visitors and an inbox; linked beaches and shiny prizes',
+    date: '2026-11-25',
+    title: 'Visitors and your inbox',
     changes: [
-      'The beach guide (the compass): a list of things to try, from digging to the claw machine. Each one you do leaves a small gift in your bag the first time.',
-      'Invite friends from settings. A friend who joins through your link gets a parasol, and you get a gift once they’ve settled in, climbing to an extra beach at three friends.',
+      'The beach guide (the compass) now keeps its how-tos in the web guide. In the game, you’ll see the checklist and your progress.',
       'Visitors can leave something: a rating in shells, a note, or a gift from their bag, from “leave something” next to the beach’s name (the “i” at the bottom).',
       'Your inbox (the envelope, top right) shows who visited and what they left, gifts, neighbor requests, stars and ratings. Say thanks, report a note or block someone from there.',
       'Someone who signs up from a link to your beach counts as your invite.',
+    ],
+  },
+  {
+    date: '2026-11-24',
+    title: 'Linked beaches, shiny prizes, and rocks that stay put',
+    changes: [
+      'Beach animals are now much easier to spot: sand crabs are bigger and visit far more often (the first one usually turns up within a minute), and dolphins are bigger and swim closer to the surf.',
       'Wild dolphins now occasionally cruise through the deeper water in front of your beach and leap across the waves.',
       'Visitors can now feed your beach’s pet (one free snack per beach each day, or anytime using their own beach snacks), and you’ll see a note when someone feeds yours.',
       'Adopt a resident sand crab for your beach — either by feeding wild crabs enough times to befriend one or straight from the shop. Pets stay on your beach, cozy up in a burrow to nap if unfed for a couple of days, and wake right up when you feed them.',
@@ -40,6 +46,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       'Visit any public beach in 3D and walk the shore without signing in (from beechshore.com or a shared link).',
       'Every beach page on beechshore.com now has Flat / 3D / From the sea buttons on its picture: the 3D views show your beach as an isometric diorama, from the land looking out to sea or from the sea looking in, with the beaches either side.',
       'The 3D views on a beach page now zoom into the beach being shared, with just a sliver of the beaches either side before they crop off.',
+      'Settings now lists the beaches along the shore to visit, and signing in there saves your beach so you can keep it on any device.',
       'The shop no longer squeezes a pack’s description into a word per line when the “Buy with credit” button is showing: the buttons sit on a row of their own under the text.',
       'Linked neighbors now blend edge to edge into one continuous beach — sand, water, and rolling wave fronts flow smoothly across the seam with no gap, and the surf blends seamlessly out into the open sea. Unlinked beaches along the shore keep their space.',
       'Prizes from the claw and vending machines now look the part on your beach: the pink shell is properly pink, the golden sand dollar is shiny gold, and the rest of the week’s set stands out from the free shells and sea glass.',
@@ -50,8 +57,11 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       'Next week the vending machine has a beach ball, a pair of sandals and a bucket to win, alongside last week’s sea glass, pebble, conch, bottle and nautilus.',
       'The claw machine has two new prizes to win: a branching piece of coral and a coconut.',
       'The shop has five new centrepieces: a palm tree, a lifeguard tower, a bonfire, a hammock and a beach towel.',
+      'The guide now lists everything you can put on your beach — free things, washed-ashore finds, claw and vending prizes, and shop items with their prices.',
       'When you’re looking at someone else’s beach, the name tags no longer float over the sand: a small “i” sits at the bottom instead, and tapping it opens the beach’s name card (with its star and “ask to be neighbors”) and a way back to your own beach.',
       'beechshore.com now has an item catalog: every item with a picture, its size and price, and how to get it. Vote for the ones you like and leave a comment — it’s linked from the guide.',
+      'Footprints are free now: press a trail of them into the sand, as many as you like.',
+      'Invite friends to Beech: anyone who joins from your invite starts with a parasol, and you earn a gift each time a friend settles in — up to ten friends.',
     ],
   },
   {

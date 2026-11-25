@@ -1516,6 +1516,8 @@ async function boot() {
         void nv.loadFavorites();
         void applyPendingVisit();
       } else if (!u) {
+        // signed out: the account's shore goes away, but the public shore
+        // still runs past your (local-only) beach — load it
         nv.clear();
         if (signedInAs) void nv.refresh();
       }

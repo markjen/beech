@@ -30,7 +30,7 @@ const open = async (url, viewport = { width: 1100, height: 700 }) => {
   const page = await ctx.newPage();
   page.setDefaultTimeout(60000); // the software-rendered page is slow here
   page.on('pageerror', (e) => errors.push(e.message));
-  await page.goto(url);
+  await page.goto(url, { waitUntil: 'commit' });
   await page.waitForSelector('body[data-ready="1"]', { timeout: 60000 });
   return page;
 };

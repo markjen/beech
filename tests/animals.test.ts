@@ -31,17 +31,17 @@ function advance(ctrl: AnimalController, env: AnimalEnv, seconds: number, step =
 }
 
 describe('AnimalController (wild sand crab)', () => {
-  it('starts absent with a quiet wait inside [waitMin, waitMax]', () => {
+  it('starts absent with a short first wait inside [firstWaitMin, firstWaitMax]', () => {
     const ctrl = new AnimalController(seeded(42));
     const s = ctrl.snapshot();
     expect(s.active).toBe(false);
     expect(s.phase).toBe('absent');
-    expect(s.nextSpawnIn).toBeGreaterThanOrEqual(ANIMALS.waitMin);
-    expect(s.nextSpawnIn).toBeLessThanOrEqual(ANIMALS.waitMax);
+    expect(s.nextSpawnIn).toBeGreaterThanOrEqual(ANIMALS.firstWaitMin);
+    expect(s.nextSpawnIn).toBeLessThanOrEqual(ANIMALS.firstWaitMax);
   });
 
   it('stays absent when the visit chance roll misses, and rolls a fresh wait', () => {
-    // Always return 0.99 (> visitChance 0.65)
+    // Always return 0.99 (> visitChance)
     const ctrl = new AnimalController(() => 0.99);
     const env = flatBeach();
     const initialWait = ctrl.snapshot().nextSpawnIn;

@@ -84,9 +84,12 @@ _(nothing right now)_
   customize a detailed sandcastle (towers, walls, moat, decorations)
   rather than adding more preset shapes. The shop sandcastle ($1.99,
   legendary) stays as is.
-- [ ] **Free item: footprints**: Rose, Discord #feedback 2026-11-23.
-  Footprints left in the sand, plus a little figure walking the
-  waterline (promoted from Ideas).
+- [ ] **Little figure walking the waterline**: from the footprints
+  line (Rose, Discord #feedback 2026-11-23). A small ambient figure
+  strolling the waterline in chair view, leaving fading footprints
+  behind it. Did not ship with the free footprints item: there is no
+  character mesh, walk animation, or fading-decal system in the app,
+  so it needs a new render subsystem rather than an item.
 - [ ] **Steam S6 (Storefront & launch)**: 2024+ Steam capsule & library
   assets, 1080p screenshots/trailer, Coming Soon page (≥14 days), and Valve
   Build Review (`public/privacy.html` already updated). See
@@ -152,6 +155,23 @@ _(nothing right now)_
 
 ## Done (recent)
 
+- [x] **Free item: footprints** (2026-11-24, PR #81): a trail of
+  footprints pressed into the sand — free and unlimited, kind
+  `footprints`, behaviour `fixed`, 0.5–2.0 m, 3 variants, darker
+  than dry sand so the trail reads as dips, with a matching trail
+  in the shore pictures. The little figure walking the waterline
+  from the same line did not ship with it (needs a character mesh,
+  walk animation and fading footprints — a new render subsystem,
+  not an item) and stays a to-do above.
+- [x] **Guide: full item catalog** (2026-11-24, PR #86): the user guide
+  (beech.games/guide#catalog) lists everything you can place, grouped
+  by how you get it — free, washed ashore, claw, vending (this week's
+  set and past sets), shop with prices, extras — with rarity and a line
+  on how each thing behaves. Groups are built at runtime from the claw
+  pool, vending sets, shop products and free items; names, rarities and
+  kinds the server can't derive live mirrored in
+  `server/src/prizeNames.ts`, kept in step by `tests/items.test.ts`.
+  Footprints (PR #81) is in the free list.
 - [x] **Beechshore item submissions** (2026-11-24): signed-in uploads with
   versioned terms, an admin review queue, and 30% non-cashable credit on
   linked item sales. [Asset spec and publishing workflow](ITEM_SUBMISSIONS.md).

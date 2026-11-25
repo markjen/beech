@@ -10,7 +10,7 @@ import { APP_BUILD } from '../platform/version';
 //   VITE_GOOGLE_CLIENT_ID=  (OAuth web client ID; public, not a secret)
 //   VITE_DEV_AUTH=1         (local development only: a "dev sign in" button)
 const env = import.meta.env;
-export const ACCOUNTS_ENABLED = env.VITE_ACCOUNTS === '1';
+export const ACCOUNTS_ENABLED = import.meta.env.VITE_ACCOUNTS === '1';
 export const GOOGLE_CLIENT_ID: string = env.VITE_GOOGLE_CLIENT_ID ?? '';
 export const DEV_AUTH = env.VITE_DEV_AUTH === '1';
 const API = String(env.VITE_API_URL ?? '').replace(/\/+$/, '');

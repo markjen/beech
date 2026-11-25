@@ -9,23 +9,34 @@
 // same commit as the feature (CLAUDE.md).
 //
 // Starter gifts are a surprise (#9): never mention them here.
+//
+// The catalog section (#catalog) lists every item by how you get it,
+// built at runtime from the claw pool, the vending sets, the shop
+// products and the free items — never a hand-kept copy. Names, rarities
+// and kinds the server can't derive from those live mirrored in
+// prizeNames.ts, kept in step by tests/items.test.ts.
 
 import { BEACH_CAP } from './app.js';
-import { CHECKPOINTS_PER_BEACH } from './checkpoints.js';
+import { CHECKPOINTS_PER_BEACH, FREE_ITEMS } from './checkpoints.js';
 import { DIG_FIND_CHANCE, DIG_FIND_DAILY_CAP, DIG_FIND_ROLL_COOLDOWN_MS } from './digFinds.js';
 import { COOLDOWN_MAX_MS, COOLDOWN_MIN_MS, GRAB_CHANCE, POOLS, type Rarity } from './pulls.js';
 import { NOTE_MAX, NOTES_PER_BEACH_DAY, NOTES_PER_HOUR, QUICK_NOTES, RATING_SHOWN_AT } from './inbox.js';
 import { CLAIM_WINDOW_MS, GUIDE_BONUS, GUIDE_STEPS, REWARD_CAP, SETTLE_STEPS, WELCOME_GIFT, ladder } from './referrals.js';
 import { RELEASE_NOTES } from './releaseNotes.js';
-import { PRIZE_NAMES } from './prizeNames.js';
+import { behaviourOfKind, displayName, itemGlows, itemKind, itemRarity, type ItemBehaviour } from './prizeNames.js';
+import { PRODUCTS } from './products.js';
 import { escapeHtml as esc } from './shareMeta.js';
-import { currentSet, nextUtcMidnight, type VendingSet } from './vending.js';
+import { VENDING_SETS, currentSet, nextUtcMidnight, type VendingSet } from './vending.js';
 
 const RARITY: Record<Rarity, string> = { common: 'Common', uncommon: 'Uncommon', rare: 'Rare', legendary: 'Legendary', unique: 'One of a kind' };
 const ORDER: Rarity[] = ['common', 'uncommon', 'rare', 'legendary', 'unique'];
 
 /** "a parasol", "an extra beach" */
-const aName = (id: string) => (id === 'beach' ? 'an extra beach' : `${/^[aeiou]/i.test(PRIZE_NAMES[id] ?? id) ? 'an' : 'a'} ${esc((PRIZE_NAMES[id] ?? id).toLowerCase())}`);
+const aName = (id: string) => {
+  if (id === 'beach') return 'an extra beach';
+  const name = displayName(id).toLowerCase();
+  return `${/^[aeiou]/i.test(name) ? 'an' : 'a'} ${esc(name)}`;
+};
 const ordinal = (n: number) => `${n}${n % 10 === 1 && n % 100 !== 11 ? 'st' : n % 10 === 2 && n % 100 !== 12 ? 'nd' : n % 10 === 3 && n % 100 !== 13 ? 'rd' : 'th'}`;
 
 /** the invite ladder as list items, folding runs of the same reward */
@@ -42,7 +53,9 @@ function ladderItems(): string {
 }
 
 const pct = (v: number) => `${Math.round(v * 1000) / 10}%`;
-const names = (ids: string[]) => ids.map((id) => esc(PRIZE_NAMES[id] ?? id)).join(', ');
+const names = (ids: string[]) => ids.map((id) => esc(displayName(id))).join(', ');
+const usd = (n: number) => `$${n.toFixed(2)}`;
+const sentence = (s: string) => (s.endsWith('.') ? s : `${s}.`);
 const minutes = (ms: number) => {
   const m = Math.round(ms / 60000);
   return m >= 60 && m % 60 === 0 ? `${m / 60} hour${m === 60 ? '' : 's'}` : `${m} minutes`;
@@ -56,6 +69,85 @@ function oddsTable(odds: Partial<Record<Rarity, number>>, items: Partial<Record<
     )
     .join('');
   return `<table><thead><tr><th>Rarity</th><th>Chance</th>${grab ? '<th>Claw holds on</th>' : ''}<th>What</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+/** The free things the sea brings in on its own (washIn in src/sim/objects.ts): the loose light things, a few at a time. Rocks and flags never wash in, and neither do things you win or buy. Kept in step by tests/items.test.ts. */
+export const WASH_ASHORE_ITEMS: ReadonlySet<string> = new Set(['driftwood', 'shell', 'seaglass', 'trash', 'seaweed', 'cowrie']);
+
+const BEHAVIOUR_WORDS: Record<ItemBehaviour, string> = {
+  rock: 'Shapes how water flows and where sand settles.',
+  float: 'Floats on the water, and strands when it drains.',
+  tumble: 'Moves in fast water, then settles on the sand.',
+  fixed: 'Stays where you put it.',
+};
+
+const byName = (a: string, b: string) => displayName(a).localeCompare(displayName(b));
+const byTierThenName = (a: string, b: string) => ORDER.indexOf(itemRarity(a)) - ORDER.indexOf(itemRarity(b)) || byName(a, b);
+
+/** One catalog row: name, rarity, and a line on how it behaves — plus the shop price and the shop's own line where there is one. */
+function catalogRow(id: string): string {
+  const behaviour = behaviourOfKind(itemKind(id));
+  const single = PRODUCTS.find((p) => p.grants.length === 1 && p.grants[0].item === id);
+  const price = single ? ` · ${usd(single.usd)}` : '';
+  // The glow line is for placed things: extras with no behaviour (beach
+  // snacks, the pet crab) aren't placed on the sand, and pets don't glow.
+  const words = [single?.blurb ?? '', behaviour ? BEHAVIOUR_WORDS[behaviour] : '', behaviour && itemGlows(id) ? 'Glows and sparkles on the sand.' : '']
+    .filter(Boolean)
+    .map(sentence)
+    .join(' ');
+  return `<li><b>${esc(displayName(id))}</b> — ${RARITY[itemRarity(id)]}${price}${words ? `. ${words}` : ''}</li>`;
+}
+
+/** The full catalog, grouped by how you get each thing. Every group is built at runtime from the pools, sets, products and free items, so a new item joins its group on its own. */
+function catalogSection(now: number): string {
+  const free = [...FREE_ITEMS].sort(byName);
+  const wash = [...WASH_ASHORE_ITEMS].sort(byName);
+  const clawIds = [...new Set(Object.values(POOLS).flatMap((p) => Object.values(p.items).flat()))].sort(byTierThenName);
+  const sets = [...VENDING_SETS].sort((a, b) => b.week - a.week);
+  const current = currentSet(now);
+  const shopIds = [...new Set(PRODUCTS.flatMap((p) => p.grants.map((g) => g.item)))].filter((id) => id !== 'beach').sort(byName);
+  const founder = PRODUCTS.find((p) => p.featured);
+  const beachProducts = PRODUCTS.filter((p) => p.grants.length > 0 && p.grants.every((g) => g.item === 'beach')).sort(
+    (a, b) => a.grants[0].quantity - b.grants[0].quantity,
+  );
+  const beachPrices = beachProducts
+    .map((p) => (p.grants[0].quantity === 1 ? usd(p.usd) : `${p.grants[0].quantity} for ${usd(p.usd)}`))
+    .join(', or ');
+  const beachBlurb = beachProducts[0]?.blurb ?? '';
+  return `
+<h2 id="catalog">Everything you can place</h2>
+<p>Everything you can put on your beach, by how you get it. Free things never run out; things you win or buy show how many you have left to place.</p>
+
+<h3>Free, from your bag</h3>
+<p>Yours from the start. Pick one, choose its size, and set it down.</p>
+<ul>${free.map(catalogRow).join('')}</ul>
+
+<h3>Washed ashore</h3>
+<p>The sea brings these in on its own, a few at a time. Pick one up and put it down and it's yours; your bag lists what you've kept under Found.</p>
+<ul>${wash.map(catalogRow).join('')}</ul>
+
+<h3>From the vending machine</h3>
+<p>One free ball a day, from the week's set — the odds are in the vending machine section above. Past sets' items stay yours, and stay placeable, after the week ends.</p>
+${sets
+  .map(
+    (set) =>
+      `<h3>Week ${set.week}: ${esc(set.name)}${set === current ? ' (this week)' : ''}</h3><ul>${[...new Set(Object.values(set.items).flat())].sort(byTierThenName).map(catalogRow).join('')}</ul>`,
+  )
+  .join('')}
+
+<h3>From the claw machine</h3>
+<p>Won from the free claw machine — the odds are in the claw machine section above.</p>
+<ul>${clawIds.map(catalogRow).join('')}</ul>
+
+<h3>From the shop</h3>
+<p>Bought in the shop — open it from the bag. Prices in US dollars; what you buy is yours on every device you sign in on.</p>
+<ul>${shopIds.map(catalogRow).join('')}</ul>
+${founder ? `<p>The <b>${esc(founder.name)}</b> (${usd(founder.usd)}) — ${esc(sentence(founder.blurb))}</p>` : ''}
+
+<h3>Extras</h3>
+<p>Things you own that aren't placed on the sand.</p>
+<ul><li><b>${esc(displayName('beach'))}</b> — ${RARITY[itemRarity('beach')]}${beachPrices ? ` · ${beachPrices}` : ''}${beachBlurb ? `. ${esc(sentence(beachBlurb))}` : ''}</li></ul>
+`;
 }
 
 function page(title: string, body: string, nav: string): string {
@@ -119,6 +211,7 @@ const NAV_SECTIONS: [string, string][] = [
   ['animals', 'Animals'],
   ['claw', 'Claw machine'],
   ['vending', 'Vending machine'],
+  ['catalog', 'Everything'],
   ['beaches', 'Your beaches'],
   ['shore', 'Neighbors and the shore'],
   ['leaderboard', 'Leaderboard'],
@@ -128,7 +221,7 @@ const NAV_SECTIONS: [string, string][] = [
   ['checkpoints', 'Checkpoints'],
   ['files', 'Beach files'],
   ['shop', 'Shop'],
-  ['catalog', 'Item catalog'],
+  ['item-catalog', 'Item catalog'],
   ['settings', 'Settings'],
   ['limits', 'Limits'],
 ];
@@ -142,7 +235,7 @@ export function guideHtml(now: number): string {
   const body = `
 <h2 id="start">Getting started</h2>
 <p>beech is a stretch of sand by the sea. Dig, build, and set things down, and watch the waves rework it. Tap or click the title screen to begin; sound starts then too.</p>
-<p>Sign in (settings, at the top) to keep your beach, have neighbors, and play the machines. Without signing in, your beach lives on this device only, though you can still pan along the shore beside it to see other people’s public beaches.</p>
+<p>Sign in (settings, at the top) to keep your beach, have neighbors, and play the machines. Without signing in, your beach isn’t saved — it only lives while you play, and closing the app loses it. Sign in and it’s saved, so you can keep it on any device. You can still pan along the shore beside it to see other people’s public beaches.</p>
 <p>The sea follows a real beach: its tide, sun and moon, at that place’s time of day, with waves growing stronger toward high tide and gentler toward low tide. Pick the beach in settings, or “near me” for the closest one.</p>
 
 <h2 id="controls">Controls</h2>
@@ -172,15 +265,15 @@ export function guideHtml(now: number): string {
 <p>Every stroke can be undone. Waves wear down what you build, and the sea fills holes near the water.</p>
 
 <h2 id="bag">Your bag</h2>
-<p>The bag (top of the tool column) holds things to set on the sand. Rocks, driftwood, shells, sea glass, flags, trash, seaweed and cowries are free and never run out. Pick one, choose its size with the slider, then tap the sand to set it down. Use the vacuum or bulldozer to pick things back up; they go back in your bag.</p>
-<p>Rocks shape how water flows and where sand settles. Driftwood floats when the water is deep enough and strands when it drains. Shells, sea glass, trash and seaweed move in fast water. The sea washes things in now and then, including the occasional cowrie, and only a few strays stay at once. Hold one to pick it up, then put it down to keep it. Your bag lists what you've kept under Found.</p>
+<p>The bag (top of the tool column) holds things to set on the sand. Rocks, driftwood, shells, sea glass, flags, trash, seaweed, cowries and footprints are free and never run out. Pick one, choose its size with the slider, then tap the sand to set it down. Use the vacuum or bulldozer to pick things back up; they go back in your bag.</p>
+<p>Rocks shape how water flows and where sand settles. Driftwood floats when the water is deep enough and strands when it drains. Shells, sea glass, trash and seaweed move in fast water. Footprints stay where you put them. The sea washes things in now and then, including the occasional cowrie, and only a few strays stay at once. Hold one to pick it up, then put it down to keep it. Your bag lists what you've kept under Found.</p>
 <p>Things you won or bought show how many you have left to place. You can gift an owned thing to the owner of another beach from the bar that shows while it’s in hand.</p>
 
 <h2 id="finds">Digging finds</h2>
 <p>A good dig (dragging at least 2 m, or holding in one place for a second) has a ${pct(DIG_FIND_CHANCE)} chance to turn up something buried, drawn from this week’s <a href="#vending">vending set</a> at the vending odds. At most one try every ${DIG_FIND_ROLL_COOLDOWN_MS / 1000} seconds, and at most ${DIG_FIND_DAILY_CAP} finds a day (the day turns over at midnight UTC). Signed in only.</p>
 
 <h2 id="animals">Animals</h2>
-<p>Now and then a wild sand crab pops out of the sand, scurries sideways across the beach, dodges incoming waves and your digging brush, and burrows back down after a minute or two — or a dolphin cruises through the deeper water offshore and leaps across the surf. Most of the time the beach is quiet with no animal around.</p>
+<p>Now and then a wild sand crab pops out of the sand, scurries sideways across the beach, dodges incoming waves and your digging brush, and burrows back down after a couple of minutes — or a dolphin cruises through the deeper water offshore and leaps across the surf. An animal is around roughly half the time, and the first one usually shows up within a minute of opening the game.</p>
 <p><b>Beach snacks:</b> toss a snack from your bag onto the sand to draw a visiting crab over and keep it around longer, or leave one out as bait so a crab visits sooner. You can buy snack packs in the shop, and digging up buried finds occasionally turns up a free snack too.</p>
 <p><b>Resident pets:</b> feed wild crabs on a beach enough times (10 feeds) and one will offer to move in permanently — or adopt a Pet sand crab straight from the shop. Pets stay on your beach, never leave, and tuck into a cozy sand burrow to nap if unfed for a couple of days until you feed them again.</p>
 <p><b>Visitor feeding:</b> when you visit another beach with a pet, you can give it one free snack a day (UTC) from the bar at the top, or feed it again anytime with a beach snack from your own bag.</p>
@@ -200,6 +293,7 @@ ${
     : '<p>No set is live right now.</p>'
 }
 <p>Past sets’ items stay yours, and stay placeable, after the week ends.</p>
+${catalogSection(now)}
 
 <h2 id="beaches">Your beaches</h2>
 <p>You start with one beach. Each extra beach you own (from the shop or the claw machine) lets you make one more, up to ${BEACH_CAP}. Settings → “your beaches” lets you open one on this device, rename it, make it home, or remove it.</p>
@@ -207,7 +301,7 @@ ${
 
 <h2 id="shore">Neighbors and the shore</h2>
 <p>Every beach has a code. To have a neighbor, put their code in “left” or “right” in settings and ask; it links when they accept. A new code stops your old one working; neighbors you already have keep you.</p>
-<p>Past your neighbors the shore carries on into everyone else’s beaches: pan along it, or walk it in the chair view. You can look at other beaches but only dig your own. Tap ☆ on a name tag or the bar at the top to keep a beach in your favorites; “⌂ my beach” takes you home. Visit any beach by its code from settings, or share a link to yours — opening it on beechshore.com lets you grab a Postcard, Square, Story, or Clean preview snapshot to post on social media.</p>
+<p>Past your neighbors the shore carries on into everyone else’s beaches: pan along it, or walk it in the chair view. Signed out, the public shore still runs past your beach: the beaches either side show, and you can scroll the whole public shore. You can look at other beaches but only dig your own. Tap ☆ on a name tag or the bar at the top to keep a beach in your favorites; “⌂ my beach” takes you home. Visit any beach by its code from settings, or share a link to yours — opening it on beechshore.com lets you grab a Postcard, Square, Story, or Clean preview snapshot to post on social media.</p>
 
 <h2 id="leaderboard">Leaderboard</h2>
 <p>The trophy button shows the most-starred beaches. <b>All time</b> counts every star a beach has now. <b>Rising</b> counts stars from the past week, and the newest count most (a star’s weight halves every 2 days). Visit or star a beach from its row. Signed in only.</p>
@@ -228,7 +322,7 @@ ${
 <h2 id="beach-guide">Beach guide</h2>
 <p>The compass at the top of the tool column is the beach guide: a list of things to try, one at a time, with how many you’ve done. The card above the round buttons shows the next one; tap it to open the list, or × to hide it (the list stays under the compass). Signed in, each step leaves a small gift in your bag the first time.</p>
 <table><thead><tr><th>Step</th><th>How</th><th>Gift</th></tr></thead><tbody>
-${GUIDE_STEPS.map((st) => `<tr><td>${esc(st.title)}</td><td>${esc(st.how)}</td><td>${st.gift ? esc(PRIZE_NAMES[st.gift] ?? st.gift) : st.id === 'claw' ? 'the claw’s own prize' : st.id === 'invite' ? 'see <a href="#invites">invites</a>' : ''}</td></tr>`).join('')}
+${GUIDE_STEPS.map((st) => `<tr><td>${esc(st.title)}</td><td>${esc(st.how)}</td><td>${st.gift ? esc(displayName(st.gift)) : st.id === 'claw' ? 'the claw’s own prize' : st.id === 'invite' ? 'see <a href="#invites">invites</a>' : ''}</td></tr>`).join('')}
 </tbody></table>
 <p>Do the first ${GUIDE_STEPS.length - 1} and you also get ${aName(GUIDE_BONUS)}. Without signing in, the steps that need an account (the machines, visiting, stars and invites) wait, and steps you do before signing in still count, with their gifts, once you sign in.</p>
 
@@ -251,7 +345,7 @@ ${GUIDE_STEPS.map((st) => `<tr><td>${esc(st.title)}</td><td>${esc(st.how)}</td><
 <p>Make an item for Beech and <a href="https://beechshore.com/submit">submit it on beechshore</a>. You can propose a price and how often it should appear. If your item is approved and sold, you earn 30% in Beech account credit to spend in the web shop.</p>
 <p>Rare and legendary things glow and sparkle on the sand; lamps and flames glow at night.</p>
 
-<h2 id="catalog">Item catalog</h2>
+<h2 id="item-catalog">Item catalog</h2>
 <p>Every item in the game — free things, claw and vending prizes, and shop pieces — is listed on beechshore, with a picture, its size and price, and how to get it: <a href="https://beechshore.com/items">beechshore.com/items</a>. Sign in there to vote for the items you like and leave a comment on any of them.</p>
 
 <h2 id="settings">Settings</h2>

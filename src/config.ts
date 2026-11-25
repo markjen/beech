@@ -192,25 +192,30 @@ export const UNDO_DEPTH = 32;
 
 /** Rare wild beach visitors (docs/ANIMALS.md). */
 export const ANIMALS = {
-  /** quiet wait between wild visit rolls (seconds): empty most of the time */
-  waitMin: 240,
-  waitMax: 720,
+  /** quiet wait between wild visit rolls (seconds): an animal is around about half the time */
+  waitMin: 60,
+  waitMax: 180,
+  /** shorter first wait after boot, so a session usually meets an animal early */
+  firstWaitMin: 20,
+  firstWaitMax: 60,
   /** probability a visit actually starts when the quiet wait expires */
-  visitChance: 0.65,
+  visitChance: 0.85,
   /** how long a wild sand crab stays before burrowing away (seconds) */
-  visitMin: 45,
-  visitMax: 120,
-  /** crab carapace width (metres — slightly larger than life so it reads in diorama view) */
-  crabSize: 0.32,
+  visitMin: 90,
+  visitMax: 180,
+  /** crab carapace width (metres — well larger than life so it reads in diorama view and on phones) */
+  crabSize: 0.8,
   /** crab movement speeds (m/s): normal scurry and startled flee */
-  crabSpeed: 0.95,
-  crabFleeSpeed: 1.9,
+  crabSpeed: 1.2,
+  crabFleeSpeed: 2.4,
   /** water depth (m) that makes the crab dart upslope toward drier sand */
   crabWetDepth: 0.035,
   /** distance (m) at which an active digging/building brush startles the crab */
   crabFleeRadius: 2.5,
   /** number of brush startles before the crab burrows away early */
   crabMaxStartles: 3,
+  /** wild crabs spawn within this share of the half-width around the beach centre */
+  spawnSpreadX: 0.45,
   /** margin (m) kept inside the 32x32 slab edges */
   edgeMargin: 1.5,
   /** how long an uneaten dropped snack lasts before expiring (seconds) */
@@ -228,7 +233,7 @@ export const ANIMALS = {
   /** share of unbaited wild visits that are an offshore dolphin instead of a sand crab */
   dolphinChance: 0.35,
   /** dolphin length scale (metres) */
-  dolphinSize: 1.55,
+  dolphinSize: 2.2,
   /** dolphin cruising speed alongshore (m/s) */
   dolphinSpeed: 2.4,
   /** minimum water depth (m) where a dolphin will swim */

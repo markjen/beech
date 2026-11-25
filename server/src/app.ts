@@ -986,7 +986,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
        SELECT $4, 'star', $1, $2, $5, $3 FROM s
         WHERE NOT EXISTS (SELECT 1 FROM blocks WHERE blocker_id = $4 AND blocked_id = $1)
        ON CONFLICT (user_id, kind, beach_id, day) WHERE day IS NOT NULL
-       DO UPDATE SET count = inbox.count + 1, actor_id = EXCLUDED.actor_id, created_at = EXCLUDED.created_at, read_at = NULL`,
+       DO UPDATE SET id = EXCLUDED.id, count = inbox.count + 1, actor_id = EXCLUDED.actor_id, created_at = EXCLUDED.created_at, read_at = NULL`,
       [c.get('user').id, who.id, at, who.owner_id, utcDay(at)],
     );
     return c.json({ favorite: shoreJson(who) });
@@ -2490,8 +2490,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
    * goes, so a race on the last one leaves the second gift with nothing to
    * move. Returns the inbox row's id, or null when there was nothing to give.
    */
-  const giveOne = async (me: string, item: string, to: string, beach: string, now: number): Promise<string | null> => {
-    const rows = await db.query<{ inbox: string | null }>(
+  const giveOne = async (tx: Db, me: string, item: string, to: string, beach: string, now: number): Promise<string | null> => {
+    const rows = await tx.query<{ inbox: string | null }>(
       `WITH giver AS (
          UPDATE inventory SET quantity = quantity - 1
           WHERE id = (
@@ -2526,8 +2526,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     );
     return rows[0]?.inbox ?? null;
   };
-  const giftsThisHour = async (me: string, now: number) =>
-    Number((await db.query<{ n: string }>('SELECT COUNT(*) AS n FROM gifts WHERE from_id = $1 AND created_at > $2', [me, now - 3600000]))[0].n);
+  const giftsThisHour = async (tx: Db, me: string, now: number) =>
+    Number((await tx.query<{ n: string }>('SELECT COUNT(*) AS n FROM gifts WHERE from_id = $1 AND created_at > $2', [me, now - 3600000]))[0].n);
 
   app.post('/gifts', requireUser, async (c) => {
     const { code, item } = await body<{ code?: string; item?: string }>(c);
@@ -2538,9 +2538,14 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     if (!them) fail(404, 'no beach has that code');
     if (them!.owner_id === me) fail(400, "that's your own code");
     if (await blocked(them!.owner_id, me)) fail(403, 'that didn’t go through');
-    const now = Date.now();
-    if ((await giftsThisHour(me, now)) >= GIFT_PER_HOUR) fail(429, 'slow down: 20 gifts an hour is the limit');
-    if (!(await giveOne(me, item!, them!.owner_id, them!.id, now))) fail(409, "you don't have one of those to give");
+    await db.withTransaction(async (tx) => {
+      // Share the sender lock with visitor gifts so the hourly limit holds
+      // when both actions happen at once.
+      await tx.query('SELECT 1 FROM users WHERE id = $1 FOR NO KEY UPDATE', [me]);
+      const now = clock();
+      if ((await giftsThisHour(tx, me, now)) >= GIFT_PER_HOUR) fail(429, 'slow down: 20 gifts an hour is the limit');
+      if (!(await giveOne(tx, me, item!, them!.owner_id, them!.id, now))) fail(409, "you don't have one of those to give");
+    });
     return c.json({ item, to: { name: them!.name, code: them!.code } });
   });
 
@@ -2816,63 +2821,70 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       }
     }
     if (shells === null && note === null && item === null) fail(400, 'leave a rating, a note or a gift');
-    // limits first, so nothing is half-done
-    if (note !== null) {
-      const n = (
-        await db.query<{ hour: string; here: string }>(
-          `SELECT COUNT(*) FILTER (WHERE created_at > $2) AS hour,
-                  COUNT(*) FILTER (WHERE created_at > $3 AND to_id = $4) AS here
-             FROM notes WHERE from_id = $1 AND created_at > LEAST($2, $3)`,
-          [me, now - 3600000, now - 86400000, them!.owner_id],
-        )
-      )[0];
-      if (Number(n.hour) >= NOTES_PER_HOUR) fail(429, `${NOTES_PER_HOUR} notes an hour at most`);
-      if (Number(n.here) >= NOTES_PER_BEACH_DAY) fail(429, `${NOTES_PER_BEACH_DAY} notes a day to one beach at most`);
-    }
-    if (shells !== null) {
-      const prev = (await db.query<{ shells: number; updated_at: string }>('SELECT shells, updated_at FROM ratings WHERE rater_id = $1 AND beach_id = $2', [me, them!.id]))[0];
-      if (prev && Number(prev.shells) !== shells && now - Number(prev.updated_at) < RATING_EVERY_MS) fail(429, 'one rating change a day');
-    }
-    if (item !== null && (await giftsThisHour(me, now)) >= GIFT_PER_HOUR) fail(429, 'slow down: 20 gifts an hour is the limit');
+    await db.withTransaction(async (tx) => {
+      // Serialize a sender’s limits and commit the gift, note, rating and inbox together.
+      await tx.query('SELECT 1 FROM users WHERE id = $1 FOR NO KEY UPDATE', [me]);
+      if (note !== null) {
+        const n = (
+          await tx.query<{ hour: string; here: string }>(
+            `SELECT COUNT(*) FILTER (WHERE created_at > $2) AS hour,
+                    COUNT(*) FILTER (WHERE created_at > $3 AND beach_id = $4) AS here
+               FROM notes WHERE from_id = $1 AND created_at > LEAST($2, $3)`,
+            [me, now - 3600000, now - 86400000, them!.id],
+          )
+        )[0];
+        if (Number(n.hour) >= NOTES_PER_HOUR) fail(429, `${NOTES_PER_HOUR} notes an hour at most`);
+        if (Number(n.here) >= NOTES_PER_BEACH_DAY) fail(429, `${NOTES_PER_BEACH_DAY} notes a day to one beach at most`);
+      }
+      let changedRating = shells;
+      if (shells !== null) {
+        const prev = (await tx.query<{ shells: number; updated_at: string }>('SELECT shells, updated_at FROM ratings WHERE rater_id = $1 AND beach_id = $2', [me, them!.id]))[0];
+        if (prev) {
+          if (Number(prev.shells) === shells) changedRating = null;
+          else if (now - Number(prev.updated_at) < RATING_EVERY_MS) fail(429, 'one rating change a day');
+        }
+      }
+      if (item !== null && (await giftsThisHour(tx, me, now)) >= GIFT_PER_HOUR) fail(429, 'slow down: 20 gifts an hour is the limit');
 
-    // the gift first: it moves (with its own inbox row) or nothing happens at all
-    let giftRow: string | null = null;
-    if (item !== null) {
-      giftRow = await giveOne(me, item, them!.owner_id, them!.id, now);
-      if (!giftRow) fail(409, "you don't have one of those to give");
-    }
-    // the note, the rating and the inbox row together. With a gift its row
-    // becomes the visit; a rating alone folds into the day's "ratings" row.
-    const alone = note === null && giftRow === null;
-    await db.query(
-      `WITH n AS (
-         INSERT INTO notes (from_id, to_id, beach_id, body, quick, created_at)
-         SELECT $1, $2, $3, $4, $5, $7 WHERE $4::text IS NOT NULL
-         RETURNING id
-       ), r AS (
-         INSERT INTO ratings (rater_id, beach_id, shells, updated_at)
-         SELECT $1, $3, $6, $7 WHERE $6::int IS NOT NULL
-         ON CONFLICT (rater_id, beach_id) DO UPDATE SET shells = EXCLUDED.shells, updated_at = EXCLUDED.updated_at
-         RETURNING 1
-       ), upd AS (
-         UPDATE inbox SET kind = 'visit', shells = $6, note_id = (SELECT id FROM n)
-          WHERE id = $8::bigint
-         RETURNING 1
-       ), visit AS (
-         INSERT INTO inbox (user_id, kind, actor_id, beach_id, shells, note_id, created_at)
-         SELECT $2, 'visit', $1, $3, $6, (SELECT id FROM n), $7
-          WHERE $8::bigint IS NULL AND NOT $9::boolean
-         RETURNING 1
-       ), rated AS (
-         INSERT INTO inbox (user_id, kind, actor_id, beach_id, day, created_at)
-         SELECT $2, 'rating', $1, $3, $10, $7 WHERE $9::boolean AND $6::int IS NOT NULL
-         ON CONFLICT (user_id, kind, beach_id, day) WHERE day IS NOT NULL
-         DO UPDATE SET count = inbox.count + 1, actor_id = EXCLUDED.actor_id, created_at = EXCLUDED.created_at, read_at = NULL
-         RETURNING 1
-       )
-       SELECT (SELECT COUNT(*) FROM n) AS noted`,
-      [me, them!.owner_id, them!.id, note, quick, shells, now, giftRow, alone, utcDay(now)],
-    );
+      // the gift first: it moves (with its own inbox row) or nothing happens at all
+      let giftRow: string | null = null;
+      if (item !== null) {
+        giftRow = await giveOne(tx, me, item, them!.owner_id, them!.id, now);
+        if (!giftRow) fail(409, "you don't have one of those to give");
+      }
+      // the note, the rating and the inbox row together. With a gift its row
+      // becomes the visit; a rating alone folds into the day's "ratings" row.
+      const alone = note === null && giftRow === null;
+      await tx.query(
+        `WITH n AS (
+           INSERT INTO notes (from_id, to_id, beach_id, body, quick, created_at)
+           SELECT $1, $2, $3, $4, $5, $7 WHERE $4::text IS NOT NULL
+           RETURNING id
+         ), r AS (
+           INSERT INTO ratings (rater_id, beach_id, shells, updated_at)
+           SELECT $1, $3, $11, $7 WHERE $11::int IS NOT NULL
+           ON CONFLICT (rater_id, beach_id) DO UPDATE SET shells = EXCLUDED.shells, updated_at = EXCLUDED.updated_at
+           RETURNING 1
+         ), upd AS (
+           UPDATE inbox SET kind = 'visit', shells = $6, note_id = (SELECT id FROM n)
+            WHERE id = $8::bigint
+           RETURNING 1
+         ), visit AS (
+           INSERT INTO inbox (user_id, kind, actor_id, beach_id, shells, note_id, created_at)
+           SELECT $2, 'visit', $1, $3, $6, (SELECT id FROM n), $7
+            WHERE $8::bigint IS NULL AND NOT $9::boolean
+           RETURNING 1
+         ), rated AS (
+           INSERT INTO inbox (user_id, kind, actor_id, beach_id, day, created_at)
+           SELECT $2, 'rating', $1, $3, $10, $7 WHERE $9::boolean AND $11::int IS NOT NULL
+           ON CONFLICT (user_id, kind, beach_id, day) WHERE day IS NOT NULL
+           DO UPDATE SET id = EXCLUDED.id, count = inbox.count + 1, actor_id = EXCLUDED.actor_id, created_at = EXCLUDED.created_at, read_at = NULL
+           RETURNING 1
+         )
+         SELECT (SELECT COUNT(*) FROM n) AS noted`,
+        [me, them!.owner_id, them!.id, note, quick, shells, now, giftRow, alone, utcDay(now), changedRating],
+      );
+    });
     return c.json({ rated: shells !== null, noted: note !== null, gifted: item, rating: await ratingOf(them!.id) });
   });
 
@@ -2890,12 +2902,12 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const before = Number(c.req.query('before') ?? 0);
     const rows = await db.query<{
       id: string; kind: string; actor_id: string | null; actor_name: string | null; actor_code: string | null;
-      beach_code: string | null; beach_name: string | null; item_id: string | null; shells: number | null;
+      beach_id: string | null; beach_code: string | null; beach_name: string | null; item_id: string | null; shells: number | null;
       note_id: string | null; note: string | null; note_hidden: string | null; count: number; payload: Record<string, unknown>;
       created_at: string; read_at: string | null;
     }>(
       `SELECT i.id, i.kind, i.actor_id, u.name AS actor_name, h.code AS actor_code,
-              b.code AS beach_code, b.name AS beach_name, i.item_id, i.shells,
+              i.beach_id, b.code AS beach_code, b.name AS beach_name, i.item_id, i.shells,
               i.note_id, n.body AS note, n.hidden_at AS note_hidden, i.count, i.payload, i.created_at, i.read_at
          FROM inbox i
          LEFT JOIN users u ON u.id = i.actor_id
@@ -2905,15 +2917,15 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
         WHERE i.user_id = $1 AND ($2::bigint = 0 OR i.id < $2::bigint)
           AND NOT EXISTS (SELECT 1 FROM blocks k WHERE k.blocker_id = $1 AND k.blocked_id = i.actor_id)
         ORDER BY i.id DESC LIMIT 30`,
-      [me, Number.isFinite(before) ? before : 0],
+      [me, Number.isSafeInteger(before) && before > 0 ? before : 0],
     );
     const ratings = new Map<string, { count: number; average: number | null }>();
     const entries = [];
     for (const r of rows) {
       let rating: { count: number; average: number | null } | undefined;
-      if (r.kind === 'rating' && r.beach_code) {
-        rating = ratings.get(r.beach_code) ?? (await ratingOf((await nodeByCode(r.beach_code))!.id));
-        ratings.set(r.beach_code, rating);
+      if (r.kind === 'rating' && r.beach_id) {
+        rating = ratings.get(r.beach_id) ?? (await ratingOf(r.beach_id));
+        ratings.set(r.beach_id, rating);
       }
       entries.push({
         id: Number(r.id),

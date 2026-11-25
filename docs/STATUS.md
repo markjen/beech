@@ -749,7 +749,7 @@ here: it needs the service's URL on the web OAuth client.
   beechshore link; the leaderboard links to the site; a `?visit=` link
   opened signed out opens public beaches directly in read-only 3D (via
   `/api/public/shore`, `/api/public/shore/more` and `/api/public/beaches/:code`,
-  strictly `isPublic`), while off-shore beaches still ask for sign-in.
+  strictly `isPublic`), while off-shore beaches still ask for sign-in. Signed out at home, the public shore runs past your (local-only) beach too: public sections appear either side of your empty beach, and scrolling either way walks the whole public world; settings lists the beaches along the shore to visit, and signing in there saves your beach.
 - Scale & protection (2026-11-24): migration 17 adds partial indexes
   (`beach_public_updated`, `beach_public_location`) for the lists and counts,
   and uncached PNG draws on `/img/*` are rate-limited (60/min per IP, 429 with
@@ -819,6 +819,7 @@ here: it needs the service's URL on the web OAuth client.
   rules (special items look different — and better — than the free
   items sharing their kind; free shells never pink, free sand dollars
   never gold).
+- **The guide lists the whole catalog** (2026-11-24): beech.games/guide#catalog groups every item by how you get it — free, washed ashore, claw, vending (this week's set and past sets), shop with prices, extras — with rarity and a line on how each thing behaves. The listing is built at runtime from the claw pool, the vending sets, the shop products and the free items; names, rarities and kinds the server can't derive from those are mirrored in `server/src/prizeNames.ts` and kept in step by `tests/items.test.ts`. A new free item joins its group on its own: footprints (PR #81, still open) will appear in the free list once that PR merges, with no change needed here.
 - **Sample renders** (`scripts/render-items.mjs`, committed under
   `docs/items/renders/`): headless Chromium, day light, seed 1. The
   script bundles the app's own catalog, places every item in rows on
@@ -881,6 +882,17 @@ here: it needs the service's URL on the web OAuth client.
   next to the player's empty beach for inspiration and supports infinite scroll
   and returning home from a visit.
 
+- **Free footprints** (2026-11-24): a trail of prints pressed into
+  the sand (`footprints`, common, free and unlimited, 0.5–2.0 m,
+  behaviour `fixed`), darker than the dry sand around them so they
+  read as dips, with a matching trail in the shore pictures. The
+  little figure walking the waterline from the same backlog line did
+  not ship with it — there is no character mesh, walk animation, or
+  fading-decal system in the app, so it would need a new render
+  subsystem rather than an item, and stays a backlog to-do. Renders
+  are in `docs/items/renders/` (footprints, full beach, contact
+  sheet).
+
 ## Verification
 
 - `npm test`: unit tests for the sim (water/sand conservation, run-up range,
@@ -903,6 +915,14 @@ catalog release process. The public specification includes an example
 prompt, JSON Schema and sample asset.
 
 ## Animals — A1 wild sand crab (2026-11-24)
+
+- **Tuning change (2026-11-24, differs from ANIMALS.md):** animals were too
+  small and rare to notice, so the crab is now 0.8 m across (was 0.32), the
+  dolphin 2.2 m (was 1.55) and swims a lane just past the surf. Crabs spawn in
+  the middle 45% of the beach width so narrow phone views show them. Visits now
+  come every 1–3 min (85% chance; first one 20–60 s after boot) and last
+  1.5–3 min, so an animal is around about half the time (was ~10–15%). The
+  crab's leg cycle scales with its size.
 
 - **Rare wild visitor** ([ANIMALS.md](ANIMALS.md)): a single sand crab
   occasionally emerges from the sand (4–12 min quiet wait, 65% roll, 45–120 s

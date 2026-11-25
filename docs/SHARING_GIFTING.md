@@ -33,9 +33,7 @@ same build works on the production domain and on any other host
 - The `visit` parameter is consumed once it is applied (removed from the
   URL with `replaceState`), so going home and reloading doesn't drag you
   back. If the code doesn't name a beach, a short note says so.
-- If the link opens while signed out, the visit waits for the first
-  sign-in and then happens on its own. In the sandbox build (no accounts)
-  a visit link does nothing — there is nobody to visit as.
+- If the link opens while signed out and names a public beach, it opens right away in read-only 3D; an off-shore beach still waits for sign-in. In the sandbox build (no accounts) a visit link does nothing — there is nobody to visit as.
 
 ### Web and the phone apps
 

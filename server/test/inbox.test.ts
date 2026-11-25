@@ -130,11 +130,29 @@ describe('visitors', () => {
     expect(box.entries[0]).toMatchObject({ kind: 'rating', count: 3, rating: { count: 3, average: 4 } });
   });
 
+  it('puts a refreshed rating batch above newer messages and leaves it unread', async () => {
+    const ana = await player();
+    const first = await player();
+    const second = await player();
+    expect((await visit(first, ana.code, { shells: 4 })).status).toBe(200);
+    expect((await visit(first, ana.code, { note: 'Lovely sand!' })).status).toBe(200);
+    const seen = await inbox(ana);
+    expect((await visit(second, ana.code, { shells: 5 })).status).toBe(200);
+    await req('/inbox/read', json('POST', { upTo: seen.entries[0].id }), ana.token);
+    const refreshed = await inbox(ana);
+    expect(refreshed.unread).toBe(1);
+    expect(refreshed.entries[0]).toMatchObject({ kind: 'rating', count: 2, read: false });
+  });
+
   it('a rating changes at most once a day (the same rating again is fine)', async () => {
     const ana = await player();
     const ben = await player();
     expect((await visit(ben, ana.code, { shells: 2 })).status).toBe(200);
+    await db.query('UPDATE ratings SET updated_at = updated_at - 60000 WHERE rater_id = $1', [ben.user.id]);
+    const before = await db.query('SELECT updated_at FROM ratings WHERE rater_id = $1', [ben.user.id]);
     expect((await visit(ben, ana.code, { shells: 2 })).status).toBe(200);
+    expect(await db.query('SELECT updated_at FROM ratings WHERE rater_id = $1', [ben.user.id])).toEqual(before);
+    expect((await inbox(ana)).entries[0].count).toBe(1);
     expect((await visit(ben, ana.code, { shells: 5 })).status).toBe(429);
     await db.query('UPDATE ratings SET updated_at = updated_at - 90000000 WHERE rater_id = $1', [ben.user.id]);
     expect((await visit(ben, ana.code, { shells: 5 })).status).toBe(200);
