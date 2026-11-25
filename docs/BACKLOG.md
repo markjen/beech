@@ -78,6 +78,12 @@ _(nothing right now)_
 
 ## Up next (engineering)
 
+- [ ] **Saves within the bag**: the server now counts what's on each save,
+  but doesn't yet refuse one that holds more of an item than you own
+  across your beaches (an app could still place an item it doesn't have).
+  Check `shortfall(placed, owned, elsewhere)` on save, as a restore does;
+  decide what happens to expired items still on the sand first.
+
 - [ ] **Beach store, next** (docs/BEACH_STORE.md): keep the store's
   snapshots of other people's beaches across a re-anchor *and* page
   reloads (IndexedDB, keyed by id + version), and ease the live renderer
@@ -170,6 +176,13 @@ _(nothing right now)_
   shower night.
 
 ## Done (recent)
+
+- [x] **Server permissions audit** (2026-11-25): only a beach's owner can
+  change it (`server/test/permissions.test.ts` tries every such call as
+  someone else); catch-up is server-only (no app code imports it). Saves
+  are now read by the server: non-beach bytes are refused, items are
+  counted from the objects (not `X-Beach-Items`). Fixed the off-shore pet
+  read and blocked people feeding a pet. Details in STATUS.md.
 
 - [x] **Client beach state by id** (2026-11-25): no more active beach. A
   `BeachStore` keeps every beach's state in memory by id with LRU

@@ -7,6 +7,7 @@ import { createApp } from '../src/app.js';
 import { createPgDb, createPgliteDb, type Db } from '../src/db.js';
 import { migrate } from '../src/migrations.js';
 import { createSharePageHandler, escapeHtml, injectShareMeta, shareMetaTags } from '../src/shareMeta.js';
+import { beachBlob } from './beachBlob.js';
 
 describe('share meta tags', () => {
   it('escapes a hostile name', () => {
@@ -83,7 +84,7 @@ describe('share page handler', () => {
       '/api/beach',
       {
         method: 'PUT',
-        body: new Uint8Array([1, 2, 3]),
+        body: beachBlob(),
         headers: { Authorization: `Bearer ${ana.token}`, 'X-Beach-Location': 'bondi', 'X-Beach-Nx': '256', 'X-Beach-Ny': '256', 'X-Edit-Token': anaEdit },
       },
     );

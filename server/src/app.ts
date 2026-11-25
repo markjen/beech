@@ -696,16 +696,6 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     });
   };
 
-  /** `X-Beach-Items: starfish=1,deckchair=2` -> { starfish: 1, deckchair: 2 } (bad parts ignored) */
-  const parseItems = (raw: string | undefined): Record<string, number> => {
-    const out: Record<string, number> = {};
-    for (const part of (raw ?? '').split(',').slice(0, 64)) {
-      const m = /^([a-z0-9-]{1,32})=(\d{1,4})$/.exec(part.trim());
-      if (m) out[m[1]] = Number(m[2]);
-    }
-    return out;
-  };
-
   /** An out-of-date app tried to save: refuse (426, the app offers a reload), and log which build it was. */
   const outdated = (c: Context<Env>, why: string): never => {
     logEvent('stale_app_save', { why, build: (c.req.header('X-App-Build') ?? 'unknown').slice(0, 40) }, 'WARNING');
@@ -839,6 +829,20 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     if (Number(c.req.header('Content-Length') ?? 0) > MAX_BEACH_BYTES) fail(413, 'beach too large');
     const bytes = new Uint8Array(await c.req.arrayBuffer());
     if (bytes.byteLength === 0 || bytes.byteLength > MAX_BEACH_BYTES) fail(413, 'beach too large');
+    // what's on it is counted here, never taken from the app (X-Beach-Items is
+    // ignored): the bag is "owned minus placed across your beaches", so an
+    // under-count would free things to place twice. Garbage, or a blob whose
+    // grid isn't the one in its headers, would break every viewer and the
+    // server's catch-up, so it's refused.
+    let placed: Record<string, number>;
+    try {
+      const info = inspectBlob(bytes);
+      if (info.nx !== nx || info.ny !== ny) fail(400, 'grid size does not match the saved beach');
+      placed = info.items;
+    } catch (e) {
+      if (e instanceof BadBlob) return fail(400, `not a saved beach (${e.message})`);
+      throw e;
+    }
     const now = Date.now();
     // only the current editor may save: an older tab or device, or an app too
     // old to send the token, must not overwrite what the editor has since done
@@ -877,7 +881,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const rows = await db.query<{ version: number; epoch: number }>(
       `UPDATE beach SET location = $2, nx = $3, ny = $4, version = version + 1, updated_at = $5, sand = $6, items = $7, simulated_until = $9
         WHERE id = $1 AND ($8::int IS NULL OR epoch <= $8::int) RETURNING version, epoch`,
-      [beachId, location, nx, ny, now, bytes, JSON.stringify(parseItems(c.req.header('X-Beach-Items'))), epoch, liveClock()],
+      [beachId, location, nx, ny, now, bytes, JSON.stringify(placed), epoch, liveClock()],
       'beach.save',
     );
     // Payload size + DB time, so a slow PUT /sand can be correlated with
@@ -1122,7 +1126,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const side = parseSide(c);
     const n = await linked(await mine(c, c.req.query('beach')), side);
     if (!n) return c.json({ error: 'no neighbor on that side' }, 404);
-    await live.viewed(n.id);
+    // (another of your own beaches isn't being watched by someone else)
+    if (n.owner_id !== c.get('user').id) await live.viewed(n.id);
     return sendBeach(c, n.id);
   });
 
@@ -1688,7 +1693,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     if (auth?.startsWith('Bearer ')) {
       const s = await db.query<{ user_id: string }>(
         `SELECT user_id FROM sessions WHERE token_hash = $1 AND expires_at > $2`,
-        [hashToken(auth.slice(7)), now],
+        [await hashToken(auth.slice(7)), now],
       );
       viewerId = s[0]?.user_id ?? null;
     }
@@ -1712,6 +1717,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     );
     const beach = rows[0];
     if (!beach || (!beach.on_shore && beach.owner_id !== user.id)) return c.json({ error: 'beach not found' }, 404);
+    // someone the owner has blocked can't leave their name on the pet either
+    if (beach.owner_id !== user.id && (await blocked(beach.owner_id, user.id))) fail(403, 'that didn’t go through');
 
     const res = await visitorFeedPet(db, {
       beachId: beach.id,

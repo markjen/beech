@@ -322,8 +322,9 @@ accepted the repo's default branch, so the deploy job ran only there.
   (`?beach=`); the shore is laid out around an anchor (home, a beach you
   went to, or one you're visiting). Putting one of your own beach codes next to another links them
   at once, with no request.
-- The bag counts non-free items across all your beaches. Each save sends
-  `X-Beach-Items`, and "N of M left" includes the other beaches' counts.
+- The bag counts non-free items across all your beaches. The server counts
+  each save's things itself (the app's `X-Beach-Items` is ignored since
+  2026-11-25), and "N of M left" includes the other beaches' counts.
 - `npm run e2e:beaches`: two devices, two beaches, digging at once, linking
   them, the waves following the view across the seam, and remembering the
   beach in view per device. Needs DEV_AUTH for
@@ -861,6 +862,33 @@ here: it needs the service's URL on the web OAuth client.
   the same page; making a new beach), and `checkpoints` sometimes misses
   its Undo toast on the software-GPU runner: those scripts need a look,
   separately from this work.
+- **Permissions audit (2026-11-25):** every endpoint that changes a beach
+  (its sand, name, place, code, neighbors, pet, checkpoints, restores,
+  `/here`, `/away/seen`, the dev `age-beach`) resolves the beach through
+  `mine()` (owner only, 404 otherwise), and the sand-changing ones also need
+  the owner's edit token. Everyone else can only read, and the server's
+  catch-up is the only other thing that moves a beach's sand: no app code
+  imports the catch-up model (`tests/bundleServer.test.ts` checks), and the
+  owner's app reloads after a gap rather than catching up itself. Viewers'
+  own water moves the sand they see (it can drift from the owner's), and
+  they reload whenever the version moves on. `server/test/permissions.test.ts`
+  tries each call as someone else and checks the beach is unchanged. Fixed
+  on the way:
+  - Saves are read by the server: bytes that aren't a beach, or whose grid
+    isn't the one in the headers, are refused (400), and `beach.items` is
+    counted from the objects (as catch-up and restore already did). The
+    app's `X-Beach-Items` is now ignored, so an under-count can't free an
+    item to be placed on two beaches.
+  - `GET /beaches/:code/pet` never matched the caller's session (the token
+    hash wasn't awaited): owners couldn't see the pet on a beach kept off
+    the shore, and visitors never got `canFreeFeed`.
+  - Someone the owner has blocked can't feed their pet (403, like visits
+    and gifts).
+  - Reading your own neighbor beach no longer marks it as watched.
+  - e2e here: `accounts` passes. The others time out signing a second
+    device in on this software-GPU runner, and plain main times out the same
+    way (`neighbors`, `checkpoints`, `live` checked side by side). The
+    server log showed no refused save (no 400) in any run.
 
 ## beechshore.com (2026-11-23)
 

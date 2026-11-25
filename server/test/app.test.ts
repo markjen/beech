@@ -4,6 +4,7 @@ import type { VerifiedPurchase } from '../src/store.js';
 import { createPgDb, createPgliteDb, type Db } from '../src/db.js';
 import { migrate } from '../src/migrations.js';
 import { COOLDOWN_MAX_MS, COOLDOWN_MIN_MS, cooldownAfter, cryptoRandom } from '../src/pulls.js';
+import { beachBlob } from './beachBlob.js';
 
 let db: Db;
 /** the server's clock in these tests: real time plus however far a test moved it on */
@@ -102,7 +103,7 @@ describe('accounts', () => {
   it('saves and loads a beach, bumping the version', async () => {
     const { token } = await signIn('saver');
     expect((await req('/beach', {}, token)).status).toBe(404);
-    const bytes = new Uint8Array(3000).map((_, i) => i % 251);
+    const bytes = beachBlob([], 3);
     const p1 = (await (await putBeach(token, bytes)).json()) as { version: number };
     const p2 = (await (await putBeach(token, bytes, 'piha')).json()) as { version: number };
     expect([p1.version, p2.version]).toEqual([1, 2]);
@@ -132,14 +133,14 @@ describe('accounts', () => {
     });
     try {
       const { token } = await signIn('saver-logged');
-      const bytes = new Uint8Array(3000).map((_, i) => i % 251);
+      const bytes = beachBlob([], 3);
       expect((await putBeach(token, bytes)).status).toBe(200);
       expect((await req('/beach', {}, token)).status).toBe(200);
       const save = lines.find((l) => l.event === 'beach_save');
-      expect(save).toMatchObject({ bytes: 3000 });
+      expect(save).toMatchObject({ bytes: bytes.byteLength });
       expect(typeof save!.duration_ms).toBe('number');
       const load = lines.find((l) => l.event === 'beach_load');
-      expect(load).toMatchObject({ bytes: 3000 });
+      expect(load).toMatchObject({ bytes: bytes.byteLength });
       expect(typeof load!.duration_ms).toBe('number');
     } finally {
       logSpy.mockRestore();
@@ -152,7 +153,7 @@ describe('accounts', () => {
     expect((await req('/me', {}, a.token)).status).toBe(401);
     const b = await signIn('leaver');
     expect(b.user.id).toBe(a.user.id);
-    await putBeach(b.token, new Uint8Array(10));
+    await putBeach(b.token, beachBlob());
     expect((await req('/account', { method: 'DELETE' }, b.token)).status).toBe(204);
     expect((await req('/me', {}, b.token)).status).toBe(401);
     const c = await signIn('leaver');
@@ -216,8 +217,8 @@ describe('the shore and favorites', () => {
     expect((await accept(tia.token, cs)).status).toBe(200);
     expect((await ask(sam.token, 'right', cu)).status).toBe(200);
     expect((await accept(uma.token, cs)).status).toBe(200);
-    await putBeach(vic.token, new Uint8Array([4]), 'bondi');
-    await putBeach(uma.token, new Uint8Array([1, 2, 3]), 'piha');
+    await putBeach(vic.token, beachBlob([], 4), 'bondi');
+    await putBeach(uma.token, beachBlob(), 'piha');
 
     const mine = (await (await req('/shore?depth=12', {}, sam.token)).json()) as Shore;
     expect(mine.center).toMatchObject({ code: cs, you: true });
@@ -245,7 +246,7 @@ describe('the shore and favorites', () => {
     // a beach by code
     const b = await req(`/beaches/${cu}`, {}, vic.token);
     expect(b.status).toBe(200);
-    expect([...new Uint8Array(await b.arrayBuffer())]).toEqual([1, 2, 3]);
+    expect(new Uint8Array(await b.arrayBuffer())).toEqual(beachBlob());
     expect((await req(`/beaches/${cu}`)).status).toBe(401);
 
     // favorites
@@ -286,16 +287,17 @@ describe('more than one beach', () => {
     expect(second.code).not.toBe(homeCode);
     expect((await reqE('/beaches/mine', json('POST', { name: 'Third' }), eve.token)).status).toBe(409); // allowance 2
 
-    // its own sand (and item counts), separate from home
+    // its own sand (and item counts, counted by the server: the app's X-Beach-Items is ignored), separate from home
+    const second7 = beachBlob([{ item: 'starfish' }, { item: 'deckchair' }, { item: 'deckchair' }, { item: 'rock' }], 7);
     const save = await reqE(
       `/beaches/mine/${second.id}/sand`,
-      { method: 'PUT', body: new Uint8Array([7, 7]), headers: { 'X-Beach-Location': 'bondi', 'X-Beach-Nx': '256', 'X-Beach-Ny': '256', 'X-Beach-Items': 'starfish=1,deckchair=2,bad item=3' } },
+      { method: 'PUT', body: second7, headers: { 'X-Beach-Location': 'bondi', 'X-Beach-Nx': '256', 'X-Beach-Ny': '256', 'X-Beach-Items': 'starfish=9' } },
       eve.token,
     );
     expect(save.status).toBe(200);
-    await putBeach(eve.token, new Uint8Array([1]), 'brighton');
-    expect([...new Uint8Array(await (await req(`/beaches/mine/${second.id}/sand`, {}, eve.token)).arrayBuffer())]).toEqual([7, 7]);
-    expect([...new Uint8Array(await (await req('/beach', {}, eve.token)).arrayBuffer())]).toEqual([1]);
+    await putBeach(eve.token, beachBlob([], 1), 'brighton');
+    expect(new Uint8Array(await (await req(`/beaches/mine/${second.id}/sand`, {}, eve.token)).arrayBuffer())).toEqual(second7);
+    expect(new Uint8Array(await (await req('/beach', {}, eve.token)).arrayBuffer())).toEqual(beachBlob([], 1));
     m = await mine();
     expect(m.beaches.find((b) => b.id === second.id)!.items).toEqual({ starfish: 1, deckchair: 2 });
     // nobody else can touch it
@@ -786,10 +788,10 @@ describe('neighbors', () => {
     expect((await get(ana.token)).right?.name).toBe('me');
     expect((await get(ana.token)).requests).toEqual([]);
     expect((await get(me.token)).asked.left).toBeNull();
-    await putBeach(ana.token, new Uint8Array([9, 9, 9]), 'brighton');
+    await putBeach(ana.token, beachBlob([], 9), 'brighton');
     const nb = await req('/neighbors/left/beach', {}, me.token);
     expect(nb.status).toBe(200);
-    expect([...new Uint8Array(await nb.arrayBuffer())]).toEqual([9, 9, 9]);
+    expect(new Uint8Array(await nb.arrayBuffer())).toEqual(beachBlob([], 9));
 
     // one per side, both ways
     expect((await ask(me.token, 'left', benCode)).status).toBe(409); // my left is taken
@@ -842,7 +844,7 @@ describe('leaderboard', () => {
   it('ranks all-time stars and rising star velocity, leaving off-shore and unsaved beaches out', async () => {
     const owners = await Promise.all(['Old', 'New', 'Mid', 'Hid', 'Bare'].map((n) => signIn(`lb${n}`)));
     const [old, nu, mid, hid] = owners;
-    for (const o of [old, nu, mid, hid]) await putBeach(o.token, new Uint8Array([1, 2, 3]), 'piha');
+    for (const o of [old, nu, mid, hid]) await putBeach(o.token, beachBlob(), 'piha');
     await db.query('UPDATE beach SET on_shore = false WHERE owner_id = $1', [hid.user.id]);
     const codes = await Promise.all(owners.map((o) => codeOf(o.token)));
     const [cOld, cNew, cMid, cHid, cBare] = codes;
