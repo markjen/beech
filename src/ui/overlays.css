@@ -492,6 +492,12 @@ a.action {
   flex: 1;
   min-width: 0;
   padding: 10px 4px 10px 14px;
+}
+
+.sp-summary {
+  display: block;
+  width: 100%;
+  padding: 0;
   border: none;
   background: none;
   text-align: left;
@@ -520,7 +526,8 @@ a.action {
   margin-right: 4px;
 }
 
-.sp-btn svg {
+.sp-btn svg,
+.shore-home svg {
   width: 18px;
   height: 18px;
   fill: none;
@@ -552,15 +559,16 @@ a.action {
   }
 }
 
-.place b {
-  display: block;
+.sp-summary b,
+.sp-shore-link {
+  color: inherit;
   font-size: 14px;
   font-weight: 600;
   letter-spacing: 0.02em;
   overflow-wrap: anywhere;
 }
 
-.place span {
+.sp-summary span {
   display: block;
   margin-top: 3px;
   font-size: 12px;
@@ -756,12 +764,14 @@ a.action {
 
 .hud,
 .place-wrap,
+.shore-home,
 .hint {
   transition: opacity 1.2s ease;
 }
 
 body.ambient-idle .hud,
 body.ambient-idle .place-wrap,
+body.ambient-idle .shore-home,
 body.ambient-idle .hint {
   opacity: 0;
   pointer-events: none;
@@ -801,7 +811,7 @@ body.ambient-idle {
 
 /* ---------------------------------------------------------- down the shore */
 
-/* in the expanded status pane: leave something, ask, feed pet, star, way home */
+/* in the expanded status pane: leave something, ask, feed pet, star */
 .shore-bar {
   display: none;
   flex-wrap: wrap;
@@ -861,16 +871,34 @@ body.ambient-idle {
   border-color: var(--ui-fg);
 }
 
-.shore-bar .sb-home {
+.shore-home {
+  position: fixed;
+  top: calc(14px + env(safe-area-inset-top));
+  right: calc(14px + env(safe-area-inset-right));
+  z-index: 5;
+  width: 44px;
+  height: 44px;
   border: none;
   border-radius: 999px;
-  padding: 7px 14px;
-  color: var(--ui-bg);
-  background: var(--ui-fg);
-  font: inherit;
-  font-weight: 600;
-  white-space: nowrap;
+  padding: 0;
+  color: var(--ui-fg);
+  background: var(--ui-bg);
+  box-shadow: 0 6px 18px var(--ui-shadow);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   cursor: pointer;
+  pointer-events: auto;
+  touch-action: manipulation;
+}
+
+.shore-home:not([hidden]) {
+  display: grid;
+  place-items: center;
+}
+
+body.ambient-idle .shore-home {
+  visibility: hidden;
+  transition: opacity 1.2s ease, visibility 0s linear 1.2s;
 }
 
 .hud-help dt {

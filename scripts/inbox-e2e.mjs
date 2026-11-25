@@ -50,7 +50,7 @@ check(true, "…and sees Ana's beach straight away");
 check(await pb.$eval('.inbox-btn', (b) => !b.classList.contains('shown')), 'no inbox while signed out');
 // viewing mode: "leave something" is in the expanded status pane at the top left
 await pb.click('[data-act="palm"]');
-await pb.click('.place');
+await pb.click('.sp-toggle');
 const leave = `.shore-bar [data-act="leave-${anaCode}"]:not([hidden])`;
 await pb.waitForSelector(leave, { timeout: 60000 });
 check(true, "the status pane offers to leave something on Ana's beach");

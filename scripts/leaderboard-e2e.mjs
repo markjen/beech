@@ -106,7 +106,7 @@ check((await page.textContent(`button[data-act="board-star-${codes.ana}"]`)) ===
 check((await page.textContent(`.board-row[data-code="${codes.ana}"] .board-count span`)) === '★ 4', 'Ana has 4 now');
 await page.click('.board-close');
 await page.evaluate(() => { window.__beech.setRail(true); window.__beech.setPane('expanded'); });
-await page.click('.shore-bar .sb-home');
+await page.getByRole('button', { name: 'Return to my beach' }).click();
 await page.waitForFunction(() => window.__beech.neighbors().visiting === null, null, { timeout: 15000 });
 check(true, 'home again');
 

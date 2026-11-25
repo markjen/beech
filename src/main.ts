@@ -905,7 +905,12 @@ async function boot() {
   placeWrap.innerHTML = `
     <div class="sp-card">
       <div class="sp-head">
-        <button type="button" class="place" aria-expanded="false" aria-controls="sp-more"></button>
+        <div class="place">
+          <a class="sp-shore-link" target="_blank" rel="noopener" hidden></a>
+          <button type="button" class="sp-summary" aria-expanded="false" aria-controls="sp-more">
+            <b></b><span></span>
+          </button>
+        </div>
         <button type="button" class="sp-btn sp-toggle" aria-controls="sp-more">${icon('down')}</button>
         <button type="button" class="sp-btn sp-close" aria-label="Close the status pane" title="Close the status pane">${icon('close')}</button>
       </div>
@@ -915,11 +920,15 @@ async function boot() {
       </div>
     </div>
     <button type="button" class="sp-open" aria-label="Show the status pane" title="Show the status pane"><i>i</i></button>`;
-  const place = placeWrap.querySelector<HTMLButtonElement>('.place')!;
+  const place = placeWrap.querySelector<HTMLElement>('.place')!;
+  const spSummary = place.querySelector<HTMLButtonElement>('.sp-summary')!;
+  const spTitle = spSummary.querySelector('b')!;
+  const spWeather = spSummary.querySelector('span')!;
   const spToggle = placeWrap.querySelector<HTMLButtonElement>('.sp-toggle')!;
   const spMore = placeWrap.querySelector<HTMLElement>('.sp-more')!;
   const spDetail = placeWrap.querySelector<HTMLElement>('.sp-detail')!;
   const spChips = placeWrap.querySelector<HTMLElement>('.sp-chips')!;
+  const spShoreLink = placeWrap.querySelector<HTMLAnchorElement>('.sp-shore-link')!;
   uiRoot.appendChild(placeWrap);
   type PaneState = 'default' | 'expanded' | 'closed';
   let paneState: PaneState = settings.statusPane ?? 'default';
@@ -927,32 +936,32 @@ async function boot() {
     paneState = state;
     placeWrap.dataset.state = state;
     const expanded = state === 'expanded';
-    place.setAttribute('aria-expanded', String(expanded));
+    spSummary.setAttribute('aria-expanded', String(expanded));
     spToggle.setAttribute('aria-expanded', String(expanded));
     spToggle.innerHTML = icon(expanded ? 'up' : 'down');
     const label = expanded ? 'Show less' : 'Show more';
     spToggle.setAttribute('aria-label', label);
     spToggle.title = label;
-    place.setAttribute('aria-label', `${label}: beach status`);
+    spSummary.setAttribute('aria-label', `${label}: beach status`);
     if (settings.statusPane !== state) {
       settings = { ...settings, statusPane: state };
       saveSettings(settings);
     }
     updatePlace(true);
   };
-  /** Tried to dig on someone else's beach: expand the pane (holds the way home) and pulse the header. */
+  /** Tried to dig on someone else's beach: expand the pane and pulse the header. */
   const nudgePane = () => {
     setPane('expanded');
     place.classList.remove('nudge');
     void place.offsetWidth;
     place.classList.add('nudge');
   };
-  place.addEventListener('click', () => setPane(paneState === 'expanded' ? 'default' : 'expanded'));
+  spSummary.addEventListener('click', () => setPane(paneState === 'expanded' ? 'default' : 'expanded'));
   spToggle.addEventListener('click', () => setPane(paneState === 'expanded' ? 'default' : 'expanded'));
   placeWrap.querySelector('.sp-close')!.addEventListener('click', () => setPane('closed'));
   placeWrap.querySelector('.sp-open')!.addEventListener('click', () => setPane('default'));
-  /** whose beach is under the view: filled in by the account layer (null: yours) */
-  let paneOwner: () => { title: string; away: boolean } = () => ({ title: `Your beach · ${beach.name}`, away: false });
+  /** Whose beach is under the view, with a page link for visiting. */
+  let paneOwner: () => { title: string; shoreCode?: string } = () => ({ title: `Your beach · ${beach.name}` });
   /** extra status chips (saved, visiting…): filled in by the account layer */
   let paneChips: () => string[] = () => [];
   const SKY: [number, string][] = [
@@ -974,16 +983,25 @@ async function boot() {
     const owner = paneOwner();
     const sun = viewState.sky.sun.elevation;
     const glyph = SKY.find(([e]) => sun < e)![1];
-    const text = `<b>${esc(owner.title)}</b><span>${glyph} ${viewState.localTime} · ${swellWord()}</span>`;
+    const weather = `${glyph} ${viewState.localTime} · ${swellWord()}`;
     const detail = viewConditions.describe(viewState).split(' · ').slice(1).join(' · ');
     const chips = [`wave · ${waveStrength()}`, ...paneChips()];
-    const key = text + detail + chips.join('|') + owner.away;
+    const key = JSON.stringify([owner.title, owner.shoreCode, weather, detail, chips]);
     if (key !== placeText) {
       placeText = key;
-      place.innerHTML = text;
+      spTitle.hidden = !!owner.shoreCode;
+      spTitle.textContent = owner.title;
+      spShoreLink.hidden = !owner.shoreCode;
+      if (owner.shoreCode) {
+        spShoreLink.href = shoreBeachUrl(owner.shoreCode);
+        spShoreLink.textContent = owner.title;
+      } else {
+        spShoreLink.removeAttribute('href');
+        spShoreLink.textContent = '';
+      }
+      spWeather.textContent = weather;
       spDetail.textContent = detail;
       spChips.innerHTML = chips.map((c) => `<span>${esc(c)}</span>`).join('');
-      placeWrap.classList.toggle('away', owner.away);
     }
   };
   updatePlace(true);
@@ -1333,10 +1351,10 @@ async function boot() {
   guide.button.addEventListener('click', () => sheet.hide());
 
   // the shore bar: actions for the beach you're looking at when away from
-  // home (leave something, ask to be neighbors, feed pet, star, way home)
+  // home (leave something, ask to be neighbors, feed pet, star)
   const shoreBar = document.createElement('div');
   shoreBar.className = 'shore-bar';
-  shoreBar.innerHTML = `<span class="sb-where"></span><button type="button" class="sb-leave" hidden>leave something</button><button type="button" class="sb-ask" hidden>ask to be neighbors</button><button type="button" class="sb-pet" hidden>Feed pet</button><button type="button" class="sb-fav"></button><button type="button" class="sb-home" data-act="home">⌂ <span>my beach</span></button>`;
+  shoreBar.innerHTML = `<span class="sb-where"></span><button type="button" class="sb-leave" hidden>leave something</button><button type="button" class="sb-ask" hidden>ask to be neighbors</button><button type="button" class="sb-pet" hidden>Feed pet</button><button type="button" class="sb-fav"></button>`;
   spMore.appendChild(shoreBar);
   const sbWhere = shoreBar.querySelector<HTMLElement>('.sb-where')!;
   const sbLeave = shoreBar.querySelector<HTMLButtonElement>('.sb-leave')!;
@@ -1364,7 +1382,15 @@ async function boot() {
     }
     haptics.impact('light');
   };
-  shoreBar.querySelector('.sb-home')!.addEventListener('click', () => void goHome());
+  const homeButton = document.createElement('button');
+  homeButton.type = 'button';
+  homeButton.className = 'shore-home';
+  homeButton.dataset.act = 'home';
+  homeButton.hidden = true;
+  hud.setLabel(homeButton, 'Return to my beach');
+  hud.setIcon(homeButton, 'home');
+  homeButton.addEventListener('click', () => void goHome());
+  uiRoot.appendChild(homeButton);
   sbLeave.addEventListener('click', () => {
     const b = beachHere();
     if (b) leaveBeach?.(b);
@@ -1513,6 +1539,7 @@ async function boot() {
     if (key === shoreKey) return;
     shoreKey = key;
     shoreBar.classList.toggle('shown', away);
+    homeButton.hidden = !away;
     if (b) guide.mark('visit');
     guide.render();
     const placeBeach = b?.location ? beachById(b.location) : undefined;
@@ -1565,17 +1592,17 @@ async function boot() {
     if (away && here) {
       const loc = here.location ? beachById(here.location) : undefined;
       const whose = here.beachName || `${here.name || 'Someone'}’s beach`;
-      return { title: `${whose}${loc ? ` · ${loc.name}` : ''}`, away: true };
+      return { title: `${whose}${loc ? ` · ${loc.name}` : ''}`, shoreCode: here.code };
     }
-    if (away) return { title: 'Down the shore', away: true };
+    if (away) return { title: 'Down the shore' };
     const own = here ? neighbors?.ownedBeach(here) : undefined;
     if (own) {
       const locId = own.location || here?.location;
       const loc = locId ? beachById(locId) : undefined;
-      return { title: `${own.name || 'Your beach'}${loc ? ` · ${loc.name}` : ''}`, away: false };
+      return { title: `${own.name || 'Your beach'}${loc ? ` · ${loc.name}` : ''}` };
     }
     const mine = account?.mine(sync.id)?.name;
-    return { title: `${mine || 'Your beach'} · ${beach.name}`, away: false };
+    return { title: `${mine || 'Your beach'} · ${beach.name}` };
   };
 
   // chair: hold ‹ or › to walk the chair along the beach (and over to the neighbors)
