@@ -125,7 +125,7 @@ const QUALITY_LABELS: [QualityTier | 'auto', string][] = [
   ['high', 'fine'],
 ];
 
-export type SettingsTab = 'beach' | 'shore' | 'display' | 'account';
+export type SettingsTab = 'beach' | 'shore' | 'display' | 'account' | 'help';
 
 /** Bottom sheet with tabbed settings: Beach, Shore, Display, and Account. */
 export class SettingsSheet {
@@ -144,13 +144,16 @@ export class SettingsSheet {
     this.hasAccounts = !!options.accounts;
     this.el = document.createElement('div');
     this.el.className = 'sheet-wrap';
+    this.el.inert = true;
     const tabsHtml = this.hasAccounts
       ? `<button type="button" role="tab" data-tab="beach" aria-selected="true">Beach</button>
          <button type="button" role="tab" data-tab="shore" aria-selected="false">Shore<span class="tab-dot" hidden></span></button>
          <button type="button" role="tab" data-tab="display" aria-selected="false">Display</button>
-         <button type="button" role="tab" data-tab="account" aria-selected="false">Account</button>`
+         <button type="button" role="tab" data-tab="account" aria-selected="false">Account</button>
+         <button type="button" role="tab" data-tab="help" aria-selected="false">Help</button>`
       : `<button type="button" role="tab" data-tab="beach" aria-selected="true">Beach</button>
-         <button type="button" role="tab" data-tab="display" aria-selected="false">Display</button>`;
+         <button type="button" role="tab" data-tab="display" aria-selected="false">Display</button>
+         <button type="button" role="tab" data-tab="help" aria-selected="false">Help</button>`;
     this.el.innerHTML = `
       <div class="sheet-scrim"></div>
       <div class="sheet" role="dialog" aria-label="Settings">
@@ -190,11 +193,23 @@ export class SettingsSheet {
           <div class="row actions">
             <button type="button" class="action" data-act="tv">watch on TV</button>
             <button type="button" class="action" data-act="fullscreen">full screen</button>
-            <a class="action" data-act="guide" href="${GUIDE_URL}" target="_blank" rel="noopener">guide &amp; help</a>
             ${steamBridge() ? '<button type="button" class="action" data-act="quit">quit</button>' : ''}
           </div>
         </div>
         ${this.hasAccounts ? `<div class="sheet-pane" data-pane="account" role="tabpanel" hidden><div class="account-slot"></div></div>` : ''}
+        <div class="sheet-pane" data-pane="help" role="tabpanel" hidden>
+          <h2>Help</h2>
+          <dl class="hud-help">
+            <dt>Edit</dt><dd>Shape the sand, build sandcastles, place things from your bag, or calm the waves.</dd>
+            <dt>Shop</dt><dd>Open the capsule machine, claw machine, or paid shop.</dd>
+            <dt>Chair</dt><dd>Sit at the shore and use the arrows to move along it.</dd>
+            <dt>Move</dt><dd>Drag to move the view. Pinch or scroll to zoom.</dd>
+            <dt>Beach settings</dt><dd>Choose a beach, change the light, or manage your beaches and neighbors.</dd>
+            <dt>Settings</dt><dd>Sign in or adjust sound, music, haptics, and display options.</dd>
+            <dt>Leaderboard</dt><dd>Find and visit the most-starred beaches.</dd>
+          </dl>
+          <a class="action" data-act="guide" href="${GUIDE_URL}" target="_blank" rel="noopener">Full guide</a>
+        </div>
       </div>`;
     parent.appendChild(this.el);
     for (const btn of this.el.querySelectorAll<HTMLButtonElement>('.sheet-tabs button[data-tab]')) {
@@ -217,12 +232,12 @@ export class SettingsSheet {
         this.h.change(this.settings, key);
       });
     }
-    this.el.querySelector<HTMLButtonElement>('button[data-act="near"]')!.addEventListener('click', () => this.h.nearMe());
-    this.el.querySelector<HTMLButtonElement>('button[data-act="fullscreen"]')!.addEventListener('click', () => {
+    this.el.querySelector<HTMLButtonElement>('button[data-act="near"]')?.addEventListener('click', () => this.h.nearMe());
+    this.el.querySelector<HTMLButtonElement>('button[data-act="fullscreen"]')?.addEventListener('click', () => {
       this.hide();
       this.h.fullscreen();
     });
-    this.el.querySelector<HTMLButtonElement>('button[data-act="tv"]')!.addEventListener('click', () => {
+    this.el.querySelector<HTMLButtonElement>('button[data-act="tv"]')?.addEventListener('click', () => {
       this.hide();
       this.h.tv();
     });
@@ -237,7 +252,7 @@ export class SettingsSheet {
       }
     }
     for (const act of ['export', 'import'] as const) {
-      this.el.querySelector<HTMLButtonElement>(`button[data-act="${act}"]`)!.addEventListener('click', () => {
+      this.el.querySelector<HTMLButtonElement>(`button[data-act="${act}"]`)?.addEventListener('click', () => {
         this.hide();
         if (act === 'export') this.h.exportBeach();
         else this.h.importBeach();
@@ -362,11 +377,13 @@ export class SettingsSheet {
     if (tab) this.setTab(tab);
     this.open = true;
     this.el.classList.add('open');
+    this.el.inert = false;
   }
 
   hide(): void {
     this.open = false;
     this.el.classList.remove('open');
+    this.el.inert = true;
   }
 
   get isOpen(): boolean {

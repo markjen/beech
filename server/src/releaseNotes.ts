@@ -17,7 +17,7 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: '2026-11-25',
-    title: 'Visitors, your inbox, and editing the shore',
+    title: 'Visitors, your inbox, new controls, and sandcastle molds',
     changes: [
       'The beach guide (the compass) now keeps its how-tos in the web guide. In the game, you’ll see the checklist and your progress.',
       'Visitors can leave something: a rating in shells, a note, or a gift from their bag, from “leave something” next to the beach’s name (the “i” at the bottom).',
@@ -26,6 +26,10 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       'Edit any of your beaches you can see. Dig, build, clear or drag things across the seam, and each beach saves as you play.',
       'Settings has Beach, Shore, Display and Account tabs. Open Shore to connect your own beaches side by side in one step.',
       'Switching between your beaches quickly no longer risks one beach’s sand overwriting another’s.',
+      'Edit, Shop, Chair, Move, and Beach settings now have their own controls on the right. Settings, Help, and the leaderboard sit above them.',
+      'The bag and paid shop now fit on short phone screens and scroll to the last item.',
+      'Mold round or square sandcastle towers from Edit and use the sand tools to build walls or dig a moat.',
+      'Dig and build across linked beaches you own without opening each one in Beach settings.',
     ],
   },
   {

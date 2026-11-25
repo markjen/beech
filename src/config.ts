@@ -128,6 +128,12 @@ export const EROSION = {
   healingTime: 150,
 };
 
+export const SANDCASTLE = {
+  radius: 0.9,
+  height: 0.48,
+  flatTop: 0.6,
+};
+
 export const BRUSH = {
   /** brush radius on screen, CSS pixels (constant regardless of zoom) */
   screenRadiusPx: 24,

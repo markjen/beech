@@ -80,6 +80,7 @@ try {
     if (Math.abs(d1 - d0) > 0.05 || Math.abs(t1 - t0) < 0.3) fail(`look tool: sand Δ ${(d1 - d0).toFixed(3)}, view moved ${(t1 - t0).toFixed(2)}`);
     else console.log(`look tool ok (view moved ${(t1 - t0).toFixed(2)} m, sand untouched)`);
     await page.evaluate(() => { const c = window.__beech.cam; c.camera.target.x = 0; c.stopGlide(); });
+    await page.click('[data-act="edit-menu"]');
     await page.click('button[data-tool="sand"]');
   }
 
@@ -239,6 +240,7 @@ try {
   {
     const count = () => page.evaluate(() => window.__beech.info().objects.length);
     const n0 = await count();
+    await page.click('[data-act="edit-menu"]');
     await page.click('button[data-tool="place"]');
     await page.click('.inv-item.rarity-common >> nth=0');
     await page.mouse.click(420, 430);
@@ -252,6 +254,7 @@ try {
     const n3 = await count();
     if (!(n1 === n0 + 1 && n2 === n0 && n3 === n0 + 1)) fail(`placing a rock: ${n0} -> ${n1} -> ${n2} -> undo ${n3}`);
     else console.log('place / pick up / undo ok');
+    await page.click('[data-act="edit-menu"]');
     await page.click('button[data-tool="sand"]');
   }
 
@@ -274,25 +277,26 @@ try {
       }
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     };
-    await ph.evaluate(() => window.__beech.sheet.show());
+    await ph.evaluate(() => window.__beech.sheet.show('beach'));
     // wait for the sheet to finish sliding up
     await ph.waitForFunction(() => {
-      const r = document.querySelector('.sheet').getBoundingClientRect();
+      const r = document.querySelector('.sheet-wrap.open .sheet').getBoundingClientRect();
       return r.bottom <= innerHeight + 1;
     }, null, { timeout: 10000 });
     await ph.waitForTimeout(200);
-    const box = await ph.locator('.sheet').boundingBox();
-    const scrollable = await ph.evaluate(() => { const s = document.querySelector('.sheet'); return s.scrollHeight > s.clientHeight; });
+    const box = await ph.locator('.sheet-wrap.open .sheet').boundingBox();
+    const scrollable = await ph.evaluate(() => { const s = document.querySelector('.sheet-wrap.open .sheet'); return s.scrollHeight > s.clientHeight; });
     await drag(box.x + box.width / 2, box.y + box.height - 40, box.x + box.width / 2, box.y + 60);
     await ph.waitForTimeout(400);
-    const top = await ph.evaluate(() => document.querySelector('.sheet').scrollTop);
+    const top = await ph.evaluate(() => document.querySelector('.sheet-wrap.open .sheet').scrollTop);
     if (scrollable && !(top > 20)) fail(`settings sheet does not scroll by touch (scrollTop ${top})`);
     else console.log(`phone: settings scrolls by touch (scrollTop ${top}${scrollable ? '' : ', fits without scrolling'})`);
-    await ph.locator('.sheet-close').tap();
+    await ph.locator('.sheet-wrap.open .sheet-close').tap();
     await ph.waitForTimeout(500);
-    if (await ph.evaluate(() => document.querySelector('.sheet-wrap')?.classList.contains('open'))) fail('settings close button did not close it');
+    if (await ph.evaluate(() => document.querySelector('.sheet-wrap.open'))) fail('settings close button did not close it');
     else console.log('phone: settings close button ok');
     // the size slider: pick a rock, drag the slider
+    await ph.locator('[data-act="edit-menu"]').tap();
     await ph.locator('button[data-tool="place"]').tap();
     await ph.locator('.inv-item.rarity-common >> nth=0').tap();
     await ph.waitForTimeout(300);

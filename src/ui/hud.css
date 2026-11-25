@@ -1,37 +1,125 @@
 .hud {
   position: fixed;
   inset: 0;
+  max-height: 100dvh;
   pointer-events: none;
   --pad: 18px;
 }
 
 .hud-group {
   position: absolute;
-  display: flex;
-  gap: 12px;
-  align-items: flex-end;
-  pointer-events: none;
-}
-
-.hud-right {
   right: calc(var(--pad) + env(safe-area-inset-right));
-  bottom: calc(var(--pad) + env(safe-area-inset-bottom));
-  flex-direction: column;
-  align-items: center;
-}
-
-.hud-tools {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  padding: 6px;
+}
+
+.hud-top {
+  top: calc(var(--pad) + env(safe-area-inset-top));
+}
+
+.hud-right,
+.hud-corner {
+  bottom: calc(var(--pad) + env(safe-area-inset-bottom));
+}
+
+.hud-corner {
+  position: absolute;
+  left: calc(var(--pad) + env(safe-area-inset-left));
+}
+
+.hud-profile {
+  position: absolute;
+  top: calc(var(--pad) + env(safe-area-inset-top));
+  left: calc(var(--pad) + env(safe-area-inset-left));
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 110px);
+  padding: 7px 12px 7px 7px;
   border-radius: 999px;
+  background: var(--ui-bg);
+  font-weight: 600;
+}
+
+.hud-profile span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hud-profile svg {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  padding: 4px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+}
+
+.hud-popup {
+  position: absolute;
+  right: calc(var(--pad) + 78px + env(safe-area-inset-right));
+  bottom: calc(var(--pad) + env(safe-area-inset-bottom));
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100% - var(--pad) * 2 - 78px - env(safe-area-inset-left) - env(safe-area-inset-right));
+  max-height: calc(100% - var(--pad) * 2 - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  overflow: auto;
+  padding: 8px;
+  border-radius: 22px;
   background: var(--ui-bg);
   box-shadow: 0 6px 18px var(--ui-shadow);
   backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
   pointer-events: auto;
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+}
+
+.hud-popup[hidden] {
+  display: none;
+}
+
+.hud-edit {
+  width: 248px;
+}
+
+.hud-shop {
+  flex-direction: column;
+  align-items: stretch;
+  flex-wrap: nowrap;
+}
+
+.hud-shop .hud-btn {
+  width: auto;
+  min-height: 44px;
+  height: auto;
+  padding: 6px 12px;
+  display: flex;
+  gap: 8px;
+  text-align: left;
+  font: inherit;
+  border-radius: 999px;
+}
+
+.hud-shop svg {
+  width: 24px;
+  height: 24px;
+  flex: none;
+}
+
+.hud-tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  flex-basis: 100%;
 }
 
 .hud-tools .hud-btn {
@@ -51,10 +139,10 @@
 /* modes of a grouped tool (sand, clearing): a small strip under its button */
 .hud-modes {
   display: none;
-  flex-direction: column;
+  order: 1;
+  flex-basis: 100%;
   align-items: center;
   gap: 6px;
-  padding: 6px 0 2px;
 }
 
 .hud-modes.open {
@@ -62,8 +150,8 @@
 }
 
 .hud-tools .hud-mode {
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
 }
 
 .hud-tools .hud-mode.active {
@@ -71,45 +159,10 @@
   color: var(--ui-bg);
 }
 
-.hud-left {
-  left: calc(var(--pad) + env(safe-area-inset-left));
-  bottom: calc(var(--pad) + env(safe-area-inset-bottom));
-  transition: gap 0.22s ease;
-}
-
-.hud-right {
-  transition:
-    opacity 0.22s ease,
-    transform 0.22s ease;
-}
-
-/* collapsed pan mode: hide toolbars and leave only the subtle restore button */
-.hud.collapsed .hud-right,
+.hud.collapsed .hud-group,
+.hud.collapsed .hud-profile,
 .hud.collapsed .hud-walk {
-  opacity: 0;
-  pointer-events: none;
-}
-
-.hud.collapsed .hud-right {
-  transform: translateX(16px);
-}
-
-.hud.collapsed .hud-right .hud-tools,
-.hud.collapsed .hud-right .hud-btn,
-.hud.collapsed .hud-walk .hud-btn {
-  pointer-events: none;
-}
-
-.hud.collapsed .hud-left {
-  gap: 0;
-}
-
-.hud.collapsed .hud-left > .hud-btn:not(.hud-collapse) {
-  width: 0;
-  opacity: 0;
-  overflow: hidden;
-  pointer-events: none;
-  box-shadow: none;
+  visibility: hidden;
 }
 
 .hud.collapsed .hud-collapse {
@@ -944,25 +997,58 @@
   }
 }
 
-/* short screens (phones in landscape): tools in a row beside the undo button */
-@media (max-height: 460px) {
+/* Short screens keep the main controls in a single bottom row. */
+@media (max-height: 475px) and (min-width: 390px) {
+  .hud-top {
+    flex-direction: row-reverse;
+  }
+
   .hud-right {
     flex-direction: row;
-    align-items: center;
   }
 
-  .hud-tools {
-    flex-direction: row;
+  .hud-profile {
+    max-width: calc(100% - 200px - env(safe-area-inset-left) - env(safe-area-inset-right));
   }
 
-  .hud-modes {
-    flex-direction: row;
-    padding: 0 6px 0 2px;
-  }
-
+  .hud-popup,
   .inv-tray {
     right: calc(var(--pad) + env(safe-area-inset-right));
-    bottom: calc(var(--pad) + 80px + env(safe-area-inset-bottom));
+    bottom: calc(var(--pad) + 78px + env(safe-area-inset-bottom));
+    max-height: calc(100% - var(--pad) * 2 - 78px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  }
+
+  .hud-walk.shown,
+  .place-bar.shown {
+    bottom: calc(var(--pad) + 78px + env(safe-area-inset-bottom));
+  }
+
+  .hud.chair .place-bar.shown {
+    bottom: calc(var(--pad) + 135px + env(safe-area-inset-bottom));
+  }
+}
+
+@media (max-width: 389px) and (max-height: 475px) {
+  .hud {
+    --pad: 10px;
+  }
+
+  .hud-top {
+    flex-direction: row-reverse;
+  }
+
+  .hud-profile {
+    max-width: calc(100% - 170px - env(safe-area-inset-left) - env(safe-area-inset-right));
+  }
+
+  .hud-group .hud-btn {
+    width: 42px;
+    height: 42px;
+  }
+
+  .hud-group .hud-big {
+    width: 50px;
+    height: 50px;
   }
 }
 

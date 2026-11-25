@@ -3,6 +3,7 @@ import {
   EROSION,
   PROFILE,
   SAND,
+  SANDCASTLE,
   UNDO_DEPTH,
   WATER,
   WAVES,
@@ -14,6 +15,8 @@ import { UndoStack, type UndoEntry } from './undoStack';
 import { BeachObjects, type PlacedObject } from './objects';
 
 /** dig, build up, smooth, or bulldoze (flatten back to the untouched beach) */
+export type CastleShape = 'round' | 'square';
+
 export type BrushMode = 'dig' | 'pile' | 'smooth' | 'flatten' | 'dozer' | 'vacuum';
 
 /**
@@ -971,6 +974,27 @@ export class BeachSim {
       swept: [],
       lift: [],
     };
+  }
+
+  /** Mold a tower out of sand. It erodes and saves just like the rest of the beach. */
+  moldCastle(x: number, y: number, shape: CastleShape): void {
+    const [ci, cj] = this.toCell(x, y);
+    const radius = SANDCASTLE.radius / this.dx;
+    const i0 = Math.max(0, Math.floor(ci - radius));
+    const i1 = Math.min(this.nx - 1, Math.ceil(ci + radius));
+    const j0 = Math.max(0, Math.floor(cj - radius));
+    const j1 = Math.min(this.ny - 1, Math.ceil(cj + radius));
+    const before = this.sand.slice();
+    for (let j = j0; j <= j1; j++) {
+      for (let i = i0; i <= i1; i++) {
+        const dx = Math.abs(i - ci);
+        const dy = Math.abs(j - cj);
+        const distance = shape === 'square' ? Math.max(dx, dy) : Math.hypot(dx, dy);
+        this.sand[j * this.nx + i] += SANDCASTLE.height * (1 - smoothstep(SANDCASTLE.flatTop, 1, distance / radius));
+      }
+    }
+    const entry = this.diffRegion(before, i0, j0, i1, j1);
+    if (entry) this.undo.push(entry);
   }
 
   moveStroke(x: number, y: number, r: number): void {

@@ -140,7 +140,7 @@ ${sets
 <ul>${clawIds.map(catalogRow).join('')}</ul>
 
 <h3>From the shop</h3>
-<p>Bought in the shop — open it from the bag. Prices in US dollars; what you buy is yours on every device you sign in on.</p>
+<p>Bought in the paid shop, under Shop. Prices in US dollars; what you buy is yours on every device you sign in on.</p>
 <ul>${shopIds.map(catalogRow).join('')}</ul>
 ${founder ? `<p>The <b>${esc(founder.name)}</b> (${usd(founder.usd)}) — ${esc(sentence(founder.blurb))}</p>` : ''}
 
@@ -236,7 +236,7 @@ export function guideHtml(now: number): string {
 <h2 id="start">Getting started</h2>
 <p>beech is a stretch of sand by the sea. Dig, build, and set things down, and watch the waves rework it. Tap or click the title screen to begin; sound starts then too.</p>
 <p>Sign in (settings, at the top) to keep your beach, have neighbors, and play the machines. Without signing in, your beach isn’t saved — it only lives while you play, and closing the app loses it. Sign in and it’s saved, so you can keep it on any device. You can still pan along the shore beside it to see other people’s public beaches.</p>
-<p>The sea follows a real beach: its tide, sun and moon, at that place’s time of day, with waves growing stronger toward high tide and gentler toward low tide. Pick the beach in settings, or “near me” for the closest one.</p>
+<p>The sea follows a real beach: its tide, sun and moon, at that place’s time of day, with waves growing stronger toward high tide and gentler toward low tide. Pick the beach in Beach settings, or “near me” for the closest one.</p>
 
 <h2 id="controls">Controls</h2>
 <h3>Touch</h3>
@@ -256,7 +256,7 @@ export function guideHtml(now: number): string {
 <p>The chair button sits you on the sand facing the open sea. Hold ‹ › (or <kbd>Q</kbd>/<kbd>E</kbd>) to walk along the beach and on across your neighbors’; after a second of holding you walk faster.</p>
 
 <h2 id="tools">Tools</h2>
-<p>The tool column sits above the undo button.</p>
+<p>Open Edit to find the sand tools, sandcastle molds, bag, wave toggle, and Undo. The hand button switches back to moving the view.</p>
 <ul>
   <li><b>Look</b> (the hand): move around without touching the sand.</li>
   <li><b>Sand</b>: three modes — <b>dig</b> (shovel) digs deeper or carves a trench, <b>build</b> (sand dune) adds sand where you drag, and <b>blend</b> (rake) softens edges and bumps.</li>
@@ -264,8 +264,10 @@ export function guideHtml(now: number): string {
 </ul>
 <p>Every stroke can be undone. Waves wear down what you build, and the sea fills holes near the water.</p>
 
+<p>Choose Sandcastles in Edit, pick a cylinder or square mold, and tap the sand to make a tower. Put towers together, shape connecting walls with Build, dig a moat, and decorate from the bag. Sandcastles erode with the beach and can be undone.</p>
+
 <h2 id="bag">Your bag</h2>
-<p>The bag (top of the tool column) holds things to set on the sand. Rocks, driftwood, shells, sea glass, flags, trash, seaweed, cowries and footprints are free and never run out. Pick one, choose its size with the slider, then tap the sand to set it down. Use the vacuum or bulldozer to pick things back up; they go back in your bag.</p>
+<p>The bag in Edit holds things to set on the sand. Rocks, driftwood, shells, sea glass, flags, trash, seaweed, cowries and footprints are free and never run out. Pick one, choose its size with the slider, then tap the sand to set it down. Use the vacuum or bulldozer to pick things back up; they go back in your bag.</p>
 <p>Rocks shape how water flows and where sand settles. Driftwood floats when the water is deep enough and strands when it drains. Shells, sea glass, trash and seaweed move in fast water. Footprints stay where you put them. The sea washes things in now and then, including the occasional cowrie, and only a few strays stay at once. Hold one to pick it up, then put it down to keep it. Your bag lists what you've kept under Found.</p>
 <p>Things you won or bought show how many you have left to place. You can gift an owned thing to the owner of another beach from the bar that shows while it’s in hand.</p>
 
@@ -279,7 +281,7 @@ export function guideHtml(now: number): string {
 <p><b>Visitor feeding:</b> when you visit another beach with a pet, you can give it one free snack a day (UTC) from the bar at the top, or feed it again anytime with a beach snack from your own bag.</p>
 
 <h2 id="claw">Claw machine</h2>
-<p>Free to play when you’re signed in: open the bag and tap the claw machine. Hold the button to steer, let go to drop.</p>
+<p>Free to play when you’re signed in: open Shop and tap Claw machine. Hold the button to steer, let go to drop.</p>
 <p><b>Rest between goes:</b> after each go the claw rests for a random time between ${minutes(COOLDOWN_MIN_MS)} and ${minutes(COOLDOWN_MAX_MS)}. If the ball slipped out, the rest is usually short (about an hour on average); if you won, it’s usually long (about two hours on average). The machine shows when your next go is ready.</p>
 <p><b>What’s inside, and the chances.</b> The server draws what the claw grabs, then whether it holds on. A ball that slips out spends the go and wins nothing.</p>
 ${oddsTable(claw.odds, claw.items, GRAB_CHANCE)}
@@ -342,7 +344,7 @@ ${GUIDE_STEPS.map((st) => `<tr><td>${esc(st.title)}</td><td>${esc(st.how)}</td><
 <p>The file format is documented for anyone who wants to design beaches by hand or with a script.</p>
 
 <h2 id="shop">Shop</h2>
-<p>Open it from the bag. In the iPhone and Android apps you pay through your App Store or Google Play account. On the web, card payments are handled by Xsolla, our payment partner, on their secure page; prices are in US dollars and converted at checkout. Gift cards and promo codes work on the web only, and promo codes apply to buying with credit. What you buy is yours on every device you sign in on.</p>
+<p>Choose Paid shop from Shop. In the iPhone and Android apps you pay through your App Store or Google Play account. On the web, card payments are handled by Xsolla, our payment partner, on their secure page; prices are in US dollars and converted at checkout. Gift cards and promo codes work on the web only, and promo codes apply to buying with credit. What you buy is yours on every device you sign in on.</p>
 <p>Make an item for Beech and <a href="https://beechshore.com/submit">submit it on beechshore</a>. You can propose a price and how often it should appear. If your item is approved and sold, you earn 30% in Beech account credit to spend in the web shop.</p>
 <p>Rare and legendary things glow and sparkle on the sand; lamps and flames glow at night.</p>
 
@@ -350,6 +352,7 @@ ${GUIDE_STEPS.map((st) => `<tr><td>${esc(st.title)}</td><td>${esc(st.how)}</td><
 <p>Every item in the game — free things, claw and vending prizes, and shop pieces — is listed on beechshore, with a picture, its size and price, and how to get it: <a href="https://beechshore.com/items">beechshore.com/items</a>. Sign in there to vote for the items you like and leave a comment on any of them.</p>
 
 <h2 id="settings">Settings</h2>
+<p>Open Beach settings for the beach location, light, pictures, smoothing, and beach files. Open Settings for your account, audio, haptics, display, and TV mode.</p>
 <ul>
   <li><b>Beach</b>: choose which of your beaches to configure, its real-world <b>place</b> (“near me” uses your location once), code and share links, <b>save a picture</b>, <b>smooth the beach</b> when it’s in view, <b>export</b> / <b>import</b>, and <b>checkpoints</b>.</li>
   <li><b>Shore</b>: snap your own beaches side by side in one tap, manage left/right neighbors and requests, visit by code, and open favorite beaches.</li>

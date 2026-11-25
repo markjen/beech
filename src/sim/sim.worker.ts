@@ -14,6 +14,7 @@ let sim: BeachSim | null = null;
 const pool: Float32Array[] = [];
 const posPool: Float32Array[] = [];
 let paused = false;
+let loadId = 0;
 let lastTime = 0;
 let acc = 0;
 let statsEvery = 0;
@@ -69,6 +70,7 @@ function loop() {
           swash: sim.swashVolume,
           objPos,
           rosterVersion: objs.version,
+          loadId,
           roster,
           stats: withStats ? sim.stats() : undefined,
           tickMs,
@@ -106,7 +108,10 @@ self.onmessage = (ev: MessageEvent<ToWorker>) => {
       }
       break;
     case 'setSand':
-      if (sim && m.delta.length === sim.n) sim.loadDelta(m.delta, m.objects ?? [], m.cover);
+      if (sim && m.delta.length === sim.n) {
+        sim.loadDelta(m.delta, m.objects ?? [], m.cover);
+        loadId = m.loadId ?? 0;
+      }
       break;
     case 'importBeach':
       if (sim && m.delta.length === sim.n) sim.importBeach(m.delta, m.objects, m.cover);
@@ -143,6 +148,9 @@ self.onmessage = (ev: MessageEvent<ToWorker>) => {
       else if (m.phase === 'move') sim.moveStroke(m.x, m.y, m.r);
       else if (m.phase === 'end') sim.endStroke();
       else sim.cancelStroke();
+      break;
+    case 'castle':
+      sim?.moldCastle(m.x, m.y, m.shape);
       break;
     case 'undo':
       sim?.undoStroke();

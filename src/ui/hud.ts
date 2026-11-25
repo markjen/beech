@@ -1,6 +1,11 @@
 import './hud.css';
 
 const ICONS = {
+  edit: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 17 9-9a5 5 0 0 1 6-5l-3 3 2 2 3-3a5 5 0 0 1-5 6l-9 9a2.1 2.1 0 0 1-3-3Z"/></svg>`,
+  help: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8a4 4 0 1 1 6 3.5c-1.5 1-2 1.7-2 3.5M12 19h.01"/></svg>`,
+  profile: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3"/><path d="M5 20v-2a7 5 0 0 1 14 0v2"/></svg>`,
+  castleRound: `<svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="6" rx="6" ry="2.5"/><path d="M6 6v12a6 2.5 0 0 0 12 0V6"/></svg>`,
+  castleSquare: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 7 7-3 7 3-7 3zM5 7v11l7 3 7-3V7M12 10v11"/></svg>`,
   undo: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7H5V3" /><path d="M5.6 7.2A8 8 0 1 1 4.3 14" /></svg>`,
   redo: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 7h4V3" /><path d="M18.4 7.2A8 8 0 1 0 19.7 14" /></svg>`,
   wave: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 14c2.5 0 2.5-3 5-3s2.5 3 5 3 2.5-3 5-3 2.5 3 5 3" /><path d="M2 19c2.5 0 2.5-3 5-3s2.5 3 5 3 2.5-3 5-3 2.5 3 5 3" opacity=".55"/></svg>`,
@@ -74,7 +79,7 @@ const ICONS = {
   trophy: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 4h9v5a4.5 4.5 0 0 1-9 0z" /><path d="M7.5 6H4.5c0 3 1.3 4.5 3.4 4.8M16.5 6h3c0 3-1.3 4.5-3.4 4.8" opacity=".55"/><path d="M12 13.5V17M8.5 20.5h7M9.5 20.5l.6-3.5h3.8l.6 3.5" /></svg>`,
   mail: `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="6" width="17" height="12.5" rx="2" /><path d="M4 7l8 6.2L20 7" /></svg>`,
   compass: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M15.5 8.5l-2 5-5 2 2-5z" /><path d="M12 3.5v1.5M12 19v1.5M3.5 12h1.5M19 12h1.5" opacity=".55"/></svg>`,
-  menu: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2" /><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1" /></svg>`,
+  menu: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 3-.6 2.2-2 .9-2-.9-2 3.5 1.7 1.5v2.4l-1.7 1.5 2 3.5 2-.8 2 .9L10 20h4l.6-2.3 2-.9 2 .8 2-3.5-1.7-1.5v-2.4l1.7-1.5-2-3.5-2 .9-2-.9L14 3z"/><circle cx="12" cy="11.5" r="3"/></svg>`,
   eye: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z" /><circle cx="12" cy="12" r="2.8" /></svg>`,
   eyeOff: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18" /><path d="M10.6 6.2A9.7 9.7 0 0 1 12 6c6 0 9.5 6 9.5 6a16.5 16.5 0 0 1-3.2 3.8M6.5 8.5A16 16 0 0 0 2.5 12s3.5 6 9.5 6a9.6 9.6 0 0 0 3.7-.7" /></svg>`,
 };
@@ -130,7 +135,8 @@ export interface ToolDef {
 export class Hud {
   readonly root: HTMLDivElement;
   readonly undoBtn: HTMLButtonElement;
-  readonly leftGroup: HTMLDivElement;
+  readonly topGroup: HTMLDivElement;
+  readonly rightGroup: HTMLDivElement;
   readonly toolGroup: HTMLDivElement;
   private pressTimer = 0;
   private longPressed = false;
@@ -140,22 +146,22 @@ export class Hud {
     this.root.className = 'hud';
     parent.appendChild(this.root);
 
-    this.leftGroup = document.createElement('div');
-    this.leftGroup.className = 'hud-group hud-left';
-    this.root.appendChild(this.leftGroup);
+    this.topGroup = document.createElement('div');
+    this.topGroup.className = 'hud-group hud-top';
+    this.root.appendChild(this.topGroup);
 
-    const right = document.createElement('div');
-    right.className = 'hud-group hud-right';
-    this.root.appendChild(right);
+    this.rightGroup = document.createElement('div');
+    this.rightGroup.className = 'hud-group hud-right';
+    this.root.appendChild(this.rightGroup);
 
     this.toolGroup = document.createElement('div');
     this.toolGroup.className = 'hud-tools';
     this.toolGroup.setAttribute('role', 'radiogroup');
     this.toolGroup.setAttribute('aria-label', 'Tool');
-    right.appendChild(this.toolGroup);
 
-    this.undoBtn = this.button('undo', 'Undo (hold to redo)', 'hud-btn hud-big');
-    right.appendChild(this.undoBtn);
+
+    this.undoBtn = this.button('undo', 'Undo (hold to redo)');
+
     this.undoBtn.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       this.longPressed = false;
@@ -239,8 +245,8 @@ export class Hud {
   setTool(id: string, mode?: string): void {
     for (const b of this.toolGroup.querySelectorAll<HTMLButtonElement>('button')) {
       const on = b.dataset.tool === id;
-      b.classList.toggle('active', on);
-      b.setAttribute('aria-checked', String(on));
+      if (b.dataset.tool !== undefined) b.classList.toggle('active', on);
+      if (b.getAttribute('role') === 'radio') b.setAttribute('aria-checked', String(on));
       if (b.dataset.mode !== undefined) {
         const mon = b.dataset.mode === mode && b.closest<HTMLElement>('.hud-modes')?.dataset.forTool === id;
         b.classList.toggle('active', mon);

@@ -447,3 +447,26 @@ describe('the water step skips dry rows above the swash', () => {
   });
 });
 
+describe('sandcastle molds', () => {
+  it('makes a square tower wider at the corners and undoes either shape', () => {
+    const round = new BeachSim(grid, 1);
+    const square = new BeachSim(grid, 1);
+    const i = grid.nx >> 1;
+    const j = grid.ny - 12;
+    const x = (i + 0.5) * grid.dx;
+    const y = (j + 0.5) * grid.dx;
+    const center = j * grid.nx + i;
+    const corner = (j + 4) * grid.nx + i + 4;
+    const before = square.sand.slice();
+    round.moldCastle(x, y, 'round');
+    square.moldCastle(x, y, 'square');
+    expect(square.sand[center]).toBeGreaterThan(before[center]);
+    expect(square.sand[center]).toBe(round.sand[center]);
+    expect(square.sand[corner]).toBeGreaterThan(round.sand[corner]);
+    for (const sim of [round, square]) {
+      sim.undoStroke(false);
+      expect(sim.sand[center]).toBeCloseTo(before[center]);
+      expect(sim.sand[corner]).toBeCloseTo(before[corner]);
+    }
+  });
+});

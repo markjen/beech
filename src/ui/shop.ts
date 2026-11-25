@@ -29,6 +29,7 @@ export class Shop {
   ) {
     this.root = document.createElement('div');
     this.root.className = 'claw shop';
+    this.root.inert = true;
     this.root.setAttribute('role', 'dialog');
     this.root.setAttribute('aria-modal', 'true');
     this.root.setAttribute('aria-label', 'Shop');
@@ -78,6 +79,7 @@ export class Shop {
 
   async open(): Promise<void> {
     this.root.classList.add('open');
+    this.root.inert = false;
     this.note.textContent = 'Opening the shop…';
     this.list.innerHTML = '';
     void this.api.retryPending().then((n) => n && this.bought(''));
@@ -126,6 +128,7 @@ export class Shop {
 
   close(): void {
     this.root.classList.remove('open');
+    this.root.inert = true;
   }
 
   private async render(products: ShopProduct[]): Promise<void> {

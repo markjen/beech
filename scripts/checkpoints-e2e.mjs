@@ -67,7 +67,7 @@ const raised = (page) =>
 const showSheet = async (page) => {
   await page.waitForTimeout(500);
   for (let i = 0; i < 5; i++) {
-    await page.evaluate(() => window.__beech.sheet.show());
+    await page.evaluate(() => window.__beech.sheet.show('beach'));
     await page.waitForTimeout(400);
     if (await page.evaluate(() => window.__beech.sheet.isOpen)) return;
   }
@@ -169,6 +169,7 @@ await showSheet(a);
 await a.click(`button[data-act="cp-restore-${one.id}"]`);
 await a.waitForFunction(() => window.__beech.info().objects.some((o) => o.item === 'lighthouse'), null, { timeout: 20000 });
 // B digs and saves: its save is refused and B loads the restored beach instead
+await b.click('[data-act="edit-menu"]');
 await b.click('button[data-tool="sand"]');
 await b.mouse.move(300, 500);
 await b.mouse.down();

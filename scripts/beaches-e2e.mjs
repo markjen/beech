@@ -34,6 +34,7 @@ async function device(label) {
   return page;
 }
 const dig = async (page, y) => {
+  await page.click('[data-act="edit-menu"]');
   await page.click('button[data-tool="sand"]');
   await page.mouse.move(300, y);
   await page.mouse.down();
@@ -61,7 +62,7 @@ const homeDug = await dug(a);
 check(homeDug > 1, `A dug the home beach (${homeDug.toFixed(1)})`);
 await a.evaluate(() => window.__beech.account().fetch('/api/dev/grant', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ item: 'beach' }) }));
 await a.evaluate(() => window.__beech.account().loadBeaches());
-await a.evaluate(() => window.__beech.sheet.show());
+await a.evaluate(() => window.__beech.sheet.show('beach'));
 await a.waitForSelector('button[data-act="new-beach"]', { timeout: 8000 });
 await a.click('button[data-act="new-beach"]');
 await a.waitForFunction((h) => window.__beech.account().beachId !== h && window.__beech.sync().state === 'saved', home, { timeout: 20000 });
@@ -157,6 +158,44 @@ await b.evaluate(() => window.__beech.neighbors().flushAll());
 await b.unroute(savePath);
 const secondSave = await b.evaluate(async (id) => Array.from((await window.__beech.account().loadBeach(id)).bytes), second);
 check(firstSave.length !== secondSave.length || firstSave.some((value, i) => secondSave[i] !== value), 'an edit made during a save is saved too');
+
+// One drag crosses the seam without opening a menu or lifting the mouse.
+const points = await b.evaluate(() => {
+  const beech = window.__beech;
+  const neighbor = beech.neighbors();
+  const seam = neighbor.xFor(1) / 2;
+  beech.cam.goTo(seam, true);
+  beech.scene.render();
+  const camera = beech.scene.activeCamera;
+  const { clientWidth, clientHeight } = document.querySelector('canvas');
+  const V = camera.position.constructor;
+  const identity = camera.getWorldMatrix().constructor.Identity();
+  const project = (x) => {
+    const z = 7;
+    const y = beech.cam.groundHeight(x, z);
+    const p = V.Project(new V(x, y, z), identity, beech.scene.getTransformMatrix(), camera.viewport.toGlobal(clientWidth, clientHeight));
+    return [p.x, p.y];
+  };
+  const oldHeight = beech.cam.groundHeight(seam + 2, 7);
+  beech.pickTool('pile');
+  return { from: project(seam - 2), to: project(seam + 2), oldHeight, seam };
+});
+await b.mouse.move(...points.from);
+await b.mouse.down();
+await b.waitForTimeout(400);
+await b.mouse.move(...points.to, { steps: 12 });
+await b.waitForFunction((id) => window.__beech.account().beachId === id, second, { timeout: 15000 });
+await b.waitForTimeout(650);
+await b.mouse.up();
+await b.evaluate(() => window.__beech.sync().flush());
+const crossed = await b.evaluate(({ oldHeight, seam }) => {
+  const beech = window.__beech;
+  return {
+    raised: beech.cam.groundHeight(2 - seam, 7) > oldHeight + 0.02,
+    focus: beech.cam.focusX,
+  };
+}, points);
+check(crossed.raised && Math.abs(crossed.focus + points.seam) < 1, 'the drag raised the next beach and kept the camera at the seam');
 
 // device A remembers its choice after a reload
 await a.reload({ waitUntil: 'commit' });

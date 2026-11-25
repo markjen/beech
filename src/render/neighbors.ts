@@ -10,7 +10,7 @@ import { ApiError, NeighborApi } from '../net/account';
 import { countItems } from '../net/beachSync';
 import { reportError } from '../net/telemetry';
 import type { Palette } from '../palette';
-import { BeachSim, type BrushMode } from '../sim/beachSim';
+import { BeachSim, type BrushMode, type CastleShape } from '../sim/beachSim';
 import { applyRockCover, type PlacedObject } from '../sim/objects';
 import { decodeSand, encodeSand, fitWorld, resampleField } from '../sim/sandCodec';
 import type { Swell } from '../sim/waves';
@@ -256,6 +256,22 @@ export class NeighborView {
   /** The beach at a shore index, if there is one. */
   beachAt(index: number): ShoreBeach | null {
     return this.entries.get(index)?.beach ?? null;
+  }
+
+  /** Adjacent owned beaches share the view and can be opened directly with a tool. */
+  ownedNeighborAt(x: number): { id: string; offset: number } | null {
+    if (!this.ownVisible) return null;
+    const index = this.nearestIndex(x);
+    const entry = this.entries.get(index);
+    if (Math.abs(index) !== 1 || !entry?.slot || !entry.beach.linked) return null;
+    const offset = this.xFor(index);
+    if (Math.abs(x - offset) > WORLD_SIZE_X / 2) return null;
+    const owned = this.account.beaches.find((b) => b.code === entry.beach.code);
+    return owned ? { id: owned.id, offset } : null;
+  }
+
+  get hasOwnedNeighbor(): boolean {
+    return this.ownedNeighborAt(this.xFor(-1)) !== null || this.ownedNeighborAt(this.xFor(1)) !== null;
   }
 
   /** Reload your neighbors and the shore (from you, or from the beach you're visiting). */
@@ -867,6 +883,18 @@ export class NeighborView {
     return placed;
   }
 
+  /** Mold a sandcastle tower on an owned neighbor beach. */
+  moldCastle(index: number, sx: number, sy: number, shape: CastleShape): void {
+    const e = this.entries.get(index);
+    if (!e) return;
+    const sim = this.ensureSim(e);
+    if (!sim) return;
+    sim.moldCastle(sx, sy, shape);
+    sim.stepEdit(1 / SIM_HZ);
+    this.syncFromSim(e);
+    this.markOwnedDirty(e);
+  }
+
   moveObject(index: number, id: number, sx: number, sy: number): PlacedObject | null {
     const e = this.entries.get(index);
     if (!e) return null;
@@ -1072,7 +1100,7 @@ export class NeighborView {
     let bestData: Loaded | null = null;
     let bestD = Infinity;
     for (const e of this.entries.values()) {
-      if (!e.data || (e.index === 0 && !this.visiting)) continue;
+      if (!e.data || !e.slot || (e.index === 0 && !this.visiting)) continue;
       const d = Math.abs(x - this.xFor(e.index));
       if (d <= WORLD_SIZE_X / 2 && d < bestD) {
         bestD = d;
@@ -1186,7 +1214,7 @@ export class NeighborView {
       this.keepOutAt = now;
       const sel = this.uiRoot.classList.contains('ui-collapsed')
         ? '.hud-collapse'
-        : '.place, .shore-bar.shown, .hud-right, .hud-left';
+        : '.place, .shore-bar.shown, .hud-right, .hud-top, .hud-profile, .hud-corner, .hud-popup, .inv-tray.open';
       this.keepOutCache = [...this.uiRoot.querySelectorAll<HTMLElement>(sel)]
         .map((el) => el.getBoundingClientRect())
         .filter((r) => r.width > 0 && r.height > 0);
