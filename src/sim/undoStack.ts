@@ -11,6 +11,9 @@ export interface UndoEntry {
   /** an object placed on / taken off the beach (no sand change) */
   /** an object placed, taken off, or moved (move: `prev` is where it was) */
   obj?: { op: 'add' | 'remove' | 'move'; data: PlacedObject; prev?: PlacedObject };
+  /** objects one drag stroke laid down (undone/redone together); `group` is the stroke they belong to */
+  added?: PlacedObject[];
+  group?: string;
   /** objects a dozer or vacuum stroke swept up along its path (sand change too, or none) */
   removed?: PlacedObject[];
   /**
@@ -61,6 +64,16 @@ export class UndoStack {
 
   get redoCount(): number {
     return this.redos.length;
+  }
+
+  /** The newest entry, if any (a grouped placement appends to it). */
+  top(): UndoEntry | undefined {
+    return this.undos[this.undos.length - 1];
+  }
+
+  /** A new edit discards the redo stack (a grouped placement appends instead of pushing, so it clears it too). */
+  clearRedo(): void {
+    this.redos.length = 0;
   }
 
   clear(): void {

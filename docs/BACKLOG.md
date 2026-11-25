@@ -204,6 +204,14 @@ _(nothing right now)_
   from the same line did not ship with it (needs a character mesh,
   walk animation and fading footprints — a new render subsystem,
   not an item) and stays a to-do above.
+- [x] **Footprints: drag to leave a trail** (2026-11-25): Kt22chute75
+  asked on Discord #feedback to place footprints along a drag path
+  instead of one tap at a time. Dragging with footprints in hand now
+  lays one trail per stride along the path, each running in the
+  direction of travel with its prints alternating across the joins
+  (up to 100 trails per drag), and undo takes the whole drag back
+  as one step (`src/world/footprints.ts`, grouped `placeObject`).
+  A render of a dragged trail is in `docs/items/renders/footprints-drag.png`.
 - [x] **Guide: full item catalog** (2026-11-24, PR #86): the user guide
   (beech.games/guide#catalog) lists everything you can place, grouped
   by how you get it — free, washed ashore, claw, vending (this week's
