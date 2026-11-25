@@ -426,8 +426,7 @@ a.action {
 
 /* ---------------------------------------------------------- status pane */
 /* top left, shown with the rail: whose beach + the weather by default; ⌄
-   adds the game status, the way home while away, and the beaches in view;
-   × tucks it away to a lone i */
+   adds the game status and actions while away; × tucks it away to a lone i */
 .place-wrap {
   position: fixed;
   left: calc(14px + env(safe-area-inset-left));
@@ -667,23 +666,6 @@ a.action {
 
 /* ---------------------------------------------------------- neighbors */
 
-.neighbor-tag {
-  position: fixed;
-  left: 0;
-  top: 0;
-  padding: 5px 12px;
-  border-radius: 999px;
-  font-size: 13px;
-  letter-spacing: 0.04em;
-  white-space: nowrap;
-  color: var(--ui-fg);
-  background: var(--ui-bg);
-  box-shadow: 0 4px 14px var(--ui-shadow);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  pointer-events: none;
-}
-
 .neighbors {
   display: flex;
   flex-direction: column;
@@ -784,55 +766,6 @@ body.ambient-idle {
   cursor: none;
 }
 
-.neighbor-tag {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.neighbor-tag .fav {
-  pointer-events: auto;
-  border: none;
-  background: none;
-  padding: 0 0 0 2px;
-  color: inherit;
-  font-size: 16px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.neighbor-tag .ask {
-  pointer-events: auto;
-  border: 1.5px solid currentColor;
-  border-radius: 999px;
-  padding: 2px 9px;
-  background: none;
-  color: inherit;
-  font: inherit;
-  font-size: 11px;
-  cursor: pointer;
-}
-
-.neighbor-tag .ask[hidden],
-.neighbor-tag .leave[hidden] {
-  display: none;
-}
-
-/* "leave something" (docs/INBOX_NOTIFICATIONS.md): like "ask", filled */
-.neighbor-tag .leave {
-  pointer-events: auto;
-  border: 1.5px solid currentColor;
-  border-radius: 999px;
-  padding: 2px 9px;
-  color: var(--ui-bg);
-  background: var(--ui-fg);
-  font: inherit;
-  font-size: 11px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.neighbor-tag .fav.on,
 .shore-bar .sb-fav.on {
   color: #e0a43a;
 }
@@ -846,7 +779,7 @@ body.ambient-idle {
 
 /* ---------------------------------------------------------- down the shore */
 
-/* in the expanded status pane: the way home, a star, a pet to feed */
+/* in the expanded status pane: leave something, ask, feed pet, star, way home */
 .shore-bar {
   display: none;
   flex-wrap: wrap;
@@ -881,11 +814,15 @@ body.ambient-idle {
 }
 
 .shore-bar .sb-fav[hidden],
-.shore-bar .sb-pet[hidden] {
+.shore-bar .sb-pet[hidden],
+.shore-bar .sb-leave[hidden],
+.shore-bar .sb-ask[hidden] {
   display: none;
 }
 
-.shore-bar .sb-pet {
+.shore-bar .sb-pet,
+.shore-bar .sb-leave,
+.shore-bar .sb-ask {
   border: 1.5px solid currentColor;
   border-radius: 999px;
   padding: 6px 12px;
@@ -913,79 +850,6 @@ body.ambient-idle {
 
 .hud-help dd {
   margin: 2px 0 10px;
-}
-
-/* ---------------------------------------------------------- viewing mode:
-   the beach info lives under the top-left header, not floating over the
-   sand. The name cards open only when the viewer taps the header. */
-
-.shore-info {
-  pointer-events: none;
-}
-
-.shore-info[hidden] {
-  display: none;
-}
-
-.shore-info-card {
-  pointer-events: auto;
-  padding-top: 8px;
-  border-top: 1px solid color-mix(in srgb, currentColor 18%, transparent);
-}
-
-/* "also in view": the label only shows when there are rows */
-.shore-info-list:not(:empty)::before {
-  content: 'also in view';
-  display: block;
-  margin-bottom: 2px;
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  opacity: 0.6;
-}
-
-.shore-info-list:empty {
-  display: none;
-}
-
-.shore-info-list .neighbor-tag {
-  animation: sp-row-in 0.25s ease;
-}
-
-@keyframes sp-row-in {
-  from {
-    opacity: 0;
-    transform: translateX(-8px);
-  }
-}
-
-.shore-info-card[hidden] {
-  display: none;
-}
-
-/* name tags moved into the card lay out as rows, not floating pills */
-.shore-info-list .neighbor-tag {
-  position: static;
-  transform: none;
-  width: 100%;
-  box-sizing: border-box;
-  padding: 8px 0;
-  border-radius: 0;
-  background: none;
-  box-shadow: none;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-  border-bottom: 1px solid rgba(128, 128, 128, 0.25);
-}
-
-.shore-info-list .neighbor-tag:last-child {
-  border-bottom: none;
-}
-
-.shore-info-list .neighbor-tag .name {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .beaches .beach-row.here .fav-name {
@@ -1318,21 +1182,6 @@ body.ambient-idle {
   max-width: 110px;
   cursor: pointer;
   opacity: 0.85;
-}
-
-/* ---------------------------------------------------------- owned neighbor badge */
-
-.neighbor-tag .yours {
-  font-size: 11px;
-  letter-spacing: 0.05em;
-  padding: 1px 7px;
-  border-radius: 999px;
-  background: color-mix(in srgb, currentColor 14%, transparent);
-  opacity: 0.8;
-}
-
-.neighbor-tag .yours[hidden] {
-  display: none;
 }
 
 /* the account panel's "invite friends" (docs/INVITES_GUIDE.md) */

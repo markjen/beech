@@ -81,7 +81,7 @@ simulated one.
 | `src/ui/inbox.ts`, `src/ui/visitorCard.ts`, `src/ui/inboxText.ts`, `server/src/inbox.ts` | Visitors and the inbox: the mailbox and its list, the "leave something" card, the rows' wording; the server's limits, quick notes and note filter. INBOX_NOTIFICATIONS.md |
 | `src/ui/socialHub.ts` | The Inbox hub: one tab strip over the inbox, leaderboard, starred and visit-by-code dialogs |
 | `src/ui/leaderboard.ts` | The leaderboard panel (most-starred beaches: all time and rising), with visit and star on each row |
-| `src/render/neighbors.ts` | The shore: beaches down the chain of neighbor links as snapshot dioramas (drawn near the view), visiting by code, favorites, name tags |
+| `src/render/neighbors.ts` | The shore: beaches down the chain of neighbor links as snapshot dioramas (drawn near the view), visiting by code, favorites |
 | `Dockerfile` | Production image: web app (accounts on) + API server |
 | `src/audio/ambience.ts` | Procedural Web Audio soundscape |
 | `src/platform/*` | Runtime detection (`runtime.ts` for web/iOS/Android/Steam), haptics (Capacitor or vibrate), PWA registration, quality tier from benchmark |

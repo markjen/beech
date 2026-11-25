@@ -41,7 +41,7 @@ import { Shop } from './ui/shop';
 import { ShopApi, webOrderFromUrl, withoutWebOrderParams } from './net/shop';
 import { VendingMachine } from './ui/vendingMachine';
 import { DEFAULT_SIZE, ITEMS, rollPlacement, type Item } from './world/items';
-import { ACCOUNTS_ENABLED, Account, AnimalsApi, ApiError, CheckpointApi, DigFindApi, GiftApi, GuideApi, InboxApi, PullApi, ReferralApi } from './net/account';
+import { ACCOUNTS_ENABLED, Account, AnimalsApi, ApiError, CheckpointApi, DigFindApi, GiftApi, GuideApi, InboxApi, PullApi, ReferralApi, type ShoreBeach } from './net/account';
 import type { InboxPanel } from './ui/inbox';
 import type { VisitorCard } from './ui/visitorCard';
 import type { IconName } from './ui/hud';
@@ -760,8 +760,8 @@ async function boot() {
   sheet.setSettings({ ...settings, beach: beach.id });
 
   // the status pane, top left (shown with the rail): whose beach this is
-  // and the weather by default; ⌄ adds the game status, the way home while
-  // you're away, and the other beaches in view; × tucks it away to an i.
+  // and the weather by default; ⌄ adds the game status and actions while
+  // you're away; × tucks it away to an i.
   const placeWrap = document.createElement('div');
   placeWrap.className = 'place-wrap status-pane';
   placeWrap.innerHTML = `
@@ -782,9 +782,6 @@ async function boot() {
   const spMore = placeWrap.querySelector<HTMLElement>('.sp-more')!;
   const spDetail = placeWrap.querySelector<HTMLElement>('.sp-detail')!;
   const spChips = placeWrap.querySelector<HTMLElement>('.sp-chips')!;
-  const infoSlot = document.createElement('div');
-  infoSlot.className = 'place-info';
-  spMore.appendChild(infoSlot);
   uiRoot.appendChild(placeWrap);
   type PaneState = 'default' | 'expanded' | 'closed';
   let paneState: PaneState = settings.statusPane ?? 'default';
@@ -799,12 +796,18 @@ async function boot() {
     spToggle.setAttribute('aria-label', label);
     spToggle.title = label;
     place.setAttribute('aria-label', `${label}: beach status`);
-    neighbors?.setInfoOpen(expanded);
     if (settings.statusPane !== state) {
       settings = { ...settings, statusPane: state };
       saveSettings(settings);
     }
     updatePlace(true);
+  };
+  /** Tried to dig on someone else's beach: expand the pane (holds the way home) and pulse the header. */
+  const nudgePane = () => {
+    setPane('expanded');
+    place.classList.remove('nudge');
+    void place.offsetWidth;
+    place.classList.add('nudge');
   };
   place.addEventListener('click', () => setPane(paneState === 'expanded' ? 'default' : 'expanded'));
   spToggle.addEventListener('click', () => setPane(paneState === 'expanded' ? 'default' : 'expanded'));
@@ -1108,20 +1111,23 @@ async function boot() {
   helpActions.append(guide.button, guideLink);
   guide.button.addEventListener('click', () => sheet.hide());
 
-  // the shore bar: who you're visiting, and the way home — stacked under
-  // the header, not floating at the top right
+  // the shore bar: actions for the beach you're looking at when away from
+  // home (leave something, ask to be neighbors, feed pet, star, way home)
   const shoreBar = document.createElement('div');
   shoreBar.className = 'shore-bar';
-  shoreBar.innerHTML = `<span class="sb-where"></span><button type="button" class="sb-pet" hidden>Feed pet</button><button type="button" class="sb-fav"></button><button type="button" class="sb-home" data-act="home">⌂ <span>my beach</span></button>`;
-  // the way home (and a star) live in the expanded status pane, above the
-  // beaches in view; the bar stays hidden until you're away from home
-  spMore.insertBefore(shoreBar, infoSlot);
+  shoreBar.innerHTML = `<span class="sb-where"></span><button type="button" class="sb-leave" hidden>leave something</button><button type="button" class="sb-ask" hidden>ask to be neighbors</button><button type="button" class="sb-pet" hidden>Feed pet</button><button type="button" class="sb-fav"></button><button type="button" class="sb-home" data-act="home">⌂ <span>my beach</span></button>`;
+  spMore.appendChild(shoreBar);
   const sbWhere = shoreBar.querySelector<HTMLElement>('.sb-where')!;
+  const sbLeave = shoreBar.querySelector<HTMLButtonElement>('.sb-leave')!;
+  const sbAsk = shoreBar.querySelector<HTMLButtonElement>('.sb-ask')!;
   const sbPet = shoreBar.querySelector<HTMLButtonElement>('.sb-pet')!;
   const sbFav = shoreBar.querySelector<HTMLButtonElement>('.sb-fav')!;
   let shoreKey = '';
+  /** opens the visitor card for another beach (filled in once the account layer loads) */
+  let leaveBeach: ((b: ShoreBeach) => void) | null = null;
+  let askingCode: string | null = null;
   const visitedPetCache = new Map<string, { name: string } | null>();
-  /** the beach under the view, along the shore (null: your own) */
+  /** the beach under the view, along the shore (null: your own live beach) */
   const beachHere = () => {
     if (!neighbors) return null;
     const i = neighbors.nearestIndex(cam.focusX);
@@ -1137,6 +1143,34 @@ async function boot() {
     haptics.impact('light');
   };
   shoreBar.querySelector('.sb-home')!.addEventListener('click', () => void goHome());
+  sbLeave.addEventListener('click', () => {
+    const b = beachHere();
+    if (b) leaveBeach?.(b);
+  });
+  sbAsk.addEventListener('click', () => {
+    if (!neighbors) return;
+    const idx = neighbors.nearestIndex(cam.focusX);
+    const b = neighbors.beachAt(idx);
+    if (!b || !neighbors.askSideAt(idx)) return;
+    askingCode = b.code;
+    sbAsk.disabled = true;
+    void neighbors
+      .askAt(idx)
+      .then((status) => {
+        if (status) {
+          sbAsk.textContent = status === 'linked' ? 'neighbors now' : 'asked ✓';
+          showToast(uiRoot, status === 'linked' ? `You and ${b.name || 'them'} are neighbors now` : `Asked ${b.name || 'them'} to be neighbors`);
+        }
+      })
+      .catch((err: unknown) => {
+        sbAsk.disabled = false;
+        showToast(uiRoot, err instanceof Error ? err.message : 'Could not ask');
+      })
+      .finally(() => {
+        askingCode = null;
+        shoreKey = '';
+      });
+  });
   sbFav.addEventListener('click', () => {
     if (ACCOUNTS_ENABLED && !account?.user) return sheet.show('account'); // stars need an account
     const b = beachHere();
@@ -1161,16 +1195,16 @@ async function boot() {
       });
   });
   const updateShoreBar = () => {
-    // away is the NeighborView's call (past the seam to another beach),
-    // not a focus threshold here — the two must agree, or the header says
-    // "choose a beach" while the name tags have already moved into it
     const away = !!neighbors && neighbors.away;
-    const b = away ? beachHere() : null;
+    const idx = neighbors ? neighbors.nearestIndex(cam.focusX) : 0;
+    const here = beachHere();
+    const b = away ? here : null;
     const fav = !!b && !!neighbors?.favorites.has(b.code);
     const signedIn = !!account?.user;
-    // away from home the shore bar shows, stacked under the header: the
-    // beach info lives there too, in the card under it
-    const key = `${away}|${b?.code}|${b?.name}|${fav}|${!!neighbors?.visiting}|${signedIn}`;
+    const isMine = !!b && (!!neighbors?.ownedBeach(b) || b.code === neighbors?.state?.code);
+    const canLeave = !!b && !!leaveBeach && !isMine;
+    const askSide = b && neighbors ? neighbors.askSideAt(idx) : null;
+    const key = `${away}|${here?.code}|${here?.name}|${fav}|${!!neighbors?.visiting}|${signedIn}|${canLeave}|${askSide}|${askingCode === b?.code}`;
     if (key === shoreKey) return;
     shoreKey = key;
     shoreBar.classList.toggle('shown', away);
@@ -1179,6 +1213,15 @@ async function boot() {
     const placeBeach = b?.location ? beachById(b.location) : undefined;
     sbWhere.textContent = b ? `${neighbors?.visiting ? 'Visiting ' : ''}${b.name || 'a beach'}${placeBeach ? ` · ${placeBeach.name}` : ''}` : 'Down the shore';
     updatePlace(true);
+    sbLeave.hidden = !canLeave;
+    if (b) sbLeave.dataset.act = `leave-${b.code}`;
+    else delete sbLeave.dataset.act;
+    sbAsk.hidden = !askSide;
+    if (askSide && askingCode !== b?.code) {
+      sbAsk.textContent = 'ask to be neighbors';
+      sbAsk.disabled = false;
+      sbAsk.title = `Ask ${b?.name || 'them'} to move in on your ${askSide}`;
+    }
     sbFav.hidden = !b || !signedIn || !!neighbors?.ownedBeach(b);
     sbFav.textContent = fav ? '★' : '☆';
     sbFav.classList.toggle('on', fav);
@@ -1210,13 +1253,19 @@ async function boot() {
   // the status pane's first line: whose beach is under the view
   paneOwner = () => {
     const away = !!neighbors && neighbors.away;
-    const b = away ? beachHere() : null;
-    if (b) {
-      const loc = b.location ? beachById(b.location) : undefined;
-      const whose = b.beachName || `${b.name || 'Someone'}’s beach`;
+    const here = beachHere();
+    if (away && here) {
+      const loc = here.location ? beachById(here.location) : undefined;
+      const whose = here.beachName || `${here.name || 'Someone'}’s beach`;
       return { title: `${whose}${loc ? ` · ${loc.name}` : ''}`, away: true };
     }
     if (away) return { title: 'Down the shore', away: true };
+    const own = here ? neighbors?.ownedBeach(here) : undefined;
+    if (own) {
+      const locId = own.location || here?.location;
+      const loc = locId ? beachById(locId) : undefined;
+      return { title: `${own.name || 'Your beach'}${loc ? ` · ${loc.name}` : ''}`, away: false };
+    }
     const mine = account?.beaches.find((x) => x.id === account?.beachId)?.name;
     return { title: `${mine || 'Your beach'} · ${beach.name}`, away: false };
   };
@@ -1265,7 +1314,7 @@ async function boot() {
       if (cam.animating) return;
       const hit = pickAt(sx, sy);
       if (!hit) {
-        if (neighbors && neighbors.viewing) neighbors.nudgeInfo();
+        if (neighbors && neighbors.viewing) nudgePane();
         return;
       }
       if (fenced) {
@@ -1879,14 +1928,8 @@ async function boot() {
       if (st === 'tooBig' && !toldTooBig) showToast(uiRoot, 'This beach is too big to save. Smooth some of the sand and it will save again.');
       toldTooBig = st === 'tooBig';
     });
-    neighbors = new NeighborView(scene, grid, ready.rest, swell, cam, uiRoot, account, renderer, seed, {
-      infoSlot,
-      infoHeader: place,
-      // tried to dig on someone else's beach: show the pane, expanded (it holds the way home)
-      onNudge: () => setPane('expanded'),
-    });
+    neighbors = new NeighborView(scene, grid, ready.rest, swell, cam, account, renderer, seed);
     const nv = neighbors;
-    nv.setInfoOpen(paneState === 'expanded');
     nv.onSaveError = (kind) => {
       if (kind === 'outdated') offerReload();
       else if (kind === 'tooBig') showToast(uiRoot, 'This beach is too big to save. Smooth some of the sand and it will save again.');
@@ -2489,8 +2532,8 @@ async function boot() {
       visitorUi = visitor;
       // signed out, "leave something" signs in first, then opens the card
       let cardAfterSignIn: { code: string; owner: string; beachName?: string } | null = null;
-      // "leave something" on each beach's name tag (and so in the viewing-mode card)
-      nv.onLeave = (b) => {
+      // "leave something" in the status pane's shore bar
+      leaveBeach = (b) => {
         if (!acct.user) {
           cardAfterSignIn = { code: b.code, owner: b.name, beachName: b.beachName };
           sheet.show('account');
@@ -2498,6 +2541,7 @@ async function boot() {
         }
         void visitor.open(b.code, b.name, b.beachName);
       };
+      shoreKey = '';
       // the poll carries the inbox: the badge, and a note for what matters
       let announced = -1;
       nv.onChange((n) => {

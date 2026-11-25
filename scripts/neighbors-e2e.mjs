@@ -101,31 +101,26 @@ await page.waitForFunction((n) => window.__beech.neighbors()?.state?.left?.name 
 check(true, 'Ben added Ana as his left neighbor');
 check((await page.evaluate(() => window.__beech.neighbors().beachAt(1)?.name)) === anaName, "Ana's beach is next to his");
 
-// pan over toward the left neighbor (world +X) and look — staying on Ben's
-// side of the seam (past halfway the view is "away", and the name tags move
-// off the sand into the status pane)
+// pan over to the left neighbor (world +X) and look
 await page.evaluate(() => {
   const b = window.__beech;
   b.cam.halfH = 15;
   b.cam.applyOrtho();
-  b.cam.camera.target.x = 12;
+  b.cam.camera.target.x = 17;
   b.cam.camera.target.z = 0;
 });
-// name tags float over the sand while the toolbar is open (with the status pane collapsed)
+// top-left status pane names Ana's beach with no floating name-tag pills
 await page.evaluate(() => { window.__beech.setRail(true); window.__beech.setPane('default'); });
-// wait for Ana's beach to load and its tag to show (the shore loads several beaches)
 await page
   .waitForFunction(
-    (n) => [...document.querySelectorAll('.neighbor-tag')].some((x) => x.textContent.includes(n) && getComputedStyle(x).display !== 'none'),
+    (n) => document.querySelector('.place')?.textContent?.includes(n),
     anaName,
     { timeout: 20000 },
   )
   .catch(() => {});
-const tag = await page.evaluate((n) => {
-  const t = [...document.querySelectorAll('.neighbor-tag')].find((x) => x.textContent.includes(n));
-  return t && getComputedStyle(t).display !== 'none' ? t.textContent : null;
-}, anaName);
-check(!!tag && tag.includes(anaName), `name tag shows (${tag})`);
+const header = await page.textContent('.place');
+check(!!header && header.includes(anaName), `status pane names neighbor (${header})`);
+check((await page.locator('.neighbor-tag').count()) === 0, 'no floating neighbor-tag pills');
 check((await page.evaluate(() => window.__beech.cam.maxX)) > 40, 'camera can pan over to the neighbor');
 if (shot) await page.screenshot({ path: shot });
 

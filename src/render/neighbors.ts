@@ -1,5 +1,5 @@
 import type { Ray } from '@babylonjs/core/Culling/ray';
-import { Matrix, Vector3 } from '@babylonjs/core/Maths/math.vector';
+import type { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import type { Scene } from '@babylonjs/core/scene';
 
 import { SIM_HZ, WORLD_SIZE_X, type GridSpec } from '../config';
@@ -14,12 +14,9 @@ import { BeachSim, type BrushMode, type CastleShape } from '../sim/beachSim';
 import { applyRockCover, type PlacedObject } from '../sim/objects';
 import { decodeSand, encodeSand, fitWorld, resampleField } from '../sim/sandCodec';
 import type { Swell } from '../sim/waves';
-import { beachById } from '../world/locations';
 import { BeachRenderer, ORIGIN_Z } from './beachRenderer';
 import { ObjectView } from './objects';
 import { boundaryLinked, nearestShoreIndex, shoreLayout, UNLINKED_STEP, windowBeachCenters } from './shoreSpacing';
-import { placeTag } from '../ui/tagPlace';
-import { isViewingMode, orderInfoRows, ShoreInfo } from '../ui/shoreInfo';
 /** how far down the shore to load at first, each way */
 const DEPTH = 6;
 /** load more of the shore when the view gets this close to the end of what's loaded */
@@ -62,13 +59,6 @@ interface Loaded {
 interface Slot {
   renderer: BeachRenderer;
   objects: ObjectView;
-  label: HTMLDivElement;
-  yours: HTMLSpanElement;
-  star: HTMLButtonElement;
-  /** "ask to be neighbors", on beaches at the end of a stretch */
-  ask: HTMLButtonElement;
-  /** "leave something" (docs/INBOX_NOTIFICATIONS.md), on beaches that aren't yours */
-  leave: HTMLButtonElement;
 }
 
 /** One beach along the shore. Index 0 is yours (or the one you're visiting); +1 is the next one on the left, and so on. */
@@ -115,8 +105,6 @@ export class NeighborView {
   onOwnedChanged?: () => void;
   /** fired when saving an edited owned neighbor hits a terminal error or external restore */
   onSaveError?: (kind: 'tooBig' | 'outdated' | 'restored' | 'fenced') => void;
-  /** the visitor card for a beach (set by main once accounts exist); unset: no button */
-  onLeave?: (b: ShoreBeach) => void;
   readonly favorites = new Map<string, ShoreBeach>();
   private entries = new Map<number, Entry>();
   /** world-X centre of each entry (linked neighbours touch, the rest keep the diorama gap) */
@@ -132,8 +120,6 @@ export class NeighborView {
   /** when to next ask about each beach (fast while its owner is on it) */
   private liveNext = new Map<string, number>();
   private win: [number, number] = [0, 0];
-  /** the viewing-mode info: the card tucked under the top-left header */
-  private readonly shoreInfo: ShoreInfo;
   /** a direction where the whole world has been walked (the shore came round) */
   private exhausted = new Set<Side>();
   private paging = new Set<Side>();
@@ -147,24 +133,11 @@ export class NeighborView {
     private readonly rest: Float32Array,
     private readonly swell: Swell,
     private readonly cam: CameraController,
-    private readonly uiRoot: HTMLElement,
     private readonly account: Account,
     private readonly ownRenderer?: BeachRenderer,
     private readonly seed = 1,
-    opts?: {
-      /** where the viewing-mode info card mounts, under the top-left header */
-      infoSlot?: HTMLElement;
-      /** the header button, pulsed when the viewer tries to dig here */
-      infoHeader?: HTMLElement;
-      /** the viewer tried to dig here: show the info (expand the status pane) */
-      onNudge?: () => void;
-    },
   ) {
     this.api = new NeighborApi(account);
-    this.shoreInfo = new ShoreInfo(uiRoot, opts?.infoSlot ?? uiRoot, {
-      header: opts?.infoHeader,
-      onNudge: opts?.onNudge,
-    });
   }
 
   onChange(fn: (n: Neighbors | null) => void): void {
@@ -248,17 +221,16 @@ export class NeighborView {
     return null;
   }
 
-  /** Viewing mode: looking at someone else's stretch of shore. No floating name tags. */
+  /** Viewing mode: looking at someone else's stretch of shore. */
   get viewing(): boolean {
-    return isViewingMode(!!this.visiting, this.anyOwnVisible);
+    return !!this.visiting || !this.anyOwnVisible;
   }
 
   /**
    * Away from home: the view is on someone else's beach (visiting, or
-   * scrolled past the seam). The name tags belong in the header card
-   * here too, not floating over the sand — viewing is the stricter case
-   * where your own beach has left the window entirely. Your own other
-   * beaches don't count as away: you're still home on those.
+   * scrolled past the seam) — viewing is the stricter case where your own
+   * beach has left the window entirely. Your own other beaches don't count
+   * as away: you're still home on those.
    */
   get away(): boolean {
     if (this.visiting) return true;
@@ -266,16 +238,6 @@ export class NeighborView {
     if (i === 0) return false;
     const b = this.beachAt(i);
     return !b || !this.ownedBeach(b);
-  }
-
-  /** Point at the header: the viewer tried to dig on someone else's beach. */
-  nudgeInfo(): void {
-    this.shoreInfo.nudge();
-  }
-
-  /** The beaches-in-view list in the status pane: shown while the pane is expanded. */
-  setInfoOpen(open: boolean): void {
-    this.shoreInfo.setOpen(open);
   }
 
   /** How many beaches the shore has each way (for tests and the UI). */
@@ -369,17 +331,11 @@ export class NeighborView {
         if (e.data && e.data.updatedAt !== b.updatedAt && !e.dirty && !e.saving) {
           e.data = { ...e.data, updatedAt: -1 };
         }
-        if (e.slot) e.slot.label.querySelector('.name')!.textContent = this.title(b);
       } else {
         this.entries.set(i, { index: i, beach: b });
       }
     }
     this.updateBounds();
-    for (const en of this.entries.values()) {
-      this.paintStar(en);
-      this.paintAsk(en);
-      this.paintLeave(en);
-    }
     for (const fn of this.listeners) fn(this.state);
     this.schedulePoll();
     await this.fillWindow(true);
@@ -440,7 +396,6 @@ export class NeighborView {
   }
 
   private favChanged(): void {
-    for (const e of this.entries.values()) if (e.slot) this.paintStar(e);
     for (const fn of this.favListeners) fn();
   }
 
@@ -493,9 +448,6 @@ export class NeighborView {
     // (no newer refresh to wait for: an overtaken one just stops)
     this.latest = Promise.resolve();
     window.clearTimeout(this.pollTimer);
-    // first: close the info card, so its tags are back on the root before
-    // their slots drop them
-    this.shoreInfo.setVisible(false);
     window.clearTimeout(this.liveTimer);
     this.liveTimer = 0;
     this.liveNext.clear();
@@ -570,11 +522,6 @@ export class NeighborView {
     const { left, right } = this.extent;
     this.cam.maxX = this.xFor(left) + half;
     this.cam.minX = this.xFor(-right) - half;
-  }
-
-  private title(b: ShoreBeach): string {
-    const place = b.location ? beachById(b.location) : undefined;
-    return `${b.name || 'a neighbor'}${place ? ` · ${place.name}` : ''}`;
   }
 
   // ------------------------------------------------------------ loading and drawing
@@ -666,60 +613,9 @@ export class NeighborView {
     const renderer = new BeachRenderer(this.scene, this.grid, this.rest, this.swell, x);
     renderer.setChairView(this.chairView);
     const objects = new ObjectView(this.scene, renderer, x);
-    const label = document.createElement('div');
-    label.className = 'neighbor-tag';
-    // hidden until the next frame places it: a fresh tag must not flash
-    // over the sand for a frame while the view is away from home
-    label.style.display = 'none';
-    label.innerHTML = `<span class="name"></span>`;
-    label.querySelector('.name')!.textContent = this.title(e.beach);
-    const yours = document.createElement('span');
-    yours.className = 'yours';
-    yours.textContent = 'yours';
-    yours.hidden = true;
-    label.appendChild(yours);
-    const star = document.createElement('button');
-    star.type = 'button';
-    star.className = 'fav';
-    star.addEventListener('click', () => void this.toggleFavorite(e.beach).catch(() => {}));
-    label.appendChild(star);
-    const ask = document.createElement('button');
-    ask.type = 'button';
-    ask.className = 'ask';
-    ask.hidden = true;
-    ask.addEventListener('click', () => void this.askFromTag(e));
-    label.appendChild(ask);
-    const leave = document.createElement('button');
-    leave.type = 'button';
-    leave.className = 'leave';
-    leave.dataset.act = `leave-${e.beach.code}`;
-    leave.textContent = 'leave something';
-    leave.addEventListener('click', () => this.onLeave?.(e.beach));
-    label.appendChild(leave);
-    this.uiRoot.appendChild(label);
-    e.slot = { renderer, objects, label, yours, star, ask, leave };
-    this.paintStar(e);
-    this.paintAsk(e);
-    this.paintLeave(e);
+    e.slot = { renderer, objects };
     this.repaint(e);
     this.syncSeams();
-  }
-
-  /** one of your own beaches (your home code, or any of your other beaches) */
-  private isMine(code: string): boolean {
-    return code === this.state?.code || this.account.beaches.some((b) => b.code === code);
-  }
-
-  private paintStar(e: Entry): void {
-    if (!e.slot) return;
-    const mine = !!this.ownedBeach(e.beach);
-    e.slot.yours.hidden = !mine;
-    e.slot.star.hidden = !this.account.user || mine;
-    const on = this.favorites.has(e.beach.code);
-    e.slot.star.textContent = on ? '★' : '☆';
-    e.slot.star.classList.toggle('on', on);
-    e.slot.star.setAttribute('aria-label', on ? 'Remove from favorites' : 'Add to favorites');
-    e.slot.star.title = e.slot.star.getAttribute('aria-label')!;
   }
 
   /**
@@ -753,42 +649,27 @@ export class NeighborView {
     return null;
   }
 
-  /** "leave something": on beaches that aren't yours, once the app has a visitor card */
-  private paintLeave(e: Entry): void {
-    if (!e.slot) return;
-    e.slot.leave.hidden = !this.onLeave || this.isMine(e.beach.code);
+  /** Which side of your beach the shore entry at `index` could join, or null. */
+  askSideAt(index: number): Side | null {
+    const e = this.entries.get(index);
+    return e ? this.askSide(e) : null;
   }
 
-  private paintAsk(e: Entry): void {
-    if (!e.slot) return;
+  /** Ask the beach at shore `index` to become your neighbor on the matching free side. */
+  async askAt(index: number): Promise<'linked' | 'asked' | null> {
+    const e = this.entries.get(index);
+    if (!e) return null;
     const side = this.askSide(e);
-    e.slot.ask.hidden = !side;
-    if (side) {
-      e.slot.ask.textContent = 'ask to be neighbors';
-      e.slot.ask.disabled = false;
-      e.slot.ask.title = `Ask ${e.beach.name || 'them'} to move in on your ${side}`;
-    }
-  }
-
-  private async askFromTag(e: Entry): Promise<void> {
-    const side = this.askSide(e);
-    const s = e.slot;
-    if (!side || !s) return;
-    s.ask.disabled = true;
-    try {
-      const r = await this.api.set(side, e.beach.code);
-      s.ask.textContent = r.status === 'linked' ? 'neighbors now' : 'asked ✓';
-      await this.refresh();
-    } catch (err) {
-      s.ask.textContent = (err as Error).message || 'could not ask';
-    }
+    if (!side) return null;
+    const r = await this.api.set(side, e.beach.code);
+    await this.refresh();
+    return r.status;
   }
 
   private dropSlot(e: Entry): void {
     if (!e.slot) return;
     e.slot.objects.dispose();
     e.slot.renderer.dispose();
-    e.slot.label.remove();
     e.slot = undefined;
     this.syncSeams();
   }
@@ -1217,12 +1098,7 @@ export class NeighborView {
     r.showStatic(buf);
   }
 
-  private readonly _projIn = new Vector3();
-  private readonly _projOut = new Vector3();
-  private keepOutCache: DOMRect[] = [];
-  private keepOutAt = 0;
-
-  /** Per frame: which beaches to draw, shared lighting/sea, animated neighbor waves, name tags. */
+  /** Per frame: which beaches to draw, shared lighting/sea, animated neighbor waves. */
   update(p: Palette, camForward: Vector3, time: number, simTime: number, tide: number, amp: number): void {
     this.tide = tide;
     const now = performance.now();
@@ -1247,7 +1123,6 @@ export class NeighborView {
     if (!this.entries.size) {
       this.win = [0, 0];
       this.syncSeams();
-      this.shoreInfo.setVisible(false);
       return;
     }
     void this.fillWindow();
@@ -1257,103 +1132,9 @@ export class NeighborView {
     const ext = this.extent;
     if (ext.left - c < AHEAD) void this.more('left');
     if (ext.right + c < AHEAD) void this.more('right');
-    let anySlot = false;
     for (const e of this.entries.values()) {
-      if (e.slot) {
-        anySlot = true;
-        break;
-      }
+      e.slot?.renderer.update(p, camForward, time, simTime, tide, amp);
     }
-    if (!anySlot) {
-      this.shoreInfo.setVisible(false);
-      return;
-    }
-    // the name tags float over the sand at home; away from home (or while
-    // the status pane is expanded, or the rail is closed) they leave the
-    // sand, and the expanded pane lists the beaches in view instead
-    const minimal = this.uiRoot.classList.contains('ui-collapsed');
-    const stacked = this.viewing || this.away || this.shoreInfo.isOpen || minimal;
-    this.shoreInfo.setVisible(true);
-    const engine = this.scene.getEngine();
-    const cam = this.scene.activeCamera!;
-    const vp = cam.viewport.toGlobal(engine.getRenderWidth(), engine.getRenderHeight());
-    const scale = engine.getHardwareScalingLevel();
-    const transform = this.scene.getTransformMatrix();
-    const identity = Matrix.IdentityReadOnly;
-    // the HUD the name tags must not cover: when collapsed, only the subtle
-    // restore button stays visible; otherwise avoid the top-left cluster
-    // and both bottom HUD clusters. Measure at most every 250 ms to avoid
-    // per-frame reflow.
-    if (now - this.keepOutAt > 250) {
-      this.keepOutAt = now;
-      const sel = '.place-wrap, .hud-stack, .hud-flyout.open, .place-bar.shown, .guide-coach.shown';
-      this.keepOutCache = [...this.uiRoot.querySelectorAll<HTMLElement>(sel)]
-        .map((el) => el.getBoundingClientRect())
-        .filter((r) => r.width > 0 && r.height > 0);
-    }
-    const keepOut: { left: number; top: number; right: number; bottom: number }[] = [...this.keepOutCache];
-    const winW = window.innerWidth;
-    const winH = window.innerHeight;
-    for (const e of this.entries.values()) {
-      const s = e.slot;
-      if (!s) continue;
-      s.renderer.update(p, camForward, time, simTime, tide, amp);
-      if (stacked) {
-        // no floating tags while the info is stacked (unless the tag is
-        // sitting in the open info card, where the card's CSS lays it out
-        // as a row)
-        if (!this.shoreInfo.isInCard(s.label)) s.label.style.display = 'none';
-        continue;
-      }
-      this._projIn.set(s.renderer.offsetX, 1.4, 0);
-      Vector3.ProjectToRef(this._projIn, identity, transform, vp, this._projOut);
-      const x = this._projOut.x * scale;
-      const y = this._projOut.y * scale;
-      const visible = this._projOut.z > 0 && this._projOut.z < 1 && x > -100 && x < winW + 100;
-      const disp = visible ? 'flex' : 'none';
-      if (s.label.style.display !== disp) s.label.style.display = disp;
-      if (!visible) continue;
-      const w = s.label.offsetWidth;
-      const h = s.label.offsetHeight;
-      const at2 = placeTag(x, y, w, h, winW, winH, keepOut);
-      keepOut.push({ left: at2.left, top: at2.top, right: at2.left + w, bottom: at2.top + h });
-      const tf = `translate(${Math.round(at2.left)}px, ${Math.round(at2.top)}px)`;
-      if (s.label.style.transform !== tf) s.label.style.transform = tf;
-    }
-    if (this.shoreInfo.isOpen) this.syncInfoRows();
-  }
-
-  /**
-   * The open info card's rows: the drawn beaches in view, top to bottom in
-   * the order they sit left to right on screen.
-   */
-  private syncInfoRows(): void {
-    if (!this.shoreInfo.isOpen) return;
-    const engine = this.scene.getEngine();
-    const cam = this.scene.activeCamera!;
-    const vp = cam.viewport.toGlobal(engine.getRenderWidth(), engine.getRenderHeight());
-    const scale = engine.getHardwareScalingLevel();
-    const transform = this.scene.getTransformMatrix();
-    const winW = window.innerWidth;
-    const onScreen: { index: number; x: number }[] = [];
-    for (const e of this.entries.values()) {
-      if (!e.slot) continue;
-      this._projIn.set(e.slot.renderer.offsetX, 1.4, 0);
-      Vector3.ProjectToRef(this._projIn, Matrix.IdentityReadOnly, transform, vp, this._projOut);
-      const x = this._projOut.x * scale;
-      if (this._projOut.z > 0 && this._projOut.z < 1 && x > -winW * 0.15 && x < winW * 1.15) onScreen.push({ index: e.index, x });
-    }
-    // one row per beach: the same beach can't appear twice in one walk,
-    // but a stale entry can linger beside a fresh one after a relink
-    const seen = new Set<string>();
-    const labels: HTMLElement[] = [];
-    for (const i of orderInfoRows(onScreen)) {
-      const e = this.entries.get(i)!;
-      if (seen.has(e.beach.code)) continue;
-      seen.add(e.beach.code);
-      labels.push(e.slot!.label);
-    }
-    this.shoreInfo.setRows(labels);
   }
 }
 
