@@ -57,6 +57,8 @@ check((await page.evaluate(() => window.__beech.neighbors().beachAt(1)?.name)) =
 check((await page.evaluate(() => window.__beech.neighbors().beachAt(2)?.name)) === names.cleo, "and Cleo beyond her (Ana's neighbor)");
 const ext = await page.evaluate(() => window.__beech.neighbors().extent);
 check(ext.left > 2 || ext.right > 0, `the shore carries on past them into other beaches (${JSON.stringify(ext)})`);
+// the way home lives in the expanded status pane (shown with the rail)
+await page.evaluate(() => { window.__beech.setRail(true); window.__beech.setPane('expanded'); });
 check(!(await page.isVisible('.shore-bar.shown')), 'no home button at home');
 
 // ask from the shore: Ben's right side is free, so the beach just to his right
@@ -115,8 +117,8 @@ check(await page.evaluate(() => window.__beech.neighbors().ownVisible), 'home ag
   }
 }
 
-// visit Dot by code
-await page.evaluate(() => window.__beech.sheet.show('shore'));
+// visit Dot by code (the Inbox's Visit by code tab)
+await page.evaluate(() => window.__beech.hub().show('visit'));
 await page.fill('#visit-code', codes.dot.toLowerCase());
 await page.click('button[data-act="visit"]');
 await page.waitForFunction(() => window.__beech.neighbors().visiting !== null, null, { timeout: 15000 });
@@ -125,8 +127,9 @@ await page.waitForFunction(() => document.querySelector('.shore-bar .sb-where')?
 check((await page.textContent('.shore-bar .sb-where'))?.startsWith('Visiting'), 'the bar says Visiting');
 check(!(await page.evaluate(() => window.__beech.neighbors().ownVisible)), 'your own beach is hidden while visiting');
 // you can't dig someone else's beach
-await page.click('[data-act="edit-menu"]');
-await page.click('button[data-tool="sand"]');
+await page.keyboard.press('Escape');
+await page.evaluate(() => window.__beech.setRail(true));
+await page.click('[data-act="dirt"]');
 const d0 = await page.evaluate(() => window.__beech.info().undoCount);
 await page.mouse.move(500, 450);
 await page.mouse.down();
@@ -136,8 +139,8 @@ await page.waitForTimeout(500);
 check((await page.evaluate(() => window.__beech.info().undoCount)) === d0, "digging does nothing on someone else's beach");
 await page.click('.shore-bar .sb-fav');
 await page.waitForFunction((c) => window.__beech.neighbors().favorites.has(c), codes.dot, { timeout: 5000 });
-// favorites list in the sheet
-await page.evaluate(() => window.__beech.sheet.show('shore'));
+// the Inbox's Starred tab
+await page.evaluate(() => window.__beech.hub().show('starred'));
 await page.waitForSelector(`button[data-act="visit-${codes.cleo}"]`, { timeout: 5000 });
 check(await page.isVisible(`button[data-act="visit-${codes.dot}"]`), 'both starred beaches are in the favorites list');
 await page.click(`button[data-act="visit-${codes.cleo}"]`);

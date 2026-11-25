@@ -448,10 +448,7 @@ export class AccountPanel {
       wrap.appendChild(this.neighborSection(this.neighbors, sel));
     }
 
-    // 3. Visit by code + favorite beaches
-    if (this.onVisit) {
-      wrap.appendChild(this.visitSection(this.neighbors, this.onVisit));
-    }
+    // (visiting by code and the starred beaches live in the Inbox now)
 
     this.slots.shore.appendChild(wrap);
   }
@@ -804,33 +801,9 @@ export class AccountPanel {
     this.slots.account.appendChild(box);
   }
 
-  /** Visit any beach by its code. */
-  private visitCodeRow(visit: (code: string) => Promise<void>): HTMLElement {
-    const row = document.createElement('div');
-    row.className = 'slot';
-    row.innerHTML = `<span>visit</span>`;
-    const input = document.createElement('input');
-    input.id = 'visit-code';
-    input.placeholder = 'a beach code';
-    input.maxLength = 8;
-    input.autocomplete = 'off';
-    input.setAttribute('aria-label', 'Code of a beach to visit');
-    const go = document.createElement('button');
-    go.type = 'button';
-    go.className = 'action';
-    go.dataset.act = 'visit';
-    go.textContent = 'go';
-    const doGo = () => void this.guard(() => visit(input.value));
-    go.addEventListener('click', doGo);
-    input.addEventListener('keydown', (e) => e.key === 'Enter' && doGo());
-    row.append(input, go);
-    return row;
-  }
-
   private publicShoreSection(nv: NeighborView, visit: (code: string) => Promise<void>): HTMLElement {
     const wrap = document.createElement('div');
     wrap.className = 'neighbors visit';
-    wrap.appendChild(this.visitCodeRow(visit));
     const { left, right } = nv.extent;
     const h = document.createElement('div');
     h.className = 'status';
@@ -859,43 +832,6 @@ export class AccountPanel {
       v.textContent = 'visit';
       v.addEventListener('click', () => void this.guard(() => visit(b.code)));
       r.append(side, name, v);
-      wrap.appendChild(r);
-    }
-    return wrap;
-  }
-
-  /** Visit any beach by its code, and the beaches you've starred. */
-  private visitSection(nv: NeighborView, visit: (code: string) => Promise<void>): HTMLElement {
-    const wrap = document.createElement('div');
-    wrap.className = 'neighbors visit';
-    wrap.appendChild(this.visitCodeRow(visit));
-
-    const favs = sortBeachesWestToEast([...nv.favorites.values()]);
-    const h = document.createElement('div');
-    h.className = 'status';
-    h.textContent = favs.length ? 'favorite beaches' : 'no favorite beaches yet';
-    wrap.appendChild(h);
-    for (const f of favs) {
-      const r = document.createElement('div');
-      r.className = 'slot fav-row';
-      const place = f.location ? beachById(f.location) : undefined;
-      const name = document.createElement('span');
-      name.className = 'fav-name';
-      name.textContent = `${f.name || 'a beach'}${place ? ` · ${place.name}` : ''}`;
-      const v = document.createElement('button');
-      v.type = 'button';
-      v.className = 'action';
-      v.dataset.act = `visit-${f.code}`;
-      v.textContent = 'visit';
-      v.addEventListener('click', () => void this.guard(() => visit(f.code)));
-      const x = document.createElement('button');
-      x.type = 'button';
-      x.className = 'action';
-      x.textContent = '★';
-      x.title = 'Remove from favorites';
-      x.setAttribute('aria-label', `Remove ${name.textContent} from favorites`);
-      x.addEventListener('click', () => void this.guard(() => nv.toggleFavorite(f)));
-      r.append(name, v, x);
       wrap.appendChild(r);
     }
     return wrap;

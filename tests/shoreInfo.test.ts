@@ -10,22 +10,21 @@ describe('viewing mode', () => {
   });
 });
 
-describe('info card rows', () => {
-  it('lists the beach under the view first, then outward', () => {
-    // focus on beach 0, neighbours either side
-    expect(orderInfoRows([2, -1, 1, -2], 0)).toEqual([-1, 1, -2, 2]);
-    // focus on beach -2 (scrolled right): -2, then -1 and -3, then 0
-    expect(orderInfoRows([0, -1, -3, 2], -2)).toEqual([-3, -1, 0, 2]);
+describe('beaches in view rows', () => {
+  it('lists the beaches top to bottom in their left-to-right order on screen', () => {
+    expect(orderInfoRows([{ index: 2, x: 900 }, { index: -1, x: 100 }, { index: 1, x: 500 }])).toEqual([-1, 1, 2]);
+    // turned around (reverse isometric): screen order wins over shore order
+    expect(orderInfoRows([{ index: 1, x: 80 }, { index: -1, x: 700 }])).toEqual([1, -1]);
   });
 
   it('does not reorder the input', () => {
-    const indices = [2, -1, 1];
-    expect(orderInfoRows(indices, 0)).toEqual([-1, 1, 2]);
-    expect(indices).toEqual([2, -1, 1]);
+    const rows = [{ index: 2, x: 3 }, { index: -1, x: 1 }];
+    expect(orderInfoRows(rows)).toEqual([-1, 2]);
+    expect(rows.map((r) => r.index)).toEqual([2, -1]);
   });
 
   it('handles a single beach and an empty shore', () => {
-    expect(orderInfoRows([0], 0)).toEqual([0]);
-    expect(orderInfoRows([], 0)).toEqual([]);
+    expect(orderInfoRows([{ index: 0, x: 10 }])).toEqual([0]);
+    expect(orderInfoRows([])).toEqual([]);
   });
 });

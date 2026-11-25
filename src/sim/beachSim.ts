@@ -39,7 +39,8 @@ export const isClearingMode = (id: string): id is ClearingMode =>
 
 export interface SimFlags {
   waves: boolean;
-  calm: boolean;
+  /** swell multiplier the sea eases toward (WAVES.levels: calm … surf; 1 = the beach's own) */
+  waveLevel: number;
   tide: boolean;
   erosion: boolean;
   healing: boolean;
@@ -50,7 +51,7 @@ export interface SimFlags {
 
 export const DEFAULT_FLAGS: SimFlags = {
   waves: true,
-  calm: false,
+  waveLevel: 1,
   tide: true,
   erosion: true,
   healing: true,
@@ -111,8 +112,8 @@ export class BeachSim {
 
   flags: SimFlags;
   time = 0;
-  /** eased 0..1 amount of "calm" (so toggling doesn't jolt the water) */
-  calmMix = 0;
+  /** eased swell multiplier (toward flags.waveLevel, so a change doesn't jolt the water) */
+  waveMul = 1;
   /** tide level set from outside (the real tide at a real beach), or null for the built-in demo tide */
   private externalTide: number | null = null;
   private tideNow = 0;
@@ -229,7 +230,7 @@ export class BeachSim {
   }
 
   private swellAmp(): number {
-    return this.flags.waves ? (1 - (1 - WAVES.calmFactor) * this.calmMix) * this.waveScale : 0;
+    return this.flags.waves ? this.waveMul * this.waveScale : 0;
   }
 
   /** Water surface imposed at the offshore boundary (at world x, m along the shore; 0 = the middle). */
@@ -256,8 +257,8 @@ export class BeachSim {
 
   /** Advance the whole simulation by dt seconds (one tick). */
   step(dt: number): void {
-    const calmTarget = this.flags.calm ? 1 : 0;
-    this.calmMix += (calmTarget - this.calmMix) * Math.min(1, dt / 2.5);
+    const level = Math.max(0, Math.min(WAVES.levels.surf, this.flags.waveLevel));
+    this.waveMul += (level - this.waveMul) * Math.min(1, dt / 2.5);
     if (this.externalTide !== null) this.tideNow += (this.externalTide - this.tideNow) * Math.min(1, dt / 20);
 
     this.applyBrush(dt);

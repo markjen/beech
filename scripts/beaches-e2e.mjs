@@ -35,8 +35,9 @@ async function device(label) {
   return page;
 }
 const dig = async (page, y) => {
-  await page.click('[data-act="edit-menu"]');
-  await page.click('button[data-tool="sand"]');
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => window.__beech.setRail(true));
+  await page.click('[data-act="dirt"]');
   await page.mouse.move(300, y);
   await page.mouse.down();
   for (let i = 0; i < 20; i++) {
@@ -65,6 +66,7 @@ await a.evaluate(() => window.__beech.account().fetch('/api/dev/grant', { method
 await a.evaluate(() => window.__beech.account().loadBeaches());
 await a.evaluate(() => window.__beech.sheet.show('beach'));
 await a.waitForSelector('button[data-act="new-beach"]', { timeout: 8000 });
+await a.evaluate(() => window.__beech.sheet.setTab('beach'));
 await a.click('button[data-act="new-beach"]');
 await a.waitForFunction((h) => window.__beech.account().beachId !== h && window.__beech.sync().state === 'saved', home, { timeout: 20000 });
 const second = await a.evaluate(() => window.__beech.account().beachId);
@@ -113,7 +115,8 @@ await b.evaluate(() => {
 });
 await b.waitForFunction(() => window.__beech.neighbors().snapshot('left') !== null, null, { timeout: 15000 });
 await b.waitForTimeout(400);
-await b.click('button[data-tool="sand"]');
+await b.evaluate(() => window.__beech.setRail(true));
+await b.click('[data-act="dirt"]');
 await b.mouse.move(420, 460);
 await b.mouse.down();
 for (let i = 0; i < 18; i++) {
@@ -213,7 +216,9 @@ check((await a.evaluate(() => window.__beech.account().beachId)) === second, 'A 
 
 // Removing the active beach must load home even when it is already visible.
 await a.evaluate(() => window.__beech.sheet.show('beach'));
+await a.evaluate(() => window.__beech.sheet.setTab('beach'));
 await a.click(`[data-act="select-beach-${second}"]`);
+await a.evaluate(() => window.__beech.sheet.setTab('beach'));
 await a.click(`[data-act="remove-beach-${second}"]`);
 await a.waitForFunction((id) => {
   const { beachId, beaches } = window.__beech.account();

@@ -48,16 +48,17 @@ const pa = await open(URL_ + '?nointro&fixedres&seed=1&nofinds', { width: 1100, 
 await pa.evaluate((n) => window.__beech.account().signInDev(n), ana);
 await pa.waitForFunction(() => window.__beech.sync().state === 'saved', null, { timeout: 60000 });
 const anaCode = await pa.evaluate(() => window.__beech.neighbors().api.get().then((n) => n.code));
-check(await pa.$eval('.inbox-btn', (b) => getComputedStyle(b).display !== 'none'), 'signed in, the mailbox shows');
+check(await pa.$eval('.inbox-btn', (b) => b.classList.contains('shown')), 'signed in, the inbox is live');
 
 // ---- Ben opens the link signed out
 const pb = await open(`${URL_}?visit=${anaCode}&nointro&fixedres&seed=1&nofinds`, { width: 390, height: 844 });
 await pb.waitForFunction((c) => window.__beech.neighbors().visiting?.code === c, anaCode, { timeout: 60000 });
 check(!(await pb.evaluate(() => !!window.__beech.account().user)), 'Ben is signed out…');
 check(true, "…and sees Ana's beach straight away");
-check(await pb.$eval('.inbox-btn', (b) => getComputedStyle(b).display === 'none'), 'no mailbox while signed out');
-// viewing mode: the beach's name tag, with "leave something", is behind the
-// beach name at the top left — tap it to open the info card
+check(await pb.$eval('.inbox-btn', (b) => !b.classList.contains('shown')), 'no inbox while signed out');
+// viewing mode: the beach's name tag, with "leave something", is in the
+// status pane at the top left — open the rail, then expand the pane
+await pb.click('[data-act="palm"]');
 await pb.click('.place');
 const leave = `.shore-info-list [data-act="leave-${anaCode}"]:not([hidden])`;
 await pb.waitForSelector(leave, { timeout: 60000 });
@@ -95,6 +96,7 @@ check(true, 'the mailbox counts what arrived');
 await pa.waitForFunction(() => [...document.querySelectorAll('.hint')].some((h) => h.textContent.includes('left you something')), null, { timeout: 60000 });
 check(true, 'a note says Ben left something');
 check((await owned(pa, 'parasol')) === 1, "the parasol is in Ana's bag");
+await pa.evaluate(() => window.__beech.setRail(true));
 await pa.click('[data-act="inbox"]');
 await pa.waitForSelector('.inbox.open .inbox-row[data-kind="visit"]', { timeout: 60000 });
 const visitText = await pa.$eval('.inbox-row[data-kind="visit"]', (r) => r.textContent);

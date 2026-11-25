@@ -156,14 +156,14 @@ export class NeighborView {
       infoSlot?: HTMLElement;
       /** the header button, pulsed when the viewer tries to dig here */
       infoHeader?: HTMLElement;
-      /** told whenever the info card opens or closes */
-      onInfoToggle?: (open: boolean) => void;
+      /** the viewer tried to dig here: show the info (expand the status pane) */
+      onNudge?: () => void;
     },
   ) {
     this.api = new NeighborApi(account);
     this.shoreInfo = new ShoreInfo(uiRoot, opts?.infoSlot ?? uiRoot, {
       header: opts?.infoHeader,
-      onToggle: opts?.onInfoToggle,
+      onNudge: opts?.onNudge,
     });
   }
 
@@ -273,10 +273,9 @@ export class NeighborView {
     this.shoreInfo.nudge();
   }
 
-  /** The header's info section: open or closed. Only shown while away from home. */
-  toggleInfo(): void {
-    if (!this.shoreInfo.isVisible) return;
-    this.shoreInfo.setOpen(!this.shoreInfo.isOpen);
+  /** The beaches-in-view list in the status pane: shown while the pane is expanded. */
+  setInfoOpen(open: boolean): void {
+    this.shoreInfo.setOpen(open);
   }
 
   /** How many beaches the shore has each way (for tests and the UI). */
@@ -1269,11 +1268,12 @@ export class NeighborView {
       this.shoreInfo.setVisible(false);
       return;
     }
-    // away from home, the floating name tags go away and the beach info
-    // lives under the top-left header instead — viewing is the stricter
-    // case, where your own beach has left the window entirely
-    const stacked = this.viewing || this.away;
-    this.shoreInfo.setVisible(stacked);
+    // the name tags float over the sand at home; away from home (or while
+    // the status pane is expanded, or the rail is closed) they leave the
+    // sand, and the expanded pane lists the beaches in view instead
+    const minimal = this.uiRoot.classList.contains('ui-collapsed');
+    const stacked = this.viewing || this.away || this.shoreInfo.isOpen || minimal;
+    this.shoreInfo.setVisible(true);
     const engine = this.scene.getEngine();
     const cam = this.scene.activeCamera!;
     const vp = cam.viewport.toGlobal(engine.getRenderWidth(), engine.getRenderHeight());
@@ -1286,9 +1286,7 @@ export class NeighborView {
     // per-frame reflow.
     if (now - this.keepOutAt > 250) {
       this.keepOutAt = now;
-      const sel = this.uiRoot.classList.contains('ui-collapsed')
-        ? '.hud-collapse'
-        : '.place-wrap, .hud-right, .hud-top, .hud-profile, .hud-corner, .hud-popup, .inv-tray.open';
+      const sel = '.place-wrap, .hud-stack, .hud-flyout.open, .place-bar.shown, .guide-coach.shown';
       this.keepOutCache = [...this.uiRoot.querySelectorAll<HTMLElement>(sel)]
         .map((el) => el.getBoundingClientRect())
         .filter((r) => r.width > 0 && r.height > 0);
@@ -1325,16 +1323,31 @@ export class NeighborView {
     if (this.shoreInfo.isOpen) this.syncInfoRows();
   }
 
-  /** The open info card's rows: the drawn beaches, nearest the view first. */
+  /**
+   * The open info card's rows: the drawn beaches in view, top to bottom in
+   * the order they sit left to right on screen.
+   */
   private syncInfoRows(): void {
     if (!this.shoreInfo.isOpen) return;
-    const focus = this.nearestIndex(this.cam.focusX);
-    const indices = [...this.entries.values()].filter((e) => e.slot).map((e) => e.index);
+    const engine = this.scene.getEngine();
+    const cam = this.scene.activeCamera!;
+    const vp = cam.viewport.toGlobal(engine.getRenderWidth(), engine.getRenderHeight());
+    const scale = engine.getHardwareScalingLevel();
+    const transform = this.scene.getTransformMatrix();
+    const winW = window.innerWidth;
+    const onScreen: { index: number; x: number }[] = [];
+    for (const e of this.entries.values()) {
+      if (!e.slot) continue;
+      this._projIn.set(e.slot.renderer.offsetX, 1.4, 0);
+      Vector3.ProjectToRef(this._projIn, Matrix.IdentityReadOnly, transform, vp, this._projOut);
+      const x = this._projOut.x * scale;
+      if (this._projOut.z > 0 && this._projOut.z < 1 && x > -winW * 0.15 && x < winW * 1.15) onScreen.push({ index: e.index, x });
+    }
     // one row per beach: the same beach can't appear twice in one walk,
     // but a stale entry can linger beside a fresh one after a relink
     const seen = new Set<string>();
     const labels: HTMLElement[] = [];
-    for (const i of orderInfoRows(indices, focus)) {
+    for (const i of orderInfoRows(onScreen)) {
       const e = this.entries.get(i)!;
       if (seen.has(e.beach.code)) continue;
       seen.add(e.beach.code);

@@ -34,8 +34,9 @@ await page.waitForTimeout(600);
 const anaName = `ana${Date.now() % 100000}`;
 await page.evaluate((n) => window.__beech.account().signInDev(n), anaName);
 await page.waitForFunction(() => window.__beech.sync().state === 'saved', null, { timeout: 15000 });
-await page.click('[data-act="edit-menu"]');
-await page.click('button[data-tool="sand"]');
+await page.keyboard.press('Escape');
+await page.evaluate(() => window.__beech.setRail(true));
+await page.click('[data-act="dirt"]');
 await page.mouse.move(260, 560);
 await page.mouse.down();
 for (let i = 0; i < 40; i++) {
@@ -100,6 +101,8 @@ await page.evaluate(() => {
   b.cam.camera.target.x = 17;
   b.cam.camera.target.z = 0;
 });
+// name tags float over the sand while the toolbar is open (with the status pane collapsed)
+await page.evaluate(() => { window.__beech.setRail(true); window.__beech.setPane('default'); });
 // wait for Ana's beach to load and its tag to show (the shore loads several beaches)
 await page
   .waitForFunction(

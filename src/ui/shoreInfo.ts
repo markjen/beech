@@ -15,13 +15,9 @@ export function isViewingMode(visiting: boolean, ownVisible: boolean): boolean {
   return visiting || !ownVisible;
 }
 
-/** Nearest beach first, then outward: the beach under the view heads the list. */
-export function orderInfoRows(indices: number[], focusIndex: number): number[] {
-  return [...indices].sort((a, b) => {
-    const da = Math.abs(a - focusIndex);
-    const db = Math.abs(b - focusIndex);
-    return da - db || a - b;
-  });
+/** Top to bottom in the order the beaches sit left to right on screen. */
+export function orderInfoRows(beaches: { index: number; x: number }[]): number[] {
+  return [...beaches].sort((a, b) => a.x - b.x || a.index - b.index).map((b) => b.index);
 }
 
 export class ShoreInfo {
@@ -40,8 +36,8 @@ export class ShoreInfo {
     private readonly opts: {
       /** the header button, pulsed when the viewer tries to dig here */
       header?: HTMLElement;
-      /** told whenever the card opens or closes, so the header can say so */
-      onToggle?: (open: boolean) => void;
+      /** the viewer tried to dig here: show the info */
+      onNudge?: () => void;
     },
   ) {
     this.el = document.createElement('div');
@@ -73,21 +69,25 @@ export class ShoreInfo {
     return el.parentElement === this.list;
   }
 
-  /** Show or hide the whole control. Hiding closes the card and sends its tags home. */
+  /** Show or hide the whole control (there are beaches drawn, or not). Hiding sends the tags home. */
   setVisible(on: boolean): void {
     if (on === this.visible) return;
     this.visible = on;
-    if (!on) this.setOpen(false);
+    if (!on) this.sendHome();
     this.el.hidden = !on;
   }
 
-  /** Open or close the card. Closing sends every tag back to the root. */
+  /** Open or close the card (the status pane expands or collapses). Closing sends every tag home. */
   setOpen(open: boolean): void {
     if (open === this.open) return;
     this.open = open;
     this.card.hidden = !open;
-    this.opts.onToggle?.(open);
-    if (!open) this.setRows([]);
+    if (!open) this.sendHome();
+  }
+
+  private sendHome(): void {
+    for (const row of this.rows) if (row.isConnected) this.root.appendChild(row);
+    this.rows = [];
   }
 
   /**
@@ -98,7 +98,7 @@ export class ShoreInfo {
    * gone and there's nothing to send back.
    */
   setRows(labels: HTMLElement[]): void {
-    if (!this.open) return;
+    if (!this.open || !this.visible) return;
     for (const row of this.rows) {
       if (!labels.includes(row) && row.isConnected) this.root.appendChild(row);
     }
@@ -116,7 +116,7 @@ export class ShoreInfo {
    * viewer sees where the info lives now.
    */
   nudge(): void {
-    if (!this.open) this.setOpen(true);
+    this.opts.onNudge?.();
     const header = this.opts.header;
     if (!header) return;
     header.classList.remove('nudge');

@@ -1101,3 +1101,65 @@ prompt, JSON Schema and sample asset.
 - Touching a linked beach you own with an edit tool opens it in the same
   view. A brush drag can continue across the seam. Each beach is saved
   separately before handing the live simulation to its neighbor.
+
+## Palm-first UI: one rail, one status pane (2026-11-25)
+
+Built from the "palm first, one rail, one status pane" mockup. Supersedes
+the HUD layout in the section above.
+
+- **Minimal is the default.** At rest only a palm button shows, lower
+  right (64 px). Tapping it opens the rail and fades in the status pane;
+  the palm becomes the × at the bottom of the rail. Closing puts any item
+  in hand away. Opening always picks the hand. `H` toggles it, like the
+  palm. The eye button is gone. Ambient/TV mode still fades everything
+  after idle. The rail's open state isn't saved: every load starts
+  minimal.
+- **The rail** (`Hud` in `src/ui/hud.ts`) is one frosted pill in three
+  groups: Inbox (signed-in builds) · Hand · Dirt | Bag · Store (signed-in
+  builds) | View · Manage. Undo (60 px, hold to redo) sits above the ×.
+  Under 560 px tall it lies along the bottom and the dirt flyout opens
+  above it. The mockup left one question open; we chose: the rail stays
+  open while you work with a tool, and modals open over it.
+- **Dirt** is one button with a flyout: dig, build up, smooth, flatten,
+  vacuum, bulldozer, then the round and square sandcastle molds. The
+  mockup has no sandcastle tool, so the molds were put here. The flyout
+  stays open while a dirt tool is in use. Tapping Dirt picks up the dirt
+  tool used last. Keys 1–5 (and the gamepad's tool cycle) open the rail
+  if needed.
+- **View** cycles chair → isometric → reverse isometric → chair.
+  `CameraController.faceShore()` eases the diorama 180° to look back from
+  the sea; `reversed` reports it. A label names the view for 1.8 s.
+- **Status pane** (top left, the old place header): whose beach + the
+  time and swell by default. Expanded adds the tide line, chips (wave
+  strength, saving state, "look only" while viewing), the shore bar's
+  way home / star / feed pet while away, and "also in view": the
+  `ShoreInfo` card, now one row per other drawn beach, sorted by
+  on-screen x (`orderInfoRows`). Closed leaves a lone *i*. The state is
+  saved in settings (`statusPane`). There is no weather data, so
+  "weather" is the sky (☀ ◒ ☾), the local time and a swell word from the
+  live wave scale. The mockup's credit, stars and finds chips were left
+  out; they would need extra requests. Floating name tags only show at
+  home with the rail open and the pane collapsed.
+- **Inbox hub** (`src/ui/socialHub.ts`): one tab strip on four dialogs,
+  swapped in place: Inbox (`InboxPanel`), Leaderboard (`Leaderboard`),
+  Starred (`StarredDialog`, from `nv.favorites`) and Visit by code
+  (`VisitDialog`, with your code and share). Signed out, the Inbox button
+  opens the leaderboard; the Inbox and Starred tabs ask you to sign in.
+  Neighbor requests put a dot on the Inbox button (was on the gear and
+  the Shore tab). Share lives in the Inbox and Visit tabs. The trophy and
+  share buttons are gone.
+- **Bag** is a centered modal. The claw and capsule machines are tiles at
+  its top. **Store** opens the paid shop directly. The Shop popup is gone.
+- **Manage** (the old settings sheet) tabs: Beaches (beach slot, place,
+  actions, and the old Shore tab's connect + neighbors), Checkpoints,
+  Settings (account + display + wave strength), Help. The old tab names
+  `shore`, `display` and `account` still work as aliases in
+  `sheet.show()`. Visit by code and favorites left the Shore section for
+  the hub.
+- **Wave strength**: `SimFlags.calm` (boolean) became `waveLevel` (a
+  multiplier the sim eases toward over about 2.5 s): calm 0.25, gentle
+  0.6, lively 1 (the beach's own swell, the default), surf 1.3
+  (`WAVES.levels`). The setting is per device (`settings.waves`).
+  `sim.test.ts` covers conservation and stability at surf.
+- e2e scripts use `__beech.setRail(on)`, `__beech.setPane(state)` and
+  `__beech.hub().show(tab)`.

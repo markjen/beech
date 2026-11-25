@@ -23,6 +23,10 @@ export class InboxPanel {
   readonly button: HTMLButtonElement;
   private readonly badge: HTMLSpanElement;
   private readonly root: HTMLDivElement;
+  /** the dialog root (for the social hub's tab strip) */
+  get el(): HTMLDivElement {
+    return this.root;
+  }
   private readonly list: HTMLOListElement;
   private readonly foot: HTMLDivElement;
   private entries: InboxEntry[] = [];
@@ -42,14 +46,14 @@ export class InboxPanel {
     private readonly api: InboxApi,
     private readonly host: InboxHost,
   ) {
-    this.button = makeButton('mail', 'Inbox');
-    this.button.classList.add('inbox-btn');
+    // the rail's top button: whoever holds the panel adds it to the rail and
+    // decides what a tap opens (the social hub)
+    this.button = makeButton('inbox', 'Inbox');
+    this.button.classList.add('inbox-btn', 'hud-tool');
     this.button.dataset.act = 'inbox';
     this.badge = document.createElement('span');
     this.badge.className = 'inbox-badge';
     this.button.appendChild(this.badge);
-    this.button.addEventListener('click', () => (this.host.signedIn() ? void this.open() : this.host.signIn()));
-    hudRoot.appendChild(this.button);
     this.hud = hudRoot;
 
     this.root = document.createElement('div');
