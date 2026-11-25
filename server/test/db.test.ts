@@ -22,6 +22,15 @@ describe('Db.withTransaction', () => {
     expect(rows.map((r) => r.v)).toEqual(['kept']);
   });
 
+  it('accepts an operation label on query, in and out of a transaction', async () => {
+    await db.query('INSERT INTO tx_test (id, v) VALUES ($1, $2)', [10, 'labelled'], 'test.op');
+    await db.withTransaction(async (tx) => {
+      await tx.query('INSERT INTO tx_test (id, v) VALUES ($1, $2)', [11, 'tx-labelled'], 'test.txOp');
+    });
+    const rows = await db.query<{ v: string }>('SELECT v FROM tx_test WHERE id IN ($1, $2) ORDER BY id', [10, 11], 'test.op');
+    expect(rows.map((r) => r.v)).toEqual(['labelled', 'tx-labelled']);
+  });
+
   it('rolls back writes when fn throws, and the db stays usable', async () => {
     await expect(
       db.withTransaction(async (tx) => {

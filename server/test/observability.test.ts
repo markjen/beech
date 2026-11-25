@@ -40,6 +40,24 @@ describe('httpLogger', () => {
     vi.restoreAllMocks();
   });
 
+  it('marks only the first request of a process as a cold start', async () => {
+    // The flag is module-level (one process = one module instance), so a
+    // fresh import stands in for a fresh container.
+    vi.resetModules();
+    const fresh = await import('../src/observability.js');
+    const lines = captureLogs();
+    const app = new Hono();
+    app.use('*', fresh.httpLogger);
+    app.get('/health', (c) => c.json({ ok: true }));
+    await app.request('/health');
+    await app.request('/health');
+    const reqs = lines.filter((l) => l.event === 'http_request');
+    expect(reqs).toHaveLength(2);
+    expect(reqs[0].cold_start).toBe(true);
+    expect(reqs[1].cold_start).toBeUndefined();
+    vi.restoreAllMocks();
+  });
+
   it('buckets an unmatched path instead of logging it', async () => {
     const lines = captureLogs();
     const app = new Hono();
@@ -152,6 +170,20 @@ describe('createDbStats', () => {
     expect(s.pool_total).toBe(3);
     expect(s.pool_idle).toBe(2);
     expect(s.pool_waiting).toBe(1);
+  });
+
+  it('attributes slow queries with the operation label and pool state', () => {
+    const lines = captureLogs();
+    const stats = createDbStats(() => ({ total: 5, idle: 5, waiting: 0 }));
+    stats.record(600, true, 'shore.walk');
+    stats.record(600, true); // no label: defaults to db.query
+    stats.record(10, true, 'shore.walk'); // fast: no line
+    const slow = lines.filter((l) => l.event === 'db_slow_query');
+    expect(slow).toHaveLength(2);
+    expect(slow[0]).toMatchObject({ operation: 'shore.walk', duration_ms: 600, pool_total: 5, pool_idle: 5, pool_waiting: 0 });
+    expect(slow[1]).toMatchObject({ operation: 'db.query', duration_ms: 600 });
+    expect(JSON.stringify(slow)).not.toContain('SELECT');
+    vi.restoreAllMocks();
   });
 });
 
