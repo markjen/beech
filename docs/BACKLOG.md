@@ -633,6 +633,9 @@ _(nothing right now)_
   strands, saved with the beach (BCH2), shown on neighbors' beaches. Item
   catalog and server `inventory` table ready for paid, limited and pulled
   items.
+- [x] **Local weather along the shore** (2026-11-25): the sky and light
+  follow the place of the beach in the middle of the view, blending between
+  beaches; a settings switch pins one light instead. See STATUS.md.
 - [x] **Animated diorama ↔ chair transition** (2026-11-22).
 
 - [x] **Tilt and chair view, landscape and TV** (2026-11-22). Tilt the

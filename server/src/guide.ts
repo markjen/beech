@@ -238,6 +238,7 @@ export function guideHtml(now: number): string {
 <p>At rest the screen is just the beach and a palm button in the lower right. Tap the palm to open the toolbar (and the status pane, top left); the palm turns into a × that closes it all again.</p>
 <p>Sign in (Manage → <b>Settings</b>) to keep your beach, have neighbors, and play the machines. Without signing in, your beach isn’t saved — it only lives while you play, and closing the app loses it. Sign in and it’s saved, so you can keep it on any device. You can still pan along the shore beside it to see other people’s public beaches.</p>
 <p>The sea follows a real beach: its tide, sun and moon, at that place’s time of day, with waves growing stronger toward high tide and gentler toward low tide. Pick the beach in Manage → <b>Beaches</b>, or “near me” for the closest one.</p>
+<p>With <b>local weather</b> on (Settings, on by default), the sky and light are those of the beach in the middle of your view: walk down the shore to a beach set somewhere else and the light changes to its place’s, blending as you cross between beaches, and the status pane shows that place’s time and tide. Turn local weather off to keep one light everywhere: the one picked under <b>light</b> (dawn, day, golden, dusk or night).</p>
 
 <h2 id="controls">Controls</h2>
 <h3>Touch</h3>
@@ -289,7 +290,7 @@ export function guideHtml(now: number): string {
 <p>Now and then a wild sand crab pops out of the sand, scurries sideways across the beach, dodges incoming waves and your digging brush, and burrows back down after a couple of minutes — or a dolphin cruises through the deeper water offshore and leaps across the surf. An animal is around roughly half the time, and the first one usually shows up within a minute of opening the game.</p>
 <p><b>Beach snacks:</b> pick Beach snacks in your bag, then tap your beach where you want the snack to go (on dry sand). A snack draws a visiting crab over and keeps it around longer, or, left out as bait, brings a crab sooner. Changed your mind? Tap the snack again while snacks are in hand, long-press it, or run the vacuum over it, and it goes back in your bag (one that’s been eaten or washed away is gone). You can buy snack packs in the shop, and digging up buried finds occasionally turns up a free snack too.</p>
 <p><b>Resident pets:</b> feed wild crabs on a beach enough times (10 feeds) and one will offer to move in permanently — or adopt a Pet sand crab straight from the shop. Pets stay on your beach, never leave, and tuck into a cozy sand burrow to nap if unfed for a couple of days until you feed them again.</p>
-<p><b>Visitor feeding:</b> when you visit another beach with a pet, you can give it one free snack a day (UTC) from the bar at the top, or feed it again anytime with a beach snack from your own bag.</p>
+<p><b>Visitor feeding:</b> when you visit another beach with a pet, you’ll see it out on their sand. Tap <b>Feed</b> in the bar at the top, then tap a dry spot to put the snack down. The pet scurries over to eat it. Tap <b>cancel</b> to put the snack away. You can give each pet one free snack a day (UTC).</p>
 
 <h2 id="claw">Claw machine</h2>
 <p>Free to play when you’re signed in: open Shop and tap Claw machine. Hold the button to steer, let go to drop.</p>
@@ -368,7 +369,7 @@ ${GUIDE_STEPS.map((st) => `<tr><td>${esc(st.title)}</td><td>${esc(st.how)}</td><
 <ul>
   <li><b>Beaches</b>: choose which of your beaches to configure, its real-world <b>place</b> (“near me” uses your location once), code and share links, <b>save a picture</b>, <b>smooth the beach</b> when it’s in view, <b>export</b> / <b>import</b>, snapping your own beaches side by side, and your left/right neighbors.</li>
   <li><b>Checkpoints</b>: save, restore, export and import checkpoints.</li>
-  <li><b>Settings</b>: your account (sign in or out, save status, link another device, delete account), <b>waves</b> (calm, gentle, lively — the beach’s own swell — or surf), <b>sound, music, haptics</b>, <b>battery saver</b> (draws every other frame), <b>ambient (for a TV)</b>, <b>light</b>, <b>detail</b> (takes effect next start), <b>watch on TV</b>, and <b>full screen</b>.</li>
+  <li><b>Settings</b>: your account (sign in or out, save status, link another device, delete account), <b>waves</b> (calm, gentle, lively — the beach’s own swell — or surf), <b>sound, music, haptics</b>, <b>battery saver</b> (draws every other frame), <b>ambient (for a TV)</b>, <b>local weather</b>, <b>light</b> (used when local weather is off), <b>detail</b> (takes effect next start), <b>watch on TV</b>, and <b>full screen</b>.</li>
   <li><b>Help</b>: what each toolbar button does, and a link to this guide.</li>
 </ul>
 

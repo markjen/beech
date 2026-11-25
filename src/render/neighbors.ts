@@ -249,6 +249,16 @@ export class NeighborView {
     return best;
   }
 
+  /** The beaches drawn now (plus one either side), with their world-X centres. */
+  drawnBeaches(): { beach: ShoreBeach; x: number }[] {
+    const out: { beach: ShoreBeach; x: number }[] = [];
+    for (const e of this.entries.values()) {
+      if (e.index < this.win[0] - 1 || e.index > this.win[1] + 1) continue;
+      out.push({ beach: e.beach, x: this.xFor(e.index) });
+    }
+    return out;
+  }
+
   /** Shore index of a beach (by id) if it's on the current shore, else null. */
   indexOfBeach(beachId: string): number | null {
     let found: number | null = null;
@@ -681,12 +691,21 @@ export class NeighborView {
 
   /** Raycast against the drawn snapshots of *your* beaches (not the live one); the closest hit. */
   pickOwned(ray: Ray): OwnedPick | null {
+    return this.pickWhere(ray, (b) => this.isOwned(b));
+  }
+
+  /** The sand point under a ray on one drawn beach (anyone's, by id), or null. */
+  pickBeach(ray: Ray, beachId: string): OwnedPick | null {
+    return this.pickWhere(ray, (b) => b.id === beachId);
+  }
+
+  private pickWhere(ray: Ray, want: (b: ShoreBeach) => boolean): OwnedPick | null {
     let best: OwnedPick | null = null;
     let bestD2 = Infinity;
     const o = ray.origin;
     const maxZ = this.grid.ny * this.grid.dx;
     for (const e of this.entries.values()) {
-      if (!e.slot?.renderer || !this.isOwned(e.beach)) continue;
+      if (!e.slot?.renderer || !want(e.beach)) continue;
       const st = this.store.peek(e.beach.id);
       if (!st) continue;
       const ox = this.xFor(e.index);
@@ -881,6 +900,12 @@ export class NeighborView {
     const sy = z - ORIGIN_Z;
     if (sx < 0 || sx > WORLD_SIZE_X || sy < 0 || sy > this.grid.ny * this.grid.dx) return NaN;
     return this.heightAt(st.display, sx, sy);
+  }
+
+  /** Still-water depth (at the current tide) over a beach drawn as a snapshot; 0 off them. */
+  waterAtWorld(x: number, z: number): number {
+    const h = this.heightAtWorld(x, z);
+    return Number.isFinite(h) ? Math.max(0, this.tide - h) : 0;
   }
 
   /** Their sand height at sim metres (bilinear). */

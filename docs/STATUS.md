@@ -1145,6 +1145,16 @@ prompt, JSON Schema and sample asset.
   their own bag anytime). The shore bar shows a **Feed pet** button when
   visiting a beach with a pet, and owners see a quiet toast (`X fed Barnaby!`)
   when visitors feed theirs.
+- **Visitors see pets; feeding puts the snack down** (2026-11-25): while away,
+  the pet of the other beach under the view is drawn on its snapshot sand by a
+  second `AnimalController` + `AnimalView` in `main.ts` (`updateVisitPet`;
+  env from `NeighborView.heightAtWorld` / `waterAtWorld`, still water at the
+  tide; lazy, 0 draws when no pet in view). **Feed** now arms a placement
+  (button reads *cancel*). A completed tap on dry sand
+  (`NeighborView.pickBeach`) drops the treat and makes the feed request.
+  The pet walks over to eat it. If the request fails, the treat is picked
+  back up and the pet's previous mood is restored. Visitor pet animation is
+  local to the visitor's browser.
 - **Second species — offshore dolphin (A5)** (2026-11-24): added `'dolphin'`
   to `AnimalController` (`src/world/animals.ts`) and `buildDolphinMesh`
   (`src/render/animals.ts`, single draw call, lazy-loaded, 0 idle draws). On
@@ -1266,6 +1276,34 @@ the HUD layout in the section above.
 - The shore E2E waits for the destination beach view and its label.
   The multi-beach save race waits for the camera's pending beach transition
   before holding a save response.
+
+## Local weather: the light follows the view along the shore (2026-11-25)
+
+- With **local weather** on (Settings, default on), the sky, sun, moon, stars
+  and scene light are those of the real place of the shore beach nearest the
+  centre of the view, not only the live (simulated) beach's.
+  `shoreLightMix` (`src/world/shoreLight.ts`) picks the two drawn beaches
+  either side of `cam.focusX`; each keeps its own light around its centre and
+  the light crosses over in the middle `SHORE_LIGHT.blendSpan` (60 %) of the
+  gap with a smoothstep. `mixLive` blends palette, sun/moon direction and
+  night. main.ts keeps one `LiveConditions` per place (refreshed every
+  500 ms) and caches the blend, so the palette object (and the renderers'
+  uniform uploads) only changes when the light does.
+- A beach's place is its stored location (`store.peek(id).location`, else
+  the shore record's); a beach with none shares the live beach's. `?beach=`
+  pins everything to that place (screenshots).
+- The tide and swell sent to the worker stay the live beach's (that's the sea
+  being simulated). The status pane's sky glyph, time and tide line follow the
+  viewed place.
+- With local weather **off**, every beach uses the light pinned under
+  **light** (dawn/day/golden/dusk/night; its chips dim while local weather is
+  on). Settings migrate: old `palette: 'live'` → local weather on + day;
+  an old pinned mood → local weather off with that mood (`migrateSettings`).
+- There is still no forecast data: "weather" is the place's sky and light.
+  Clouds/rain stay in the backlog.
+- `window.__beech.light()` reports the view's light (`place`, palette name,
+  local time); `scripts/shore-e2e.mjs` checks a Waikiki neighbor next to a
+  Brighton home and the off switch.
 
 ## Agent tooling: token savings (2026-11-25)
 

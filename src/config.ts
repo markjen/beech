@@ -256,6 +256,16 @@ export const BEACH_STORE = {
   liveSwitchM: 10,
 };
 
+/** The sky over the shore: each beach shows its own real place's light. */
+export const SHORE_LIGHT = {
+  /**
+   * Share of the way between two beach centres over which the light crosses
+   * from one place to the next (the middle of the gap); each beach keeps its
+   * own light either side of it.
+   */
+  blendSpan: 0.6,
+};
+
 /** Rare wild beach visitors (docs/ANIMALS.md). */
 export const ANIMALS = {
   /** quiet wait between wild visit rolls (seconds): an animal is around about half the time */
@@ -286,6 +296,8 @@ export const ANIMALS = {
   edgeMargin: 1.5,
   /** how long an uneaten dropped snack lasts before expiring (seconds) */
   foodDuration: 900,
+  /** maximum water depth (m) where a player can place a snack */
+  snackMaxWaterDepth: 0.02,
   /** spawn-wait speedup while dropped food is acting as bait */
   foodBaitMultiplier: 4,
   /** distance (m) at which an active crab smells and seeks dropped food */
