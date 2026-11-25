@@ -77,9 +77,13 @@ export function halfCycles(tide: (ms: number) => number, from: number, to: numbe
   const segs: [number, number, number, number][] = [];
   let highTides = 0;
   let start = 0;
+  let dir = 0;
   for (let i = 1; i <= n; i++) {
-    const turning = i < n && (ls[i] - ls[i - 1]) * (ls[i + 1] - ls[i]) < 0;
-    if (turning && ls[i] > ls[i - 1]) highTides++;
+    const dPrev = Math.sign(ls[i] - ls[i - 1]);
+    if (dPrev !== 0) dir = dPrev;
+    const dNext = i < n ? Math.sign(ls[i + 1] - ls[i]) : 0;
+    const turning = i < n && dir !== 0 && dNext !== 0 && dir !== dNext;
+    if (turning && dir > 0) highTides++;
     if (turning || i === n) {
       let lo = Infinity;
       let hi = -Infinity;

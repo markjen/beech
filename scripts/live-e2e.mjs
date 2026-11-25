@@ -51,12 +51,13 @@ dv.setUint16(6, N, true);
 dv.setUint32(8, sand.length, true);
 bytes.set(sand, 12);
 bytes.set(objs, 12 + sand.length);
+const { body: edit } = await api('/edit-session', { method: 'POST' }, token);
 const put = await api(
   '/beach',
   {
     method: 'PUT',
     body: bytes,
-    headers: { 'X-Beach-Location': 'brighton', 'X-Beach-Nx': String(N), 'X-Beach-Ny': String(N), 'X-Beach-Max': '2000', 'X-Beach-Items': 'nautilus=1' },
+    headers: { 'X-Beach-Location': 'brighton', 'X-Beach-Nx': String(N), 'X-Beach-Ny': String(N), 'X-Beach-Max': '2000', 'X-Beach-Items': 'nautilus=1', 'X-Edit-Token': edit.token },
   },
   token,
 );

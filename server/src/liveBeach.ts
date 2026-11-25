@@ -75,6 +75,7 @@ interface BeachRow {
   updated_at: string | null;
   simulated_until: string | null;
   here_until: string | null;
+  owner_seen_at: string | null;
   sand: unknown;
 }
 
@@ -87,7 +88,7 @@ export function createLiveBeaches(db: Db, now: () => number, cfg: LiveConfig = l
   async function run(beachId: string): Promise<CatchUpOutcome> {
     const row = (
       await db.query<BeachRow>(
-        'SELECT owner_id, name, location, version, updated_at, simulated_until, here_until, sand FROM beach WHERE id = $1 AND sand IS NOT NULL',
+        'SELECT owner_id, name, location, version, updated_at, simulated_until, here_until, owner_seen_at, sand FROM beach WHERE id = $1 AND sand IS NOT NULL',
         [beachId],
       )
     )[0];
@@ -122,8 +123,12 @@ export function createLiveBeaches(db: Db, now: () => number, cfg: LiveConfig = l
       return 'failed';
     }
     const keepBefore = t - since > cfg.tideCheckpointGapMs;
+    const seenAt = Number(row.owner_seen_at ?? 0);
     // one statement: the beach, its "Before the tide" checkpoint and the event
-    // all land together, and only if nobody changed the beach meanwhile
+    // all land together, and only if nobody changed the beach meanwhile.
+    // Don't overwrite a "Before the tide" kept earlier during this same away
+    // period (created after owner_seen_at), or repeated visitor reads would
+    // replace the owner's original pre-away beach with an already-eroded one.
     const rows = await db.query<{ version: number }>(
       `WITH upd AS (
          UPDATE beach SET sand = $3, nx = $4, ny = $5, items = $6, version = version + 1, epoch = epoch + 1, simulated_until = $7
@@ -137,6 +142,7 @@ export function createLiveBeaches(db: Db, now: () => number, cfg: LiveConfig = l
          ON CONFLICT (from_beach) WHERE kind = 'tide' DO UPDATE SET
            name = EXCLUDED.name, from_name = EXCLUDED.from_name, location = EXCLUDED.location, nx = EXCLUDED.nx, ny = EXCLUDED.ny,
            sand = EXCLUDED.sand, bytes = EXCLUDED.bytes, items = EXCLUDED.items, objects = EXCLUDED.objects, created_at = EXCLUDED.created_at
+           WHERE checkpoints.created_at <= $25
          RETURNING id
        ),
        ev AS (
@@ -171,6 +177,7 @@ export function createLiveBeaches(db: Db, now: () => number, cfg: LiveConfig = l
         res.sandMoved,
         res.lost.length,
         res.broughtIn,
+        seenAt,
       ],
     );
     if (!rows[0]) return 'raced';

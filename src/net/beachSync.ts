@@ -98,6 +98,7 @@ export class BeachSync {
       who = next;
       window.clearTimeout(this.timer);
       this.dirty = false;
+      this.watched = false;
       this.savedAt = 0;
       this.fenced = false;
       this.set('idle');
@@ -404,6 +405,7 @@ export class BeachSync {
       this.switching = true;
       try {
         this.account.setBeach(id);
+        this.watched = false;
         this.savedAt = 0;
         await this.restoreOrCreate(true);
       } finally {

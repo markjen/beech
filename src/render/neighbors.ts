@@ -460,7 +460,7 @@ export class NeighborView {
     if (document.hidden) return;
     const c = this.nearestIndex(this.cam.focusX);
     const e = this.entries.get(c);
-    if (!e?.data || e.loading || (c === 0 && !this.visiting) || !e.beach.location) return;
+    if (!e?.data || e.loading || (c === 0 && !this.visiting) || !e.beach.location || this.ownedBeach(e.beach)) return;
     const code = e.beach.code;
     const now = Date.now();
     if ((this.liveNext.get(code) ?? 0) > now) return;

@@ -24,6 +24,17 @@ describe('half tide cycles', () => {
       expect(hi).toBeGreaterThanOrEqual(lo);
     }
   });
+
+  it('still counts a high tide when two samples sit at the exact same peak', () => {
+    const step = 30 * 60000;
+    const flatPeak = (ms: number) => {
+      const k = Math.round((ms - T0) / step);
+      return [0, 1, 1, 0, -1, -1, 0][k] ?? 0;
+    };
+    const { segs, highTides } = halfCycles(flatPeak, T0, T0 + 6 * step);
+    expect(highTides).toBe(1);
+    expect(segs.length).toBe(3);
+  });
 });
 
 describe('the catch-up (docs/LIVE_SIM.md)', () => {

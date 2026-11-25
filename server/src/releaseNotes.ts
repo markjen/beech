@@ -17,8 +17,10 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: '2026-11-25',
-    title: 'Visitors, your inbox, new controls, and sandcastle molds',
+    title: 'Live beaches, visitors, your inbox, new controls, and sandcastle molds',
     changes: [
+      'The sea now keeps working while you’re away: tides wear down sand near the waterline, wash up fresh shells and driftwood, and send anything you own that floats out to sea back to your bag. Coming back shows a “While you were away” card with a one-tap “Before the tide” restore after long gaps.',
+      'Visiting someone else’s beach while they’re playing now shows their digging and building live every few seconds.',
       'The beach guide (the compass) now keeps its how-tos in the web guide. In the game, you’ll see the checklist and your progress.',
       'Visitors can leave something: a rating in shells, a note, or a gift from their bag, from “leave something” next to the beach’s name (tap the name, top left).',
       'Your inbox (the envelope, top right) shows who visited and what they left, gifts, neighbor requests, stars and ratings. Say thanks, report a note or block someone from there.',

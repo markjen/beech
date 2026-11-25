@@ -68,12 +68,26 @@ const castleTop = (b: Uint8Array) => {
 const req = (a: ReturnType<typeof createApp>, path: string, init: RequestInit = {}, token?: string) =>
   a.request(path, { ...init, headers: { ...(init.headers as Record<string, string>), ...(token ? { Authorization: `Bearer ${token}` } : {}) } });
 const json = (method: string, data: unknown): RequestInit => ({ method, body: JSON.stringify(data), headers: { 'Content-Type': 'application/json' } });
+const editTokens = new Map<string, string>();
+const editToken = async (tok: string) => {
+  const hit = editTokens.get(tok);
+  if (hit) return hit;
+  const r = await req(app, '/edit-session', { method: 'POST' }, tok);
+  expect(r.status).toBe(200);
+  const { token } = (await r.json()) as { token: string };
+  editTokens.set(tok, token);
+  return token;
+};
+const reqE = async (a: ReturnType<typeof createApp>, path: string, init: RequestInit = {}, token?: string) => {
+  const headers = { ...(init.headers as Record<string, string>), ...(token ? { 'X-Edit-Token': await editToken(token) } : {}) };
+  return req(a, path, { ...init, headers }, token);
+};
 async function signIn(name: string) {
   const r = await req(app, '/auth/dev', json('POST', { name }));
   return (await r.json()) as { token: string; user: { id: string } };
 }
 const save = (tok: string, bytes: Uint8Array, items: Record<string, number> = {}, epoch?: number) =>
-  req(
+  reqE(
     app,
     '/beach',
     {
@@ -219,7 +233,7 @@ describe('catch-up on read', () => {
     };
     t += 3 * 24 * H;
     await load(token); // eroded
-    const r = await req(app, `/beaches/mine/${user.id}/restore`, json('POST', { checkpoint: cp.checkpoint.id }), token);
+    const r = await reqE(app, `/beaches/mine/${user.id}/restore`, json('POST', { checkpoint: cp.checkpoint.id }), token);
     expect(r.status).toBe(200);
     const b = await load(token);
     expect(castleTop(b.bytes)).toBe(500);
@@ -274,11 +288,38 @@ describe('while you were away', () => {
     expect(await away(token)).toBeNull();
     // "put it back as it was": the usual restore, castle and all
     t += 60000;
-    const r = await req(app, `/beaches/mine/${user.id}/restore`, json('POST', { checkpoint: a.checkpoint, mode: 'drop-missing' }), token);
+    const r = await reqE(app, `/beaches/mine/${user.id}/restore`, json('POST', { checkpoint: a.checkpoint, mode: 'drop-missing' }), token);
     expect(r.status).toBe(200);
     const b = await load(token);
     expect(castleTop(b.bytes)).toBe(500);
     expect(objectsOf(b.bytes).some((o) => o.item === 'nautilus')).toBe(true);
+  });
+
+  it('repeated visitor reads while you are away keep the original "Before the tide" until you return', async () => {
+    const { token, user } = await signIn('Kit');
+    const { token: visitor } = await signIn('Lou');
+    await save(token, beach([]));
+    const code = ((await (await req(app, '/neighbors', {}, token)).json()) as { code: string }).code;
+    // first visitor after 18 h: creates "Before the tide" from the 500 mm castle
+    t += 18 * H;
+    expect((await req(app, `/beaches/${code}`, {}, visitor)).status).toBe(200);
+    // second visitor 18 h later while owner still hasn't returned: must NOT overwrite it with eroded sand
+    t += 18 * H;
+    expect((await req(app, `/beaches/${code}`, {}, visitor)).status).toBe(200);
+    const a = (await away(token))!;
+    expect(a.checkpoint).toBeTruthy();
+    const r = await reqE(app, `/beaches/mine/${user.id}/restore`, json('POST', { checkpoint: a.checkpoint, mode: 'drop-missing' }), token);
+    expect(r.status).toBe(200);
+    expect(castleTop((await load(token)).bytes)).toBe(500);
+    // once the owner has seen it, a later >12 h gap replaces "Before the tide" with the newer state
+    expect((await req(app, '/beach/away/seen', { method: 'POST' }, token)).status).toBe(204);
+    await save(token, beach([], 300));
+    t += 18 * H;
+    await load(token);
+    const a2 = (await away(token))!;
+    expect(a2.checkpoint).toBeTruthy();
+    expect((await reqE(app, `/beaches/mine/${user.id}/restore`, json('POST', { checkpoint: a2.checkpoint, mode: 'drop-missing' }), token)).status).toBe(200);
+    expect(castleTop((await load(token)).bytes)).toBe(300);
   });
 
   it("someone else's beach: not yours to read", async () => {
