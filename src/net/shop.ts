@@ -158,8 +158,9 @@ export class ShopApi {
           const mine = list.find((x) => x.id === sp.identifier);
           if (mine) mine.price = sp.priceString;
         }
-        // only what the store actually offers here can be bought
-        return list.filter((x) => x.price);
+        // only what the store actually offers here can be bought; free
+        // things are claimed from the server, with no store involved
+        return list.filter((x) => x.price || x.usd === 0);
       } catch (e) {
         reportError('shop', e, { source: 'shop:getProducts' });
         /* store unreachable: show US prices, buying will say why it can't */
@@ -454,11 +455,17 @@ export class ShopApi {
   }
 
   /** Buy a product with account credit, with an optional promo code. */
-  async buyWithCredit(
-    productId: string,
-    promoCode?: string,
-  ): Promise<{ paidCents: number; discountCents: number; creditCents: number }> {
-    const key = 'beech.creditRequest.v1:' + JSON.stringify([this.account.user?.id, productId, promoCode]);
+  buyWithCredit(productId: string, promoCode?: string) {
+    return this.creditPurchase(productId, promoCode, false);
+  }
+
+  claimFree(productId: string) {
+    return this.creditPurchase(productId, undefined, true);
+  }
+
+  private async creditPurchase(productId: string, promoCode: string | undefined, freeOnly: boolean) {
+    const prefix = freeOnly ? 'beech.freeClaim.v1:' : 'beech.creditRequest.v1:';
+    const key = prefix + JSON.stringify([this.account.user?.id, productId, promoCode]);
     let requestId = this.creditRequests.get(key);
     try {
       requestId ??= sessionStorage.getItem(key) ?? undefined;
@@ -473,7 +480,7 @@ export class ShopApi {
     const res = await this.account.fetch('/api/store/credit-purchase', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ productId, requestId, ...(promoCode ? { promoCode } : {}) }),
+      body: JSON.stringify({ productId, requestId, ...(promoCode ? { promoCode } : {}), ...(freeOnly ? { freeOnly } : {}) }),
     });
     if (!res.ok) {
       if (res.status < 500 && res.status !== 429) clearRequest();

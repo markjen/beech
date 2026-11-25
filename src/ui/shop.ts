@@ -169,7 +169,11 @@ export class Shop {
       btn.className = 'shop-buy';
       btn.dataset.product = p.id;
       const price = p.price ?? `$${p.usd.toFixed(2)}`;
-      if (mode === 'web' && this.api.webCheckout) {
+      const free = p.usd === 0;
+      if (free) {
+        btn.textContent = 'Free';
+        btn.addEventListener('click', () => void this.claimFree(p, btn));
+      } else if (mode === 'web' && this.api.webCheckout) {
         btn.textContent = price;
         btn.title = 'Pay by card';
         btn.addEventListener('click', () => void this.payOnWeb(p, btn));
@@ -194,7 +198,7 @@ export class Shop {
       // The button shows when the credit covers the price after the promo,
       // not the undiscounted price.
       const priceCents = finals.get(p.id) ?? Math.round(p.usd * 100);
-      if (this.codes && this.creditCents >= priceCents) {
+      if (!free && this.codes && this.creditCents >= priceCents) {
         const creditBtn = document.createElement('button');
         creditBtn.type = 'button';
         creditBtn.className = 'shop-buy shop-credit-buy';
@@ -245,6 +249,26 @@ export class Shop {
         this.note.textContent = `${p.name}: added to your bag. Thank you!`;
         this.bought(p.id);
       }
+    } catch (e) {
+      this.note.textContent = (e as Error).message;
+    } finally {
+      this.busy = false;
+      btn.textContent = label;
+      btn.disabled = false;
+    }
+  }
+
+  /** A free thing: the server grants it with nothing to pay (no store, no credit). */
+  private async claimFree(p: ShopProduct, btn: HTMLButtonElement): Promise<void> {
+    if (this.busy) return;
+    this.busy = true;
+    const label = btn.textContent;
+    btn.textContent = '…';
+    btn.disabled = true;
+    try {
+      await this.api.claimFree(p.id);
+      this.note.textContent = `${p.name}: added to your bag.`;
+      this.bought(p.id);
     } catch (e) {
       this.note.textContent = (e as Error).message;
     } finally {

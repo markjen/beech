@@ -21,6 +21,29 @@ jobs:
         working-directory: desktop
         run: npm ci && npm run typecheck
 
+  # Formal proofs of the files in LemmaScript-files.txt (docs/VERIFICATION.md).
+  # Versions and checksum match .claude/hooks/session-start.sh.
+  verify:
+    runs-on: ubuntu-latest
+    env:
+      DAFNY_VERSION: 4.11.0
+      DAFNY_SHA256: a46a9ff7cdd720f7955854c78e95df13f4cfe6b80691b05f8654fe19e8267179
+      LSC_VERSION: 0.6.12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Dafny and lsc
+        run: |
+          curl -fsSL -o dafny.zip "https://github.com/dafny-lang/dafny/releases/download/v$DAFNY_VERSION/dafny-$DAFNY_VERSION-x64-ubuntu-22.04.zip"
+          echo "$DAFNY_SHA256  dafny.zip" | sha256sum --check
+          unzip -q dafny.zip -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/dafny" >> "$GITHUB_PATH"
+          npm install -g "lemmascript@$LSC_VERSION"
+      - name: Verify (lsc check, every listed file)
+        run: lsc check --backend=dafny
+
   server:
     runs-on: ubuntu-latest
     services:

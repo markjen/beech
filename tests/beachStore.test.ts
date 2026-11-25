@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { GRID_TIERS } from '../src/config';
 import { BeachStore, type BeachRef, type Saved, type StoreBackend } from '../src/net/beachStore';
 import { buildRestProfile } from '../src/sim/profile';
@@ -208,11 +208,11 @@ describe('BeachStore', () => {
     store.markDirty('b', 1e9);
     f.failNext(409, 'short');
     await store.flush('a');
-    await new Promise((r) => setTimeout(r, 0));
-    await store.flush('a');
+    await vi.waitFor(() => {
+      expect(store.isDirty('a')).toBe(false);
+      expect(store.isDirty('b')).toBe(false);
+    });
     expect(f.calls.save).toEqual(['a', 'b', 'a']);
-    expect(store.isDirty('a')).toBe(false);
-    expect(store.isDirty('b')).toBe(false);
     expect(problems).toEqual([]);
   });
 
@@ -233,13 +233,9 @@ describe('BeachStore', () => {
     };
     store.markDirty('a', 1e9);
     await store.flush('a');
-    await new Promise((r) => setTimeout(r, 0));
-    await store.flush('a');
-    await new Promise((r) => setTimeout(r, 0));
-    await store.load(mine('a'));
+    await vi.waitFor(() => expect(reloaded).toBe('a'));
     expect(refusals).toBe(2);
     expect(problems).toEqual(['a:short']);
-    expect(reloaded).toBe('a');
     expect(store.isDirty('a')).toBe(false);
   });
 

@@ -160,10 +160,9 @@ _(nothing right now)_
 
 ## Ideas
 
-- Verify a first piece of integer game logic with LemmaScript (inventory
-  counts, shop purchases or beach capacity; see
-  [VERIFICATION.md](VERIFICATION.md)), then add `lsc check` to CI.
-
+- Verify more with LemmaScript: the app's copy of the restore check
+  (`src/world/checkpointFit.ts`), item-size and beach-capacity limits,
+  referral ladder rewards. See [VERIFICATION.md](VERIFICATION.md).
 - [ ] Sand-castle bucket stamps as a fourth tool.
 - [ ] More real beaches (Reynisfjara, Whitehaven, Navagio…), maybe with
   per-beach slope and sand-grain colour.
@@ -174,10 +173,14 @@ _(nothing right now)_
 
 ## Done (recent)
 
-- [x] **Formal verification tooling** (2026-11-25): LemmaScript skills
-  vendored into `.claude/skills/`, Dafny + `lsc` installed at session start.
-  Nothing verified yet; candidates are in
-  [VERIFICATION.md](VERIFICATION.md).
+- [x] **Free shop items** (2026-11-25): an approved creator item priced
+  $0 is free (a Free button on every platform, granted by the server);
+  "not for sale" is a separate admin checkbox (migration 28).
+
+- [x] **Formal verification** (2026-11-25): LemmaScript skills vendored
+  into `.claude/skills/`, Dafny + `lsc` installed at session start and in
+  CI. Proved: the server's save and restore "within the bag" checks and
+  the promo discount rules ([VERIFICATION.md](VERIFICATION.md)).
 
 - [x] **Agent token savings** (2026-11-25): cloud sessions install a
   pinned rtk and the npm dependencies at start (`.claude/hooks/`), a Bash

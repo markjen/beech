@@ -96,7 +96,9 @@ import {
   countObjects,
   dropMissing,
   inspectBlob,
+  nothingGrew,
   sandDiff,
+  saveShort,
   shortfall,
   type Short,
 } from './checkpoints.js';
@@ -830,15 +832,9 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   const overBag = async (user: string, beachId: string, placed: Record<string, number>): Promise<Short[]> => {
     const row = (await db.query<{ items: Record<string, number> | string | null }>('SELECT items FROM beach WHERE id = $1', [beachId]))[0];
     const stored = jsonMap(row?.items);
-    const grew = Object.entries(placed).filter(([item, n]) => n > (stored[item] ?? 0));
-    if (!grew.length) return [];
+    if (nothingGrew(placed, stored)) return [];
     const [owned, elsewhere] = await Promise.all([ownedItems(user), itemsElsewhere(user, beachId)]);
-    const out: Short[] = [];
-    for (const [item, n] of grew.sort(([a], [b]) => (a < b ? -1 : 1))) {
-      const have = Math.max(stored[item] ?? 0, (owned[item] ?? 0) - (elsewhere[item] ?? 0));
-      if (n > have) out.push({ item, need: n, have });
-    }
-    return out;
+    return saveShort(placed, stored, owned, elsewhere);
   };
 
   const saveBeach = async (c: Context<Env>, beachId: string) => {
@@ -2362,6 +2358,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const now = clock();
     const offer = await creatorOffer(db, product!);
     const amount = salePriceCents(product!, offer) ?? fail(404, 'that product is not for sale');
+    // a free item has nothing to pay: it's claimed through /store/credit-purchase
+    if (amount === 0) fail(400, 'that one is free: claim it in the shop');
     await db.query(
       `INSERT INTO web_orders (id, user_id, product_id, amount_cents, sandbox, created_at, creator_submission_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7)`,
@@ -2564,6 +2562,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const now = clock();
     const offer = await creatorOffer(db, product!);
     const amountCents = salePriceCents(product!, offer) ?? fail(404, 'that product is not for sale');
+    if (amountCents === 0) fail(400, 'that one is free: claim it in the shop');
     const inserted = await db.query<{ order_id: string }>(
       `INSERT INTO steam_orders (user_id, steam_id, product_id, amount_cents, sandbox, created_at, creator_submission_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING order_id::text AS order_id`,
@@ -2767,10 +2766,13 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   app.post('/store/credit-purchase', requireUser, async (c) => {
     const me = c.get('user').id;
     if (!creditLimiter(me)) return c.json({ error: 'slow down' }, 429);
-    const { productId, promoCode, requestId } = await body<{ productId?: string; promoCode?: string; requestId?: string }>(c);
+    const { productId, promoCode, requestId, freeOnly } =
+      await body<{ productId?: string; promoCode?: string; requestId?: string; freeOnly?: boolean }>(c);
     const product = productById(productId ?? '') ?? fail(404, 'no such product');
     if (requestId !== undefined && (typeof requestId !== 'string' || !UUID_PATTERN.test(requestId))) fail(400, 'invalid request ID');
     if (promoCode !== undefined && typeof promoCode !== 'string') fail(400, 'invalid promo code');
+    if (freeOnly !== undefined && typeof freeOnly !== 'boolean') fail(400, 'invalid free claim');
+    if (freeOnly && promoCode !== undefined) fail(400, 'free claims do not use promo codes');
     const code = promoCode ? normalizePromoCode(promoCode) : null;
     const now = clock();
     const result = await db.withTransaction(async (tx) => {
@@ -2787,12 +2789,14 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
             [me, requestId],
           );
           if (!order || order.product_id !== product.id || order.promo_code !== code) fail(409, 'that request ID was used for a different purchase');
+          if (freeOnly && order.paid_cents !== 0) fail(409, 'that request ID was used for a paid purchase');
           return { paidCents: order.paid_cents, discountCents: order.discount_cents, creditCents: await balance() };
         }
       }
 
       const offer = await creatorOffer(tx, product, true);
       const price = salePriceCents(product, offer) ?? fail(404, 'that product is not for sale');
+      if (freeOnly && price !== 0) fail(409, 'that item is no longer free. Reopen the shop for its current price.');
       let discount = 0;
       if (code !== null) {
         const promo = await loadPromo(code, tx) ?? fail(404, 'no such code');

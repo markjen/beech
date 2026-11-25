@@ -182,10 +182,45 @@ it('credits only completed credit orders, including a discounted order retried c
     submissions: [{ id, sales_count: 1, total_credit_earned_cents: 38 }],
   });
   expect((await json('/store/credit-purchase', { ...buy, promoCode: '' }, buyer.token)).status).toBe(409);
+  // 0 is free: listed at $0, claimed with no credit spent and no royalty
   await approve(id, 'deckchair', '0');
+  const listed = await (await root.request('/api/store/products')).json() as { products: { id: string; usd: number }[] };
+  expect(listed.products.find((p) => p.id === 'item_deckchair')?.usd).toBe(0);
+  const quote = await json('/store/quote', { productId: 'item_deckchair' }, buyer.token);
+  expect(await quote.json()).toMatchObject({ priceCents: 0, finalCents: 0 });
+  const claim = { productId: 'item_deckchair', requestId: crypto.randomUUID(), freeOnly: true };
+  const free = await json('/store/credit-purchase', claim, buyer.token);
+  expect(free.status, await free.clone().text()).toBe(200);
+  expect(await free.json()).toMatchObject({ paidCents: 0, creditCents: 875 });
+  expect(await db.query('SELECT id FROM inventory WHERE user_id = $1', [buyer.id])).toHaveLength(2);
+  expect(await credit(creator.token)).toBe(38);
+
+  await approve(id, 'deckchair', '250');
+  const retried = await json('/store/credit-purchase', claim, buyer.token);
+  expect(retried.status).toBe(200);
+  expect(await retried.json()).toMatchObject({ paidCents: 0, creditCents: 875 });
+  const stale = await json('/store/credit-purchase', { ...claim, requestId: crypto.randomUUID() }, buyer.token);
+  expect(stale.status).toBe(409);
+  expect(await stale.json()).toMatchObject({ error: expect.stringContaining('no longer free') });
+  expect(await credit(buyer.token)).toBe(875);
+  expect(await credit(creator.token)).toBe(38);
+  expect(await db.query('SELECT id FROM inventory WHERE user_id = $1', [buyer.id])).toHaveLength(2);
+
+  // "not for sale" is its own choice, whatever the price
+  const off = await adminApi('/' + id + '/review', form({
+    status: 'approved', productId: 'item_deckchair', itemId: 'deckchair', priceCents: '250', notForSale: 'true', name: 'Edited pot', frequency: 'limited',
+  }));
+  expect(off.status, await off.clone().text()).toBe(200);
   expect((await json('/store/quote', buy, buyer.token)).status).toBe(404);
   const shop = await (await root.request('/api/store/products')).json() as { products: { id: string }[] };
   expect(shop.products.some((p) => p.id === 'item_deckchair')).toBe(false);
+  expect(await (await shoreRequest('/submit/items', creator.scoped)).json()).toMatchObject({ submissions: [{ id, for_sale: false }] });
+
+  // a linked item for sale needs a price
+  const blank = await adminApi('/' + id + '/review', form({
+    status: 'approved', productId: 'item_deckchair', itemId: 'deckchair', priceCents: '', name: 'Edited pot', frequency: 'limited',
+  }));
+  expect(blank.status).toBe(400);
 });
 
 it('uses the approved price at native purchase time and reverses a refund once', async () => {
@@ -246,6 +281,36 @@ it('pays no credit when a creator buys their own item', async () => {
   expect(await (await shoreRequest('/submit/items', creator.scoped)).json()).toMatchObject({
     submissions: [{ id, sales_count: 0, total_credit_earned_cents: 0 }],
   });
+});
+
+it('sends a free item to the shop claim instead of a card or Steam checkout', async () => {
+  const creator = await user('Free creator');
+  const buyer = await user('Free Steam buyer', true);
+  const id = await submit(creator.scoped);
+  await approve(id, 'palmtree', '0');
+  for (const path of ['/store/steam/init', '/store/web-checkout']) {
+    const res = await json(path, { productId: 'item_palmtree' }, buyer.token);
+    expect(res.status, path).toBe(400);
+    expect(await res.json()).toMatchObject({ error: 'that one is free: claim it in the shop' });
+  }
+});
+
+it('keeps a free item out of the shop until it is approved, and again once rejected', async () => {
+  const creator = await user('Unreviewed creator');
+  const buyer = await user('Unreviewed buyer');
+  const price = async () =>
+    ((await (await root.request('/api/store/products')).json()) as { products: { id: string; usd: number }[] }).products.find((p) => p.id === 'item_surfboard')?.usd;
+  // proposed free, not reviewed: no product link, so the shop's own surfboard is unchanged
+  const id = await submit(creator.scoped, uploadForm({ priceCents: '0' }));
+  expect(await db.query('SELECT product_id FROM item_submissions WHERE id = $1', [id])).toEqual([{ product_id: null }]);
+  expect(await price()).toBe(1.49);
+  // only the admin's approval makes it free
+  await approve(id, 'surfboard', '0');
+  expect(await price()).toBe(0);
+  const rejected = await adminApi('/' + id + '/review', form({ status: 'rejected' }));
+  expect(rejected.status).toBe(200);
+  expect(await price()).toBe(undefined);
+  expect((await json('/store/credit-purchase', { productId: 'item_surfboard', requestId: crypto.randomUUID() }, buyer.token)).status).toBe(404);
 });
 
 it('honors the amount recorded at Steam and Xsolla checkout after an admin changes the price', async () => {
