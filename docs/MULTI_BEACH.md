@@ -127,7 +127,10 @@ from the live sim. With several beaches the count has to span them all:
 
 - The server counts how many of each non-free item are on a beach from
   each save's objects and keeps it on `beach.items` (JSONB). (The app still
-  sends `X-Beach-Items`; the server ignores it since 2026-11-25.)
+  sends `X-Beach-Items`; the server ignores it since 2026-11-25.) A save
+  can't raise a count past what you own less your other beaches (409
+  `short`); the app saves its other beaches and retries once, for a thing
+  moved across a seam.
 - The bag's "N of M left" uses the server's totals for your other beaches
   plus the live beach's own count.
 - If you're over (an item was refunded, say), nothing disappears. You just

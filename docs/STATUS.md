@@ -885,6 +885,16 @@ here: it needs the service's URL on the web OAuth client.
   - Someone the owner has blocked can't feed their pet (403, like visits
     and gifts).
   - Reading your own neighbor beach no longer marks it as watched.
+  - **Saves within the bag** (same day, follow-up): a save may raise a
+    thing's count on a beach only up to what you own less what's on your
+    other beaches (`overBag`, 409 `{ error: 'short', short }`). Only counts
+    that go up are checked, so most saves cost no extra query, and what the
+    beach already held stays allowed (things gifted away, refunded or
+    expired while on the sand). The app (`BeachStore`) saves its other
+    beaches and retries once, which settles a move across a seam whose
+    two saves arrived out of order; still short, it reloads the saved beach
+    with a toast. Apps from before this treat the 409 as "restored" and
+    reload.
   - e2e here: `accounts` passes. The others time out signing a second
     device in on this software-GPU runner, and plain main times out the same
     way (`neighbors`, `checkpoints`, `live` checked side by side). The

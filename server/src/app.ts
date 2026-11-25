@@ -96,6 +96,7 @@ import {
   inspectBlob,
   sandDiff,
   shortfall,
+  type Short,
 } from './checkpoints.js';
 import {
   FREE_TEXT_AFTER_MS,
@@ -816,6 +817,28 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     }
   };
 
+  /**
+   * What a save holds beyond the bag. Only counts that go up are checked,
+   * so most saves cost no query. Whatever this beach already holds stays
+   * allowed (things since gifted away, refunded or expired keep their
+   * place), and the app saves its other beaches and retries once on a
+   * refusal, which settles a move across a seam whose two saves arrived in
+   * the wrong order (docs/MULTI_BEACH.md).
+   */
+  const overBag = async (user: string, beachId: string, placed: Record<string, number>): Promise<Short[]> => {
+    const row = (await db.query<{ items: Record<string, number> | string | null }>('SELECT items FROM beach WHERE id = $1', [beachId]))[0];
+    const stored = jsonMap(row?.items);
+    const grew = Object.entries(placed).filter(([item, n]) => n > (stored[item] ?? 0));
+    if (!grew.length) return [];
+    const [owned, elsewhere] = await Promise.all([ownedItems(user), itemsElsewhere(user, beachId)]);
+    const out: Short[] = [];
+    for (const [item, n] of grew.sort(([a], [b]) => (a < b ? -1 : 1))) {
+      const have = Math.max(stored[item] ?? 0, (owned[item] ?? 0) - (elsewhere[item] ?? 0));
+      if (n > have) out.push({ item, need: n, have });
+    }
+    return out;
+  };
+
   const saveBeach = async (c: Context<Env>, beachId: string) => {
     const location = (c.req.header('X-Beach-Location') ?? '').slice(0, 40);
     const nx = Number(c.req.header('X-Beach-Nx'));
@@ -870,6 +893,13 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     if (epoch !== null) {
       const cur = (await db.query<{ epoch: number }>('SELECT epoch FROM beach WHERE id = $1', [beachId]))[0];
       if (cur && Number(cur.epoch) > epoch) fail(409, 'restored');
+    }
+    // within the bag: a save can't put more of a thing on this beach than
+    // you own, less what's on your other beaches (as a restore checks)
+    const short = await overBag(c.get('user').id, beachId, placed);
+    if (short.length) {
+      logEvent('save_over_bag', { items: short.length }, 'WARNING');
+      return c.json({ error: 'short', short }, 409);
     }
     // a big edit (a tenth of the sand reshaped, fifty things moved, a new
     // grid) keeps the beach as it is now first, whatever the daily clock

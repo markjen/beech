@@ -144,6 +144,10 @@ describe('digging finds', () => {
   it('three finds a day, then the beach is done until tomorrow', async () => {
     const { token } = await signIn('digger-cap');
     forcedRand = () => 0.05; // always a hit
+    // start at noon UTC, so stepping past the cooldowns never crosses midnight
+    // (the test used to fail when it ran just before 00:00 UTC)
+    const real = Date.now();
+    skew = Math.floor(real / 86400000) * 86400000 + 12 * 3600000 - real;
     try {
       for (let i = 1; i <= DIG_FIND_DAILY_CAP; i++) {
         const r = await dig(token);

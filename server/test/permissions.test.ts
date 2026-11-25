@@ -133,6 +133,10 @@ describe('only the owner changes a beach', () => {
 describe('what a save may hold', () => {
   it('counts the things on a beach itself, ignoring X-Beach-Items', async () => {
     const p = await player('counter');
+    await db.query(
+      "INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at) VALUES ($1, 'deckchair', 2, 'pull', $2), ($1, 'starfish', 1, 'pull', $2)",
+      [p.user.id, Date.now()],
+    );
     const bytes = beachBlob([{ item: 'deckchair' }, { item: 'deckchair' }, { item: 'starfish' }, { item: 'rock' }, { item: 'shell' }]);
     // an app claiming fewer things than it placed (to free them for another beach)
     expect((await save(p, '/beach', bytes, { 'X-Beach-Items': 'deckchair=0' })).status).toBe(200);
@@ -146,6 +150,58 @@ describe('what a save may hold', () => {
     expect((await save(p, '/beach', beachBlob([], 0, 16))).status).toBe(400); // headers say 256
     expect((await req('/beach', {}, p)).status).toBe(404); // nothing was saved
     expect((await save(p, '/beach', beachBlob([], 0, 16), sandHeaders(16))).status).toBe(200);
+  });
+});
+
+describe('a save stays within the bag', () => {
+  const chairs = (n: number, fill = 0) => beachBlob(Array.from({ length: n }, () => ({ item: 'deckchair' })), fill);
+  const give = (who: Who, item: string, n = 1) =>
+    db.query("INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at) VALUES ($1, $2, $3, 'pull', $4)", [who.user.id, item, n, Date.now()]);
+
+  it("can't place more than you own, across all your beaches", async () => {
+    const p = await player('bag');
+    await give(p, 'deckchair');
+    await db.query("INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at) VALUES ($1, 'beach', 1, 'gift', $2)", [p.user.id, Date.now()]);
+    const second = ((await (await req('/beaches/mine', json('POST', { name: 'Two' }), p)).json()) as { beach: { id: string } }).beach.id;
+    // one you own: fine; two: refused, saying what's short
+    expect((await save(p, '/beach', chairs(1))).status).toBe(200);
+    const over = await save(p, '/beach', chairs(2));
+    expect(over.status).toBe(409);
+    expect(await over.json()).toEqual({ error: 'short', short: [{ item: 'deckchair', need: 2, have: 1 }] });
+    // the one is on the home beach, so the second beach can't have it too
+    expect((await save(p, `/beaches/mine/${second}/sand`, chairs(1))).status).toBe(409);
+    // free things are never short
+    expect((await save(p, `/beaches/mine/${second}/sand`, beachBlob(Array.from({ length: 40 }, () => ({ item: 'rock' }))))).status).toBe(200);
+    // nothing refused was stored
+    const items = (await db.query<{ items: unknown }>('SELECT items FROM beach WHERE id = $1', [p.user.id]))[0].items;
+    expect(typeof items === 'string' ? JSON.parse(items) : items).toEqual({ deckchair: 1 });
+  });
+
+  it('a move across a seam goes through once the beach it left has saved', async () => {
+    const p = await player('seam');
+    await give(p, 'deckchair');
+    await db.query("INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at) VALUES ($1, 'beach', 1, 'gift', $2)", [p.user.id, Date.now()]);
+    const second = ((await (await req('/beaches/mine', json('POST', { name: 'Two' }), p)).json()) as { beach: { id: string } }).beach.id;
+    expect((await save(p, '/beach', chairs(1))).status).toBe(200);
+    // the beach it went to saved first: refused, then the app saves the one it left and tries again
+    expect((await save(p, `/beaches/mine/${second}/sand`, chairs(1))).status).toBe(409);
+    expect((await save(p, '/beach', chairs(0))).status).toBe(200);
+    expect((await save(p, `/beaches/mine/${second}/sand`, chairs(1))).status).toBe(200);
+  });
+
+  it('keeps what a beach already holds after the bag no longer covers it (given away)', async () => {
+    const p = await player('giver');
+    const friend = await player('friend');
+    await give(p, 'deckchair');
+    expect((await save(p, '/beach', chairs(1))).status).toBe(200);
+    expect((await req('/gifts', json('POST', { code: friend.code, item: 'deckchair' }), p)).status).toBe(200);
+    // still on the sand: digging around it still saves
+    expect((await save(p, '/beach', chairs(1, 30))).status).toBe(200);
+    // but no more of them
+    expect((await save(p, '/beach', chairs(2, 30))).status).toBe(409);
+    // once it's gone from the sand, it can't come back
+    expect((await save(p, '/beach', chairs(0, 30))).status).toBe(200);
+    expect((await save(p, '/beach', chairs(1, 30))).status).toBe(409);
   });
 });
 

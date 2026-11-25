@@ -78,12 +78,6 @@ _(nothing right now)_
 
 ## Up next (engineering)
 
-- [ ] **Saves within the bag**: the server now counts what's on each save,
-  but doesn't yet refuse one that holds more of an item than you own
-  across your beaches (an app could still place an item it doesn't have).
-  Check `shortfall(placed, owned, elsewhere)` on save, as a restore does;
-  decide what happens to expired items still on the sand first.
-
 - [ ] **Beach store, next** (docs/BEACH_STORE.md): keep the store's
   snapshots of other people's beaches across a re-anchor *and* page
   reloads (IndexedDB, keyed by id + version), and ease the live renderer
@@ -150,10 +144,9 @@ _(nothing right now)_
   average, shown on the name tags along the shore (today: in the visitor card).
 - [ ] **Admin: suspend a sender's notes** after repeated reports (today
   the admin can hide a note or dismiss the report).
-- [ ] **Flaky tests**: `server/test/digFinds.test.ts` "three finds a day"
-  fails when it starts just before midnight UTC (it skews the clock across
-  the day boundary); `npm run e2e:checkpoints` times out at varying steps
-  in the cloud container, also on main.
+- [ ] **Flaky tests**: `npm run e2e:checkpoints` times out at varying
+  steps in the cloud container, also on main (so do `neighbors`, `live`,
+  `shore`, `beaches` and `leaderboard`: signing a second device in).
 - [ ] **Invites: open in the apps**: Universal Links / App Links so
   `?invite=` and `?visit=` links open the phone apps (the invite code is
   kept in `localStorage`, so the claim works the same once it lands).
@@ -176,6 +169,14 @@ _(nothing right now)_
   shower night.
 
 ## Done (recent)
+
+- [x] **Saves within the bag** (2026-11-25): a save can't raise a thing's
+  count on a beach past what you own less your other beaches (409
+  `short`); what a beach already holds stays (given away, refunded,
+  expired). The app saves its other beaches and retries once (a move
+  across a seam), then reloads the saved beach.
+- [x] **Flaky digFinds test** (2026-11-25): "three finds a day" starts at
+  noon UTC, so it no longer crosses midnight.
 
 - [x] **Server permissions audit** (2026-11-25): only a beach's owner can
   change it (`server/test/permissions.test.ts` tries every such call as

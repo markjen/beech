@@ -2137,6 +2137,8 @@ async function boot() {
         placing = null;
         footprintsStroke = null;
         showFencedBanner();
+      } else if (kind === 'short') {
+        showToast(uiRoot, 'This beach couldn’t save: it held more than your bag. It’s back as it was last saved.');
       } else if (kind === 'restored') {
         showToast(uiRoot, 'This beach was restored from a checkpoint on another device');
         void checkpoints.load();

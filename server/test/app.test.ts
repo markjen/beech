@@ -288,6 +288,8 @@ describe('more than one beach', () => {
     expect((await reqE('/beaches/mine', json('POST', { name: 'Third' }), eve.token)).status).toBe(409); // allowance 2
 
     // its own sand (and item counts, counted by the server: the app's X-Beach-Items is ignored), separate from home
+    for (const [item, n] of [['starfish', 1], ['deckchair', 2]] as const)
+      await db.query("INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at) VALUES ($1, $2, $3, 'pull', $4)", [eve.user.id, item, n, Date.now()]);
     const second7 = beachBlob([{ item: 'starfish' }, { item: 'deckchair' }, { item: 'deckchair' }, { item: 'rock' }], 7);
     const save = await reqE(
       `/beaches/mine/${second.id}/sand`,

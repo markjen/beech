@@ -75,6 +75,8 @@ async function player(name: string) {
   const r = await play('/auth/dev', json('POST', { name }));
   const { token, user } = (await r.json()) as { token: string; user: { id: string } };
   const edit = ((await (await play('/edit-session', { method: 'POST' }, token)).json()) as { token: string }).token;
+  // the starfish on it is theirs (a save can't hold more than the bag)
+  await db.query("INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at) VALUES ($1, 'starfish', 1, 'pull', $2)", [user.id, Date.now()]);
   const save = await play('/beach', { method: 'PUT', body: blob(), headers: { 'X-Beach-Location': 'bondi', 'X-Beach-Nx': '16', 'X-Beach-Ny': '16', 'X-Beach-Items': 'starfish=1', 'X-Edit-Token': edit } }, token);
   expect(save.status).toBe(200);
   const code = ((await (await play('/neighbors', {}, token)).json()) as { code: string }).code;

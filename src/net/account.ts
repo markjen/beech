@@ -410,6 +410,8 @@ export class Account {
       if (res.status === 409) {
         const data = (await res.json().catch(() => ({}))) as { error?: string };
         if (data.error === 'fenced') throw new ApiError(409, 'fenced');
+        // more of something than the bag holds (BeachStore retries once after saving your other beaches)
+        if (data.error === 'short') throw new ApiError(409, 'short');
       }
       throw new ApiError(res.status, 'could not save your beach');
     }
