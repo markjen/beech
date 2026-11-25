@@ -173,3 +173,76 @@ export function shoreRowOrder(left: number, right: number): number[] {
   }
   return out;
 }
+
+/**
+ * The world-X stretch of a band of the ground (z0 ≤ z ≤ z1) that the view
+ * covers, given the view's footprint on the ground as a convex polygon (the
+ * four screen corners carried down to the ground, in order). Null when the
+ * band is out of view. Exact: the extremes are at the polygon's corners
+ * inside the band or where its edges cross the band's two sides.
+ */
+export function visibleShoreSpan(
+  corners: readonly { x: number; z: number }[],
+  z0: number,
+  z1: number,
+): [number, number] | null {
+  let lo = Infinity;
+  let hi = -Infinity;
+  const take = (x: number) => {
+    if (x < lo) lo = x;
+    if (x > hi) hi = x;
+  };
+  const n = corners.length;
+  for (let k = 0; k < n; k++) {
+    const a = corners[k];
+    const b = corners[(k + 1) % n];
+    if (a.z >= z0 && a.z <= z1) take(a.x);
+    const dz = b.z - a.z;
+    if (Math.abs(dz) < 1e-9) continue;
+    for (const z of [z0, z1]) {
+      const t = (z - a.z) / dz;
+      if (t >= 0 && t <= 1) take(a.x + (b.x - a.x) * t);
+    }
+  }
+  return lo <= hi ? [lo, hi] : null;
+}
+
+/**
+ * The shore indices (within `[min, max]`) whose beach, WORLD_SIZE_X wide
+ * around its centre, overlaps world X `[x0, x1]`; null when none does.
+ * Centres increase with the index.
+ */
+export function indicesOverlapping(
+  x0: number,
+  x1: number,
+  min: number,
+  max: number,
+  xFor: (index: number) => number,
+): [number, number] | null {
+  const half = WORLD_SIZE_X / 2;
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (let i = min; i <= max; i++) {
+    const c = xFor(i);
+    if (c + half < x0 || c - half > x1) continue;
+    if (i < lo) lo = i;
+    if (i > hi) hi = i;
+  }
+  return lo <= hi ? [lo, hi] : null;
+}
+
+/**
+ * The drawn window with some give, so beaches don't flicker in and out as the
+ * view moves to and fro: each end goes out at once to cover `need`, but only
+ * comes back in once the old end is outside `keep` (which contains `need`).
+ */
+export function stickyWindow(
+  prev: readonly [number, number] | null,
+  need: readonly [number, number],
+  keep: readonly [number, number],
+): [number, number] {
+  if (!prev) return [need[0], need[1]];
+  const lo = prev[0] >= keep[0] && prev[0] <= need[0] ? prev[0] : need[0];
+  const hi = prev[1] <= keep[1] && prev[1] >= need[1] ? prev[1] : need[1];
+  return [lo, hi];
+}

@@ -51,9 +51,10 @@ switch, restore and save paths spent most of their code keeping them in step
    (426), too big (413) and offline are handled once, for every beach.
 6. **Memory: LRU.** The store keeps at most `BEACH_STORE.capacity` beaches
    (`src/config.ts`). After each window change the view tells the store which
-   ids are in view (`retain`), and `gc()` drops the least recently used of the
-   rest, never one that is in view, bound to the worker, dirty, saving or
-   loading. A dropped beach is fetched again when it comes back into view.
+   ids are drawn or fetched ahead of the view (`retain`), and `gc()` drops the
+   least recently used of the rest, never one that is retained, bound to the
+   worker, dirty, saving or loading. A dropped beach is loaded again (from the
+   device if it's kept there) when it comes near the view again.
 
 ## Snapshots on the device
 

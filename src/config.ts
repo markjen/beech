@@ -246,8 +246,8 @@ export const FOOTPRINTS_PER_STROKE_MAX = 100;
 
 /** The client's beach state, kept in memory by beach id (docs/BEACH_STORE.md). */
 export const BEACH_STORE = {
-  /** beaches kept beyond the ones in view, before the least recently used goes (about 1 MB each, more once edited) */
-  capacity: 12,
+  /** beaches held in memory (in view, fetched ahead and recently seen) before the least recently used goes (about 1 MB each, more once edited); at least what a full zoom-out draws plus the prefetch */
+  capacity: 20,
   /** other people's beaches kept on the device as last fetched (IndexedDB; roughly 50–300 KB each) */
   diskCapacity: 40,
   /** save an edited beach this long after the last change (ms) */

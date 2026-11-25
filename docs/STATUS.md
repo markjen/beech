@@ -365,9 +365,16 @@ accepted the repo's default branch, so the deploy job ran only there.
   (`BeachRenderer.setNeighbors`, `src/render/shaders.ts`). Offshore, the
   simulated water meets the far ocean apron/open sea flush at row `j = 0` with
   matched swell height, lighting, specular, crest fade and deep-water opacity
-  so there is no visible boundary line. Only the beaches
-  within 2 of the one under the view are drawn (`RENDER`). Beaches within 5
-  stay decoded in memory, and the rest load as you approach. Your own live
+  so there is no visible boundary line. In the diorama every beach the view
+  covers is drawn, worked out from the camera's footprint on the ground
+  (sand and open sea), so zooming out draws more (at most 6 either side,
+  `RENDER_MAX`); the chair view draws 2 either side (`RENDER`). A drawn beach
+  stays drawn until it's a whole beach out of view (`KEEP_MARGIN`), so
+  panning to and fro doesn't rebuild it, and 2 more each way are fetched
+  ahead without drawing (`PREFETCH`). The store holds up to 20 beaches
+  (`BEACH_STORE.capacity`); the rest load as you approach. (Until 2026-11-25
+  it was a fixed 2 either side, which left beaches popping in and out at the
+  edges when zoomed out.) Your own live
   beach is hidden once it's outside that window, and digging is off.
 - **Walking:** pan along it in the diorama, or walk in the chair view (hold ‹
   › or Q/E). After a second of holding, walking speeds up to 4×. In the chair
