@@ -39,9 +39,12 @@ import { Shop } from './ui/shop';
 import { ShopApi, webOrderFromUrl, withoutWebOrderParams } from './net/shop';
 import { VendingMachine } from './ui/vendingMachine';
 import { DEFAULT_SIZE, ITEMS, rollPlacement, type Item } from './world/items';
-import { ACCOUNTS_ENABLED, Account, AnimalsApi, CheckpointApi, DigFindApi, GiftApi, PullApi } from './net/account';
-import { beachShareText, shoreBeachUrl, SHORE_URL, visitCodeFromUrl, withoutVisitParam } from './net/share';
+import { ACCOUNTS_ENABLED, Account, AnimalsApi, ApiError, CheckpointApi, DigFindApi, GiftApi, GuideApi, PullApi, ReferralApi } from './net/account';
+import { beachShareText, inviteCodeFromUrl, shoreBeachUrl, SHORE_URL, visitCodeFromUrl, withoutInviteParam, withoutVisitParam } from './net/share';
 import { shareLink } from './ui/shareSheet';
+import { BeachGuide, type GuideHost } from './ui/guide';
+import { InvitePanel } from './ui/invite';
+import { prizeName } from './world/items';
 import { BeachSync, countItems } from './net/beachSync';
 import { AccountPanel } from './ui/accountPanel';
 import { Leaderboard } from './ui/leaderboard';
@@ -67,6 +70,38 @@ if (ACCOUNTS_ENABLED) initTelemetry();
 const params = new URLSearchParams(location.search);
 /** a share link (?visit=CODE) opens that person's beach once signed in */
 const visitCode = visitCodeFromUrl(location.search);
+/**
+ * An invite link (?invite=CODE, docs/INVITES_GUIDE.md). Kept on the device
+ * until it's claimed: it has to survive the Google / Apple sign-in.
+ */
+const INVITE_KEY = 'beech-invite';
+const readInvite = (): string | null => {
+  try {
+    return localStorage.getItem(INVITE_KEY);
+  } catch {
+    return null;
+  }
+};
+const writeInvite = (code: string | null) => {
+  try {
+    if (code) localStorage.setItem(INVITE_KEY, code);
+    else localStorage.removeItem(INVITE_KEY);
+  } catch {
+    /* private mode: it lasts for this visit */
+  }
+};
+let inviteCode: string | null = null;
+/** the invite came in this page load's link (it also lands you on their beach) */
+let inviteFromLink: string | null = null;
+if (ACCOUNTS_ENABLED) {
+  inviteCode = inviteFromLink = inviteCodeFromUrl(location.search);
+  if (inviteCode) {
+    writeInvite(inviteCode);
+    history.replaceState(null, '', location.pathname + withoutInviteParam(location.search) + location.hash);
+  } else {
+    inviteCode = readInvite();
+  }
+}
 /**
  * The clock is the real one. For testing: ?time=2026-11-22T06:30:00Z starts
  * from another moment and ?speed=60 runs it faster (time-lapse).
@@ -175,6 +210,7 @@ async function boot() {
   let shopDialog: Shop | null = null;
   let leaderboard: Leaderboard | null = null;
   let vendingMachine: VendingMachine | null = null;
+  let invitePanel: InvitePanel | null = null;
   // your sand, else a neighbor's, else the untouched shore (the chair can walk along all of it)
   cam.groundHeight = (x, z) => {
     const h = picker.heightAt(x, z);
@@ -356,11 +392,12 @@ async function boot() {
   const sameTarget = (a: EditTarget, b: EditTarget) =>
     a.kind === b.kind && (a.kind === 'live' || (b.kind === 'neighbor' && a.beachId === b.beachId && a.index === b.index));
   let strokeTarget: EditTarget | null = null;
-  /** which beach each undo/redo step belongs to ('live' or a neighbor's beachId) */
-  const undoTargets: ('live' | string)[] = [];
-  const redoTargets: ('live' | string)[] = [];
-  const recordEditTarget = (t: EditTarget) => {
-    undoTargets.push(t.kind === 'live' ? 'live' : t.beachId);
+  /** Each edit can affect one beach or both sides of a seam. */
+  const undoTargets: string[][] = [];
+  const redoTargets: string[][] = [];
+  const editKey = (target: EditTarget) => target.kind === 'live' ? 'live' : target.beachId;
+  const recordEditTarget = (...targets: EditTarget[]) => {
+    undoTargets.push(targets.map(editKey));
     if (undoTargets.length > 64) undoTargets.shift();
     redoTargets.length = 0;
   };
@@ -536,36 +573,29 @@ async function boot() {
     haptics.impact('medium');
   };
 
-  const undo = () => {
-    const target = undoTargets.pop() ?? 'live';
-    if (target === 'live') {
-      markDirty();
-      send({ type: 'undo' });
-      redoTargets.push('live');
-    } else if (neighbors?.undo(target)) {
-      redoTargets.push(target);
-    } else {
-      markDirty();
-      send({ type: 'undo' });
+  const replayEdit = (action: 'undo' | 'redo') => {
+    const past = action === 'undo' ? undoTargets : redoTargets;
+    const future = action === 'undo' ? redoTargets : undoTargets;
+    const liveCount = action === 'undo' ? info.undoCount : info.redoCount;
+    const targets = past.pop() ?? ['live'];
+    if (!targets.every((target) => target === 'live'
+      ? liveCount > 0
+      : neighbors?.canReplay(target, action))) return;
+    for (const target of targets) {
+      if (target === 'live') {
+        markDirty();
+        send({ type: action });
+      } else {
+        neighbors?.[action](target);
+      }
     }
-    audio.whoosh(true);
+    future.push(targets);
+    if (action === 'undo') guide.mark('undo');
+    audio.whoosh(action === 'undo');
     haptics.impact('medium');
   };
-  const redo = () => {
-    const target = redoTargets.pop() ?? 'live';
-    if (target === 'live') {
-      markDirty();
-      send({ type: 'redo' });
-      undoTargets.push('live');
-    } else if (neighbors?.redo(target)) {
-      undoTargets.push(target);
-    } else {
-      markDirty();
-      send({ type: 'redo' });
-    }
-    audio.whoosh(false);
-    haptics.impact('medium');
-  };
+  const undo = () => replayEdit('undo');
+  const redo = () => replayEdit('redo');
 
   // ---------------------------------------------------------------- UI
   const vignette = document.createElement('div');
@@ -829,6 +859,18 @@ async function boot() {
   /** Tap with an item in hand: set the item down. Picking things back up is
    * the vacuum's job now — the item tool only places. */
   let fullToastAt = 0;
+  const hasRoom = (target: EditTarget) => {
+    const count = target.kind === 'live'
+      ? info.objects.filter((o) => !o.wild).length
+      : (neighbors?.ownedCount(target.index) ?? MAX_OBJECTS);
+    if (count < MAX_OBJECTS) return true;
+    haptics.impact('light');
+    if (performance.now() - fullToastAt > 4000) {
+      fullToastAt = performance.now();
+      showToast(uiRoot, `This beach is full: it holds ${MAX_OBJECTS} things. Take some away with the vacuum to put more down.`);
+    }
+    return false;
+  };
   const putDown = (sx: number, sy: number) => {
     if (!placing) return;
     const hit = pickAt(sx, sy);
@@ -839,27 +881,16 @@ async function boot() {
       haptics.impact('light');
       return;
     }
-    const count =
-      hit.target.kind === 'live'
-        ? info.objects.filter((o) => !o.wild).length
-        : (neighbors?.ownedCount(hit.target.index) ?? 0);
-    if (count >= MAX_OBJECTS) {
-      // a beach saves this many things at most: more would be lost on the next save
-      haptics.impact('light');
-      if (performance.now() - fullToastAt > 4000) {
-        fullToastAt = performance.now();
-        showToast(uiRoot, `This beach is full: it holds ${MAX_OBJECTS} things. Take some away with the vacuum to put more down.`);
-      }
-      return;
-    }
+    if (!hasRoom(hit.target)) return;
     const r = rollPlacement(placing, sizeOf(placing.id));
     if (hit.target.kind === 'live') {
       send({ type: 'placeObject', obj: { kind: placing.kind, item: placing.id, x: p.x, y: p.y, ...r } });
       markDirty();
     } else {
-      neighbors?.placeObject(hit.target.index, { kind: placing.kind, item: placing.id, x: p.x, y: p.y, ...r });
+      if (!neighbors?.placeObject(hit.target.index, { kind: placing.kind, item: placing.id, x: p.x, y: p.y, ...r })) return;
     }
     recordEditTarget(hit.target);
+    guide.mark('place');
     if (placing.kind === 'rock' || placing.kind === 'driftwood') audio.thunk(placing.kind === 'rock');
     haptics.impact(placing.kind === 'rock' ? 'medium' : 'light');
   };
@@ -908,6 +939,26 @@ async function boot() {
     haptics.impact('light');
   };
   collapseBtn.addEventListener('click', () => setCollapsed(!collapsed));
+
+  // the beach guide (docs/INVITES_GUIDE.md): teaches each mechanic once.
+  // Its host is filled in by the account layer below (the sandbox keeps the defaults).
+  const guideHost: GuideHost = {
+    accounts: ACCOUNTS_ENABLED,
+    signedIn: () => false,
+    signIn: () => sheet.show(),
+    load: async () => [],
+    complete: async () => {
+      throw new Error('sign in first');
+    },
+    openInvite: () => sheet.show(),
+    toast: (t) => showToast(uiRoot, t),
+    gifted: () => refreshOwned(),
+    visiting: () => (neighbors?.visiting ? neighbors.visiting.name || 'a beach' : null),
+  };
+  // the coach card is onboarding: ?nointro / ?smoke (the test scripts) leave it out, like the start screen
+  const guide = new BeachGuide(uiRoot, hud.root, (n, l) => hud.button(n, l), guideHost, !(params.has('smoke') || params.has('nointro')));
+  hud.toolGroup.parentElement!.prepend(guide.button);
+
   // the shore bar (top right): who you're visiting, and the way home
   const shoreBar = document.createElement('div');
   shoreBar.className = 'shore-bar';
@@ -968,6 +1019,8 @@ async function boot() {
     if (key === shoreKey) return;
     shoreKey = key;
     shoreBar.classList.toggle('shown', away && !viewing);
+    if (b) guide.mark('visit');
+    guide.render();
     const place = b?.location ? beachById(b.location) : undefined;
     sbWhere.textContent = b ? `${neighbors?.visiting ? 'Visiting ' : ''}${b.name || 'a beach'}${place ? ` · ${place.name}` : ''}` : 'Down the shore';
     sbFav.hidden = !b || !signedIn || !!neighbors?.ownedBeach(b);
@@ -1021,6 +1074,7 @@ async function boot() {
   hud.root.appendChild(walkGroup);
   cam.onModeChange((m) => {
     const chair = m === 'chair';
+    if (chair) guide.mark('chair');
     renderer.setChairView(chair);
     neighbors?.setChairView(chair);
     horizon.setEnabled(chair);
@@ -1121,13 +1175,13 @@ async function boot() {
           }
           recordEditTarget(d.source);
         } else {
-          // dragged across a seam onto another of your beaches: remove from source, place on destination
-          if (d.source.kind === 'live') {
-            send({ type: 'removeObject', id: d.id });
-            markDirty();
-          } else {
-            neighbors?.removeObject(d.source.index, d.id);
-          }
+          // The shore may have been refreshed while the item was held.
+          const nv = neighbors;
+          const source = d.source.kind === 'live' ? null : nv?.indexOfBeach(d.source.beachId);
+          const destination = d.current.kind === 'live' ? null : nv?.indexOfBeach(d.current.beachId);
+          if ((d.source.kind === 'neighbor' && source !== d.source.index)
+            || (d.current.kind === 'neighbor' && destination !== d.current.index)
+            || !hasRoom(d.current)) return;
           const placedObj: Omit<PlacedObject, 'id'> = {
             kind: d.obj.kind,
             item: d.obj.item,
@@ -1138,18 +1192,27 @@ async function boot() {
             variant: d.obj.variant,
             ...(d.obj.found || d.obj.wild ? { found: true } : {}),
           };
+          if (d.source.kind === 'neighbor' && !nv?.hasOwnedObject(d.source.index, d.id)) return;
+          if (d.source.kind === 'live' && !info.objects.some((obj) => obj.id === d.id)) return;
+          if (d.current.kind === 'neighbor' && !nv?.placeObject(d.current.index, placedObj)) return;
+          if (d.source.kind === 'live') {
+            send({ type: 'removeObject', id: d.id });
+            markDirty();
+          } else {
+            nv?.removeObject(d.source.index, d.id);
+          }
           if (d.current.kind === 'live') {
             send({ type: 'placeObject', obj: placedObj });
             markDirty();
-          } else {
-            neighbors?.placeObject(d.current.index, placedObj);
           }
-          recordEditTarget(d.current);
+          recordEditTarget(d.source, d.current);
         }
         haptics.impact('light');
         return;
       }
       const wasDig = strokeOpen && brushMode === 'dig';
+      if (strokeOpen && brushMode === 'dig') guide.mark('dig');
+      if (strokeOpen && brushMode === 'pile') guide.mark('pile');
       const pathM = digPathM;
       const durationMs = performance.now() - digStrokeStart;
       if (strokeOpen && strokeTarget) {
@@ -1560,6 +1623,8 @@ async function boot() {
     sync = new BeachSync(account, {
       getSand,
       setSand: (delta, objects, cover) => {
+        undoTargets.length = 0;
+        redoTargets.length = 0;
         const xfer: Transferable[] = [delta.buffer];
         if (cover) xfer.push(cover.buffer);
         send({ type: 'setSand', delta, objects, ...(cover ? { cover } : {}) }, xfer);
@@ -1600,7 +1665,7 @@ async function boot() {
     };
     const acct = account;
     // a share link (?visit=CODE) waits for sign-in, then lands on that beach
-    let pendingVisit: string | null = visitCode;
+    let pendingVisit: string | null = visitCode ?? inviteFromLink;
     const applyPendingVisit = async () => {
       const me = account;
       if (!pendingVisit || !me?.user) return;
@@ -1753,9 +1818,9 @@ async function boot() {
       },
       {
         // go to one of your beaches: smoothly glide if it's already on this shore, else open it
-        open: async (id) => {
+        open: async (id, switchActive) => {
           const idx = nv.indexOfBeach(id);
-          if (idx !== null && !nv.visiting) {
+          if (!switchActive && idx !== null && !nv.visiting) {
             cam.goTo(nv.xFor(idx));
             sheet.hide();
             return;
@@ -1858,7 +1923,10 @@ async function boot() {
       if (r === 'copied') showToast(uiRoot, 'Link copied: paste it anywhere');
       else if (r === 'failed') showToast(uiRoot, `Couldn’t share. The link is ${shoreBeachUrl(code)}`);
     })());
-    nv.onFavorites(() => board.refreshStars());
+    nv.onFavorites(() => {
+      board.refreshStars();
+      if (nv.favorites.size > 0) guide.mark('star');
+    });
 
     // what you've won (and later bought), and the claw machine
     const loadOwned = async () => {
@@ -1895,6 +1963,7 @@ async function boot() {
       });
     });
     clawMachine = claw;
+    claw.onClosed = () => guide.mark('claw');
     inventory.onClaw = () => (acct.user ? void claw.open() : sheet.show());
     // the shop: paid through Apple / Google in the apps (src/net/shop.ts)
     const shopApi = new ShopApi(acct);
@@ -1958,6 +2027,108 @@ async function boot() {
       inventory.setClaw(u ? 'play' : 'signin');
       inventory.setVending(u ? 'play' : 'signin');
       void loadOwned();
+    });
+    // ---- the beach guide and invites (docs/INVITES_GUIDE.md)
+    const guideApi = new GuideApi(acct);
+    const referralApi = new ReferralApi(acct);
+    const invites = new InvitePanel(uiRoot, {
+      signedIn: () => !!acct.user,
+      signIn: () => sheet.show(),
+      name: () => acct.user?.name ?? '',
+      load: () => referralApi.status(),
+    });
+    invitePanel = invites;
+    guideHost.signedIn = () => !!acct.user;
+    guideHost.load = () => guideApi.done();
+    guideHost.complete = (step) => guideApi.complete(step);
+    guideHost.openInvite = () => {
+      sheet.hide();
+      void invites.open();
+    };
+    panel.invite = guideHost.openInvite;
+    panel.render();
+    // signed out with an invite: say who it's from on the start screen and the sign-in
+    if (inviteCode && !acct.user) {
+      void referralApi
+        .lookup(inviteCode)
+        .then((who) => {
+          if (!who) return writeInvite(null);
+          start?.setInvite(who.name, prizeName(who.welcomeGift).toLowerCase());
+          panel.signInNote = `${who.name} invited you: sign in to get your welcome ${prizeName(who.welcomeGift).toLowerCase()}`;
+          panel.render();
+        })
+        .catch(() => {});
+    }
+    /** a new player who came through a link: the welcome gift, and an offer to be neighbors */
+    const claimInvite = async () => {
+      const code = readInvite();
+      if (!code || !acct.user) return;
+      try {
+        const r = await referralApi.claim(code);
+        writeInvite(null);
+        panel.signInNote = '';
+        refreshOwned();
+        const gift = prizeName(r.gift).toLowerCase();
+        showActionToast(
+          uiRoot,
+          `A welcome gift from ${r.inviter.name}: a ${gift} is in your bag.`,
+          `Be ${r.inviter.name}’s neighbor`,
+          () => void askToBeNeighbors(r.inviter.code, r.inviter.name),
+          14000,
+        );
+      } catch (e) {
+        // already invited, your own link, or an account that isn't new: nothing to claim
+        if (e instanceof ApiError && e.status < 500) writeInvite(null);
+      }
+    };
+    const askToBeNeighbors = async (code: string, name: string) => {
+      const st = nv.state ?? (await nv.api.get().catch(() => null));
+      const side = !st ? 'right' : !st.right && !st.asked.right ? 'right' : !st.left && !st.asked.left ? 'left' : null;
+      if (!side) return showToast(uiRoot, 'Both sides of your beach are taken. Make room in settings, then ask again.');
+      try {
+        const res = await nv.api.set(side, code);
+        showToast(uiRoot, res.status === 'linked' ? `You and ${name} are neighbors now.` : `Asked ${name} to be your neighbor. You’ll be side by side once they say yes.`);
+        void nv.refresh();
+      } catch (e) {
+        showToast(uiRoot, (e as Error).message);
+      }
+    };
+    /** the inviter: say so when a friend has settled in since we last told you */
+    const toldKey = (id: string) => `beech-invite-told-${id}`;
+    const checkReferrals = async () => {
+      const me = acct.user;
+      if (!me) return;
+      let r;
+      try {
+        r = await referralApi.status();
+      } catch {
+        return;
+      }
+      let told = 0;
+      try {
+        told = Number(localStorage.getItem(toldKey(me.id)) ?? 0) || 0;
+      } catch {
+        /* private mode */
+      }
+      const fresh = r.friends.filter((f) => f.settled).slice(told);
+      try {
+        localStorage.setItem(toldKey(me.id), String(r.settled));
+      } catch {
+        /* private mode */
+      }
+      const gifts = fresh.filter((f) => f.reward);
+      if (!gifts.length) return;
+      refreshOwned();
+      const f = gifts[gifts.length - 1];
+      const reward = f.reward === 'beach' ? 'an extra beach is yours' : `a ${prizeName(f.reward!).toLowerCase()} is in your bag`;
+      const more = gifts.length > 1 ? ` (and ${gifts.length - 1} more friend${gifts.length > 2 ? 's' : ''})` : '';
+      showActionToast(uiRoot, `${f.name} settled in${more}: ${reward}. Thank you for inviting them!`, 'Invite more', () => void invites.open(), 12000);
+    };
+    acct.onChange((u) => {
+      if (!u) return guide.signedOut();
+      // the claim first (its gift, and the invite step for the inviter), then the guide
+      void claimInvite().then(() => guide.sync());
+      void checkReferrals();
     });
     // a share link opened signed out: open the beach read-only in 3D if it's
     // public on the shore (and let them walk the public shore); an off-shore
@@ -2096,6 +2267,8 @@ async function boot() {
     shop: () => shopDialog,
     leaderboard: () => leaderboard,
     vending: () => vendingMachine,
+    guide,
+    invites: () => invitePanel,
     objectView,
     animals: {
       snapshot: () => ({ ...animals.snapshot(), food: { ...animals.snapshot().food } }),

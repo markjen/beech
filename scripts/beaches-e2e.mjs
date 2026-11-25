@@ -27,7 +27,7 @@ async function device(label) {
   const page = await ctx.newPage();
   page.on('pageerror', (e) => errors.push(`${label}: ${e.message}`));
   page.on('dialog', (d) => void d.accept(d.type() === 'prompt' ? `${label} beach` : undefined));
-  await page.goto(URL_ + '?nointro&fixedres&seed=1&nofinds');
+  await page.goto(URL_ + '?nointro&fixedres&seed=1&nofinds', { waitUntil: 'commit' });
   await page.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
   await page.evaluate((n) => window.__beech.account().signInDev(n), name);
   await page.waitForFunction(() => window.__beech.account().beachId && window.__beech.sync().state === 'saved', null, { timeout: 20000 });
@@ -128,11 +128,51 @@ const afterSecondUpdated = await b.evaluate(async (id) => {
 check((await b.evaluate(() => window.__beech.account().beachId)) === home, 'B still has home selected while editing the adjacent beach');
 check(afterSecondUpdated > beforeSecondUpdated, `editing the adjacent beach saved automatically into the second beach (${beforeSecondUpdated} -> ${afterSecondUpdated})`);
 
+// Hold the response to the first save while the player edits the same beach again.
+let releaseSave;
+const waitForRelease = new Promise((resolve) => { releaseSave = resolve; });
+let saveStarted;
+const waitForSave = new Promise((resolve) => { saveStarted = resolve; });
+const savePath = `**/api/beaches/mine/${second}/sand`;
+await b.route(savePath, async (route) => {
+  if (route.request().method() !== 'PUT') return route.continue();
+  const response = await route.fetch();
+  saveStarted();
+  await waitForRelease;
+  await route.fulfill({ response });
+});
+await b.evaluate(() => {
+  const nv = window.__beech.neighbors();
+  nv.placeObject(1, { kind: 'rock', item: 'rock', x: 8, y: 3, size: 0.5, angle: 0, variant: 0 });
+  void nv.flushAll();
+});
+await Promise.race([
+  waitForSave,
+  b.waitForTimeout(15000).then(() => { throw new Error('expected a save for the second beach'); }),
+]);
+const firstSave = await b.evaluate(async (id) => Array.from((await window.__beech.account().loadBeach(id)).bytes), second);
+await b.evaluate(() => window.__beech.neighbors().placeObject(1, { kind: 'rock', item: 'rock', x: 12, y: 3, size: 0.5, angle: 0, variant: 0 }));
+releaseSave();
+await b.evaluate(() => window.__beech.neighbors().flushAll());
+await b.unroute(savePath);
+const secondSave = await b.evaluate(async (id) => Array.from((await window.__beech.account().loadBeach(id)).bytes), second);
+check(firstSave.length !== secondSave.length || firstSave.some((value, i) => secondSave[i] !== value), 'an edit made during a save is saved too');
+
 // device A remembers its choice after a reload
-await a.reload();
+await a.reload({ waitUntil: 'commit' });
 await a.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
 await a.waitForFunction(() => window.__beech.account().beachId && window.__beech.sync().state === 'saved', null, { timeout: 20000 });
 check((await a.evaluate(() => window.__beech.account().beachId)) === second, 'A still opens the second beach after a reload');
+
+// Removing the active beach must load home even when it is already visible.
+await a.evaluate(() => window.__beech.sheet.show('beach'));
+await a.click(`[data-act="select-beach-${second}"]`);
+await a.click(`[data-act="remove-beach-${second}"]`);
+await a.waitForFunction((id) => {
+  const { beachId, beaches } = window.__beech.account();
+  return beachId === id && beaches.length === 1;
+}, home, { timeout: 20000 });
+check((await dug(a)) > homeDug * 0.8, 'removing the active beach loads the saved home beach');
 
 check(errors.length === 0, `no page errors ${errors.join(' | ')}`);
 await browser.close();

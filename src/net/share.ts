@@ -26,6 +26,38 @@ export function withoutVisitParam(search: string): string {
   return s ? `?${s}` : '';
 }
 
+// Invite links (docs/INVITES_GUIDE.md): `?invite=CODE`, the inviter's home
+// beach code. The app keeps the code until the friend has signed in, then
+// claims it (POST /api/referrals/claim).
+
+/** `https://play.beech.games/?invite=K7F2QX` (works on any host/path). */
+export function inviteUrl(origin: string, pathname: string, code: string): string {
+  const path = pathname.endsWith('/') ? pathname : `${pathname}/`;
+  return `${origin}${path}?invite=${code}`;
+}
+
+/** The `?invite=` code from a query string, or null. Forgiving like `?visit=`. */
+export function inviteCodeFromUrl(search: string): string | null {
+  const raw = new URLSearchParams(search).get('invite') ?? '';
+  const code = raw.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  return code.length === 6 ? code : null;
+}
+
+/** The query string with `invite` removed ("" when nothing is left). */
+export function withoutInviteParam(search: string): string {
+  const q = new URLSearchParams(search);
+  q.delete('invite');
+  const s = q.toString();
+  return s ? `?${s}` : '';
+}
+
+/** The words that go with a shared invite link. */
+export function inviteText(name: string): string {
+  return name
+    ? `${name} invited you to beech, a quiet beach by the sea. Dig in the sand, watch the waves, and get a welcome gift:`
+    : 'Come to my beach on beech: dig in the sand, watch the waves, and get a welcome gift:';
+}
+
 // ---------------------------------------------------------------- beechshore.com
 // The public shore (server/src/shoreSite.ts): every beach on the shore, with
 // a picture, for anyone, signed in or not. Its beach links are the ones to

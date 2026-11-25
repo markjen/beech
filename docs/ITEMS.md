@@ -5,6 +5,15 @@ get it. The catalog itself is `src/world/items.ts`; this is the map over
 it — what each thing is, where it comes from, what it looks like, and how
 to add the next one.
 
+The player-facing home of the catalog is the user guide
+(beech.games/guide#catalog, `server/src/guide.ts`): it lists every item
+by how you get it, with rarity, shop prices, and a line on how each
+thing behaves. The guide builds that listing at runtime from the claw
+pool, the vending sets, the shop products and the free items — never a
+hand-kept copy — so it stays in step with the catalog below. This
+document stays the builder's reference: kind, size, variants, mesh,
+renders, and the checklist for adding the next item.
+
 Renders of every item are in [`items/renders/`](items/renders/) (see
 [Renders](#renders) below). The renders are also what players see: copies
 live in `public/items/<item-id>.png` and are served on beechshore.com as
@@ -27,6 +36,14 @@ Unlimited, yours from the start. Place as many as you like.
 | Seaweed | `seaweed` | common | 0.15–0.6 | 3 | tumble | `src/render/objects.ts` |
 | Cowrie | `shell` | rare | 0.05–0.2 | 3 | tumble | `src/render/objects.ts` |
 | Flag | `flag` | common | 0.4 fixed | 4 | fixed | `src/render/objects.ts` |
+| Footprints | `footprints` | common | 0.5–2.0 | 3 | fixed | `src/render/objects.ts` |
+
+Footprints are a trail of prints pressed into the sand — darker than
+the dry sand around them, so they read as dips. The little figure
+walking the waterline from the same backlog line did not ship with
+them: there is no character mesh, walk animation, or fading-decal
+system in the app, so it would need a new render subsystem rather
+than an item — it stays a backlog to-do (`docs/BACKLOG.md`).
 
 ## Wash-ashore finds
 
@@ -155,14 +172,6 @@ entry.
 Things you own that aren't placed on the sand: **Extra beach**
 (`EXTRAS` in `src/world/items.ts`) — a whole second beach of your own.
 
-## Coming next
-
-Rose's Discord #feedback (2026-11-23), approved by Mark (2026-11-24).
-Each lands as its own PR; the tables above grow with it.
-
-- **Free footprints** (`feat/footprints`): `footprints`, plus a little
-  figure walking the waterline if it fits cleanly.
-
 Not here: the sandcastle mini-game stays a backlog to-do
 (`docs/BACKLOG.md`) — it is not an item.
 
@@ -211,12 +220,27 @@ shore-picture colours.
    `server/src/vending.ts`, product in `server/src/products.ts`, or
    wash-in in `src/sim/objects.ts` (`washIn`). Prize display names in
    `server/src/prizeNames.ts`.
-8. **Docs** — the tables above, `docs/BACKLOG.md` (move the line to
+8. **Guide mirrors** — the guide (`server/src/guide.ts`) can't import
+   the catalog (the production image only copies `server/src`), so the
+   per-item facts it can't derive live mirrored in
+   `server/src/prizeNames.ts`. Only add what's missing, and only where
+   the guide can't derive it: a name in `PRIZE_NAMES` unless the id
+   already reads as the name (single-word ids do); a rarity in
+   `ITEM_RARITY` unless the item is drawn from a pool or set or is a
+   common free item; a kind in `KIND_OVERRIDES` unless the kind is the
+   id; a glow in `GLOW_ITEMS` only if `ITEM_LOOKS` gives it one; a
+   behaviour in `KIND_BEHAVIOUR` only for a genuinely new kind; a
+   wash-in in `WASH_ASHORE_ITEMS` (`server/src/guide.ts`) only if the
+   sea brings it in. `tests/items.test.ts` keeps every mirror in step
+   with the catalog — a missing mirror fails the tests — and
+   `server/test/guide.test.ts` renders the guide and checks every item
+   is listed in its group.
+9. **Docs** — the tables above, `docs/BACKLOG.md` (move the line to
    Done with the PR number), `docs/STATUS.md`, the guide in
    `server/src/guide.ts` where behaviour changes, and a plain-words
    line in `server/src/releaseNotes.ts` for anything a player can
    notice.
-9. **Renders** — `node scripts/render-items.mjs --only <id,...>`,
+10. **Renders** — `node scripts/render-items.mjs --only <id,...>`,
    checked by eye before committing: recognizable, correctly
    coloured, right-side up, distinct from its same-kind neighbours.
 

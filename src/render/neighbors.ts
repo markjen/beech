@@ -76,6 +76,7 @@ interface Entry {
   /** lazy simulation for editing an owned beach directly in the shore view */
   sim?: BeachSim;
   dirty?: boolean;
+  editRevision?: number;
   saveTimer?: number;
   saving?: Promise<void> | null;
   editAcc?: number;
@@ -272,35 +273,38 @@ export class NeighborView {
     ]);
     if (gen !== this.generation) return this.latest === mine ? undefined : this.latest;
     if (signedIn !== !!this.account.user) return;
+    if (!shore) {
+      // Keep the loaded shore and its pending edits through a network failure.
+      this.schedulePoll();
+      return;
+    }
     // signed into the account that owns the beach you were visiting: hand back control of it
-    if (signedIn && this.visiting && shore?.center?.you) {
+    if (signedIn && this.visiting && shore.center?.you) {
       this.visiting = null;
       this.clearEntries();
       await this.doRefresh(gen, mine);
       return;
     }
-    this.state = n;
+    if (n || !signedIn) this.state = n;
     const next = new Map<number, ShoreBeach>();
-    if (shore) {
-      if (this.visiting && shore.center) {
-        next.set(0, shore.center);
-        this.visiting = shore.center;
-      }
-      shore.left.forEach((b, i) => next.set(i + 1, b));
-      shore.right.forEach((b, i) => next.set(-(i + 1), b));
+    if (this.visiting && shore.center) {
+      next.set(0, shore.center);
+      this.visiting = shore.center;
     }
+    shore.left.forEach((b, i) => next.set(i + 1, b));
+    shore.right.forEach((b, i) => next.set(-(i + 1), b));
     // beaches loaded further out by scrolling stay, unless the shore near the middle changed
     const changed = [...next].some(([i, b]) => this.entries.has(i) && this.entries.get(i)!.beach.code !== b.code);
-    const reach = { left: shore?.left.length ?? 0, right: shore?.right.length ?? 0 };
+    const reach = { left: shore.left.length, right: shore.right.length };
     for (const [i, e] of this.entries) {
       const beyond = i > 0 ? i > reach.left : i < 0 && -i > reach.right;
       if (beyond && !changed && (i > 0 ? reach.left >= DEPTH : reach.right >= DEPTH)) continue;
       const b = next.get(i);
       if (!b || b.code !== e.beach.code) this.forget(i);
     }
-    if (changed || !shore) this.exhausted.clear();
-    if (shore && shore.left.length < DEPTH) this.exhausted.add('left');
-    if (shore && shore.right.length < DEPTH) this.exhausted.add('right');
+    if (changed) this.exhausted.clear();
+    if (shore.left.length < DEPTH) this.exhausted.add('left');
+    if (shore.right.length < DEPTH) this.exhausted.add('right');
     for (const [i, b] of next) {
       const e = this.entries.get(i);
       if (e) {
@@ -319,7 +323,7 @@ export class NeighborView {
       this.paintStar(en);
       this.paintAsk(en);
     }
-    for (const fn of this.listeners) fn(n);
+    for (const fn of this.listeners) fn(this.state);
     this.schedulePoll();
     await this.fillWindow(true);
   }
@@ -526,10 +530,12 @@ export class NeighborView {
     e.loading = (async () => {
       const mine = this.ownedBeach(e.beach);
       const saved = mine
-        ? await this.account.loadBeach(mine.id).catch(() => null)
+        ? await this.account.loadBeach(mine.id).catch(() => undefined)
         : e.beach.location
           ? await this.api.beachByCode(e.beach.code).catch(() => null)
           : null;
+      // A 404 means the owned beach has no saved sand. Other errors must leave it alone.
+      if (saved === undefined) return;
       let delta: Float32Array = new Float32Array(this.grid.nx * this.grid.ny);
       let rawDelta: Float32Array | undefined;
       let rawCover: Float32Array | undefined;
@@ -546,7 +552,7 @@ export class NeighborView {
             applyRockCover(delta, this.rest, this.grid.nx, this.grid.ny, this.grid.dx, objects, cover);
           }
         } catch {
-          /* unreadable save: show their beach untouched */
+          if (mine) return; // Never make an unreadable owned save editable as an empty beach.
         }
       } else if (mine) {
         rawDelta = delta.slice();
@@ -706,11 +712,7 @@ export class NeighborView {
 
   /** Lazily spin up a local BeachSim for an owned neighbor entry so it can be edited directly. */
   private ensureSim(e: Entry): BeachSim | null {
-    if (!this.ownedBeach(e.beach)) return null;
-    if (!e.data) {
-      const z = new Float32Array(this.grid.nx * this.grid.ny);
-      e.data = { delta: z, rawDelta: z.slice(), epoch: 0, objects: [], updatedAt: e.beach.updatedAt };
-    }
+    if (!this.ownedBeach(e.beach) || !e.data) return null;
     if (!e.sim) {
       e.sim = new BeachSim(this.grid, this.seed, {
         waves: false,
@@ -776,6 +778,11 @@ export class NeighborView {
       }
     }
     return best;
+  }
+
+  hasOwnedObject(index: number, id: number): boolean {
+    const e = this.entries.get(index);
+    return !!e?.data && !!this.ownedBeach(e.beach) && e.data.objects.some((obj) => obj.id === id);
   }
 
   /** Non-wild object count on an owned neighbor entry (for MAX_OBJECTS check). */
@@ -871,6 +878,11 @@ export class NeighborView {
     if (e.slot) this.repaint(e);
   }
 
+  canReplay(beachId: string, action: 'undo' | 'redo'): boolean {
+    const history = this.entryByBeachId(beachId)?.sim?.undo;
+    return !!history && (action === 'undo' ? history.undoCount : history.redoCount) > 0;
+  }
+
   undo(beachId: string): boolean {
     const e = this.entryByBeachId(beachId);
     if (!e?.sim) return false;
@@ -939,6 +951,7 @@ export class NeighborView {
   private markOwnedDirty(e: Entry, delayMs = EDIT_SAVE_MS): void {
     if (!this.account.user) return;
     e.dirty = true;
+    e.editRevision = (e.editRevision ?? 0) + 1;
     this.onOwnedChanged?.();
     if (e.saveTimer) window.clearTimeout(e.saveTimer);
     e.saveTimer = window.setTimeout(() => void this.saveEntry(e, false), delayMs);
@@ -965,6 +978,7 @@ export class NeighborView {
     if (!e.dirty) return;
     const forUser = this.account.user.id;
     const sim = e.sim;
+    const revision = e.editRevision;
     const p = (async () => {
       try {
         const delta = sim.sandDelta();
@@ -984,7 +998,7 @@ export class NeighborView {
           e.data?.epoch,
           mine.id,
         );
-        e.dirty = false;
+        e.dirty = e.editRevision !== revision;
         if (e.data) {
           e.data.updatedAt = updatedAt;
           e.data.rawDelta = delta;

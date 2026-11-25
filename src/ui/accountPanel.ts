@@ -38,7 +38,7 @@ export interface AccountPanelSlots {
 
 export interface MineCallbacks {
   /** Go to one of your beaches (pans if visible on the current shore, else opens it). */
-  open: (id: string) => Promise<void>;
+  open: (id: string, switchActive?: boolean) => Promise<void>;
   /** Real-world location id for newly created beaches. */
   location: () => string;
   changed: () => void;
@@ -56,9 +56,13 @@ export class AccountPanel {
   /** The beach currently selected *in settings* (independent of which beach you're editing in 3D). */
   private selectedId: string | null = null;
   /** Cached neighbor state for `selectedId` when it differs from `account.beachId`. */
-  private selectedNeighbors = new Map<string, Neighbors>();
-  private loadingNeighborsFor: string | null = null;
+  private selectedNeighbors = new Map<string, Neighbors | null>();
+  private loadingNeighborsFor = new Set<string>();
   private lastSignedIn: boolean | null = null;
+  /** opens the invite panel (set by main once it exists) */
+  invite?: () => void;
+  /** said above the sign-in buttons instead of "sign in to keep your beach" (an invite) */
+  signInNote = '';
 
   constructor(
     private readonly slots: AccountPanelSlots,
@@ -128,15 +132,14 @@ export class AccountPanel {
   }
 
   private async loadNeighborsFor(beachId: string): Promise<void> {
-    if (!this.neighbors || !this.account.user) return;
-    this.loadingNeighborsFor = beachId;
+    const user = this.account.user?.id;
+    if (!this.neighbors || !user || this.loadingNeighborsFor.has(beachId)) return;
+    this.loadingNeighborsFor.add(beachId);
     try {
-      const n = await this.neighbors.api.get(beachId);
-      this.selectedNeighbors.set(beachId, n);
-    } catch {
-      /* offline */
+      const state = await this.neighbors.api.get(beachId).catch(() => null);
+      if (this.account.user?.id === user) this.selectedNeighbors.set(beachId, state);
     } finally {
-      if (this.loadingNeighborsFor === beachId) this.loadingNeighborsFor = null;
+      this.loadingNeighborsFor.delete(beachId);
       this.render();
     }
   }
@@ -144,9 +147,8 @@ export class AccountPanel {
   private neighborsFor(beachId: string): Neighbors | null {
     if (!this.neighbors) return null;
     if (beachId === this.account.beachId) return this.neighbors.state;
-    const cached = this.selectedNeighbors.get(beachId) ?? null;
-    if (!cached && this.loadingNeighborsFor !== beachId) void this.loadNeighborsFor(beachId);
-    return cached;
+    if (!this.selectedNeighbors.has(beachId)) void this.loadNeighborsFor(beachId);
+    return this.selectedNeighbors.get(beachId) ?? null;
   }
 
   private renderStatus(): void {
@@ -227,7 +229,7 @@ export class AccountPanel {
           const b = await a.createBeach(name.trim(), mine.location());
           if (a.beaches.length >= 5) unlockSteamAchievement('FIVE_BEACHES');
           this.selectedId = b.id;
-          await mine.open(b.id);
+          await mine.open(b.id, true);
           mine.changed();
         }),
       );
@@ -299,7 +301,7 @@ export class AccountPanel {
           act('remove', `remove-beach-${sel.id}`, async () => {
             if (!window.confirm(`Remove ${sel.name || 'this beach'}? Its sand, things and neighbors go. You can make another in its place.`)) return;
             const homeId = a.beaches.find((x) => x.home)!.id;
-            if (sel.id === a.beachId) await mine.open(homeId);
+            if (sel.id === a.beachId) await mine.open(homeId, true);
             await a.removeBeach(sel.id);
             this.selectedId = homeId;
           }),
@@ -404,6 +406,14 @@ export class AccountPanel {
       snap.textContent = 'share snapshot ↗';
       links.append(view, snap);
       block.appendChild(links);
+    }
+    if (this.invite) {
+      const invite = document.createElement('button');
+      invite.type = 'button';
+      invite.className = 'action invite-open';
+      invite.textContent = 'invite friends';
+      invite.addEventListener('click', () => this.invite?.());
+      block.appendChild(invite);
     }
     return block;
   }
@@ -569,7 +579,16 @@ export class AccountPanel {
     if (!n) {
       const loading = document.createElement('div');
       loading.className = 'status';
-      loading.textContent = 'neighbors are loading…';
+      if (this.selectedNeighbors.get(beach.id) === null && !this.loadingNeighborsFor.has(beach.id)) {
+        const retry = document.createElement('button');
+        retry.type = 'button';
+        retry.className = 'action';
+        retry.textContent = 'retry loading neighbors';
+        retry.addEventListener('click', () => void this.loadNeighborsFor(beach.id));
+        loading.appendChild(retry);
+      } else {
+        loading.textContent = 'neighbors are loading…';
+      }
       wrap.appendChild(loading);
       return wrap;
     }
