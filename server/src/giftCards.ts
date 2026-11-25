@@ -1,3 +1,4 @@
+//@ backend dafny
 // Gift cards and promo codes (docs/GIFT_CARDS_PROMOS.md).
 //
 // The shape follows the shop: purchases go through Apple / Google, whose
@@ -83,6 +84,8 @@ export function isPromoCodeShape(raw: string): boolean {
  * twice in a race or after it expired mid-request.
  */
 export function promoBlocked(promo: Promo, productId: string, now: number): string | null {
+  //@ verify
+  //@ ensures (\result === null) <==> (promo.active && (promo.expiresAt === null || promo.expiresAt > now) && (promo.maxUses === null || promo.uses < promo.maxUses) && (promo.appliesTo === null || promo.appliesTo === productId))
   if (!promo.active) return 'that code is no longer active';
   if (promo.expiresAt !== null && promo.expiresAt <= now) return 'that code has expired';
   if (promo.maxUses !== null && promo.uses >= promo.maxUses) return 'that code has been used up';
@@ -94,6 +97,10 @@ export function promoBlocked(promo: Promo, productId: string, now: number): stri
  *  down (the player never overpays by a fraction); a fixed discount never
  *  takes the price below zero. */
 export function discountCents(promo: Promo, priceCents: number): number {
+  //@ verify
+  //@ requires priceCents >= 0
+  //@ ensures \result >= 0 && \result <= priceCents
+  //@ ensures promo.kind === 'fixed' ==> \result === Math.min(priceCents, Math.max(0, promo.value))
   if (promo.kind === 'percent') return Math.floor((priceCents * Math.min(100, Math.max(0, promo.value))) / 100);
   return Math.min(priceCents, Math.max(0, promo.value));
 }

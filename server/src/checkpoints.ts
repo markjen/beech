@@ -1,3 +1,4 @@
+//@ backend dafny
 // Checkpoints (docs/CHECKPOINTS.md): the server reads a saved beach's bytes
 // itself, so a restore never trusts the app's own count of what's on it.
 import { deflateSync, inflateSync } from 'node:zlib';
@@ -226,23 +227,106 @@ export interface Short {
   have: number;
 }
 
+/** What `owned` minus `elsewhere` leaves for one item; never below zero. */
+export function bagLeft(owned: Record<string, number>, elsewhere: Record<string, number>, item: string): number {
+  //@ verify
+  //@ pure
+  //@ ensures \result >= 0
+  return Math.max(0, (owned[item] ?? 0) - (elsewhere[item] ?? 0));
+}
+
+/**
+ * The verified core of `shortfall` (docs/VERIFICATION.md), in no particular
+ * order. Proved: everything listed is a real shortfall (a non-free item
+ * needed more than the bag leaves, with the right counts), and every real
+ * shortfall is listed, once.
+ */
+export function shortfallUnsorted(
+  need: Record<string, number>,
+  owned: Record<string, number>,
+  elsewhere: Record<string, number>,
+): Short[] {
+  //@ verify
+  //@ ensures forall(i: nat, i < \result.length ==> \result[i].item in need && !FREE_ITEMS.has(\result[i].item) && \result[i].need === need[\result[i].item] && \result[i].have === bagLeft(owned, elsewhere, \result[i].item) && \result[i].need > \result[i].have)
+  //@ ensures forall(k: string, k in need && !FREE_ITEMS.has(k) && need[k] > 0 && need[k] > bagLeft(owned, elsewhere, k) ==> exists(i: nat, i < \result.length && \result[i].item === k))
+  //@ ensures forall(i: nat, forall(j: nat, i < j && j < \result.length ==> \result[i].item !== \result[j].item))
+  const out: Short[] = [];
+  for (const [item, n] of Object.entries(need)) {
+    if (n <= 0 || FREE_ITEMS.has(item)) continue;
+    const have = bagLeft(owned, elsewhere, item);
+    if (n > have) out.push({ item, need: n, have });
+  }
+  return out;
+}
+
+/** How many of `item` a count holds (0 when it isn't listed). */
+export function countIn(m: Record<string, number>, item: string): number {
+  //@ verify
+  //@ pure
+  return m[item] ?? 0;
+}
+
+/** True when no item on a save is more than the beach already held. */
+export function nothingGrew(placed: Record<string, number>, stored: Record<string, number>): boolean {
+  //@ verify
+  //@ ensures \result === true <==> forall(k: string, k in placed ==> placed[k] <= countIn(stored, k))
+  for (const [item, n] of Object.entries(placed)) {
+    if (n > countIn(stored, item)) return false;
+  }
+  return true;
+}
+
+/**
+ * What a save is short of (the save check, docs/MULTI_BEACH.md): an item may
+ * stay at what the beach already held (things since given away, refunded or
+ * expired keep their place); past that, owned minus what's on your other
+ * beaches must cover it. Verified core, in no particular order. Proved:
+ * everything listed grew past both allowances, every such item is listed
+ * once, and nothing a save keeps at or below what was stored is refused.
+ */
+export function saveShortUnsorted(
+  placed: Record<string, number>,
+  stored: Record<string, number>,
+  owned: Record<string, number>,
+  elsewhere: Record<string, number>,
+): Short[] {
+  //@ verify
+  //@ ensures forall(i: nat, i < \result.length ==> \result[i].item in placed && \result[i].need === placed[\result[i].item] && \result[i].have === Math.max(countIn(stored, \result[i].item), countIn(owned, \result[i].item) - countIn(elsewhere, \result[i].item)) && \result[i].need > \result[i].have)
+  //@ ensures forall(k: string, k in placed && placed[k] > Math.max(countIn(stored, k), countIn(owned, k) - countIn(elsewhere, k)) ==> exists(i: nat, i < \result.length && \result[i].item === k))
+  //@ ensures forall(i: nat, forall(j: nat, i < j && j < \result.length ==> \result[i].item !== \result[j].item))
+  //@ ensures forall(i: nat, i < \result.length ==> placed[\result[i].item] > countIn(stored, \result[i].item))
+  const out: Short[] = [];
+  for (const [item, n] of Object.entries(placed)) {
+    const kept = countIn(stored, item);
+    if (n <= kept) continue;
+    const have = Math.max(kept, countIn(owned, item) - countIn(elsewhere, item));
+    if (n > have) out.push({ item, need: n, have });
+  }
+  return out;
+}
+
+/** `saveShortUnsorted`, sorted by item id (what the 409 reply lists). */
+export function saveShort(
+  placed: Record<string, number>,
+  stored: Record<string, number>,
+  owned: Record<string, number>,
+  elsewhere: Record<string, number>,
+): Short[] {
+  return saveShortUnsorted(placed, stored, owned, elsewhere).sort((a, b) => (a.item < b.item ? -1 : 1));
+}
+
 /**
  * What a restore is short of: for each item it needs, owned minus what's on
  * your other beaches must cover it. (The target's own things don't count:
- * the restore replaces them.) Shared cases: tests/fixtures/checkpoint-fit.json.
+ * the restore replaces them.) Sorted by item id. Shared cases:
+ * tests/fixtures/checkpoint-fit.json.
  */
 export function shortfall(
   need: Record<string, number>,
   owned: Record<string, number>,
   elsewhere: Record<string, number>,
 ): Short[] {
-  const out: Short[] = [];
-  for (const [item, n] of Object.entries(need).sort(([a], [b]) => (a < b ? -1 : 1))) {
-    if (n <= 0 || FREE_ITEMS.has(item)) continue;
-    const have = Math.max(0, (owned[item] ?? 0) - (elsewhere[item] ?? 0));
-    if (n > have) out.push({ item, need: n, have });
-  }
-  return out;
+  return shortfallUnsorted(need, owned, elsewhere).sort((a, b) => (a.item < b.item ? -1 : 1));
 }
 
 /**

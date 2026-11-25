@@ -96,7 +96,9 @@ import {
   countObjects,
   dropMissing,
   inspectBlob,
+  nothingGrew,
   sandDiff,
+  saveShort,
   shortfall,
   type Short,
 } from './checkpoints.js';
@@ -830,15 +832,9 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   const overBag = async (user: string, beachId: string, placed: Record<string, number>): Promise<Short[]> => {
     const row = (await db.query<{ items: Record<string, number> | string | null }>('SELECT items FROM beach WHERE id = $1', [beachId]))[0];
     const stored = jsonMap(row?.items);
-    const grew = Object.entries(placed).filter(([item, n]) => n > (stored[item] ?? 0));
-    if (!grew.length) return [];
+    if (nothingGrew(placed, stored)) return [];
     const [owned, elsewhere] = await Promise.all([ownedItems(user), itemsElsewhere(user, beachId)]);
-    const out: Short[] = [];
-    for (const [item, n] of grew.sort(([a], [b]) => (a < b ? -1 : 1))) {
-      const have = Math.max(stored[item] ?? 0, (owned[item] ?? 0) - (elsewhere[item] ?? 0));
-      if (n > have) out.push({ item, need: n, have });
-    }
-    return out;
+    return saveShort(placed, stored, owned, elsewhere);
   };
 
   const saveBeach = async (c: Context<Env>, beachId: string) => {

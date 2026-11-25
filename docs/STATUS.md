@@ -1319,9 +1319,29 @@ agents is in [AGENT_TOKENS.md](AGENT_TOKENS.md). No effect on the game.
 
 ## Agent tooling: formal verification (2026-11-25)
 
-Set up, not used yet. LemmaScript skills are vendored in
-`.claude/skills/lemmascript*` (upstream commit in
-`LEMMASCRIPT_UPSTREAM.md`); the session hook installs Dafny 4.11.0 and
-`lemmascript@0.6.12`. Floating point is out of LemmaScript's model, so the
-sim isn't a candidate; integer rules (inventory, shop, capacity) are. See
-[VERIFICATION.md](VERIFICATION.md).
+LemmaScript skills are vendored in `.claude/skills/lemmascript*` (upstream
+commit in `LEMMASCRIPT_UPSTREAM.md`); the session hook installs Dafny 4.11.0
+and `lemmascript@0.6.12`, and CI's `verify` job runs
+`lsc check --backend=dafny` over `LemmaScript-files.txt`.
+
+Verified (2026-11-25), all server-side, details in
+[VERIFICATION.md](VERIFICATION.md):
+- the restore check (`shortfall`) and the save check (`saveShort`,
+  `nothingGrew`, moved out of `overBag` in app.ts): exactly the real
+  shortfalls are refused, with the right counts, and a save never loses
+  what a beach already held;
+- the promo rules: `discountCents` is between 0 and the price, and
+  `promoBlocked` lets a code through exactly when it's active, unexpired,
+  not used up and for this product.
+
+No bugs turned up in these: the proofs went through without code changes,
+and a 20,000-case random comparison showed the reworked save/restore
+checks give the same answers as before. Not verifiable with LemmaScript:
+the sim (floating point), the claw and vending draws (randomness), and
+anything reading the database. Noted for the owner, not changed: an
+approved creator item priced 0 cents is "not for sale" in the shop
+(`salePriceCents` treats 0 as no price), while the submission page
+calls it "free"; the docs ship free items through the catalog instead.
+
+E2E on this runner: with `E2E_RENDER=0`, all 9 scripts pass (61 s). With
+rendering on they still time out here, on main too.
