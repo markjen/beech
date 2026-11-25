@@ -11,6 +11,7 @@
     "dev": "tsc -p tsconfig.json && node build/server.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
+    "test:state": "vitest run test/stateMachines",
     "test:e2e": "node test/e2e.mjs"
   },
   "dependencies": {

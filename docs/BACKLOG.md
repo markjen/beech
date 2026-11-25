@@ -160,6 +160,11 @@ _(nothing right now)_
 
 ## Ideas
 
+- Model more state machines the same way: the claw machine (goes,
+  cooldowns, starter gifts), dig finds (daily cap), shop orders and refunds
+  (Xsolla, Steam, Apple and Google), checkpoints (limits, the auto slot),
+  and the app's BeachStore save pipeline (see STATE_MACHINES.md).
+
 - Verify more with LemmaScript: the app's copy of the restore check
   (`src/world/checkpointFit.ts`), item-size and beach-capacity limits,
   referral ladder rewards. See [VERIFICATION.md](VERIFICATION.md).
@@ -172,6 +177,12 @@ _(nothing right now)_
   shower night.
 
 ## Done (recent)
+
+- [x] **Game state machines in TLA+** (2026-11-25): snacks and pets,
+  editing beaches and neighbor links modelled and checked with TLC, mapped
+  to the routes, and tested without a browser (transition tests, replayed
+  counterexamples, random walks against a model). Five races found and
+  fixed ([STATE_MACHINES.md](STATE_MACHINES.md)).
 
 - [x] **Free shop items** (2026-11-25): an approved creator item priced
   $0 is free (a Free button on every platform, granted by the server);

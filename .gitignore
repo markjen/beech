@@ -27,3 +27,9 @@ dist-artifact/
 
 # LemmaScript regen merge base (local only)
 *.dfy.base
+
+# TLC scratch (specs/tla/check.sh)
+specs/tla/states/
+specs/tla/_*.cfg
+specs/tla/*_TTrace_*.tla
+specs/tla/*.bin

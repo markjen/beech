@@ -28,6 +28,12 @@ Read these first:
    `.claude/skills/lemmascript*` (load `lemmascript` first); cloud sessions
    install `lsc` and `dafny`. If `LemmaScript-files.txt` exists,
    `lsc check --backend=dafny` must pass before every commit.
+8. [docs/STATE_MACHINES.md](docs/STATE_MACHINES.md): TLA+ models of the
+   game's state machines (snacks and pets, editing beaches, neighbor links)
+   in `specs/tla/`, mapped to the routes, with fast server tests in
+   `server/test/stateMachines/` (`npm run test:state`, no browser). Changing
+   a modelled route: update its spec and reference model, run
+   `specs/tla/check.sh`, and keep the tests green.
 
 ## Ground rules
 

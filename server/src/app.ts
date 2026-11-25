@@ -530,14 +530,26 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   });
 
   /** Refuse a beach edit from an instance that isn't the current editor. */
-  const requireEditToken = async (c: Context<Env>): Promise<void> => {
+  const requireEditToken = async (c: Context<Env>, q: Db = db): Promise<void> => {
     const sent = c.req.header('X-Edit-Token');
     // no token at all: an app from before edit sessions — it can't prove it
     // is the editor, so it reloads to save (the same 426 as other old apps)
     if (!sent) outdated(c, 'no X-Edit-Token');
-    const rows = await db.query<{ token: string }>('SELECT token FROM edit_sessions WHERE user_id = $1', [c.get('user').id]);
+    const rows = await q.query<{ token: string }>('SELECT token FROM edit_sessions WHERE user_id = $1', [c.get('user').id]);
     if (!rows[0] || rows[0].token !== sent) fail(409, 'fenced');
   };
+  /**
+   * Run a beach write as one transaction holding the player's row lock, so
+   * saves and restores of one player's beaches go one at a time, and a
+   * takeover (POST /edit-session) can't land between the token check and
+   * the write (specs/tla/BeachEditing.tla: OnlyEditorWrites, WithinBag).
+   */
+  const asEditor = <T>(c: Context<Env>, fn: (tx: Db) => Promise<T>): Promise<T> =>
+    db.withTransaction(async (tx) => {
+      await tx.query('SELECT id FROM users WHERE id = $1 FOR NO KEY UPDATE', [c.get('user').id]);
+      await requireEditToken(c, tx);
+      return fn(tx);
+    });
 
   // Cross-platform account linking (docs/STEAM.md): generate a 10-minute code on
   // your existing device (web/iOS/Android), then enter it on a fresh Steam
@@ -829,11 +841,12 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
    * refusal, which settles a move across a seam whose two saves arrived in
    * the wrong order (docs/MULTI_BEACH.md).
    */
-  const overBag = async (user: string, beachId: string, placed: Record<string, number>): Promise<Short[]> => {
-    const row = (await db.query<{ items: Record<string, number> | string | null }>('SELECT items FROM beach WHERE id = $1', [beachId]))[0];
+  const overBag = async (user: string, beachId: string, placed: Record<string, number>, q: Db = db): Promise<Short[]> => {
+    const row = (await q.query<{ items: Record<string, number> | string | null }>('SELECT items FROM beach WHERE id = $1', [beachId]))[0];
     const stored = jsonMap(row?.items);
     if (nothingGrew(placed, stored)) return [];
-    const [owned, elsewhere] = await Promise.all([ownedItems(user), itemsElsewhere(user, beachId)]);
+    const owned = await ownedItems(user, q);
+    const elsewhere = await itemsElsewhere(user, beachId, q);
     return saveShort(placed, stored, owned, elsewhere);
   };
 
@@ -906,12 +919,24 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const big = await maybeLargeEditSave(beachId, c.get('user').id, now, bytes);
     if (!big.large) await maybeAutoSave(beachId, c.get('user').id, now);
     const saveStart = performance.now();
-    const rows = await db.query<{ version: number; epoch: number }>(
-      `UPDATE beach SET location = $2, nx = $3, ny = $4, version = version + 1, updated_at = $5, sand = $6, items = $7, simulated_until = $9
-        WHERE id = $1 AND ($8::int IS NULL OR epoch <= $8::int) RETURNING version, epoch`,
-      [beachId, location, nx, ny, now, bytes, JSON.stringify(placed), epoch, liveClock()],
-      'beach.save',
-    );
+    // the checks above answer most refusals before any snapshot is taken;
+    // the token and the bag are checked again here, with the write
+    const written = await asEditor(c, async (tx) => {
+      const shortNow = await overBag(c.get('user').id, beachId, placed, tx);
+      if (shortNow.length) return { short: shortNow, rows: [] };
+      const rows = await tx.query<{ version: number; epoch: number }>(
+        `UPDATE beach SET location = $2, nx = $3, ny = $4, version = version + 1, updated_at = $5, sand = $6, items = $7, simulated_until = $9
+          WHERE id = $1 AND ($8::int IS NULL OR epoch <= $8::int) RETURNING version, epoch`,
+        [beachId, location, nx, ny, now, bytes, JSON.stringify(placed), epoch, liveClock()],
+        'beach.save',
+      );
+      return { short: [] as Short[], rows };
+    });
+    if (written.short.length) {
+      logEvent('save_over_bag', { items: written.short.length }, 'WARNING');
+      return c.json({ error: 'short', short: written.short }, 409);
+    }
+    const rows = written.rows;
     // Payload size + DB time, so a slow PUT /sand can be correlated with
     // the beach's bytes (no ids — the save path is per-beach by construction).
     logEvent('beach_save', { bytes: bytes.byteLength, duration_ms: Math.round((performance.now() - saveStart) * 10) / 10 });
@@ -1018,26 +1043,39 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   const { nodeById, nodeByCode, linked, walk } = shoreGraph(db);
 
   /** Join a and b: b on a's `side`, a on b's other side. One statement, so it's all or nothing. */
+  /**
+   * Link `b` onto `a`'s `side` (and `a` onto `b`'s other side). One
+   * transaction holding both beaches' locks: the callers' checks run before
+   * it, so two beaches already linked (an accept and an ask crossing) would
+   * otherwise end up neighbors on both sides (specs/tla/Neighbors.tla,
+   * LinkedOnce). The table's keys catch a side taken in the meantime.
+   */
   const link = async (a: string, side: Side, b: string) => {
     const now = Date.now();
-    try {
-      await db.query(
-        `WITH l1 AS (INSERT INTO neighbors (beach_id, side, neighbor_beach_id, created_at) VALUES ($1, $2, $3, $5) RETURNING 1),
-              l2 AS (INSERT INTO neighbors (beach_id, side, neighbor_beach_id, created_at) VALUES ($3, $4, $1, $5) RETURNING 1)
-         SELECT (SELECT COUNT(*) FROM l1) + (SELECT COUNT(*) FROM l2) AS n`,
-        [a, side, b, opposite(side), now],
+    await db.withTransaction(async (tx) => {
+      // in id order, so two links between the same beaches can't deadlock
+      for (const id of [a, b].sort()) await tx.query('SELECT id FROM beach WHERE id = $1 FOR NO KEY UPDATE', [id]);
+      const paired = await tx.query('SELECT 1 FROM neighbors WHERE beach_id = $1 AND neighbor_beach_id = $2', [a, b]);
+      if (paired.length) fail(409, 'you’re already neighbors');
+      try {
+        await tx.query(
+          `WITH l1 AS (INSERT INTO neighbors (beach_id, side, neighbor_beach_id, created_at) VALUES ($1, $2, $3, $5) RETURNING 1),
+                l2 AS (INSERT INTO neighbors (beach_id, side, neighbor_beach_id, created_at) VALUES ($3, $4, $1, $5) RETURNING 1)
+           SELECT (SELECT COUNT(*) FROM l1) + (SELECT COUNT(*) FROM l2) AS n`,
+          [a, side, b, opposite(side), now],
+        );
+      } catch (e) {
+        if ((e as { code?: string }).code === '23505') fail(409, 'that side was just taken');
+        throw e;
+      }
+      // requests that can't happen any more: these two, and anyone else asking for the sides now taken
+      await tx.query(
+        `DELETE FROM neighbor_requests
+          WHERE (from_beach = $1 AND (side = $2 OR to_beach = $3)) OR (from_beach = $3 AND (side = $4 OR to_beach = $1))
+             OR (to_beach = $1 AND side = $4) OR (to_beach = $3 AND side = $2)`,
+        [a, side, b, opposite(side)],
       );
-    } catch (e) {
-      if ((e as { code?: string }).code === '23505') fail(409, 'that side was just taken');
-      throw e;
-    }
-    // requests that can't happen any more: these two, and anyone else asking for the sides now taken
-    await db.query(
-      `DELETE FROM neighbor_requests
-        WHERE (from_beach = $1 AND (side = $2 OR to_beach = $3)) OR (from_beach = $3 AND (side = $4 OR to_beach = $1))
-           OR (to_beach = $1 AND side = $4) OR (to_beach = $3 AND side = $2)`,
-      [a, side, b, opposite(side)],
-    );
+    });
   };
 
   app.get('/neighbors', requireUser, async (c) => {
@@ -1968,22 +2006,23 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   const restoreLimiter = createRateLimiter(30, 3600000);
 
   /** what you own of each non-free item (unexpired) */
-  const ownedItems = async (user: string): Promise<Record<string, number>> => {
-    const rows = await db.query<{ item_id: string; n: string }>(
+  const ownedItems = async (user: string, q: Db = db): Promise<Record<string, number>> => {
+    const rows = await q.query<{ item_id: string; n: string }>(
       `SELECT item_id, SUM(quantity) AS n FROM inventory WHERE user_id = $1 AND quantity > 0 AND (expires_at IS NULL OR expires_at > $2) GROUP BY item_id`,
       [user, clock()],
     );
     return Object.fromEntries(rows.map((r) => [r.item_id, Number(r.n)]));
   };
   /** what's on your beaches other than `except` */
-  const itemsElsewhere = async (user: string, except: string): Promise<Record<string, number>> => {
-    const rows = await db.query<{ items: Record<string, number> | string }>('SELECT items FROM beach WHERE owner_id = $1 AND id <> $2', [user, except]);
+  const itemsElsewhere = async (user: string, except: string, q: Db = db): Promise<Record<string, number>> => {
+    const rows = await q.query<{ items: Record<string, number> | string }>('SELECT items FROM beach WHERE owner_id = $1 AND id <> $2', [user, except]);
     const out: Record<string, number> = {};
     for (const r of rows) for (const [k, v] of Object.entries(jsonMap(r.items))) out[k] = (out[k] ?? 0) + Number(v);
     return out;
   };
-  const fitOf = async (user: string, need: Record<string, number>, target: string) => {
-    const [owned, elsewhere] = await Promise.all([ownedItems(user), itemsElsewhere(user, target)]);
+  const fitOf = async (user: string, need: Record<string, number>, target: string, q: Db = db) => {
+    const owned = await ownedItems(user, q);
+    const elsewhere = await itemsElsewhere(user, target, q);
     return { need, owned, elsewhere, short: shortfall(need, owned, elsewhere) };
   };
 
@@ -2136,10 +2175,10 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     await requireEditToken(c);
     const cp = await myCheckpoint(c, checkpoint);
     if (!restoreLimiter(me)) fail(429, 'too many restores: try again later');
-    return oneAtATime(me, async () => {
+    return oneAtATime(me, () => asEditor(c, async (tx) => {
       let bytes = toBytes(cp.sand);
       const info = inspect(bytes);
-      const fit = await fitOf(me, info.items, target);
+      const fit = await fitOf(me, info.items, target, tx);
       let dropped = 0;
       if (fit.short.length) {
         if (mode === 'strict') return c.json({ error: 'short', short: fit.short }, 409);
@@ -2147,7 +2186,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       }
       const placed = dropped ? inspect(bytes) : info;
       // what's there now becomes the beach's "before restoring" checkpoint
-      const current = (await db.query<{ sand: unknown }>('SELECT sand FROM beach WHERE id = $1 AND sand IS NOT NULL', [target]))[0];
+      const current = (await tx.query<{ sand: unknown }>('SELECT sand FROM beach WHERE id = $1 AND sand IS NOT NULL', [target]))[0];
       let before: { items: Record<string, number>; objects: number } = { items: {}, objects: 0 };
       if (current) {
         try {
@@ -2157,7 +2196,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
         }
       }
       const now = clock();
-      const rows = await db.query<{ version: number; epoch: number; undo: string | null }>(
+      const rows = await tx.query<{ version: number; epoch: number; undo: string | null }>(
         `WITH snap AS (
            INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at)
            SELECT $1, owner_id, $2, 'auto', 'beach', id, name, location, nx, ny, sand, octet_length(sand), $3, $4, $5
@@ -2185,7 +2224,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
         ],
       );
       return c.json({ version: rows[0].version, epoch: Number(rows[0].epoch), updatedAt: now, undo: rows[0].undo, dropped });
-    });
+    }));
   });
 
   // ---------------------------------------------------------------- the shop

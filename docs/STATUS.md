@@ -1348,3 +1348,31 @@ zero. If the price changes, the claim leaves the player's credit intact.
 
 E2E on this runner: with `E2E_RENDER=0`, all 9 scripts pass (61 s). With
 rendering on they still time out here, on main too.
+
+## Game state machines in TLA+ (2026-11-25)
+
+Built. Three TLA+ specs in `specs/tla/` (snacks and pets, editing beaches,
+neighbor links), each with the old (`Fixed = FALSE`) and current
+(`Fixed = TRUE`) handler steps, checked with TLC (`specs/tla/check.sh`).
+Each is mapped to its routes in [STATE_MACHINES.md](STATE_MACHINES.md) and
+tested against the real server in-process, with no browser
+(`server/test/stateMachines/`, `npm run test:state`, ~9 s): transitions one
+at a time, TLC's counterexamples replayed with a gate that pauses a request
+between statements, and seeded random walks compared step by step with a
+TypeScript port of each spec.
+
+TLC found five races, each reproduced on the server and fixed:
+- befriending could finish after the last snack was picked up (a crab for
+  one feed less, snack refunded): `adoptPet` is now one transaction with the
+  beach lock;
+- two visitor feeds at once both got the free daily feed:
+  `visitorFeedPet` is one transaction with the beach lock;
+- a save could still land after another device took over editing, and
+- two saves at once could place more of a thing than owned: saves and
+  restores now re-check the edit token and the bag in the same transaction
+  as the write, holding the player's row lock (`asEditor`);
+- an accept and a crossing ask could link two beaches on both sides of each
+  other: `link()` is one transaction holding both beaches' locks and refuses
+  a second link between them.
+
+TLC isn't in CI (Java, minutes per spec); the TypeScript tests are.
