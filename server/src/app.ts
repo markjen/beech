@@ -820,15 +820,25 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       const cur = (await db.query<{ sand: unknown }>('SELECT sand FROM beach WHERE id = $1 AND sand IS NOT NULL', [beachId]))[0];
       if (cur && countObjects(toBytes(cur.sand)) > OLD_MAX_OBJECTS) outdated(c, 'no X-Beach-Max');
     }
+    const epochHeader = c.req.header('X-Beach-Epoch');
+    const epoch = epochHeader === undefined || epochHeader === '' ? null : Number(epochHeader);
+    if (epoch !== null && !Number.isInteger(epoch)) fail(400, 'bad X-Beach-Epoch');
+    // a save from before a restore must be refused before anything is
+    // snapshotted: the pre-edit copy would overwrite the restore's undo
+    // copy in the one auto slot, and then the save itself is refused — the
+    // beach the player could have gone back to is gone. The UPDATE's WHERE
+    // below stays as the race backstop (a restore landing between this
+    // check and the UPDATE).
+    if (epoch !== null) {
+      const cur = (await db.query<{ epoch: number }>('SELECT epoch FROM beach WHERE id = $1', [beachId]))[0];
+      if (cur && Number(cur.epoch) > epoch) fail(409, 'restored');
+    }
     // a big edit (a tenth of the sand reshaped, fifty things moved, a new
     // grid) keeps the beach as it is now first, whatever the daily clock
     // says; anything smaller gets the daily auto-save instead. Neither ever
     // blocks the save (see maybeLargeEditSave / maybeAutoSave).
     const big = await maybeLargeEditSave(beachId, c.get('user').id, now, bytes);
     if (!big.large) await maybeAutoSave(beachId, c.get('user').id, now);
-    const epochHeader = c.req.header('X-Beach-Epoch');
-    const epoch = epochHeader === undefined || epochHeader === '' ? null : Number(epochHeader);
-    if (epoch !== null && !Number.isInteger(epoch)) fail(400, 'bad X-Beach-Epoch');
     const rows = await db.query<{ version: number; epoch: number }>(
       `UPDATE beach SET location = $2, nx = $3, ny = $4, version = version + 1, updated_at = $5, sand = $6, items = $7
         WHERE id = $1 AND ($8::int IS NULL OR epoch <= $8::int) RETURNING version, epoch`,

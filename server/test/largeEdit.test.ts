@@ -57,7 +57,7 @@ const claim = async (t: string) => {
   expect(r.status).toBe(200);
   return ((await r.json()) as { token: string }).token;
 };
-const save = (t: string, beach: string, bytes: Uint8Array, edit: string, n = 16) =>
+const save = (t: string, beach: string, bytes: Uint8Array, edit: string, n = 16, epoch?: number) =>
   req(
     `/beaches/mine/${beach}/sand`,
     {
@@ -69,6 +69,7 @@ const save = (t: string, beach: string, bytes: Uint8Array, edit: string, n = 16)
         'X-Beach-Ny': String(n),
         'X-Beach-Max': '2000',
         'X-Edit-Token': edit,
+        ...(epoch === undefined ? {} : { 'X-Beach-Epoch': String(epoch) }),
       },
     },
     t,
@@ -76,6 +77,21 @@ const save = (t: string, beach: string, bytes: Uint8Array, edit: string, n = 16)
 const sandOf = async (t: string, beach: string) => {
   const r = await req(`/beaches/mine/${beach}/sand`, {}, t);
   return new Uint8Array(await r.arrayBuffer());
+};
+const checkpoint = async (t: string, beach: string, name: string) => {
+  const r = await req(`/beaches/mine/${beach}/checkpoints`, json('POST', { name }), t);
+  expect(r.status).toBe(201);
+  return ((await r.json()) as { checkpoint: { id: string } }).checkpoint;
+};
+const restore = (t: string, beach: string, id: string, edit: string) =>
+  req(
+    `/beaches/mine/${beach}/restore`,
+    { ...json('POST', { checkpoint: id }), headers: { 'Content-Type': 'application/json', 'X-Edit-Token': edit } },
+    t,
+  );
+const epochOf = async (t: string, beach: string) => {
+  const r = await req(`/beaches/mine/${beach}/sand`, {}, t);
+  return Number(r.headers.get('X-Beach-Epoch'));
 };
 type Cp = { id: string; name: string; kind: string; createdAt: number };
 const listCps = async (t: string) =>
@@ -175,6 +191,32 @@ describe('a large save keeps the beach as it was first', () => {
     expect(fenced.status).toBe(409);
     expect((await listCps(t)).checkpoints).toEqual([]);
     expect(fillOf(await sandOf(t, user.id))).toBe(200);
+  });
+
+  it('a stale large save is refused before it snapshots, so the restore undo copy survives', async () => {
+    const { token: t, user } = await signIn('le-stale');
+    const edit = await claim(t);
+    expect((await save(t, user.id, blob([], 0), edit)).status).toBe(200);
+    const zero = await checkpoint(t, user.id, 'zero');
+    expect((await save(t, user.id, blob([], 30), edit)).status).toBe(200);
+    const seen = await epochOf(t, user.id);
+    const r = await restore(t, user.id, zero.id, edit);
+    expect(r.status).toBe(200);
+    expect(((await r.json()) as { epoch: number }).epoch).toBe(seen + 1);
+    // the restore's undo copy is the fill-30 beach, in the one auto slot
+    let list = await listCps(t);
+    expect(list.checkpoints.filter((c) => c.kind === 'auto')).toHaveLength(1);
+    expect(list.checkpoints[0].name).toMatch(/^Before restoring /);
+    expect(fillOf(await checkpointSand(t, list.checkpoints[0].id))).toBe(30);
+    // a large save from before the restore: refused, and the undo copy is untouched
+    const stale = await save(t, user.id, blob([], 200), edit, 16, seen);
+    expect(stale.status).toBe(409);
+    expect(await stale.json()).toEqual({ error: 'restored' });
+    list = await listCps(t);
+    expect(list.checkpoints.filter((c) => c.kind === 'auto')).toHaveLength(1);
+    expect(list.checkpoints[0].name).toMatch(/^Before restoring /);
+    expect(fillOf(await checkpointSand(t, list.checkpoints[0].id))).toBe(30);
+    expect(fillOf(await sandOf(t, user.id))).toBe(0);
   });
 
   it('a full checkpoint store never blocks a big save, and says so in the response', async () => {

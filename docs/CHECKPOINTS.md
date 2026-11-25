@@ -327,8 +327,9 @@ change and unreadable bytes are large. The save — a big save snapshots
 the old beach into the one auto slot (named `Before big edit …`) while a
 small save does not; a big save fires an hour after a daily auto-save and
 reuses the same slot; a first save keeps nothing and a fenced save
-snapshots nothing; a full store never blocks a big save and the response
-says `largeEditCheckpoint: false`. `tests/bigEditSnapshot.test.ts`:
+snapshots nothing; a stale save (epoch from before a restore) is refused
+before it snapshots, so the restore's undo copy survives; a full store
+never blocks a big save and the response says `largeEditCheckpoint: false`. `tests/bigEditSnapshot.test.ts`:
 the client helper flushes before snapshotting, skips fenced / signed-out
 / repeat attempts, and never throws.
 
@@ -337,7 +338,9 @@ the client helper flushes before snapshotting, skips fenced / signed-out
 - `GET` beach sand adds `X-Beach-Epoch`. `BeachSync` keeps it and sends it
   back on every `PUT` as `X-Beach-Epoch`.
 - `saveBeach` refuses a save whose epoch is older than the beach's: 409
-  `{ error: 'restored' }`. A save without an edit token is refused outright
+  `{ error: 'restored' }`, before any snapshot is taken, so a refused
+  save can never overwrite the restore's undo copy in the one auto slot
+  (the `UPDATE`'s `WHERE epoch <= $8` stays as the race backstop). A save without an edit token is refused outright
   (426 for an app too old to send one, 409 `fenced` for a stale one), so
   the old hole — a save with no epoch header silently overwriting a
   restore — is closed by the edit token, not the epoch (docs/EDIT_SESSIONS.md).
