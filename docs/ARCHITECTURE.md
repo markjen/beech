@@ -79,12 +79,13 @@ simulated one.
 | `src/net/share.ts`, `src/ui/shareSheet.ts` | Share links (game `?visit=` and beechshore) and sending them (share sheet or copy) |
 | `src/world/guide.ts`, `src/ui/guide.ts`, `src/ui/invite.ts`, `server/src/referrals.ts` | The beach guide (steps, coach card, checklist) and invites (the panel, the ladder); the server's step gifts, ladder and rules. INVITES_GUIDE.md |
 | `src/ui/inbox.ts`, `src/ui/visitorCard.ts`, `src/ui/inboxText.ts`, `server/src/inbox.ts` | Visitors and the inbox: the mailbox and its list, the "leave something" card, the rows' wording; the server's limits, quick notes and note filter. INBOX_NOTIFICATIONS.md |
+| `src/ui/socialHub.ts` | The Inbox hub: one tab strip over the inbox, leaderboard, starred and visit-by-code dialogs |
 | `src/ui/leaderboard.ts` | The leaderboard panel (most-starred beaches: all time and rising), with visit and star on each row |
 | `src/render/neighbors.ts` | The shore: beaches down the chain of neighbor links as snapshot dioramas (drawn near the view), visiting by code, favorites, name tags |
 | `Dockerfile` | Production image: web app (accounts on) + API server |
 | `src/audio/ambience.ts` | Procedural Web Audio soundscape |
 | `src/platform/*` | Runtime detection (`runtime.ts` for web/iOS/Android/Steam), haptics (Capacitor or vibrate), PWA registration, quality tier from benchmark |
-| `src/ui/*` | HUD buttons and tools, start screen, hint, settings sheet, debug panel, settings storage |
+| `src/ui/*` | The HUD (`hud.ts`: palm, rail, dirt flyout, undo), the status pane (built in `main.ts`), start screen, hint, Manage sheet (`overlays.ts`), debug panel, settings storage |
 | `scripts/` | `shot.mjs` (screenshots), `smoke.mjs` (end-to-end), `make-icons.mjs`, `set-version.mjs`, `extract-tides.mjs` (rebuild tide constants from TICON-3), `artifact-page.mjs` (claude.ai preview), `actions/*` (scripted interactions for screenshots) |
 | `android/`, `ios/` | Capacitor native shells (see docs/MOBILE.md) |
 | `desktop/` | Electron + `steamworks.js` Steam desktop shell (`app://beech/` protocol, SteamPipe VDFs; see docs/STEAM.md) |

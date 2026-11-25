@@ -41,7 +41,8 @@ export interface FrameInfo {
   eta: number;
   /** tide level (m) */
   tide: number;
-  calmMix: number;
+  /** eased swell multiplier (the wave strength setting) */
+  waveMul: number;
   undoCount: number;
   redoCount: number;
   digIntensity: number;

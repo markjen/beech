@@ -6,173 +6,188 @@
   --pad: 18px;
 }
 
-.hud-group {
+/* ---- the palm, the rail, undo (bottom right) ---- */
+.hud-stack {
   position: absolute;
-  right: calc(var(--pad) + env(safe-area-inset-right));
+  right: calc(16px + env(safe-area-inset-right));
+  bottom: calc(16px + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
-.hud-top {
-  top: calc(var(--pad) + env(safe-area-inset-top));
-}
-
-.hud-right,
-.hud-corner {
-  bottom: calc(var(--pad) + env(safe-area-inset-bottom));
-}
-
-.hud-corner {
-  position: absolute;
-  left: calc(var(--pad) + env(safe-area-inset-left));
-}
-
-.hud-profile {
-  position: absolute;
-  top: calc(var(--pad) + env(safe-area-inset-top));
-  left: calc(var(--pad) + env(safe-area-inset-left));
+/* one frosted pill: three groups split by hairlines */
+.hud-rail {
+  position: relative;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 8px;
-  max-width: calc(100% - 110px);
-  padding: 7px 12px 7px 7px;
-  border-radius: 999px;
-  background: var(--ui-bg);
-  font-weight: 600;
-}
-
-.hud-profile span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.hud-profile svg {
-  width: 30px;
-  height: 30px;
-  flex: none;
-  padding: 4px;
-  border: 1px solid currentColor;
-  border-radius: 50%;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.6;
-}
-
-.hud-popup {
-  position: absolute;
-  z-index: 1;
-  right: calc(var(--pad) + 78px + env(safe-area-inset-right));
-  bottom: calc(var(--pad) + env(safe-area-inset-bottom));
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  max-width: calc(100% - var(--pad) * 2 - 78px - env(safe-area-inset-left) - env(safe-area-inset-right));
-  max-height: calc(100% - var(--pad) * 2 - env(safe-area-inset-top) - env(safe-area-inset-bottom));
-  overflow: auto;
-  padding: 8px;
-  border-radius: 22px;
+  padding: 6px;
+  border-radius: 28px;
   background: var(--ui-bg);
   box-shadow: 0 6px 18px var(--ui-shadow);
   backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   pointer-events: auto;
-  touch-action: pan-y;
-  overscroll-behavior: contain;
+  transform-origin: bottom center;
+  transition:
+    opacity 0.22s ease,
+    transform 0.26s cubic-bezier(0.2, 0.9, 0.3, 1.2);
 }
 
-.hud-popup[hidden] {
+.hud-rail-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.hud-rail-group:empty {
   display: none;
 }
 
-.hud-edit {
-  width: 248px;
+.hud-rail-group + .hud-rail-group:not(:empty)::before,
+.hud-sep {
+  content: '';
+  display: block;
+  width: 26px;
+  height: 1px;
+  margin: 5px 0;
+  background: currentColor;
+  color: var(--ui-fg);
+  opacity: 0.22;
 }
 
-.hud-shop {
-  flex-direction: column;
-  align-items: stretch;
-  flex-wrap: nowrap;
-}
-
-.hud-shop .hud-btn {
-  width: auto;
-  min-height: 44px;
-  height: auto;
-  padding: 6px 12px;
-  display: flex;
-  gap: 8px;
-  text-align: left;
-  font: inherit;
-  border-radius: 999px;
-}
-
-.hud-shop svg {
-  width: 24px;
-  height: 24px;
-  flex: none;
-}
-
-.hud-tools {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-wrap: wrap;
-  flex-basis: 100%;
-}
-
-.hud-tools .hud-btn {
-  width: 40px;
-  height: 40px;
+.hud-rail .hud-btn,
+.hud-flyout .hud-btn {
+  width: 44px;
+  height: 44px;
   box-shadow: none;
   background: transparent;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
 
-.hud-tools .hud-btn.active {
+.hud-rail .hud-btn.active,
+.hud-flyout .hud-btn.active {
   background: var(--ui-fg);
   color: var(--ui-bg);
 }
 
-/* modes of a grouped tool (sand, clearing): a small strip under its button */
-.hud-modes {
-  display: none;
-  order: 1;
-  flex-basis: 100%;
-  align-items: center;
-  gap: 6px;
-}
-
-.hud-modes.open {
+/* the dirt tools: a second pill, 10px left of the rail */
+.hud-flyout {
+  position: absolute;
+  right: calc(100% + 10px);
+  bottom: 0;
   display: flex;
-}
-
-.hud-tools .hud-mode {
-  width: 40px;
-  height: 40px;
-}
-
-.hud-tools .hud-mode.active {
-  background: var(--ui-fg);
-  color: var(--ui-bg);
-}
-
-.hud.collapsed .hud-group,
-.hud.collapsed .hud-profile,
-.hud.collapsed .hud-walk {
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  max-height: calc(100dvh - 190px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  overflow-y: auto;
+  padding: 6px;
+  border-radius: 28px;
+  background: var(--ui-bg);
+  box-shadow: 0 6px 18px var(--ui-shadow);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  opacity: 0;
+  transform: translateX(8px);
+  pointer-events: none;
   visibility: hidden;
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease,
+    visibility 0s linear 0.18s;
 }
 
-.hud.collapsed .hud-collapse {
-  opacity: 0.42;
+.hud-flyout.open {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+  visibility: visible;
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
 }
 
-.hud.collapsed .hud-collapse:hover,
-.hud.collapsed .hud-collapse:focus-visible {
-  opacity: 0.95;
+/* names the view for a moment after the View button cycles it */
+.hud-view-label {
+  position: absolute;
+  right: calc(100% + 10px);
+  bottom: 52px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ui-fg);
+  background: var(--ui-bg);
+  box-shadow: 0 6px 18px var(--ui-shadow);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+
+.hud-view-label.shown {
+  opacity: 1;
+}
+
+.hud-btn.hud-undo {
+  width: 60px;
+  height: 60px;
+}
+
+/* the palm: the only control at rest. Open, it is the × at the bottom of the rail. */
+.hud-btn.hud-palm {
+  width: 64px;
+  height: 64px;
+  color: #fff;
+  background: #2f7f5a;
+}
+
+.hud-btn.hud-palm svg {
+  width: 46%;
+  height: 46%;
+  stroke-width: 2;
+}
+
+/* Minimal: just the palm */
+.hud.collapsed .hud-rail,
+.hud.collapsed .hud-undo {
+  opacity: 0;
+  transform: translateY(24px) scale(0.85);
+  pointer-events: none;
+  visibility: hidden;
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease,
+    visibility 0s linear 0.18s;
+}
+
+.hud.collapsed .hud-flyout,
+.hud.collapsed .hud-walk,
+.hud.collapsed .place-bar {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.hud-undo {
+  transition:
+    opacity 0.22s ease,
+    transform 0.26s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hud-rail,
+  .hud-undo,
+  .hud-flyout,
+  .hud.collapsed .hud-rail,
+  .hud.collapsed .hud-undo {
+    transform: none !important;
+    transition: opacity 0.15s ease;
+  }
 }
 
 .hud-btn {
@@ -215,11 +230,6 @@
   stroke-linejoin: round;
 }
 
-.hud-big {
-  width: 68px;
-  height: 68px;
-}
-
 .hud-btn.pressed {
   transform: scale(0.92);
 }
@@ -255,40 +265,67 @@
   }
 }
 
-/* ---- the bag (inventory tray) ---- */
-.inv-tray {
-  position: absolute;
-  z-index: 1;
-  right: calc(var(--pad) + 78px + env(safe-area-inset-right));
-  bottom: calc(var(--pad) + env(safe-area-inset-bottom));
-  width: min(300px, calc(100% - var(--pad) * 2 - 78px - env(safe-area-inset-left) - env(safe-area-inset-right)));
-  /* short of the top: the tray grows upward from the bottom, and at full
-     height its top edge must stay below the top-left header (which sits
-     under the top row of controls, about 70px down and 56px tall, more
-     when the beach name wraps, plus a gap) instead of sliding underneath
-     it — 160px covers the header plus the tray's bottom offset */
-  max-height: calc(100% - 160px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
-  overflow-y: auto;
-  padding: 14px;
-  border-radius: 22px;
-  color: var(--ui-fg);
-  background: var(--ui-bg);
-  box-shadow: 0 10px 30px var(--ui-shadow);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  pointer-events: none;
+/* ---- the bag: a centered modal over the dimmed beach ---- */
+.inv-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  padding-top: max(16px, env(safe-area-inset-top));
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+  background: rgba(46, 40, 78, 0.25);
   opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.inv-modal.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.inv-tray {
+  position: relative;
+  width: min(420px, 100%);
+  max-height: min(640px, calc(100dvh - 32px));
+  overflow-y: auto;
+  padding: 16px;
+  border-radius: 24px;
+  color: var(--ui-fg);
+  background-color: var(--ui-bg);
+  background-image: linear-gradient(var(--ui-bg), var(--ui-bg));
+  box-shadow: 0 14px 40px var(--ui-shadow);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   transform: translateY(8px) scale(0.97);
-  transform-origin: bottom right;
-  transition:
-    opacity 0.2s ease,
-    transform 0.2s ease;
+  transition: transform 0.2s ease;
+  touch-action: pan-y;
+  overscroll-behavior: contain;
 }
 
 .inv-tray.open {
-  pointer-events: auto;
-  opacity: 1;
   transform: none;
+}
+
+.inv-machines {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.inv-machine {
+  flex-direction: row;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
+}
+
+.inv-item.inv-machine svg {
+  width: 24px;
+  height: 24px;
 }
 
 .inv-title {
@@ -400,16 +437,11 @@
 }
 
 @media (max-width: 520px) {
-  /* narrow phones: above the bottom row of buttons */
+  /* narrow phones: centred in the space left of the rail */
   .hud-walk {
-    bottom: calc(var(--pad) + 70px + env(safe-area-inset-bottom));
+    left: calc(50% - 40px);
   }
 }
-
-/* The undo/share overlap from the old bottom row is gone: the controls
-   were regrouped (share sits in the top row now, undo in the right
-   column), so the two clusters can't meet. The narrow-screen button
-   sizes live in the max-width: 520px block further down. */
 
 .inv-item.used {
   opacity: 0.5;
@@ -963,17 +995,16 @@
   display: none;
 }
 
-/* above the walk buttons in the chair view, and above the bottom row on phones */
+/* above the walk buttons in the chair view */
 .hud.chair .place-bar {
-  bottom: calc(var(--pad) + 70px + env(safe-area-inset-bottom));
+  bottom: calc(var(--pad) + 64px + env(safe-area-inset-bottom));
 }
 
 @media (max-width: 520px) {
-  /* left of the tool column */
+  /* docked left of the rail, so the two never meet */
   .place-bar {
     left: calc(var(--pad) + env(safe-area-inset-left));
-    right: calc(var(--pad) + 70px + env(safe-area-inset-right));
-    bottom: calc(var(--pad) + 70px + env(safe-area-inset-bottom));
+    right: calc(16px + 76px + env(safe-area-inset-right));
     max-width: none;
     transform: translateY(8px);
   }
@@ -992,67 +1023,72 @@
     flex: 1;
   }
 
-  .hud.chair .place-bar {
-    bottom: calc(var(--pad) + 140px + env(safe-area-inset-bottom));
-  }
-
   .place-bar .pb-size span {
     display: none;
   }
 }
 
-/* Short screens keep the main controls in a single bottom row. */
-@media (max-height: 475px) and (min-width: 390px) {
-  .hud-top {
-    flex-direction: row-reverse;
+/* Short screens (landscape phones): the rail lies along the bottom, and
+   the palm blooms sideways; the dirt tools fan out above it. */
+@media (max-height: 560px) {
+  .hud-stack {
+    flex-direction: row;
+    align-items: flex-end;
   }
 
-  .hud-right {
+  .hud-rail,
+  .hud-rail-group {
     flex-direction: row;
   }
 
-  .hud-profile {
-    max-width: calc(100% - 200px - env(safe-area-inset-left) - env(safe-area-inset-right));
+  .hud-rail-group + .hud-rail-group:not(:empty)::before,
+  .hud-rail .hud-sep {
+    width: 1px;
+    height: 26px;
+    margin: 0 5px;
+    align-self: center;
   }
 
-  .hud-popup,
-  .inv-tray {
-    right: calc(var(--pad) + env(safe-area-inset-right));
-    bottom: calc(var(--pad) + 78px + env(safe-area-inset-bottom));
-    max-height: calc(100% - var(--pad) * 2 - 78px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  .hud-flyout {
+    flex-direction: row;
+    right: 0;
+    bottom: calc(100% + 10px);
+    max-height: none;
+    max-width: calc(100vw - 32px - env(safe-area-inset-left) - env(safe-area-inset-right));
+    overflow-x: auto;
+    transform: translateY(8px);
+  }
+
+  .hud-flyout .hud-sep {
+    width: 1px;
+    height: 26px;
+    margin: 0 5px;
+    flex: none;
+  }
+
+  .hud-view-label {
+    right: 0;
+    bottom: calc(100% + 66px);
+  }
+
+  .hud-btn.hud-undo {
+    width: 52px;
+    height: 52px;
+  }
+
+  .hud-btn.hud-palm {
+    width: 56px;
+    height: 56px;
   }
 
   .hud-walk.shown,
-  .place-bar.shown {
-    bottom: calc(var(--pad) + 78px + env(safe-area-inset-bottom));
+  .place-bar.shown,
+  .hud.chair .place-bar.shown {
+    bottom: calc(var(--pad) + 70px + env(safe-area-inset-bottom));
   }
 
   .hud.chair .place-bar.shown {
-    bottom: calc(var(--pad) + 135px + env(safe-area-inset-bottom));
-  }
-}
-
-@media (max-width: 389px) and (max-height: 475px) {
-  .hud {
-    --pad: 10px;
-  }
-
-  .hud-top {
-    flex-direction: row-reverse;
-  }
-
-  .hud-profile {
-    max-width: calc(100% - 170px - env(safe-area-inset-left) - env(safe-area-inset-right));
-  }
-
-  .hud-group .hud-btn {
-    width: 42px;
-    height: 42px;
-  }
-
-  .hud-group .hud-big {
-    width: 50px;
-    height: 50px;
+    bottom: calc(var(--pad) + 134px + env(safe-area-inset-bottom));
   }
 }
 
@@ -1526,7 +1562,7 @@
 .guide-coach {
   position: absolute;
   left: calc(var(--pad) + env(safe-area-inset-left));
-  bottom: calc(var(--pad) + 60px + env(safe-area-inset-bottom));
+  bottom: calc(var(--pad) + env(safe-area-inset-bottom));
   display: flex;
   align-items: stretch;
   max-width: min(320px, calc(100vw - 2 * var(--pad) - 76px));
@@ -1626,8 +1662,8 @@
   cursor: pointer;
 }
 
-.hud.chair .guide-coach {
-  bottom: calc(var(--pad) + 124px + env(safe-area-inset-bottom));
+.hud.chair:not(.collapsed) .guide-coach {
+  bottom: calc(var(--pad) + 64px + env(safe-area-inset-bottom));
 }
 
 .guide-mark {
@@ -1752,16 +1788,9 @@
   opacity: 0.7;
 }
 
-/* the inbox: a mailbox, top right (docs/INBOX_NOTIFICATIONS.md) */
+/* the inbox: the top of the rail (docs/INBOX_NOTIFICATIONS.md) */
 .inbox-btn {
-  position: absolute;
-  top: calc(14px + env(safe-area-inset-top));
-  right: calc(14px + env(safe-area-inset-right));
-  display: none;
-}
-
-.inbox-btn.shown {
-  display: grid;
+  position: relative;
 }
 
 .inbox-badge {
@@ -2118,4 +2147,111 @@
 }
 .inv-found-list b {
   margin-right: 4px;
+}
+
+/* ---- the social hub: Inbox · Leaderboard · Starred · Visit by code ---- */
+.hub-tabs {
+  display: flex;
+  flex: none;
+  min-width: 0;
+  gap: 2px;
+  margin: 0 36px 12px 0;
+  padding: 3px;
+  overflow-x: auto;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  scrollbar-width: none;
+}
+
+.hub-tabs button {
+  flex: 1 1 auto;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.hub-tabs button.on {
+  color: var(--ui-bg);
+  background: var(--ui-fg);
+}
+
+/* the tabs name the panel: its own title would say it twice */
+.hub-card > h2 {
+  display: none;
+}
+
+.board.instant,
+.board.instant .board-card {
+  transition: none !important;
+}
+
+.hub-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.hub-visit,
+.hub-own {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hub-visit input {
+  flex: 1;
+  min-width: 0;
+  min-height: 40px;
+  padding: 6px 12px;
+  border: 1.5px solid currentColor;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 15px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: inherit;
+  background: transparent;
+}
+
+.hub-own span {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.hub-code {
+  flex: 1;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 16px;
+  letter-spacing: 0.1em;
+}
+
+.hub-list .fav-row .board-who {
+  flex: 1;
+}
+
+.inbox-share {
+  display: flex;
+  justify-content: center;
+  padding-top: 8px;
+}
+
+.hub-card {
+  min-width: 0;
+}
+
+@media (max-width: 420px) {
+  .hub-tabs button {
+    padding: 6px 7px;
+    font-size: 12px;
+  }
 }

@@ -54,7 +54,9 @@ codes.dot = await become(names.dot);
 await page.evaluate(() => window.__beech.neighbors().loadFavorites());
 
 // open the board from the HUD
-await page.click('button[data-act="leaderboard"]');
+await page.evaluate(() => window.__beech.setRail(true));
+await page.click('[data-act="inbox"]');
+await page.click('.board.open .hub-tabs [data-hub="leaderboard"]');
 await page.waitForSelector('.board.open .board-row', { timeout: 10000 });
 const order = async () =>
   page.$$eval('.board-row', (rows) => rows.map((r) => ({ code: r.dataset.code, count: r.querySelector('.board-count span')?.textContent })));
@@ -85,7 +87,9 @@ const cleo = server.find((e) => e.code === codes.cleo);
 check(cleo?.stars === 2 && cleo?.starred === true, 'and the server agrees');
 // reopening the board: Cleo now ties Ben on 2 (and is rising faster, so she's ahead)
 await page.click('.board-close');
-await page.click('button[data-act="leaderboard"]');
+await page.evaluate(() => window.__beech.setRail(true));
+await page.click('[data-act="inbox"]');
+await page.click('.board.open .hub-tabs [data-hub="leaderboard"]');
 await page.waitForFunction((c) => document.querySelector(`button[data-act="board-star-${c}"]`)?.textContent === '★', codes.cleo, { timeout: 5000 });
 rows = ours(await order());
 check(rows.map((r) => r.code).join() === [codes.ana, codes.cleo, codes.ben].join(), 'reloaded: Ana, then Cleo and Ben on 2 (Cleo newer)');
@@ -96,21 +100,27 @@ await page.waitForFunction((n) => window.__beech.neighbors().visiting?.name === 
 check(!(await page.isVisible('.board.open')), 'the board closes on visit');
 await page.waitForFunction(() => document.querySelector('.shore-bar .sb-where')?.textContent?.startsWith('Visiting'), null, { timeout: 5000 }).catch(() => {});
 check((await page.textContent('.shore-bar .sb-where'))?.includes(names.ana), "the bar says we're visiting Ana");
-// star her from the shore bar: the board shows it next time
+// star her from the expanded status pane: the board shows it next time
+await page.evaluate(() => { window.__beech.setRail(true); window.__beech.setPane('expanded'); });
 await page.click('.shore-bar .sb-fav');
 await page.waitForFunction((c) => window.__beech.neighbors().favorites.has(c), codes.ana, { timeout: 5000 });
-await page.click('button[data-act="leaderboard"]');
+await page.evaluate(() => window.__beech.setRail(true));
+await page.click('[data-act="inbox"]');
+await page.click('.board.open .hub-tabs [data-hub="leaderboard"]');
 await page.waitForFunction((c) => document.querySelector(`.board-row[data-code="${c}"] .board-count span`)?.textContent === '★ 4', codes.ana, { timeout: 5000 }).catch(() => {});
 check((await page.textContent(`button[data-act="board-star-${codes.ana}"]`)) === '★', 'a star from the shore bar shows on the board');
 check((await page.textContent(`.board-row[data-code="${codes.ana}"] .board-count span`)) === '★ 4', 'Ana has 4 now');
 await page.click('.board-close');
+await page.evaluate(() => { window.__beech.setRail(true); window.__beech.setPane('expanded'); });
 await page.click('.shore-bar .sb-home');
 await page.waitForFunction(() => window.__beech.neighbors().visiting === null, null, { timeout: 15000 });
 check(true, 'home again');
 
 // signed out: the board asks you to sign in
 await page.evaluate(() => window.__beech.account().signOut());
-await page.click('button[data-act="leaderboard"]');
+await page.evaluate(() => window.__beech.setRail(true));
+await page.click('[data-act="inbox"]');
+await page.click('.board.open .hub-tabs [data-hub="leaderboard"]');
 await page.waitForSelector('.board.open .board-signin', { timeout: 5000 });
 check((await page.$$('.board-row')).length === 0, 'signed out: no rows, just a sign-in button');
 

@@ -81,6 +81,12 @@ const ICONS = {
   compass: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M15.5 8.5l-2 5-5 2 2-5z" /><path d="M12 3.5v1.5M12 19v1.5M3.5 12h1.5M19 12h1.5" opacity=".55"/></svg>`,
   menu: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 3-.6 2.2-2 .9-2-.9-2 3.5 1.7 1.5v2.4l-1.7 1.5 2 3.5 2-.8 2 .9L10 20h4l.6-2.3 2-.9 2 .8 2-3.5-1.7-1.5v-2.4l1.7-1.5-2-3.5-2 .9-2-.9L14 3z"/><circle cx="12" cy="11.5" r="3"/></svg>`,
   eye: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z" /><circle cx="12" cy="12" r="2.8" /></svg>`,
+  close: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11" /></svg>`,
+  down: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 9.5l5.5 5.5 5.5-5.5" /></svg>`,
+  up: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 14.5L12 9l5.5 5.5" /></svg>`,
+  store: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5l1.5-5h13l1.5 5" /><path d="M4 9.5a2.7 2.7 0 0 0 5.3 0 2.7 2.7 0 0 0 5.4 0 2.7 2.7 0 0 0 5.3 0" /><path d="M5.5 12v8h13v-8" /><path d="M10 20v-4.5h4V20" opacity=".55"/></svg>`,
+  inbox: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13.5l2.2-7.3a1.5 1.5 0 0 1 1.4-1.1h8.8a1.5 1.5 0 0 1 1.4 1.1l2.2 7.3" /><path d="M4 13.5V18a1.5 1.5 0 0 0 1.5 1.5h13A1.5 1.5 0 0 0 20 18v-4.5h-4.5l-1 2h-5l-1-2z" /></svg>`,
+  reverse: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l7 4-7 4-7-4z" /><path d="M5 7.5v5l7 4 7-4v-5" /><path d="M12 11.5v5" opacity=".55"/><path d="M4.5 19.5c4 1.6 11 1.6 15 0" /><path d="M17.2 17.6l2.3 1.9-2.7 1.2" /></svg>`,
   eyeOff: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18" /><path d="M10.6 6.2A9.7 9.7 0 0 1 12 6c6 0 9.5 6 9.5 6a16.5 16.5 0 0 1-3.2 3.8M6.5 8.5A16 16 0 0 0 2.5 12s3.5 6 9.5 6a9.6 9.6 0 0 0 3.7-.7" /></svg>`,
 };
 
@@ -123,44 +129,75 @@ export interface HudHandlers {
   redo(): void;
 }
 
-export interface ToolDef {
+/** One tool in the dirt flyout (dig, build up, smooth, flatten, vacuum, bulldozer, castles). */
+export interface DirtDef {
   id: string;
   icon: IconName;
   label: string;
-  /** modes of a grouped tool (e.g. the clearing tool): shown while it is current */
-  modes?: { id: string; icon: IconName; label: string }[];
+  /** start a new group (a hairline above it) */
+  sep?: boolean;
 }
 
-/** The few round buttons over the canvas. */
+/**
+ * The controls over the canvas: at rest, one palm button in the lower
+ * right. Tapping it opens the rail above it (three groups of buttons in one
+ * frosted pill), with Undo directly above the palm, which turns into a ×
+ * that closes it all again. The dirt tools fan out in a flyout to the left
+ * of the rail.
+ */
 export class Hud {
   readonly root: HTMLDivElement;
   readonly undoBtn: HTMLButtonElement;
-  readonly topGroup: HTMLDivElement;
-  readonly rightGroup: HTMLDivElement;
-  readonly toolGroup: HTMLDivElement;
+  readonly palmBtn: HTMLButtonElement;
+  /** the bottom-right column: the rail, Undo, the palm */
+  readonly stack: HTMLDivElement;
+  readonly rail: HTMLDivElement;
+  readonly flyout: HTMLDivElement;
+  readonly dirtBtn: HTMLButtonElement;
+  private readonly groups: HTMLDivElement[] = [];
   private pressTimer = 0;
   private longPressed = false;
+  private isOpen = false;
 
   constructor(parent: HTMLElement, private readonly h: HudHandlers) {
     this.root = document.createElement('div');
     this.root.className = 'hud';
     parent.appendChild(this.root);
 
-    this.topGroup = document.createElement('div');
-    this.topGroup.className = 'hud-group hud-top';
-    this.root.appendChild(this.topGroup);
+    this.stack = document.createElement('div');
+    this.stack.className = 'hud-stack';
+    this.root.appendChild(this.stack);
 
-    this.rightGroup = document.createElement('div');
-    this.rightGroup.className = 'hud-group hud-right';
-    this.root.appendChild(this.rightGroup);
+    this.rail = document.createElement('div');
+    this.rail.className = 'hud-rail';
+    this.rail.id = 'hud-rail';
+    this.rail.setAttribute('role', 'toolbar');
+    this.rail.setAttribute('aria-label', 'Tools');
+    this.rail.setAttribute('aria-orientation', 'vertical');
+    for (let i = 0; i < 3; i++) {
+      const g = document.createElement('div');
+      g.className = 'hud-rail-group';
+      this.groups.push(g);
+      this.rail.appendChild(g);
+    }
 
-    this.toolGroup = document.createElement('div');
-    this.toolGroup.className = 'hud-tools';
-    this.toolGroup.setAttribute('role', 'radiogroup');
-    this.toolGroup.setAttribute('aria-label', 'Tool');
+    this.flyout = document.createElement('div');
+    this.flyout.className = 'hud-flyout';
+    this.flyout.setAttribute('role', 'radiogroup');
+    this.flyout.setAttribute('aria-label', 'Dirt tools');
+    this.rail.appendChild(this.flyout);
 
+    this.dirtBtn = this.button('dozer', 'Dirt', 'hud-btn hud-tool');
+    this.dirtBtn.dataset.act = 'dirt';
+    this.dirtBtn.setAttribute('aria-controls', 'hud-flyout');
+    this.flyout.id = 'hud-flyout';
 
-    this.undoBtn = this.button('undo', 'Undo (hold to redo)');
+    this.undoBtn = this.button('undo', 'Undo (hold to redo)', 'hud-btn hud-undo');
+    this.palmBtn = this.button('palmtree', 'Open the toolbar', 'hud-btn hud-palm');
+    this.palmBtn.dataset.act = 'palm';
+    this.palmBtn.setAttribute('aria-expanded', 'false');
+    this.palmBtn.setAttribute('aria-controls', 'hud-rail');
+    this.stack.append(this.rail, this.undoBtn, this.palmBtn);
 
     this.undoBtn.addEventListener('pointerdown', (e) => {
       e.preventDefault();
@@ -206,6 +243,12 @@ export class Hud {
     b.innerHTML = icon(name);
   }
 
+  /** Set a button's label (its tooltip too). */
+  setLabel(b: HTMLButtonElement, label: string): void {
+    b.setAttribute('aria-label', label);
+    b.title = label;
+  }
+
   private flash(b: HTMLButtonElement, name: IconName) {
     this.setIcon(b, name);
     b.classList.remove('flash');
@@ -214,48 +257,58 @@ export class Hud {
     window.setTimeout(() => this.setIcon(b, 'undo'), 450);
   }
 
-  /** Small column of tool buttons above the undo button. */
-  setTools(tools: ToolDef[], current: string, pick: (id: string) => void): void {
-    this.toolGroup.innerHTML = '';
-    for (const t of tools) {
-      const b = this.button(t.icon, t.label, 'hud-btn hud-tool');
-      b.setAttribute('role', 'radio');
-      b.dataset.tool = t.id;
-      b.addEventListener('click', () => pick(t.id));
-      this.toolGroup.appendChild(b);
-      if (t.modes) {
-        const strip = document.createElement('div');
-        strip.className = 'hud-modes';
-        strip.dataset.forTool = t.id;
-        strip.setAttribute('role', 'radiogroup');
-        strip.setAttribute('aria-label', `${t.label} mode`);
-        for (const m of t.modes) {
-          const mb = this.button(m.icon, m.label, 'hud-btn hud-mode');
-          mb.setAttribute('role', 'radio');
-          mb.dataset.mode = m.id;
-          mb.addEventListener('click', () => pick(m.id));
-          strip.appendChild(mb);
-        }
-        this.toolGroup.appendChild(strip);
-      }
-    }
-    this.setTool(current);
+  /** One of the rail's three groups (0: inbox, hand, dirt · 1: bag, store · 2: view, manage). */
+  group(i: 0 | 1 | 2): HTMLDivElement {
+    return this.groups[i];
   }
 
-  setTool(id: string, mode?: string): void {
-    for (const b of this.toolGroup.querySelectorAll<HTMLButtonElement>('button')) {
-      const on = b.dataset.tool === id;
-      if (b.dataset.tool !== undefined) b.classList.toggle('active', on);
-      if (b.getAttribute('role') === 'radio') b.setAttribute('aria-checked', String(on));
-      if (b.dataset.mode !== undefined) {
-        const mon = b.dataset.mode === mode && b.closest<HTMLElement>('.hud-modes')?.dataset.forTool === id;
-        b.classList.toggle('active', mon);
-        b.setAttribute('aria-checked', String(mon));
+  /** The dirt flyout's buttons. */
+  setDirt(defs: DirtDef[], pick: (id: string) => void): void {
+    this.flyout.innerHTML = '';
+    for (const d of defs) {
+      if (d.sep && this.flyout.childElementCount) {
+        const hr = document.createElement('span');
+        hr.className = 'hud-sep';
+        this.flyout.appendChild(hr);
       }
+      const b = this.button(d.icon, d.label, 'hud-btn hud-tool');
+      b.setAttribute('role', 'radio');
+      b.dataset.tool = d.id;
+      b.addEventListener('click', () => pick(d.id));
+      this.flyout.appendChild(b);
     }
-    for (const s of this.toolGroup.querySelectorAll<HTMLElement>('.hud-modes')) {
-      s.classList.toggle('open', s.dataset.forTool === id);
+  }
+
+  /**
+   * Highlight the current tool: `look` (the hand), `place` (the bag, an
+   * item in hand) or one of the dirt tools by id (its flyout shows then).
+   */
+  setTool(id: string): void {
+    const dirt = [...this.flyout.querySelectorAll<HTMLButtonElement>('[data-tool]')].some((b) => b.dataset.tool === id);
+    for (const b of this.rail.querySelectorAll<HTMLButtonElement>('button[data-tool]')) {
+      const on = b.dataset.tool === id;
+      b.classList.toggle('active', on);
+      if (b.getAttribute('role') === 'radio') b.setAttribute('aria-checked', String(on));
+      else b.setAttribute('aria-pressed', String(on));
     }
+    this.dirtBtn.classList.toggle('active', dirt);
+    this.dirtBtn.setAttribute('aria-expanded', String(dirt));
+    this.flyout.classList.toggle('open', dirt);
+  }
+
+  /** Open the rail (the palm becomes a ×) or close it back down to the palm. */
+  setOpen(open: boolean): void {
+    this.isOpen = open;
+    this.root.classList.toggle('open', open);
+    this.rail.inert = !open;
+    this.undoBtn.inert = !open;
+    this.setIcon(this.palmBtn, open ? 'close' : 'palmtree');
+    this.setLabel(this.palmBtn, open ? 'Close the toolbar' : 'Open the toolbar');
+    this.palmBtn.setAttribute('aria-expanded', String(open));
+  }
+
+  get open(): boolean {
+    return this.isOpen;
   }
 
   private lastUndo = -1;

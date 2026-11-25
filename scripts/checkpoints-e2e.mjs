@@ -98,6 +98,7 @@ await a.reload();
 await a.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
 await a.waitForFunction(() => window.__beech.sync().state === 'saved', null, { timeout: 20000 });
 await showSheet(a);
+await a.evaluate(() => window.__beech.sheet.setTab('beach'));
 const [chooser] = await Promise.all([a.waitForEvent('filechooser'), a.click('button[data-act="import"]')]);
 await chooser.setFiles(file);
 await a.waitForSelector('.beachfile.open [data-act="apply"]');
@@ -106,7 +107,9 @@ await a.click('.beachfile [data-act="apply"]');
 await a.waitForFunction(() => window.__beech.info().objects.some((o) => o.item === 'lighthouse'), null, { timeout: 10000 });
 await showSheet(a);
 a.answer = 'one';
+await a.evaluate(() => window.__beech.sheet.setTab('checkpoints'));
 await a.waitForSelector('button[data-act="cp-save"]', { timeout: 10000 });
+await a.evaluate(() => window.__beech.sheet.setTab('checkpoints'));
 await a.click('button[data-act="cp-save"]');
 await a.waitForFunction(() => [...document.querySelectorAll('.cp-row b')].some((b) => b.textContent === 'one'), null, { timeout: 15000 });
 const one = (await checkpointsList(a)).checkpoints.find((c) => c.name === 'one');
@@ -118,15 +121,18 @@ if (process.env.SHOT_DIR) await a.screenshot({ path: `${process.env.SHOT_DIR}/ch
 
 // ------------------------------------------------------------------ 2
 a.answer = 'Second';
+await a.evaluate(() => window.__beech.sheet.setTab('beach'));
 await a.click('button[data-act="new-beach"]');
 await a.waitForFunction((h) => window.__beech.account().beachId !== h && window.__beech.sync().state === 'saved', home, { timeout: 20000 });
 const second = await a.evaluate(() => window.__beech.account().beachId);
 await a.waitForFunction(() => !window.__beech.info().objects.some((o) => !o.wild), null, { timeout: 10000 }).catch(() => {});
 check((await things(a)) === '', `A is on a new, empty beach (${await things(a)})`);
 await showSheet(a);
+await a.evaluate(() => window.__beech.sheet.setTab('checkpoints'));
 await a.waitForSelector(`.cp-row[data-id="${one.id}"] .cp-chip.short`, { timeout: 10000 });
 check(true, 'its lighthouse chip is red here (the lighthouse is on home)');
 dialogs.length = 0;
+await a.evaluate(() => window.__beech.sheet.setTab('checkpoints'));
 await a.click(`button[data-act="cp-restore-${one.id}"]`);
 await a.waitForFunction(() => window.__beech.info().objects.some((o) => o.item === 'rock'), null, { timeout: 20000 });
 check(dialogs.some((d) => d.includes('needs 1 more Lighthouse')), 'it said the lighthouse is missing and asked');
@@ -140,9 +146,11 @@ await a.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
 await a.waitForFunction(() => window.__beech.sync().state === 'saved', null, { timeout: 20000 });
 check((await a.evaluate(() => window.__beech.account().beachId)) === second, 'A is still on the second beach');
 await showSheet(a);
+await a.evaluate(() => window.__beech.sheet.setTab('checkpoints'));
 await a.waitForSelector(`.cp-row[data-id="${one.id}"]`, { timeout: 10000 });
 check(!(await a.$(`.cp-row[data-id="${one.id}"] .cp-chip.short`)), 'with a second lighthouse it fits');
 dialogs.length = 0;
+await a.evaluate(() => window.__beech.sheet.setTab('checkpoints'));
 await a.click(`button[data-act="cp-restore-${one.id}"]`);
 await a.waitForFunction(() => window.__beech.info().objects.some((o) => o.item === 'lighthouse'), null, { timeout: 20000 });
 check(dialogs.some((d) => d.startsWith('A confirm: Replace')), 'it asked before replacing the beach');
@@ -160,17 +168,21 @@ const b = await device('B');
 check((await b.evaluate(() => window.__beech.account().beachId)) === home, 'B opens home');
 // open the second beach on B the way the panel does
 await showSheet(b);
+await b.evaluate(() => window.__beech.sheet.setTab('beach'));
 await b.click(`button[data-act="select-beach-${second}"]`);
+await b.evaluate(() => window.__beech.sheet.setTab('beach'));
 await b.click(`button[data-act="open-${second}"]`);
 await b.waitForFunction(() => window.__beech.sync().state === 'saved' && window.__beech.info().objects.some((o) => o.item === 'rock'), null, { timeout: 20000 }).catch(() => {});
 await b.evaluate(() => window.__beech.sheet.hide());
 // A restores "one" onto the second beach while B shows it
 await showSheet(a);
+await a.evaluate(() => window.__beech.sheet.setTab('checkpoints'));
 await a.click(`button[data-act="cp-restore-${one.id}"]`);
 await a.waitForFunction(() => window.__beech.info().objects.some((o) => o.item === 'lighthouse'), null, { timeout: 20000 });
 // B digs and saves: its save is refused and B loads the restored beach instead
-await b.click('[data-act="edit-menu"]');
-await b.click('button[data-tool="sand"]');
+await b.keyboard.press('Escape');
+await b.evaluate(() => window.__beech.setRail(true));
+await b.click('[data-act="dirt"]');
 await b.mouse.move(300, 500);
 await b.mouse.down();
 for (let i = 0; i < 12; i++) await b.mouse.move(300 + i * 8, 500);
@@ -192,6 +204,7 @@ check(secondNow?.items.lighthouse === 1, `and the server still has the restored 
 
 // ------------------------------------------------------------------ 6
 await showSheet(a);
+await a.evaluate(() => window.__beech.sheet.setTab('beach'));
 await a.click(`button[data-act="remove-beach-${second}"]`);
 await a.waitForFunction((h) => window.__beech.account().beachId === h && window.__beech.account().beaches.length === 1, home, { timeout: 20000 });
 const after = await checkpointsList(a);
@@ -199,7 +212,9 @@ check(after.checkpoints.some((c) => c.id === one.id), '"one" outlived the beach 
 check(after.checkpoints.some((c) => c.kind === 'auto' && !c.fromBeach), 'the second beach\'s "before restoring" copy is kept too');
 // ------------------------------------------------------------------ 7: beach files
 await showSheet(a);
+await a.evaluate(() => window.__beech.sheet.setTab('checkpoints'));
 await a.waitForSelector(`button[data-act="cp-export-${one.id}"]`);
+await a.evaluate(() => window.__beech.sheet.setTab('checkpoints'));
 const [dl] = await Promise.all([a.waitForEvent('download'), a.click(`button[data-act="cp-export-${one.id}"]`)]);
 const exported = path.join(dir, 'exported.beach.json');
 await dl.saveAs(exported);
@@ -207,6 +222,7 @@ const ex = JSON.parse(fs.readFileSync(exported, 'utf8'));
 check(ex.format === 'beech.beach' && ex.name === 'one' && ex.objects.map((o) => o.item).sort().join() === 'lighthouse,rock', `exported "one" as a beach file (${dl.suggestedFilename()})`);
 // and back in, as a checkpoint of its own
 await showSheet(a);
+await a.evaluate(() => window.__beech.sheet.setTab('checkpoints'));
 const [pick] = await Promise.all([a.waitForEvent('filechooser'), a.click('button[data-act="cp-import"]')]);
 await pick.setFiles(exported);
 await a.waitForFunction(() => [...document.querySelectorAll('.cp-row .cp-meta')].some((m) => m.textContent.startsWith('imported')), null, { timeout: 15000 });
@@ -214,6 +230,7 @@ const imported = (await checkpointsList(a)).checkpoints.find((c) => c.source ===
 check(imported && imported.name === 'one' && imported.items.lighthouse === 1, 'imported the file back as a checkpoint');
 // the import preview can keep a file as a checkpoint instead of putting it on the beach
 await showSheet(a);
+await a.evaluate(() => window.__beech.sheet.setTab('beach'));
 const [pick2] = await Promise.all([a.waitForEvent('filechooser'), a.click('button[data-act="import"]')]);
 await pick2.setFiles(file);
 await a.waitForSelector('.beachfile.open [data-act="keep"]');
@@ -223,6 +240,7 @@ check((await checkpointsList(a)).checkpoints.some((c) => c.name === 'One' && c.s
 // replacing a beach from a file keeps it first as "Before import"
 const homeBefore = await things(a);
 await showSheet(a);
+await a.evaluate(() => window.__beech.sheet.setTab('beach'));
 const [pick3] = await Promise.all([a.waitForEvent('filechooser'), a.click('button[data-act="import"]')]);
 await pick3.setFiles(file);
 await a.waitForSelector('.beachfile.open [data-act="apply"]');
@@ -237,6 +255,7 @@ const autos = (await checkpointsList(a)).checkpoints.filter((c) => c.kind === 'a
 check(autos.length === 1 && autos[0].name === 'Before import' && autos[0].createdAt > homeAuto.createdAt, `the beach was kept as "Before import" again, replacing the last one (it had: ${homeBefore || 'nothing'})`);
 
 await showSheet(a);
+await a.evaluate(() => window.__beech.sheet.setTab('checkpoints'));
 await a.waitForSelector(`button[data-act="cp-delete-${one.id}"]`);
 // both taps in one go: headless rendering is slow enough to miss the confirm window
 await a.evaluate((id) => {

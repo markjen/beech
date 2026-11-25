@@ -1,5 +1,9 @@
 import type { QualityTier } from '../config';
 
+/** wave strength (beach settings): calm and gentle quiet the swell, surf lifts it */
+export type WaveStrength = 'calm' | 'gentle' | 'lively' | 'surf';
+export const WAVE_STRENGTHS: WaveStrength[] = ['calm', 'gentle', 'lively', 'surf'];
+
 /** 'live' follows the real sun at the chosen beach; the others pin a mood */
 export type PaletteChoice = 'live' | 'dawn' | 'day' | 'golden' | 'dusk' | 'night';
 
@@ -19,6 +23,10 @@ export interface Settings {
   benchTier?: QualityTier;
   /** last size picked for each item, 0..1 across its range */
   itemSizes?: Record<string, number>;
+  /** wave strength (unset: lively, the beach's own swell) */
+  waves?: WaveStrength;
+  /** the top-left status pane: two lines, everything, or tucked away to an i */
+  statusPane?: 'default' | 'expanded' | 'closed';
 }
 
 export const DEFAULT_SETTINGS: Settings = {

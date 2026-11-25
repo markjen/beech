@@ -3,7 +3,7 @@ import './overlays.css';
 import { GUIDE_URL, type QualityTier } from '../config';
 import { steamBridge } from '../platform/runtime';
 import type { Beach } from '../world/locations';
-import type { PaletteChoice, Settings } from './settingsStore';
+import { WAVE_STRENGTHS, type PaletteChoice, type Settings } from './settingsStore';
 
 /** Title card shown until the first touch (which also unlocks audio). */
 export class StartScreen {
@@ -146,9 +146,11 @@ const QUALITY_LABELS: [QualityTier | 'auto', string][] = [
   ['high', 'fine'],
 ];
 
-export type SettingsTab = 'beach' | 'shore' | 'display' | 'account' | 'help';
+/** Manage's tabs. 'shore', 'display' and 'account' are older names, kept as aliases. */
+export type SettingsTab = 'beach' | 'checkpoints' | 'settings' | 'help' | 'shore' | 'display' | 'account';
+const TAB_ALIAS: Partial<Record<SettingsTab, SettingsTab>> = { shore: 'beach', display: 'settings', account: 'settings' };
 
-/** Bottom sheet with tabbed settings: Beach, Shore, Display, and Account. */
+/** Manage: a modal with tabs — Beaches, Checkpoints, Settings, Help. */
 export class SettingsSheet {
   readonly el: HTMLDivElement;
   private open = false;
@@ -166,23 +168,18 @@ export class SettingsSheet {
     this.el = document.createElement('div');
     this.el.className = 'sheet-wrap';
     this.el.inert = true;
-    const tabsHtml = this.hasAccounts
-      ? `<button type="button" role="tab" data-tab="beach" aria-selected="true">Beach</button>
-         <button type="button" role="tab" data-tab="shore" aria-selected="false">Shore<span class="tab-dot" hidden></span></button>
-         <button type="button" role="tab" data-tab="display" aria-selected="false">Display</button>
-         <button type="button" role="tab" data-tab="account" aria-selected="false">Account</button>
-         <button type="button" role="tab" data-tab="help" aria-selected="false">Help</button>`
-      : `<button type="button" role="tab" data-tab="beach" aria-selected="true">Beach</button>
-         <button type="button" role="tab" data-tab="display" aria-selected="false">Display</button>
+    const tabsHtml = `<button type="button" role="tab" data-tab="beach" aria-selected="true">Beaches</button>
+         <button type="button" role="tab" data-tab="checkpoints" aria-selected="false">Checkpoints</button>
+         <button type="button" role="tab" data-tab="settings" aria-selected="false">Settings</button>
          <button type="button" role="tab" data-tab="help" aria-selected="false">Help</button>`;
     this.el.innerHTML = `
       <div class="sheet-scrim"></div>
-      <div class="sheet" role="dialog" aria-label="Settings">
+      <div class="sheet" role="dialog" aria-modal="true" aria-label="Manage">
         <div class="sheet-head">
           <div class="sheet-grip"></div>
           <div class="sheet-top">
-            <div class="sheet-tabs" role="tablist" aria-label="Settings sections">${tabsHtml}</div>
-            <button type="button" class="sheet-close" data-act="close" aria-label="Close settings">×</button>
+            <div class="sheet-tabs" role="tablist" aria-label="Manage">${tabsHtml}</div>
+            <button type="button" class="sheet-close" data-act="close" aria-label="Close">×</button>
           </div>
         </div>
         <div class="sheet-pane" data-pane="beach" role="tabpanel">
@@ -196,10 +193,16 @@ export class SettingsSheet {
             <button type="button" class="action" data-act="export">export beach</button>
             <button type="button" class="action" data-act="import">import beach</button>
           </div>
+          ${this.hasAccounts ? `<div class="shore-slot"></div>` : ''}
+        </div>
+        <div class="sheet-pane" data-pane="checkpoints" role="tabpanel" hidden>
           <div class="checkpoints-slot"></div>
         </div>
-        ${this.hasAccounts ? `<div class="sheet-pane" data-pane="shore" role="tabpanel" hidden><div class="shore-slot"></div></div>` : ''}
-        <div class="sheet-pane" data-pane="display" role="tabpanel" hidden>
+        <div class="sheet-pane" data-pane="settings" role="tabpanel" hidden>
+          ${this.hasAccounts ? `<div class="account-slot"></div>` : ''}
+          <div class="row col"><span>waves</span><div class="chips" data-key="waves">${WAVE_STRENGTHS.map(
+            (v) => `<button type="button" data-v="${v}">${v}</button>`,
+          ).join('')}</div></div>
           <div class="row"><span>sound</span>${this.toggle('sound')}</div>
           <div class="row"><span>music</span>${this.toggle('music')}</div>
           <div class="row"><span>haptics</span>${this.toggle('haptics')}</div>
@@ -217,17 +220,18 @@ export class SettingsSheet {
             ${steamBridge() ? '<button type="button" class="action" data-act="quit">quit</button>' : ''}
           </div>
         </div>
-        ${this.hasAccounts ? `<div class="sheet-pane" data-pane="account" role="tabpanel" hidden><div class="account-slot"></div></div>` : ''}
         <div class="sheet-pane" data-pane="help" role="tabpanel" hidden>
           <h2>Help</h2>
           <dl class="hud-help">
-            <dt>Edit</dt><dd>Shape the sand, build sandcastles, place things from your bag, or calm the waves.</dd>
-            <dt>Shop</dt><dd>Open the capsule machine, claw machine, or paid shop.</dd>
-            <dt>Chair</dt><dd>Sit at the shore and use the arrows to move along it.</dd>
-            <dt>Move</dt><dd>Drag to move the view. Pinch or scroll to zoom.</dd>
-            <dt>Beach settings</dt><dd>Choose a beach, change the light, or manage your beaches and neighbors.</dd>
-            <dt>Settings</dt><dd>Sign in or adjust sound, music, haptics, and display options.</dd>
-            <dt>Leaderboard</dt><dd>Find and visit the most-starred beaches.</dd>
+            <dt>Palm</dt><dd>Opens the toolbar; the × closes it again.</dd>
+            ${this.hasAccounts ? '<dt>Inbox</dt><dd>Messages and requests, the leaderboard, starred beaches, and visiting by code.</dd>' : ''}
+            <dt>Hand</dt><dd>Drag to move the view. Pinch or scroll to zoom.</dd>
+            <dt>Dirt</dt><dd>Dig, build up, smooth, flatten, vacuum, bulldoze, or mold a sandcastle.</dd>
+            <dt>Bag</dt><dd>Things to put on the sand${this.hasAccounts ? ', and the claw and capsule machines' : ''}.</dd>
+            ${this.hasAccounts ? '<dt>Store</dt><dd>The paid shop.</dd>' : ''}
+            <dt>View</dt><dd>Chair, isometric, or looking back from the sea.</dd>
+            <dt>Manage</dt><dd>Beaches, checkpoints, settings, and help.</dd>
+            <dt>Undo</dt><dd>Hold it to redo.</dd>
           </dl>
           <a class="action" data-act="guide" href="${GUIDE_URL}" target="_blank" rel="noopener">Full guide</a>
         </div>
@@ -263,7 +267,7 @@ export class SettingsSheet {
       this.h.tv();
     });
     for (const group of this.el.querySelectorAll<HTMLDivElement>('.chips')) {
-      const key = group.dataset.key as 'palette' | 'quality' | 'beach';
+      const key = group.dataset.key as 'palette' | 'quality' | 'beach' | 'waves';
       for (const b of group.querySelectorAll<HTMLButtonElement>('button[data-v]')) {
         b.addEventListener('click', () => {
           this.settings = { ...this.settings, [key]: b.dataset.v } as Settings;
@@ -318,9 +322,10 @@ export class SettingsSheet {
 
   private sync(): void {
     for (const group of this.el.querySelectorAll<HTMLDivElement>('.chips')) {
-      const key = group.dataset.key as 'palette' | 'quality' | 'beach';
+      const key = group.dataset.key as 'palette' | 'quality' | 'beach' | 'waves';
+      const v = this.settings[key] ?? (key === 'waves' ? 'lively' : undefined);
       for (const b of group.querySelectorAll<HTMLButtonElement>('button[data-v]')) {
-        b.classList.toggle('on', b.dataset.v === this.settings[key]);
+        b.classList.toggle('on', b.dataset.v === v);
       }
     }
   }
@@ -345,7 +350,7 @@ export class SettingsSheet {
   }
 
   setTab(tab: SettingsTab): void {
-    if (!this.hasAccounts && (tab === 'shore' || tab === 'account')) tab = 'beach';
+    tab = TAB_ALIAS[tab] ?? tab;
     this.activeTab = tab;
     for (const btn of this.el.querySelectorAll<HTMLButtonElement>('.sheet-tabs button[data-tab]')) {
       const on = btn.dataset.tab === tab;
@@ -361,12 +366,6 @@ export class SettingsSheet {
 
   get tab(): SettingsTab {
     return this.activeTab;
-  }
-
-  /** Show a small indicator dot on the Shore tab when there are incoming neighbor requests. */
-  setShoreBadge(count: number): void {
-    const dot = this.el.querySelector<HTMLElement>('.sheet-tabs [data-tab="shore"] .tab-dot');
-    if (dot) dot.hidden = count <= 0;
   }
 
   /** Top of the Beach tab: beach selector, map, selected beach actions & code. */

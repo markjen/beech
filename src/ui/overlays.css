@@ -398,20 +398,6 @@ a.action {
   outline-offset: 2px;
 }
 
-.sheet-tabs .tab-dot {
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #e06a4a;
-  margin-left: 5px;
-  vertical-align: middle;
-}
-
-.sheet-tabs .tab-dot[hidden] {
-  display: none;
-}
-
 .sheet-close {
   flex: none;
   width: 38px;
@@ -438,44 +424,103 @@ a.action {
   border-style: dashed;
 }
 
-/* ---------------------------------------------------------- place label */
-/* top left, under the top row of controls: the beach you're looking at,
-   and — while you're visiting someone else's — the beach info tucked
-   underneath it, collapsed until you tap the header */
+/* ---------------------------------------------------------- status pane */
+/* top left, shown with the rail: whose beach + the weather by default; ⌄
+   adds the game status, the way home while away, and the beaches in view;
+   × tucks it away to a lone i */
 .place-wrap {
   position: fixed;
-  left: calc(16px + env(safe-area-inset-left));
-  top: calc(70px + env(safe-area-inset-top));
-  max-width: calc(100vw - 100px - env(safe-area-inset-left) - env(safe-area-inset-right));
+  left: calc(14px + env(safe-area-inset-left));
+  top: calc(14px + env(safe-area-inset-top));
   z-index: 5;
+  width: min(272px, calc(100vw - 110px - env(safe-area-inset-left) - env(safe-area-inset-right)));
+  max-height: calc(100dvh - 120px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
 }
 
-.place {
-  width: 100%;
-  padding: 8px 14px 9px;
-  border: none;
-  border-radius: 16px;
-  text-align: left;
-  font: inherit;
+.sp-card,
+.sp-open {
+  pointer-events: auto;
+}
+
+.sp-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-radius: 18px;
   color: var(--ui-fg);
   background: var(--ui-bg);
   box-shadow: 0 6px 18px var(--ui-shadow);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  transition: opacity 0.4s ease;
+  overflow: hidden;
 }
 
-/* the header opens the info underneath while you're away: say so */
-.place-wrap.info .place b::after {
-  content: ' ▾';
-  opacity: 0.6;
+.place-wrap[data-state='closed'] .sp-card,
+.place-wrap:not([data-state='closed']) .sp-open {
+  display: none;
 }
 
-.place-wrap.info.open .place b::after {
-  content: ' ▴';
+.sp-head {
+  display: flex;
+  align-items: flex-start;
 }
 
-/* tried to dig on someone else's beach: point at the header */
+.place {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 4px 10px 14px;
+  border: none;
+  background: none;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.sp-btn,
+.sp-open {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  margin-top: 4px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.sp-close {
+  margin-right: 4px;
+}
+
+.sp-btn svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.75;
+}
+
+.sp-open {
+  margin: 0;
+  color: var(--ui-fg);
+  background: var(--ui-bg);
+  box-shadow: 0 6px 18px var(--ui-shadow);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  font: italic 600 18px/1 Georgia, 'Times New Roman', serif;
+}
+
+/* tried to dig on someone else's beach: point at the pane */
 .place.nudge {
   animation: place-nudge 0.5s ease;
 }
@@ -490,16 +535,64 @@ a.action {
   display: block;
   font-size: 14px;
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.02em;
+  overflow-wrap: anywhere;
 }
 
 .place span {
   display: block;
-  margin-top: 2px;
+  margin-top: 3px;
   font-size: 12px;
   letter-spacing: 0.03em;
   opacity: 0.75;
   font-variant-numeric: tabular-nums;
+}
+
+.sp-more {
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 14px 12px;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+}
+
+.place-wrap[data-state='expanded'] .sp-more {
+  display: flex;
+  animation: sp-in 0.2s ease;
+}
+
+@keyframes sp-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+.sp-detail {
+  margin: 0;
+  font-size: 12px;
+  opacity: 0.8;
+  font-variant-numeric: tabular-nums;
+}
+
+.sp-detail:empty {
+  display: none;
+}
+
+.sp-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.sp-chips span {
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  background: color-mix(in srgb, currentColor 10%, transparent);
 }
 
 /* ---------------------------------------------------------- account */
@@ -674,6 +767,17 @@ body.ambient-idle .hint {
   opacity: 0;
   pointer-events: none;
   transform: translateY(-10px);
+  visibility: hidden;
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease,
+    visibility 0s linear 0.2s;
+}
+
+.place-wrap {
+  transition:
+    opacity 0.25s ease,
+    transform 0.25s ease;
 }
 
 body.ambient-idle {
@@ -742,62 +846,59 @@ body.ambient-idle {
 
 /* ---------------------------------------------------------- down the shore */
 
+/* in the expanded status pane: the way home, a star, a pet to feed */
 .shore-bar {
-  /* in the header cluster, under the beach name: who you're visiting, and
-     the way home — not a separate pill floating on its own.
-     display none until shown, so the hidden bar takes no space in the stack */
   display: none;
-  margin-top: 8px;
-  width: 100%;
-  box-sizing: border-box;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  max-width: calc(100vw - 28px);
-  padding: 5px 5px 5px 14px;
-  border-radius: 999px;
-  color: var(--ui-fg);
-  background: var(--ui-bg);
-  box-shadow: 0 6px 18px var(--ui-shadow);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
   font-size: 13px;
-  opacity: 0;
-  transform: translateY(-6px);
-  pointer-events: none;
-  transition:
-    opacity 0.25s ease,
-    transform 0.25s ease;
 }
 
 .shore-bar.shown {
   display: flex;
-  opacity: 1;
-  transform: none;
-  pointer-events: auto;
 }
 
+/* the pane's title already says whose beach this is */
 .shore-bar .sb-where {
+  position: absolute;
+  width: 1px;
+  height: 1px;
   overflow: hidden;
-  text-overflow: ellipsis;
+  clip-path: inset(50%);
   white-space: nowrap;
 }
 
 .shore-bar .sb-fav {
-  border: none;
+  border: 1.5px solid currentColor;
+  border-radius: 999px;
+  padding: 4px 10px;
   background: none;
   color: inherit;
-  font-size: 18px;
+  font-size: 15px;
+  line-height: 1;
   cursor: pointer;
 }
 
-.shore-bar .sb-fav[hidden] {
+.shore-bar .sb-fav[hidden],
+.shore-bar .sb-pet[hidden] {
   display: none;
+}
+
+.shore-bar .sb-pet {
+  border: 1.5px solid currentColor;
+  border-radius: 999px;
+  padding: 6px 12px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
 }
 
 .shore-bar .sb-home {
   border: none;
   border-radius: 999px;
-  padding: 8px 14px;
+  padding: 7px 14px;
   color: var(--ui-bg);
   background: var(--ui-fg);
   font: inherit;
@@ -828,17 +929,34 @@ body.ambient-idle {
 
 .shore-info-card {
   pointer-events: auto;
-  margin-top: 8px;
-  width: min(420px, calc(100vw - 32px));
-  max-height: min(50vh, 420px);
-  overflow-y: auto;
-  padding: 6px 12px 10px;
-  border-radius: 18px;
-  color: var(--ui-fg);
-  background: var(--ui-bg);
-  box-shadow: 0 6px 18px var(--ui-shadow);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+}
+
+/* "also in view": the label only shows when there are rows */
+.shore-info-list:not(:empty)::before {
+  content: 'also in view';
+  display: block;
+  margin-bottom: 2px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+
+.shore-info-list:empty {
+  display: none;
+}
+
+.shore-info-list .neighbor-tag {
+  animation: sp-row-in 0.25s ease;
+}
+
+@keyframes sp-row-in {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
 }
 
 .shore-info-card[hidden] {
