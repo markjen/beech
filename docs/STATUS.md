@@ -1219,3 +1219,36 @@ the HUD layout in the section above.
   `sim.test.ts` covers conservation and stability at surf.
 - e2e scripts use `__beech.setRail(on)`, `__beech.setPane(state)` and
   `__beech.hub().show(tab)`.
+
+### Test & CI speed (2026-11-25)
+
+- **Server tests (`server/test/testDb.ts`):** all 23 DB test files share a
+  per-worker DB helper (one PGlite boot + migration per Vitest worker, or one
+  isolated Postgres schema `test_w<id>` per worker with `synchronous_commit=off`
+  and transactional `DELETE` reset). Previously 10 suites ignored
+  `TEST_DATABASE_URL` and ran PGlite sequentially during the Postgres 16 CI
+  step; now all DB suites run in parallel on real Postgres 16 too.
+- **Web unit tests:** split non-rock swash/surf object checks into
+  `tests/objectsSwash.test.ts` (one shared 120 s `BeachSim` pass) and long
+  wave checks into `tests/simWaves.test.ts` (shared untouched beach pass);
+  combined the two waterline castles in `tests/catchup.test.ts` into one live
+  sim pass.
+- **CI workflows:** `.github/workflows/ci.yml` runs Postgres 16 DB tests in
+  parallel (skipping the 6 non-DB suites already covered in PGlite) and runs
+  the Docker production image build/boot check as a parallel job with Buildx
+  GHA layer caching; `.github/workflows/perf.yml` caches the Playwright
+  Chromium binary.
+- **E2E tests (`scripts/lib/e2e.mjs`, `scripts/run-e2e.mjs`, `npm run e2e`):**
+  the default run uses low quality with rendering enabled. Set
+  `E2E_RENDER=0` to skip continuous WebGL draws and speed up the claw for
+  runs without screenshots. The fast frame loop starts after app setup.
+  The live-viewer test waits for the scheduled heartbeat. `npm run e2e` runs all 9 server E2E scripts over one shared
+  Chromium server, with 3 concurrent scripts by default. Set `E2E_JOBS` or
+  pass `--jobs` to choose a positive integer concurrency limit.
+- Browser startup failures now include recent page errors, script responses,
+  worker starts, and failed requests. Set `E2E_CHROMIUM_PATH` to run against
+  a local Chromium executable and `DEBUG_E2E=1` to stream test output.
+  Rendered tests pause existing tabs while another WebGL context initializes.
+- The shore E2E waits for the destination beach view and its label.
+  The multi-beach save race waits for the camera's pending beach transition
+  before holding a save response.

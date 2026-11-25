@@ -3,8 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createApp } from '../src/app.js';
 import { createRootApp } from '../src/rootApp.js';
-import { createPgliteDb, type Db } from '../src/db.js';
-import { migrate } from '../src/migrations.js';
+import { type Db } from '../src/db.js';
+import { openTestDb } from './testDb.js';
 
 // The root app (game API under /api + the web app) used to serve the SPA's
 // index.html for ANY unmatched GET, including unknown /api paths — so the
@@ -15,8 +15,7 @@ let root: ReturnType<typeof createRootApp>;
 let publicDir: string;
 
 beforeAll(async () => {
-  db = await createPgliteDb();
-  await migrate(db);
+  db = await openTestDb();
   const api = createApp(db, {
     googleClientIds: ['web'],
     appleClientIds: [],

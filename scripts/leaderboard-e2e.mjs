@@ -3,15 +3,8 @@
 // Cleo's star is the newest). The all-time board orders them by stars; Dot
 // opens it, stars Cleo's beach from the board, then visits Ana's from it.
 //   node scripts/leaderboard-e2e.mjs [screenshot.png]
-import { createRequire } from 'node:module';
+import { e2eUrl, openApp, openBrowser } from './lib/e2e.mjs';
 
-const require = createRequire(import.meta.url);
-let chromium;
-try {
-  ({ chromium } = require('playwright'));
-} catch {
-  ({ chromium } = await import('playwright'));
-}
 const URL_ = process.env.BEECH_URL ?? 'http://127.0.0.1:8787/';
 const shot = process.argv[2];
 let failed = 0;
@@ -20,14 +13,13 @@ const check = (cond, msg) => {
   if (!cond) failed++;
 };
 
-const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const { browser, close: closeBrowser } = await openBrowser();
 const page = await browser.newPage({ viewport: { width: 1100, height: 700 } });
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
-await page.goto(URL_ + '?nointro&fixedres&seed=1&nofinds');
-await page.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
+await openApp(page, e2eUrl(URL_, 'nointro&fixedres&seed=1&nofinds', { shots: Boolean(shot) }));
 
-const tag = Date.now() % 100000;
+const tag = `lb${Date.now() % 10000}${process.pid % 100}`;
 const names = { ana: `ana${tag}`, ben: `ben${tag}`, cleo: `cleo${tag}`, dot: `dot${tag}`, f1: `fanA${tag}`, f2: `fanB${tag}` };
 // sign in as someone, save once, and return their code
 const become = async (name, save = true) => {
@@ -70,14 +62,14 @@ check(label === names.ana, `rows name the owner (${label})`);
 // rising: all of these are this week's stars
 await page.click('.board-tabs button[data-board="rising"]');
 await page.waitForFunction(() => document.querySelector('.board-tabs button[data-board="rising"]').classList.contains('on'));
-await page.waitForFunction((c) => !!document.querySelector(`.board-row[data-code="${c}"]`), codes.cleo, { timeout: 5000 });
+await page.waitForFunction((c) => document.querySelector(`.board-row[data-code="${c}"] .board-count span`)?.textContent === '▲ 3', codes.ana, { timeout: 5000 });
 rows = ours(await order());
 check(rows.length === 3 && rows[0].code === codes.ana && rows[0].count === '▲ 3', `rising lists this week's stars (${rows.map((r) => r.count).join(' / ')})`);
 if (shot) await page.screenshot({ path: shot });
 
 // star Cleo's beach from the board
 await page.click('.board-tabs button[data-board="all"]');
-await page.waitForSelector(`button[data-act="board-star-${codes.cleo}"]`, { timeout: 5000 });
+await page.waitForFunction((c) => document.querySelector(`.board-row[data-code="${c}"] .board-count span`)?.textContent === '★ 1', codes.cleo, { timeout: 5000 });
 await page.click(`button[data-act="board-star-${codes.cleo}"]`);
 await page.waitForFunction((c) => window.__beech.neighbors().favorites.has(c), codes.cleo, { timeout: 5000 });
 check((await page.textContent(`button[data-act="board-star-${codes.cleo}"]`)) === '★', 'starred Cleo from the board');
@@ -90,9 +82,11 @@ await page.click('.board-close');
 await page.evaluate(() => window.__beech.setRail(true));
 await page.click('[data-act="inbox"]');
 await page.click('.board.open .hub-tabs [data-hub="leaderboard"]');
-await page.waitForFunction((c) => document.querySelector(`button[data-act="board-star-${c}"]`)?.textContent === '★', codes.cleo, { timeout: 5000 });
-rows = ours(await order());
-check(rows.map((r) => r.code).join() === [codes.ana, codes.cleo, codes.ben].join(), 'reloaded: Ana, then Cleo and Ben on 2 (Cleo newer)');
+await page.waitForFunction((expected) => {
+  const visible = Array.from(document.querySelectorAll('.board-row'), (row) => row.dataset.code);
+  return visible.filter((code) => expected.includes(code)).join() === expected.join();
+}, [codes.ana, codes.cleo, codes.ben], { timeout: 5000 });
+check(true, 'reloaded: Ana, then Cleo and Ben on 2 (Cleo newer)');
 
 // visit Ana's beach from the board
 await page.click(`button[data-act="board-visit-${codes.ana}"]`);
@@ -125,6 +119,6 @@ await page.waitForSelector('.board.open .board-signin', { timeout: 5000 });
 check((await page.$$('.board-row')).length === 0, 'signed out: no rows, just a sign-in button');
 
 check(errors.length === 0, `no page errors ${errors.join(' | ')}`);
-await browser.close();
+await closeBrowser();
 console.log(failed ? `${failed} FAILED` : 'LEADERBOARD E2E PASS');
 process.exit(failed ? 1 : 0);

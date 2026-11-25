@@ -14,6 +14,9 @@ import { diorama } from './live';
 import { beachById } from './locations';
 import { tideHeight } from './tides';
 
+// Saves and catch-up use the same object validation as the app's decoder.
+export { sanitizeObjects } from '../sim/sandCodec';
+
 export interface SavedCatchUp {
   /** the beach as the sea left it (sandCodec format) */
   bytes: Uint8Array;

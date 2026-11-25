@@ -6,21 +6,15 @@
 // beach is checked to be exactly as it was.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
-import { createPgDb, createPgliteDb, type Db } from '../src/db.js';
-import { migrate } from '../src/migrations.js';
+import { type Db } from '../src/db.js';
 import { beachBlob } from './beachBlob.js';
+import { openTestDb } from './testDb.js';
 
 let db: Db;
 let app: ReturnType<typeof createApp>;
 
 beforeAll(async () => {
-  if (process.env.TEST_DATABASE_URL) {
-    db = createPgDb({ url: process.env.TEST_DATABASE_URL });
-    await db.exec('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
-  } else {
-    db = await createPgliteDb();
-  }
-  await migrate(db);
+  db = await openTestDb();
   app = createApp(db, { googleClientIds: [], appleClientIds: [], allowedOrigins: [], devAuth: true });
 });
 afterAll(() => db.close());
@@ -131,6 +125,18 @@ describe('only the owner changes a beach', () => {
 });
 
 describe('what a save may hold', () => {
+  it('refuses a save containing objects the app would discard', async () => {
+    const p = await player('invalid-things');
+    const valid = beachBlob([{ item: 'rock' }]);
+    expect((await save(p, '/beach', valid)).status).toBe(200);
+    const before = await row(p.user.id);
+    const duplicate = beachBlob([{ item: 'rock' }, { item: 'rock', id: 1 }]);
+    const malformed = beachBlob([{ item: 'rock', size: -1 }]);
+    expect((await save(p, '/beach', duplicate)).status).toBe(400);
+    expect((await save(p, '/beach', malformed)).status).toBe(400);
+    expect(await row(p.user.id)).toEqual(before);
+  });
+
   it('counts the things on a beach itself, ignoring X-Beach-Items', async () => {
     const p = await player('counter');
     await db.query(

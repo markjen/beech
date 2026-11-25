@@ -1,15 +1,8 @@
 // Browser end-to-end test of neighbors against a local server (see docs/GCP.md):
 // Ana digs and saves; Ben puts Ana's beach on his left and sees it there.
 //   node scripts/neighbors-e2e.mjs [screenshot.png]
-import { createRequire } from 'node:module';
+import { e2eUrl, openApp, openBrowser } from './lib/e2e.mjs';
 
-const require = createRequire(import.meta.url);
-let chromium;
-try {
-  ({ chromium } = require('playwright'));
-} catch {
-  ({ chromium } = await import('playwright'));
-}
 const URL_ = process.env.BEECH_URL ?? 'http://127.0.0.1:8787/';
 const shot = process.argv[2];
 let failed = 0;
@@ -18,7 +11,7 @@ const check = (cond, msg) => {
   if (!cond) failed++;
 };
 
-const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const { browser, close: closeBrowser } = await openBrowser();
 const page = await browser.newPage({ viewport: { width: 1100, height: 700 } });
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
@@ -26,12 +19,12 @@ if (process.env.DEBUG_E2E)
   page.on('requestfinished', async (r) => {
     if (r.url().includes('/api/')) console.log('req', r.method(), new URL(r.url()).pathname, (await r.response())?.status(), r.method() === 'GET' && r.url().endsWith('/neighbors') ? (await (await r.response()).text()).slice(0, 90) : '');
   });
-await page.goto(URL_ + '?nointro&fixedres&seed=1&nofinds');
-await page.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
-await page.waitForTimeout(600);
+await openApp(page, e2eUrl(URL_, 'nointro&fixedres&seed=1&nofinds', { shots: Boolean(shot) }));
+await page.waitForTimeout(250);
 
 // Ana: sign in, dig a long trench, save
-const anaName = `ana${Date.now() % 100000}`;
+const tag = `nb${Date.now() % 10000}${process.pid % 100}`;
+const anaName = `ana${tag}`;
 await page.evaluate((n) => window.__beech.account().signInDev(n), anaName);
 await page.waitForFunction(() => window.__beech.sync().state === 'saved', null, { timeout: 15000 });
 await page.keyboard.press('Escape');
@@ -41,17 +34,17 @@ await page.mouse.move(260, 560);
 await page.mouse.down();
 for (let i = 0; i < 40; i++) {
   await page.mouse.move(260 + i * 8, 560 - i * 3);
-  await page.waitForTimeout(25);
+  await page.waitForTimeout(16);
 }
 await page.mouse.up();
-await page.waitForTimeout(500);
+await page.waitForTimeout(300);
 await page.evaluate(() => window.__beech.sync().flush());
 const anaCode = await page.evaluate(() => window.__beech.neighbors().api.get().then((n) => n.code));
 check(/^[A-Z2-9]{6}$/.test(anaCode), `Ana has a neighbor code (${anaCode})`);
 await page.evaluate(() => window.__beech.account().signOut());
 
 // Ben: sign in, ask Ana to be on his left through the settings sheet
-const benName = `ben${Date.now() % 100000}`;
+const benName = `ben${tag}`;
 await page.evaluate((n) => window.__beech.account().signInDev(n), benName);
 await page.waitForFunction(() => window.__beech.neighbors()?.state, null, { timeout: 15000 });
 // start from an empty left slot (earlier runs may have left one), and let
@@ -101,55 +94,70 @@ await page.waitForFunction((n) => window.__beech.neighbors()?.state?.left?.name 
 check(true, 'Ben added Ana as his left neighbor');
 check((await page.evaluate(() => window.__beech.neighbors().beachAt(1)?.name)) === anaName, "Ana's beach is next to his");
 
-// pan over to the left neighbor (world +X) and look
+// Finish loading the signed-in shore before moving the camera.
+await page.evaluate(() => window.__beech.neighbors().refresh());
 await page.evaluate(() => {
-  const b = window.__beech;
-  b.cam.halfH = 15;
-  b.cam.applyOrtho();
-  b.cam.camera.target.x = 17;
-  b.cam.camera.target.z = 0;
+  const app = window.__beech;
+  app.cam.halfH = 15;
+  app.cam.applyOrtho();
+  app.cam.goTo(app.neighbors().xFor(1), true);
+  app.setRail(true);
+  app.setPane('default');
 });
-// top-left status pane names Ana's beach with no floating name-tag pills
-await page.evaluate(() => { window.__beech.setRail(true); window.__beech.setPane('default'); });
-await page
-  .waitForFunction(
-    (n) => document.querySelector('.place')?.textContent?.includes(n),
-    anaName,
-    { timeout: 20000 },
-  )
-  .catch(() => {});
-const header = await page.textContent('.place');
-check(!!header && header.includes(anaName), `status pane names neighbor (${header})`);
+// The initial sign-in can still reset the camera while the shore is loading.
+await page.waitForFunction((name) => {
+  const app = window.__beech;
+  if (document.querySelector('.place')?.textContent?.includes(name)) return true;
+  const left = app.neighbors().xFor(1);
+  if (app.cam.focusX !== left) app.cam.goTo(left, true);
+  return false;
+}, anaName, { polling: 100, timeout: 20000 });
+check(true, "the status pane names Ana’s beach");
 check((await page.locator('.neighbor-tag').count()) === 0, 'no floating neighbor-tag pills');
 check((await page.evaluate(() => window.__beech.cam.maxX)) > 40, 'camera can pan over to the neighbor');
 if (shot) await page.screenshot({ path: shot });
 
 // live: Ana (on another device) puts a rock down and saves; Ben's view picks it up
 {
+  await page.waitForFunction((code) => window.__beech.neighbors().snapshot('left')?.who === code, anaCode);
   const before = await page.evaluate(() => window.__beech.neighbors().snapshot('left'));
   const ctx2 = await browser.newContext({ viewport: { width: 800, height: 600 } });
   const ana = await ctx2.newPage();
-  await ana.goto(URL_ + '?nointro&fixedres&seed=1&nofinds');
-  await ana.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
+  await openApp(ana, e2eUrl(URL_, 'nointro&fixedres&seed=1&nofinds'));
   await ana.evaluate((n) => window.__beech.account().signInDev(n), anaName);
-  await ana.waitForFunction(() => window.__beech.sync().state === 'saved', null, { timeout: 15000 });
+  await ana.waitForFunction(() => window.__beech.beachId() && window.__beech.sync().state === 'saved', null, { timeout: 15000 });
   await ana.evaluate(() => window.__beech.send({ type: 'placeObject', obj: { kind: 'rock', item: 'rock', x: 12, y: 27, angle: 0, size: 0.5, variant: 2 } }));
-  await ana.waitForTimeout(800);
-  await ana.evaluate(() => window.__beech.sync().flush());
+  await ana.waitForFunction(() => window.__beech.info().objects.some((object) => object.kind === 'rock' && !object.wild), null, { timeout: 15000 });
+  await ana.evaluate(() => {
+    const sync = window.__beech.sync();
+    // The fixture sends a worker message directly, bypassing the UI edit handler.
+    sync.markDirty();
+    return sync.flush();
+  });
   if (process.env.DEBUG_E2E) console.log('ana saved', await ana.evaluate(() => JSON.stringify({ state: window.__beech.sync().state, savedAt: window.__beech.sync().savedAt, objs: window.__beech.info().objects.filter((o) => !o.wild).length })));
   await ctx2.close();
-  await page.evaluate(() => window.__beech.neighbors().poll());
-  if (process.env.DEBUG_E2E) console.log('ben sees', JSON.stringify(await page.evaluate(() => window.__beech.neighbors().snapshot('left'))), 'before', JSON.stringify(before));
-  const after = await page.evaluate(() => window.__beech.neighbors().snapshot('left'));
-  check(
-    !!before && !!after && after.updatedAt > before.updatedAt && after.objects === before.objects + 1,
-    `Ben sees Ana's new save without reloading (${before?.objects} -> ${after?.objects} things)`,
-  );
+  await page.bringToFront();
+  await page.waitForFunction(() => !document.hidden, null, { polling: 100 });
+  try {
+    await page.waitForFunction(async ({ who, updatedAt }) => {
+      const app = window.__beech;
+      const shore = app.neighbors();
+      await shore.poll();
+      const current = shore.snapshot('left');
+      const beach = shore.beachAt(1);
+      const rock = beach && app.store().objectsOf(beach.id)?.some((o) => o.item === 'rock' && o.variant === 2 && !o.wild);
+      return current?.who === who && current.updatedAt > updatedAt && rock;
+    }, before, { polling: 1000, timeout: 20000 });
+  } catch (error) {
+    const after = await page.evaluate(() => window.__beech.neighbors().snapshot('left'));
+    throw new Error(`Neighbor save did not reach Ben (before ${JSON.stringify(before)}, after ${JSON.stringify(after)})`, { cause: error });
+  }
+  check(true, "Ben sees Ana’s newly saved rock without reloading");
 }
 
 // moving away removes it
 await page.evaluate(() => window.__beech.neighbors().api.remove('left').then(() => window.__beech.neighbors().refresh()));
-await page.waitForTimeout(300);
+await page.waitForTimeout(200);
 check((await page.evaluate(() => window.__beech.neighbors().state.left)) === null, 'moving away unlinks Ben');
 await page.evaluate(async (n) => {
   await window.__beech.account().signOut();
@@ -159,6 +167,6 @@ await page.waitForFunction(() => window.__beech.neighbors()?.state, null, { time
 check((await page.evaluate(() => window.__beech.neighbors().state.right)) === null, '...and Ana, both ends');
 
 check(errors.length === 0, `no page errors ${errors.join(' | ')}`);
-await browser.close();
+await closeBrowser();
 console.log(failed ? `${failed} FAILED` : 'NEIGHBORS E2E PASS');
 process.exit(failed ? 1 : 0);

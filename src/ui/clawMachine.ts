@@ -50,6 +50,8 @@ export class ClawMachine {
     private readonly api: PullApi,
     /** called with a won item id (to refresh the bag and pick it up) */
     private readonly won: (item: string, place: boolean) => void,
+    /** speed up the claw animation for automated E2E tests (?fast) */
+    private readonly fast = false,
   ) {
     this.root = document.createElement('div');
     this.root.className = 'claw';
@@ -158,7 +160,8 @@ export class ClawMachine {
   }
 
   private loop = (now: number) => {
-    const dt = Math.min(0.25, (now - this.last) / 1000 || 0);
+    const rawDt = Math.min(0.25, (now - this.last) / 1000 || 0);
+    const dt = this.fast ? rawDt * 15 : rawDt;
     this.last = now;
     this.step(dt);
     this.draw();

@@ -2,15 +2,8 @@
 // server (npm run server:dev, which has DEV_AUTH for /api/dev/grant):
 // one person on two devices, each running a different beach at the same time.
 //   node scripts/beaches-e2e.mjs
-import { createRequire } from 'node:module';
+import { e2eUrl, openApp, openBrowser, reloadApp } from './lib/e2e.mjs';
 
-const require = createRequire(import.meta.url);
-let chromium;
-try {
-  ({ chromium } = require('playwright'));
-} catch {
-  ({ chromium } = await import('playwright'));
-}
 const URL_ = process.env.BEECH_URL ?? 'http://127.0.0.1:8787/';
 let failed = 0;
 const check = (cond, msg) => {
@@ -18,7 +11,7 @@ const check = (cond, msg) => {
   if (!cond) failed++;
 };
 
-const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const { browser, close: closeBrowser } = await openBrowser();
 const errors = [];
 const name = `multi${Date.now() % 100000}`;
 
@@ -27,8 +20,7 @@ async function device(label) {
   const page = await ctx.newPage();
   page.on('pageerror', (e) => errors.push(`${label}: ${e.message}`));
   page.on('dialog', (d) => void d.accept(d.type() === 'prompt' ? `${label} beach` : undefined));
-  await page.goto(URL_ + '?nointro&quality=low&fixedres&seed=1&nofinds', { waitUntil: 'commit' });
-  await page.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
+  await openApp(page, e2eUrl(URL_, 'nointro&quality=low&fixedres&seed=1&nofinds'));
   await page.evaluate(() => window.__beech.engine.setHardwareScalingLevel(2));
   await page.evaluate((n) => window.__beech.account().signInDev(n), name);
   await page.waitForFunction(() => window.__beech.beachId() && window.__beech.sync().state === 'saved', null, { timeout: 20000 });
@@ -70,7 +62,9 @@ await a.evaluate(() => window.__beech.account().loadBeaches());
 await a.evaluate(() => window.__beech.sheet.show('beach'));
 await a.waitForSelector('button[data-act="new-beach"]', { timeout: 8000 });
 await a.evaluate(() => window.__beech.sheet.setTab('beach'));
-await a.click('button[data-act="new-beach"]');
+// The sheet redraws as the shore updates. Activate the visible button
+// in the same browser task that resolves it.
+await a.locator('button[data-act="new-beach"]:visible').evaluate((button) => button.click());
 await a.waitForFunction((h) => window.__beech.beachId() !== h && window.__beech.sync().state === 'saved', home, { timeout: 20000 });
 const second = await a.evaluate(() => window.__beech.beachId());
 await a.waitForTimeout(800);
@@ -136,6 +130,13 @@ const afterSecondUpdated = await b.evaluate(async (id) => {
 check((await b.evaluate(() => window.__beech.beachId())) === second, 'on B the waves moved with the view onto the second beach');
 check(afterSecondUpdated > beforeSecondUpdated, `editing the adjacent beach saved automatically into the second beach (${beforeSecondUpdated} -> ${afterSecondUpdated})`);
 
+// back home: the second beach is a snapshot again, edited through the store by its id
+await b.evaluate(() => window.__beech.cam.goTo(0, true));
+await b.waitForFunction((h) => window.__beech.beachId() === h, home, { timeout: 15000 });
+// Switching beaches can flush a pending save. Wait for it before holding
+// the response to the test edit, so the switch cannot wait on our route.
+await b.evaluate(() => window.__beech.store().flushAll());
+
 // Hold the response to the first save while the player edits the same beach again.
 let releaseSave;
 const waitForRelease = new Promise((resolve) => { releaseSave = resolve; });
@@ -149,9 +150,6 @@ await b.route(savePath, async (route) => {
   await waitForRelease;
   await route.fulfill({ response });
 });
-// back home: the second beach is a snapshot again, edited through the store by its id
-await b.evaluate(() => window.__beech.cam.goTo(0, true));
-await b.waitForFunction((h) => window.__beech.beachId() === h, home, { timeout: 15000 });
 await b.evaluate((id) => {
   window.__beech.neighbors().placeObject(id, { kind: 'rock', item: 'rock', x: 8, y: 3, size: 0.5, angle: 0, variant: 0 });
   void window.__beech.store().flushAll();
@@ -213,8 +211,7 @@ const crossed = await b.evaluate(async ({ homeHeight, neighborHeight, seam }) =>
 check(crossed.homeRaised && crossed.neighborRaised && Math.abs(crossed.focus - points.seam) < 1, 'one drag raised both beaches and kept the camera at the seam');
 
 // device A remembers which beach it was looking at after a reload (a view bookmark)
-await a.reload({ waitUntil: 'commit' });
-await a.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
+await reloadApp(a);
 await a.waitForFunction(() => window.__beech.beachId() && window.__beech.sync().state === 'saved', null, { timeout: 20000 });
 check((await a.evaluate(() => window.__beech.beachId())) === second, 'A still opens the second beach after a reload');
 
@@ -229,6 +226,6 @@ await a.waitForTimeout(800);
 check((await dug(a)) > homeDug * 0.8, 'removing the beach in view puts the waves back on the saved home beach');
 
 check(errors.length === 0, `no page errors ${errors.join(' | ')}`);
-await browser.close();
+await closeBrowser();
 console.log(failed ? `${failed} FAILED` : 'BEACHES E2E PASS');
 process.exit(failed ? 1 : 0);

@@ -152,7 +152,8 @@ async function boot() {
   let settings = loadSettings();
   const canvas = document.getElementById('scene') as HTMLCanvasElement;
   const uiRoot = document.getElementById('ui')!;
-  const engine = new Engine(canvas, true, {
+  const noRender = params.has('norender');
+  const engine = new Engine(canvas, !noRender, {
     stencil: false,
     preserveDrawingBuffer: true,
     powerPreference: 'high-performance',
@@ -1870,7 +1871,7 @@ async function boot() {
     }
   };
 
-  engine.runRenderLoop(() => {
+  const tickFrame = () => {
     const now = performance.now();
     if (settings.batterySaver) {
       skip = !skip;
@@ -1892,7 +1893,7 @@ async function boot() {
       sendSea();
     }
     updatePlace();
-    if (!document.hidden && !params.has('fixedres')) adaptResolution(dt);
+    if (!noRender && !document.hidden && !params.has('fixedres')) adaptResolution(dt);
 
     const palette = liveState.palette;
     gamepad.poll(dt);
@@ -1911,7 +1912,7 @@ async function boot() {
       const buf = pendingBuf;
       pendingBuf = null;
       picker.updateFromFrame(buf);
-      renderer.uploadFrame(buf);
+      if (!noRender) renderer.uploadFrame(buf);
       send({ type: 'return', buf }, [buf.buffer]);
     }
 
@@ -1972,8 +1973,18 @@ async function boot() {
       daylight: 1 - liveState.sky.night,
     });
 
-    scene.render();
-  });
+    if (noRender) {
+      // Keep camera & scene transform matrices fresh on CPU for ray picking
+      // and world-to-screen projection without triggering SwiftShader WebGL draws.
+      scene.activeCamera?.getViewMatrix(true);
+      scene.activeCamera?.getProjectionMatrix(true);
+      scene.updateTransformMatrix();
+    } else {
+      scene.render();
+    }
+  };
+
+  if (!noRender) engine.runRenderLoop(tickFrame);
 
   const onResize = () => {
     engine.resize();
@@ -2593,12 +2604,17 @@ async function boot() {
         return { name: res.to.name };
       },
     });
-    const claw = new ClawMachine(uiRoot, new PullApi(acct), (item, place) => {
-      unlockSteamAchievement('CLAW_WIN');
-      void loadOwned().then(() => {
-        if (place) inventory.select(item);
-      });
-    });
+    const claw = new ClawMachine(
+      uiRoot,
+      new PullApi(acct),
+      (item, place) => {
+        unlockSteamAchievement('CLAW_WIN');
+        void loadOwned().then(() => {
+          if (place) inventory.select(item);
+        });
+      },
+      params.has('fast'),
+    );
     clawMachine = claw;
     claw.onClosed = () => guide.mark('claw');
     // the shop: paid through Apple / Google in the apps (src/net/shop.ts)
@@ -2825,7 +2841,10 @@ async function boot() {
       nv.onChange((n) => {
         inboxPanel.setSummary(acct.user ? (n?.inbox ?? { unread: 0, latest: null }) : null);
         const latest = n?.inbox?.latest;
-        if (!latest) return;
+        if (!latest) {
+          if (n?.inbox && announced < 0) announced = 0;
+          return;
+        }
         if (announced >= 0 && latest.id > announced && ANNOUNCE.has(latest.kind) && !inboxPanel.isOpen) {
           showActionToast(uiRoot, announce(latest.kind, latest.name), 'open', () => void inboxPanel.open(), 10000);
           if (latest.kind === 'visit' || latest.kind === 'gift' || latest.kind === 'invite_settled') refreshOwned();
@@ -2865,7 +2884,7 @@ async function boot() {
           }
         }
       }
-      if (u) return;
+      if (u || acct.user) return;
       // a sign-up from a plain visit link counts as an invite of that beach's owner
       if (visitCode && !readInvite()) writeInvite(visitCode);
       const code = visitCode ?? inviteFromLink;
@@ -2875,7 +2894,7 @@ async function boot() {
       }
       try {
         await nv.visit(code);
-        pendingVisit = null;
+        if (acct.user) return;
         history.replaceState(null, '', location.pathname + withoutVisitParam(location.search) + location.hash);
         cam.goTo(0, true);
       } catch {
@@ -3031,6 +3050,11 @@ async function boot() {
   }
   // start seated (TV / ?view=chair) once everything the view switch touches exists
   if (tv || params.get('view') === 'chair') cam.setMode('chair', false);
+  // The test loop reads state initialized by both account and sandbox setup.
+  if (noRender) {
+    tickFrame();
+    window.setInterval(tickFrame, 33);
+  }
   document.body.dataset.ready = '1';
 }
 
@@ -3039,6 +3063,7 @@ registerServiceWorker();
 boot().catch((err) => {
   console.error(err);
   reportError('boot', err, { source: 'main:boot' });
+  document.body.dataset.bootError = '1';
   document.body.innerHTML = `<p style="font-family:sans-serif;padding:2em;color:#6b5a6e">Sorry — this device couldn't start the beach (${String(
     err?.message ?? err,
   )}).</p>`;

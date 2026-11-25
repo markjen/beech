@@ -859,7 +859,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     // server's catch-up, so it's refused.
     let placed: Record<string, number>;
     try {
-      const info = inspectBlob(bytes);
+      const info = inspectBlob(bytes, { strictObjects: true });
       if (info.nx !== nx || info.ny !== ny) fail(400, 'grid size does not match the saved beach');
       placed = info.items;
     } catch (e) {

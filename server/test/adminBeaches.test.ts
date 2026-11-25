@@ -6,8 +6,8 @@ import { deflateSync } from 'node:zlib';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createAdminApp } from '../src/adminApp.js';
 import { createApp } from '../src/app.js';
-import { createPgDb, createPgliteDb, type Db } from '../src/db.js';
-import { migrate } from '../src/migrations.js';
+import { type Db } from '../src/db.js';
+import { openTestDb } from './testDb.js';
 
 let db: Db;
 let app: ReturnType<typeof createApp>;
@@ -15,13 +15,7 @@ let admin: ReturnType<typeof createAdminApp>;
 const CLI = 'cli-token-for-beaches';
 
 beforeAll(async () => {
-  if (process.env.TEST_DATABASE_URL) {
-    db = createPgDb({ url: process.env.TEST_DATABASE_URL });
-    await db.exec('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
-  } else {
-    db = await createPgliteDb();
-  }
-  await migrate(db);
+  db = await openTestDb();
   app = createApp(db, { googleClientIds: [], appleClientIds: [], allowedOrigins: [], devAuth: true });
   admin = createAdminApp(db, {
     googleClientId: 'web',

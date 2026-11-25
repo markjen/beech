@@ -3,9 +3,9 @@ import { createHash, createHmac } from 'node:crypto';
 import { createApp } from '../src/app.js';
 import { ADMIN_COOKIE, createAdminApp } from '../src/adminApp.js';
 import type { VerifiedIdentity } from '../src/auth.js';
-import { createPgliteDb, type Db } from '../src/db.js';
+import { type Db } from '../src/db.js';
 import { claimCreditPurchase } from '../src/giftCards.js';
-import { migrate } from '../src/migrations.js';
+import { openTestDb } from './testDb.js';
 
 let db: Db;
 /** the server's clock in these tests: real time plus however far a test moved it on */
@@ -25,8 +25,7 @@ const PEPPER = 'test-pepper';
 const CLI_TOKEN = 'cli-secret-token';
 
 beforeAll(async () => {
-  db = await createPgliteDb();
-  await migrate(db);
+  db = await openTestDb();
   app = createApp(db, {
     googleClientIds: ['web'],
     appleClientIds: [],

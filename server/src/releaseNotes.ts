@@ -25,6 +25,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       'The toolbar is one column: Inbox, Hand, Dirt, Bag, Store, View and Manage, with Undo just above the ×. It always opens on the hand. On a phone on its side it lies along the bottom.',
       'All the dirt tools — dig, build up, smooth, flatten, vacuum, bulldozer and the two sandcastle molds — are under one Dirt button.',
       'The top-left status pane shows whose beach you’re on, the time and the swell, without floating name pills over the sand. ⌄ adds the tide, the wave strength, saving, and actions while you’re on someone else’s beach (leave something, ask to be neighbors, feed their pet, star, and the way home); × tucks it away to an “i”.',
+      'Invite links keep you on the beach you came to visit after signing in. A first delivery to an empty inbox now shows a notice on the beach.',
       'Everything social is behind the Inbox: tabs for your inbox, the leaderboard, your starred beaches and visiting by code. Neighbor requests put a dot on the Inbox button.',
       'The Store has its own button; the claw and capsule machines are tiles in the Bag, which now opens in the middle of the screen.',
       'The View button cycles chair, isometric, and a new reverse view looking back at the beach from the sea.',

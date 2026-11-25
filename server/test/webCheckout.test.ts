@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
-import { createPgliteDb, type Db } from '../src/db.js';
-import { migrate } from '../src/migrations.js';
+import { type Db } from '../src/db.js';
 import { payStationUrl, signWebhook, tokenBody, verifyWebhookSignature, xsollaFromEnv, type TokenRequest, type XsollaConfig } from '../src/xsolla.js';
+import { openTestDb } from './testDb.js';
 
 // Web checkout through Xsolla (docs/WEB_PAYMENTS.md): the token call is
 // faked; webhooks are signed here exactly as Xsolla signs them.
@@ -18,8 +18,7 @@ let tokenFails = false;
 let nextXsollaOrder = 9000;
 
 beforeAll(async () => {
-  db = await createPgliteDb();
-  await migrate(db);
+  db = await openTestDb();
   app = createApp(db, {
     googleClientIds: [],
     appleClientIds: [],

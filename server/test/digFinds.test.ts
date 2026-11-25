@@ -1,9 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
-import { createPgDb, createPgliteDb, type Db } from '../src/db.js';
-import { migrate } from '../src/migrations.js';
+import { type Db } from '../src/db.js';
 import { VENDING_SETS } from '../src/vending.js';
 import { DIG_FIND_CHANCE, DIG_FIND_DAILY_CAP, DIG_FIND_ROLL_COOLDOWN_MS, digDraw } from '../src/digFinds.js';
+import { openTestDb } from './testDb.js';
 
 let db: Db;
 /** the server's clock in these tests: real time plus however far a test moved it on */
@@ -13,13 +13,7 @@ let forcedRand: (() => number) | null = null;
 let app: ReturnType<typeof createApp>;
 
 beforeAll(async () => {
-  if (process.env.TEST_DATABASE_URL) {
-    db = createPgDb({ url: process.env.TEST_DATABASE_URL });
-    await db.exec('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
-  } else {
-    db = await createPgliteDb();
-  }
-  await migrate(db);
+  db = await openTestDb();
   app = createApp(db, {
     googleClientIds: ['web'],
     appleClientIds: [],

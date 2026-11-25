@@ -4,10 +4,10 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
-import { createPgDb, createPgliteDb, type Db } from '../src/db.js';
-import { migrate } from '../src/migrations.js';
+import { type Db } from '../src/db.js';
 import { createSharePageHandler, escapeHtml, injectShareMeta, shareMetaTags } from '../src/shareMeta.js';
 import { beachBlob } from './beachBlob.js';
+import { openTestDb } from './testDb.js';
 
 describe('share meta tags', () => {
   it('escapes a hostile name', () => {
@@ -50,13 +50,7 @@ describe('share page handler', () => {
   let anaCode: string;
 
   beforeAll(async () => {
-    if (process.env.TEST_DATABASE_URL) {
-      db = createPgDb({ url: process.env.TEST_DATABASE_URL });
-      await db.exec('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
-    } else {
-      db = await createPgliteDb();
-    }
-    await migrate(db);
+    db = await openTestDb();
     const api = createApp(db, { googleClientIds: [], appleClientIds: [], allowedOrigins: [], devAuth: true });
     const dir = await mkdtemp(path.join(tmpdir(), 'beech-share-'));
     indexPath = path.join(dir, 'index.html');

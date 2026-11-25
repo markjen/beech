@@ -126,24 +126,32 @@ describe('the catch-up (docs/LIVE_SIM.md)', () => {
 
   it('roughly matches the live sim on a waterline castle', () => {
     // two minutes at a still tide: the live sim's waves knock the top off;
-    // the catch-up does the same castle the same way, a little more gently
-    for (const y of [SHORE - 1, SHORE]) {
-      const d = blank();
-      castle(d, 16, y);
-      const sim = new BeachSim(g, 1);
-      sim.setSea(0, 1);
-      sim.loadDelta(d, []);
-      for (let s = 0; s < 30 * 120; s++) sim.step(1 / 30);
-      const live = peak(sim.sandDelta(), 16, y);
-      const cu = peak(catchUp({ nx: g.nx, ny: g.ny, delta: d, objects: [], tide: () => 0, waves: 1, from: 0, to: 120000 }).delta, 16, y);
+    // the catch-up does the same castle the same way, a little more gently.
+    // Both castles sit on one beach (12 m apart alongshore, radius 1 m) so one
+    // 2-minute live pass checks both depths without interference.
+    const spots: [number, number][] = [
+      [10, SHORE - 1],
+      [22, SHORE],
+    ];
+    const d = blank();
+    for (const [x, y] of spots) castle(d, x, y);
+    const sim = new BeachSim(g, 1);
+    sim.setSea(0, 1);
+    sim.loadDelta(d, []);
+    for (let s = 0; s < 30 * 120; s++) sim.step(1 / 30);
+    const liveDelta = sim.sandDelta();
+    const cuDelta = catchUp({ nx: g.nx, ny: g.ny, delta: d, objects: [], tide: () => 0, waves: 1, from: 0, to: 120000 }).delta;
+    for (const [x, y] of spots) {
+      const live = peak(liveDelta, x, y);
+      const cu = peak(cuDelta, x, y);
       expect(live).toBeLessThan(0.4);
       expect(cu).toBeLessThan(0.4);
       expect(Math.abs(cu - live)).toBeLessThan(0.15);
     }
     // up the beach, out of the swash: neither touches it
-    const d = blank();
-    castle(d, 16, SHORE + 3);
-    const cu = catchUp({ nx: g.nx, ny: g.ny, delta: d, objects: [], tide: () => 0, waves: 1, from: 0, to: 120000 });
+    const dry = blank();
+    castle(dry, 16, SHORE + 3);
+    const cu = catchUp({ nx: g.nx, ny: g.ny, delta: dry, objects: [], tide: () => 0, waves: 1, from: 0, to: 120000 });
     expect(peak(cu.delta, 16, SHORE + 3)).toBeCloseTo(0.5, 5);
   }, 120000);
 });

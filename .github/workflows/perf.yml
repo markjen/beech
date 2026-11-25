@@ -44,10 +44,20 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      - name: Cache Playwright Chromium
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-1.63.0-${{ runner.os }}
       - name: Headless Chromium (Playwright, pinned)
         run: |
           npm install --no-save playwright@1.63.0
-          npx playwright install --with-deps chromium
+          if [ "${{ steps.pw-cache.outputs.cache-hit }}" = "true" ]; then
+            npx playwright install-deps chromium
+          else
+            npx playwright install --with-deps chromium
+          fi
       - name: Last results on main (to compare against)
         env:
           GH_TOKEN: ${{ github.token }}

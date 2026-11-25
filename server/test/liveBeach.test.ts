@@ -1,9 +1,9 @@
 import { deflateSync, inflateSync } from 'node:zlib';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
-import { createPgDb, createPgliteDb, type Db } from '../src/db.js';
+import { type Db } from '../src/db.js';
 import { liveConfig } from '../src/liveBeach.js';
-import { migrate } from '../src/migrations.js';
+import { openTestDb } from './testDb.js';
 
 // Live beaches (docs/LIVE_SIM.md): a beach read after a gap is caught up first.
 
@@ -15,13 +15,7 @@ let app: ReturnType<typeof createApp>;
 let other: ReturnType<typeof createApp>;
 
 beforeAll(async () => {
-  if (process.env.TEST_DATABASE_URL) {
-    db = createPgDb({ url: process.env.TEST_DATABASE_URL });
-    await db.exec('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
-  } else {
-    db = await createPgliteDb();
-  }
-  await migrate(db);
+  db = await openTestDb();
   app = createApp(db, cfg);
   // a second server instance on the same database
   other = createApp(db, cfg);
