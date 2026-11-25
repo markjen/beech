@@ -248,12 +248,16 @@ export const FOOTPRINTS_PER_STROKE_MAX = 100;
 export const BEACH_STORE = {
   /** beaches kept beyond the ones in view, before the least recently used goes (about 1 MB each, more once edited) */
   capacity: 12,
+  /** other people's beaches kept on the device as last fetched (IndexedDB; roughly 50–300 KB each) */
+  diskCapacity: 40,
   /** save an edited beach this long after the last change (ms) */
   saveDelayMs: 4000,
   /** after a failed save, try again this much later (ms) */
   retryMs: 30000,
   /** the view must be this close to another beach's centre (m) before the waves move there */
   liveSwitchM: 10,
+  /** when the waves move onto a beach, ease from its snapshot's water to the simulation's over this long (ms) */
+  liveEaseMs: 1200,
 };
 
 /** The sky over the shore: each beach shows its own real place's light. */

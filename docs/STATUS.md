@@ -320,6 +320,10 @@ accepted the repo's default branch, so the deploy job ran only there.
   (`beech.activeBeach.v1` is gone), so different devices can still watch
   different beaches. The shore API sends each beach's `id`. Switching accounts
   keeps the device beach separate from sand saved to an account.
+  Other people's beaches are kept on the device too (IndexedDB, by id,
+  checked against the shore's save time), so a reload or re-anchor draws
+  them without refetching; when the waves move onto a beach its snapshot's
+  water eases into the simulation's (`BEACH_STORE.liveEaseMs`).
 - Neighbors, requests and codes in settings follow the selected beach
   (`?beach=`); the shore is laid out around an anchor (home, a beach you
   went to, or one you're visiting). Putting one of your own beach codes next to another links them

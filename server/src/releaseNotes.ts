@@ -19,6 +19,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     date: '2026-11-25',
     title: 'Live beaches, visitors, your inbox, new controls, and sandcastle molds',
     changes: [
+      'Beaches along the shore you’ve already seen show up right away after a reload, and when the sea comes alive on another of your beaches it now settles in smoothly instead of jumping.',
       'Fixed some rare timing problems: a crab could be befriended for one snack less if you picked up your last snack at the same moment, a visitor could get two free pet feeds in a day, a save from a device that had just lost editing could still go through, and two beaches could end up as each other’s neighbors on both sides.',
       'Free things in the shop: some shop pieces can now be free. Tap Free and it goes straight into your bag, on any device.',
       'Paying by card in the web shop now works on more mobile connections.',

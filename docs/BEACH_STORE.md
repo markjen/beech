@@ -55,6 +55,37 @@ switch, restore and save paths spent most of their code keeping them in step
    rest, never one that is in view, bound to the worker, dirty, saving or
    loading. A dropped beach is fetched again when it comes back into view.
 
+## Snapshots on the device
+
+Other people's beaches are also kept on the device as last fetched
+(`src/net/snapshotCache.ts`, IndexedDB, at most `BEACH_STORE.diskCapacity`,
+least recently used first out). The store's backend is wrapped
+(`withSnapshots` in `src/net/storeBackends.ts`): when the store doesn't hold
+a beach and the shore's `updatedAt` for it matches the kept copy, the kept
+bytes are used and nothing is fetched; otherwise it's fetched and the new
+bytes are kept. So a page reload, or a re-anchor after the in-memory LRU let
+a beach go, draws beaches you've seen at once. Rules:
+
+- Only other people's beaches: yours (and `local`) always come from the
+  server or the device beach.
+- A reload (the store already holds the beach: a live viewer saw the
+  version move on, a restore, a catch-up) always goes to the server; the
+  backend is told so (`load(ref, { reload })`).
+- Offline, the kept copy stands in however old it is; the next shore refresh
+  marks it stale and it's fetched again.
+- Signing out clears it (a shared device). Production build only.
+
+## Easing the waves onto a beach
+
+When the waves move onto a beach that was drawn as a snapshot, the live
+renderer starts with that snapshot's water (analytic waves over still sand)
+and eases to the simulation's over `BEACH_STORE.liveEaseMs`, instead of a
+one-frame swap. The shader's `staticWater` is a 0–1 blend (a uniform, so
+the branch is coherent; between 0 and 1 only during the ease), and linked
+neighbours see each other's blend through `negStatic` / `posStatic`. The
+beach the waves left is drawn as a snapshot at once (there's no simulated
+water to keep for it).
+
 ## Per-device view memory
 
 Instead of an active beach, a device remembers which beach was in front of
@@ -75,6 +106,9 @@ more, the shore anchors at home.
 - `tests/beachStore.test.ts`: load de-duplication, unsaved edits survive a
   reload, revisions across an in-flight save, LRU eviction skips retained /
   dirty / bound beaches, error handling per id, history parking.
+- `tests/snapshotCache.test.ts`: a new store (a page reload) draws a kept
+  beach without a fetch, newer saves and reloads go to the server, offline
+  fallback, never your own beaches, LRU.
 - `tests/beachSync.test.ts`: fencing, and that rebinding hands sand and undo
   history over through the store without a refetch.
 - The e2e scripts use `__beech.store()`, `__beech.liveBeach()` and

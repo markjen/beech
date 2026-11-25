@@ -34,8 +34,15 @@ await page.waitForTimeout(300);
 const d0 = await dug();
 // the tab goes to the back: it saves now
 await page.evaluate(() => { Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true }); document.dispatchEvent(new Event('visibilitychange')); });
-await page.waitForTimeout(600);
+// (the worker read and encoding can take a few seconds in a slow container)
+await page.waitForFunction(() => !window.__beech.store().isDirty('local'), null, { timeout: 15000 }).catch(() => {});
 await open();
+// the picker has the sand once the worker's first frame of the kept beach lands
+await page.waitForFunction((lim) => {
+  const b = window.__beech; let d = 0;
+  for (let k = 0; k < b.rest.length; k++) if (b.rest[k] > 0.5) d += Math.abs(b.picker.sand[k] - b.rest[k]);
+  return d > lim;
+}, d0 * 0.7, { timeout: 10000 }).catch(() => {});
 const d1 = await dug();
 check(d0 > 50 && d1 > d0 * 0.7, `the beach is kept on the device: dug ${d0.toFixed(1)}, after a reload ${d1.toFixed(1)}`);
 // a checkpoint, with a thumbnail
