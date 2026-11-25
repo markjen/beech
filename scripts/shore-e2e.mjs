@@ -138,8 +138,11 @@ await page.click(`button[data-act="visit-${codes.cleo}"]`);
 await page.waitForFunction((n) => window.__beech.neighbors().visiting?.name === n, names.cleo, { timeout: 15000 });
 check(true, 'visited Cleo from favorites');
 await page.click('.shore-bar .sb-home');
-await page.waitForFunction(() => window.__beech.neighbors().visiting === null && window.__beech.neighbors().ownVisible, null, { timeout: 15000 });
-check((await page.evaluate(() => window.__beech.neighbors().beachAt(1)?.name)) === names.ana, 'home: Ana is next door again');
+await page.waitForFunction((name) => {
+  const shore = window.__beech.neighbors();
+  return shore.visiting === null && shore.ownVisible && shore.beachAt(1)?.name === name;
+}, names.ana, { timeout: 15000 });
+check(true, 'home: Ana is next door again');
 
 // signed out: other sections of the public shore still render beside the empty beach
 await page.evaluate(() => window.__beech.account().signOut());

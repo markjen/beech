@@ -1185,7 +1185,7 @@ the HUD layout in the section above.
 - **E2E tests (`scripts/lib/e2e.mjs`, `scripts/run-e2e.mjs`, `npm run e2e`):**
   the default run uses low quality with rendering enabled. Set
   `E2E_RENDER=0` to skip continuous WebGL draws and speed up the claw for
-  runs without screenshots. The live-viewer test waits for the scheduled
-  heartbeat. `npm run e2e` runs all 9 server E2E scripts over one shared
+  runs without screenshots. The fast frame loop starts after app setup.
+  The live-viewer test waits for the scheduled heartbeat. `npm run e2e` runs all 9 server E2E scripts over one shared
   Chromium server, with 3 concurrent scripts by default. Set `E2E_JOBS` or
   pass `--jobs` to choose a positive integer concurrency limit.

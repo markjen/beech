@@ -1765,12 +1765,7 @@ async function boot() {
     }
   };
 
-  if (noRender) {
-    tickFrame();
-    window.setInterval(tickFrame, 33);
-  } else {
-    engine.runRenderLoop(tickFrame);
-  }
+  if (!noRender) engine.runRenderLoop(tickFrame);
 
   const onResize = () => {
     engine.resize();
@@ -2795,6 +2790,11 @@ async function boot() {
   }
   // start seated (TV / ?view=chair) once everything the view switch touches exists
   if (tv || params.get('view') === 'chair') cam.setMode('chair', false);
+  // The test loop reads state initialized by both account and sandbox setup.
+  if (noRender) {
+    tickFrame();
+    window.setInterval(tickFrame, 33);
+  }
   document.body.dataset.ready = '1';
 }
 

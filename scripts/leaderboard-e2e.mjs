@@ -63,14 +63,14 @@ check(label === names.ana, `rows name the owner (${label})`);
 // rising: all of these are this week's stars
 await page.click('.board-tabs button[data-board="rising"]');
 await page.waitForFunction(() => document.querySelector('.board-tabs button[data-board="rising"]').classList.contains('on'));
-await page.waitForFunction((c) => !!document.querySelector(`.board-row[data-code="${c}"]`), codes.cleo, { timeout: 5000 });
+await page.waitForFunction((c) => document.querySelector(`.board-row[data-code="${c}"] .board-count span`)?.textContent === '▲ 3', codes.ana, { timeout: 5000 });
 rows = ours(await order());
 check(rows.length === 3 && rows[0].code === codes.ana && rows[0].count === '▲ 3', `rising lists this week's stars (${rows.map((r) => r.count).join(' / ')})`);
 if (shot) await page.screenshot({ path: shot });
 
 // star Cleo's beach from the board
 await page.click('.board-tabs button[data-board="all"]');
-await page.waitForSelector(`button[data-act="board-star-${codes.cleo}"]`, { timeout: 5000 });
+await page.waitForFunction((c) => document.querySelector(`.board-row[data-code="${c}"] .board-count span`)?.textContent === '★ 1', codes.cleo, { timeout: 5000 });
 await page.click(`button[data-act="board-star-${codes.cleo}"]`);
 await page.waitForFunction((c) => window.__beech.neighbors().favorites.has(c), codes.cleo, { timeout: 5000 });
 check((await page.textContent(`button[data-act="board-star-${codes.cleo}"]`)) === '★', 'starred Cleo from the board');
@@ -83,9 +83,11 @@ await page.click('.board-close');
 await page.evaluate(() => window.__beech.setRail(true));
 await page.click('[data-act="inbox"]');
 await page.click('.board.open .hub-tabs [data-hub="leaderboard"]');
-await page.waitForFunction((c) => document.querySelector(`button[data-act="board-star-${c}"]`)?.textContent === '★', codes.cleo, { timeout: 5000 });
-rows = ours(await order());
-check(rows.map((r) => r.code).join() === [codes.ana, codes.cleo, codes.ben].join(), 'reloaded: Ana, then Cleo and Ben on 2 (Cleo newer)');
+await page.waitForFunction((expected) => {
+  const visible = Array.from(document.querySelectorAll('.board-row'), (row) => row.dataset.code);
+  return visible.filter((code) => expected.includes(code)).join() === expected.join();
+}, [codes.ana, codes.cleo, codes.ben], { timeout: 5000 });
+check(true, 'reloaded: Ana, then Cleo and Ben on 2 (Cleo newer)');
 
 // visit Ana's beach from the board
 await page.click(`button[data-act="board-visit-${codes.ana}"]`);

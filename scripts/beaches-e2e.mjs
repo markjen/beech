@@ -161,9 +161,7 @@ const points = await b.evaluate(() => {
   const neighbor = beech.neighbors();
   const seam = neighbor.xFor(1) / 2;
   beech.cam.goTo(seam, true);
-  beech.scene.activeCamera?.getViewMatrix(true);
-  beech.scene.activeCamera?.getProjectionMatrix(true);
-  beech.scene.updateTransformMatrix();
+  beech.scene.render();
   const camera = beech.scene.activeCamera;
   const { clientWidth, clientHeight } = document.querySelector('canvas');
   const V = camera.position.constructor;
@@ -185,10 +183,10 @@ const points = await b.evaluate(() => {
 });
 await b.mouse.move(...points.from);
 await b.mouse.down();
-await b.waitForTimeout(300);
+await b.waitForTimeout(400);
 await b.mouse.move(...points.to, { steps: 12 });
 await b.waitForFunction((id) => window.__beech.account().beachId === id, second, { timeout: 15000 });
-await b.waitForTimeout(450);
+await b.waitForTimeout(650);
 await b.mouse.up();
 await b.evaluate(() => window.__beech.sync().flush());
 const crossed = await b.evaluate(async ({ homeHeight, neighborHeight, seam }) => {
