@@ -207,7 +207,6 @@ export class Account {
     });
     const user = await this.session(res);
     this.beaches = [];
-    this.beachId = null;
     return user;
   }
 
@@ -231,7 +230,6 @@ export class Account {
     writeToken(null);
     this.user = null;
     this.beaches = [];
-    this.beachId = null;
     this.emit();
   }
 
@@ -240,7 +238,6 @@ export class Account {
     if (!res.ok && res.status !== 401) throw new ApiError(res.status, 'could not delete the account');
     void nativeSignOut();
     this.beaches = [];
-    this.beachId = null;
     this.token = null;
     this.editToken = null;
     writeToken(null);
@@ -256,22 +253,30 @@ export class Account {
   }
 
   // ---------------------------------------------------------------- my beaches
-  /**
-   * The beach this device shows and simulates (one of yours). Each device
-   * remembers its own, so a phone and a TV can each run a different beach.
-   * null until your beaches have loaded: then it's your home beach.
-   */
-  beachId: string | null = null;
+  // There is no "current" beach here (docs/BEACH_STORE.md): everything that
+  // reads or writes a beach names its id. Which beaches are in front of you
+  // is the view's business; their sand is the BeachStore's.
   /** your beaches, as last loaded */
   beaches: MyBeach[] = [];
   allowance = 1;
-  private beachListeners: ((id: string | null) => void)[] = [];
+  private beachListeners: ((beaches: MyBeach[]) => void)[] = [];
 
-  onBeach(fn: (id: string | null) => void): void {
+  /** Your beaches were (re)loaded: names, links, allowance. */
+  onBeaches(fn: (beaches: MyBeach[]) => void): void {
     this.beachListeners.push(fn);
   }
 
-  /** Load your beaches and pick this device's one (as remembered, else home). */
+  /** Your home beach (null until your beaches have loaded). */
+  get home(): MyBeach | null {
+    return this.beaches.find((b) => b.home) ?? this.beaches[0] ?? null;
+  }
+
+  /** One of yours, by id. */
+  mine(id: string | null | undefined): MyBeach | undefined {
+    return id ? this.beaches.find((b) => b.id === id) : undefined;
+  }
+
+  /** Load your beaches. */
   async loadBeaches(): Promise<MyBeach[]> {
     const who = this.user?.id;
     const res = await this.call('/api/beaches/mine');
@@ -281,27 +286,8 @@ export class Account {
     if (this.user?.id !== who) return this.beaches;
     this.beaches = data.beaches;
     this.allowance = data.allowance;
-    if (!this.beachId || !this.beaches.some((b) => b.id === this.beachId)) {
-      const remembered = readActive(this.user?.id);
-      const pick = this.beaches.find((b) => b.id === remembered) ?? this.beaches.find((b) => b.home) ?? this.beaches[0];
-      this.setBeach(pick?.id ?? null);
-    } else {
-      // same beach, fresh list (names, links, allowance): let the panels redraw
-      for (const fn of this.beachListeners) fn(this.beachId);
-    }
+    for (const fn of this.beachListeners) fn(this.beaches);
     return this.beaches;
-  }
-
-  /** Show and simulate this beach on this device. */
-  setBeach(id: string | null): void {
-    if (id === this.beachId) return;
-    this.beachId = id;
-    if (this.user && id) writeActive(this.user.id, id);
-    for (const fn of this.beachListeners) fn(id);
-  }
-
-  get beach(): MyBeach | undefined {
-    return this.beaches.find((b) => b.id === this.beachId);
   }
 
   async createBeach(name: string, location: string): Promise<MyBeach> {
@@ -329,13 +315,15 @@ export class Account {
   async removeBeach(id: string): Promise<void> {
     const res = await this.call(`/api/beaches/mine/${id}`, { method: 'DELETE', headers: { ...this.editHeaders() } });
     if (!res.ok) throw await errorOf(res, 'could not remove that beach');
-    if (this.beachId === id) this.beachId = null;
     await this.loadBeaches();
   }
 
-  /** the sand endpoint for a beach (this device's beach by default, or home before they've loaded) */
-  private sandPath(beachId?: string | null): string {
-    const id = beachId ?? this.beachId;
+  /** a beach's own endpoints (null: your home, before your beaches have loaded) */
+  private beachPath(id: string | null): string {
+    return id ? `/api/beaches/mine/${id}` : '/api/beach';
+  }
+
+  private sandPath(id: string | null): string {
     return id ? `/api/beaches/mine/${id}/sand` : '/api/beach';
   }
 
@@ -343,28 +331,25 @@ export class Account {
    * This app has the beach open and is simulating it (docs/LIVE_SIM.md): the
    * server holds off its catch-up. Returns the beach's epoch now.
    */
-  async here(): Promise<{ epoch: number; watched?: boolean } | null> {
-    const base = this.beachId ? `/api/beaches/mine/${this.beachId}` : '/api/beach';
-    const res = await this.call(`${base}/here`, { method: 'POST' });
+  async here(id: string | null): Promise<{ epoch: number; watched?: boolean } | null> {
+    const res = await this.call(`${this.beachPath(id)}/here`, { method: 'POST' });
     if (!res.ok) return null;
     return (await res.json()) as { epoch: number; watched?: boolean };
   }
 
   /** What the sea did to this beach since its owner last looked (docs/LIVE_SIM.md), or null. */
-  async away(): Promise<AwaySummary | null> {
-    const base = this.beachId ? `/api/beaches/mine/${this.beachId}` : '/api/beach';
-    const res = await this.call(`${base}/away`);
+  async away(id: string | null): Promise<AwaySummary | null> {
+    const res = await this.call(`${this.beachPath(id)}/away`);
     if (!res.ok) return null;
     return ((await res.json()) as { away: AwaySummary | null }).away;
   }
 
   /** The owner has seen it: don't show it again. */
-  async awaySeen(): Promise<void> {
-    const base = this.beachId ? `/api/beaches/mine/${this.beachId}` : '/api/beach';
-    await this.call(`${base}/away/seen`, { method: 'POST' });
+  async awaySeen(id: string | null): Promise<void> {
+    await this.call(`${this.beachPath(id)}/away/seen`, { method: 'POST' });
   }
 
-  async loadBeach(beachId?: string | null): Promise<SavedBeach | null> {
+  async loadBeach(beachId: string | null): Promise<SavedBeach | null> {
     const res = await this.call(this.sandPath(beachId));
     if (res.status === 404) return null;
     if (!res.ok) throw new ApiError(res.status, 'could not load your beach');
@@ -387,6 +372,8 @@ export class Account {
    * the beach is saved, but there is nothing to go back to.
    */
   async saveBeach(
+    /** which of your beaches to save (null: your home, before your beaches have loaded) */
+    beachId: string | null,
     bytes: Uint8Array,
     location: string,
     nx: number,
@@ -395,8 +382,6 @@ export class Account {
     items: Record<string, number> = {},
     /** the epoch the sand was loaded at: a restore since then refuses the save (409) */
     epoch?: number,
-    /** which of your beaches to save (defaults to this device's active beach) */
-    beachId?: string,
   ): Promise<{ updatedAt: number; largeEdit?: boolean; largeEditCheckpoint?: boolean }> {
     const res = await this.call(this.sandPath(beachId), {
       method: 'PUT',
@@ -569,24 +554,6 @@ export interface MyBeach {
   right: (Neighbor & { yours: boolean }) | null;
 }
 
-const ACTIVE_KEY = 'beech.activeBeach.v1';
-function readActive(user: string | undefined): string | null {
-  try {
-    return user ? ((JSON.parse(localStorage.getItem(ACTIVE_KEY) ?? '{}') as Record<string, string>)[user] ?? null) : null;
-  } catch {
-    return null;
-  }
-}
-function writeActive(user: string, beach: string): void {
-  try {
-    const all = JSON.parse(localStorage.getItem(ACTIVE_KEY) ?? '{}') as Record<string, string>;
-    all[user] = beach;
-    localStorage.setItem(ACTIVE_KEY, JSON.stringify(all));
-  } catch {
-    /* storage blocked: this device opens the home beach next time */
-  }
-}
-
 export interface Neighbor {
   code: string;
   name: string;
@@ -635,10 +602,9 @@ async function errorOf(res: Response, fallback: string): Promise<ApiError> {
 export class NeighborApi {
   constructor(private readonly account: Account) {}
 
-  /** `?beach=<id>` for a beach (defaults to this device's beach; '' before beaches load: the server uses home) */
+  /** `?beach=<id>` for one of your beaches (none: the server uses your home) */
   private q(sep = '?', beachId?: string | null): string {
-    const id = beachId ?? this.account.beachId;
-    return id ? `${sep}beach=${encodeURIComponent(id)}` : '';
+    return beachId ? `${sep}beach=${encodeURIComponent(beachId)}` : '';
   }
 
   async get(beachId?: string): Promise<Neighbors> {
@@ -719,7 +685,6 @@ export class NeighborApi {
   async shore(code: string | null, depth: number): Promise<Shore> {
     const q = new URLSearchParams({ depth: String(depth) });
     if (code) q.set('code', code);
-    else if (this.account.user && this.account.beachId) q.set('beach', this.account.beachId);
     const prefix = this.account.user ? '/api/shore' : '/api/public/shore';
     const res = await this.account.fetch(`${prefix}?${q}`);
     if (!res.ok) throw await errorOf(res, 'could not find that beach');
@@ -737,6 +702,7 @@ export class NeighborApi {
       nx: Number(res.headers.get('X-Beach-Nx')),
       ny: Number(res.headers.get('X-Beach-Ny')),
       updatedAt: Number(res.headers.get('X-Beach-Updated')),
+      version: Number(res.headers.get('X-Beach-Version')) || undefined,
       bytes: new Uint8Array(await res.arrayBuffer()),
     };
   }
@@ -779,6 +745,8 @@ export interface BoardEntry extends ShoreBeach {
 
 /** A beach somewhere along the shore (found by code or by walking). */
 export interface ShoreBeach {
+  /** the beach's id (what the client keeps its state by, docs/BEACH_STORE.md) */
+  id: string;
   code: string;
   name: string;
   /** their real beach id, or null if they haven't saved yet */

@@ -233,6 +233,18 @@ export const CATCHUP = {
 export const SIM_HZ = 30;
 export const UNDO_DEPTH = 32;
 
+/** The client's beach state, kept in memory by beach id (docs/BEACH_STORE.md). */
+export const BEACH_STORE = {
+  /** beaches kept beyond the ones in view, before the least recently used goes (about 1 MB each, more once edited) */
+  capacity: 12,
+  /** save an edited beach this long after the last change (ms) */
+  saveDelayMs: 4000,
+  /** after a failed save, try again this much later (ms) */
+  retryMs: 30000,
+  /** the view must be this close to another beach's centre (m) before the waves move there */
+  liveSwitchM: 10,
+};
+
 /** Rare wild beach visitors (docs/ANIMALS.md). */
 export const ANIMALS = {
   /** quiet wait between wild visit rolls (seconds): an animal is around about half the time */

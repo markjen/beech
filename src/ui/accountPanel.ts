@@ -37,8 +37,12 @@ export interface AccountPanelSlots {
 }
 
 export interface MineCallbacks {
-  /** Go to one of your beaches (pans if visible on the current shore, else opens it). */
-  open: (id: string, switchActive?: boolean) => Promise<void>;
+  /** Go to one of your beaches (pans if it's on the shore in view, else lays the shore out around it). */
+  open: (id: string) => Promise<void>;
+  /** The beach of yours in front of you now (the one the waves run on), if any. */
+  inView: () => string | null;
+  /** Stop simulating this beach and remove it. */
+  remove: (id: string) => Promise<void>;
   /** Real-world location id for newly created beaches. */
   location: () => string;
   changed: () => void;
@@ -55,7 +59,7 @@ export class AccountPanel {
   private confirmDelete = 0;
   /** The beach currently selected *in settings* (independent of which beach you're editing in 3D). */
   private selectedId: string | null = null;
-  /** Cached neighbor state for `selectedId` when it differs from `account.beachId`. */
+  /** Cached neighbor state for `selectedId` when it isn't the shore's own (`NeighborView.state`). */
   private selectedNeighbors = new Map<string, Neighbors | null>();
   private loadingNeighborsFor = new Set<string>();
   private lastSignedIn: boolean | null = null;
@@ -75,7 +79,7 @@ export class AccountPanel {
     private readonly mine?: MineCallbacks,
     private readonly checkpoints?: CheckpointsSection,
   ) {
-    account.onBeach(() => {
+    account.onBeaches(() => {
       this.syncSelection();
       this.render();
     });
@@ -102,14 +106,14 @@ export class AccountPanel {
     this.render();
   }
 
-  /** The beach currently selected for settings (falls back to the active beach or first beach). */
+  /** The beach currently selected for settings (falls back to the one in view, then home). */
   get selectedBeach(): MyBeach | undefined {
     const a = this.account;
     if (this.selectedId) {
       const found = a.beaches.find((b) => b.id === this.selectedId);
       if (found) return found;
     }
-    return a.beach ?? a.beaches[0];
+    return a.mine(this.mine?.inView()) ?? a.home ?? undefined;
   }
 
   /** Select a beach in settings without switching the 3D scene. */
@@ -117,16 +121,21 @@ export class AccountPanel {
     if (id === this.selectedId) return;
     this.selectedId = id;
     this.mine?.onSelect?.(this.selectedBeach);
-    if (this.neighbors && id !== this.account.beachId) {
+    if (this.neighbors && id !== this.shoreStateId) {
       void this.loadNeighborsFor(id);
     }
     this.render();
   }
 
+  /** the beach whose neighbor slots the shore view already holds (the anchor if yours, else home) */
+  private get shoreStateId(): string | undefined {
+    return this.neighbors?.stateBeachId ?? this.account.home?.id;
+  }
+
   private syncSelection(): void {
     const a = this.account;
     if (!this.selectedId || !a.beaches.some((b) => b.id === this.selectedId)) {
-      this.selectedId = a.beachId ?? a.beaches[0]?.id ?? null;
+      this.selectedId = a.mine(this.mine?.inView())?.id ?? a.home?.id ?? null;
     }
     this.mine?.onSelect?.(this.selectedBeach);
   }
@@ -146,7 +155,7 @@ export class AccountPanel {
 
   private neighborsFor(beachId: string): Neighbors | null {
     if (!this.neighbors) return null;
-    if (beachId === this.account.beachId) return this.neighbors.state;
+    if (beachId === this.shoreStateId) return this.neighbors.state;
     if (!this.selectedNeighbors.has(beachId)) void this.loadNeighborsFor(beachId);
     return this.selectedNeighbors.get(beachId) ?? null;
   }
@@ -155,7 +164,7 @@ export class AccountPanel {
     const st = this.slots.account.querySelector('.sync-status');
     if (!st) return;
     const s: SyncState = this.sync.state;
-    const pending = this.neighbors?.hasPendingSaves();
+    const pending = this.sync.pending;
     st.textContent =
       s === 'saving' || pending
         ? 'saving your beach…'
@@ -231,7 +240,7 @@ export class AccountPanel {
           const b = await a.createBeach(name.trim(), mine.location());
           if (a.beaches.length >= 5) unlockSteamAchievement('FIVE_BEACHES');
           this.selectedId = b.id;
-          await mine.open(b.id, true);
+          await mine.open(b.id);
           mine.changed();
         }),
       );
@@ -249,7 +258,7 @@ export class AccountPanel {
 
     // World map (clicking a pin selects that beach in settings)
     if (ordered.length > 0) {
-      wrap.appendChild(renderBeachMap(ordered, sel?.id ?? a.beachId, (id) => this.selectBeach(id)));
+      wrap.appendChild(renderBeachMap(ordered, sel?.id ?? mine.inView(), (id) => this.selectBeach(id)));
     }
 
     // Selected beach details & actions
@@ -282,7 +291,7 @@ export class AccountPanel {
 
       const acts = document.createElement('div');
       acts.className = 'slot beach-card-acts';
-      if (sel.id !== a.beachId || this.neighbors?.visiting) {
+      if (sel.id !== mine.inView() || this.neighbors?.visiting) {
         acts.appendChild(act('go there', `open-${sel.id}`, () => mine.open(sel.id), 'Jump to this beach'));
       }
       if (a.beaches.length > 1) {
@@ -303,8 +312,7 @@ export class AccountPanel {
           act('remove', `remove-beach-${sel.id}`, async () => {
             if (!window.confirm(`Remove ${sel.name || 'this beach'}? Its sand, things and neighbors go. You can make another in its place.`)) return;
             const homeId = a.beaches.find((x) => x.home)!.id;
-            if (sel.id === a.beachId) await mine.open(homeId, true);
-            await a.removeBeach(sel.id);
+            await mine.remove(sel.id);
             this.selectedId = homeId;
           }),
         );
@@ -596,7 +604,7 @@ export class AccountPanel {
       await this.account.loadBeaches();
       this.selectedNeighbors.delete(beach.id);
       await nv.refresh();
-      if (beach.id !== this.account.beachId) await this.loadNeighborsFor(beach.id);
+      if (beach.id !== this.shoreStateId) await this.loadNeighborsFor(beach.id);
     };
 
     // people asking to move in next to this beach

@@ -21,6 +21,12 @@ export interface UndoEntry {
   swap?: { before: PlacedObject[]; after: PlacedObject[]; sand: Float32Array; beforeCover?: Float32Array; afterCover?: Float32Array };
 }
 
+/** An undo stack's entries, to hand a beach's history between simulations (docs/BEACH_STORE.md). */
+export interface UndoHistory {
+  undos: UndoEntry[];
+  redos: UndoEntry[];
+}
+
 /**
  * Undo/redo of stroke deltas. Undo *subtracts* a stroke's change rather than
  * restoring a snapshot, so wave erosion that happened since is kept.
@@ -60,5 +66,19 @@ export class UndoStack {
   clear(): void {
     this.undos.length = 0;
     this.redos.length = 0;
+  }
+
+  /** The entries, oldest first (the stack keeps no copy: it starts empty). */
+  take(): UndoHistory {
+    const h = { undos: this.undos, redos: this.redos };
+    this.undos = [];
+    this.redos = [];
+    return h;
+  }
+
+  /** Replace the entries with a handed-over history (trimmed to this stack's depth). */
+  restore(h: UndoHistory): void {
+    this.undos = h.undos.slice(-this.depth);
+    this.redos = h.redos.slice(-this.depth);
   }
 }

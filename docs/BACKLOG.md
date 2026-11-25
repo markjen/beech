@@ -78,6 +78,11 @@ _(nothing right now)_
 
 ## Up next (engineering)
 
+- [ ] **Beach store, next** (docs/BEACH_STORE.md): keep the store's
+  snapshots of other people's beaches across a re-anchor *and* page
+  reloads (IndexedDB, keyed by id + version), and ease the live renderer
+  between beaches instead of a one-frame swap when the waves move.
+
 - [ ] **Palm-first UI, follow-ups**: real weather (temperature, sky) for
   the status pane's first line; credit, stars and finds-today chips in
   the expanded pane (they need their own requests); decide whether the
@@ -165,6 +170,12 @@ _(nothing right now)_
   shower night.
 
 ## Done (recent)
+
+- [x] **Client beach state by id** (2026-11-25): no more active beach. A
+  `BeachStore` keeps every beach's state in memory by id with LRU
+  eviction; the waves follow the view onto whichever beach of yours is in
+  front of you, handing sand and undo history over through the store; one
+  save pipeline for all beaches. [BEACH_STORE.md](BEACH_STORE.md).
 
 - [x] **Palm-first UI** (2026-11-25): only a palm at rest; one rail
   (Inbox, Hand, Dirt flyout, Bag, Store, View, Manage, Undo, ×); a

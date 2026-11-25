@@ -125,7 +125,7 @@ if (process.env.DEBUG_E2E)
           visiting: !!nv?.visiting,
           win: nv?.window,
           objs: b.info().objects.map((o) => o.item),
-          beachId: b.account().beachId,
+          beachId: b.beachId(),
           canPlace: b.inventory.canPlace(b.inventory.current),
           tray: document.querySelector('.inv-tray')?.textContent,
         };
