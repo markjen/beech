@@ -664,6 +664,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     } catch (e) {
       logEvent('catchup_failed', { beach: beachId, error: String(e) }, 'ERROR');
     }
+    const loadStart = performance.now();
     const rows = await db.query<{
       location: string;
       nx: number;
@@ -673,10 +674,13 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       epoch: number;
       simulated_until: string | null;
       sand: unknown;
-    }>('SELECT location, nx, ny, version, updated_at, epoch, simulated_until, sand FROM beach WHERE id = $1 AND sand IS NOT NULL', [beachId]);
+    }>('SELECT location, nx, ny, version, updated_at, epoch, simulated_until, sand FROM beach WHERE id = $1 AND sand IS NOT NULL', [beachId], 'beach.load');
     const row = rows[0];
     if (!row) return c.json({ error: 'no saved beach yet' }, 404);
     const bytes = toBytes(row.sand);
+    // Payload size + DB time, so a slow load can be correlated with the
+    // beach's bytes (no ids — the load path is per-beach by construction).
+    logEvent('beach_load', { bytes: bytes.byteLength, duration_ms: Math.round((performance.now() - loadStart) * 10) / 10 });
     return new Response(bytes as BodyInit, {
       headers: {
         'Content-Type': 'application/octet-stream',
@@ -869,11 +873,16 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     // blocks the save (see maybeLargeEditSave / maybeAutoSave).
     const big = await maybeLargeEditSave(beachId, c.get('user').id, now, bytes);
     if (!big.large) await maybeAutoSave(beachId, c.get('user').id, now);
+    const saveStart = performance.now();
     const rows = await db.query<{ version: number; epoch: number }>(
       `UPDATE beach SET location = $2, nx = $3, ny = $4, version = version + 1, updated_at = $5, sand = $6, items = $7, simulated_until = $9
         WHERE id = $1 AND ($8::int IS NULL OR epoch <= $8::int) RETURNING version, epoch`,
       [beachId, location, nx, ny, now, bytes, JSON.stringify(parseItems(c.req.header('X-Beach-Items'))), epoch, liveClock()],
+      'beach.save',
     );
+    // Payload size + DB time, so a slow PUT /sand can be correlated with
+    // the beach's bytes (no ids — the save path is per-beach by construction).
+    logEvent('beach_save', { bytes: bytes.byteLength, duration_ms: Math.round((performance.now() - saveStart) * 10) / 10 });
     if (!rows[0]) {
       if ((await db.query('SELECT 1 FROM beach WHERE id = $1', [beachId])).length) fail(409, 'restored');
       fail(404, 'no such beach');

@@ -59,6 +59,18 @@ export function showToast(parent: HTMLElement, text: string): () => void {
   return hide;
 }
 
+/**
+ * A short note under the status pane (top left): the parent is the pane's
+ * wrapper, so the note sits right below the pane however tall it is, and
+ * goes away with it when the UI is tucked away. Gone after a few seconds.
+ */
+export function showPaneToast(parent: HTMLElement, text: string): () => void {
+  const { el, hide } = showNote(parent, 6000);
+  el.classList.add('below-status');
+  el.textContent = text;
+  return hide;
+}
+
 /** A note with one button ("Restored 'Moat' · Undo"), gone after `ms`. */
 export function showActionToast(parent: HTMLElement, text: string, label: string, onClick: () => void, ms = 10000): () => void {
   const { el, hide } = showNote(parent, ms);

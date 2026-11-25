@@ -52,11 +52,11 @@ export const isPublic = (r: Pick<NodeRow, 'on_shore' | 'saved'>): boolean => !!r
 
 export function shoreGraph(db: Db) {
   const nodeById = async (id: string): Promise<NodeRow | null> =>
-    (await db.query<NodeRow>(`SELECT ${NODE} FROM ${BEACH} WHERE b.id = $1`, [id]))[0] ?? null;
+    (await db.query<NodeRow>(`SELECT ${NODE} FROM ${BEACH} WHERE b.id = $1`, [id], 'shore.nodeById'))[0] ?? null;
   const nodeByCode = async (raw: string): Promise<NodeRow | null> => {
     const code = normalizeCode(raw ?? '');
     if (code.length !== 6) return null;
-    return (await db.query<NodeRow>(`SELECT ${NODE} FROM ${BEACH} WHERE b.code = $1`, [code]))[0] ?? null;
+    return (await db.query<NodeRow>(`SELECT ${NODE} FROM ${BEACH} WHERE b.code = $1`, [code], 'shore.nodeByCode'))[0] ?? null;
   };
   /** which beach is on beach `id`'s `side`, if any */
   const linked = async (id: string, side: Side): Promise<NodeRow | null> =>
@@ -64,6 +64,7 @@ export function shoreGraph(db: Db) {
       await db.query<NodeRow>(
         `SELECT ${NODE} FROM neighbors n JOIN ${BEACH} ON b.id = n.neighbor_beach_id WHERE n.beach_id = $1 AND n.side = $2`,
         [id, side],
+        'shore.linked',
       )
     )[0] ?? null;
 
@@ -92,14 +93,14 @@ export function shoreGraph(db: Db) {
     const same = (n: NodeRow | undefined) => !!n && n.id === r.id;
     if (dir === 'left') {
       const rows =
-        (await db.query<NodeRow>(`SELECT ${NODE} ${ENDS} AND (b.created_at, b.id) > ($1::bigint, $2::uuid) ORDER BY b.created_at, b.id LIMIT 1`, key)).concat(
-          await db.query<NodeRow>(`SELECT ${NODE} ${ENDS} ORDER BY b.created_at, b.id LIMIT 1`),
+        (await db.query<NodeRow>(`SELECT ${NODE} ${ENDS} AND (b.created_at, b.id) > ($1::bigint, $2::uuid) ORDER BY b.created_at, b.id LIMIT 1`, key, 'shore.nextStretch')).concat(
+          await db.query<NodeRow>(`SELECT ${NODE} ${ENDS} ORDER BY b.created_at, b.id LIMIT 1`, [], 'shore.nextStretch'),
         );
       return rows[0] && !same(rows[0]) ? rows[0] : null; // enter it at its right-hand end, walking left
     }
     const rows =
-      (await db.query<NodeRow>(`SELECT ${NODE} ${ENDS} AND (b.created_at, b.id) < ($1::bigint, $2::uuid) ORDER BY b.created_at DESC, b.id DESC LIMIT 1`, key)).concat(
-        await db.query<NodeRow>(`SELECT ${NODE} ${ENDS} ORDER BY b.created_at DESC, b.id DESC LIMIT 1`),
+      (await db.query<NodeRow>(`SELECT ${NODE} ${ENDS} AND (b.created_at, b.id) < ($1::bigint, $2::uuid) ORDER BY b.created_at DESC, b.id DESC LIMIT 1`, key, 'shore.nextStretch')).concat(
+        await db.query<NodeRow>(`SELECT ${NODE} ${ENDS} ORDER BY b.created_at DESC, b.id DESC LIMIT 1`, [], 'shore.nextStretch'),
       );
     return rows[0] && !same(rows[0]) ? endOf(rows[0], 'left') : null; // enter it at its left-hand end, walking right
   };

@@ -73,4 +73,6 @@ export type FromWorker =
       roster?: PlacedObject[];
       /** owned things the sea took since the last frame (they're gone from the roster: back in the bag) */
       lost?: PlacedObject[];
+      /** things the vacuum swept up since the last frame */
+      vacuumed?: PlacedObject[];
     } & Omit<FrameInfo, 'objects'>);

@@ -8,7 +8,13 @@ import { createDbStats, logEvent, type DbStats, type DbStatsSnapshot } from './o
  * compiled to WebAssembly, so no database server is needed to work on this.
  */
 export interface Db {
-  query<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T[]>;
+  /**
+   * operation is an optional low-cardinality label for the query
+   * (e.g. 'shore.walk', 'beach.save') used only in the db_error /
+   * db_slow_query log lines; it defaults to 'db.query'. Never SQL text
+   * or a param — those can hold user data.
+   */
+  query<T = Record<string, unknown>>(sql: string, params?: unknown[], operation?: string): Promise<T[]>;
   /** run several statements (migrations) */
   exec(sql: string): Promise<void>;
   /** run fn holding a session-level advisory lock (one migrator at a time) */
@@ -39,19 +45,24 @@ export function createPgDb(cfg: PgConfig): Db {
       : { host: cfg.socket, user: cfg.user, password: cfg.password, database: cfg.database, max: 5 },
   );
   const stats = createDbStats(() => ({ total: pool.totalCount, idle: pool.idleCount, waiting: pool.waitingCount }));
+  /** Pool state for a db_error log line. */
+  const poolFields = () => {
+    const p = stats.pool();
+    return { pool_total: p?.total ?? null, pool_idle: p?.idle ?? null, pool_waiting: p?.waiting ?? null };
+  };
   return {
-    async query(sql, params = []) {
+    async query(sql, params = [], operation = 'db.query') {
       // Timed for the db_summary log and the slow-query / error lines.
       // The SQL text and params are never logged: they can hold user data.
       const start = performance.now();
       try {
         const rows = (await pool.query(sql, params)).rows;
-        stats.record(performance.now() - start, true);
+        stats.record(performance.now() - start, true, operation);
         return rows;
       } catch (e) {
         const ms = performance.now() - start;
-        stats.record(ms, false);
-        logEvent('db_error', { duration_ms: Math.round(ms), code: String((e as { code?: unknown })?.code ?? 'unknown') }, 'ERROR');
+        stats.record(ms, false, operation);
+        logEvent('db_error', { operation, duration_ms: Math.round(ms), code: String((e as { code?: unknown })?.code ?? 'unknown'), ...poolFields() }, 'ERROR');
         throw e;
       }
     },
@@ -73,18 +84,18 @@ export function createPgDb(cfg: PgConfig): Db {
       try {
         await client.query('BEGIN');
         const tx: Db = {
-          query: async (sql, params = []) => {
+          query: async (sql, params = [], operation = 'db.query') => {
             // Same timed wrapper as the pool query above, bound to this
             // transaction's client instead of the pool.
             const start = performance.now();
             try {
               const rows = (await client.query(sql, params)).rows;
-              stats.record(performance.now() - start, true);
+              stats.record(performance.now() - start, true, operation);
               return rows;
             } catch (e) {
               const ms = performance.now() - start;
-              stats.record(ms, false);
-              logEvent('db_error', { duration_ms: Math.round(ms), code: String((e as { code?: unknown })?.code ?? 'unknown') }, 'ERROR');
+              stats.record(ms, false, operation);
+              logEvent('db_error', { operation, duration_ms: Math.round(ms), code: String((e as { code?: unknown })?.code ?? 'unknown'), ...poolFields() }, 'ERROR');
               throw e;
             }
           },
@@ -124,16 +135,17 @@ export async function createPgliteDb(dataDir?: string): Promise<Db> {
   const db = new PGlite(dataDir);
   await db.waitReady;
   const stats: DbStats = createDbStats();
-  const timedQuery = (conn: Pick<typeof db, 'query'>): Db['query'] => async <T>(sql: string, params: unknown[] = []) => {
+  const timedQuery = (conn: Pick<typeof db, 'query'>): Db['query'] => async <T>(sql: string, params: unknown[] = [], operation = 'db.query') => {
     const start = performance.now();
     try {
       const rows = (await conn.query<T>(sql, params)).rows;
-      stats.record(performance.now() - start, true);
+      stats.record(performance.now() - start, true, operation);
       return rows;
     } catch (e) {
       const ms = performance.now() - start;
-      stats.record(ms, false);
-      logEvent('db_error', { duration_ms: Math.round(ms), code: String((e as { code?: unknown })?.code ?? 'unknown') }, 'ERROR');
+      stats.record(ms, false, operation);
+      const p = stats.pool();
+      logEvent('db_error', { operation, duration_ms: Math.round(ms), code: String((e as { code?: unknown })?.code ?? 'unknown'), pool_total: p?.total ?? null, pool_idle: p?.idle ?? null, pool_waiting: p?.waiting ?? null }, 'ERROR');
       throw e;
     }
   };

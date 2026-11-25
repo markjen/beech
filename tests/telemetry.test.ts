@@ -66,6 +66,18 @@ describe('client telemetry payloads', () => {
     expect(perfEvent({ loadEventEnd: Number.NaN, domContentLoadedEventEnd: 5 })).toBeNull();
   });
 
+  it('prefers the caller-supplied load time: loadEventEnd is 0 inside the load handler', () => {
+    // Inside the load handler the load event hasn't ended yet, so the
+    // timing entry still reads 0; the caller passes performance.now().
+    expect(perfEvent({ loadEventEnd: 0, domContentLoadedEventEnd: 800.6 }, { loadMs: 1234.4 })).toEqual({
+      kind: 'perf',
+      load_ms: 1234,
+      dcl_ms: 801,
+    });
+    expect(perfEvent({ loadEventEnd: 0, domContentLoadedEventEnd: 5 }, { loadMs: -1 })).toBeNull();
+    expect(perfEvent({ loadEventEnd: 0, domContentLoadedEventEnd: 5 }, { loadMs: Number.NaN })).toBeNull();
+  });
+
   it('builds general telemetry events and rejects invalid names', () => {
     expect(telemetryEvent('app_boot', { tier: 'low', touch: true }, { platform: 'ios', version: '1.0.0' })).toEqual({
       kind: 'event',

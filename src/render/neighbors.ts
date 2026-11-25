@@ -753,11 +753,13 @@ export class NeighborView {
     this.store.peek(beachId)?.sim?.moveStroke(sx, sy, r);
   }
 
-  endStroke(beachId: string): void {
+  endStroke(beachId: string): PlacedObject[] {
     const sim = this.store.peek(beachId)?.sim;
-    if (!sim) return;
+    if (!sim) return [];
     sim.endStroke();
     this.store.edited(beachId);
+    // what the vacuum swept up on this stroke (each once)
+    return sim.takeVacuumed();
   }
 
   cancelStroke(beachId: string): void {

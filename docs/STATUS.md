@@ -13,6 +13,9 @@
 | M6 | Ship (benchmark quality tiers, dynamic resolution, PWA/offline, icons, Capacitor iOS + Android projects, mobile CI + store release workflow, docs) | done |
 | M7 | Stretch (water table seepage, build + smooth tools, shells washing in, save/share a picture) | done |
 
+Vacuuming shows which items were picked up when a stroke finishes. The claw
+and vending prize cards can be closed while keeping the prize in the bag.
+
 ## Decisions that differ from PLAN.md
 
 - **WebGL2 is the default renderer.** The custom shaders are written in

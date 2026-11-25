@@ -135,6 +135,7 @@ export class BeachSim {
   private easing: { entry: UndoEntry; sign: number; ticksLeft: number }[] = [];
 
   // brush state
+  private vacuumed: PlacedObject[] = [];
   private stroke: {
     mode: BrushMode;
     x: number;
@@ -1014,6 +1015,7 @@ export class BeachSim {
     const st = this.stroke;
     if (!st) return;
     this.stroke = null;
+    if (st.mode === 'vacuum') this.vacuumed.push(...st.swept);
     let entry = this.diffRegion(st.snapshot, st.i0, st.j0, st.i1, st.j1);
     if (entry && st.lift.length) entry = this.withoutLift(entry, st.lift);
     if (entry) {
@@ -1023,6 +1025,13 @@ export class BeachSim {
       // the stroke only swept up objects: still undoable, sand untouched
       this.undo.push({ i0: 0, j0: 0, w: 0, h: 0, delta: new Float32Array(0), removed: st.swept });
     }
+  }
+
+  /** Things committed by finished vacuum strokes since the last call. */
+  takeVacuumed(): PlacedObject[] {
+    const swept = this.vacuumed;
+    this.vacuumed = [];
+    return swept;
   }
 
   /**
@@ -1537,6 +1546,7 @@ export class BeachSim {
     if (delta.length !== this.n) throw new Error('grid size mismatch');
     if (cover && cover.length !== this.n) throw new Error('grid size mismatch');
     if (this.stroke) this.cancelStroke();
+    this.vacuumed = [];
     this.objects.clear();
     const appliedCover = this.applyTerrain(delta, cover);
     this.sediment.fill(0);

@@ -32,7 +32,7 @@ import { restHeight } from './sim/profile';
 import { Ambient, toggleFullscreen } from './ui/ambient';
 import { Hud, icon, type DirtDef } from './ui/hud';
 import { SocialHub, StarredDialog, VisitDialog } from './ui/socialHub';
-import { SettingsSheet, StartScreen, showActionToast, showChoiceToast, showToast } from './ui/overlays';
+import { SettingsSheet, StartScreen, showActionToast, showChoiceToast, showPaneToast, showToast } from './ui/overlays';
 import { awayText } from './ui/away';
 import { CheckpointsSection } from './ui/checkpoints';
 import { InventoryTray, PlaceBar } from './ui/inventory';
@@ -407,6 +407,7 @@ async function boot() {
       pendingTouch = true;
     }
     if (m.lost) seaTook(m.lost.length);
+    if (m.vacuumed) vacuumedUp(m.vacuumed);
     // a held thing follows the finger; one just put down waits for the worker
     if (settling) {
       const s = objectStates.find((o) => o.id === settling!.id);
@@ -467,6 +468,7 @@ async function boot() {
   /** Each edit can affect one beach or both sides of a seam (beach ids, oldest first). */
   const undoTargets: string[][] = [];
   const redoTargets: string[][] = [];
+  const footprintEdits = new WeakSet<string[]>();
   const recordEditTarget = (...targets: EditTarget[]) => {
     const ids = targets.map((t) => t.beachId);
     undoTargets.push(ids);
@@ -558,7 +560,9 @@ async function boot() {
       send({ type: 'brush', phase: 'end' });
       markDirty();
     } else {
-      neighbors?.endStroke(t.beachId);
+      // a beach next door reports its vacuumed things at the end of the stroke
+      const vacuumed = neighbors?.endStroke(t.beachId) ?? [];
+      if (vacuumed.length) vacuumedUp(vacuumed);
     }
     recordEditTarget(t);
   };
@@ -643,6 +647,30 @@ async function boot() {
     }, 2500);
   };
 
+  /**
+   * The vacuum swept things up — the live beach reports them per frame,
+   * a beach next door hands them back when the stroke ends. Sweeps close
+   * together share one small toast under the status pane, naming what went.
+   */
+  let vacuumedNames: string[] = [];
+  let vacuumedTimer = 0;
+  const vacuumedUp = (items: PlacedObject[]) => {
+    for (const o of items) vacuumedNames.push(prizeName(o.item));
+    window.clearTimeout(vacuumedTimer);
+    vacuumedTimer = window.setTimeout(() => {
+      const names = vacuumedNames;
+      vacuumedNames = [];
+      if (!names.length) return;
+      const text =
+        names.length === 1
+          ? `Vacuumed up the ${names[0]}`
+          : names.length <= 3
+            ? `Vacuumed up ${names.join(', ')}`
+            : `Vacuumed up ${names.length} things`;
+      showPaneToast(placeWrap, text);
+    }, 1500);
+  };
+
   /** At the end of a good dig, ask the server whether something was buried there. */
   const tryDigFind = async (pathM: number, durationMs: number) => {
     if (!digFindApi || !digFindApi.signedIn || !digFind) return; // signed out, or the sandbox build
@@ -678,8 +706,11 @@ async function boot() {
     const future = action === 'undo' ? redoTargets : undoTargets;
     const liveCount = action === 'undo' ? info.undoCount : info.redoCount;
     const targets = past.pop() ?? (sync.id ? [sync.id] : []);
+    // Every recorded footprint placement has a worker command ahead of this
+    // one. The frame's counts may still precede it when Undo or Redo is quick.
+    const grouped = footprintEdits.has(targets);
     if (!targets.length || !targets.every((target) => isLive(target)
-      ? liveCount > 0
+      ? grouped || liveCount > 0
       : neighbors?.canReplay(target, action))) return;
     for (const target of targets) {
       if (isLive(target)) {
@@ -1061,6 +1092,7 @@ async function boot() {
       recordEditTarget(target);
     } else if (!trail.undoBeaches.length) {
       trail.undoBeaches = recordEditTarget(target);
+      footprintEdits.add(trail.undoBeaches);
     } else if (!trail.undoBeaches.includes(target.beachId)) {
       trail.undoBeaches.push(target.beachId);
     }
