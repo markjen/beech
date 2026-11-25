@@ -122,7 +122,7 @@ self.onmessage = (ev: MessageEvent<ToWorker>) => {
       if (sim && m.delta.length === sim.n) sim.importBeach(m.delta, m.objects, m.cover);
       break;
     case 'placeObject':
-      sim?.placeObject(m.obj);
+      sim?.placeObject(m.obj, m.group);
       break;
     case 'removeObject':
       sim?.removeObject(m.id);

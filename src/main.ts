@@ -42,6 +42,7 @@ import { Shop } from './ui/shop';
 import { ShopApi, webOrderFromUrl, withoutWebOrderParams } from './net/shop';
 import { VendingMachine } from './ui/vendingMachine';
 import { DEFAULT_SIZE, ITEMS, rollPlacement, type Item } from './world/items';
+import { footprintDrag, footprintFarSide, type FootprintStroke } from './world/footprints';
 import { ACCOUNTS_ENABLED, Account, AnimalsApi, ApiError, CheckpointApi, DigFindApi, GiftApi, GuideApi, InboxApi, PullApi, ReferralApi, type ShoreBeach } from './net/account';
 import type { InboxPanel } from './ui/inbox';
 import type { VisitorCard } from './ui/visitorCard';
@@ -452,15 +453,29 @@ async function boot() {
    */
   type EditTarget = { beachId: string; offsetX: number };
   type Hit = { x: number; y: number; z: number; target: EditTarget };
+  type TrailPlacement = ReturnType<typeof rollPlacement>;
+  let footprintsStroke: {
+    group: string;
+    anchorTarget: EditTarget;
+    first: TrailPlacement;
+    size01: number;
+    walk: FootprintStroke;
+    undoBeaches: string[];
+    liveCount: number;
+  } | null = null;
+  let footprintStrokeSeq = 0;
   const sameTarget = (a: EditTarget, b: EditTarget) => a.beachId === b.beachId;
   let strokeTarget: EditTarget | null = null;
   /** Each edit can affect one beach or both sides of a seam (beach ids, oldest first). */
   const undoTargets: string[][] = [];
   const redoTargets: string[][] = [];
+  const footprintEdits = new WeakSet<string[]>();
   const recordEditTarget = (...targets: EditTarget[]) => {
-    undoTargets.push(targets.map((t) => t.beachId));
+    const ids = targets.map((t) => t.beachId);
+    undoTargets.push(ids);
     if (undoTargets.length > 64) undoTargets.shift();
     redoTargets.length = 0;
+    return ids;
   };
   let lastHit: Hit | null = null;
   let hover: Hit | null = null;
@@ -687,12 +702,16 @@ async function boot() {
       showFencedBanner();
       return;
     }
+    footprintsStroke = null;
     const past = action === 'undo' ? undoTargets : redoTargets;
     const future = action === 'undo' ? redoTargets : undoTargets;
     const liveCount = action === 'undo' ? info.undoCount : info.redoCount;
     const targets = past.pop() ?? (sync.id ? [sync.id] : []);
+    // Every recorded footprint placement has a worker command ahead of this
+    // one. The frame's counts may still precede it when Undo or Redo is quick.
+    const grouped = footprintEdits.has(targets);
     if (!targets.length || !targets.every((target) => isLive(target)
-      ? liveCount > 0
+      ? grouped || liveCount > 0
       : neighbors?.canReplay(target, action))) return;
     for (const target of targets) {
       if (isLive(target)) {
@@ -957,6 +976,7 @@ async function boot() {
     }
     if (tool !== 'look') lastDirt = id;
     placing = null;
+    footprintsStroke = null;
     inventory.deselect();
     placeBar.show(null, DEFAULT_SIZE);
     syncLookOnly();
@@ -974,6 +994,7 @@ async function boot() {
   // the bag: rocks and driftwood (free, unlimited) for now
   const inventory = new InventoryTray((n, l, c) => hud.button(n, l, c), hud.root, ITEMS, (item) => {
     placing = item;
+    footprintsStroke = null;
     syncLookOnly();
     syncToolUI();
     placeBar.show(item, DEFAULT_SIZE);
@@ -1036,9 +1057,10 @@ async function boot() {
   /** Tap with an item in hand: set the item down. Picking things back up is
    * the vacuum's job now — the item tool only places. */
   let fullToastAt = 0;
-  const hasRoom = (target: EditTarget) => {
+  const liveOwnedCount = () => info.objects.filter((o) => !o.wild).length;
+  const hasRoom = (target: EditTarget, liveCount = 0) => {
     const count = isLive(target.beachId)
-      ? info.objects.filter((o) => !o.wild).length
+      ? Math.max(liveOwnedCount(), liveCount)
       : (neighbors?.ownedCount(target.beachId) ?? MAX_OBJECTS);
     if (count < MAX_OBJECTS) return true;
     haptics.impact('light');
@@ -1048,28 +1070,103 @@ async function boot() {
     }
     return false;
   };
-  const putDown = (sx: number, sy: number) => {
-    if (!placing) return;
-    const hit = pickAt(sx, sy);
-    if (!hit) return;
-    const p = toSim(hit);
+  /** Set one item down at a sim point on a beach (live or one of yours
+   * beside it). A footprint trail shares one undo step across all its placements. */
+  const placeItem = (target: EditTarget, x: number, y: number, r: TrailPlacement, trail?: NonNullable<typeof footprintsStroke>): boolean => {
+    if (!placing) return false;
     if (!inventory.canPlace(placing.id)) {
       // all of them are already on the beach
       haptics.impact('light');
-      return;
+      return false;
     }
-    if (!hasRoom(hit.target)) return;
-    const r = rollPlacement(placing, sizeOf(placing.id));
-    if (isLive(hit.target.beachId)) {
-      send({ type: 'placeObject', obj: { kind: placing.kind, item: placing.id, x: p.x, y: p.y, ...r } });
+    if (!hasRoom(target, trail?.liveCount)) return false;
+    const { size, variant, angle } = r;
+    const obj = { kind: placing.kind, item: placing.id, x, y, size, variant, angle };
+    if (isLive(target.beachId)) {
+      send({ type: 'placeObject', obj, ...(trail ? { group: trail.group } : {}) });
+      if (trail) trail.liveCount = Math.max(liveOwnedCount(), trail.liveCount) + 1;
       markDirty();
     } else {
-      if (!neighbors?.placeObject(hit.target.beachId, { kind: placing.kind, item: placing.id, x: p.x, y: p.y, ...r })) return;
+      if (!neighbors?.placeObject(target.beachId, obj, trail?.group)) return false;
     }
-    recordEditTarget(hit.target);
+    if (!trail) {
+      recordEditTarget(target);
+    } else if (!trail.undoBeaches.length) {
+      trail.undoBeaches = recordEditTarget(target);
+      footprintEdits.add(trail.undoBeaches);
+    } else if (!trail.undoBeaches.includes(target.beachId)) {
+      trail.undoBeaches.push(target.beachId);
+    }
     guide.mark('place');
     if (placing.kind === 'rock' || placing.kind === 'driftwood') audio.thunk(placing.kind === 'rock');
-    haptics.impact(placing.kind === 'rock' ? 'medium' : 'light');
+    return true;
+  };
+  const putDown = (hit: Hit) => {
+    if (!placing) return;
+    const p = toSim(hit);
+    const size01 = sizeOf(placing.id);
+    const first = rollPlacement(placing, size01);
+    if (placing.id === 'footprints') {
+      // Wait for the first stride so the starting trail can face the walk.
+      footprintsStroke = {
+        group: `footprints-${++footprintStrokeSeq}`,
+        anchorTarget: hit.target,
+        first,
+        size01,
+        walk: {
+          anchor: { x: hit.x, y: p.y },
+          farSide: footprintFarSide(first.variant, false),
+          size: first.size,
+          count: 1,
+        },
+        undoBeaches: [],
+        liveCount: 0,
+      };
+    } else if (placeItem(hit.target, p.x, p.y, first)) {
+      haptics.impact(placing.kind === 'rock' ? 'medium' : 'light');
+    }
+  };
+
+  const placeTrail = (trail: NonNullable<typeof footprintsStroke>, target: EditTarget, point: { x: number; y: number }, placement: TrailPlacement) =>
+    placeItem(target, point.x - (target.offsetX + ORIGIN_X), point.y, placement, trail);
+
+  /** Keep the path in world X so distances stay continuous at a seam. */
+  const dragFootprints = (sx: number, sy: number) => {
+    const trail = footprintsStroke;
+    const item = placing;
+    if (item?.id !== 'footprints' || !trail) return;
+    const hit = pickAt(sx, sy);
+    if (!hit) return;
+    const p = toSim(hit);
+    const { anchor } = trail.walk;
+    const { placements, stroke } = footprintDrag(trail.walk, { x: hit.x, y: p.y }, trail.size01, (size01) => rollPlacement(item, size01));
+    if (!placements.length) return;
+    if (!trail.undoBeaches.length) {
+      const angle = Math.atan2(p.y - anchor.y, hit.x - anchor.x);
+      if (!placeTrail(trail, trail.anchorTarget, anchor, { ...trail.first, angle })) {
+        footprintsStroke = null;
+        return;
+      }
+      haptics.impact('light');
+    }
+    for (const placement of placements) {
+      const onTarget = (target: EditTarget) => Math.abs(placement.x - target.offsetX) <= WORLD_SIZE_X / 2;
+      const target = onTarget(hit.target) ? hit.target : onTarget(trail.anchorTarget) ? trail.anchorTarget : null;
+      if (!target || !placeTrail(trail, target, placement, placement)) {
+        footprintsStroke = null;
+        return;
+      }
+      trail.anchorTarget = target;
+    }
+    trail.walk = stroke;
+  };
+
+  const finishFootprints = () => {
+    const trail = footprintsStroke;
+    footprintsStroke = null;
+    if (trail && !trail.undoBeaches.length && placeTrail(trail, trail.anchorTarget, trail.walk.anchor, trail.first)) {
+      haptics.impact('light');
+    }
   };
 
   // the rail, top to bottom: inbox (added once signed-in builds load it),
@@ -1383,7 +1480,7 @@ async function boot() {
       }
       inventory.setOpen(false);
       if (placing) {
-        putDown(sx, sy);
+        putDown(hit);
         return;
       }
       if (tool === 'castle') {
@@ -1409,6 +1506,10 @@ async function boot() {
       startDig(sx, sy);
     },
     digMove: (sx, sy) => {
+      if (placing?.id === 'footprints' && footprintsStroke) {
+        dragFootprints(sx, sy);
+        return;
+      }
       if (press) {
         // moved before the long-press: it's a dig after all
         if (Math.hypot(sx - press.sx, sy - press.sy) > HOLD_SLOP_PX) {
@@ -1438,6 +1539,7 @@ async function boot() {
       if (digging) strokeTo(sx, sy);
     },
     digEnd: () => {
+      finishFootprints();
       if (press) {
         // a quick tap on a thing: dig there, as a tap anywhere else does
         const p = press;
@@ -1521,6 +1623,7 @@ async function boot() {
       return true;
     },
     digCancel: () => {
+      footprintsStroke = null;
       if (press) {
         window.clearTimeout(press.timer);
         press = null;
@@ -1562,7 +1665,7 @@ async function boot() {
       const hit = pickAt(sx, sy);
       if (!hit) return;
       if (placing) {
-        putDown(sx, sy);
+        putDown(hit);
         return;
       }
       if (tool === 'castle') {
@@ -1572,9 +1675,11 @@ async function boot() {
       startDig(sx, sy);
     },
     digMove: (sx, sy) => {
-      if (digging) strokeTo(sx, sy);
+      if (footprintsStroke) dragFootprints(sx, sy);
+      else if (digging) strokeTo(sx, sy);
     },
     digEnd: () => {
+      finishFootprints();
       const wasDig = strokeOpen && brushMode === 'dig';
       const pathM = digPathM;
       const durationMs = performance.now() - digStrokeStart;
@@ -1702,7 +1807,7 @@ async function boot() {
       const x = nv.xForBeach(sync.id);
       if (x !== null) placeLive(x);
     }
-    if (openingShore || binding || awaitingLoad || digging || dragging || strokeOpen || press) return;
+    if (openingShore || binding || awaitingLoad || digging || dragging || strokeOpen || press || footprintsStroke) return;
     const near = nv.ownedNearest(cam.focusX);
     if (!near || near.beach.id === sync.id || releasing.has(near.beach.id)) return;
     // the live one is off this shore (or out of view): take the one in view at once;
@@ -2041,6 +2146,7 @@ async function boot() {
       if (kind === 'fenced') {
         fenced = true;
         placing = null;
+        footprintsStroke = null;
         showFencedBanner();
       } else if (kind === 'restored') {
         showToast(uiRoot, 'This beach was restored from a checkpoint on another device');

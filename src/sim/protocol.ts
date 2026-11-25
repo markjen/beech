@@ -26,8 +26,9 @@ export type ToWorker =
   | { type: 'setSand'; loadId?: number; delta: Float32Array; objects?: PlacedObject[]; cover?: Float32Array; history?: UndoHistory }
   /** replace the whole beach with an imported one, as one undo step */
   | { type: 'importBeach'; delta: Float32Array; objects: PlacedObject[]; cover?: Float32Array }
-  /** put an inventory item on the beach (undoable) */
-  | { type: 'placeObject'; obj: Omit<PlacedObject, 'id'> }
+  /** put an inventory item on the beach (undoable). `group` ties placements
+   * of one drag stroke together, so they undo and redo as one step. */
+  | { type: 'placeObject'; obj: Omit<PlacedObject, 'id'>; group?: string }
   /** take one off again (undoable) */
   | { type: 'removeObject'; id: number }
   /** pick one up and put it down at (x, y) (undoable) */

@@ -233,6 +233,17 @@ export const CATCHUP = {
 export const SIM_HZ = 30;
 export const UNDO_DEPTH = 32;
 
+/**
+ * Footprints (free item, `footprints`): one trail is this long at size 1 —
+ * the mesh in src/render/objects.ts footprintsMesh spans -0.425..+0.425 m,
+ * and the share picture in server/src/beachImage.ts draws the same trail.
+ * Dragging with footprints in hand lays one trail per stride (see
+ * src/world/footprints.ts), so the spacing follows from this length.
+ */
+export const FOOTPRINT_TRAIL_M = 0.85;
+/** A single drag with the footprints tool lays down at most this many trails. */
+export const FOOTPRINTS_PER_STROKE_MAX = 100;
+
 /** The client's beach state, kept in memory by beach id (docs/BEACH_STORE.md). */
 export const BEACH_STORE = {
   /** beaches kept beyond the ones in view, before the least recently used goes (about 1 MB each, more once edited) */

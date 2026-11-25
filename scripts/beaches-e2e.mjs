@@ -62,7 +62,9 @@ await a.evaluate(() => window.__beech.account().loadBeaches());
 await a.evaluate(() => window.__beech.sheet.show('beach'));
 await a.waitForSelector('button[data-act="new-beach"]', { timeout: 8000 });
 await a.evaluate(() => window.__beech.sheet.setTab('beach'));
-await a.click('button[data-act="new-beach"]');
+// The sheet redraws as the shore updates. Activate the visible button
+// in the same browser task that resolves it.
+await a.locator('button[data-act="new-beach"]:visible').evaluate((button) => button.click());
 await a.waitForFunction((h) => window.__beech.beachId() !== h && window.__beech.sync().state === 'saved', home, { timeout: 20000 });
 const second = await a.evaluate(() => window.__beech.beachId());
 await a.waitForTimeout(800);
