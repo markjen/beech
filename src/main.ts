@@ -1629,7 +1629,8 @@ async function boot() {
     // else only once the view is well onto the other beach
     const liveOnShore = sync.id !== null && nv.liveVisible;
     if (liveOnShore && near.dist > BEACH_STORE.liveSwitchM) return;
-    if (near.beach.id === LOCAL_BEACH && !store.has(LOCAL_BEACH) && sync.id !== null) return;
+    // (signed in, the device's own beach is the last person's leftovers on a stale shore: not yours to simulate)
+    if (near.beach.id === LOCAL_BEACH && (account?.user || (!store.has(LOCAL_BEACH) && sync.id !== null))) return;
     bindLive(nv.refOf(near.beach));
   };
   // this device's own beach goes in first (the sandbox keeps it between visits; signing in moves on from it)
@@ -2011,6 +2012,10 @@ async function boot() {
           await s.claim();
           const viewed = readView(u.id);
           const anchor = !pendingVisit && viewed && acct.beaches.some((b) => b.code === viewed && !b.home) ? viewed : null;
+          // the beach the shore centres on is the one in front of you: start its waves
+          // now, while the rest of the shore loads (the view takes over from here)
+          const first = anchor ? acct.beaches.find((b) => b.code === anchor) : acct.home;
+          if (first) void s.bind({ id: first.id, code: first.code, owned: true, location: first.location }, { adoptLocal: true });
           await nv.anchorAt(anchor).catch(() => nv.anchorAt(null));
           cam.goTo(0, true);
         })();
