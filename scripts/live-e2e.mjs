@@ -5,16 +5,9 @@
 // pass (/api/dev/age-beach); she opens her beach: the sea has worn the castle
 // down, taken the nautilus (back in her bag) and washed things up. "While you
 // were away" says so once, and "Put it back as it was" brings it all back.
-import { createRequire } from 'node:module';
 import { deflateSync } from 'node:zlib';
+import { e2eUrl, openApp, openBrowser, reloadApp } from './lib/e2e.mjs';
 
-const require = createRequire(import.meta.url);
-let chromium;
-try {
-  ({ chromium } = require('playwright'));
-} catch {
-  ({ chromium } = await import('playwright'));
-}
 const URL_ = process.env.BEECH_URL ?? 'http://127.0.0.1:8787/';
 let failed = 0;
 const check = (cond, msg) => {
@@ -65,12 +58,11 @@ check(put.status === 200, `saved a castle at the waterline and a nautilus in the
 check((await api('/dev/age-beach', json('POST', { hours: 48 }), token)).status === 204, 'two days pass with nobody on the beach');
 
 // ------------------------------------------------------------------ Ana opens it
-const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const { browser, close: closeBrowser } = await openBrowser();
 const errors = [];
 const page = await (await browser.newContext({ viewport: { width: 1000, height: 760 } })).newPage();
 page.on('pageerror', (e) => errors.push(e.message));
-await page.goto(URL_ + '?nointro&fixedres&seed=1&nofinds');
-await page.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
+await openApp(page, e2eUrl(URL_, 'nointro&fixedres&seed=1&nofinds'));
 await page.evaluate((n) => window.__beech.account().signInDev(n), who);
 await page.waitForFunction(() => window.__beech.beachId() && window.__beech.sync().state === 'saved', null, { timeout: 45000 });
 
@@ -117,8 +109,7 @@ const back = await castleTop();
 check(back > 0.25, `and the castle (${back.toFixed(2)} m, from 0.5)`);
 
 // only once
-await page.reload();
-await page.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
+await reloadApp(page);
 await page.waitForFunction(() => window.__beech.beachId() && window.__beech.sync().state === 'saved', null, { timeout: 45000 });
 await page.waitForTimeout(3000);
 check(!(await page.$('.hint.choice')), 'the card shows once, not again on the next visit');
@@ -128,8 +119,7 @@ check(!(await page.$('.hint.choice')), 'the card shows once, not again on the ne
 const device = async (name) => {
   const p = await (await browser.newContext({ viewport: { width: 1000, height: 760 } })).newPage();
   p.on('pageerror', (e) => errors.push(`${name}: ${e.message}`));
-  await p.goto(URL_ + '?nointro&fixedres&seed=1&nofinds');
-  await p.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
+  await openApp(p, e2eUrl(URL_, 'nointro&fixedres&seed=1&nofinds'));
   await p.evaluate((n) => window.__beech.account().signInDev(n), name);
   await p.waitForFunction(() => window.__beech.beachId() && window.__beech.sync().state === 'saved', null, { timeout: 45000 });
   return p;
@@ -140,7 +130,7 @@ await ben.evaluate((c) => window.__beech.neighbors().visit(c), code);
 await ben.waitForFunction(() => window.__beech.neighbors().snapshot(0) !== null, null, { timeout: 20000 });
 const seen0 = await ben.evaluate(() => window.__beech.neighbors().snapshot(0).updatedAt);
 // Ana's next heartbeat hears she's being watched
-await page.waitForFunction(() => window.__beech.sync().watched, null, { timeout: 30000 }).catch(() => {});
+await page.waitForFunction(() => window.__beech.sync().watched, null, { timeout: 30000 });
 check(await page.evaluate(() => window.__beech.sync().watched), "Ana's app knows someone is watching");
 await page.evaluate(() => window.__beech.setRail(true));
 await page.click('[data-act="dirt"]');
@@ -156,6 +146,7 @@ const got = await ben
 check(got, `Ben sees Ana's dig ${((Date.now() - dugAt) / 1000).toFixed(1)} s later`);
 
 check(errors.length === 0, `no page errors ${errors.join('; ')}`);
-await browser.close();
+await Promise.all([page, ben].map((p) => p.evaluate(() => { window.__beech.engine.skipFrameRender = true; })));
+await closeBrowser();
 console.log(failed ? `LIVE E2E: ${failed} FAILED` : 'LIVE E2E PASS');
 process.exit(failed ? 1 : 0);

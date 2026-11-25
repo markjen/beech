@@ -4,30 +4,23 @@
 //   node scripts/account-e2e.mjs            # BEECH_URL defaults to http://127.0.0.1:8787/
 // Signs in (dev), digs, saves, reloads and checks the beach comes back, then
 // deletes the account.
-import { createRequire } from 'node:module';
+import { e2eUrl, openApp, openBrowser } from './lib/e2e.mjs';
 
-const require = createRequire(import.meta.url);
-let chromium;
-try {
-  ({ chromium } = require('playwright'));
-} catch {
-  ({ chromium } = await import('playwright'));
-}
 const URL_ = process.env.BEECH_URL ?? 'http://127.0.0.1:8787/';
+const shots = Boolean(process.env.SHOT_DIR);
 let failed = 0;
 const check = (cond, msg) => {
   console.log(`${cond ? 'ok  ' : 'FAIL'} ${msg}`);
   if (!cond) failed++;
 };
 
-const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const { browser, close: closeBrowser } = await openBrowser();
 const page = await browser.newPage({ viewport: { width: 1000, height: 700 } });
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
 const open = async () => {
-  await page.goto(URL_ + '?nointro&fixedres&seed=1&nofinds');
-  await page.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
-  await page.waitForTimeout(800);
+  await openApp(page, e2eUrl(URL_, 'nointro&fixedres&seed=1&nofinds', { shots }));
+  await page.waitForTimeout(250);
 };
 const dug = () =>
   page.evaluate(() => {
@@ -234,6 +227,6 @@ check(true, 'account deleted and signed out');
 check(await page.isVisible('button[data-act="dev"]'), 'sign-in button is back');
 
 check(errors.length === 0, `no page errors ${errors.join(' | ')}`);
-await browser.close();
+await closeBrowser();
 console.log(failed ? `${failed} FAILED` : 'ACCOUNT E2E PASS');
 process.exit(failed ? 1 : 0);

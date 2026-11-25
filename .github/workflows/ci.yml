@@ -42,19 +42,48 @@ jobs:
       - name: Server typecheck + tests on PGlite
         working-directory: server
         run: npm ci && npm run typecheck && npm test
-      - name: Same tests on real Postgres 16
+      - name: Same DB tests on real Postgres 16
         working-directory: server
         env:
           TEST_DATABASE_URL: postgres://beech:beech@localhost:5432/beech_test
-        # Sequential on purpose: the test files share this one database and
-        # each drops/recreates the schema in beforeAll, so parallel files
-        # race — a DROP SCHEMA from one file lands mid-run of another and its
-        # queries fail with "relation does not exist". PGlite is per-file
-        # in-memory, so the step above is unaffected.
-        run: npm test -- --fileParallelism=false
-      - name: Production image builds and boots
+        # Each Vitest worker uses its own Postgres schema (server/test/testDb.ts),
+        # so DB test files run safely in parallel. Pure non-DB unit test files
+        # already ran in the step above and are skipped here.
+        run: >-
+          npm test --
+          --exclude test/auth.test.ts
+          --exclude test/beachImage.test.ts
+          --exclude test/giftCards.test.ts
+          --exclude test/guide.test.ts
+          --exclude test/store.test.ts
+          --exclude test/vending.test.ts
+
+  docker:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: beech
+          POSTGRES_PASSWORD: beech
+          POSTGRES_DB: beech_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U beech" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build production image (cached)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: beech:ci
+          build-args: VITE_GOOGLE_CLIENT_ID=ci-client
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Production image boots and serves health + SPA + auth gate
         run: |
-          docker build -t beech:ci --build-arg VITE_GOOGLE_CLIENT_ID=ci-client .
           docker run -d --name beech --network host -e PORT=8080 \
             -e DATABASE_URL=postgres://beech:beech@localhost:5432/beech_test beech:ci
           for i in $(seq 1 30); do curl -fs http://localhost:8080/api/health && break; sleep 1; done

@@ -1,16 +1,18 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { createPgliteDb, type Db } from '../src/db.js';
+import { type Db } from '../src/db.js';
+import { openTestDb } from './testDb.js';
 
 describe('Db.withTransaction', () => {
   let db: Db;
 
   beforeAll(async () => {
-    db = await createPgliteDb();
-    await db.exec('CREATE TABLE tx_test (id INTEGER PRIMARY KEY, v TEXT NOT NULL)');
+    db = await openTestDb();
+    await db.exec('DROP TABLE IF EXISTS tx_test; CREATE TABLE tx_test (id INTEGER PRIMARY KEY, v TEXT NOT NULL)');
   });
 
   afterAll(async () => {
+    await db?.exec('DROP TABLE IF EXISTS tx_test');
     await db?.close();
   });
 

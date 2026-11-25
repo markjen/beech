@@ -3,12 +3,12 @@ import { afterAll, beforeAll, expect, it } from 'vitest';
 import { createAdminApp } from '../src/adminApp.js';
 import { createApp } from '../src/app.js';
 import { hashToken } from '../src/auth.js';
-import { createPgliteDb, type Db } from '../src/db.js';
+import { type Db } from '../src/db.js';
 import { TERMS_VERSION } from '../src/itemSubmissions.js';
-import { migrate } from '../src/migrations.js';
 import { createRootApp } from '../src/rootApp.js';
 import { ASSET_LIMIT, assetExample } from '../src/submissionAssets.js';
 import { signWebhook } from '../src/xsolla.js';
+import { openTestDb } from './testDb.js';
 
 const adminToken = 'test-admin-token';
 const secret = 'xsolla-test-secret';
@@ -21,8 +21,7 @@ let nativeBoughtAt = now;
 let nextXsollaOrder = 880000;
 
 beforeAll(async () => {
-  db = await createPgliteDb();
-  await migrate(db);
+  db = await openTestDb();
   const api = createApp(db, {
     googleClientIds: [], appleClientIds: [], allowedOrigins: [], devAuth: true, now: () => now,
     stores: {

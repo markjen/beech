@@ -4,26 +4,20 @@
 // One person, two devices: save a checkpoint, restore it onto another beach
 // (short, then without what's missing, then in full), undo, a restore under
 // another device's feet, and checkpoints outliving their beach.
-import { createRequire } from 'node:module';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { e2eUrl, openApp, openBrowser, reloadApp } from './lib/e2e.mjs';
 
-const require = createRequire(import.meta.url);
-let chromium;
-try {
-  ({ chromium } = require('playwright'));
-} catch {
-  ({ chromium } = await import('playwright'));
-}
 const URL_ = process.env.BEECH_URL ?? 'http://127.0.0.1:8787/';
+const shots = Boolean(process.env.SHOT_DIR);
 let failed = 0;
 const check = (cond, msg) => {
   console.log(`${cond ? 'ok  ' : 'FAIL'} ${msg}`);
   if (!cond) failed++;
 };
 
-const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const { browser, close: closeBrowser } = await openBrowser();
 const errors = [];
 const who = `cp${Date.now() % 100000}`;
 const dialogs = [];
@@ -40,8 +34,7 @@ async function device(label) {
     dialogs.push(`${label} ${d.type()}: ${d.message()}`);
     void d.accept(d.type() === 'prompt' ? page.answer : undefined);
   });
-  await page.goto(URL_ + '?nointro&fixedres&seed=1&nofinds');
-  await page.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
+  await openApp(page, e2eUrl(URL_, 'nointro&fixedres&seed=1&nofinds', { shots }));
   await page.evaluate((n) => window.__beech.account().signInDev(n), who);
   await page.waitForFunction(() => window.__beech.beachId() && window.__beech.sync().state === 'saved', null, { timeout: 20000 });
   return page;
@@ -94,8 +87,7 @@ fs.writeFileSync(
   }),
 );
 // the bag must know about the lighthouse before importing
-await a.reload();
-await a.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
+await reloadApp(a);
 await a.waitForFunction(() => window.__beech.sync().state === 'saved', null, { timeout: 20000 });
 await showSheet(a);
 await a.evaluate(() => window.__beech.sheet.setTab('beach'));
@@ -141,8 +133,7 @@ check((await raised(a)) > 0.4, 'and the sand of "one" is here');
 
 // ------------------------------------------------------------------ 3, 5
 await grant(a, 'lighthouse');
-await a.reload();
-await a.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
+await reloadApp(a);
 await a.waitForFunction(() => window.__beech.sync().state === 'saved', null, { timeout: 20000 });
 check((await a.evaluate(() => window.__beech.beachId())) === second, 'A is still on the second beach');
 await showSheet(a);
@@ -172,23 +163,40 @@ await b.evaluate(() => window.__beech.sheet.setTab('beach'));
 await b.click(`button[data-act="select-beach-${second}"]`);
 await b.evaluate(() => window.__beech.sheet.setTab('beach'));
 await b.click(`button[data-act="open-${second}"]`);
-await b.waitForFunction(() => window.__beech.sync().state === 'saved' && window.__beech.info().objects.some((o) => o.item === 'rock'), null, { timeout: 20000 }).catch(() => {});
+await b.waitForFunction((id) => {
+  const app = window.__beech;
+  return app.beachId() === id && app.sync().state === 'saved' && app.info().objects.some((o) => o.item === 'rock');
+}, second, { timeout: 20000 });
 await b.evaluate(() => window.__beech.sheet.hide());
-// A restores "one" onto the second beach while B shows it
+// A takes editing back before restoring. Share the current test edit token
+// with B to exercise the stale restore epoch rather than the fencing guard.
+await a.bringToFront();
+await a.evaluate(() => window.__beech.sync().takeOver());
+const editToken = await a.evaluate(() => window.__beech.account().editToken);
+await b.evaluate((token) => { window.__beech.account().editToken = token; }, editToken);
+// A restores "one" onto the second beach while B shows it.
 await showSheet(a);
 await a.evaluate(() => window.__beech.sheet.setTab('checkpoints'));
 await a.click(`button[data-act="cp-restore-${one.id}"]`);
 await a.waitForFunction(() => window.__beech.info().objects.some((o) => o.item === 'lighthouse'), null, { timeout: 20000 });
-// B digs and saves: its save is refused and B loads the restored beach instead
-await b.keyboard.press('Escape');
-await b.evaluate(() => window.__beech.setRail(true));
-await b.click('[data-act="dirt"]');
-await b.mouse.move(300, 500);
-await b.mouse.down();
-for (let i = 0; i < 12; i++) await b.mouse.move(300 + i * 8, 500);
-await b.mouse.up();
-await b.evaluate(() => window.__beech.sync().flush());
-await b.waitForFunction(() => window.__beech.info().objects.some((o) => o.item === 'lighthouse'), null, { timeout: 20000 }).catch(() => {});
+// Submit an edit from B's stale snapshot and observe the epoch rejection.
+await b.bringToFront();
+const staleSave = b.waitForResponse((response) =>
+  response.request().method() === 'PUT' && new URL(response.url()).pathname === `/api/beaches/mine/${second}/sand`,
+);
+await b.evaluate(() => {
+  const app = window.__beech;
+  app.send({ type: 'placeObject', obj: { kind: 'rock', item: 'rock', x: 22, y: 25, size: 0.5, angle: 0, variant: 0 } });
+});
+await b.waitForFunction(() => window.__beech.info().objects.filter((o) => o.item === 'rock' && !o.wild).length === 2);
+await b.evaluate(() => {
+  const sync = window.__beech.sync();
+  sync.markDirty();
+  return sync.flush();
+});
+const rejection = await staleSave;
+check(rejection.status() === 409 && (await rejection.json()).error === 'restored', 'B’s stale save was rejected because the beach was restored');
+await b.waitForFunction(() => window.__beech.info().objects.some((o) => o.item === 'lighthouse'), null, { timeout: 20000 });
 check((await things(b)) === 'lighthouse,rock', `B reloaded the restored beach instead of saving over it (${await things(b)})`);
 const server = await api(a, '/api/beaches/mine');
 const secondNow = server.body.beaches.find((x) => x.id === second);
@@ -203,8 +211,10 @@ if (secondNow?.items.lighthouse !== 1 && process.env.DEBUG_E2E) {
 check(secondNow?.items.lighthouse === 1, `and the server still has the restored beach (${JSON.stringify(secondNow?.items)})`);
 
 // ------------------------------------------------------------------ 6
+await a.bringToFront();
 await showSheet(a);
 await a.evaluate(() => window.__beech.sheet.setTab('beach'));
+await a.click(`button[data-act="select-beach-${second}"]`);
 await a.click(`button[data-act="remove-beach-${second}"]`);
 await a.waitForFunction((h) => window.__beech.beachId() === h && window.__beech.account().beaches.length === 1, home, { timeout: 20000 });
 const after = await checkpointsList(a);
@@ -270,6 +280,6 @@ await a.evaluate(() => window.__beech.account().deleteAccount());
 fs.rmSync(dir, { recursive: true, force: true });
 check(errors.length === 0, `no page errors ${errors.join(' | ')}`);
 if (process.env.DEBUG_E2E) console.log(dialogs.join('\n'));
-await browser.close();
+await closeBrowser();
 console.log(failed ? `${failed} FAILED` : 'CHECKPOINTS E2E PASS');
 process.exit(failed ? 1 : 0);

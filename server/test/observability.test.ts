@@ -190,10 +190,8 @@ describe('createDbStats', () => {
 describe('request logging in the real app', () => {
   it('logs an /api request exactly once, with the route template', async () => {
     const { createApp } = await import('../src/app.js');
-    const { createPgliteDb } = await import('../src/db.js');
-    const { migrate } = await import('../src/migrations.js');
-    const db = await createPgliteDb();
-    await migrate(db);
+    const { openTestDb } = await import('./testDb.js');
+    const db = await openTestDb();
     const lines = captureLogs();
     // wired like server.ts: the logger on the root app, the API under /api
     const root = new Hono();
@@ -209,10 +207,8 @@ describe('request logging in the real app', () => {
 
   it('accepts cross-origin native client errors and telemetry events at /api/client-events', async () => {
     const { createApp } = await import('../src/app.js');
-    const { createPgliteDb } = await import('../src/db.js');
-    const { migrate } = await import('../src/migrations.js');
-    const db = await createPgliteDb();
-    await migrate(db);
+    const { openTestDb } = await import('./testDb.js');
+    const db = await openTestDb();
     const lines = captureLogs();
     const root = new Hono();
     root.route(

@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
 import { verifySteamTicket, type SteamAuthConfig } from '../src/auth.js';
-import { createPgliteDb, type Db } from '../src/db.js';
-import { migrate } from '../src/migrations.js';
+import { type Db } from '../src/db.js';
+import { openTestDb } from './testDb.js';
 
 const STEAM_CFG: SteamAuthConfig = { appId: '480', webApiKey: 'test-steam-key' };
 const GOOD_TICKET = '0123456789abcdef0123456789abcdef';
@@ -55,8 +55,7 @@ describe('Steam auth and cross-platform account linking', () => {
   let app: ReturnType<typeof createApp>;
 
   beforeAll(async () => {
-    db = await createPgliteDb();
-    await migrate(db);
+    db = await openTestDb();
     app = createApp(db, {
       googleClientIds: [],
       appleClientIds: [],

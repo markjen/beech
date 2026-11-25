@@ -2,15 +2,8 @@
 // Ben -left-> Ana -left-> Cleo. Ben walks down the shore past Ana to Cleo,
 // heads home with the home button, then visits Dot by code and stars her beach.
 //   node scripts/shore-e2e.mjs [screenshot.png]
-import { createRequire } from 'node:module';
+import { e2eUrl, openApp, openBrowser } from './lib/e2e.mjs';
 
-const require = createRequire(import.meta.url);
-let chromium;
-try {
-  ({ chromium } = require('playwright'));
-} catch {
-  ({ chromium } = await import('playwright'));
-}
 const URL_ = process.env.BEECH_URL ?? 'http://127.0.0.1:8787/';
 const shot = process.argv[2];
 let failed = 0;
@@ -19,14 +12,13 @@ const check = (cond, msg) => {
   if (!cond) failed++;
 };
 
-const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const { browser, close: closeBrowser } = await openBrowser();
 const page = await browser.newPage({ viewport: { width: 1100, height: 700 } });
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
-await page.goto(URL_ + '?nointro&fixedres&seed=1&nofinds');
-await page.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
+await openApp(page, e2eUrl(URL_, 'nointro&fixedres&seed=1&nofinds', { shots: Boolean(shot) }));
 
-const tag = Date.now() % 100000;
+const tag = `sh${Date.now() % 10000}${process.pid % 100}`;
 const names = { ana: `ana${tag}`, ben: `ben${tag}`, cleo: `cleo${tag}`, dot: `dot${tag}` };
 // sign in as someone, save once, and return their code
 const become = async (name) => {
@@ -84,10 +76,14 @@ await page.evaluate(() => {
   const b = window.__beech;
   b.cam.halfH = 14;
   b.cam.applyOrtho();
-  b.cam.goTo(2 * 33.6, true);
+  b.cam.goTo(b.neighbors().xFor(2), true);
 });
-await page.waitForFunction(() => window.__beech.neighbors().snapshot(2) !== null, null, { timeout: 15000 });
-await page.waitForTimeout(800);
+await page.waitForFunction((name) => {
+  const shore = window.__beech.neighbors();
+  const [first, last] = shore.window;
+  const label = document.querySelector('.shore-bar.shown .sb-where');
+  return first <= 2 && last >= 2 && shore.snapshot(2) && label?.textContent?.includes(name);
+}, names.cleo, { polling: 100, timeout: 15000 });
 const where = await page.textContent('.shore-bar .sb-where');
 check(await page.isVisible('.shore-bar.shown'), 'down the shore: the home button shows');
 check(where?.includes(names.cleo), `it says whose beach this is (${where})`);
@@ -100,14 +96,19 @@ await page.waitForFunction((c) => window.__beech.neighbors().favorites.has(c), c
 check(true, "starred Cleo's beach");
 // and home
 await page.click('.shore-bar .sb-home');
-await page.waitForFunction(() => Math.abs(window.__beech.cam.focusX) < 0.5, null, { timeout: 15000 });
+await page.waitForFunction(() => {
+  const app = window.__beech;
+  const shore = app.neighbors();
+  return shore.nearestIndex(app.cam.focusX) === 0 && shore.liveVisible
+    && !document.querySelector('.shore-bar.shown');
+}, null, { polling: 100, timeout: 30000 });
 check(await page.evaluate(() => window.__beech.neighbors().liveVisible), 'home again: your beach is drawn');
 
 // infinite scroll: head right past what's loaded and more of the shore loads
 {
   const before = await page.evaluate(() => window.__beech.neighbors().extent.right);
   if (before > 0) {
-    await page.evaluate((n) => window.__beech.cam.goTo(-n * 33.6, true), before);
+    await page.evaluate((n) => window.__beech.cam.goTo(window.__beech.neighbors().xFor(-n), true), before);
     await page.waitForFunction((n) => window.__beech.neighbors().extent.right > n, before, { timeout: 8000 }).catch(() => {});
     const after = await page.evaluate(() => window.__beech.neighbors().extent.right);
     check(after >= before, `scrolling right loads more of the shore when there is more (${before} -> ${after})`);
@@ -123,7 +124,10 @@ await page.waitForFunction(() => window.__beech.neighbors().visiting !== null, n
 check((await page.evaluate(() => window.__beech.neighbors().visiting.name)) === names.dot, "visiting Dot's beach");
 await page.waitForFunction(() => document.querySelector('.shore-bar .sb-where')?.textContent?.startsWith('Visiting'), null, { timeout: 5000 }).catch(() => {});
 check((await page.textContent('.shore-bar .sb-where'))?.startsWith('Visiting'), 'the bar says Visiting');
-check(!(await page.evaluate(() => window.__beech.neighbors().liveVisible)), 'your own beach is hidden while visiting');
+check(await page.evaluate(() => {
+  const app = window.__beech;
+  return app.neighbors().visiting.id !== app.beachId();
+}), "the visited beach is not the live editing beach");
 // you can't dig someone else's beach
 await page.keyboard.press('Escape');
 await page.evaluate(() => window.__beech.setRail(true));
@@ -145,8 +149,11 @@ await page.click(`button[data-act="visit-${codes.cleo}"]`);
 await page.waitForFunction((n) => window.__beech.neighbors().visiting?.name === n, names.cleo, { timeout: 15000 });
 check(true, 'visited Cleo from favorites');
 await page.click('.shore-bar .sb-home');
-await page.waitForFunction(() => window.__beech.neighbors().visiting === null && window.__beech.neighbors().liveVisible, null, { timeout: 15000 });
-check((await page.evaluate(() => window.__beech.neighbors().beachAt(1)?.name)) === names.ana, 'home: Ana is next door again');
+await page.waitForFunction((name) => {
+  const shore = window.__beech.neighbors();
+  return shore.visiting === null && shore.liveVisible && shore.beachAt(1)?.name === name;
+}, names.ana, { timeout: 15000 });
+check(true, 'home: Ana is next door again');
 
 // signed out: other sections of the public shore still render beside the empty beach
 await page.evaluate(() => window.__beech.account().signOut());
@@ -160,6 +167,6 @@ const signedOut = await page.evaluate(() => ({
 check(signedOut.ownVisible && signedOut.ext.left > 0 && !!signedOut.left && signedOut.maxX > 40, `signed out: public shore renders next to empty beach (${JSON.stringify(signedOut)})`);
 
 check(errors.length === 0, `no page errors ${errors.join(' | ')}`);
-await browser.close();
+await closeBrowser();
 console.log(failed ? `${failed} FAILED` : 'SHORE E2E PASS');
 process.exit(failed ? 1 : 0);

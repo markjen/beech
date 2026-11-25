@@ -7,15 +7,8 @@
 // parasol. Ana's mailbox shows it; she opens the inbox, says thanks, reports
 // the note and blocks Ben; Ben's next visit doesn't go through.
 //   node scripts/inbox-e2e.mjs [screenshot-dir]
-import { createRequire } from 'node:module';
+import { e2eUrl, openApp, openBrowser } from './lib/e2e.mjs';
 
-const require = createRequire(import.meta.url);
-let chromium;
-try {
-  ({ chromium } = require('playwright'));
-} catch {
-  ({ chromium } = await import('playwright'));
-}
 const URL_ = process.env.BEECH_URL ?? 'http://127.0.0.1:8787/';
 const shots = process.argv[2];
 let failed = 0;
@@ -24,34 +17,33 @@ const check = (cond, msg) => {
   if (!cond) failed++;
 };
 
-const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const { browser, close: closeBrowser } = await openBrowser();
 const errors = [];
-const open = async (url, viewport) => {
+const open = async (query, viewport) => {
   const ctx = await browser.newContext({ viewport });
   const page = await ctx.newPage();
-  page.setDefaultTimeout(60000); // the software-rendered page is slow here
+  page.setDefaultTimeout(30000);
   page.on('pageerror', (e) => errors.push(e.message));
-  await page.goto(url, { waitUntil: 'commit' });
-  await page.waitForSelector('body[data-ready="1"]', { timeout: 60000 });
+  await openApp(page, e2eUrl(URL_, query, { shots: Boolean(shots) }));
   return page;
 };
 const owned = (page, item) =>
   page.evaluate(async (i) => (await window.__beech.account().inventory()).filter((x) => x.item === i).reduce((s, x) => s + x.quantity, 0), item);
 const hints = (page) => page.$$eval('.hint', (els) => els.map((e) => e.textContent ?? ''));
 
-const tag = Date.now() % 100000;
+const tag = `ib${Date.now() % 10000}${process.pid % 100}`;
 const ana = `ana${tag}`;
 const ben = `ben${tag}`;
 
 // ---- Ana saves her beach
-const pa = await open(URL_ + '?nointro&fixedres&seed=1&nofinds', { width: 1100, height: 760 });
+const pa = await open('nointro&fixedres&seed=1&nofinds', { width: 1100, height: 760 });
 await pa.evaluate((n) => window.__beech.account().signInDev(n), ana);
-await pa.waitForFunction(() => window.__beech.sync().state === 'saved', null, { timeout: 60000 });
+await pa.waitForFunction(() => window.__beech.sync().state === 'saved', null, { timeout: 30000 });
 const anaCode = await pa.evaluate(() => window.__beech.neighbors().api.get().then((n) => n.code));
 check(await pa.$eval('.inbox-btn', (b) => b.classList.contains('shown')), 'signed in, the inbox is live');
 
 // ---- Ben opens the link signed out
-const pb = await open(`${URL_}?visit=${anaCode}&nointro&fixedres&seed=1&nofinds`, { width: 390, height: 844 });
+const pb = await open(`visit=${anaCode}&nointro&fixedres&seed=1&nofinds`, { width: 390, height: 844 });
 await pb.waitForFunction((c) => window.__beech.neighbors().visiting?.code === c, anaCode, { timeout: 60000 });
 check(!(await pb.evaluate(() => !!window.__beech.account().user)), 'Ben is signed out…');
 check(true, "…and sees Ana's beach straight away");
@@ -87,6 +79,7 @@ check((await hints(pb)).some((h) => h.includes('parasol') && h.includes('4 shell
 check((await owned(pb, 'parasol')) === 0, 'the parasol left his bag');
 
 // ---- Ana's inbox
+await pa.bringToFront();
 await pa.evaluate(() => window.__beech.neighbors().refresh()); // the 30 s poll, now
 await pa.waitForFunction(() => Number(document.querySelector('.inbox-badge')?.textContent) >= 2, null, { timeout: 60000 });
 check(true, 'the mailbox counts what arrived');
@@ -127,7 +120,7 @@ await pb.waitForFunction(() => document.querySelector('.visitor-status')?.textCo
 check(true, "a blocked visitor's rating doesn't go through");
 
 check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join(' | ')}` : ''}`);
-await browser.close();
+await closeBrowser();
 if (failed) {
   console.log(`${failed} check(s) failed`);
   process.exit(1);

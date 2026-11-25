@@ -6,10 +6,10 @@ import path from 'node:path';
 import { deflateSync } from 'node:zlib';
 
 import { createApp } from '../src/app.js';
-import { createPgDb, createPgliteDb, type Db } from '../src/db.js';
-import { migrate } from '../src/migrations.js';
+import { type Db } from '../src/db.js';
 import { createRootApp } from '../src/rootApp.js';
 import { ago, beachTitle, shareText } from '../src/shoreSite.js';
+import { openTestDb } from './testDb.js';
 
 let db: Db;
 let root: ReturnType<typeof createRootApp>;
@@ -33,13 +33,7 @@ function savedBeach(): Uint8Array {
 const shoreHost = { headers: { Host: 'beechshore.com' } };
 
 beforeAll(async () => {
-  if (process.env.TEST_DATABASE_URL) {
-    db = createPgDb({ url: process.env.TEST_DATABASE_URL });
-    await db.exec('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
-  } else {
-    db = await createPgliteDb();
-  }
-  await migrate(db);
+  db = await openTestDb();
   const api = createApp(db, { googleClientIds: [], appleClientIds: [], allowedOrigins: [], devAuth: true });
   publicDir = fs.mkdtempSync(path.join(process.cwd(), 'test', '.tmp-shore-'));
   fs.writeFileSync(path.join(publicDir, 'index.html'), '<!doctype html><html><head><title>beech</title></head><body>beech-spa-marker</body></html>');
@@ -367,7 +361,7 @@ describe('the shore site', () => {
 
   it('creates partial indexes for public shore lists', async () => {
     const idx = await db.query<{ indexname: string }>(
-      `SELECT indexname FROM pg_indexes WHERE tablename = 'beach' AND indexname IN ('beach_public_updated', 'beach_public_location') ORDER BY indexname`,
+      `SELECT indexname FROM pg_indexes WHERE schemaname = current_schema() AND tablename = 'beach' AND indexname IN ('beach_public_updated', 'beach_public_location') ORDER BY indexname`,
     );
     expect(idx.map((r) => r.indexname)).toEqual(['beach_public_location', 'beach_public_updated']);
   });
