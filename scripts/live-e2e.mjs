@@ -65,7 +65,7 @@ page.on('pageerror', (e) => errors.push(e.message));
 await page.goto(e2eUrl(URL_, 'nointro&fixedres&seed=1&nofinds'), { waitUntil: 'commit' });
 await page.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
 await page.evaluate((n) => window.__beech.account().signInDev(n), who);
-await page.waitForFunction(() => window.__beech.account().beachId && window.__beech.sync().state === 'saved', null, { timeout: 45000 });
+await page.waitForFunction(() => window.__beech.beachId() && window.__beech.sync().state === 'saved', null, { timeout: 45000 });
 
 const castleTop = () =>
   page.evaluate((c) => {
@@ -112,8 +112,8 @@ check(back > 0.25, `and the castle (${back.toFixed(2)} m, from 0.5)`);
 // only once
 await page.reload({ waitUntil: 'commit' });
 await page.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
-await page.waitForFunction(() => window.__beech.account().beachId && window.__beech.sync().state === 'saved', null, { timeout: 45000 });
-await page.waitForTimeout(800);
+await page.waitForFunction(() => window.__beech.beachId() && window.__beech.sync().state === 'saved', null, { timeout: 45000 });
+await page.waitForTimeout(3000);
 check(!(await page.$('.hint.choice')), 'the card shows once, not again on the next visit');
 
 // ------------------------------------------------------------------ live viewers (L5)
@@ -124,7 +124,7 @@ const device = async (name) => {
   await p.goto(e2eUrl(URL_, 'nointro&fixedres&seed=1&nofinds'), { waitUntil: 'commit' });
   await p.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
   await p.evaluate((n) => window.__beech.account().signInDev(n), name);
-  await p.waitForFunction(() => window.__beech.account().beachId && window.__beech.sync().state === 'saved', null, { timeout: 45000 });
+  await p.waitForFunction(() => window.__beech.beachId() && window.__beech.sync().state === 'saved', null, { timeout: 45000 });
   return p;
 };
 const ben = await device(`${who}b`);
@@ -132,7 +132,7 @@ const code = (await api('/neighbors', {}, token)).body.code;
 await ben.evaluate((c) => window.__beech.neighbors().visit(c), code);
 await ben.waitForFunction(() => window.__beech.neighbors().snapshot(0) !== null, null, { timeout: 20000 });
 const seen0 = await ben.evaluate(() => window.__beech.neighbors().snapshot(0).updatedAt);
-// Ana learns about the visitor on her next scheduled heartbeat (every 20s).
+// Ana's next heartbeat hears she's being watched
 await page.waitForFunction(() => window.__beech.sync().watched, null, { timeout: 30000 });
 check(await page.evaluate(() => window.__beech.sync().watched), "Ana's app knows someone is watching");
 await page.evaluate(() => window.__beech.setRail(true));

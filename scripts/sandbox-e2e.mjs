@@ -20,6 +20,7 @@ page.on('dialog', (d) => void d.accept(d.type() === 'prompt' ? 'castle' : undefi
 const open = async () => {
   await page.goto(e2eUrl(URL_, 'nointro&fixedres&seed=1&nofinds&quality=low', { shots }), { waitUntil: 'commit' });
   await page.waitForSelector('body[data-ready="1"]', { timeout: 60000 });
+  await page.evaluate(() => window.__beech.engine.setHardwareScalingLevel(2));
   await page.waitForTimeout(300);
 };
 const dug = () => page.evaluate(() => { const b = window.__beech; let d = 0; for (let k = 0; k < b.rest.length; k++) if (b.rest[k] > 0.5) d += Math.abs(b.picker.sand[k] - b.rest[k]); return d; });

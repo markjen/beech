@@ -94,7 +94,7 @@ check(true, "starred Cleo's beach");
 // and home
 await page.click('.shore-bar .sb-home');
 await page.waitForFunction(() => Math.abs(window.__beech.cam.focusX) < 0.5, null, { timeout: 15000 });
-check(await page.evaluate(() => window.__beech.neighbors().ownVisible), 'home again: your beach is drawn');
+check(await page.evaluate(() => window.__beech.neighbors().liveVisible), 'home again: your beach is drawn');
 
 // infinite scroll: head right past what's loaded and more of the shore loads
 {
@@ -116,7 +116,8 @@ await page.waitForFunction(() => window.__beech.neighbors().visiting !== null, n
 check((await page.evaluate(() => window.__beech.neighbors().visiting.name)) === names.dot, "visiting Dot's beach");
 await page.waitForFunction(() => document.querySelector('.shore-bar .sb-where')?.textContent?.startsWith('Visiting'), null, { timeout: 5000 }).catch(() => {});
 check((await page.textContent('.shore-bar .sb-where'))?.startsWith('Visiting'), 'the bar says Visiting');
-check(!(await page.evaluate(() => window.__beech.neighbors().ownVisible)), 'your own beach is hidden while visiting');
+await page.waitForFunction(() => !window.__beech.neighbors().liveVisible, null, { timeout: 15000 });
+check(true, 'your own beach is hidden while visiting');
 // you can't dig someone else's beach
 await page.keyboard.press('Escape');
 await page.evaluate(() => window.__beech.setRail(true));
@@ -140,7 +141,7 @@ check(true, 'visited Cleo from favorites');
 await page.click('.shore-bar .sb-home');
 await page.waitForFunction((name) => {
   const shore = window.__beech.neighbors();
-  return shore.visiting === null && shore.ownVisible && shore.beachAt(1)?.name === name;
+  return shore.visiting === null && shore.liveVisible && shore.beachAt(1)?.name === name;
 }, names.ana, { timeout: 15000 });
 check(true, 'home: Ana is next door again');
 
@@ -148,7 +149,7 @@ check(true, 'home: Ana is next door again');
 await page.evaluate(() => window.__beech.account().signOut());
 await page.waitForFunction(() => !window.__beech.account().user && window.__beech.neighbors().snapshot(1) !== null, null, { timeout: 15000 });
 const signedOut = await page.evaluate(() => ({
-  ownVisible: window.__beech.neighbors().ownVisible,
+  ownVisible: window.__beech.neighbors().liveVisible,
   ext: window.__beech.neighbors().extent,
   left: window.__beech.neighbors().beachAt(1)?.name ?? null,
   maxX: window.__beech.cam.maxX,

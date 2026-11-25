@@ -89,13 +89,31 @@ export class BeachRenderer {
   private lastNegRef: BeachRenderer | null | undefined = undefined;
   private lastPosRef: BeachRenderer | null | undefined = undefined;
 
+  /** world X of this slab's centre */
+  get offsetX(): number {
+    return this._offsetX;
+  }
+
+  /** Move the slab along the shore (the waves moved to another of your beaches). */
+  setOffsetX(x: number): void {
+    if (x === this._offsetX) return;
+    this._offsetX = x;
+    for (const m of this.fieldMats) m.setFloat('centerX', x);
+    this.oceanMat.setFloat('centerX', x);
+    for (const m of this.meshes) {
+      m.unfreezeWorldMatrix();
+      m.position.x = x;
+      m.freezeWorldMatrix();
+    }
+  }
+
   constructor(
     private readonly scene: Scene,
     grid: GridSpec,
     rest: Float32Array,
     private readonly swell: Swell,
-    /** world X offset of this slab (neighbors sit either side of the player's beach) */
-    readonly offsetX = 0,
+    /** world X offset of this slab (where its beach sits along the shore) */
+    private _offsetX = 0,
   ) {
     this.grid = grid;
     this.edgeZ = ORIGIN_Z + grid.dx * 0.5;
@@ -229,7 +247,7 @@ export class BeachRenderer {
     for (const m of this.fieldMats) {
       m.setVector2('gridSize', gs);
       m.setFloat('cellSize', grid.dx);
-      m.setFloat('centerX', this.offsetX);
+      m.setFloat('centerX', this._offsetX);
       m.setFloat('originZ', ORIGIN_Z);
       m.setFloat('staticWater', 0);
       m.setFloat('zEdge', this.edgeZ);
@@ -504,7 +522,7 @@ export class BeachRenderer {
     ocean.alphaIndex = 1;
     this.oceanMat.setFloat('zEdge', edgeZ);
     this.oceanMat.setFloat('halfX', hx);
-    this.oceanMat.setFloat('centerX', this.offsetX);
+    this.oceanMat.setFloat('centerX', this._offsetX);
     this.oceanMat.setFloat('fadeNear', 1);
     this.oceanMat.setFloat('fadeFar', 18);
     this.oceanMat.setFloat('apron', 1);
@@ -526,7 +544,7 @@ export class BeachRenderer {
     for (const r of rocks) r.material = this.rockMat;
 
     for (const m of [sand, water, skirt, wskirt, ocean, ...rocks]) {
-      m.position.x = this.offsetX;
+      m.position.x = this._offsetX;
       m.alwaysSelectAsActiveMesh = true;
       m.isPickable = false;
       m.freezeWorldMatrix();

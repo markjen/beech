@@ -34,7 +34,7 @@ automatic checkpoint, so every restore can be undone.
   storm", "Moat v2").
 - A list of their checkpoints: name, which beach it came from, when, and the
   non-free things in it.
-- "Restore here" (onto the beach this device shows) or "Restore onto…" (any
+- "Restore here" (onto the beach of yours in view) or "Restore onto…" (any
   of their beaches).
 - A clear answer when they can't: "You need 1 more Lighthouse (it's on
   Home)". Then a choice: cancel, or restore without the missing ones.
@@ -345,13 +345,12 @@ the client helper flushes before snapshotting, skips fenced / signed-out
   the old hole — a save with no epoch header silently overwriting a
   restore — is closed by the edit token, not the epoch (docs/EDIT_SESSIONS.md).
   The epoch stays as a second guard for saves that carry it.
-- On `restored`, `BeachSync` drops what it had queued, calls
-  `restoreOrCreate()` to load the restored beach, and the app shows "This
-  beach was restored from 'Moat v2'" (the name comes from the auto
-  checkpoint, via `GET /api/checkpoints`).
-- Restoring the beach this device shows: `flush()`, hold saves (the same
-  `switching` flag `switchTo` uses), restore, then `restoreOrCreate()`. The
-  undo stack is cleared, as for any beach load.
+- On `restored`, the `BeachStore` drops what it had queued for that beach,
+  reloads it by id (into the wave worker too, if the waves are on it), and
+  the app says the beach was restored on another device.
+- Restoring any beach of yours: `store.flush(id)`, restore, then
+  `store.reload(id, force)`. Its undo history is cleared, as for any load
+  from the server.
 - Restoring one of your other beaches: nothing reloads here; the app
   refreshes `/api/beaches/mine` so the bag's "elsewhere" counts change.
 

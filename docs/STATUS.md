@@ -304,17 +304,26 @@ accepted the repo's default branch, so the deploy job ran only there.
   rename it, make it home, remove it, or make a new one (allowance = 1 + extra
   beaches owned, cap 8). The player-facing "off the shore" toggle is removed
   for now (admin hide/unhide via `on_shore` remains).
-- **Each device shows one of your beaches** and runs its simulation. It's
-  remembered per device (`beech.activeBeach.v1`), so different devices run
-  different beaches at the same time, each saving its own. Opening another
-  beach saves this one and loads that one (an untouched beach if it's new).
-- Neighbors, requests, codes and the shore all follow the device's beach
-  (`?beach=`). Putting one of your own beach codes next to another links them
+- **No current beach (2026-11-25, docs/BEACH_STORE.md).** The client keeps
+  every beach's state in memory by id (`BeachStore`, LRU-capped at
+  `BEACH_STORE.capacity`); drawing, editing, saving, checkpoints and pets all
+  name an id. The wave worker simulates the beach of yours nearest the
+  centre of the view and moves (sand *and* undo history, through the store,
+  nothing refetched) when the view settles on another one. Undo is one order
+  across beaches. A device remembers the beach it was looking at
+  (`beech.view.v1`, a view bookmark) instead of an active beach
+  (`beech.activeBeach.v1` is gone), so different devices can still watch
+  different beaches. The shore API sends each beach's `id`. Switching accounts
+  keeps the device beach separate from sand saved to an account.
+- Neighbors, requests and codes in settings follow the selected beach
+  (`?beach=`); the shore is laid out around an anchor (home, a beach you
+  went to, or one you're visiting). Putting one of your own beach codes next to another links them
   at once, with no request.
 - The bag counts non-free items across all your beaches. Each save sends
   `X-Beach-Items`, and "N of M left" includes the other beaches' counts.
 - `npm run e2e:beaches`: two devices, two beaches, digging at once, linking
-  them, and remembering the choice per device. Needs DEV_AUTH for
+  them, the waves following the view across the seam, and remembering the
+  beach in view per device. Needs DEV_AUTH for
   `/api/dev/grant`.
 
 ## Mutual neighbors and the global beachfront (added after the bulldozer)

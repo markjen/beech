@@ -4,7 +4,7 @@ import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { Scene } from '@babylonjs/core/scene';
 
 import { Ambience } from './audio/ambience';
-import { GRID_TIERS, SIM_HZ, WAVES, WORLD_SIZE_X, type QualityTier } from './config';
+import { BEACH_STORE, GRID_TIERS, SIM_HZ, WAVES, WORLD_SIZE_X, type QualityTier } from './config';
 import { CameraController } from './input/cameraController';
 import { Gestures, HOLD_SLOP_PX, LONG_PRESS_MS } from './input/gestures';
 import { SandPicker } from './input/sandPicker';
@@ -27,6 +27,7 @@ import { POS_STRIDE, type ObjectState, type PlacedObject } from './sim/objects';
 import type { FrameInfo, FromWorker, ToWorker } from './sim/protocol';
 import { makeSwell } from './sim/waves';
 import { MAX_OBJECTS, decodeSand, encodeSand, fitWorld, resampleField } from './sim/sandCodec';
+import type { UndoHistory } from './sim/undoStack';
 import { restHeight } from './sim/profile';
 import { Ambient, toggleFullscreen } from './ui/ambient';
 import { Hud, icon, type DirtDef } from './ui/hud';
@@ -51,13 +52,14 @@ import { BeachGuide, type GuideHost } from './ui/guide';
 import type { InvitePanel } from './ui/invite';
 import { extraById, itemById, prizeName } from './world/items';
 import { BeachSync, countItems, type SyncState } from './net/beachSync';
+import { BeachStore, LOCAL_BEACH, type BeachRef } from './net/beachStore';
+import { beachBackend } from './net/storeBackends';
 import { snapshotBeforeBigEdit } from './net/bigEditSnapshot';
 import { AccountPanel } from './ui/accountPanel';
 import { Leaderboard } from './ui/leaderboard';
 import { NeighborView } from './render/neighbors';
 import { loadSettings, saveSettings, type Settings, type WaveStrength } from './ui/settingsStore';
 import { initTelemetry, reportError, reportEvent } from './net/telemetry';
-import { loadLocalBeach, saveLocalBeach } from './net/localStore';
 import { LocalCheckpointsSection } from './ui/localCheckpoints';
 import { watchForNewVersion } from './platform/version';
 import { isPackagedApp, isSteam, steamBridge } from './platform/runtime';
@@ -241,13 +243,15 @@ async function boot() {
     animalViewLoading = true;
     void import('./render/animals').then(({ AnimalView: View }) => {
       animalView = new View(scene, renderer);
+      animalView.offsetX = picker.offsetX;
     });
   };
   const animalBrush = { x: 0, z: 0, active: false };
   const animalObstacles: AnimalObstacle[] = [];
+  // animals live in their beach's own frame (centred on x = 0); the live beach sits at picker.offsetX
   const animalEnv: AnimalEnv = {
-    heightAt: (x, z) => picker.heightAt(x, z),
-    waterAt: (x, z) => picker.waterAt(x, z),
+    heightAt: (x, z) => picker.heightAt(x + picker.offsetX, z),
+    waterAt: (x, z) => picker.waterAt(x + picker.offsetX, z),
     brush: animalBrush,
     obstacles: animalObstacles,
   };
@@ -320,23 +324,58 @@ async function boot() {
     for (const o of objectStates) if (o.found) kept.set(o.item, (kept.get(o.item) ?? 0) + 1);
     return kept;
   };
-  const sandWaiters = new Map<number, (d: SandReply) => void>();
+  const sandWaiters = new Map<number, (d: SandReply & { history?: UndoHistory }) => void>();
   let sandReq = 0;
-  const getSand = () =>
-    new Promise<SandReply>((resolve) => {
+  const getSand = (history = false) =>
+    new Promise<SandReply & { history?: UndoHistory }>((resolve) => {
       const id = ++sandReq;
       sandWaiters.set(id, resolve);
-      send({ type: 'getSand', id });
+      send({ type: 'getSand', id, ...(history ? { history: true } : {}) });
     });
+
+  // ---------------------------------------------------------------- beach state (docs/BEACH_STORE.md)
+  // Every beach the app knows is kept in the store by id; there is no
+  // "current" beach. The worker simulates whichever beach of yours the view
+  // is on (`sync.id`), drawn by the live renderer at that beach's place.
+  const account: Account | null = ACCOUNTS_ENABLED ? new Account() : null;
+  const store = new BeachStore(grid, ready.rest, beachBackend(account, { saveLocal: !ACCOUNTS_ENABLED, fresh: params.has('fresh') }), seed);
+  store.canSave = () => !account || !!account.user;
+  /** the live renderer is waiting for the worker's first frame of the beach it just got */
+  let awaitingLoad = 0;
+  const sync = new BeachSync(account, store, {
+    read: (history) => getSand(history),
+    write: (sand) => {
+      // (the undo order across beaches stays: each beach's history travels with it)
+      const xfer: Transferable[] = [sand.delta.buffer];
+      if (sand.cover) xfer.push(sand.cover.buffer);
+      settling = null;
+      dragging = null;
+      awaitingLoad = ++loadId;
+      send({ type: 'setSand', loadId, delta: sand.delta, objects: sand.objects, ...(sand.cover ? { cover: sand.cover } : {}), ...(sand.history ? { history: sand.history } : {}) }, xfer);
+    },
+  });
+  /** is this the beach the worker simulates? */
+  const isLive = (id: string) => id === sync.id;
 
   worker.onmessage = (ev: MessageEvent<FromWorker>) => {
     const m = ev.data;
     if (m.type === 'sand') {
-      sandWaiters.get(m.id)?.({ delta: m.delta, objects: m.objects, ...(m.cover ? { cover: m.cover } : {}) });
+      sandWaiters.get(m.id)?.({ delta: m.delta, objects: m.objects, ...(m.cover ? { cover: m.cover } : {}), ...(m.history ? { history: m.history } : {}) });
       sandWaiters.delete(m.id);
       return;
     }
     if (m.type !== 'frame') return;
+    if (awaitingLoad && m.loadId !== awaitingLoad) {
+      // still the beach the worker had before: don't draw it at the new place
+      send({ type: 'return', buf: m.buf, objPos: m.objPos }, [m.buf.buffer, m.objPos.buffer]);
+      return;
+    }
+    if (awaitingLoad) {
+      // the worker has the new beach now: move the live renderer there and
+      // let the snapshot take the old one, in the same frame
+      awaitingLoad = 0;
+      liveArrived();
+    }
     // everything's position this frame, in roster order (no objects made per frame)
     const pos = m.objPos;
     if (m.roster) {
@@ -405,57 +444,48 @@ async function boot() {
   let digStrokeStart = 0;
   /** last time the app asked the server for a digging roll (the server enforces the same gap) */
   let lastDigFindAttempt = 0;
-  type EditTarget = { kind: 'live' } | { kind: 'neighbor'; index: number; beachId: string; offsetX: number };
+  /**
+   * Every edit names the beach it lands on, by id (docs/BEACH_STORE.md), and
+   * where that beach sits along the shore. The one the worker simulates is
+   * edited there; any other beach of yours through the store's edit sim.
+   */
+  type EditTarget = { beachId: string; offsetX: number };
   type Hit = { x: number; y: number; z: number; target: EditTarget };
-  const LIVE_TARGET: EditTarget = { kind: 'live' };
-  const sameTarget = (a: EditTarget, b: EditTarget) =>
-    a.kind === b.kind && (a.kind === 'live' || (b.kind === 'neighbor' && a.beachId === b.beachId && a.index === b.index));
+  const sameTarget = (a: EditTarget, b: EditTarget) => a.beachId === b.beachId;
   let strokeTarget: EditTarget | null = null;
-  /** Each edit can affect one beach or both sides of a seam. */
+  /** Each edit can affect one beach or both sides of a seam (beach ids, oldest first). */
   const undoTargets: string[][] = [];
   const redoTargets: string[][] = [];
-  const editKey = (target: EditTarget) => target.kind === 'live' ? 'live' : target.beachId;
   const recordEditTarget = (...targets: EditTarget[]) => {
-    undoTargets.push(targets.map(editKey));
+    undoTargets.push(targets.map((t) => t.beachId));
     if (undoTargets.length > 64) undoTargets.shift();
     redoTargets.length = 0;
   };
   let lastHit: Hit | null = null;
   let hover: Hit | null = null;
   let ringAlpha = 0;
-  let lastRing: Hit = { x: 0, y: 0, z: 0, target: LIVE_TARGET };
+  let lastRing: Hit = { x: 0, y: 0, z: 0, target: { beachId: '', offsetX: 0 } };
 
+  /** the live beach is drawn (on the shore near the view) */
+  const liveShown = () => !!sync.id && (neighbors ? neighbors.liveVisible : true);
   const pickAt = (sx: number, sy: number): Hit | null => {
     const ray = cam.ray(sx, sy);
-    const liveHit = !neighbors || neighbors.ownVisible ? picker.pick(ray) : null;
+    // (while the worker is still loading a beach, the live renderer shows the last one: no edits through it)
+    const liveHit = liveShown() && !awaitingLoad ? picker.pick(ray) : null;
     const ownedHit = neighbors ? neighbors.pickOwned(ray) : null;
+    const live = (): Hit | null => (liveHit && sync.id ? { ...liveHit, target: { beachId: sync.id, offsetX: picker.offsetX } } : null);
+    const owned = (): Hit | null =>
+      ownedHit ? { x: ownedHit.x, y: ownedHit.y, z: ownedHit.z, target: { beachId: ownedHit.beachId, offsetX: ownedHit.offsetX } } : null;
     if (liveHit && ownedHit) {
       const o = ray.origin;
       const dLive = (liveHit.x - o.x) ** 2 + (liveHit.y - o.y) ** 2 + (liveHit.z - o.z) ** 2;
       const dOwned = (ownedHit.x - o.x) ** 2 + (ownedHit.y - o.y) ** 2 + (ownedHit.z - o.z) ** 2;
-      if (dOwned < dLive) {
-        return {
-          x: ownedHit.x,
-          y: ownedHit.y,
-          z: ownedHit.z,
-          target: { kind: 'neighbor', index: ownedHit.index, beachId: ownedHit.beachId, offsetX: ownedHit.offsetX },
-        };
-      }
-      return { ...liveHit, target: LIVE_TARGET };
+      return dOwned < dLive ? owned() : live();
     }
-    if (liveHit) return { ...liveHit, target: LIVE_TARGET };
-    if (ownedHit) {
-      return {
-        x: ownedHit.x,
-        y: ownedHit.y,
-        z: ownedHit.z,
-        target: { kind: 'neighbor', index: ownedHit.index, beachId: ownedHit.beachId, offsetX: ownedHit.offsetX },
-      };
-    }
-    return null;
+    return live() ?? owned();
   };
   const toSim = (p: Hit) => ({
-    x: p.x - (p.target.kind === 'neighbor' ? p.target.offsetX + ORIGIN_X : ORIGIN_X),
+    x: p.x - (p.target.offsetX + ORIGIN_X),
     y: p.z - ORIGIN_Z,
   });
 
@@ -471,8 +501,8 @@ async function boot() {
     const hit = pickAt(sx, sy);
     if (!hit) return null;
     const p = toSim(hit);
-    if (hit.target.kind === 'neighbor') {
-      const obj = neighbors?.ownedObjectAt(hit.target.index, p.x, p.y) ?? null;
+    if (!isLive(hit.target.beachId)) {
+      const obj = neighbors?.ownedObjectAt(hit.target.beachId, p.x, p.y) ?? null;
       return obj ? { obj, target: hit.target } : null;
     }
     let best: ObjectState | null = null;
@@ -485,16 +515,16 @@ async function boot() {
         bestD = d;
       }
     }
-    return best ? { obj: best, target: LIVE_TARGET } : null;
+    return best ? { obj: best, target: hit.target } : null;
   };
   /** draw the held thing at the finger (after the worker's positions are applied) */
   const applyDrag = () => {
-    if (dragging && dragging.source.kind === 'live' && dragging.current.kind === 'live') {
+    if (dragging && isLive(dragging.source.beachId) && isLive(dragging.current.beachId)) {
       const s = objectStates.find((o) => o.id === dragging!.id);
       if (!s) return;
       s.x = dragging.x;
       s.y = dragging.y;
-      s.z = picker.heightAt(dragging.x + ORIGIN_X, dragging.y + ORIGIN_Z) + 0.12;
+      s.z = picker.heightAt(dragging.x + ORIGIN_X + picker.offsetX, dragging.y + ORIGIN_Z) + 0.12;
       s.floating = false;
       objectView.touch();
       return;
@@ -504,25 +534,25 @@ async function boot() {
       if (!s) return;
       s.x = settling.x;
       s.y = settling.y;
-      s.z = picker.heightAt(settling.x + ORIGIN_X, settling.y + ORIGIN_Z);
+      s.z = picker.heightAt(settling.x + ORIGIN_X + picker.offsetX, settling.y + ORIGIN_Z);
       s.floating = false;
       objectView.touch();
     }
   };
 
   const finishStrokeTarget = (t: EditTarget) => {
-    if (t.kind === 'live') {
+    if (isLive(t.beachId)) {
       send({ type: 'brush', phase: 'end' });
       markDirty();
     } else {
-      neighbors?.endStroke(t.index);
+      neighbors?.endStroke(t.beachId);
     }
     recordEditTarget(t);
   };
 
   const cancelStrokeTarget = (t: EditTarget) => {
-    if (t.kind === 'live') send({ type: 'brush', phase: 'cancel' });
-    else neighbors?.cancelStroke(t.index);
+    if (isLive(t.beachId)) send({ type: 'brush', phase: 'cancel' });
+    else neighbors?.cancelStroke(t.beachId);
   };
 
   const startDig = (sx: number, sy: number, hit?: Hit) => {
@@ -551,7 +581,7 @@ async function boot() {
       strokeOpen = false;
       strokeTarget = null;
     }
-    if (hit.target.kind === 'live') {
+    if (isLive(hit.target.beachId)) {
       // picking up a clearing tool (bulldozer, flatten, vacuum) is the
       // intent to reshape the beach: keep it as it is now first
       // (docs/CHECKPOINTS.md). A clearing stroke on a beach you own next
@@ -559,16 +589,16 @@ async function boot() {
       if (!strokeOpen && isClearingMode(brushMode)) maybeBigEditSnapshot();
       send({ type: 'brush', phase: strokeOpen ? 'move' : 'start', x: s.x, y: s.y, r, mode: brushMode });
     } else if (strokeOpen) {
-      neighbors?.moveStroke(hit.target.index, s.x, s.y, r);
+      neighbors?.moveStroke(hit.target.beachId, s.x, s.y, r);
     } else {
-      neighbors?.beginStroke(hit.target.index, s.x, s.y, r, brushMode);
+      neighbors?.beginStroke(hit.target.beachId, s.x, s.y, r, brushMode);
     }
     strokeTarget = hit.target;
     strokeOpen = true;
   };
 
-  // set up below once the account layer exists (sandbox builds never save)
-  let markDirty: (delayMs?: number) => void = () => {};
+  /** the live beach changed: save it soon (the store saves each beach by id) */
+  const markDirty = (delayMs?: number) => sync.markDirty(delayMs);
   /** refresh the bag from the server (set up with the account layer) */
   let refreshOwned: () => void = () => {};
 
@@ -633,12 +663,12 @@ async function boot() {
     const past = action === 'undo' ? undoTargets : redoTargets;
     const future = action === 'undo' ? redoTargets : undoTargets;
     const liveCount = action === 'undo' ? info.undoCount : info.redoCount;
-    const targets = past.pop() ?? ['live'];
-    if (!targets.every((target) => target === 'live'
+    const targets = past.pop() ?? (sync.id ? [sync.id] : []);
+    if (!targets.length || !targets.every((target) => isLive(target)
       ? liveCount > 0
       : neighbors?.canReplay(target, action))) return;
     for (const target of targets) {
-      if (target === 'live') {
+      if (isLive(target)) {
         markDirty();
         send({ type: action });
       } else {
@@ -686,8 +716,9 @@ async function boot() {
     window.setTimeout(() => URL.revokeObjectURL(a.href), 4000);
   };
 
+  /** The real place whose sky, sun and tide you see: the live beach's (saved with it when you change it). */
   const setBeach = (b: Beach) => {
-    if (b.id !== beach.id) markDirty(1500);
+    if (sync.id) store.setLocation(sync.id, b.id);
     beach = b;
     live.setBeach(b);
     liveState = live.compute(clockNow());
@@ -702,9 +733,10 @@ async function boot() {
   let settingsBeachId: () => string | null = () => null;
   let applyPlaceToBeach = (b: Beach) => setBeach(b);
   let smoothSelectedBeach = () => {
+    if (!sync.id) return;
     markDirty(1500);
     send({ type: 'reset' });
-    recordEditTarget(LIVE_TARGET);
+    recordEditTarget({ beachId: sync.id, offsetX: picker.offsetX });
     audio.whoosh(false);
   };
   const sheet = new SettingsSheet(
@@ -922,7 +954,7 @@ async function boot() {
   });
 
   // beach files (docs/BEACH_FILE.md): export what's here, import a designed beach
-  const myBeachName = () => account?.beaches.find((b) => b.id === account?.beachId)?.name || beach.name;
+  const myBeachName = () => account?.mine(sync.id)?.name || beach.name;
   const exportBeach = async () => {
     const { delta, objects, cover } = await getSand();
     const name = myBeachName();
@@ -964,11 +996,11 @@ async function boot() {
   const moldCastle = (hit: Hit | null) => {
     if (!hit) return;
     const s = toSim(hit);
-    if (hit.target.kind === 'live') {
+    if (isLive(hit.target.beachId)) {
       send({ type: 'castle', ...s, shape: castleShape });
       markDirty();
     } else {
-      neighbors?.moldCastle(hit.target.index, s.x, s.y, castleShape);
+      neighbors?.moldCastle(hit.target.beachId, s.x, s.y, castleShape);
     }
     recordEditTarget(hit.target);
     haptics.impact('medium');
@@ -978,9 +1010,9 @@ async function boot() {
    * the vacuum's job now — the item tool only places. */
   let fullToastAt = 0;
   const hasRoom = (target: EditTarget) => {
-    const count = target.kind === 'live'
+    const count = isLive(target.beachId)
       ? info.objects.filter((o) => !o.wild).length
-      : (neighbors?.ownedCount(target.index) ?? MAX_OBJECTS);
+      : (neighbors?.ownedCount(target.beachId) ?? MAX_OBJECTS);
     if (count < MAX_OBJECTS) return true;
     haptics.impact('light');
     if (performance.now() - fullToastAt > 4000) {
@@ -1001,11 +1033,11 @@ async function boot() {
     }
     if (!hasRoom(hit.target)) return;
     const r = rollPlacement(placing, sizeOf(placing.id));
-    if (hit.target.kind === 'live') {
+    if (isLive(hit.target.beachId)) {
       send({ type: 'placeObject', obj: { kind: placing.kind, item: placing.id, x: p.x, y: p.y, ...r } });
       markDirty();
     } else {
-      if (!neighbors?.placeObject(hit.target.index, { kind: placing.kind, item: placing.id, x: p.x, y: p.y, ...r })) return;
+      if (!neighbors?.placeObject(hit.target.beachId, { kind: placing.kind, item: placing.id, x: p.x, y: p.y, ...r })) return;
     }
     recordEditTarget(hit.target);
     guide.mark('place');
@@ -1128,15 +1160,15 @@ async function boot() {
   let leaveBeach: ((b: ShoreBeach) => void) | null = null;
   let askingCode: string | null = null;
   const visitedPetCache = new Map<string, { name: string } | null>();
-  /** the beach under the view, along the shore (null: your own live beach) */
+  /** the beach under the view, along the shore (null: one of your own) */
   const beachHere = () => {
     if (!neighbors) return null;
-    const i = neighbors.nearestIndex(cam.focusX);
-    return i === 0 && !neighbors.visiting ? null : neighbors.beachAt(i);
+    const b = neighbors.beachAt(neighbors.nearestIndex(cam.focusX));
+    return b && !neighbors.isOwned(b) ? b : null;
   };
   const goHome = async () => {
-    if (neighbors?.visiting) {
-      await neighbors.visit(null);
+    if (neighbors && neighbors.anchorCode !== null) {
+      await neighbors.anchorAt(null);
       cam.goTo(0, true);
     } else {
       cam.goTo(0);
@@ -1254,7 +1286,7 @@ async function boot() {
   // the status pane's first line: whose beach is under the view
   paneOwner = () => {
     const away = !!neighbors && neighbors.away;
-    const here = beachHere();
+    const here = neighbors?.beachAt(neighbors.nearestIndex(cam.focusX));
     if (away && here) {
       const loc = here.location ? beachById(here.location) : undefined;
       const whose = here.beachName || `${here.name || 'Someone'}’s beach`;
@@ -1267,7 +1299,7 @@ async function boot() {
       const loc = locId ? beachById(locId) : undefined;
       return { title: `${own.name || 'Your beach'}${loc ? ` · ${loc.name}` : ''}`, away: false };
     }
-    const mine = account?.beaches.find((x) => x.id === account?.beachId)?.name;
+    const mine = account?.mine(sync.id)?.name;
     return { title: `${mine || 'Your beach'} · ${beach.name}`, away: false };
   };
 
@@ -1341,7 +1373,7 @@ async function boot() {
           timer: window.setTimeout(() => {
             press = null;
             dragging = { id: obj.id, x: obj.x, y: obj.y, source: target, current: target, obj };
-            if (target.kind === 'neighbor') neighbors?.previewDrag(target.index, obj.id, obj.x, obj.y);
+            if (!isLive(target.beachId)) neighbors?.previewDrag(target.beachId, obj.id, obj.x, obj.y);
             haptics.impact('medium');
           }, LONG_PRESS_MS),
         };
@@ -1368,8 +1400,8 @@ async function boot() {
           dragging.x = p.x;
           dragging.y = p.y;
           dragging.current = hit.target;
-          if (dragging.source.kind === 'neighbor' && sameTarget(dragging.source, hit.target)) {
-            neighbors?.previewDrag(dragging.source.index, dragging.id, p.x, p.y);
+          if (!isLive(dragging.source.beachId) && sameTarget(dragging.source, hit.target)) {
+            neighbors?.previewDrag(dragging.source.beachId, dragging.id, p.x, p.y);
           } else {
             applyDrag();
           }
@@ -1389,25 +1421,23 @@ async function boot() {
       if (dragging) {
         const d = dragging;
         dragging = null;
-        if (d.source.kind === 'neighbor') neighbors?.previewDrag(d.source.index, null);
+        const srcLive = isLive(d.source.beachId);
+        const dstLive = isLive(d.current.beachId);
+        if (!srcLive) neighbors?.previewDrag(d.source.beachId, null);
         if (sameTarget(d.source, d.current)) {
-          if (d.source.kind === 'live') {
+          if (srcLive) {
             // (a few frames at most: the worker's own position takes over)
             settling = { id: d.id, x: d.x, y: d.y, until: performance.now() + 400 };
             send({ type: 'moveObject', id: d.id, x: d.x, y: d.y });
             markDirty();
           } else {
-            neighbors?.moveObject(d.source.index, d.id, d.x, d.y);
+            neighbors?.moveObject(d.source.beachId, d.id, d.x, d.y);
           }
           recordEditTarget(d.source);
         } else {
-          // The shore may have been refreshed while the item was held.
+          // across a seam: off one beach, onto the other (each by id)
           const nv = neighbors;
-          const source = d.source.kind === 'live' ? null : nv?.indexOfBeach(d.source.beachId);
-          const destination = d.current.kind === 'live' ? null : nv?.indexOfBeach(d.current.beachId);
-          if ((d.source.kind === 'neighbor' && source !== d.source.index)
-            || (d.current.kind === 'neighbor' && destination !== d.current.index)
-            || !hasRoom(d.current)) return;
+          if (!hasRoom(d.current)) return;
           const placedObj: Omit<PlacedObject, 'id'> = {
             kind: d.obj.kind,
             item: d.obj.item,
@@ -1418,16 +1448,16 @@ async function boot() {
             variant: d.obj.variant,
             ...(d.obj.found || d.obj.wild ? { found: true } : {}),
           };
-          if (d.source.kind === 'neighbor' && !nv?.hasOwnedObject(d.source.index, d.id)) return;
-          if (d.source.kind === 'live' && !info.objects.some((obj) => obj.id === d.id)) return;
-          if (d.current.kind === 'neighbor' && !nv?.placeObject(d.current.index, placedObj)) return;
-          if (d.source.kind === 'live') {
+          if (!srcLive && !nv?.hasOwnedObject(d.source.beachId, d.id)) return;
+          if (srcLive && !info.objects.some((obj) => obj.id === d.id)) return;
+          if (!dstLive && !nv?.placeObject(d.current.beachId, placedObj)) return;
+          if (srcLive) {
             send({ type: 'removeObject', id: d.id });
             markDirty();
           } else {
-            nv?.removeObject(d.source.index, d.id);
+            nv?.removeObject(d.source.beachId, d.id);
           }
-          if (d.current.kind === 'live') {
+          if (dstLive) {
             send({ type: 'placeObject', obj: placedObj });
             markDirty();
           }
@@ -1459,7 +1489,7 @@ async function boot() {
       if (!found) return false;
       const { obj, target } = found;
       dragging = { id: obj.id, x: obj.x, y: obj.y, source: target, current: target, obj };
-      if (target.kind === 'neighbor') neighbors?.previewDrag(target.index, obj.id, obj.x, obj.y);
+      if (!isLive(target.beachId)) neighbors?.previewDrag(target.beachId, obj.id, obj.x, obj.y);
       haptics.impact('medium');
       return true;
     },
@@ -1469,7 +1499,7 @@ async function boot() {
         press = null;
       }
       // a second finger mid-drag: put it back where it was
-      if (dragging && dragging.source.kind === 'neighbor') neighbors?.previewDrag(dragging.source.index, null);
+      if (dragging && !isLive(dragging.source.beachId)) neighbors?.previewDrag(dragging.source.beachId, null);
       dragging = null;
       if (strokeOpen && strokeTarget) cancelStrokeTarget(strokeTarget);
       digging = false;
@@ -1573,12 +1603,12 @@ async function boot() {
     ringAlpha += (target - ringAlpha) * Math.min(1, dt * 14);
     if (at) lastRing = at;
     const radius = cam.brushRadius(lastRing);
-    if (lastRing.target.kind === 'live') {
+    if (isLive(lastRing.target.beachId)) {
       renderer.setBrush(lastRing.x, lastRing.z, radius, ringAlpha, palette.foam);
       neighbors?.setBrush(null, 0, 0, 1, 0, palette.foam);
     } else {
       renderer.setBrush(0, 0, 1, 0, palette.foam);
-      neighbors?.setBrush(lastRing.target.index, lastRing.x, lastRing.z, radius, ringAlpha, palette.foam);
+      neighbors?.setBrush(lastRing.target.beachId || null, lastRing.x, lastRing.z, radius, ringAlpha, palette.foam);
     }
   };
 
@@ -1618,6 +1648,61 @@ async function boot() {
     const bg = lum > 0.6 ? 'rgba(46, 40, 78, 0.55)' : 'rgba(255, 250, 244, 0.72)';
     hud.setColors(rgbToCss(p.ui), bg);
   };
+
+  // ---------------------------------------------------------------- where the waves run
+  // No current beach (docs/BEACH_STORE.md): the worker simulates the beach of
+  // yours nearest the centre of the view, and moves when the view settles on
+  // another one. Never mid-stroke or mid-drag; one move at a time.
+  let binding = false;
+  let openingShore = false;
+  const bindLive = (ref: BeachRef | null) => {
+    if (binding) return;
+    binding = true;
+    void sync.bind(ref, { adoptLocal: true }).finally(() => (binding = false));
+  };
+  /** put the live renderer, its picker, things and animals at this place along the shore */
+  const placeLive = (x: number) => {
+    if (picker.offsetX === x && renderer.offsetX === x) return;
+    renderer.setOffsetX(x);
+    picker.offsetX = x;
+    objectView.setOffsetX(x);
+    if (animalView) animalView.offsetX = x;
+  };
+  const chooseLive = () => {
+    const nv = neighbors;
+    if (!nv) return;
+    if (sync.id) {
+      const x = nv.xForBeach(sync.id);
+      if (x !== null) placeLive(x);
+    }
+    if (openingShore || binding || awaitingLoad || digging || dragging || strokeOpen || press) return;
+    const near = nv.ownedNearest(cam.focusX);
+    if (!near || near.beach.id === sync.id || releasing.has(near.beach.id)) return;
+    // the live one is off this shore (or out of view): take the one in view at once;
+    // else only once the view is well onto the other beach
+    const liveOnShore = sync.id !== null && nv.liveVisible;
+    if (liveOnShore && near.dist > BEACH_STORE.liveSwitchM) return;
+    // (signed in, the device's own beach is the last person's leftovers on a stale shore: not yours to simulate)
+    if (near.beach.id === LOCAL_BEACH && (account?.user || (!store.has(LOCAL_BEACH) && sync.id !== null))) return;
+    bindLive(nv.refOf(near.beach));
+  };
+  // this device's own beach goes in first (the sandbox keeps it between visits; signing in moves on from it)
+  void sync.bind({ id: LOCAL_BEACH, owned: true });
+  /** beaches being removed: the view mustn't put the waves back on them */
+  const releasing = new Set<string>();
+  /** the worker's first frame of the bound beach arrived: draw it where it belongs */
+  const liveArrived = () => {
+    const id = sync.id;
+    neighbors?.setLive(id, renderer);
+    const x = id && neighbors ? neighbors.xForBeach(id) : 0;
+    placeLive(x ?? 0);
+  };
+  sync.onBound((id) => {
+    if (!id) liveArrived();
+    // the sky, sun and tide are the live beach's place
+    const loc = id ? beachById(store.peek(id)?.location) : undefined;
+    if (loc && loc.id !== beach.id && !params.get('beach')) setBeach(loc);
+  });
 
   // ---------------------------------------------------------------- main loop
   let last = performance.now();
@@ -1685,8 +1770,10 @@ async function boot() {
     updateSteamRichPresence(beach.name, cam.mode);
     if (cam.mode === 'chair') unlockSteamAchievement('CHAIR_VIEW');
     if (liveState.sky.night > 0.5) unlockSteamAchievement('NIGHT_BEACH');
-    if (neighbors && !neighbors.ownVisible) unlockSteamAchievement('WALK_SHORE');
-    hud.setUndoState(info.undoCount + (neighbors?.totalUndoCount() ?? 0), info.redoCount + (neighbors?.totalRedoCount() ?? 0));
+    if (neighbors && !neighbors.anyOwnVisible) unlockSteamAchievement('WALK_SHORE');
+    chooseLive();
+    // every edit, on any beach, is in the undo order (each beach keeps its own history)
+    hud.setUndoState(Math.max(undoTargets.length, info.undoCount), Math.max(redoTargets.length, info.redoCount));
     applyUiColors(palette);
 
     if (pendingBuf) {
@@ -1704,8 +1791,8 @@ async function boot() {
     const camFwd = cam.forward();
     renderer.update(palette, camFwd, (now - t0) / 1000, simTime, info.tide, amp);
     neighbors?.update(palette, camFwd, (now - t0) / 1000, simTime, info.tide, amp);
-    // your beach is drawn while it's near the view (not while visiting someone)
-    const ownShown = neighbors ? neighbors.ownVisible : true;
+    // the live beach is drawn while it's near the view
+    const ownShown = liveShown();
     renderer.setVisible(ownShown);
     objectView.setVisible(ownShown);
     updateShoreBar();
@@ -1735,7 +1822,7 @@ async function boot() {
     objectView.update(dt);
     animalBrush.active = digging && lastHit !== null;
     if (lastHit) {
-      animalBrush.x = lastHit.x;
+      animalBrush.x = lastHit.x - picker.offsetX;
       animalBrush.z = lastHit.z;
     }
     if (animals.snapshot().active) syncAnimalObstacles();
@@ -1774,11 +1861,8 @@ async function boot() {
   window.addEventListener('resize', onResize);
   window.visualViewport?.addEventListener('resize', onResize);
   // ---------------------------------------------------------------- accounts
-  let account: Account | null = null;
-  let sync: BeachSync | null = null;
   let animalsApi: AnimalsApi | null = null;
-  if (ACCOUNTS_ENABLED) {
-    account = new Account();
+  if (account) {
     animalsApi = new AnimalsApi(account);
     const applyPet = (pet: { species: 'crab'; name: string; mood: 'happy' | 'peckish' | 'hungry' | 'sleepy'; lastFedAt: number } | null) => {
       syncAnimalObstacles();
@@ -1790,7 +1874,12 @@ async function boot() {
         animals.setPet(null);
         return;
       }
-      const bId = account?.beachId ?? undefined;
+      // the pet of the live beach (the beach of yours in front of you)
+      const bId = sync.id && sync.id !== LOCAL_BEACH ? sync.id : undefined;
+      if (!bId) {
+        animals.setPet(null);
+        return;
+      }
       void animalsApi
         .getPet(bId)
         .then((r) => {
@@ -1817,11 +1906,11 @@ async function boot() {
         showToast(uiRoot, 'Sign in first.');
         return;
       }
-      if (neighbors && !neighbors.ownVisible) {
+      if (!liveShown() || !sync.id || sync.id === LOCAL_BEACH) {
         showToast(uiRoot, 'Head back to your beach first.');
         return;
       }
-      const activeBeachId = account?.beachId ?? undefined;
+      const activeBeachId = sync.id;
       if (id === 'pet-crab') {
         void animalsApi
           .adoptPet({ mode: 'shop', beachId: activeBeachId })
@@ -1866,27 +1955,10 @@ async function boot() {
           showToast(uiRoot, err instanceof Error ? err.message : 'No beach snacks left.');
         });
     };
-    sync = new BeachSync(account, {
-      getSand,
-      setSand: (delta, objects, cover) => {
-        undoTargets.length = 0;
-        redoTargets.length = 0;
-        const xfer: Transferable[] = [delta.buffer];
-        if (cover) xfer.push(cover.buffer);
-        settling = null;
-        send({ type: 'setSand', loadId: ++loadId, delta, objects, ...(cover ? { cover } : {}) }, xfer);
-      },
-      grid: { nx: grid.nx, ny: grid.ny },
-      location: () => beach.id,
-      setLocation: (id) => {
-        const b = beachById(id);
-        if (b && b.id !== beach.id) setBeach(b);
-      },
-    });
     const s = sync;
-    markDirty = (delayMs?: number) => s.markDirty(delayMs);
+    sync.onBound(() => refreshPet());
     // an app older than the server's data can't save: say so, once, with a reload
-    s.onState((st) => {
+    store.onState((st) => {
       if (st === 'outdated') offerReload();
     });
     // another tab or device took over editing: this one is view-only, with
@@ -1912,19 +1984,14 @@ async function boot() {
         24 * 3600 * 1000,
       );
     };
-    s.onFenced(() => {
-      fenced = true;
-      placing = null;
-      showFencedBanner();
-    });
     // say so when a save can't hold everything (an undo can bring a full
     // beach past the limit), and when the server refuses one as too big
-    s.onDropped((n) => {
+    store.onDropped((n) => {
       if (n) showToast(uiRoot, `Only ${MAX_OBJECTS} things are saved on a beach: the ${n} you put down last won't be kept. Take some away with the vacuum.`);
     });
     // a big edit landed, but its safety copy could not be kept: say so,
     // so the player can save a checkpoint by hand if they want one
-    s.onLargeEditUnprotected(() => {
+    store.onLargeEditUnprotected(() => {
       showToast(uiRoot, 'That big edit is saved, but the copy of the beach before it couldn’t be kept — save a checkpoint from Settings if you want one to go back to.');
     });
     const SYNC_CHIP: Partial<Record<SyncState, string>> = { saving: 'saving…', saved: 'saved', offline: 'offline', tooBig: 'too big to save' };
@@ -1935,16 +2002,16 @@ async function boot() {
     });
     paneChips = () => [neighbors?.viewing ? 'look only' : '', acct.user ? syncChip : ''].filter(Boolean);
     let toldTooBig = false;
-    s.onState((st) => {
+    store.onState((st) => {
       if (st === 'tooBig' && !toldTooBig) showToast(uiRoot, 'This beach is too big to save. Smooth some of the sand and it will save again.');
       toldTooBig = st === 'tooBig';
     });
-    neighbors = new NeighborView(scene, grid, ready.rest, swell, cam, account, renderer, seed);
+    neighbors = new NeighborView(scene, grid, ready.rest, swell, cam, account, store);
     const nv = neighbors;
-    nv.onSaveError = (kind) => {
-      if (kind === 'outdated') offerReload();
-      else if (kind === 'tooBig') showToast(uiRoot, 'This beach is too big to save. Smooth some of the sand and it will save again.');
-      else if (kind === 'fenced') {
+    nv.setLive(sync.id, renderer);
+    // a save of any beach of yours that can't go through: say so once, the same way for all of them
+    store.onProblem((_id, kind) => {
+      if (kind === 'fenced') {
         fenced = true;
         placing = null;
         showFencedBanner();
@@ -1952,7 +2019,7 @@ async function boot() {
         showToast(uiRoot, 'This beach was restored from a checkpoint on another device');
         void checkpoints.load();
       }
-    };
+    });
     const acct = account;
     // a share link (?visit=CODE) waits for sign-in, then lands on that beach
     let pendingVisit: string | null = visitCode ?? inviteFromLink;
@@ -1969,51 +2036,104 @@ async function boot() {
         showToast(uiRoot, 'No beach has that code');
       }
     };
+    // a device remembers which beach of yours was in front of it (a view bookmark, not a "current" beach)
+    const VIEW_KEY = 'beech.view.v1';
+    const readView = (user: string): string | null => {
+      try {
+        return (JSON.parse(localStorage.getItem(VIEW_KEY) ?? '{}') as Record<string, string>)[user] ?? null;
+      } catch {
+        return null;
+      }
+    };
+    const writeView = (user: string, code: string) => {
+      try {
+        const all = JSON.parse(localStorage.getItem(VIEW_KEY) ?? '{}') as Record<string, string>;
+        all[user] = code;
+        localStorage.setItem(VIEW_KEY, JSON.stringify(all));
+      } catch {
+        /* storage blocked: this device opens at home next time */
+      }
+    };
+    sync.onBound((id) => {
+      const code = acct.mine(id)?.code;
+      if (acct.user && code) writeView(acct.user.id, code);
+    });
     // whenever someone new signs in (or a saved session comes back), bring
     // back their beach and their neighbors
     let signedInAs: string | null = null;
     account.onChange((u) => {
+      if ((u?.id ?? null) !== signedInAs) {
+        undoTargets.length = 0;
+        redoTargets.length = 0;
+        fenced = false;
+        fencedHide?.();
+        fencedHide = null;
+      }
       if (u && u.id !== signedInAs) {
-        // your beaches first (this device opens the one it had, else home),
-        // then its sand and its stretch of shore
+        openingShore = true;
+        // the last person's beaches go; your beaches, then the shore around
+        // the one this device last looked at (else home) — the view then
+        // puts the waves on the beach of yours in front of you
         void (async () => {
+          await s.resetToLocal();
+          if (acct.user !== u) return;
           await acct.loadBeaches().catch(() => {});
+          if (acct.user !== u) return;
           // a new sign-in (or a saved session coming back) takes over
           // editing here, fencing any older tab or device
-          await s.restoreOrCreate(false, true).catch(() => {});
-          await nv.refresh();
-        })();
+          await s.claim();
+          if (acct.user !== u) return;
+          const viewed = readView(u.id);
+          const anchor = !pendingVisit && viewed && acct.beaches.some((b) => b.code === viewed && !b.home) ? viewed : null;
+          // the beach the shore centres on is the one in front of you: start its waves
+          // now, while the rest of the shore loads (the view takes over from here)
+          const first = anchor ? acct.beaches.find((b) => b.code === anchor) : acct.home;
+          if (first) await s.bind({ id: first.id, code: first.code, owned: true, location: first.location }, { adoptLocal: true });
+          if (acct.user !== u) return;
+          if (pendingVisit) await applyPendingVisit();
+          else await nv.anchorAt(anchor).catch(() => nv.anchorAt(null));
+          if (acct.user === u) cam.goTo(0, true);
+        })().catch(() => {}).finally(() => {
+          if (acct.user === u) openingShore = false;
+        });
         void nv.loadFavorites();
-        void applyPendingVisit();
       } else if (!u) {
+        openingShore = false;
         // signed out: the account's shore goes away, but the public shore
         // still runs past your (local-only) beach — load it
         nv.clear();
-        if (signedInAs) void nv.refresh();
+        if (signedInAs) void s.resetToLocal().then(() => nv.refresh());
       }
       signedInAs = u?.id ?? null;
     });
-    // another of your beaches opened on this device: the shore moves to it
-    let shownBeach: string | null = null;
-    acct.onBeach((id) => {
-      if (shownBeach && id && id !== shownBeach) {
-        void nv.recentre();
-        refreshPet();
-      }
-      shownBeach = id;
-      updateElsewhere();
-    });
-    // your bag counts what's on your other beaches too (including live local edits on adjacent beaches)
+    // your bag counts what's on your other beaches too (as edited here, else as last saved)
+    let elsewhereTimer = 0;
     const updateElsewhere = () => {
+      elsewhereTimer = 0;
       const other = new Map<string, number>();
       for (const b of acct.beaches) {
-        if (b.id === acct.beachId) continue;
-        const items = nv.itemsOn(b.id) ?? b.items ?? {};
+        if (isLive(b.id)) continue;
+        const objs = store.objectsOf(b.id);
+        const items = objs ? countItems(objs) : (b.items ?? {});
         for (const [k, v] of Object.entries(items)) other.set(k, (other.get(k) ?? 0) + v);
       }
       inventory.setElsewhere(other);
     };
-    nv.onOwnedChanged = () => updateElsewhere();
+    const updateElsewhereSoon = () => {
+      if (!elsewhereTimer) elsewhereTimer = window.setTimeout(updateElsewhere, 250);
+    };
+    store.onChanged(updateElsewhereSoon);
+    sync.onBound(updateElsewhereSoon);
+    // your beaches changed: forget the sand of ones that are gone
+    acct.onBeaches((list) => {
+      const ids = new Set(list.map((b) => b.id));
+      for (const id of store.ids()) if (id !== LOCAL_BEACH && store.peek(id)?.owned && !ids.has(id) && !isLive(id)) store.forget(id);
+      updateElsewhereSoon();
+    });
+    store.onSaved((id, r) => {
+      const b = acct.mine(id);
+      if (b) Object.assign(b, { updatedAt: r.updatedAt, items: r.items });
+    });
     // a dot on the settings button and Shore tab when someone has asked to move in next to you
     nv.onChange((n) => {
       neighborAsks = n?.requests.length ?? 0;
@@ -2038,11 +2158,12 @@ async function boot() {
       return keepAsCheckpoint(b, fallback);
     };
     beachFileHost.beforeApply = async () => {
-      const here = acct.beachId;
+      // an import lands on the live beach (the beach of yours in front of you)
+      const here = sync.id && sync.id !== LOCAL_BEACH ? sync.id : null;
       if (!acct.user || !here) return;
       if (s.fenced) throw new Error('Another tab or device is editing this beach — take over editing there first.');
-      await s.flush();
-      if (!acct.beaches.find((b) => b.id === here)?.updatedAt && !s.savedAt) return; // nothing saved to keep
+      await store.flush(here);
+      if (!acct.mine(here)?.updatedAt && !store.peek(here)?.updatedAt) return; // nothing saved to keep
       await cpApi.save(here, 'Before import', true);
       void checkpoints.load();
     };
@@ -2065,16 +2186,19 @@ async function boot() {
         },
         owned: () => inventory.ownedItems(),
         // the beach on this device or an edited adjacent one: what's on it right now; others: as last saved
-        itemsOn: (id) =>
-          id === acct.beachId ? countItems(info.objects) : (nv.itemsOn(id) ?? acct.beaches.find((b) => b.id === id)?.items ?? {}),
-        saveNow: async () => {
-          await s.flush();
-          await nv.flushAll();
+        itemsOn: (id) => {
+          if (isLive(id)) return countItems(info.objects);
+          const objs = store.objectsOf(id);
+          return objs ? countItems(objs) : (acct.mine(id)?.items ?? {});
         },
-        replaceHere: async (change) => {
-          await nv.flushAll();
-          await s.replaceHere(change);
-          cam.goTo(0, true);
+        here: () => (sync.id && sync.id !== LOCAL_BEACH ? sync.id : null),
+        saveBeach: (id) => store.flush(id),
+        // save it, swap it on the server, load what's there now (into the worker if it's the live one)
+        replaceBeach: async (id, change) => {
+          await store.flush(id);
+          await change();
+          const b = acct.mine(id);
+          if (b) await store.reload({ id, code: b.code, owned: true }, true);
         },
         changed: async () => {
           await acct.loadBeaches().catch(() => {});
@@ -2090,10 +2214,6 @@ async function boot() {
       () => panel?.render(),
     );
     acct.onChange(() => void checkpoints.load());
-    s.onRestoredElsewhere(() => {
-      showToast(uiRoot, 'This beach was restored from a checkpoint on another device');
-      void checkpoints.load();
-    });
     // a clearing stroke is about to reshape the beach: keep it as it is now
     // first (docs/CHECKPOINTS.md). Once per save — the next save resets the
     // flag, so a later clearing session snapshots again. The snapshot is
@@ -2105,7 +2225,7 @@ async function boot() {
       void snapshotBeforeBigEdit({
         fenced,
         signedIn: !!acct.user,
-        beachId: acct.beachId,
+        beachId: sync.id && sync.id !== LOCAL_BEACH ? sync.id : null,
         alreadyAttempted: false,
         flush: () => s.flush(),
         saveAutoCheckpoint: (id, name) =>
@@ -2114,17 +2234,16 @@ async function boot() {
           }),
       });
     };
-    s.onState((st) => {
+    store.onState((st) => {
       if (st === 'saved') bigEditSnapshotAttempted = false;
     });
     // "while you were away" (docs/LIVE_SIM.md): each time a beach of yours
     // loads here, what the sea did to it since you last looked, once
-    s.onLoaded(() => {
-      const here = acct.beachId;
+    s.onLoaded((here) => {
       void (async () => {
-        const away = await acct.away().catch(() => null);
-        if (!away || acct.beachId !== here) return;
-        void acct.awaySeen().catch(() => {});
+        const away = await acct.away(here).catch(() => null);
+        if (!away) return;
+        void acct.awaySeen(here).catch(() => {});
         const cp = away.checkpoint;
         showChoiceToast(
           uiRoot,
@@ -2153,20 +2272,38 @@ async function boot() {
         sheet.hide();
       },
       {
-        // go to one of your beaches: smoothly glide if it's already on this shore, else open it
-        open: async (id, switchActive) => {
+        // go to one of your beaches: glide if it's on this shore, else lay the shore out around it
+        // (the waves follow the view there: nothing is switched)
+        open: async (id) => {
           const idx = nv.indexOfBeach(id);
-          if (!switchActive && idx !== null && !nv.visiting) {
+          if (idx !== null && !nv.visiting) {
             cam.goTo(nv.xFor(idx));
             sheet.hide();
             return;
           }
-          await nv.flushAll();
-          await s.switchTo(id);
-          if (nv.visiting) await nv.visit(null);
+          const b = acct.mine(id);
+          if (!b) return;
+          await nv.anchorAt(b.home ? null : b.code);
           cam.goTo(0, true);
-          updateElsewhere();
           sheet.hide();
+        },
+        inView: () => (sync.id && sync.id !== LOCAL_BEACH ? sync.id : null),
+        remove: async (id) => {
+          releasing.add(id);
+          try {
+            if (isLive(id)) {
+              const home = acct.home;
+              await sync.bind(home && home.id !== id ? { id: home.id, code: home.code, owned: true } : null);
+            }
+            await acct.removeBeach(id);
+            store.forget(id);
+            if (nv.indexOfBeach(id) !== null) {
+              await nv.anchorAt(null);
+              cam.goTo(0, true);
+            }
+          } finally {
+            releasing.delete(id);
+          }
         },
         // a new beach starts at the real beach you're looking at now
         location: () => beach.id,
@@ -2174,7 +2311,10 @@ async function boot() {
           sheet.hide();
           void shopDialog?.open();
         },
-        changed: () => updateElsewhere(),
+        changed: () => {
+          updateElsewhere();
+          void nv.refresh();
+        },
         onSelect: (sel) => {
           if (sel?.location) sheet.setBeachLocation(sel.location);
           else sheet.setBeachLocation(beach.id);
@@ -2185,13 +2325,18 @@ async function boot() {
       },
       checkpoints,
     );
-    settingsBeachId = () => panel?.selectedBeach?.id ?? acct.beachId;
+    settingsBeachId = () => panel?.selectedBeach?.id ?? sync.id;
     applyPlaceToBeach = (b) => {
       const targetId = settingsBeachId();
-      if (acct.user && targetId && targetId !== acct.beachId) {
+      if (acct.user && targetId && !isLive(targetId)) {
         sheet.setBeachLocation(b.id);
-        void nv.flushAll()
+        void store
+          .flush(targetId)
           .then(() => acct.updateBeach(targetId, { location: b.id }))
+          .then(() => {
+            const st = store.peek(targetId);
+            if (st) st.location = b.id;
+          })
           .then(() => nv.refresh())
           .catch((error) => {
             panel?.render();
@@ -2203,18 +2348,19 @@ async function boot() {
     };
     smoothSelectedBeach = () => {
       const targetId = settingsBeachId();
-      if (acct.user && targetId && targetId !== acct.beachId) {
+      if (acct.user && targetId && !isLive(targetId)) {
         if (!nv.resetOwned(targetId)) {
           showToast(uiRoot, 'Go to this beach to smooth it');
           return;
         }
-        recordEditTarget({ kind: 'neighbor', index: nv.indexOfBeach(targetId) ?? 0, beachId: targetId, offsetX: 0 });
+        recordEditTarget({ beachId: targetId, offsetX: nv.xForBeach(targetId) ?? 0 });
         audio.whoosh(false);
         return;
       }
+      if (!sync.id) return;
       markDirty(1500);
       send({ type: 'reset' });
-      recordEditTarget(LIVE_TARGET);
+      recordEditTarget({ beachId: sync.id, offsetX: picker.offsetX });
       audio.whoosh(false);
     };
 
@@ -2231,15 +2377,12 @@ async function boot() {
       shoreUrl: SHORE_URL,
       load: (which) => nv.api.leaderboard(which),
       starred: (code) => nv.favorites.has(code),
-      star: (e, on) => nv.setFavorite({ code: e.code, name: e.name, beachName: e.beachName, location: e.location, updatedAt: e.updatedAt }, on),
+      star: (e, on) => nv.setFavorite({ id: e.id, code: e.code, name: e.name, beachName: e.beachName, location: e.location, updatedAt: e.updatedAt }, on),
       visit: async (e) => {
+        // anyone's beach, yours too: the shore lays out around it, and if it's
+        // yours the waves follow the view onto it
         const mineHere = e.yours ? acct.beaches.find((b) => b.code === e.code) : undefined;
-        if (mineHere && mineHere.id !== acct.beachId) {
-          // one of your other beaches: open it on this device
-          await s.switchTo(mineHere.id);
-          updateElsewhere();
-        }
-        await nv.visit(e.yours ? null : e.code);
+        await nv.anchorAt(mineHere?.home ? null : e.code);
         cam.goTo(0, true);
         haptics.impact('light');
       },
@@ -2254,7 +2397,7 @@ async function boot() {
         return;
       }
       const other = beachHere();
-      const mine = acct.beach;
+      const mine = acct.mine(nv.beachAt(nv.nearestIndex(cam.focusX))?.id) ?? acct.mine(sync.id) ?? acct.home ?? undefined;
       const code = other?.code ?? mine?.code ?? nv.state?.code;
       if (!code) return;
       haptics.impact('light');
@@ -2288,7 +2431,7 @@ async function boot() {
           cam.goTo(0, true);
           haptics.impact('light');
         },
-        myCode: () => (acct.user ? (acct.beach?.code ?? nv.state?.code ?? null) : null),
+        myCode: () => (acct.user ? (acct.mine(sync.id)?.code ?? nv.state?.code ?? null) : null),
         share: shareBeach,
       }),
     );
@@ -2624,10 +2767,8 @@ async function boot() {
   }
 
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) {
-      void sync?.flush(true);
-      void neighbors?.flushAll(true);
-    }
+    // going to the back: save every beach with changes now (keepalive: the page may be closing)
+    if (document.hidden || document.visibilityState === 'hidden') void store.flushAll(true);
     send({ type: 'pause', paused: document.hidden });
     audio.suspend(document.hidden);
   });
@@ -2645,32 +2786,7 @@ async function boot() {
         ...(b.cover ? { cover: resampleField(b.cover, b.nx, b.ny, grid.nx, grid.ny) } : {}),
       };
     };
-    const kept = await loadLocalBeach();
-    if (kept && !params.has('fresh')) {
-      try {
-        const b = await restoreBytes(kept.bytes);
-        const xfer: Transferable[] = [b.delta.buffer];
-        if (b.cover) xfer.push(b.cover.buffer);
-        send({ type: 'setSand', delta: b.delta, objects: b.objects, ...(b.cover ? { cover: b.cover } : {}) }, xfer);
-        const loc = beachById(kept.location);
-        if (loc && loc.id !== beach.id && !params.get('beach')) setBeach(loc);
-      } catch {
-        /* unreadable: start fresh */
-      }
-    }
-    let saveTimer = 0;
-    const saveHere = async () => {
-      window.clearTimeout(saveTimer);
-      const { delta, objects, cover } = await getSand();
-      await saveLocalBeach({ bytes: await encodeSand(delta, grid.nx, grid.ny, objects, cover), location: beach.id, savedAt: Date.now() });
-    };
-    markDirty = (delayMs = 4000) => {
-      window.clearTimeout(saveTimer);
-      saveTimer = window.setTimeout(() => void saveHere(), delayMs);
-    };
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden') void saveHere();
-    });
+    // (the beach itself is the store's `local` beach: kept in IndexedDB by its backend)
     new LocalCheckpointsSection(sheet.accountSlot, {
       snapshot: async () => {
         const { delta, objects, cover } = await getSand();
@@ -2754,6 +2870,12 @@ async function boot() {
     account: () => account,
     neighbors: () => neighbors,
     sync: () => sync,
+    /** the client's beach state, by id (docs/BEACH_STORE.md) */
+    store: () => store,
+    /** the beach the wave worker simulates now (the one of yours in view) */
+    liveBeach: () => sync.id,
+    /** the beach of yours in front of you, once your beaches are in (null before, or signed out) */
+    beachId: () => (sync.id && sync.id !== LOCAL_BEACH ? sync.id : null),
     live: () => ({ ...liveState, palette: undefined }),
     setBeach: (id: string) => {
       const b = beachById(id);

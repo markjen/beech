@@ -1171,9 +1171,16 @@ export class ObjectView {
   constructor(
     scene: Scene,
     renderer: BeachRenderer,
-    private readonly offsetX = 0,
+    private offsetX = 0,
   ) {
     this.bank = bankFor(scene, renderer);
+  }
+
+  /** Move everything along the shore with its beach (the waves moved to another of your beaches). */
+  setOffsetX(x: number): void {
+    if (x === this.offsetX) return;
+    this.offsetX = x;
+    for (const s of this.shown.values()) this.place(s, 0);
   }
 
   get count(): number {
