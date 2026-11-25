@@ -300,8 +300,6 @@ async function boot() {
   let frames = 0;
   let swashRate = 0;
   let loadId = 0;
-  let loadedBeachFrame: Promise<void> | undefined;
-  let resolveBeachFrame: (() => void) | undefined;
 
   let pendingBuf: Float32Array | null = null;
   let pendingTouch = false;
@@ -331,11 +329,6 @@ async function boot() {
       return;
     }
     if (m.type !== 'frame') return;
-    if (resolveBeachFrame && m.loadId === loadId) {
-      picker.updateFromFrame(m.buf);
-      resolveBeachFrame();
-      resolveBeachFrame = undefined;
-    }
     // everything's position this frame, in roster order (no objects made per frame)
     const pos = m.objPos;
     if (m.roster) {
@@ -1740,8 +1733,6 @@ async function boot() {
         const xfer: Transferable[] = [delta.buffer];
         if (cover) xfer.push(cover.buffer);
         settling = null;
-        resolveBeachFrame?.();
-        loadedBeachFrame = new Promise((resolve) => { resolveBeachFrame = resolve; });
         send({ type: 'setSand', loadId: ++loadId, delta, objects, ...(cover ? { cover } : {}) }, xfer);
       },
       grid: { nx: grid.nx, ny: grid.ny },
