@@ -125,6 +125,17 @@
   flex: 1 1 220px;
 }
 
+/* the "while you were away" card: the summary on its own line, buttons under it */
+.hint.choice {
+  flex-wrap: wrap;
+  justify-content: center;
+  row-gap: 8px;
+}
+
+.hint.choice > span {
+  flex: 1 0 100%;
+}
+
 .hint-action {
   flex: none;
   padding: 6px 14px;

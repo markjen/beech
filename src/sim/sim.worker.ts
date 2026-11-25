@@ -56,6 +56,7 @@ function loop() {
       const roster = objs.version !== rosterSent ? objs.persisted() : undefined;
       rosterSent = objs.version;
       const objPos = objs.packPositions(posPool.pop());
+      const lost = objs.takeLost();
       post(
         {
           type: 'frame',
@@ -72,6 +73,7 @@ function loop() {
           rosterVersion: objs.version,
           loadId,
           roster,
+          lost: lost.length ? lost : undefined,
           stats: withStats ? sim.stats() : undefined,
           tickMs,
         },

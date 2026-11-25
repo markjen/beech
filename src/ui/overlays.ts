@@ -77,6 +77,27 @@ export function showActionToast(parent: HTMLElement, text: string, label: string
   return hide;
 }
 
+/** A note with several buttons (the "while you were away" card); any button closes it. */
+export function showChoiceToast(parent: HTMLElement, text: string, buttons: { label: string; onClick?: () => void }[], ms = 30000): () => void {
+  const { el, hide } = showNote(parent, ms);
+  el.classList.add('with-action', 'choice');
+  const span = document.createElement('span');
+  span.textContent = text;
+  el.append(span);
+  for (const btn of buttons) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'hint-action';
+    b.textContent = btn.label;
+    b.addEventListener('click', () => {
+      hide();
+      btn.onClick?.();
+    });
+    el.append(b);
+  }
+  return hide;
+}
+
 /** A `.hint` element that shows itself, then removes itself after `ms`. */
 function showNote(parent: HTMLElement, ms: number): { el: HTMLDivElement; hide: () => void } {
   const el = document.createElement('div');

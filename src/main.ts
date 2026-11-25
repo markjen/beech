@@ -30,7 +30,8 @@ import { MAX_OBJECTS, decodeSand, encodeSand, fitWorld, resampleField } from './
 import { restHeight } from './sim/profile';
 import { Ambient, toggleFullscreen } from './ui/ambient';
 import { Hud, icon, type ToolDef } from './ui/hud';
-import { SettingsSheet, StartScreen, showActionToast, showToast } from './ui/overlays';
+import { SettingsSheet, StartScreen, showActionToast, showChoiceToast, showToast } from './ui/overlays';
+import { awayText } from './ui/away';
 import { CheckpointsSection } from './ui/checkpoints';
 import { InventoryTray, PlaceBar } from './ui/inventory';
 import { ClawMachine } from './ui/clawMachine';
@@ -360,6 +361,7 @@ async function boot() {
       }
       pendingTouch = true;
     }
+    if (m.lost) seaTook(m.lost.length);
     // a held thing follows the finger; one just put down waits for the worker
     if (settling) {
       const s = objectStates.find((o) => o.id === settling!.id);
@@ -573,6 +575,24 @@ async function boot() {
    */
   let fenced = false;
   let showFencedBanner: () => void = () => {};
+
+  /**
+   * The sea took some of your things (docs/LIVE_SIM.md, section 5): they're
+   * already off the roster, so back in the bag. Losses close together share
+   * one summary toast, and the beach saves soon so the server agrees.
+   */
+  let seaTookCount = 0;
+  let seaTookTimer = 0;
+  const seaTook = (n: number) => {
+    seaTookCount += n;
+    markDirty(1500);
+    window.clearTimeout(seaTookTimer);
+    seaTookTimer = window.setTimeout(() => {
+      const k = seaTookCount;
+      seaTookCount = 0;
+      showToast(uiRoot, k === 1 ? 'The sea took 1 thing. It’s back in your bag.' : `The sea took ${k} things. They’re back in your bag.`);
+    }, 2500);
+  };
 
   /** At the end of a good dig, ask the server whether something was buried there. */
   const tryDigFind = async (pathM: number, durationMs: number) => {
@@ -2037,6 +2057,25 @@ async function boot() {
     };
     s.onState((st) => {
       if (st === 'saved') bigEditSnapshotAttempted = false;
+    });
+    // "while you were away" (docs/LIVE_SIM.md): each time a beach of yours
+    // loads here, what the sea did to it since you last looked, once
+    s.onLoaded(() => {
+      const here = acct.beachId;
+      void (async () => {
+        const away = await acct.away().catch(() => null);
+        if (!away || acct.beachId !== here) return;
+        void acct.awaySeen().catch(() => {});
+        const cp = away.checkpoint;
+        showChoiceToast(
+          uiRoot,
+          awayText(away),
+          cp && here
+            ? [{ label: 'Put it back as it was', onClick: () => void checkpoints.putBack(cp, here) }, { label: 'Keep' }]
+            : [{ label: 'OK' }],
+        );
+        void checkpoints.load();
+      })();
     });
     panel = new AccountPanel(
       {

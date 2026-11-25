@@ -192,7 +192,8 @@
   - native sign-in in the Capacitor apps (Google blocks WebView OAuth)
   - Sign in with Apple on iOS (required once Google sign-in ships there)
   - mutual neighbor requests
-  - live (rather than snapshot) neighbor sand
+  - live (rather than snapshot) neighbor sand: designed in
+    [LIVE_SIM.md](LIVE_SIM.md), with server catch-up while the owner is away
 
 GitHub Pages (removed 2026-11-22): the `github-pages` environment only
 accepted the repo's default branch, so the deploy job ran only there.
@@ -793,6 +794,61 @@ non-home beach. Every action is audited, and there's an Audit log tab.
 
 The Google sign-in round trip on the deployed service is not verified
 here: it needs the service's URL on the web OAuth client.
+
+## Live beaches (in progress, docs/LIVE_SIM.md)
+
+- **L1, lost to the sea (2026-11-23):** an owned floater or roller (bottle,
+  driftwood, shells and other prizes) that the backwash carries to within
+  `LOST_TO_SEA.edge` (0.5 m) of the offshore edge leaves the beach
+  (`BeachObjects.takeLost`). The bag counts what's placed, so it's back in
+  the bag at once; the frame carries `lost`, the app shows one summary toast
+  ("The sea took 2 things…") and saves soon. Wild strays, rocks and fixed
+  things are never taken. Stokes drift still brings floaters in, so in normal
+  surf this is rare; the catch-up (L2) is where most losses will happen.
+  Undo of a lost thing's placement does nothing; redo puts it back from the
+  bag.
+- **L2, the catch-up model (2026-11-23):** `src/sim/catchup.ts`. Cuts a gap
+  into half tide cycles and copies the live sim's healing and wet slumping
+  by how long each cell was wet; floaters strand at the high-water line,
+  owned things too long in the sea are taken, and fresh strays wash up.
+  Constants in `CATCHUP` (`src/config.ts`), including `maxGapDays: 14`.
+  14 days costs 30–45 ms (budgeted at 150 ms per tier in `npm run perf`).
+  Not used by anything yet; the server runs it in L3.
+- **L3, the server catches beaches up (2026-11-23):** every read of a
+  beach's sand runs the catch-up first if it's due (10 min since it was last
+  simulated, and the owner's app isn't holding it open with its 20 s
+  `/here` heartbeat). Compare-and-set on `version`, epoch bump, a
+  `beach_events` row, and a "Before the tide" checkpoint before gaps over
+  12 h (migration 21). The catch-up is bundled from `src/` into
+  `server/src/generated/catchup.ts` (`npm run bundle:server`, checked by
+  `tests/bundleServer.test.ts`). Cap: `CATCHUP_MAX_GAP_DAYS` (default 14).
+  The app reloads its beach when it comes back after 10 minutes or a
+  heartbeat says the epoch moved on. Dev-only `/api/dev/age-beach` lets
+  e2e tests skip time.
+- **L4, "while you were away" (2026-11-24):** each time one of your beaches
+  loads, the app asks `/away` for what the sea did since you last looked
+  (unseen `beach_events`, summed) and shows one card: "While you were away
+  (2 days) · 4 high tides · the sea took 3 things (back in your bag)", with
+  **Put it back as it was** (restores the "Before the tide" checkpoint,
+  leaving out anything the bag no longer covers, with Undo) and **Keep**.
+  `/away/seen` marks it read, so it shows once. `npm run e2e:live` covers it
+  end to end. The public beechshore.com pages still draw the stored sand
+  (no catch-up on those reads).
+- **L5, live viewers (2026-11-24):** reading someone else's beach (a
+  visit, a neighbor, the public shore) marks it watched for 15 s
+  (`viewed_until`). The owner's heartbeat reply says so, and while watched
+  the owner's app saves every 5 s. The viewer asks `/beaches/:code/live`
+  about the beach in front of it: every 5 s while its owner is on it, every
+  30 s otherwise, and fetches the sand again when the version moves on (the
+  owner's saves and the server's catch-ups). `npm run e2e:live` checks a
+  dig reaches a visitor. Not done: the viewer's sand snaps to the new save
+  rather than easing in, and no SSE (polling only).
+- e2e on 2026-11-24 after rebasing onto main 6f6fa8c: `accounts`,
+  `neighbors` and `live` pass. `shore`, `beaches` and `leaderboard` time
+  out at the same steps on plain main too (signing a second person in on
+  the same page; making a new beach), and `checkpoints` sometimes misses
+  its Undo toast on the software-GPU runner: those scripts need a look,
+  separately from this work.
 
 ## beechshore.com (2026-11-23)
 

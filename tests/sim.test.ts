@@ -470,3 +470,25 @@ describe('sandcastle molds', () => {
     }
   });
 });
+
+describe('the sea takes owned things out past the offshore edge (docs/LIVE_SIM.md)', () => {
+  it('removes them without touching the sand, and the sim stays stable', () => {
+    const sim = new BeachSim(grid, 1, { waves: false, erosion: false, healing: false, seep: false });
+    const b = sim.placeObject({ kind: 'bottle', item: 'bottle', x: 10, y: 2, angle: 0, size: 0.3, variant: 1 });
+    sim.placeObject({ kind: 'flag', item: 'flag', x: 12, y: 2, angle: 0, size: 0.3, variant: 1 });
+    const before = sandPlusSediment(sim);
+    // a strong backwash over the offshore rows
+    for (let s = 0; s < 30 * 5; s++) {
+      for (let k = 0; k < sim.nx * Math.ceil(3 / sim.dx); k++) {
+        sim.water[k] = Math.max(sim.water[k], 1);
+        sim.vy[k] = -2;
+      }
+      sim.objects.step(DT);
+    }
+    expect(sim.objects.takeLost().map((o) => o.id)).toEqual([b.id]);
+    expect(sim.objects.count).toBe(1);
+    expect(sandPlusSediment(sim)).toBeCloseTo(before, 6);
+    for (let s = 0; s < 30 * 5; s++) sim.step(DT);
+    for (let k = 0; k < sim.n; k++) expect(Number.isFinite(sim.sand[k]) && Number.isFinite(sim.water[k])).toBe(true);
+  });
+});

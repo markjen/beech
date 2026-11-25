@@ -12,7 +12,9 @@ Read these first:
    engineering queue, ideas). Take work from here, and update it in the same
    commit as the work.
 5. Feature designs not built yet, e.g. [docs/MULTI_BEACH.md](docs/MULTI_BEACH.md),
-   [docs/INBOX_NOTIFICATIONS.md](docs/INBOX_NOTIFICATIONS.md) (push not built yet) and
+   [docs/INBOX_NOTIFICATIONS.md](docs/INBOX_NOTIFICATIONS.md) (push not built yet),
+   [docs/LIVE_SIM.md](docs/LIVE_SIM.md) (the sea works while you're away,
+   live viewers), and
    [docs/BEACH_FILE.md](docs/BEACH_FILE.md) (export/import file spec).
    The public shore site (beechshore.com) is in [docs/SHORE_SITE.md](docs/SHORE_SITE.md).
 
@@ -59,7 +61,7 @@ Read these first:
   `TEST_DATABASE_URL` to also run against real Postgres), then
   `npm run server:dev` with `npm run e2e:accounts`, `npm run e2e:neighbors`,
   `npm run e2e:shore`, `npm run e2e:beaches`, `npm run e2e:leaderboard`,
-  `npm run e2e:checkpoints`, `npm run e2e:invites` and `npm run e2e:inbox`.
+  `npm run e2e:checkpoints`, `npm run e2e:invites`, `npm run e2e:inbox` and `npm run e2e:live`.
   Schema changes are new entries appended to `server/src/migrations.ts`, never
   edits to applied ones. Never enable `DEV_AUTH` outside local development.
 - Android builds here need an SDK: install the command-line tools to a scratch
