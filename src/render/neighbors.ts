@@ -2,7 +2,7 @@ import type { Ray } from '@babylonjs/core/Culling/ray';
 import type { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import type { Scene } from '@babylonjs/core/scene';
 
-import { SIM_HZ, WORLD_SIZE_X, type GridSpec } from '../config';
+import { SIM_HZ, WORLD_SIZE_X, WORLD_SIZE_Z, type GridSpec } from '../config';
 import type { CameraController } from '../input/cameraController';
 import { pickHeightfield } from '../input/sandPicker';
 import type { Account, MyBeach, Neighbors, ShoreBeach, Side } from '../net/account';
@@ -12,17 +12,32 @@ import type { Palette } from '../palette';
 import type { BrushMode, CastleShape } from '../sim/beachSim';
 import type { PlacedObject } from '../sim/objects';
 import type { Swell } from '../sim/waves';
-import { BeachRenderer, ORIGIN_Z } from './beachRenderer';
+import { BeachRenderer, OCEAN_REACH, ORIGIN_Z } from './beachRenderer';
 import { ObjectView } from './objects';
-import { boundaryLinked, nearestShoreIndex, shoreLayout, UNLINKED_STEP, windowBeachCenters } from './shoreSpacing';
+import {
+  boundaryLinked,
+  indicesOverlapping,
+  nearestShoreIndex,
+  shoreLayout,
+  stickyWindow,
+  UNLINKED_STEP,
+  visibleShoreSpan,
+  windowBeachCenters,
+} from './shoreSpacing';
 /** how far down the shore to load at first, each way */
 const DEPTH = 6;
 /** load more of the shore when the view gets this close to the end of what's loaded */
 const AHEAD = 3;
 /** how many more to load at a time */
 const PAGE = 6;
-/** beaches drawn either side of the one you're looking at */
+/** beaches drawn either side of the one you're looking at in the chair view */
 const RENDER = 2;
+/** most beaches drawn either side of the middle of the view, however far out you zoom */
+const RENDER_MAX = 6;
+/** a drawn beach stays drawn until it's this far (m) out of view, so panning to and fro doesn't rebuild it */
+const KEEP_MARGIN = UNLINKED_STEP;
+/** beaches fetched (not drawn) past each end of what's drawn, so they're ready as they scroll in */
+const PREFETCH = 2;
 /** how often to look for new saves along the shore */
 const POLL_MS = 30000;
 /** while a beach's owner is on it, a viewer asks about it this often (docs/LIVE_SIM.md) */
@@ -553,30 +568,56 @@ export class NeighborView {
 
   // ------------------------------------------------------------ loading and drawing
 
-  /** Draw the beaches near the view, load the ones about to come into view, let the store forget far ones. */
-  private async fillWindow(wait = false): Promise<void> {
+  /**
+   * The shore indices to draw: every beach the view covers (in the diorama
+   * that's the stretch under the camera's footprint, more as you zoom out),
+   * kept drawn a little past the edge of the view so panning to and fro
+   * doesn't drop and rebuild them.
+   */
+  private drawWindow(): [number, number] {
     const c = this.nearestIndex(this.cam.focusX);
     const { left, right } = this.extent;
-    const lo = Math.max(-right, c - RENDER);
-    const hi = Math.min(left, c + RENDER);
+    const min = Math.max(-right, c - RENDER_MAX);
+    const max = Math.min(left, c + RENDER_MAX);
+    const fallback: [number, number] = [Math.max(-right, c - RENDER), Math.min(left, c + RENDER)];
+    const foot = this.cam.groundFootprint();
+    const span = foot ? visibleShoreSpan(foot, ORIGIN_Z - OCEAN_REACH, ORIGIN_Z + WORLD_SIZE_Z) : null;
+    if (!span) return fallback;
+    const xFor = (i: number) => this.xFor(i);
+    const need = indicesOverlapping(span[0], span[1], min, max, xFor) ?? [c, c];
+    const keep = indicesOverlapping(span[0] - KEEP_MARGIN, span[1] + KEEP_MARGIN, min, max, xFor) ?? need;
+    const had = this.win[0] <= this.win[1] && this.entries.size ? this.win : null;
+    return stickyWindow(had, need, keep);
+  }
+
+  /** Draw the beaches in view, fetch the ones about to scroll in, let the store forget far ones. */
+  private async fillWindow(wait = false): Promise<void> {
+    const { left, right } = this.extent;
+    const [lo, hi] = this.drawWindow();
     const moved = lo !== this.win[0] || hi !== this.win[1];
     this.win = [lo, hi];
+    const pLo = Math.max(-right, lo - PREFETCH);
+    const pHi = Math.min(left, hi + PREFETCH);
     const pending: Promise<void>[] = [];
-    const inView: string[] = [];
+    const held: string[] = [];
     for (const e of this.entries.values()) {
-      if (e.index >= lo && e.index <= hi) {
-        inView.push(e.beach.id);
-        const st = this.store.peek(e.beach.id);
-        if (st && !e.slot) this.makeSlot(e);
-        const id = e.beach.id;
-        const needsLoad = !st || (st.stale && !this.store.isAttached(id) && !this.store.isDirty(id));
-        if (needsLoad && (wait || !this.store.isLoading(id))) pending.push(this.load(e));
-      } else {
-        this.dropSlot(e);
+      const drawn = e.index >= lo && e.index <= hi;
+      const near = e.index >= pLo && e.index <= pHi;
+      if (!drawn) this.dropSlot(e);
+      if (!near) continue;
+      held.push(e.beach.id);
+      const id = e.beach.id;
+      const st = this.store.peek(id);
+      if (drawn && st && !e.slot) this.makeSlot(e);
+      const needsLoad = !st || (st.stale && !this.store.isAttached(id) && !this.store.isDirty(id));
+      // what's drawn is waited for; what's ahead is fetched in the background
+      if (needsLoad && ((wait && drawn) || !this.store.isLoading(id))) {
+        const p = this.load(e);
+        if (drawn) pending.push(p);
       }
     }
     if (moved || wait) {
-      this.store.retain(inView);
+      this.store.retain(held);
       this.store.gc();
     }
     if (wait) await Promise.all(pending);

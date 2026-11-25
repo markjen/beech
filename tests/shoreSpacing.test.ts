@@ -6,11 +6,15 @@ import {
   blendSeamSample,
   boundaryLinked,
   boundaryStep,
+  indicesOverlapping,
   nearestShoreIndex,
   neighborWaveEta,
   seamWeight,
   shoreLayout,
   shoreRowOrder,
+  stickyWindow,
+  UNLINKED_STEP,
+  visibleShoreSpan,
   windowBeachCenters,
 } from '../src/render/shoreSpacing';
 import { makeSwell, swellAt } from '../src/sim/waves';
@@ -209,5 +213,59 @@ describe('seam blending and neighbor waves', () => {
       maxDiff = Math.max(maxDiff, Math.abs(neighborWaveEta(8, 16, s, tide, swell, 1) - neighborWaveEta(0, 16, s, tide, swell, 1)));
     }
     expect(maxDiff).toBeGreaterThan(0.05);
+  });
+});
+
+describe('drawn window follows the view', () => {
+  // a view rotated 45°: a diamond on the ground, 100 m corner to corner
+  const diamond = [
+    { x: 0, z: 50 },
+    { x: 50, z: 0 },
+    { x: 0, z: -50 },
+    { x: -50, z: 0 },
+  ];
+
+  it('measures the stretch of a band the footprint covers', () => {
+    expect(visibleShoreSpan(diamond, -1, 1)).toEqual([-50, 50]);
+    // a band away from the middle is narrower: |x| <= 50 - |z|
+    const [lo, hi] = visibleShoreSpan(diamond, 30, 40)!;
+    expect(lo).toBeCloseTo(-20);
+    expect(hi).toBeCloseTo(20);
+    expect(visibleShoreSpan(diamond, 60, 70)).toBeNull();
+  });
+
+  it('a band wholly inside an axis-aligned view spans the view', () => {
+    const box = [
+      { x: -70, z: 40 },
+      { x: 70, z: 40 },
+      { x: 70, z: -40 },
+      { x: -70, z: -40 },
+    ];
+    expect(visibleShoreSpan(box, -16, 16)).toEqual([-70, 70]);
+  });
+
+  it('finds every beach overlapping the stretch, edges included', () => {
+    const xFor = (i: number) => i * UNLINKED_STEP;
+    // ±70 m reaches into the slabs centred at ±67.2 m and ±100.8 m (edge at 84.8)
+    expect(indicesOverlapping(-70, 70, -10, 10, xFor)).toEqual([-2, 2]);
+    expect(indicesOverlapping(-90, 90, -10, 10, xFor)).toEqual([-3, 3]);
+    // clamped to what's loaded
+    expect(indicesOverlapping(-90, 90, -1, 10, xFor)).toEqual([-1, 3]);
+    expect(indicesOverlapping(500, 600, -3, 3, xFor)).toBeNull();
+    // a narrow phone view still covers the beach under it
+    expect(indicesOverlapping(-5, 5, -10, 10, xFor)).toEqual([0, 0]);
+  });
+
+  it('grows at once but only shrinks once a beach is well out of view', () => {
+    // first draw: just what's needed
+    expect(stickyWindow(null, [-2, 2], [-3, 3])).toEqual([-2, 2]);
+    // pan right: the new beach comes in now, the old left one stays while it's near
+    expect(stickyWindow([-2, 2], [-1, 3], [-2, 4])).toEqual([-2, 3]);
+    // pan back: nothing to rebuild
+    expect(stickyWindow([-2, 3], [-2, 2], [-3, 3])).toEqual([-2, 3]);
+    // panned on: the far one is let go
+    expect(stickyWindow([-2, 3], [0, 4], [-1, 5])).toEqual([0, 4]);
+    // jumped far away: start over
+    expect(stickyWindow([-2, 2], [20, 22], [19, 23])).toEqual([20, 22]);
   });
 });

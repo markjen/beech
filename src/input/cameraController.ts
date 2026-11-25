@@ -247,6 +247,28 @@ export class CameraController {
     return zoomLimits(this.canvas.clientHeight, this.cellSize, this.fitHalfHeight());
   }
 
+  /**
+   * The diorama view's footprint on the ground plane at height `y`: the four
+   * screen corners carried along the view direction, in order. Null in the
+   * chair view or mid-switch (a perspective view sees down the shore anyway).
+   */
+  groundFootprint(y = 0): { x: number; z: number }[] | null {
+    if (this.mode !== 'diorama' || this.anim) return null;
+    const cam = this.camera;
+    const inv = cam.getViewMatrix().clone().invert();
+    const dir = cam.target.subtract(cam.position).normalize();
+    if (Math.abs(dir.y) < 1e-4) return null;
+    const a = this.aspect();
+    const h = this.halfH;
+    const out: { x: number; z: number }[] = [];
+    for (const [sx, sy] of [[-1, 1], [1, 1], [1, -1], [-1, -1]]) {
+      const p = Vector3.TransformCoordinates(new Vector3(sx * h * a, sy * h, 0), inv);
+      const t = (y - p.y) / dir.y;
+      out.push({ x: p.x + dir.x * t, z: p.z + dir.z * t });
+    }
+    return out;
+  }
+
   /** 0 = zoomed in close, 1 = zoomed right out (used for the sound mix). */
   zoomOut01(): number {
     if (this.mode === 'chair') return (this.fov - CHAIR.minFov) / (CHAIR.maxFov - CHAIR.minFov);

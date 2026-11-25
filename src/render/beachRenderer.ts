@@ -23,6 +23,8 @@ const c3 = (c: RGB) => new Color3(c[0], c[1], c[2]);
 export const ORIGIN_X = -WORLD_SIZE_X / 2;
 export const ORIGIN_Z = -WORLD_SIZE_Z / 2;
 const SLAB_BOTTOM = -2.6;
+/** how far the open sea runs offshore past the slab's offshore edge (m) */
+export const OCEAN_REACH = 34;
 
 interface LitMaterial {
   mat: ShaderMaterial;
@@ -517,7 +519,7 @@ export class BeachRenderer {
 
     // tuck half a cell under the opaque deep offshore edge of water to seal T-junction pinholes
     const edgeZ = this.edgeZ;
-    const ocean = this.planeMesh('ocean', -hx, hx, edgeZ - 34, edgeZ + this.grid.dx * 0.5, 96, 48);
+    const ocean = this.planeMesh('ocean', -hx, hx, edgeZ - OCEAN_REACH, edgeZ + this.grid.dx * 0.5, 96, 48);
     ocean.material = this.oceanMat;
     ocean.alphaIndex = 1;
     this.oceanMat.setFloat('zEdge', edgeZ);
