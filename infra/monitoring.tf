@@ -737,19 +737,19 @@ resource "google_monitoring_alert_policy" "memory" {
   combiner              = "OR"
   notification_channels = [google_monitoring_notification_channel.email.id]
   documentation {
-    content   = "Cloud Run beech memory utilization is over 80% for 5 minutes. The service runs with 512Mi; if this keeps happening, raise the limit in infra/main.tf — no code changes needed. There was no memory alert before this one, so a slow leak would only have shown up as restarts."
+    content   = "Cloud Run beech memory usage is over 80% of its 512Mi limit (429496730 bytes) for 5 minutes. The service runs with 512Mi; if this keeps happening, raise the limit in the deploy workflow — and update this threshold to match. There was no memory alert before this one, so a slow leak would only have shown up as restarts. Note: the metric is container/memory/usage (bytes, a distribution) — the older container/memory/utilization type no longer exists."
     mime_type = "text/markdown"
   }
   conditions {
     display_name = "Cloud Run memory over 80% for 5 minutes"
     condition_threshold {
-      filter          = "metric.type=\"run.googleapis.com/container/memory/utilization\" AND resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"beech\""
+      filter          = "metric.type=\"run.googleapis.com/container/memory/usage\" AND resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"beech\""
       duration        = "300s"
       comparison      = "COMPARISON_GT"
-      threshold_value = 0.8
+      threshold_value = 429496730
       aggregations {
         alignment_period   = "60s"
-        per_series_aligner = "ALIGN_MEAN"
+        per_series_aligner = "ALIGN_PERCENTILE_95"
       }
     }
   }
@@ -867,8 +867,8 @@ resource "google_monitoring_dashboard" "beech" {
               {
                 timeSeriesQuery = {
                   timeSeriesFilter = {
-                    filter      = "metric.type=\"run.googleapis.com/container/cpu/utilization\" AND resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"beech\""
-                    aggregation = { alignmentPeriod = "60s", perSeriesAligner = "ALIGN_MEAN" }
+                    filter      = "metric.type=\"run.googleapis.com/container/cpu/utilizations\" AND resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"beech\""
+                    aggregation = { alignmentPeriod = "60s", perSeriesAligner = "ALIGN_PERCENTILE_95" }
                   }
                 }
                 plotType   = "LINE"
@@ -877,8 +877,8 @@ resource "google_monitoring_dashboard" "beech" {
               {
                 timeSeriesQuery = {
                   timeSeriesFilter = {
-                    filter      = "metric.type=\"run.googleapis.com/container/memory/utilization\" AND resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"beech\""
-                    aggregation = { alignmentPeriod = "60s", perSeriesAligner = "ALIGN_MEAN" }
+                    filter      = "metric.type=\"run.googleapis.com/container/memory/usage\" AND resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"beech\""
+                    aggregation = { alignmentPeriod = "60s", perSeriesAligner = "ALIGN_PERCENTILE_95" }
                   }
                 }
                 plotType   = "LINE"
@@ -895,7 +895,7 @@ resource "google_monitoring_dashboard" "beech" {
                 targetAxis = "Y2"
               },
             ]
-            yAxis        = { label = "utilization (0-1)", scale = "LINEAR" }
+            yAxis        = { label = "CPU utilization (0-1) / memory (bytes)", scale = "LINEAR" }
             y2Axis       = { label = "instances", scale = "LINEAR" }
             chartOptions = { mode = "COLOR" }
           }

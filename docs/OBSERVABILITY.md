@@ -154,7 +154,7 @@ All ten go to `markjen@gmail.com` (var `alert_email`):
 | beech: slow responses (p95 latency) | p95 latency over 1 s for 5 minutes |
 | beech: database errors | any `db_error` in 10 minutes |
 | beech: slow database queries | more than 5 queries over 500 ms in 10 minutes |
-| beech: Cloud Run memory high | Cloud Run `beech` memory utilization over 80% for 5 minutes |
+| beech: Cloud Run memory high | Cloud Run `beech` memory usage over 80% of its 512Mi limit for 5 minutes (metric `container/memory/usage`, p95) |
 | beech: Cloud SQL CPU high | SQL CPU over 80% for 5 minutes |
 | beech: Cloud SQL connections high | over 20 backends for 5 minutes (the db-f1-micro allows 25; each Cloud Run instance pools at most 5) |
 
