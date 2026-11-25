@@ -25,6 +25,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       'Someone who signs up from a link to your beach counts as your invite.',
       'Edit any of your beaches you can see. Dig, build, clear or drag things across the seam, and each beach saves as you play.',
       'Settings has Beach, Shore, Display and Account tabs. Open Shore to connect your own beaches side by side in one step.',
+      'Switching between your beaches quickly no longer risks one beach’s sand overwriting another’s.',
     ],
   },
   {
