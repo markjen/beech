@@ -67,7 +67,9 @@ import {
   hasVisitorFedToday,
   maybeGrantBonusTreat,
   recentPetFeeders,
+  recordSnackOut,
   recordWildFeed,
+  returnSnack,
   renameBeachPet,
   visitorFeedPet,
 } from './animals.js';
@@ -1629,10 +1631,22 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const existingPet = await getBeachPet(db, beachId, now);
     if (existingPet) {
       const pet = await feedBeachPet(db, beachId, user.id, user.name, now);
+      await recordSnackOut(db, { beachId, userId: user.id, inventoryId: res.rowId, now, petPrevFedAt: existingPet.lastFedAt });
       return c.json({ ok: true, remaining: res.remaining, pet });
     }
     const bond = await recordWildFeed(db, beachId, species, now);
+    await recordSnackOut(db, { beachId, userId: user.id, inventoryId: res.rowId, now, wildSpecies: species });
     return c.json({ ok: true, remaining: res.remaining, bond });
+  });
+
+  // pick the snack that's out back up (by hand or with the vacuum): back in the bag
+  app.post('/animals/feed/return', requireUser, async (c) => {
+    const user = c.get('user');
+    const b = await body<{ beachId?: string }>(c).catch(() => ({} as { beachId?: string }));
+    const beachId = await mine(c, b.beachId ?? c.req.query('beach'));
+    const back = await returnSnack(db, beachId, user.id, clock());
+    if (!back) return c.json({ error: 'no snack out on this beach' }, 409);
+    return c.json({ ok: true, ...back });
   });
 
   app.get('/pet', requireUser, async (c) => {

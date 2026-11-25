@@ -4,7 +4,7 @@ import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { Scene } from '@babylonjs/core/scene';
 
 import { Ambience } from './audio/ambience';
-import { BEACH_STORE, GRID_TIERS, SIM_HZ, WAVES, WORLD_SIZE_X, type QualityTier } from './config';
+import { ANIMALS, BEACH_STORE, GRID_TIERS, SIM_HZ, WAVES, WORLD_SIZE_X, type QualityTier } from './config';
 import { CameraController } from './input/cameraController';
 import { Gestures, HOLD_SLOP_PX, LONG_PRESS_MS } from './input/gestures';
 import { SandPicker } from './input/sandPicker';
@@ -434,6 +434,13 @@ async function boot() {
   let brushMode: BrushMode = 'dig';
   /** an inventory item in hand: taps set it down instead of digging */
   let placing: Item | null = null;
+  /** a beach snack in hand (from the bag): a tap on your beach tosses it there */
+  let snackInHand = false;
+  /** set up with the account layer: toss the snack in hand where you tapped, or pick the one that's out back up */
+  let tossSnack: (hit: Hit) => void = () => {};
+  let pickUpSnack: (how: 'hand' | 'vacuum') => void = () => {};
+  /** is the snack that's out under this point of your beach? */
+  const snackAt = (hit: Hit | null) => !!hit && isLive(hit.target.beachId) && animals.foodNear(hit.x - picker.offsetX, hit.z, ANIMALS.snackReach);
   let digging = false;
   let strokeOpen = false;
   /** a "before big edit" snapshot has been taken (or tried) since the last save */
@@ -605,6 +612,8 @@ async function boot() {
       // door skips this — the server's save-diff backstop covers it.
       if (!strokeOpen && isClearingMode(brushMode)) maybeBigEditSnapshot();
       send({ type: 'brush', phase: strokeOpen ? 'move' : 'start', x: s.x, y: s.y, r, mode: brushMode });
+      // the vacuum takes the beach snack that's out too (back in the bag)
+      if (brushMode === 'vacuum' && animals.foodNear(hit.x - picker.offsetX, hit.z, r)) pickUpSnack('vacuum');
     } else if (strokeOpen) {
       neighbors?.moveStroke(hit.target.beachId, s.x, s.y, r);
     } else {
@@ -654,8 +663,9 @@ async function boot() {
    */
   let vacuumedNames: string[] = [];
   let vacuumedTimer = 0;
-  const vacuumedUp = (items: PlacedObject[]) => {
-    for (const o of items) vacuumedNames.push(prizeName(o.item));
+  const vacuumedUp = (items: PlacedObject[]) => noteVacuumed(items.map((o) => prizeName(o.item)));
+  const noteVacuumed = (names: string[]) => {
+    vacuumedNames.push(...names);
     window.clearTimeout(vacuumedTimer);
     vacuumedTimer = window.setTimeout(() => {
       const names = vacuumedNames;
@@ -954,9 +964,9 @@ async function boot() {
   let collapsed = true;
   /** highlight the active tool: the hand, the bag (an item in hand), or a dirt tool */
   const syncToolUI = () =>
-    hud.setTool(placing ? 'place' : tool === 'sand' ? sandMode : tool === 'clearing' ? clearingMode : tool === 'castle' ? castleShape : tool);
+    hud.setTool(placing || snackInHand ? 'place' : tool === 'sand' ? sandMode : tool === 'clearing' ? clearingMode : tool === 'castle' ? castleShape : tool);
   const syncLookOnly = () => {
-    gestures.lookOnly = collapsed || (!placing && tool === 'look');
+    gestures.lookOnly = collapsed || (!placing && !snackInHand && tool === 'look');
   };
   const pickTool = (id: string) => {
     if (isSandMode(id)) {
@@ -975,6 +985,7 @@ async function boot() {
     }
     if (tool !== 'look') lastDirt = id;
     placing = null;
+    snackInHand = false;
     footprintsStroke = null;
     inventory.deselect();
     placeBar.show(null, DEFAULT_SIZE);
@@ -993,6 +1004,7 @@ async function boot() {
   // the bag: rocks and driftwood (free, unlimited) for now
   const inventory = new InventoryTray((n, l, c) => hud.button(n, l, c), hud.root, ITEMS, (item) => {
     placing = item;
+    snackInHand = false;
     footprintsStroke = null;
     syncLookOnly();
     syncToolUI();
@@ -1478,12 +1490,28 @@ async function boot() {
         return;
       }
       inventory.setOpen(false);
+      if (snackInHand) {
+        tossSnack(hit);
+        return;
+      }
       if (placing) {
         putDown(hit);
         return;
       }
       if (tool === 'castle') {
         moldCastle(hit);
+        return;
+      }
+      // pressing on the snack that's out: hold still to pick it back up
+      if (snackAt(hit)) {
+        press = {
+          sx,
+          sy,
+          timer: window.setTimeout(() => {
+            press = null;
+            pickUpSnack('hand');
+          }, LONG_PRESS_MS),
+        };
         return;
       }
       // pressing on a thing: hold still to pick it up (a move or a quick tap digs)
@@ -1613,6 +1641,10 @@ async function boot() {
     grabAt: (sx, sy) => {
       // look mode: a long-press on a thing picks it up (on any of your visible beaches)
       if (fenced) return false;
+      if (snackAt(pickAt(sx, sy))) {
+        pickUpSnack('hand');
+        return false;
+      }
       const found = thingAt(sx, sy);
       if (!found) return false;
       const { obj, target } = found;
@@ -1663,6 +1695,10 @@ async function boot() {
       if (fenced) return;
       const hit = pickAt(sx, sy);
       if (!hit) return;
+      if (snackInHand) {
+        tossSnack(hit);
+        return;
+      }
       if (placing) {
         putDown(hit);
         return;
@@ -2047,20 +2083,57 @@ async function boot() {
         return;
       }
       if (id !== 'crab-treat') return;
+      // a snack in hand: tap your beach to toss it there
+      placing = null;
+      footprintsStroke = null;
+      inventory.deselect();
+      snackInHand = true;
+      syncLookOnly();
+      syncToolUI();
+      placeBar.showSnack('Beach snacks', inventory.ownedCount('crab-treat'));
+      haptics.impact('light');
+    };
+    let snackBusy = false;
+    /** the beach the snack that's out was tossed on (the server keeps it per beach) */
+    let snackBeachId: string | null = null;
+    tossSnack = (hit) => {
+      if (snackBusy) return;
+      if (!animalsApi?.signedIn || !isLive(hit.target.beachId) || !sync.id || sync.id === LOCAL_BEACH) {
+        showToast(uiRoot, 'Head back to your beach first.');
+        return;
+      }
+      // tapping the snack that's out picks it back up
+      if (snackAt(hit)) {
+        pickUpSnack('hand');
+        return;
+      }
+      const pos = { x: hit.x - picker.offsetX, z: hit.z };
+      if (animalEnv.waterAt(pos.x, pos.z) > 0.02) {
+        haptics.impact('light');
+        showToast(uiRoot, 'Too wet here.');
+        return;
+      }
+      const beachId = sync.id;
+      snackBusy = true;
       void animalsApi
-        .feed(activeBeachId)
+        .feed(beachId)
         .then((res) => {
           syncAnimalObstacles();
-          animals.dropFood(animalEnv);
+          animals.dropFood(animalEnv, pos);
+          snackBeachId = beachId;
           refreshOwned();
           haptics.impact('light');
+          if (snackInHand) {
+            if (res.remaining > 0) placeBar.showSnack('Beach snacks', res.remaining);
+            else pickTool(tool);
+          }
           if (res.pet) {
             applyPet(res.pet);
             showToast(uiRoot, res.pet.name ? `Fed ${res.pet.name}!` : 'Fed your sand crab!');
           } else if (res.bond?.ready) {
             showActionToast(uiRoot, 'A wild sand crab wants to stay on your beach!', 'Adopt', () => {
               void animalsApi
-                ?.adoptPet({ mode: 'befriend', beachId: activeBeachId })
+                ?.adoptPet({ mode: 'befriend', beachId })
                 .then((pet) => {
                   applyPet(pet);
                   haptics.impact('medium');
@@ -2068,12 +2141,43 @@ async function boot() {
                 })
                 .catch((err: unknown) => showToast(uiRoot, err instanceof Error ? err.message : 'Could not adopt pet.'));
             });
-          } else {
-            showToast(uiRoot, 'Beach snack tossed on the sand.');
           }
         })
         .catch((err: unknown) => {
           showToast(uiRoot, err instanceof Error ? err.message : 'No beach snacks left.');
+        })
+        .finally(() => {
+          snackBusy = false;
+        });
+    };
+    pickUpSnack = (how) => {
+      const f = animals.snapshot().food;
+      if (snackBusy || !f.active || !animalsApi?.signedIn || !snackBeachId) return;
+      if (fenced) return;
+      const beachId = snackBeachId;
+      const pos = { x: f.x, z: f.z };
+      const left = f.timeLeft;
+      animals.takeFood();
+      snackBusy = true;
+      haptics.impact('light');
+      void animalsApi
+        .returnSnack(beachId)
+        .then((res) => {
+          snackBeachId = null;
+          refreshOwned();
+          if (res.pet) applyPet(res.pet);
+          if (snackInHand) placeBar.showSnack('Beach snacks', res.remaining);
+          if (how === 'vacuum') noteVacuumed(['beach snack']);
+          else showPaneToast(placeWrap, 'Beach snack back in your bag');
+        })
+        .catch((err: unknown) => {
+          // couldn't: it stays where it was
+          animals.dropFood(animalEnv, pos);
+          animals.setFoodTimeLeft(left);
+          showToast(uiRoot, err instanceof Error ? err.message : 'Couldn’t pick up the snack.');
+        })
+        .finally(() => {
+          snackBusy = false;
         });
     };
     const s = sync;
@@ -2135,6 +2239,7 @@ async function boot() {
       if (kind === 'fenced') {
         fenced = true;
         placing = null;
+        snackInHand = false;
         footprintsStroke = null;
         showFencedBanner();
       } else if (kind === 'restored') {

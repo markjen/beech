@@ -165,6 +165,26 @@ describe('AnimalController (wild sand crab)', () => {
     expect(ctrl.snapshot().calmTimer).toBeGreaterThan(0);
   });
 
+  it('lets a dropped snack be picked back up, and a crab heading for it gives up', () => {
+    const ctrl = new AnimalController(seeded(21));
+    const env = flatBeach();
+    let fedCount = 0;
+    ctrl.onWildFed = () => fedCount++;
+    ctrl.spawnNow(env, { x: 0, z: 6 });
+    advance(ctrl, env, 1.2);
+    expect(ctrl.dropFood(env, { x: 2.0, z: 6 })).toBe(true);
+    expect(ctrl.foodNear(2.1, 6, 0.3)).toBe(true);
+    expect(ctrl.foodNear(3, 6, 0.3)).toBe(false);
+    advance(ctrl, env, 0.5);
+    expect(ctrl.takeFood()).toBe(true);
+    expect(ctrl.takeFood()).toBe(false);
+    expect(ctrl.foodNear(2.0, 6, 0.3)).toBe(false);
+    advance(ctrl, env, 8);
+    expect(fedCount).toBe(0);
+    expect(ctrl.snapshot().active).toBe(true);
+    expect(['seeking_food', 'eating']).not.toContain(ctrl.snapshot().phase);
+  });
+
   it('washes dropped food away if a big wave covers it', () => {
     const ctrl = new AnimalController(seeded(5));
     const env = flatBeach({ waterAt: () => 0.15 });

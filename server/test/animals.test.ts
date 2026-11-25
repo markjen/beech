@@ -94,6 +94,35 @@ describe('animals feeding (A2)', () => {
     expect(body.ok).toBe(true);
     expect(body.remaining).toBe(0);
   });
+
+  it('picks a tossed snack back up into the bag, once, and takes back its wild feed', async () => {
+    const u = await signIn('SnackPicker');
+    const none = await req('/animals/feed/return', { method: 'POST' }, u.token);
+    expect(none.status).toBe(409);
+    await req('/dev/grant', json('POST', { item: TREAT_ITEM_ID, quantity: 1 }), u.token);
+    const fed = (await (await req('/animals/feed', { method: 'POST' }, u.token)).json()) as { remaining: number; bond: { feedCount: number } };
+    expect(fed).toMatchObject({ remaining: 0, bond: { feedCount: 1 } });
+
+    const back = await req('/animals/feed/return', { method: 'POST' }, u.token);
+    expect(back.status).toBe(200);
+    expect(await back.json()).toMatchObject({ ok: true, remaining: 1, bond: { feedCount: 0 } });
+    // only once: a second pick-up has nothing to return
+    expect((await req('/animals/feed/return', { method: 'POST' }, u.token)).status).toBe(409);
+
+    // the snack is spendable again
+    const again = await req('/animals/feed', { method: 'POST' }, u.token);
+    expect(await again.json()).toMatchObject({ ok: true, remaining: 0, bond: { feedCount: 1 } });
+  });
+
+  it("can't pick up someone else's snack or one on a beach that isn't yours", async () => {
+    const owner = await signIn('SnackKeeper');
+    const other = await signIn('SnackGrabber');
+    await req('/dev/grant', json('POST', { item: TREAT_ITEM_ID, quantity: 1 }), owner.token);
+    expect((await req('/animals/feed', { method: 'POST' }, owner.token)).status).toBe(200);
+    const bad = await req('/animals/feed/return', json('POST', { beachId: owner.user.id }), other.token);
+    expect(bad.status).toBe(404);
+    expect((await req('/animals/feed/return', { method: 'POST' }, other.token)).status).toBe(409);
+  });
 });
 
 import { BEFRIEND_FEED_THRESHOLD, PET_CRAB_ITEM_ID, petMood } from '../src/animals.js';
@@ -140,6 +169,12 @@ describe('resident pets (A3)', () => {
     expect(fed.status).toBe(200);
     const fedData = (await fed.json()) as { pet?: { fedCount: number } };
     expect(fedData.pet?.fedCount).toBe(2);
+
+    // picking that snack back up takes the feed back
+    const back = await req('/animals/feed/return', { method: 'POST' }, u.token);
+    expect(back.status).toBe(200);
+    expect(await back.json()).toMatchObject({ remaining: 1, pet: { fedCount: 1 } });
+    expect((await req('/animals/feed', { method: 'POST' }, u.token)).status).toBe(200);
 
     // Rename works
     const renamed = await req('/pet', json('PATCH', { name: 'Captain Pinch' }), u.token);
