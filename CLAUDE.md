@@ -14,7 +14,8 @@ Read these first:
 5. Feature designs not built yet, e.g. [docs/MULTI_BEACH.md](docs/MULTI_BEACH.md),
    [docs/INBOX_NOTIFICATIONS.md](docs/INBOX_NOTIFICATIONS.md) (push not built yet),
    [docs/LIVE_SIM.md](docs/LIVE_SIM.md) (the sea works while you're away,
-   live viewers), and
+   live viewers), [docs/COPY_BEACH.md](docs/COPY_BEACH.md) (copy a beach
+   on the shore onto one of yours), and
    [docs/BEACH_FILE.md](docs/BEACH_FILE.md) (export/import file spec).
    The public shore site (beechshore.com) is in [docs/SHORE_SITE.md](docs/SHORE_SITE.md).
 6. [docs/AGENT_TOKENS.md](docs/AGENT_TOKENS.md): how to keep tool output

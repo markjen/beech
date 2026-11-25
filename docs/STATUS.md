@@ -1384,3 +1384,16 @@ CI runs the TypeScript tests with the server suite, and TLC on every
 spec's fixed form in the `Specs` workflow when `specs/` or `server/src/`
 changes. New gameplay and features follow the model-first workflow
 (CLAUDE.md ground rule, the `model-first` skill, STATE_MACHINES.md).
+
+## Copying a beach (designed, not built, 2026-11-25)
+
+- Design in docs/COPY_BEACH.md: copy a public beach (or duplicate one of
+  your own) onto one of your beaches or a new one. It works like a checkpoint
+  restore with another person's save as the source. When you're short of bag
+  things: buy exactly what's missing (a basket worked out on the server), or
+  copy without them (`drop-missing`), or keep it as a checkpoint. It lives
+  in the shore bar, on the beechshore.com beach page (`?visit=CODE&copy=1`)
+  and in your beaches (duplicate).
+- `specs/tla/BeachCopy.tla` is written and checked. TLC shows the copy must
+  be one transaction (player lock, source row `FOR SHARE`). Phases K1 to K4
+  are in BACKLOG.md.

@@ -83,6 +83,11 @@ with their TLA+ spec ([STATE_MACHINES.md](STATE_MACHINES.md#model-first-workflow
 CLAUDE.md "Model first"). Gameplay ideas below get the same once they're
 picked up.
 
+- [ ] **Copy a beach** onto one of your own, from the shore bar and
+  beechshore.com; when short, buy what's missing or copy without them
+  **(model first: `specs/tla/BeachCopy.tla`, written and checked)**.
+  Phases K1 to K4 in [COPY_BEACH.md](COPY_BEACH.md); owner decisions at
+  its end.
 - [ ] **Palm-first UI, follow-ups**: real weather (temperature, sky) for
   the status pane's first line; credit, stars and finds-today chips in
   the expanded pane (they need their own requests); decide whether the
