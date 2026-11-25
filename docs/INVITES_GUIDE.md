@@ -1,6 +1,15 @@
 # Invites and the beach guide
 
-Status: **built** (2026-11-23). Viral sharing that also teaches the game.
+Status: **built** (2026-11-23; updated 2026-11-24). Viral sharing that also teaches the game.
+
+**Updated 2026-11-24:** the game now shows no explanations (CLAUDE.md). The
+coach card and the checklist show each step's name only, and the invite
+panel shows no blurb. Each has a "how it works" link to the web guide,
+which has a Beach guide and an Invites section (`server/src/guide.ts`,
+generated from `server/src/referrals.ts`, which now holds each step's
+`how`). **Links to a beach count as invites** too: someone who opens
+`?visit=CODE` signed out and then signs up claims that beach's owner, like
+`?invite=` (owner decision, INBOX_NOTIFICATIONS.md).
 
 Two features that feed each other:
 

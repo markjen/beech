@@ -647,6 +647,76 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX referrals_inviter ON referrals (inviter_id, created_at);
   `,
+
+  // 24: visitors, the inbox and notifications (docs/INBOX_NOTIFICATIONS.md).
+  // notes: what visitors write (private to the beach's owner; a deleted
+  // sender's notes stay, unsigned). ratings: one per visitor per beach, in
+  // shells. blocks: who can't reach you. reports: notes reported to the
+  // admin. inbox: one row per thing that happened to you, written in the
+  // same statement as the thing itself; stars and note-less ratings fold
+  // into one row per beach per day (the partial unique index).
+  `
+  CREATE TABLE notes (
+    id BIGSERIAL PRIMARY KEY,
+    from_id UUID REFERENCES users (id) ON DELETE SET NULL,
+    to_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    beach_id UUID REFERENCES beach (id) ON DELETE SET NULL,
+    body TEXT NOT NULL CHECK (char_length(body) BETWEEN 1 AND 280),
+    quick BOOLEAN NOT NULL DEFAULT false,
+    hidden_at BIGINT,                   -- hidden by the admin after a report
+    created_at BIGINT NOT NULL
+  );
+  CREATE INDEX notes_from ON notes (from_id, created_at);
+
+  CREATE TABLE ratings (
+    rater_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    beach_id UUID NOT NULL REFERENCES beach (id) ON DELETE CASCADE,
+    shells INTEGER NOT NULL CHECK (shells BETWEEN 1 AND 5),
+    updated_at BIGINT NOT NULL,
+    PRIMARY KEY (rater_id, beach_id)
+  );
+  CREATE INDEX ratings_beach ON ratings (beach_id);
+
+  CREATE TABLE blocks (
+    blocker_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    blocked_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    created_at BIGINT NOT NULL,
+    PRIMARY KEY (blocker_id, blocked_id),
+    CHECK (blocker_id <> blocked_id)
+  );
+
+  CREATE TABLE reports (
+    id BIGSERIAL PRIMARY KEY,
+    reporter_id UUID REFERENCES users (id) ON DELETE SET NULL,
+    note_id BIGINT NOT NULL REFERENCES notes (id) ON DELETE CASCADE,
+    reason TEXT NOT NULL DEFAULT '',
+    created_at BIGINT NOT NULL,
+    resolved_at BIGINT,
+    resolution TEXT CHECK (resolution IN ('hidden', 'dismissed')),
+    resolved_by TEXT
+  );
+  CREATE INDEX reports_open ON reports (created_at) WHERE resolved_at IS NULL;
+  CREATE UNIQUE INDEX reports_once ON reports (reporter_id, note_id);
+
+  CREATE TABLE inbox (
+    id BIGSERIAL PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    kind TEXT NOT NULL CHECK (kind IN ('visit', 'gift', 'neighbor_request', 'neighbor_linked', 'star', 'rating', 'invite_joined', 'invite_settled', 'system')),
+    actor_id UUID REFERENCES users (id) ON DELETE SET NULL,
+    beach_id UUID REFERENCES beach (id) ON DELETE CASCADE,
+    item_id TEXT,
+    shells INTEGER,
+    note_id BIGINT REFERENCES notes (id) ON DELETE SET NULL,
+    count INTEGER NOT NULL DEFAULT 1,
+    day TEXT,                           -- batched rows: their UTC day
+    payload JSONB NOT NULL DEFAULT '{}',
+    created_at BIGINT NOT NULL,
+    read_at BIGINT
+  );
+  CREATE INDEX inbox_user ON inbox (user_id, id DESC);
+  CREATE INDEX inbox_unread ON inbox (user_id) WHERE read_at IS NULL;
+  CREATE UNIQUE INDEX inbox_batch ON inbox (user_id, kind, beach_id, day) WHERE day IS NOT NULL;
+  `,
 ];
 
 /** Apply migrations up to `upTo` (default: all). Tests use `upTo` to check a migration on older data. */

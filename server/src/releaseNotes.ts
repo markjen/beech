@@ -16,6 +16,16 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    date: '2026-11-25',
+    title: 'Visitors and your inbox',
+    changes: [
+      'The beach guide (the compass) now keeps its how-tos in the web guide. In the game, you’ll see the checklist and your progress.',
+      'Visitors can leave something: a rating in shells, a note, or a gift from their bag, from “leave something” next to the beach’s name (the “i” at the bottom).',
+      'Your inbox (the envelope, top right) shows who visited and what they left, gifts, neighbor requests, stars and ratings. Say thanks, report a note or block someone from there.',
+      'Someone who signs up from a link to your beach counts as your invite.',
+    ],
+  },
+  {
     date: '2026-11-24',
     title: 'Linked beaches, shiny prizes, and rocks that stay put',
     changes: [

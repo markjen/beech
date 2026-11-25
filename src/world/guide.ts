@@ -12,8 +12,6 @@ export interface GuideStep {
   icon: IconName;
   /** what to do, as a short imperative ("Dig in the sand") */
   title: string;
-  /** how, in one line */
-  how: string;
   /** needs an account (and the server) to do at all */
   needsAccount: boolean;
   /** what the server gives for it (server/src/referrals.ts), shown in the list */
@@ -21,15 +19,15 @@ export interface GuideStep {
 }
 
 export const GUIDE: GuideStep[] = [
-  { id: 'dig', icon: 'dig', title: 'Dig in the sand', how: 'Pick the shovel and drag on the sand. Hold still to dig deeper.', needsAccount: false, gift: 'conch' },
-  { id: 'pile', icon: 'build', title: 'Build a mound', how: 'Pick the build tool and drag to heap the sand up. The waves will wear it down.', needsAccount: false, gift: 'sanddollar' },
-  { id: 'undo', icon: 'undo', title: 'Take it back', how: 'Tap undo to take back your last stroke.', needsAccount: false, gift: 'conch' },
-  { id: 'place', icon: 'bag', title: 'Put something on the sand', how: 'Open the bag, pick a rock or a shell, and tap the sand.', needsAccount: false, gift: 'sanddollar' },
-  { id: 'chair', icon: 'chair', title: 'Sit on the beach', how: 'Tap the chair to sit and look out to sea. Hold ‹ › to walk along the shore.', needsAccount: false, gift: 'conch' },
-  { id: 'claw', icon: 'claw', title: 'Play the claw machine', how: 'Open the bag and play the claw machine. It’s free.', needsAccount: true, gift: null },
-  { id: 'visit', icon: 'trophy', title: 'Visit someone’s beach', how: 'Walk down the shore, or open the most-starred beaches and pick one.', needsAccount: true, gift: 'sanddollar' },
-  { id: 'star', icon: 'starfish', title: 'Star a beach you like', how: 'Tap ☆ on someone’s beach to star it.', needsAccount: true, gift: 'conch' },
-  { id: 'invite', icon: 'gift', title: 'Invite a friend', how: 'Share your invite link. Your friend gets a gift, and so do you.', needsAccount: true, gift: null },
+  { id: 'dig', icon: 'dig', title: 'Dig in the sand', needsAccount: false, gift: 'conch' },
+  { id: 'pile', icon: 'build', title: 'Build a mound', needsAccount: false, gift: 'sanddollar' },
+  { id: 'undo', icon: 'undo', title: 'Take it back', needsAccount: false, gift: 'conch' },
+  { id: 'place', icon: 'bag', title: 'Put something on the sand', needsAccount: false, gift: 'sanddollar' },
+  { id: 'chair', icon: 'chair', title: 'Sit on the beach', needsAccount: false, gift: 'conch' },
+  { id: 'claw', icon: 'claw', title: 'Play the claw machine', needsAccount: true, gift: null },
+  { id: 'visit', icon: 'trophy', title: 'Visit someone’s beach', needsAccount: true, gift: 'sanddollar' },
+  { id: 'star', icon: 'starfish', title: 'Star a beach you like', needsAccount: true, gift: 'conch' },
+  { id: 'invite', icon: 'gift', title: 'Invite a friend', needsAccount: true, gift: null },
 ];
 
 /** finishing every step but `invite` also gives this */

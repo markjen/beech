@@ -184,6 +184,9 @@ export const CAMERA = {
  */
 export const GUIDE_URL = 'https://beech.games/guide';
 
+/** longest note a visitor can leave (the server's NOTE_MAX, server/src/inbox.ts) */
+export const NOTE_MAX_CHARS = 280;
+
 export const SIM_HZ = 30;
 export const UNDO_DEPTH = 32;
 

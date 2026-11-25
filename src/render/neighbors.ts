@@ -41,6 +41,8 @@ interface Slot {
   star: HTMLButtonElement;
   /** "ask to be neighbors", on beaches at the end of a stretch */
   ask: HTMLButtonElement;
+  /** "leave something" (docs/INBOX_NOTIFICATIONS.md), on beaches that aren't yours */
+  leave: HTMLButtonElement;
 }
 
 /** One beach along the shore. Index 0 is yours (or the one you're visiting); +1 is the next one on the left, and so on. */
@@ -73,6 +75,8 @@ export class NeighborView {
   visiting: ShoreBeach | null = null;
   /** "⌂ my beach" from the viewing-mode info card */
   onHome?: () => void;
+  /** the visitor card for a beach (set by main once accounts exist); unset: no button */
+  onLeave?: (b: ShoreBeach) => void;
   readonly favorites = new Map<string, ShoreBeach>();
   private entries = new Map<number, Entry>();
   /** world-X centre of each entry (linked neighbours touch, the rest keep the diorama gap) */
@@ -252,6 +256,7 @@ export class NeighborView {
     for (const en of this.entries.values()) {
       this.paintStar(en);
       this.paintAsk(en);
+      this.paintLeave(en);
     }
     for (const fn of this.listeners) fn(n);
     this.schedulePoll();
@@ -494,12 +499,25 @@ export class NeighborView {
     ask.hidden = true;
     ask.addEventListener('click', () => void this.askFromTag(e));
     label.appendChild(ask);
+    const leave = document.createElement('button');
+    leave.type = 'button';
+    leave.className = 'leave';
+    leave.dataset.act = `leave-${e.beach.code}`;
+    leave.textContent = 'leave something';
+    leave.addEventListener('click', () => this.onLeave?.(e.beach));
+    label.appendChild(leave);
     this.uiRoot.appendChild(label);
-    e.slot = { renderer, objects, label, star, ask };
+    e.slot = { renderer, objects, label, star, ask, leave };
     this.paintStar(e);
     this.paintAsk(e);
+    this.paintLeave(e);
     this.repaint(e);
     this.syncSeams();
+  }
+
+  /** one of your own beaches (your home code, or any of your other beaches) */
+  private isMine(code: string): boolean {
+    return code === this.state?.code || this.account.beaches.some((b) => b.code === code);
   }
 
   private paintStar(e: Entry): void {
@@ -541,6 +559,12 @@ export class NeighborView {
       if (!this.state[mine] && !this.state.asked[mine]) return mine;
     }
     return null;
+  }
+
+  /** "leave something": on beaches that aren't yours, once the app has a visitor card */
+  private paintLeave(e: Entry): void {
+    if (!e.slot) return;
+    e.slot.leave.hidden = !this.onLeave || this.isMine(e.beach.code);
   }
 
   private paintAsk(e: Entry): void {

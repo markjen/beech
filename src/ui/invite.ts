@@ -3,6 +3,7 @@
 
 import type { Referrals } from '../net/account';
 import { inviteText, inviteUrl } from '../net/share';
+import { GUIDE_URL } from '../config';
 import { prizeName } from '../world/items';
 
 export interface InviteHost {
@@ -90,7 +91,7 @@ export class InvitePanel {
     if (!this.host.signedIn()) {
       const p = document.createElement('p');
       p.className = 'board-note';
-      p.append('Sign in to get your own invite link. ');
+
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'action board-signin';
@@ -112,9 +113,10 @@ export class InvitePanel {
       return;
     }
 
+    // labels only in the game (CLAUDE.md): how invites work is in the web guide
     const blurb = document.createElement('p');
     blurb.className = 'board-blurb invite-blurb';
-    blurb.textContent = `A friend who joins through your link gets ${lower(d.welcomeGift)} at once. When they’ve settled in (${d.settleSteps} steps of the beach guide), you get the next gift below.`;
+    blurb.innerHTML = `<a class="guide-link" href="${GUIDE_URL}#invites" target="_blank" rel="noopener">how invites work</a>`;
     this.body.appendChild(blurb);
 
     // the link, to share or copy
@@ -204,7 +206,7 @@ export class InvitePanel {
     if (!d.friends.length) {
       const li = document.createElement('li');
       li.className = 'invite-empty';
-      li.textContent = 'Nobody yet. Send your link to someone who’d like a quiet beach.';
+      li.textContent = 'nobody yet';
       friends.appendChild(li);
     }
     for (const f of d.friends) {
@@ -220,7 +222,7 @@ export class InvitePanel {
     if (d.settled >= d.cap) {
       const cap = document.createElement('p');
       cap.className = 'board-note';
-      cap.textContent = `You’ve earned every invite gift. Friends still count, and they still get their welcome gift.`;
+      cap.textContent = 'every invite gift earned';
       this.body.appendChild(cap);
     }
   }

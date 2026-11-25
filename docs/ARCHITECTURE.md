@@ -75,6 +75,7 @@ simulated one.
 | `server/src/shoreSite.ts`, `shore.ts`, `beachImage.ts` | beechshore.com, the public shore site (docs/SHORE_SITE.md): server-rendered pages, the shared shore walk, beach pictures as PNG |
 | `src/net/share.ts`, `src/ui/shareSheet.ts` | Share links (game `?visit=` and beechshore) and sending them (share sheet or copy) |
 | `src/world/guide.ts`, `src/ui/guide.ts`, `src/ui/invite.ts`, `server/src/referrals.ts` | The beach guide (steps, coach card, checklist) and invites (the panel, the ladder); the server's step gifts, ladder and rules. INVITES_GUIDE.md |
+| `src/ui/inbox.ts`, `src/ui/visitorCard.ts`, `src/ui/inboxText.ts`, `server/src/inbox.ts` | Visitors and the inbox: the mailbox and its list, the "leave something" card, the rows' wording; the server's limits, quick notes and note filter. INBOX_NOTIFICATIONS.md |
 | `src/ui/leaderboard.ts` | The leaderboard panel (most-starred beaches: all time and rising), with visit and star on each row |
 | `src/render/neighbors.ts` | The shore: beaches down the chain of neighbor links as snapshot dioramas (drawn near the view), visiting by code, favorites, name tags |
 | `Dockerfile` | Production image: web app (accounts on) + API server |

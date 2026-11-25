@@ -59,6 +59,19 @@ The single list of what's left to do, for the owner and for agents.
   parasol. All in `server/src/referrals.ts`. [INVITES_GUIDE.md](INVITES_GUIDE.md),
   "Decisions for the owner".
 
+- [ ] **Inbox defaults** (2026-11-24): notes private, ratings off the
+  leaderboard, gifts instant, push limits. Built with the defaults in
+  [INBOX_NOTIFICATIONS.md](INBOX_NOTIFICATIONS.md), "Decisions for the
+  owner"; also keep or drop the beach guide's coach card under the
+  no-notes rule (it shows only the next step's name now).
+
+- [ ] **Push notifications: keys and consoles** (2026-11-24): VAPID keys
+  in Secret Manager and two Actions variables (web), Firebase on
+  `beech-prod`, the APNs key uploaded to Firebase, the iOS capability and
+  the FCM role (apps). Step by step in
+  [INBOX_NOTIFICATIONS.md](INBOX_NOTIFICATIONS.md), "Turning on push:
+  owner steps". Then an agent builds V5 / V6.
+
 ## In progress
 
 _(nothing right now)_
@@ -106,17 +119,22 @@ _(nothing right now)_
   [CHROME_TV_CAST.md](CHROME_TV_CAST.md)).
 - [ ] **Push for neighbor requests**: today you see them the next time the
   app polls (30 s) or opens.
-- [ ] **Visitors, inbox and notifications**: visitors sign in from a
-  beach, rate it (shells), leave a note and give from their bag; an inbox
-  for everything that happens to you; in-app, web and native push. Spec in
-  [INBOX_NOTIFICATIONS.md](INBOX_NOTIFICATIONS.md), six phases; owner
-  decisions at the end of it. Notes need filter, report and block before
-  they ship to the stores.
+- [ ] **Push notifications (inbox V5, V6)**: web push (VAPID keys in
+  Secret Manager, `push_subscriptions`, a send job with the hourly limit
+  and quiet hours), then native push (APNs key, Firebase project,
+  `@capacitor/push-notifications`). [INBOX_NOTIFICATIONS.md](INBOX_NOTIFICATIONS.md),
+  section 3. Owner setup first.
+- [ ] **Ratings on name tags**: the shore walk's JSON carries each beach's
+  average, shown on the name tags along the shore (today: in the visitor card).
+- [ ] **Admin: suspend a sender's notes** after repeated reports (today
+  the admin can hide a note or dismiss the report).
+- [ ] **Flaky tests**: `server/test/digFinds.test.ts` "three finds a day"
+  fails when it starts just before midnight UTC (it skews the clock across
+  the day boundary); `npm run e2e:checkpoints` times out at varying steps
+  in the cloud container, also on main.
 - [ ] **Invites: open in the apps**: Universal Links / App Links so
   `?invite=` and `?visit=` links open the phone apps (the invite code is
   kept in `localStorage`, so the claim works the same once it lands).
-- [ ] **Invites: `og:image`**: a 1200×630 beach shot for link previews
-  (visit and invite links).
 - [ ] **Admin: referrals view**: who invited whom, for disputes and to
   spot farming (`referrals` table).
 - [ ] **More guide steps**: the clearing tool, calming the waves, the
@@ -259,6 +277,13 @@ _(nothing right now)_
   terrain estimate, so Riley's spire heals the next time her beach is
   opened; beaches without stacking, including rocks on piles and buried
   rocks, load exactly as saved). Regression tests in `tests/spike.test.ts`.
+
+- [x] **Visitors and the inbox, V1–V4** (2026-11-24): signed-out visits
+  to public beaches; the visitor card (shells, notes, gifts); the inbox
+  with thanks, report and block; the note filter and limits; the admin
+  Reports tab; visit-link sign-ups count as invites. Migration 24,
+  `npm run e2e:inbox`. [INBOX_NOTIFICATIONS.md](INBOX_NOTIFICATIONS.md).
+
 - [x] **Discord links** (2026-11-23, PR #40 draft): the Discord server is
   the feedback channel — "Talk to us" section + footer link on the
   landing page, footer link on the shore site, "Join our Discord" at the
