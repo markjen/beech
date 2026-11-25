@@ -1,3 +1,4 @@
+//@ backend dafny
 import type { Db } from './db.js';
 import type { Product } from './products.js';
 
@@ -25,6 +26,8 @@ const OFFER_FIELDS = 'id, submitter_user_id, product_id, item_id, approved_price
  * /store/credit-purchase).
  */
 export function salePriceCents(product: Product, offer?: Offer): number | null {
+  //@ verify
+  //@ ensures offer !== undefined && \result !== null ==> offer.status === 'approved' && offer.for_sale && \result === offer.approved_price_cents
   if (!offer) return Math.round(product.usd * 100);
   return offer.status === 'approved' && offer.for_sale && offer.approved_price_cents !== null ? offer.approved_price_cents : null;
 }

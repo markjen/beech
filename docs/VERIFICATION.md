@@ -20,6 +20,7 @@ All on the server, which has the final say:
 | `nothingGrew` | `server/src/checkpoints.ts` | True exactly when no item went up. Together with the line above, that's why the save route may skip the bag lookup when it's true: such a save can't be short. |
 | `countIn`, `bagLeft` | `server/src/checkpoints.ts` | Helpers used in the specs; `bagLeft` is never negative. |
 | `discountCents` | `server/src/giftCards.ts` | For a price of 0 or more, a discount is never negative and never more than the price; a fixed discount is the value clamped to [0, price]. So a purchase never charges less than nothing. |
+| `salePriceCents` | `server/src/creatorCredit.ts` | Given a creator offer, a returned shop price implies that the offer is approved and for sale, and that the price equals its approved price. |
 | `promoBlocked` | `server/src/giftCards.ts` | Returns nothing exactly when the code is active, not expired, not used up and meant for this product. |
 
 What this rests on (trusted, not proved):
@@ -30,6 +31,12 @@ What this rests on (trusted, not proved):
 - The `.sort` in `shortfall`/`saveShort` only reorders the list.
 - The database rows that feed these functions (`owned`, `elsewhere`,
   `stored`) are what they claim to be. The SQL isn't verified.
+- Approved prices are 0 or more: the database's `CHECK` and the review
+  form enforce it; the model can't see either. (`salePriceCents` models
+  the shop's own `usd` prices loosely, as whole numbers; the proof is about
+  creator items only.)
+- The item-submission integration tests cover admin-only catalog linking
+  and removal from the shop after rejection.
 
 The app's own copy of the restore check (`src/world/checkpointFit.ts`) only
 shows an answer early; the server's verified check decides. The shared

@@ -1,2 +1,3 @@
 server/src/checkpoints.ts
 server/src/giftCards.ts
+server/src/creatorCredit.ts

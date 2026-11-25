@@ -295,6 +295,24 @@ it('sends a free item to the shop claim instead of a card or Steam checkout', as
   }
 });
 
+it('keeps a free item out of the shop until it is approved, and again once rejected', async () => {
+  const creator = await user('Unreviewed creator');
+  const buyer = await user('Unreviewed buyer');
+  const price = async () =>
+    ((await (await root.request('/api/store/products')).json()) as { products: { id: string; usd: number }[] }).products.find((p) => p.id === 'item_surfboard')?.usd;
+  // proposed free, not reviewed: no product link, so the shop's own surfboard is unchanged
+  const id = await submit(creator.scoped, uploadForm({ priceCents: '0' }));
+  expect(await db.query('SELECT product_id FROM item_submissions WHERE id = $1', [id])).toEqual([{ product_id: null }]);
+  expect(await price()).toBe(1.49);
+  // only the admin's approval makes it free
+  await approve(id, 'surfboard', '0');
+  expect(await price()).toBe(0);
+  const rejected = await adminApi('/' + id + '/review', form({ status: 'rejected' }));
+  expect(rejected.status).toBe(200);
+  expect(await price()).toBe(undefined);
+  expect((await json('/store/credit-purchase', { productId: 'item_surfboard', requestId: crypto.randomUUID() }, buyer.token)).status).toBe(404);
+});
+
 it('honors the amount recorded at Steam and Xsolla checkout after an admin changes the price', async () => {
   const creator = await user('Checkout creator');
   const buyer = await user('Steam buyer', true);
