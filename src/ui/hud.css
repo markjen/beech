@@ -502,6 +502,8 @@
   position: absolute;
   top: 8px;
   right: 10px;
+  /* the prize reveal covers the whole card: the × stays above it */
+  z-index: 2;
   width: 36px;
   height: 36px;
   border: none;
@@ -521,6 +523,21 @@
   background: var(--ui-fg);
   font: inherit;
   font-weight: 600;
+  cursor: pointer;
+}
+
+/* the prize reveal's way out without placing: a quiet text button under the
+   place button (the prize is already in the bag, so closing loses nothing) */
+.claw-dismiss,
+.vending-dismiss {
+  margin-top: 6px;
+  padding: 6px 12px;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  opacity: 0.75;
+  text-decoration: underline;
   cursor: pointer;
 }
 
@@ -645,6 +662,8 @@
   position: absolute;
   top: 8px;
   right: 10px;
+  /* the prize reveal covers the whole card: the × stays above it */
+  z-index: 2;
   width: 36px;
   height: 36px;
   border: none;

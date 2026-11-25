@@ -57,6 +57,7 @@ function loop() {
       rosterSent = objs.version;
       const objPos = objs.packPositions(posPool.pop());
       const lost = objs.takeLost();
+      const vacuumed = sim.takeVacuumed();
       post(
         {
           type: 'frame',
@@ -74,6 +75,7 @@ function loop() {
           loadId,
           roster,
           lost: lost.length ? lost : undefined,
+          vacuumed: vacuumed.length ? vacuumed : undefined,
           stats: withStats ? sim.stats() : undefined,
           tickMs,
         },

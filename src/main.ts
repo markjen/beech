@@ -32,7 +32,7 @@ import { restHeight } from './sim/profile';
 import { Ambient, toggleFullscreen } from './ui/ambient';
 import { Hud, icon, type DirtDef } from './ui/hud';
 import { SocialHub, StarredDialog, VisitDialog } from './ui/socialHub';
-import { SettingsSheet, StartScreen, showActionToast, showChoiceToast, showToast } from './ui/overlays';
+import { SettingsSheet, StartScreen, showActionToast, showChoiceToast, showPaneToast, showToast } from './ui/overlays';
 import { awayText } from './ui/away';
 import { CheckpointsSection } from './ui/checkpoints';
 import { InventoryTray, PlaceBar } from './ui/inventory';
@@ -406,6 +406,7 @@ async function boot() {
       pendingTouch = true;
     }
     if (m.lost) seaTook(m.lost.length);
+    if (m.vacuumed) vacuumedUp(m.vacuumed);
     // a held thing follows the finger; one just put down waits for the worker
     if (settling) {
       const s = objectStates.find((o) => o.id === settling!.id);
@@ -544,7 +545,9 @@ async function boot() {
       send({ type: 'brush', phase: 'end' });
       markDirty();
     } else {
-      neighbors?.endStroke(t.beachId);
+      // a beach next door reports its vacuumed things at the end of the stroke
+      const vacuumed = neighbors?.endStroke(t.beachId) ?? [];
+      if (vacuumed.length) vacuumedUp(vacuumed);
     }
     recordEditTarget(t);
   };
@@ -627,6 +630,30 @@ async function boot() {
       seaTookCount = 0;
       showToast(uiRoot, k === 1 ? 'The sea took 1 thing. It’s back in your bag.' : `The sea took ${k} things. They’re back in your bag.`);
     }, 2500);
+  };
+
+  /**
+   * The vacuum swept things up — the live beach reports them per frame,
+   * a beach next door hands them back when the stroke ends. Sweeps close
+   * together share one small toast under the status pane, naming what went.
+   */
+  let vacuumedNames: string[] = [];
+  let vacuumedTimer = 0;
+  const vacuumedUp = (items: PlacedObject[]) => {
+    for (const o of items) vacuumedNames.push(prizeName(o.item));
+    window.clearTimeout(vacuumedTimer);
+    vacuumedTimer = window.setTimeout(() => {
+      const names = vacuumedNames;
+      vacuumedNames = [];
+      if (!names.length) return;
+      const text =
+        names.length === 1
+          ? `Vacuumed up the ${names[0]}`
+          : names.length <= 3
+            ? `Vacuumed up ${names.join(', ')}`
+            : `Vacuumed up ${names.length} things`;
+      showPaneToast(placeWrap, text);
+    }, 1500);
   };
 
   /** At the end of a good dig, ask the server whether something was buried there. */

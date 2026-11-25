@@ -190,11 +190,15 @@ export class VendingMachine {
       <div class="vending-prize">${itemIcon(p.item)}</div>
       <b>${prizeName(p.item)}</b>
       <span>${RARITY_NAME[p.rarity as Rarity] ?? p.rarity}</span>
-      <button type="button" class="vending-place">${placeable ? 'Put it on the beach' : 'Keep it'}</button>`;
+      <button type="button" class="vending-place">${placeable ? 'Put it on the beach' : 'Keep it'}</button>
+      <button type="button" class="vending-dismiss">Close</button>`;
     this.reveal.querySelector('.vending-place')!.addEventListener('click', () => {
       this.close();
       this.won(p.item, placeable);
     });
+    // the prize is already in the bag (won with place=false below), so
+    // closing here loses nothing — it just skips placing it right now
+    this.reveal.querySelector('.vending-dismiss')!.addEventListener('click', () => this.close());
     this.won(p.item, false);
     this.renderInfo();
   }
