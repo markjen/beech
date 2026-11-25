@@ -23,6 +23,11 @@ Read these first:
    condensed output as complete, and use `rtk bypass <cmd>` only when a
    result is unusable. Read big docs (STATUS.md, BACKLOG.md) by heading, not
    whole.
+7. [docs/VERIFICATION.md](docs/VERIFICATION.md): formal verification of
+   TypeScript with LemmaScript + Dafny. Skills are in
+   `.claude/skills/lemmascript*` (load `lemmascript` first); cloud sessions
+   install `lsc` and `dafny`. If `LemmaScript-files.txt` exists,
+   `lsc check --backend=dafny` must pass before every commit.
 
 ## Ground rules
 

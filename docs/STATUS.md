@@ -1232,8 +1232,18 @@ the HUD layout in the section above.
 ## Agent tooling: token savings (2026-11-25)
 
 Built. `.claude/settings.json` registers a SessionStart hook
-(`.claude/hooks/session-start.sh`: pinned, checksum-verified rtk 1.2.1, then
+(`.claude/hooks/session-start.sh`: pinned, checksum-verified rtk 1.2.1, the
+verification tools, then
 `npm ci` for the app and server when lockfiles change; cloud sessions only)
 and a PreToolUse Bash hook (`.claude/hooks/rtk-rewrite.sh`, a no-op without
 rtk). The cloud environment's setup script also installs rtk. Guidance for
 agents is in [AGENT_TOKENS.md](AGENT_TOKENS.md). No effect on the game.
+
+## Agent tooling: formal verification (2026-11-25)
+
+Set up, not used yet. LemmaScript skills are vendored in
+`.claude/skills/lemmascript*` (upstream commit in
+`LEMMASCRIPT_UPSTREAM.md`); the session hook installs Dafny 4.11.0 and
+`lemmascript@0.6.12`. Floating point is out of LemmaScript's model, so the
+sim isn't a candidate; integer rules (inventory, shop, capacity) are. See
+[VERIFICATION.md](VERIFICATION.md).

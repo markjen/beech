@@ -24,3 +24,6 @@ dist-artifact/
 
 # agent worktrees (local only)
 .claude/worktrees/
+
+# LemmaScript regen merge base (local only)
+*.dfy.base

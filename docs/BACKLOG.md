@@ -161,6 +161,10 @@ _(nothing right now)_
 
 ## Ideas
 
+- Verify a first piece of integer game logic with LemmaScript (inventory
+  counts, shop purchases or beach capacity; see
+  [VERIFICATION.md](VERIFICATION.md)), then add `lsc check` to CI.
+
 - [ ] Sand-castle bucket stamps as a fourth tool.
 - [ ] More real beaches (Reynisfjara, Whitehaven, Navagio…), maybe with
   per-beach slope and sand-grain colour.
@@ -170,6 +174,11 @@ _(nothing right now)_
   shower night.
 
 ## Done (recent)
+
+- [x] **Formal verification tooling** (2026-11-25): LemmaScript skills
+  vendored into `.claude/skills/`, Dafny + `lsc` installed at session start.
+  Nothing verified yet; candidates are in
+  [VERIFICATION.md](VERIFICATION.md).
 
 - [x] **Agent token savings** (2026-11-25): cloud sessions install a
   pinned rtk and the npm dependencies at start (`.claude/hooks/`), a Bash
