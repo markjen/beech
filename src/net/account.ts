@@ -1127,6 +1127,17 @@ export class AnimalsApi {
     return (await res.json()) as { ok: boolean; remaining: number; pet?: PetDto | null; bond?: BondDto };
   }
 
+  /** Pick the snack that's out on your beach back up: it goes back in the bag. */
+  async returnSnack(beachId?: string): Promise<{ ok: boolean; remaining: number; pet: PetDto | null; bond: BondDto }> {
+    const res = await this.account.fetch('/api/animals/feed/return', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(beachId ? { beachId } : {}),
+    });
+    if (!res.ok) throw await errorOf(res, 'no snack to pick up');
+    return (await res.json()) as { ok: boolean; remaining: number; pet: PetDto | null; bond: BondDto };
+  }
+
   async getPet(beachId?: string): Promise<{ pet: PetDto | null; bond: BondDto; recentFeeders: PetFeederDto[] }> {
     const q = beachId ? `?beach=${encodeURIComponent(beachId)}` : '';
     const res = await this.account.fetch(`/api/pet${q}`);
