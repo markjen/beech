@@ -92,7 +92,7 @@ export async function consumeItem(
   userId: string,
   itemId: string,
   now: number,
-): Promise<{ ok: boolean; remaining: number }> {
+): Promise<{ ok: boolean; remaining: number; rowId?: number }> {
   const rows = await db.query<{ id: number }>(
     `UPDATE inventory
         SET quantity = quantity - 1
@@ -108,7 +108,7 @@ export async function consumeItem(
     [userId, itemId, now],
   );
   const remaining = await countConsumable(db, userId, itemId, now);
-  return { ok: rows.length > 0, remaining };
+  return { ok: rows.length > 0, remaining, ...(rows[0] ? { rowId: Number(rows[0].id) } : {}) };
 }
 
 export const countTreats = (db: Db, userId: string, now: number) => countConsumable(db, userId, TREAT_ITEM_ID, now);
@@ -221,6 +221,8 @@ export async function adoptPet(
     );
     if (!rows[0]) return { ok: false, status: 409, error: 'this beach already has a pet' };
     await db.query(`DELETE FROM wild_feed_progress WHERE beach_id = $1 AND species = $2`, [opts.beachId, opts.species]);
+    // the befriended crab ate the snack that's out: it can't be picked back up
+    await db.query(`DELETE FROM beach_snacks WHERE beach_id = $1`, [opts.beachId]);
     return { ok: true, pet: toPetDto(rows[0], opts.now) };
   }
 
@@ -333,3 +335,73 @@ export async function visitorFeedPet(
   return { ok: true, pet, usedFood: true, remaining: consumed.remaining, freeUsedToday: true };
 }
 
+
+/** How long a tossed snack stays on the sand (matches the client's ANIMALS.foodDuration). */
+export const SNACK_OUT_MS = 900 * 1000;
+
+/** Remember the snack just tossed on a beach (replacing any earlier one: the client keeps one at a time). */
+export async function recordSnackOut(
+  db: Db,
+  s: { beachId: string; userId: string; inventoryId?: number; now: number; wildSpecies?: string; petPrevFedAt?: number },
+): Promise<void> {
+  await db.query(
+    `INSERT INTO beach_snacks (beach_id, user_id, inventory_id, tossed_at, wild_species, pet_prev_fed_at)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (beach_id) DO UPDATE
+       SET user_id = EXCLUDED.user_id, inventory_id = EXCLUDED.inventory_id, tossed_at = EXCLUDED.tossed_at,
+           wild_species = EXCLUDED.wild_species, pet_prev_fed_at = EXCLUDED.pet_prev_fed_at`,
+    [s.beachId, s.userId, s.inventoryId ?? null, s.now, s.wildSpecies ?? null, s.petPrevFedAt ?? null],
+  );
+}
+
+/**
+ * Pick the snack that's out on a beach back up: it goes back in the bag, and
+ * what tossing it did is undone (one less wild feed toward befriending, or the
+ * pet's feed taken back). Returns null when there's no snack out to pick up.
+ */
+export async function returnSnack(
+  db: Db,
+  beachId: string,
+  userId: string,
+  now: number,
+): Promise<{ remaining: number; pet: PetDto | null; bond: BondDto } | null> {
+  const rows = await db.query<{ inventory_id: string | null; tossed_at: string; wild_species: string | null; pet_prev_fed_at: string | null }>(
+    `DELETE FROM beach_snacks WHERE beach_id = $1 AND user_id = $2 AND tossed_at > $3
+     RETURNING inventory_id, tossed_at, wild_species, pet_prev_fed_at`,
+    [beachId, userId, now - SNACK_OUT_MS],
+  );
+  const r = rows[0];
+  if (!r) return null;
+  const back = r.inventory_id
+    ? await db.query<{ id: number }>(`UPDATE inventory SET quantity = quantity + 1 WHERE id = $1 AND user_id = $2 RETURNING id`, [r.inventory_id, userId])
+    : [];
+  if (!back.length) {
+    await db.query(
+      `INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at, expires_at)
+       VALUES ($1, $2, 1, 'shop', $3, NULL)`,
+      [userId, TREAT_ITEM_ID, now],
+    );
+  }
+  const tossedAt = Number(r.tossed_at);
+  if (r.wild_species) {
+    await db.query(
+      `UPDATE wild_feed_progress SET feed_count = GREATEST(0, feed_count - 1), updated_at = $3
+        WHERE beach_id = $1 AND species = $2`,
+      [beachId, r.wild_species, now],
+    );
+  }
+  if (r.pet_prev_fed_at !== null) {
+    // only if nobody fed the pet since
+    await db.query(
+      `UPDATE beach_pets SET last_fed_at = $3, fed_count = GREATEST(0, fed_count - 1)
+        WHERE beach_id = $1 AND last_fed_at = $2`,
+      [beachId, tossedAt, Number(r.pet_prev_fed_at)],
+    );
+    await db.query(`DELETE FROM pet_feed_log WHERE beach_id = $1 AND feeder_id = $2 AND fed_at = $3`, [beachId, userId, tossedAt]);
+  }
+  return {
+    remaining: await countTreats(db, userId, now),
+    pet: await getBeachPet(db, beachId, now),
+    bond: await getBondProgress(db, beachId, r.wild_species ?? 'crab'),
+  };
+}

@@ -410,6 +410,8 @@ export class Account {
       if (res.status === 409) {
         const data = (await res.json().catch(() => ({}))) as { error?: string };
         if (data.error === 'fenced') throw new ApiError(409, 'fenced');
+        // more of something than the bag holds (BeachStore retries once after saving your other beaches)
+        if (data.error === 'short') throw new ApiError(409, 'short');
       }
       throw new ApiError(res.status, 'could not save your beach');
     }
@@ -1123,6 +1125,17 @@ export class AnimalsApi {
     });
     if (!res.ok) throw await errorOf(res, 'no beach snacks left');
     return (await res.json()) as { ok: boolean; remaining: number; pet?: PetDto | null; bond?: BondDto };
+  }
+
+  /** Pick the snack that's out on your beach back up: it goes back in the bag. */
+  async returnSnack(beachId?: string): Promise<{ ok: boolean; remaining: number; pet: PetDto | null; bond: BondDto }> {
+    const res = await this.account.fetch('/api/animals/feed/return', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(beachId ? { beachId } : {}),
+    });
+    if (!res.ok) throw await errorOf(res, 'no snack to pick up');
+    return (await res.json()) as { ok: boolean; remaining: number; pet: PetDto | null; bond: BondDto };
   }
 
   async getPet(beachId?: string): Promise<{ pet: PetDto | null; bond: BondDto; recentFeeders: PetFeederDto[] }> {

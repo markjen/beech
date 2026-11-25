@@ -49,7 +49,7 @@ automatic checkpoint, so every restore can be undone.
 | Question | Decision | Why |
 |---|---|---|
 | What is stored | The same BCH2 bytes a beach save holds (`src/sim/sandCodec.ts`), copied as they are | One format: no new codec, the loader (`decodeSand` → `fitWorld` → `resampleField`) already handles every grid size and old world, and a restore is a byte copy |
-| Who counts the items | The **server**, from the blob itself | The beach's `items` column comes from the client's `X-Beach-Items` header. For a restore the server must not trust the client's count, so it inflates the objects part and counts |
+| Who counts the items | The **server**, from the blob itself | The server never trusts the client's count: for a restore, and (since 2026-11-25) for every save, it inflates the objects part and counts |
 | Missing items | **Strict by default.** The refusal offers one fallback: "Restore without them" (`mode: drop-missing`) | Strict never silently loses anything; the one-tap fallback covers the common case (an item now placed on another beach) without a menu of half-restores |
 | Sand-only restore | Not offered | It would also drop the free rocks and driftwood that shape the sand, which surprises people. "Keep this beach's things, take that sand" is a different feature (Ideas) |
 | Location | A restore keeps the **target beach's** place (Bondi stays Bondi) | The place is the beach's, not the design's: it sets the sun and tides. The checkpoint shows where it came from |

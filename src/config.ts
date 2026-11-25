@@ -256,6 +256,16 @@ export const BEACH_STORE = {
   liveSwitchM: 10,
 };
 
+/** The sky over the shore: each beach shows its own real place's light. */
+export const SHORE_LIGHT = {
+  /**
+   * Share of the way between two beach centres over which the light crosses
+   * from one place to the next (the middle of the gap); each beach keeps its
+   * own light either side of it.
+   */
+  blendSpan: 0.6,
+};
+
 /** Rare wild beach visitors (docs/ANIMALS.md). */
 export const ANIMALS = {
   /** quiet wait between wild visit rolls (seconds): an animal is around about half the time */
@@ -286,6 +296,8 @@ export const ANIMALS = {
   edgeMargin: 1.5,
   /** how long an uneaten dropped snack lasts before expiring (seconds) */
   foodDuration: 900,
+  /** maximum water depth (m) where a player can place a snack */
+  snackMaxWaterDepth: 0.02,
   /** spawn-wait speedup while dropped food is acting as bait */
   foodBaitMultiplier: 4,
   /** distance (m) at which an active crab smells and seeks dropped food */
@@ -296,6 +308,8 @@ export const ANIMALS = {
   foodMaxVisit: 420,
   /** seconds after eating during which the crab is calm around the brush */
   foodCalmSec: 60,
+  /** reach (m) of a tap or long-press on the snack that's out, to pick it back up */
+  snackReach: 0.3,
   /** share of unbaited wild visits that are an offshore dolphin instead of a sand crab */
   dolphinChance: 0.35,
   /** dolphin length scale (metres) */

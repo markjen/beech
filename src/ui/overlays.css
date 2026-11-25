@@ -438,6 +438,10 @@ a.action {
   display: none;
 }
 
+.chips.standby {
+  opacity: 0.55;
+}
+
 .chips button.near {
   border-style: dashed;
 }

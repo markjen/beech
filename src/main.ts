@@ -4,7 +4,7 @@ import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { Scene } from '@babylonjs/core/scene';
 
 import { Ambience } from './audio/ambience';
-import { BEACH_STORE, GRID_TIERS, SIM_HZ, WAVES, WORLD_SIZE_X, type QualityTier } from './config';
+import { ANIMALS, BEACH_STORE, GRID_TIERS, SIM_HZ, WAVES, WORLD_SIZE_X, type QualityTier } from './config';
 import { CameraController } from './input/cameraController';
 import { Gestures, HOLD_SLOP_PX, LONG_PRESS_MS } from './input/gestures';
 import { SandPicker } from './input/sandPicker';
@@ -18,7 +18,8 @@ import { ObjectView } from './render/objects';
 import { Horizon } from './render/horizon';
 import { Sky, type SkyDisc } from './render/sky';
 import { AnimalController, type AnimalEnv, type AnimalObstacle } from './world/animals';
-import { LiveConditions } from './world/live';
+import { LiveConditions, type LiveState } from './world/live';
+import { mixLive, shoreLightMix } from './world/shoreLight';
 import { BEACHES, beachById, defaultBeach, nearestBeach, type Beach } from './world/locations';
 import type { BrushMode, CastleShape, ClearingMode, SandMode } from './sim/beachSim';
 import { isClearingMode, isSandMode } from './sim/beachSim';
@@ -207,6 +208,14 @@ async function boot() {
   let beach: Beach = beachById(params.get('beach')) ?? beachById(settings.beach) ?? defaultBeach();
   const live = new LiveConditions(beach);
   let liveState = live.compute(clockNow());
+  /**
+   * The light you see: the real place of the beach in the middle of the view
+   * (blended across the gap while you scroll along the shore). The tide and
+   * swell stay the live beach's (`liveState`): that's the sea being simulated.
+   */
+  let viewState: LiveState = liveState;
+  /** the conditions of the place nearest the view (for the status pane) */
+  let viewConditions: LiveConditions = live;
   const sendSea = () => send({ type: 'sea', tide: liveState.simTide, waves: liveState.waves });
   sendSea();
   const sky = new Sky(scene);
@@ -368,6 +377,28 @@ async function boot() {
   });
   /** is this the beach the worker simulates? */
   const isLive = (id: string) => id === sync.id;
+  type DroppedSnack = { x: number; z: number; expiresAt: number };
+  const droppedSnacks = new Map<string, DroppedSnack>();
+  let shownSnackBeach: string | null = null;
+
+  const hideSnack = () => {
+    if (shownSnackBeach) animals.takeFood();
+    shownSnackBeach = null;
+  };
+  const showLiveSnack = () => {
+    const id = sync.id;
+    if (!id || awaitingLoad || shownSnackBeach === id) return;
+    const snack = droppedSnacks.get(id);
+    if (!snack) return;
+    const secondsLeft = (snack.expiresAt - Date.now()) / 1000;
+    if (secondsLeft <= 0) {
+      droppedSnacks.delete(id);
+      return;
+    }
+    if (!animals.dropFood(animalEnv, snack)) return;
+    animals.setFoodTimeLeft(secondsLeft);
+    shownSnackBeach = id;
+  };
 
   worker.onmessage = (ev: MessageEvent<FromWorker>) => {
     const m = ev.data;
@@ -448,6 +479,15 @@ async function boot() {
   let placing: Item | null = null;
   /** visiting: the code of the beach waiting for you to set a snack down for its pet */
   let feedSpot: string | null = null;
+  /** a beach snack in hand (from the bag): a tap on your beach tosses it there */
+  let snackInHand = false;
+  /** set up with the account layer: toss the snack in hand where you tapped, or pick the one that's out back up */
+  let tossSnack: (hit: Hit) => void = () => {};
+  let pickUpSnack: (how: 'hand' | 'vacuum') => void = () => {};
+  /** is the snack that's out under this point of your beach? */
+  const snackAt = (hit: Hit | null, reach = ANIMALS.snackReach) =>
+    !!hit && hit.target.beachId === shownSnackBeach && isLive(hit.target.beachId) && !awaitingLoad &&
+    animals.foodNear(hit.x - picker.offsetX, hit.z, reach);
   let digging = false;
   let strokeOpen = false;
   /** a "before big edit" snapshot has been taken (or tried) since the last save */
@@ -521,7 +561,7 @@ async function boot() {
   // ---------------------------------------------------------------- picking things up
   // Long-press on a thing picks it up; drag it, and it goes down where you let
   // go (one undo step). While held, its drawn position follows the finger.
-  let press: { sx: number; sy: number; timer: number } | null = null;
+  let press: { sx: number; sy: number; timer: number; mold?: () => void } | null = null;
   let dragging: { id: number; x: number; y: number; source: EditTarget; current: EditTarget; obj: PlacedObject } | null = null;
   /** just let go: keep drawing it there until the worker's next frame has it */
   let settling: { id: number; x: number; y: number; until: number } | null = null;
@@ -619,6 +659,8 @@ async function boot() {
       // door skips this — the server's save-diff backstop covers it.
       if (!strokeOpen && isClearingMode(brushMode)) maybeBigEditSnapshot();
       send({ type: 'brush', phase: strokeOpen ? 'move' : 'start', x: s.x, y: s.y, r, mode: brushMode });
+      // the vacuum takes the beach snack that's out too (back in the bag)
+      if (brushMode === 'vacuum' && snackAt(hit, r)) pickUpSnack('vacuum');
     } else if (strokeOpen) {
       neighbors?.moveStroke(hit.target.beachId, s.x, s.y, r);
     } else {
@@ -668,8 +710,9 @@ async function boot() {
    */
   let vacuumedNames: string[] = [];
   let vacuumedTimer = 0;
-  const vacuumedUp = (items: PlacedObject[]) => {
-    for (const o of items) vacuumedNames.push(prizeName(o.item));
+  const vacuumedUp = (items: PlacedObject[]) => noteVacuumed(items.map((o) => prizeName(o.item)));
+  const noteVacuumed = (names: string[]) => {
+    vacuumedNames.push(...names);
     window.clearTimeout(vacuumedTimer);
     vacuumedTimer = window.setTimeout(() => {
       const names = vacuumedNames;
@@ -926,10 +969,10 @@ async function boot() {
     if (!force && t - placeAt < 1000) return;
     placeAt = t;
     const owner = paneOwner();
-    const sun = liveState.sky.sun.elevation;
+    const sun = viewState.sky.sun.elevation;
     const glyph = SKY.find(([e]) => sun < e)![1];
-    const text = `<b>${esc(owner.title)}</b><span>${glyph} ${liveState.localTime} · ${swellWord()}</span>`;
-    const detail = live.describe(liveState).split(' · ').slice(1).join(' · ');
+    const text = `<b>${esc(owner.title)}</b><span>${glyph} ${viewState.localTime} · ${swellWord()}</span>`;
+    const detail = viewConditions.describe(viewState).split(' · ').slice(1).join(' · ');
     const chips = [`wave · ${waveStrength()}`, ...paneChips()];
     const key = text + detail + chips.join('|') + owner.away;
     if (key !== placeText) {
@@ -968,9 +1011,10 @@ async function boot() {
   let collapsed = true;
   /** highlight the active tool: the hand, the bag (an item in hand), or a dirt tool */
   const syncToolUI = () =>
-    hud.setTool(placing ? 'place' : tool === 'sand' ? sandMode : tool === 'clearing' ? clearingMode : tool === 'castle' ? castleShape : tool);
+    hud.setTool(placing || snackInHand ? 'place' : tool === 'sand' ? sandMode : tool === 'clearing' ? clearingMode : tool === 'castle' ? castleShape : tool);
   const syncLookOnly = () => {
-    gestures.lookOnly = !feedSpot && (collapsed || (!placing && tool === 'look'));
+    gestures.tapToPlace = feedSpot !== null;
+    gestures.lookOnly = !feedSpot && (collapsed || (!placing && !snackInHand && tool === 'look'));
   };
   const pickTool = (id: string) => {
     if (isSandMode(id)) {
@@ -989,7 +1033,8 @@ async function boot() {
     }
     if (tool !== 'look') lastDirt = id;
     placing = null;
-    feedSpot = null;
+    endFeedSpot();
+    snackInHand = false;
     footprintsStroke = null;
     inventory.deselect();
     placeBar.show(null, DEFAULT_SIZE);
@@ -1008,7 +1053,8 @@ async function boot() {
   // the bag: rocks and driftwood (free, unlimited) for now
   const inventory = new InventoryTray((n, l, c) => hud.button(n, l, c), hud.root, ITEMS, (item) => {
     placing = item;
-    feedSpot = null;
+    endFeedSpot();
+    snackInHand = false;
     footprintsStroke = null;
     syncLookOnly();
     syncToolUI();
@@ -1299,6 +1345,7 @@ async function boot() {
   let leaveBeach: ((b: ShoreBeach) => void) | null = null;
   let askingCode: string | null = null;
   const visitedPetCache = new Map<string, PetDto | null>();
+  const visitorFeeds = new Set<string>();
   /** the beach under the view, along the shore (null: one of your own) */
   const beachHere = () => {
     if (!neighbors) return null;
@@ -1363,13 +1410,15 @@ async function boot() {
       return;
     }
     const b = beachHere();
-    if (!b || !animalsApi) return;
+    if (!b || !animalsApi || visitorFeeds.has(b.code)) return;
     if (!animalsApi.signedIn) {
       showToast(uiRoot, 'Sign in to feed pets.');
       return;
     }
     feedSpot = b.code;
     placing = null;
+    snackInHand = false;
+    footprintsStroke = null;
     inventory.deselect();
     placeBar.show(null, DEFAULT_SIZE);
     syncToolUI();
@@ -1380,37 +1429,50 @@ async function boot() {
   });
   /** a tap while setting a snack down: put it on their sand and feed their pet */
   const dropVisitSnack = (sx: number, sy: number) => {
+    if (cam.animating) return;
     const b = beachHere();
-    if (!b || b.code !== feedSpot || !neighbors || !animalsApi) {
+    if (!b || b.code !== feedSpot || !neighbors || !animalsApi?.signedIn || visitorFeeds.has(b.code)) {
       endFeedSpot();
       return;
     }
     const hit = neighbors.pickBeach(cam.ray(sx, sy), b.id);
-    if (!hit) return; // not on their sand: keep holding the snack
-    endFeedSpot();
     const code = b.code;
-    const dropped = visitPetCode === code && visitAnimals.dropFood(visitEnv, { x: hit.x - hit.offsetX, z: hit.z });
+    const pet = visitedPetCache.get(code);
+    if (!hit || !pet || visitPetCode !== code || visitAnimals.snapshot().food.active ||
+        neighbors.waterAtWorld(hit.x, hit.z) > ANIMALS.snackMaxWaterDepth ||
+        !visitAnimals.dropFood(visitEnv, { x: hit.x - hit.offsetX, z: hit.z })) return;
+    visitorFeeds.add(code);
+    endFeedSpot();
+    sbPet.disabled = true;
     haptics.impact('light');
     void animalsApi
       .feedVisitorPet(code)
       .then((res) => {
         if (res.usedFood) refreshOwned();
         visitedPetCache.set(code, res.pet);
+        if (visitPetCode === code) visitAnimals.setPet(res.pet, visitEnv);
         showToast(uiRoot, res.pet.name ? `Fed ${res.pet.name}!` : 'Fed their sand crab!');
       })
       .catch((err: unknown) => {
-        if (dropped && visitPetCode === code) visitAnimals.clearFood();
+        if (visitPetCode === code) {
+          visitAnimals.takeFood();
+          visitAnimals.setPet(pet, visitEnv);
+        }
         showToast(uiRoot, err instanceof Error ? err.message : 'Could not feed pet.');
+      })
+      .finally(() => {
+        visitorFeeds.delete(code);
+        shoreKey = '';
       });
   };
   /** per frame: show the pet of the other beach under the view, walking its sand */
   const updateVisitPet = (dt: number) => {
-    const here = neighbors?.away ? beachHere() : null;
+    const here = beachHere();
     const pet = here ? visitedPetCache.get(here.code) : undefined;
     const code = here && pet ? here.code : null;
     if (code !== visitPetCode) {
       visitAnimals.despawnNow();
-      visitAnimals.clearFood();
+      visitAnimals.takeFood();
       visitAnimals.setPet(null);
       visitPetCode = code;
       if (code && pet && neighbors) {
@@ -1443,7 +1505,7 @@ async function boot() {
     const isMine = !!b && (!!neighbors?.ownedBeach(b) || b.code === neighbors?.state?.code);
     const canLeave = !!b && !!leaveBeach && !isMine;
     const askSide = b && neighbors ? neighbors.askSideAt(idx) : null;
-    if (feedSpot && b?.code !== feedSpot) endFeedSpot();
+    if (feedSpot && (!signedIn || b?.code !== feedSpot)) endFeedSpot();
     const key = `${away}|${here?.code}|${here?.name}|${fav}|${!!neighbors?.visiting}|${signedIn}|${canLeave}|${askSide}|${askingCode === b?.code}|${feedSpot}`;
     if (key === shoreKey) return;
     shoreKey = key;
@@ -1467,6 +1529,7 @@ async function boot() {
     sbFav.classList.toggle('on', fav);
     sbFav.setAttribute('aria-label', fav ? 'Remove from favorites' : 'Add to favorites');
     sbPet.hidden = true;
+    sbPet.disabled = !!b && visitorFeeds.has(b.code);
     sbPet.classList.toggle('on', !!feedSpot);
     if (b && animalsApi) {
       const cached = visitedPetCache.get(b.code);
@@ -1552,12 +1615,9 @@ async function boot() {
   const start = skipIntro ? null : new StartScreen(uiRoot, begin, isTouch);
 
   const gestures = new Gestures(canvas, cam, {
+    tap: dropVisitSnack,
     digStart: (sx, sy) => {
       if (cam.animating) return;
-      if (feedSpot) {
-        dropVisitSnack(sx, sy);
-        return;
-      }
       const hit = pickAt(sx, sy);
       if (!hit) {
         if (neighbors && neighbors.viewing) nudgePane();
@@ -1568,8 +1628,25 @@ async function boot() {
         return;
       }
       inventory.setOpen(false);
+      if (snackInHand) {
+        tossSnack(hit);
+        return;
+      }
       if (placing) {
         putDown(hit);
+        return;
+      }
+      // pressing on the snack that's out: hold still to pick it back up
+      if (snackAt(hit)) {
+        press = {
+          sx,
+          sy,
+          ...(tool === 'castle' ? { mold: () => moldCastle(hit) } : {}),
+          timer: window.setTimeout(() => {
+            press = null;
+            if (snackAt(hit)) pickUpSnack('hand');
+          }, LONG_PRESS_MS),
+        };
         return;
       }
       if (tool === 'castle') {
@@ -1605,8 +1682,11 @@ async function boot() {
           const p = press;
           window.clearTimeout(p.timer);
           press = null;
-          startDig(p.sx, p.sy);
-          strokeTo(sx, sy);
+          if (p.mold) p.mold();
+          else {
+            startDig(p.sx, p.sy);
+            strokeTo(sx, sy);
+          }
         }
         return;
       }
@@ -1634,7 +1714,8 @@ async function boot() {
         const p = press;
         window.clearTimeout(p.timer);
         press = null;
-        startDig(p.sx, p.sy);
+        if (p.mold) p.mold();
+        else startDig(p.sx, p.sy);
       }
       if (dragging) {
         const d = dragging;
@@ -1703,6 +1784,10 @@ async function boot() {
     grabAt: (sx, sy) => {
       // look mode: a long-press on a thing picks it up (on any of your visible beaches)
       if (fenced) return false;
+      if (snackAt(pickAt(sx, sy))) {
+        pickUpSnack('hand');
+        return false;
+      }
       const found = thingAt(sx, sy);
       if (!found) return false;
       const { obj, target } = found;
@@ -1740,6 +1825,7 @@ async function boot() {
     },
     view: () => cycleView(),
     toggleCollapse: () => setCollapsed(!collapsed),
+    exitCollapse: endFeedSpot,
     interacted: () => {
       // any input (including when there is no start screen) unlocks audio
       if (!start?.visible) audio.start();
@@ -1757,6 +1843,10 @@ async function boot() {
       if (fenced) return;
       const hit = pickAt(sx, sy);
       if (!hit) return;
+      if (snackInHand) {
+        tossSnack(hit);
+        return;
+      }
       if (placing) {
         putDown(hit);
         return;
@@ -1923,6 +2013,7 @@ async function boot() {
     placeLive(x ?? 0);
   };
   sync.onBound((id) => {
+    hideSnack();
     if (!id) liveArrived();
     // the sky, sun and tide are the live beach's place
     const loc = id ? beachById(store.peek(id)?.location) : undefined;
@@ -1937,6 +2028,43 @@ async function boot() {
   let liveAt = -Infinity;
   let liveFixed: string | undefined;
   let liveBeachId = '';
+  /** each other place's light along the shore, refreshed like the live one */
+  const placeLights = new Map<string, { lc: LiveConditions; state: LiveState | null; at: number; fixed?: string }>();
+  const conditionsAt = (loc: Beach, now0: Date, nowMs: number, fixed: string | undefined) => {
+    if (loc.id === beach.id) return { lc: live, state: liveState };
+    let e = placeLights.get(loc.id);
+    if (!e) placeLights.set(loc.id, (e = { lc: new LiveConditions(loc), state: null, at: -Infinity }));
+    if (!e.state || Math.abs(nowMs - e.at) >= 500 || e.fixed !== fixed) {
+      e.state = e.lc.compute(now0, fixed);
+      e.at = nowMs;
+      e.fixed = fixed;
+    }
+    return { lc: e.lc, state: e.state };
+  };
+  /** the real place of a beach on the shore (one not placed yet shares the live beach's) */
+  const placeOf = (b: ShoreBeach): Beach => beachById(store.peek(b.id)?.location ?? b.location) ?? beach;
+  let lastMix: { a: LiveState; b: LiveState; t: number; out: LiveState } | null = null;
+  /** the light under the middle of the view (local weather), else the live beach's */
+  const updateViewLight = (now0: Date, nowMs: number, fixed: string | undefined) => {
+    const nv = neighbors;
+    const mix = nv && !params.get('beach')
+      ? shoreLightMix(cam.focusX, nv.drawnBeaches().map((d) => ({ x: d.x, location: placeOf(d.beach).id })))
+      : null;
+    if (!mix) {
+      viewState = liveState;
+      viewConditions = live;
+      return;
+    }
+    const a = conditionsAt(beachById(mix.a) ?? beach, now0, nowMs, fixed);
+    const b = mix.t > 0 ? conditionsAt(beachById(mix.b) ?? beach, now0, nowMs, fixed) : a;
+    viewConditions = mix.t < 0.5 ? a.lc : b.lc;
+    if (lastMix && lastMix.a === a.state && lastMix.b === b.state && lastMix.t === mix.t) {
+      viewState = lastMix.out;
+      return;
+    }
+    viewState = mixLive(a.state, b.state, mix.t);
+    lastMix = { a: a.state, b: b.state, t: mix.t, out: viewState };
+  };
   let slowTime = 0;
   let fastTime = 0;
   let reportedResDrop = false;
@@ -1974,13 +2102,14 @@ async function boot() {
     last = now;
     const now0 = clockNow();
     const nowMs = now0.getTime();
-    const fixed = fixedPalette ?? (settings.palette !== 'live' ? settings.palette : undefined);
+    const fixed = fixedPalette ?? (settings.localWeather ? undefined : settings.palette);
     if (Math.abs(nowMs - liveAt) >= 500 || fixed !== liveFixed || beach.id !== liveBeachId) {
       liveState = live.compute(now0, fixed);
       liveAt = nowMs;
       liveFixed = fixed;
       liveBeachId = beach.id;
     }
+    updateViewLight(now0, nowMs, fixed);
     if (now - seaSentAt > 2000) {
       seaSentAt = now;
       sendSea();
@@ -1988,13 +2117,13 @@ async function boot() {
     updatePlace();
     if (!noRender && !document.hidden && !params.has('fixedres')) adaptResolution(dt);
 
-    const palette = liveState.palette;
+    const palette = viewState.palette;
     gamepad.poll(dt);
     cam.update(dt, gestures.cameraActive);
     updateRing(dt, palette);
     updateSteamRichPresence(beach.name, cam.mode);
     if (cam.mode === 'chair') unlockSteamAchievement('CHAIR_VIEW');
-    if (liveState.sky.night > 0.5) unlockSteamAchievement('NIGHT_BEACH');
+    if (viewState.sky.night > 0.5) unlockSteamAchievement('NIGHT_BEACH');
     if (neighbors && !neighbors.anyOwnVisible) unlockSteamAchievement('WALK_SHORE');
     chooseLive();
     // every edit, on any beach, is in the undo order (each beach keeps its own history)
@@ -2026,7 +2155,7 @@ async function boot() {
       horizon.setExtent(neighbors?.windowCenters() ?? [0]);
       horizon.update(palette, camFwd, simTime, info.tide, amp);
     }
-    const sk = liveState.sky;
+    const sk = viewState.sky;
     const moonDisc = skyDisc(sk.moon.dir, sk.moon.elevation);
     sky.update(
       palette,
@@ -2050,9 +2179,14 @@ async function boot() {
       animalBrush.x = lastHit.x - picker.offsetX;
       animalBrush.z = lastHit.z;
     }
+    showLiveSnack();
     if (animals.snapshot().active) syncAnimalObstacles();
     animals.update(dt, animalEnv);
     const animalSnap = animals.snapshot();
+    if (shownSnackBeach && !animalSnap.food.active) {
+      droppedSnacks.delete(shownSnackBeach);
+      shownSnackBeach = null;
+    }
     if (animalSnap.active || animalSnap.food.active) ensureAnimalView();
     animalView?.update(animalSnap, ownShown);
     updateVisitPet(dt);
@@ -2064,7 +2198,7 @@ async function boot() {
       seaPan: -right.z,
       zoomOut: cam.zoomOut01(),
       calm: Math.min(1, Math.max(0, (1 - info.waveMul) / (1 - WAVES.levels.calm))),
-      daylight: 1 - liveState.sky.night,
+      daylight: 1 - viewState.sky.night,
     });
 
     if (noRender) {
@@ -2152,33 +2286,102 @@ async function boot() {
         return;
       }
       if (id !== 'crab-treat') return;
+      // a snack in hand: tap your beach to toss it there
+      endFeedSpot();
+      placing = null;
+      footprintsStroke = null;
+      inventory.deselect();
+      snackInHand = true;
+      syncLookOnly();
+      syncToolUI();
+      placeBar.showSnack('Beach snacks', inventory.ownedCount('crab-treat'));
+      haptics.impact('light');
+    };
+    let snackBusy = false;
+    tossSnack = (hit) => {
+      if (snackBusy) return;
+      if (!animalsApi?.signedIn || !isLive(hit.target.beachId) || awaitingLoad || !sync.id || sync.id === LOCAL_BEACH) {
+        showToast(uiRoot, 'Head back to your beach first.');
+        return;
+      }
+      // tapping the snack that's out picks it back up
+      if (snackAt(hit)) {
+        pickUpSnack('hand');
+        return;
+      }
+      const pos = { x: hit.x - picker.offsetX, z: hit.z };
+      if (animalEnv.waterAt(pos.x, pos.z) > ANIMALS.snackMaxWaterDepth) {
+        haptics.impact('light');
+        showToast(uiRoot, 'Too wet here.');
+        return;
+      }
+      const beachId = sync.id;
+      const expiresAt = Date.now() + ANIMALS.foodDuration * 1000;
+      snackBusy = true;
       void animalsApi
-        .feed(activeBeachId)
+        .feed(beachId)
         .then((res) => {
-          syncAnimalObstacles();
-          animals.dropFood(animalEnv);
+          droppedSnacks.set(beachId, { ...pos, expiresAt });
+          if (isLive(beachId)) {
+            hideSnack();
+            showLiveSnack();
+          }
           refreshOwned();
           haptics.impact('light');
+          if (snackInHand) {
+            if (res.remaining > 0) placeBar.showSnack('Beach snacks', res.remaining);
+            else pickTool(tool);
+          }
           if (res.pet) {
-            applyPet(res.pet);
+            if (isLive(beachId)) applyPet(res.pet);
             showToast(uiRoot, res.pet.name ? `Fed ${res.pet.name}!` : 'Fed your sand crab!');
           } else if (res.bond?.ready) {
             showActionToast(uiRoot, 'A wild sand crab wants to stay on your beach!', 'Adopt', () => {
               void animalsApi
-                ?.adoptPet({ mode: 'befriend', beachId: activeBeachId })
+                ?.adoptPet({ mode: 'befriend', beachId })
                 .then((pet) => {
-                  applyPet(pet);
+                  droppedSnacks.delete(beachId);
+                  if (shownSnackBeach === beachId) hideSnack();
+                  if (isLive(beachId)) applyPet(pet);
                   haptics.impact('medium');
                   showToast(uiRoot, 'Your new sand crab moved in!');
                 })
                 .catch((err: unknown) => showToast(uiRoot, err instanceof Error ? err.message : 'Could not adopt pet.'));
             });
-          } else {
-            showToast(uiRoot, 'Beach snack tossed on the sand.');
           }
         })
         .catch((err: unknown) => {
           showToast(uiRoot, err instanceof Error ? err.message : 'No beach snacks left.');
+        })
+        .finally(() => {
+          snackBusy = false;
+        });
+    };
+    pickUpSnack = (how) => {
+      const beachId = shownSnackBeach;
+      if (snackBusy || fenced || awaitingLoad || !animalsApi?.signedIn || !beachId || !isLive(beachId)) return;
+      const snack = droppedSnacks.get(beachId);
+      if (!snack || !animals.snapshot().food.active) return;
+      droppedSnacks.delete(beachId);
+      hideSnack();
+      snackBusy = true;
+      haptics.impact('light');
+      void animalsApi
+        .returnSnack(beachId)
+        .then((res) => {
+          refreshOwned();
+          if (res.pet && isLive(beachId)) applyPet(res.pet);
+          if (snackInHand) placeBar.showSnack('Beach snacks', res.remaining);
+          if (how === 'vacuum') noteVacuumed(['beach snack']);
+          else showPaneToast(placeWrap, 'Beach snack back in your bag');
+        })
+        .catch((err: unknown) => {
+          // A conflict means the server no longer has a snack to return.
+          if ((err as { status?: number } | null)?.status !== 409) droppedSnacks.set(beachId, snack);
+          showToast(uiRoot, err instanceof Error ? err.message : 'Couldn’t pick up the snack.');
+        })
+        .finally(() => {
+          snackBusy = false;
         });
     };
     const s = sync;
@@ -2240,8 +2443,11 @@ async function boot() {
       if (kind === 'fenced') {
         fenced = true;
         placing = null;
+        snackInHand = false;
         footprintsStroke = null;
         showFencedBanner();
+      } else if (kind === 'short') {
+        showToast(uiRoot, 'This beach couldn’t save: it held more than your bag. It’s back as it was last saved.');
       } else if (kind === 'restored') {
         showToast(uiRoot, 'This beach was restored from a checkpoint on another device');
         void checkpoints.load();
@@ -3109,6 +3315,8 @@ async function boot() {
     /** the beach of yours in front of you, once your beaches are in (null before, or signed out) */
     beachId: () => (sync.id && sync.id !== LOCAL_BEACH ? sync.id : null),
     live: () => ({ ...liveState, palette: undefined }),
+    /** the light you see (local weather: the place of the beach in the middle of the view) */
+    light: () => ({ ...viewState, palette: viewState.palette.name, place: viewConditions.beach.id }),
     setBeach: (id: string) => {
       const b = beachById(id);
       if (b) setBeach(b);
