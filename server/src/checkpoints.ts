@@ -1,6 +1,7 @@
 // Checkpoints (docs/CHECKPOINTS.md): the server reads a saved beach's bytes
 // itself, so a restore never trusts the app's own count of what's on it.
 import { deflateSync, inflateSync } from 'node:zlib';
+import { sanitizeObjects } from './generated/catchup.js';
 
 /** a saved beach (and so a checkpoint) is never bigger than this */
 export const MAX_BEACH_BYTES = 768 * 1024;
@@ -200,7 +201,7 @@ export function countObjects(bytes: Uint8Array): number {
 }
 
 /** Count what's on a saved beach. Throws BadBlob if it isn't one. */
-export function inspectBlob(bytes: Uint8Array): BlobInfo {
+export function inspectBlob(bytes: Uint8Array, { strictObjects = false } = {}): BlobInfo {
   const { nx, ny, sand, objs, cover } = parts(bytes);
   const raw = inflate(sand, nx * ny * 2 + 1);
   if (raw.byteLength !== nx * ny * 2) throw new BadBlob('corrupt saved beach');
@@ -209,7 +210,8 @@ export function inspectBlob(bytes: Uint8Array): BlobInfo {
     if (rawCov.byteLength !== nx * ny * 2) throw new BadBlob('corrupt saved beach');
   }
   const list = readObjects(objs);
-  const items: Record<string, number> = {};
+  if (strictObjects && sanitizeObjects(list).length !== list.length) throw new BadBlob('bad or duplicate thing on the beach');
+  const items: Record<string, number> = Object.create(null);
   for (const o of list) {
     const id = o.item as string;
     if (FREE_ITEMS.has(id)) continue;
