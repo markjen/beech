@@ -115,8 +115,11 @@ running our own tax operation.
    Basic auth `project_id:api_key`, body: our user id as `user.id.value`, one
    item `{ sku: productId, quantity: 1 }`, `settings.external_id` and
    `custom_parameters.web_order` = our order id, `settings.return_url`,
-   `sandbox` (`server/src/xsolla.ts`). The player's IPv4 goes in `X-User-Ip`
-   (Xsolla needs a country or an IP). Xsolla answers `{ token, order_id }`;
+   `sandbox` (`server/src/xsolla.ts`). The player's country goes in
+   `user.country.value` — the client sends it from the browser locale
+   (en-US -> US) — or, failing that, the player's IPv4 goes in `X-User-Ip`
+   (Xsolla needs a country or an IP; the country is what saves IPv6-only
+   mobile connections, where there is no IPv4 to send). Xsolla answers `{ token, order_id }`;
    the order id is stored on the row. The client is sent to
    `https://secure.xsolla.com/paystation4/?token=…` (sandbox:
    `sandbox-secure.xsolla.com`). If the token call fails, the row is deleted

@@ -2348,9 +2348,14 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     if (!cfg.xsolla) fail(404, 'buying on the web is not open yet: buy in the beech app');
     const me = c.get('user').id;
     if (!checkoutLimiter(me)) return c.json({ error: 'slow down' }, 429);
-    const { productId, promoCode } = await body<{ productId?: string; promoCode?: string }>(c);
+    const { productId, promoCode, country: rawCountry } = await body<{ productId?: string; promoCode?: string; country?: string }>(c);
     const product = productById(productId ?? '');
     if (!product) fail(404, 'no such product');
+    // Xsolla refuses the token unless it gets the player's country or an
+    // IPv4 address; many mobile connections are IPv6-only, so the client
+    // sends the country from the browser locale when it has one.
+    const country = rawCountry === undefined ? undefined : rawCountry.toUpperCase();
+    if (country !== undefined && !/^[A-Z]{2}$/.test(country)) fail(400, 'country must be a two-letter code');
     // Xsolla charges its catalog price, so a promo from our own list can't
     // discount a card payment yet (docs/WEB_PAYMENTS.md, "Promo codes").
     if (promoCode) fail(400, 'promo codes work with credit only for now: clear the code to pay by card');
@@ -2369,6 +2374,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
         userId: me,
         sku: product!.id,
         webOrderId: id,
+        country,
         ip: (c.req.header('x-forwarded-for') ?? '').split(',')[0]?.trim() || undefined,
       });
     } catch (e) {

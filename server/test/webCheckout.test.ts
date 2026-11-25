@@ -107,6 +107,13 @@ describe('Xsolla helpers', () => {
     expect(payStationUrl('t', true)).toBe('https://sandbox-secure.xsolla.com/paystation4/?token=t');
   });
 
+  it('puts the player country in the token body when the client sent one', () => {
+    const b = tokenBody({ ...LIVE, sandbox: true }, { userId: 'u1', sku: 'beach_1', webOrderId: 'o1', country: 'US' });
+    expect((b.user as { country?: { value: string } }).country).toEqual({ value: 'US' });
+    const noCountry = tokenBody({ ...LIVE, sandbox: true }, { userId: 'u1', sku: 'beach_1', webOrderId: 'o1' });
+    expect((noCountry.user as { country?: unknown }).country).toBeUndefined();
+  });
+
   it('is on only when the project, key and webhook secret are all set', () => {
     expect(xsollaFromEnv({}).cfg).toBeNull();
     expect(xsollaFromEnv({ XSOLLA_PROJECT_ID: '1', XSOLLA_API_KEY: 'k' }).missing).toEqual(['XSOLLA_WEBHOOK_SECRET']);
@@ -134,6 +141,18 @@ describe('web checkout', () => {
     const other = await signIn('web-other-1');
     expect((await req(`/store/web-orders/${o.order}`, {}, other.token)).status).toBe(404);
     expect((await req('/store/web-orders/not-a-uuid', {}, p.token)).status).toBe(404);
+  });
+
+  it('forwards the client country to the token call, and refuses a bad one', async () => {
+    const p = await signIn('web-buyer-country');
+    tokenCalls = [];
+    const r = await req('/store/web-checkout', json('POST', { productId: 'beach_1', country: 'us' }), p.token);
+    expect(r.status).toBe(200);
+    expect(tokenCalls).toEqual([expect.objectContaining({ country: 'US' })]);
+    // a three-letter country is not a country code: no order is created
+    tokenCalls = [];
+    expect((await req('/store/web-checkout', json('POST', { productId: 'beach_1', country: 'USA' }), p.token)).status).toBe(400);
+    expect(tokenCalls).toEqual([]);
   });
 
   it('a failed token call leaves no order behind', async () => {
