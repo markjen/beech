@@ -78,6 +78,11 @@ _(nothing right now)_
 
 ## Up next (engineering)
 
+- [ ] **Beach store, next** (docs/BEACH_STORE.md): keep the store's
+  snapshots of other people's beaches across a re-anchor *and* page
+  reloads (IndexedDB, keyed by id + version), and ease the live renderer
+  between beaches instead of a one-frame swap when the waves move.
+
 - [ ] **Live beaches, next**: ease a viewer's sand to each new save instead
   of swapping it; SSE instead of polling if the 5 s polls show up in
   Cloud Run costs; catch up the beechshore.com page pictures too; one
@@ -159,6 +164,12 @@ _(nothing right now)_
   shower night.
 
 ## Done (recent)
+
+- [x] **Client beach state by id** (2026-11-25): no more active beach. A
+  `BeachStore` keeps every beach's state in memory by id with LRU
+  eviction; the waves follow the view onto whichever beach of yours is in
+  front of you, handing sand and undo history over through the store; one
+  save pipeline for all beaches. [BEACH_STORE.md](BEACH_STORE.md).
 
 - [x] **Live beaches L1–L5** (2026-11-24): the sea keeps working while
   you're away. Owned things the sea carries out go back in the bag; the

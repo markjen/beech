@@ -1,6 +1,6 @@
 # More than one beach (design)
 
-Status: **built** (server: migration 7, `/api/beaches/mine…`; app: "your beaches" in settings, one beach per device). Buying extra beaches: see PRICING.md / the shop. The extra-beach prize from the claw machine
+Status: **built** (server: migration 7, `/api/beaches/mine…`; app: "your beaches" in settings; the client keeps every beach's state by id and the waves follow the view, docs/BEACH_STORE.md). Buying extra beaches: see PRICING.md / the shop. The extra-beach prize from the claw machine
 already exists (inventory item `beach`), so people will own beaches before
 they can lay them out. This doc is the plan for using them.
 

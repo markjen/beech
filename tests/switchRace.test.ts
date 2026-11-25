@@ -2,107 +2,108 @@
  * Repro for Discord #bugs 1574941390083723265 (rosejen):
  * "One of my beaches (roro) was overridden when I was switching to the beach"
  *
- * Hypothesis: two switchTo() calls overlapping (tapping a second beach while
- * the first is still loading) let the second call's pre-switch flush save the
- * still-loaded old beach's sand into the first target beach. A timer-fired
- * flush mid-switch has the same hole: the sim still shows the old beach
- * while account.beachId already names the new one.
+ * Two binds overlapping (the view passing one beach while another loads), or
+ * a timed save mid-bind, used to save the sand still in the worker under the
+ * new beach's id. With beach state kept by id (docs/BEACH_STORE.md) a save
+ * reads whichever simulation holds *that* id, so this can't happen; these
+ * tests keep it that way.
  */
 import { describe, expect, it } from 'vitest';
-import { BeachSync, type SyncHost } from '../src/net/beachSync';
-import { encodeSand, decodeSand } from '../src/sim/sandCodec';
+import { BeachStore, type BeachRef, type Saved, type StoreBackend } from '../src/net/beachStore';
+import { BeachSync, type SimHost } from '../src/net/beachSync';
+import { buildRestProfile } from '../src/sim/profile';
+import { decodeSand, encodeSand } from '../src/sim/sandCodec';
+import type { UndoHistory } from '../src/sim/undoStack';
 
 // BeachSync touches window timers; node has the same functions.
-(globalThis as any).window = globalThis;
+(globalThis as unknown as { window: typeof globalThis }).window = globalThis;
 
-const NX = 4;
-const NY = 4;
+const grid = { nx: 8, ny: 8, dx: 4 };
+const n = grid.nx * grid.ny;
+const rest = buildRestProfile(grid, 1);
 
-function sandBytes(fill: number): Promise<Uint8Array> {
-  return encodeSand(new Float32Array(NX * NY).fill(fill), NX, NY, []);
-}
-
-async function sandFill(bytes: Uint8Array): Promise<number> {
-  const { delta } = await decodeSand(bytes);
-  return delta[0];
-}
+const sandBytes = (fill: number) => encodeSand(new Float32Array(n).fill(fill), grid.nx, grid.ny, []);
+const sandFill = async (bytes: Uint8Array) => (await decodeSand(bytes)).delta[0];
 
 async function makeWorld() {
-  // Server-side store: beach id -> saved bytes. B and C already have sand.
-  const store = new Map<string, Uint8Array>([
+  const server = new Map<string, Uint8Array>([
+    ['A', await sandBytes(1)],
     ['B', await sandBytes(2)],
     ['C', await sandBytes(3)],
   ]);
   const saves: { beach: string; fill: number }[] = [];
-
-  // The sim currently shows beach A's sand (fill 1).
-  let simFill = 1;
-  const host: SyncHost = {
-    grid: { nx: NX, ny: NY },
-    location: () => 'test',
-    setLocation: () => {},
-    getSand: async () => ({ delta: new Float32Array(NX * NY).fill(simFill), objects: [] }),
-    setSand: (delta) => {
-      simFill = delta[0];
-    },
-  };
-
-  let beachId: string | null = 'A';
-  const account: any = {
-    user: { id: 'u1' },
-    get beachId() {
-      return beachId;
-    },
-    onChange: () => {},
-    setBeach: (id: string | null) => {
-      beachId = id;
-    },
-    // Slow load so a second switch / flush can start while the first is in flight.
-    loadBeach: async () => {
+  const backend: StoreBackend = {
+    // slow loads, so a second bind / save can start while the first is in flight
+    async load(ref): Promise<Saved | null> {
       await new Promise((r) => setTimeout(r, 30));
-      const bytes = beachId ? store.get(beachId) : undefined;
-      if (!bytes) return null;
-      return { location: '', nx: NX, ny: NY, updatedAt: 1, epoch: 0, bytes };
+      const bytes = server.get(ref.id);
+      return bytes ? { location: 'bondi', nx: grid.nx, ny: grid.ny, updatedAt: 1, epoch: 0, bytes } : null;
     },
-    saveBeach: async (bytes: Uint8Array) => {
-      saves.push({ beach: beachId!, fill: await sandFill(bytes) });
-      if (beachId) store.set(beachId, bytes);
-      return Date.now();
+    async save(ref, bytes) {
+      saves.push({ beach: ref.id, fill: await sandFill(bytes) });
+      server.set(ref.id, bytes);
+      return { updatedAt: Date.now() };
     },
   };
-
-  const sync = new BeachSync(account, host);
-  return { store, saves, sync, getSimFill: () => simFill };
+  const store = new BeachStore(grid, rest, backend);
+  // the worker: what it holds, and its undo history
+  let sim = { fill: 0, history: undefined as UndoHistory | undefined };
+  const host: SimHost = {
+    read: async (history) => {
+      const out = { delta: new Float32Array(n).fill(sim.fill), objects: [], ...(history && sim.history ? { history: sim.history } : {}) };
+      if (history) sim.history = undefined;
+      return out;
+    },
+    write: (s) => {
+      sim = { fill: s.delta[0], history: s.history };
+    },
+  };
+  const sync = new BeachSync(null, store, host);
+  const ref = (id: string): BeachRef => ({ id, code: id, owned: true });
+  await sync.bind(ref('A'));
+  return { server, saves, store, sync, ref, sim: () => sim, setSim: (f: number) => (sim.fill = f), setHistory: (h: UndoHistory) => (sim.history = h) };
 }
 
-describe('switchTo race', () => {
-  it('a second switch while the first is loading must not save old sand into the first beach', async () => {
-    const { store, saves, sync, getSimFill } = await makeWorld();
-
-    const first = sync.switchTo('B');
-    // While B is still loading, the user taps another beach.
+describe('binding the worker to a beach by id', () => {
+  it('a second bind while the first is loading never saves one beach into another', async () => {
+    const w = await makeWorld();
+    w.setSim(1.5); // A, changed by the waves
+    w.store.markDirty('A', 1e9);
+    const first = w.sync.bind(w.ref('B'));
     await new Promise((r) => setTimeout(r, 5));
-    await sync.switchTo('C');
+    await w.sync.bind(w.ref('C'));
     await first;
-
-    // B must still hold its own sand (fill 2), not A's (fill 1).
-    expect(await sandFill(store.get('B')!)).toBe(2);
-    expect(getSimFill()).toBe(3); // ended on C
-    expect(saves.filter((s) => s.beach === 'B' && s.fill === 1)).toEqual([]);
+    await w.store.flushAll();
+    expect(await sandFill(w.server.get('B')!)).toBe(2);
+    expect(await sandFill(w.server.get('A')!)).toBe(1.5);
+    expect(w.sim().fill).toBe(3);
+    expect(w.sync.id).toBe('C');
+    expect(w.saves.filter((s) => s.beach !== 'A')).toEqual([]);
   });
 
-  it('a flush fired mid-switch (90s interval / offline retry) must not save old sand into the new beach', async () => {
-    const { store, saves, sync, getSimFill } = await makeWorld();
-
-    const switching = sync.switchTo('B');
-    // While B is still loading, a timer fires a save — the sim still shows A.
+  it('a save fired mid-bind saves the worker sand under the beach it belongs to', async () => {
+    const w = await makeWorld();
+    w.setSim(1.25);
+    w.store.markDirty('A', 1e9);
+    const binding = w.sync.bind(w.ref('B'));
     await new Promise((r) => setTimeout(r, 5));
-    await sync.flush();
-    await switching;
+    await w.store.flushAll();
+    await binding;
+    expect(await sandFill(w.server.get('B')!)).toBe(2);
+    expect(await sandFill(w.server.get('A')!)).toBe(1.25);
+    expect(w.sim().fill).toBe(2);
+  });
 
-    // B must still hold its own sand (fill 2), not A's (fill 1).
-    expect(await sandFill(store.get('B')!)).toBe(2);
-    expect(getSimFill()).toBe(2); // ended on B
-    expect(saves.filter((s) => s.beach === 'B' && s.fill === 1)).toEqual([]);
+  it('moving the waves hands the undo history over with the beach, and back', async () => {
+    const w = await makeWorld();
+    const history: UndoHistory = { undos: [{ i0: 0, j0: 0, w: 1, h: 1, delta: new Float32Array(1) }], redos: [] };
+    w.setHistory(history);
+    await w.sync.bind(w.ref('B'));
+    expect(w.store.undoCount('A').undo).toBe(1);
+    expect(w.sim().history).toBeUndefined();
+    await w.sync.bind(w.ref('A'));
+    expect(w.sim().history?.undos.length).toBe(1);
+    // nothing fetched again: the store already had both
+    expect(w.store.peek('B')?.updatedAt).toBe(1);
   });
 });

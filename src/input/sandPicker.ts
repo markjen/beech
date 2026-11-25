@@ -11,6 +11,8 @@ export class SandPicker {
   readonly sand: Float32Array;
   /** water depth per cell (latest frame) */
   readonly water: Float32Array;
+  /** world X of the slab's centre (the beach the worker simulates sits anywhere along the shore) */
+  offsetX = 0;
 
   constructor(readonly g: GridSpec, rest: Float32Array) {
     this.sand = rest.slice();
@@ -44,7 +46,7 @@ export class SandPicker {
   /** Water depth at world (x, z), nearest cell; 0 outside the grid. */
   waterAt(x: number, z: number): number {
     const { nx, ny, dx } = this.g;
-    const i = Math.round((x - ORIGIN_X) / dx - 0.5);
+    const i = Math.round((x - ORIGIN_X - this.offsetX) / dx - 0.5);
     const j = Math.round((z - ORIGIN_Z) / dx - 0.5);
     if (i < 0 || j < 0 || i >= nx || j >= ny) return 0;
     return this.water[j * nx + i];
@@ -53,7 +55,7 @@ export class SandPicker {
   /** World z of the furthest-up-the-beach wet cell in the column at world x (or NaN). */
   runupZ(x: number): number {
     const { nx, ny, dx } = this.g;
-    const i = Math.round((x - ORIGIN_X) / dx - 0.5);
+    const i = Math.round((x - ORIGIN_X - this.offsetX) / dx - 0.5);
     if (i < 0 || i >= nx) return NaN;
     for (let j = ny - 1; j >= 0; j--) {
       if (this.water[j * nx + i] > 0.006) return ORIGIN_Z + (j + 0.5) * dx;
@@ -64,7 +66,7 @@ export class SandPicker {
   /** Bilinear sand height at world (x, z); NaN outside the grid. */
   heightAt(x: number, z: number): number {
     const { nx, ny, dx } = this.g;
-    const fi = (x - ORIGIN_X) / dx - 0.5;
+    const fi = (x - ORIGIN_X - this.offsetX) / dx - 0.5;
     const fj = (z - ORIGIN_Z) / dx - 0.5;
     if (fi < 0 || fj < 0 || fi > nx - 1 || fj > ny - 1) return NaN;
     const i0 = Math.min(nx - 2, Math.floor(fi));

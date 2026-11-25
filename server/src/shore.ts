@@ -35,6 +35,8 @@ export const NODE = `b.id, u.name, b.name AS beach_name, b.owner_id, b.code, b.c
 export const BEACH = `beach b JOIN users u ON u.id = b.owner_id`;
 
 export const beachJson = (r: NodeRow) => ({
+  /** the client keeps beach state by id (docs/BEACH_STORE.md); id-scoped endpoints still check the owner */
+  id: r.id,
   code: r.code,
   name: r.name,
   /** the beach's own name, if its owner gave it one ("Bondi") */

@@ -259,6 +259,8 @@ export class AnimalView {
   private visible = false;
   private dolphinVisible = false;
   private treatVisible = false;
+  /** animals live in their beach's own frame (centred on x = 0): this is where that beach sits along the shore */
+  offsetX = 0;
 
   constructor(scene: Scene, renderer: BeachRenderer) {
     this.mat = renderer.createAnimalMaterial(0.25);
@@ -277,7 +279,7 @@ export class AnimalView {
       this.treatMesh.setEnabled(showTreat);
     }
     if (showTreat) {
-      this.treatMesh.position.set(snap.food.x, snap.food.y, snap.food.z);
+      this.treatMesh.position.set(snap.food.x + this.offsetX, snap.food.y, snap.food.z);
     }
 
     const showCrab = snap.active && snap.species === 'crab' && beachVisible;
@@ -294,7 +296,7 @@ export class AnimalView {
 
     if (showDolphin) {
       const s = snap.size;
-      this.dolphinMesh.position.set(snap.x, snap.y, snap.z);
+      this.dolphinMesh.position.set(snap.x + this.offsetX, snap.y, snap.z);
       this.dolphinMesh.scaling.set(s, s, s);
       this.dolphinMesh.rotation.y = snap.facing;
       this.dolphinMesh.rotation.x = snap.pitch;
@@ -311,7 +313,7 @@ export class AnimalView {
     // Sink smoothly below the sand during emerging / burrowing; gentle hop when freshly fed
     const sink = (1 - snap.emerge) * s * 0.55;
     const hop = snap.happyTimer > 0 ? Math.abs(Math.sin(snap.happyTimer * 8)) * s * 0.25 : 0;
-    this.mesh.position.set(snap.x, snap.y - sink + hop, snap.z);
+    this.mesh.position.set(snap.x + this.offsetX, snap.y - sink + hop, snap.z);
     this.mesh.scaling.set(s, s, s);
     this.mesh.rotation.y = snap.facing;
 

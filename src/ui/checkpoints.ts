@@ -24,10 +24,12 @@ export interface CheckpointHost {
   owned(): ReadonlyMap<string, number>;
   /** non-free things on one of your beaches right now (the live one counts what's on it this moment) */
   itemsOn(beachId: string): Record<string, number>;
-  /** save the beach this device shows now */
-  saveNow(): Promise<void>;
-  /** restore onto the beach this device shows: save it, swap it, reload it */
-  replaceHere(change: () => Promise<void>): Promise<void>;
+  /** the beach of yours in front of you now ("restore here"), if any */
+  here(): string | null;
+  /** save this beach now (what you see is what the checkpoint keeps) */
+  saveBeach(beachId: string): Promise<void>;
+  /** replace this beach on the server: save it, run `change`, load what the server has then */
+  replaceBeach(beachId: string, change: () => Promise<void>): Promise<void>;
   /** your beaches or bag changed (reload the list, recount the bag) */
   changed(): Promise<void>;
   toast(text: string, undo?: () => void): void;
@@ -97,8 +99,8 @@ export class CheckpointsSection {
     const name = window.prompt('Name this checkpoint', `${label}, ${new Date().toLocaleDateString()}`);
     if (name === null || !name.trim()) return;
     await this.run(async () => {
-      // the live beach: save what's here first, so the checkpoint is what you see
-      if (beachId === this.account.beachId) await this.host.saveNow();
+      // save what's here first, so the checkpoint is what you see
+      await this.host.saveBeach(beachId);
       const cp = await this.api.save(beachId, name.trim());
       this.host.toast(`Saved checkpoint “${cp.name}”`);
       unlockSteamAchievement('CHECKPOINT_SAVED');
@@ -152,7 +154,7 @@ export class CheckpointsSection {
     await this.run(async () => {
       let result: { undo: string | null; dropped: number };
       const go = () => this.api.restore(target, cp.id, mode);
-      const attempt = async () => (target === this.account.beachId ? this.restoreHere(go) : go());
+      const attempt = () => this.restoreOnto(target, go);
       try {
         result = await attempt();
       } catch (e) {
@@ -176,9 +178,9 @@ export class CheckpointsSection {
     });
   }
 
-  private async restoreHere(go: () => Promise<{ undo: string | null; dropped: number }>) {
+  private async restoreOnto(target: string, go: () => Promise<{ undo: string | null; dropped: number }>) {
     let out: { undo: string | null; dropped: number } = { undo: null, dropped: 0 };
-    await this.host.replaceHere(async () => {
+    await this.host.replaceBeach(target, async () => {
       out = await go();
     });
     return out;
@@ -207,7 +209,6 @@ export class CheckpointsSection {
 
   /** The section's element (built fresh on each panel render). */
   element(): HTMLElement {
-    const a = this.account;
     const wrap = document.createElement('div');
     wrap.className = 'neighbors checkpoints';
     const head = document.createElement('div');
@@ -215,7 +216,7 @@ export class CheckpointsSection {
     const list = this.list;
     head.textContent = list ? `checkpoints (${list.named} of ${list.limit})` : 'checkpoints';
     wrap.appendChild(head);
-    const here = a.beachId;
+    const here = this.host.here();
     const buttons = document.createElement('div');
     buttons.className = 'slot';
     if (here) buttons.appendChild(this.button('save a checkpoint', 'cp-save', () => this.saveOf(here)));
@@ -293,7 +294,8 @@ export class CheckpointsSection {
     title.append(name, meta);
     row.appendChild(title);
     // the non-free things on it; red when restoring here would be short
-    const short = a.beachId ? this.shortFor(cp, a.beachId) : [];
+    const here = this.host.here();
+    const short = here ? this.shortFor(cp, here) : [];
     const entries = Object.entries(cp.items);
     if (entries.length) {
       const chips = document.createElement('div');
@@ -308,8 +310,8 @@ export class CheckpointsSection {
     }
     const acts = document.createElement('div');
     acts.className = 'slot cp-acts';
-    if (a.beachId) acts.appendChild(this.button('restore here', `cp-restore-${cp.id}`, () => this.restore(cp, a.beachId!)));
-    const others = a.beaches.filter((b) => b.id !== a.beachId);
+    if (here) acts.appendChild(this.button('restore here', `cp-restore-${cp.id}`, () => this.restore(cp, here)));
+    const others = a.beaches.filter((b) => b.id !== here);
     if (others.length) {
       // restore onto another of your beaches
       const sel = document.createElement('select');

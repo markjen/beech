@@ -106,12 +106,13 @@ self.onmessage = (ev: MessageEvent<ToWorker>) => {
         const cover = sim.sandCover();
         const xfer: Transferable[] = [delta.buffer];
         if (cover) xfer.push(cover.buffer);
-        post({ type: 'sand', id: m.id, delta, objects: sim.objects.persisted(), ...(cover ? { cover } : {}) }, xfer);
+        const history = m.history ? sim.undo.take() : undefined;
+        post({ type: 'sand', id: m.id, delta, objects: sim.objects.persisted(), ...(cover ? { cover } : {}), ...(history ? { history } : {}) }, xfer);
       }
       break;
     case 'setSand':
       if (sim && m.delta.length === sim.n) {
-        sim.loadDelta(m.delta, m.objects ?? [], m.cover);
+        sim.loadDelta(m.delta, m.objects ?? [], m.cover, m.history);
         loadId = m.loadId ?? 0;
       }
       break;

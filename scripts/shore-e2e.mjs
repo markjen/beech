@@ -101,7 +101,7 @@ check(true, "starred Cleo's beach");
 // and home
 await page.click('.shore-bar .sb-home');
 await page.waitForFunction(() => Math.abs(window.__beech.cam.focusX) < 0.5, null, { timeout: 15000 });
-check(await page.evaluate(() => window.__beech.neighbors().ownVisible), 'home again: your beach is drawn');
+check(await page.evaluate(() => window.__beech.neighbors().liveVisible), 'home again: your beach is drawn');
 
 // infinite scroll: head right past what's loaded and more of the shore loads
 {
@@ -123,7 +123,7 @@ await page.waitForFunction(() => window.__beech.neighbors().visiting !== null, n
 check((await page.evaluate(() => window.__beech.neighbors().visiting.name)) === names.dot, "visiting Dot's beach");
 await page.waitForFunction(() => document.querySelector('.shore-bar .sb-where')?.textContent?.startsWith('Visiting'), null, { timeout: 5000 }).catch(() => {});
 check((await page.textContent('.shore-bar .sb-where'))?.startsWith('Visiting'), 'the bar says Visiting');
-check(!(await page.evaluate(() => window.__beech.neighbors().ownVisible)), 'your own beach is hidden while visiting');
+check(!(await page.evaluate(() => window.__beech.neighbors().liveVisible)), 'your own beach is hidden while visiting');
 // you can't dig someone else's beach
 await page.click('[data-act="edit-menu"]');
 await page.click('button[data-tool="sand"]');
@@ -144,14 +144,14 @@ await page.click(`button[data-act="visit-${codes.cleo}"]`);
 await page.waitForFunction((n) => window.__beech.neighbors().visiting?.name === n, names.cleo, { timeout: 15000 });
 check(true, 'visited Cleo from favorites');
 await page.click('.shore-bar .sb-home');
-await page.waitForFunction(() => window.__beech.neighbors().visiting === null && window.__beech.neighbors().ownVisible, null, { timeout: 15000 });
+await page.waitForFunction(() => window.__beech.neighbors().visiting === null && window.__beech.neighbors().liveVisible, null, { timeout: 15000 });
 check((await page.evaluate(() => window.__beech.neighbors().beachAt(1)?.name)) === names.ana, 'home: Ana is next door again');
 
 // signed out: other sections of the public shore still render beside the empty beach
 await page.evaluate(() => window.__beech.account().signOut());
 await page.waitForFunction(() => !window.__beech.account().user && window.__beech.neighbors().snapshot(1) !== null, null, { timeout: 15000 });
 const signedOut = await page.evaluate(() => ({
-  ownVisible: window.__beech.neighbors().ownVisible,
+  ownVisible: window.__beech.neighbors().liveVisible,
   ext: window.__beech.neighbors().extent,
   left: window.__beech.neighbors().beachAt(1)?.name ?? null,
   maxX: window.__beech.cam.maxX,

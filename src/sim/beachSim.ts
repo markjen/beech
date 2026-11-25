@@ -11,7 +11,7 @@ import {
 } from '../config';
 import { buildRestProfile } from './profile';
 import { makeSwell, swellAt, swellEnvelope, tideAt, type Swell } from './waves';
-import { UndoStack, type UndoEntry } from './undoStack';
+import { UndoStack, type UndoEntry, type UndoHistory } from './undoStack';
 import { BeachObjects, type PlacedObject } from './objects';
 
 /** dig, build up, smooth, or bulldoze (flatten back to the untouched beach) */
@@ -1508,8 +1508,8 @@ export class BeachSim {
     return this.objects.rockCover(this.sand);
   }
 
-  /** Restore a saved beach (same grid size). Clears undo history. */
-  loadDelta(delta: Float32Array, objects: PlacedObject[] = [], cover?: Float32Array): void {
+  /** Restore a saved beach (same grid size). Clears undo history, or takes the beach's own `history`. */
+  loadDelta(delta: Float32Array, objects: PlacedObject[] = [], cover?: Float32Array, history?: UndoHistory): void {
     if (delta.length !== this.n) throw new Error('grid size mismatch');
     if (cover && cover.length !== this.n) throw new Error('grid size mismatch');
     if (this.stroke) this.cancelStroke();
@@ -1527,6 +1527,7 @@ export class BeachSim {
       for (let k = 0; k < this.n; k++) if (appliedCover[k] > 0) this.sand[k] += appliedCover[k];
     }
     this.undo.clear();
+    if (history) this.undo.restore(history);
     this.easing = [];
   }
 

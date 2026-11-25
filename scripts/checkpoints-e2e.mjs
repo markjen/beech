@@ -43,7 +43,7 @@ async function device(label) {
   await page.goto(URL_ + '?nointro&fixedres&seed=1&nofinds');
   await page.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
   await page.evaluate((n) => window.__beech.account().signInDev(n), who);
-  await page.waitForFunction(() => window.__beech.account().beachId && window.__beech.sync().state === 'saved', null, { timeout: 20000 });
+  await page.waitForFunction(() => window.__beech.beachId() && window.__beech.sync().state === 'saved', null, { timeout: 20000 });
   return page;
 }
 const api = (page, url, init) =>
@@ -76,7 +76,7 @@ const checkpointsList = async (page) => (await api(page, '/api/checkpoints')).bo
 
 // ------------------------------------------------------------------ 1
 const a = await device('A');
-const home = await a.evaluate(() => window.__beech.account().beachId);
+const home = await a.evaluate(() => window.__beech.beachId());
 await grant(a, 'lighthouse');
 await grant(a, 'beach');
 await a.evaluate(() => window.__beech.account().loadBeaches());
@@ -119,8 +119,8 @@ if (process.env.SHOT_DIR) await a.screenshot({ path: `${process.env.SHOT_DIR}/ch
 // ------------------------------------------------------------------ 2
 a.answer = 'Second';
 await a.click('button[data-act="new-beach"]');
-await a.waitForFunction((h) => window.__beech.account().beachId !== h && window.__beech.sync().state === 'saved', home, { timeout: 20000 });
-const second = await a.evaluate(() => window.__beech.account().beachId);
+await a.waitForFunction((h) => window.__beech.beachId() !== h && window.__beech.sync().state === 'saved', home, { timeout: 20000 });
+const second = await a.evaluate(() => window.__beech.beachId());
 await a.waitForFunction(() => !window.__beech.info().objects.some((o) => !o.wild), null, { timeout: 10000 }).catch(() => {});
 check((await things(a)) === '', `A is on a new, empty beach (${await things(a)})`);
 await showSheet(a);
@@ -138,7 +138,7 @@ await grant(a, 'lighthouse');
 await a.reload();
 await a.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
 await a.waitForFunction(() => window.__beech.sync().state === 'saved', null, { timeout: 20000 });
-check((await a.evaluate(() => window.__beech.account().beachId)) === second, 'A is still on the second beach');
+check((await a.evaluate(() => window.__beech.beachId())) === second, 'A is still on the second beach');
 await showSheet(a);
 await a.waitForSelector(`.cp-row[data-id="${one.id}"]`, { timeout: 10000 });
 check(!(await a.$(`.cp-row[data-id="${one.id}"] .cp-chip.short`)), 'with a second lighthouse it fits');
@@ -157,7 +157,7 @@ check((await things(a)) === 'rock', 'Undo put the beach back as it was before');
 
 // ------------------------------------------------------------------ 4
 const b = await device('B');
-check((await b.evaluate(() => window.__beech.account().beachId)) === home, 'B opens home');
+check((await b.evaluate(() => window.__beech.beachId())) === home, 'B opens home');
 // open the second beach on B the way the panel does
 await showSheet(b);
 await b.click(`button[data-act="select-beach-${second}"]`);
@@ -193,7 +193,7 @@ check(secondNow?.items.lighthouse === 1, `and the server still has the restored 
 // ------------------------------------------------------------------ 6
 await showSheet(a);
 await a.click(`button[data-act="remove-beach-${second}"]`);
-await a.waitForFunction((h) => window.__beech.account().beachId === h && window.__beech.account().beaches.length === 1, home, { timeout: 20000 });
+await a.waitForFunction((h) => window.__beech.beachId() === h && window.__beech.account().beaches.length === 1, home, { timeout: 20000 });
 const after = await checkpointsList(a);
 check(after.checkpoints.some((c) => c.id === one.id), '"one" outlived the beach it was restored onto');
 check(after.checkpoints.some((c) => c.kind === 'auto' && !c.fromBeach), 'the second beach\'s "before restoring" copy is kept too');

@@ -72,7 +72,7 @@ page.on('pageerror', (e) => errors.push(e.message));
 await page.goto(URL_ + '?nointro&fixedres&seed=1&nofinds');
 await page.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
 await page.evaluate((n) => window.__beech.account().signInDev(n), who);
-await page.waitForFunction(() => window.__beech.account().beachId && window.__beech.sync().state === 'saved', null, { timeout: 45000 });
+await page.waitForFunction(() => window.__beech.beachId() && window.__beech.sync().state === 'saved', null, { timeout: 45000 });
 
 const castleTop = () =>
   page.evaluate((c) => {
@@ -119,7 +119,7 @@ check(back > 0.25, `and the castle (${back.toFixed(2)} m, from 0.5)`);
 // only once
 await page.reload();
 await page.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
-await page.waitForFunction(() => window.__beech.account().beachId && window.__beech.sync().state === 'saved', null, { timeout: 45000 });
+await page.waitForFunction(() => window.__beech.beachId() && window.__beech.sync().state === 'saved', null, { timeout: 45000 });
 await page.waitForTimeout(3000);
 check(!(await page.$('.hint.choice')), 'the card shows once, not again on the next visit');
 
@@ -131,7 +131,7 @@ const device = async (name) => {
   await p.goto(URL_ + '?nointro&fixedres&seed=1&nofinds');
   await p.waitForSelector('body[data-ready="1"]', { timeout: 30000 });
   await p.evaluate((n) => window.__beech.account().signInDev(n), name);
-  await p.waitForFunction(() => window.__beech.account().beachId && window.__beech.sync().state === 'saved', null, { timeout: 45000 });
+  await p.waitForFunction(() => window.__beech.beachId() && window.__beech.sync().state === 'saved', null, { timeout: 45000 });
   return p;
 };
 const ben = await device(`${who}b`);

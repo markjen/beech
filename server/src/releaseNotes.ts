@@ -19,6 +19,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     date: '2026-11-25',
     title: 'Live beaches, visitors, your inbox, new controls, and sandcastle molds',
     changes: [
+      'The waves follow you along the shore: pan onto another of your beaches and the sea comes alive there, and Undo now steps back through edits on all your beaches in order. Moving between your beaches no longer reloads them.',
       'The sea now keeps working while you’re away: tides wear down sand near the waterline, wash up fresh shells and driftwood, and send anything you own that floats out to sea back to your bag. Coming back shows a “While you were away” card with a one-tap “Before the tide” restore after long gaps.',
       'Visiting someone else’s beach while they’re playing now shows their digging and building live every few seconds.',
       'The beach guide (the compass) now keeps its how-tos in the web guide. In the game, you’ll see the checklist and your progress.',
