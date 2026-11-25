@@ -266,7 +266,7 @@ export class Shop {
     btn.textContent = '…';
     btn.disabled = true;
     try {
-      await this.api.buyWithCredit(p.id);
+      await this.api.claimFree(p.id);
       this.note.textContent = `${p.name}: added to your bag.`;
       this.bought(p.id);
     } catch (e) {

@@ -2766,10 +2766,13 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   app.post('/store/credit-purchase', requireUser, async (c) => {
     const me = c.get('user').id;
     if (!creditLimiter(me)) return c.json({ error: 'slow down' }, 429);
-    const { productId, promoCode, requestId } = await body<{ productId?: string; promoCode?: string; requestId?: string }>(c);
+    const { productId, promoCode, requestId, freeOnly } =
+      await body<{ productId?: string; promoCode?: string; requestId?: string; freeOnly?: boolean }>(c);
     const product = productById(productId ?? '') ?? fail(404, 'no such product');
     if (requestId !== undefined && (typeof requestId !== 'string' || !UUID_PATTERN.test(requestId))) fail(400, 'invalid request ID');
     if (promoCode !== undefined && typeof promoCode !== 'string') fail(400, 'invalid promo code');
+    if (freeOnly !== undefined && typeof freeOnly !== 'boolean') fail(400, 'invalid free claim');
+    if (freeOnly && promoCode !== undefined) fail(400, 'free claims do not use promo codes');
     const code = promoCode ? normalizePromoCode(promoCode) : null;
     const now = clock();
     const result = await db.withTransaction(async (tx) => {
@@ -2786,12 +2789,14 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
             [me, requestId],
           );
           if (!order || order.product_id !== product.id || order.promo_code !== code) fail(409, 'that request ID was used for a different purchase');
+          if (freeOnly && order.paid_cents !== 0) fail(409, 'that request ID was used for a paid purchase');
           return { paidCents: order.paid_cents, discountCents: order.discount_cents, creditCents: await balance() };
         }
       }
 
       const offer = await creatorOffer(tx, product, true);
       const price = salePriceCents(product, offer) ?? fail(404, 'that product is not for sale');
+      if (freeOnly && price !== 0) fail(409, 'that item is no longer free. Reopen the shop for its current price.');
       let discount = 0;
       if (code !== null) {
         const promo = await loadPromo(code, tx) ?? fail(404, 'no such code');

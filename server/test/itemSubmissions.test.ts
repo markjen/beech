@@ -188,11 +188,23 @@ it('credits only completed credit orders, including a discounted order retried c
   expect(listed.products.find((p) => p.id === 'item_deckchair')?.usd).toBe(0);
   const quote = await json('/store/quote', { productId: 'item_deckchair' }, buyer.token);
   expect(await quote.json()).toMatchObject({ priceCents: 0, finalCents: 0 });
-  const free = await json('/store/credit-purchase', { productId: 'item_deckchair', requestId: crypto.randomUUID() }, buyer.token);
+  const claim = { productId: 'item_deckchair', requestId: crypto.randomUUID(), freeOnly: true };
+  const free = await json('/store/credit-purchase', claim, buyer.token);
   expect(free.status, await free.clone().text()).toBe(200);
   expect(await free.json()).toMatchObject({ paidCents: 0, creditCents: 875 });
   expect(await db.query('SELECT id FROM inventory WHERE user_id = $1', [buyer.id])).toHaveLength(2);
   expect(await credit(creator.token)).toBe(38);
+
+  await approve(id, 'deckchair', '250');
+  const retried = await json('/store/credit-purchase', claim, buyer.token);
+  expect(retried.status).toBe(200);
+  expect(await retried.json()).toMatchObject({ paidCents: 0, creditCents: 875 });
+  const stale = await json('/store/credit-purchase', { ...claim, requestId: crypto.randomUUID() }, buyer.token);
+  expect(stale.status).toBe(409);
+  expect(await stale.json()).toMatchObject({ error: expect.stringContaining('no longer free') });
+  expect(await credit(buyer.token)).toBe(875);
+  expect(await credit(creator.token)).toBe(38);
+  expect(await db.query('SELECT id FROM inventory WHERE user_id = $1', [buyer.id])).toHaveLength(2);
 
   // "not for sale" is its own choice, whatever the price
   const off = await adminApi('/' + id + '/review', form({
