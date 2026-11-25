@@ -87,7 +87,8 @@ const bDug = await dug(b);
 check(Math.abs(bDug - homeDug) / homeDug < 0.2, `B shows the home sand A dug (${bDug.toFixed(1)})`);
 
 // both live at once: each device digs its own beach and saves it
-await Promise.all([dig(a, 600), dig(b, 420)]);
+// (A digs well inside the beach: at y = 600 the brush runs along its back edge and barely changes it)
+await Promise.all([dig(a, 520), dig(b, 420)]);
 const [aNow, bNow] = [await dug(a), await dug(b)];
 const sands = await b.evaluate(async (ids) => {
   const acct = window.__beech.account();
