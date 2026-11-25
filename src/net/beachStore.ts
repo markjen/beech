@@ -278,7 +278,7 @@ export class BeachStore {
   /** A newer save than the one held exists (the shore said so). */
   markStale(id: string, updatedAt: number | null): void {
     const st = this.states.get(id);
-    if (st && updatedAt !== null && st.updatedAt !== updatedAt) st.stale = true;
+    if (st && updatedAt !== null && (st.updatedAt === null || updatedAt > st.updatedAt)) st.stale = true;
   }
 
   private fetch(ref: BeachRef, force = false): Promise<BeachState | null> {
@@ -290,8 +290,9 @@ export class BeachStore {
       try {
         saved = await this.backend.load(ref);
       } catch {
-        return this.states.get(ref.id) ?? null;
+        return gen === this.generation ? this.states.get(ref.id) ?? null : null;
       }
+      if (gen !== this.generation) return null;
       const n = this.grid.nx * this.grid.ny;
       let sand: Sand = { delta: new Float32Array(n), objects: [] };
       if (saved) {
@@ -343,7 +344,9 @@ export class BeachStore {
       if (held) for (const fn of this.listeners.reloaded) fn(ref.id);
       this.changed(ref.id);
       return st;
-    })().finally(() => this.loading.delete(ref.id));
+    })().finally(() => {
+      if (this.loading.get(ref.id) === p) this.loading.delete(ref.id);
+    });
     this.loading.set(ref.id, p);
     return p;
   }
@@ -492,9 +495,12 @@ export class BeachStore {
       clearTimeout(t);
       this.timers.delete(id);
     }
-    while (this.saving.has(id)) await this.saving.get(id);
-    if (!this.isDirty(id) || this.fenced || !this.canSave()) return;
-    const p = this.save(id, keepalive).finally(() => this.saving.delete(id));
+    const gen = this.generation;
+    while (gen === this.generation && this.saving.has(id)) await this.saving.get(id);
+    if (gen !== this.generation || !this.isDirty(id) || this.fenced || !this.canSave()) return;
+    const p = this.save(id, keepalive).finally(() => {
+      if (this.saving.get(id) === p) this.saving.delete(id);
+    });
     this.saving.set(id, p);
     await p;
   }
@@ -532,7 +538,7 @@ export class BeachStore {
       st.fresh = false;
       this.savedAt = r.updatedAt;
       // what was saved is what's held now, unless a sim still holds it
-      if (!st.sim && !this.sources.has(id)) this.applySand(st, sand);
+      if (st.revision === revision && !st.sim && !this.sources.has(id)) this.applySand(st, sand);
       for (const fn of this.listeners.saved) fn(id, { ...r, items });
       if (r.largeEdit && r.largeEditCheckpoint === false) for (const fn of this.listeners.largeEditUnprotected) fn(id);
       const dropped = objectsToSave(sand.objects).dropped;

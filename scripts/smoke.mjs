@@ -80,8 +80,9 @@ try {
     if (Math.abs(d1 - d0) > 0.05 || Math.abs(t1 - t0) < 0.3) fail(`look tool: sand Δ ${(d1 - d0).toFixed(3)}, view moved ${(t1 - t0).toFixed(2)}`);
     else console.log(`look tool ok (view moved ${(t1 - t0).toFixed(2)} m, sand untouched)`);
     await page.evaluate(() => { const c = window.__beech.cam; c.camera.target.x = 0; c.stopGlide(); });
-    await page.click('[data-act="edit-menu"]');
-    await page.click('button[data-tool="sand"]');
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => window.__beech.setRail(true));
+    await page.click('[data-act="dirt"]');
   }
 
   // touch: one finger down, a second finger 60 ms later -> the dig is cancelled
@@ -240,7 +241,7 @@ try {
   {
     const count = () => page.evaluate(() => window.__beech.info().objects.length);
     const n0 = await count();
-    await page.click('[data-act="edit-menu"]');
+    await page.evaluate(() => window.__beech.setRail(true));
     await page.click('button[data-tool="place"]');
     await page.click('.inv-item.rarity-common >> nth=0');
     await page.mouse.click(420, 430);
@@ -254,8 +255,9 @@ try {
     const n3 = await count();
     if (!(n1 === n0 + 1 && n2 === n0 && n3 === n0 + 1)) fail(`placing a rock: ${n0} -> ${n1} -> ${n2} -> undo ${n3}`);
     else console.log('place / pick up / undo ok');
-    await page.click('[data-act="edit-menu"]');
-    await page.click('button[data-tool="sand"]');
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => window.__beech.setRail(true));
+    await page.click('[data-act="dirt"]');
   }
 
   // phone (GitHub issues #4, #5, #6): the settings sheet scrolls by touch and
@@ -296,7 +298,7 @@ try {
     if (await ph.evaluate(() => document.querySelector('.sheet-wrap.open'))) fail('settings close button did not close it');
     else console.log('phone: settings close button ok');
     // the size slider: pick a rock, drag the slider
-    await ph.locator('[data-act="edit-menu"]').tap();
+    await ph.locator('[data-act="palm"]').tap();
     await ph.locator('button[data-tool="place"]').tap();
     await ph.locator('.inv-item.rarity-common >> nth=0').tap();
     await ph.waitForTimeout(300);

@@ -24,6 +24,10 @@ export interface LeaderboardHost {
  */
 export class Leaderboard {
   private readonly root: HTMLDivElement;
+  /** the dialog root (for the social hub's tab strip) */
+  get el(): HTMLDivElement {
+    return this.root;
+  }
   private readonly list: HTMLOListElement;
   private readonly note: HTMLParagraphElement;
   private board: Board = 'all';

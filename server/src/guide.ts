@@ -235,8 +235,9 @@ export function guideHtml(now: number): string {
   const body = `
 <h2 id="start">Getting started</h2>
 <p>beech is a stretch of sand by the sea. Dig, build, and set things down, and watch the waves rework it. Tap or click the title screen to begin; sound starts then too.</p>
-<p>Sign in (settings, at the top) to keep your beach, have neighbors, and play the machines. Without signing in, your beach isn’t saved — it only lives while you play, and closing the app loses it. Sign in and it’s saved, so you can keep it on any device. You can still pan along the shore beside it to see other people’s public beaches.</p>
-<p>The sea follows a real beach: its tide, sun and moon, at that place’s time of day, with waves growing stronger toward high tide and gentler toward low tide. Pick the beach in Beach settings, or “near me” for the closest one.</p>
+<p>At rest the screen is just the beach and a palm button in the lower right. Tap the palm to open the toolbar (and the status pane, top left); the palm turns into a × that closes it all again.</p>
+<p>Sign in (Manage → <b>Settings</b>) to keep your beach, have neighbors, and play the machines. Without signing in, your beach isn’t saved — it only lives while you play, and closing the app loses it. Sign in and it’s saved, so you can keep it on any device. You can still pan along the shore beside it to see other people’s public beaches.</p>
+<p>The sea follows a real beach: its tide, sun and moon, at that place’s time of day, with waves growing stronger toward high tide and gentler toward low tide. Pick the beach in Manage → <b>Beaches</b>, or “near me” for the closest one.</p>
 
 <h2 id="controls">Controls</h2>
 <h3>Touch</h3>
@@ -250,24 +251,34 @@ export function guideHtml(now: number): string {
   <li>Drag to look around or use the tool; the wheel zooms; right-drag turns and tilts.</li>
   <li><kbd>1</kbd>–<kbd>5</kbd> pick a tool; <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or the arrow keys pan; <kbd>Q</kbd>/<kbd>E</kbd> turn 45°; <kbd>R</kbd>/<kbd>F</kbd> tilt; <kbd>+</kbd>/<kbd>-</kbd> zoom.</li>
   <li><kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Z</kbd> undo, with <kbd>Shift</kbd> (or <kbd>Ctrl</kbd>+<kbd>Y</kbd>) to redo.</li>
-  <li><kbd>V</kbd> switches between the diorama and the chair view; <kbd>H</kbd> (or the eye button) collapses the toolbars so you can pan around with minimal overlay.</li>
+  <li><kbd>V</kbd> cycles the view; <kbd>H</kbd> opens or closes the toolbar, like the palm.</li>
 </ul>
+<h3>The toolbar</h3>
+<p>Top to bottom: <b>Inbox</b> (signed-in builds), <b>Hand</b>, <b>Dirt</b> · <b>Bag</b>, <b>Store</b> · <b>View</b>, <b>Manage</b>, then <b>Undo</b> (hold it to redo) and the × that closes the toolbar. Every time the toolbar opens, the hand is picked, so you start out just looking around. On short screens (a phone on its side) the toolbar lies along the bottom instead.</p>
+<h3>The status pane</h3>
+<p>Top left, with the toolbar: whose beach you’re looking at, the local time and the swell. ⌄ shows more: the tide, the wave strength, whether your beach is saved, and while you’re on someone else’s beach, actions to leave something, ask to be neighbors, feed their pet, star the beach, or head home. × tucks the pane away to a small <i>i</i>; tap it to bring the pane back.</p>
+<h3>Views</h3>
+<p>The View button cycles: <b>chair</b> → <b>isometric</b> → <b>reverse isometric</b> (looking back at the beach from the sea) → chair. A label beside it names the view for a moment.</p>
 <h3>The chair view</h3>
-<p>The chair button sits you on the sand facing the open sea. Hold ‹ › (or <kbd>Q</kbd>/<kbd>E</kbd>) to walk along the beach and on across your neighbors’; after a second of holding you walk faster.</p>
+<p>The chair view sits you on the sand facing the open sea. Hold ‹ › (or <kbd>Q</kbd>/<kbd>E</kbd>) to walk along the beach and on across your neighbors’; after a second of holding you walk faster.</p>
 
 <h2 id="tools">Tools</h2>
-<p>Open Edit to find the sand tools, sandcastle molds, bag, wave toggle, and Undo. The hand button switches back to moving the view.</p>
+<p>The <b>Hand</b> moves the view without touching the sand. All the dirt work is behind one button, <b>Dirt</b> (the bulldozer): it opens a column of tools beside the toolbar, and picks up the tool you used last.</p>
 <ul>
-  <li><b>Look</b> (the hand): move around without touching the sand.</li>
-  <li><b>Sand</b>: three modes — <b>dig</b> (shovel) digs deeper or carves a trench, <b>build</b> (sand dune) adds sand where you drag, and <b>blend</b> (rake) softens edges and bumps.</li>
-  <li><b>Clearing</b>: three modes — the <b>bulldozer</b> flattens and scoops up things in its path, <b>flatten</b> pushes the sand back to the untouched beach, and the <b>vacuum</b> picks things up with a tap or along a drag.</li>
+  <li><b>Dig</b> (shovel) digs deeper or carves a trench.</li>
+  <li><b>Build up</b> (sand dune) adds sand where you drag.</li>
+  <li><b>Smooth</b> (rake) softens edges and bumps.</li>
+  <li><b>Flatten</b> pushes the sand back to the untouched beach.</li>
+  <li><b>Vacuum cleaner</b> picks things up with a tap or along a drag.</li>
+  <li><b>Bulldozer</b> flattens and scoops up things in its path.</li>
+  <li>The two <b>sandcastle molds</b>, round and square (below).</li>
 </ul>
 <p>Every stroke can be undone. Waves wear down what you build, and the sea fills holes near the water.</p>
 
-<p>Choose Sandcastles in Edit, pick a cylinder or square mold, and tap the sand to make a tower. Put towers together, shape connecting walls with Build, dig a moat, and decorate from the bag. Sandcastles erode with the beach and can be undone.</p>
+<p>Pick the round or square sandcastle mold under Dirt, and tap the sand to make a tower. Put towers together, shape connecting walls with Build, dig a moat, and decorate from the bag. Sandcastles erode with the beach and can be undone.</p>
 
 <h2 id="bag">Your bag</h2>
-<p>The bag in Edit holds things to set on the sand. Rocks, driftwood, shells, sea glass, flags, trash, seaweed, cowries and footprints are free and never run out. Pick one, choose its size with the slider, then tap the sand to set it down. Use the vacuum or bulldozer to pick things back up; they go back in your bag.</p>
+<p>The <b>Bag</b> (in the toolbar) opens in the middle of the screen and holds things to set on the sand. Signed in, the claw machine and the item capsule machine are tiles at the top of it. Rocks, driftwood, shells, sea glass, flags, trash, seaweed, cowries and footprints are free and never run out. Pick one, choose its size with the slider, then tap the sand to set it down. Use the vacuum or bulldozer to pick things back up; they go back in your bag.</p>
 <p>Rocks shape how water flows and where sand settles. Driftwood floats when the water is deep enough and strands when it drains. Shells, sea glass, trash and seaweed move in fast water. Footprints stay where you put them. The sea washes things in now and then, including the occasional cowrie, and only a few strays stay at once. Hold one to pick it up, then put it down to keep it. Your bag lists what you've kept under Found.</p>
 <p>Things you won or bought show how many you have left to place. You can gift an owned thing to the owner of another beach from the bar that shows while it’s in hand.</p>
 
@@ -298,29 +309,29 @@ ${
 ${catalogSection(now)}
 
 <h2 id="beaches">Your beaches</h2>
-<p>You start with one beach. Each extra beach you own (from the shop or the claw machine) lets you make one more, up to ${BEACH_CAP}. Open Settings → <b>Beach</b> to pick which beach you’re configuring (its name, real-world place, code, checkpoints, or to jump to it), or make a new one.</p>
-<p>Any of your beaches visible on the shore can be edited directly — dig, build, clear, place, or drag things right across adjacent beaches, and each beach saves on its own automatically regardless of which beach is selected in Settings. The waves run on whichever of your beaches you're looking at and move with you as you pan from one to the next, and Undo steps back through your edits on all of them. Each device remembers which beach it was looking at, so your phone and your TV can watch different beaches at the same time. Only one tab or device edits at a time, though: the one you opened most recently takes over, and the others turn view-only until you take editing back there. Put one of your own beach codes next to another of yours and they link straight away, without asking.</p>
+<p>You start with one beach. Each extra beach you own (from the shop or the claw machine) lets you make one more, up to ${BEACH_CAP}. Open Manage → <b>Beaches</b> to pick which beach you’re configuring (its name, real-world place, code, checkpoints, or to jump to it), or make a new one.</p>
+<p>Any of your beaches visible on the shore can be edited directly — dig, build, clear, place, or drag things right across adjacent beaches, and each beach saves on its own automatically regardless of which beach is selected in Manage. The waves run on whichever of your beaches you're looking at and move with you as you pan from one to the next, and Undo steps back through your edits on all of them. Each device remembers which beach it was looking at, so your phone and your TV can watch different beaches at the same time. Only one tab or device edits at a time, though: the one you opened most recently takes over, and the others turn view-only until you take editing back there. Put one of your own beach codes next to another of yours and they link straight away, without asking.</p>
 <p>The sea keeps working while you’re away: tides rise and fall for your beach’s real-world place, wearing down sand near the waterline and washing up fresh shells and driftwood. Anything you own that the sea carries out goes straight back into your bag — nothing you own is lost. When you come back after a while, a “While you were away” card sums up what happened, and after a gap of more than 12 hours your beach as you left it is kept as a “Before the tide” checkpoint so you can put it back in one tap.</p>
 
 <h2 id="shore">Neighbors and the shore</h2>
-<p>Open Settings → <b>Shore</b> to arrange your beaches and neighbors. When you own more than one beach, your stretches appear at the top so you can snap your own beaches side by side (or disconnect them) in one tap, with no codes to copy.</p>
-<p>Every beach also has a code (under Settings → <b>Beach</b>). To invite someone else as a neighbor, put their code in “left” or “right” under <b>Shore</b> and ask; it links when they accept. A new code stops your old one working; neighbors you already have keep you.</p>
-<p>Past your neighbors the shore carries on into everyone else’s beaches: pan along it, or walk it in the chair view. Signed out, the public shore still runs past your beach: the beaches either side show, and you can scroll the whole public shore. You can look at other beaches but only dig your own; when a beach’s owner is on it at the same time, you’ll see their changes appear every few seconds. Tap ☆ on a name tag or the bar at the top to keep a beach in your favorites; “⌂ my beach” takes you home. Visit any beach by its code from Settings → <b>Shore</b>, or share a link to yours — opening it on beechshore.com lets you grab a Postcard, Square, Story, or Clean preview snapshot to post on social media.</p>
+<p>Open Manage → <b>Beaches</b> to arrange your beaches and neighbors. When you own more than one beach, your stretches appear at the top so you can snap your own beaches side by side (or disconnect them) in one tap, with no codes to copy.</p>
+<p>Every beach also has a code (under Manage → <b>Beaches</b>). To invite someone else as a neighbor, put their code in “left” or “right” there and ask; it links when they accept. Requests to be your neighbor arrive in your Inbox, with a dot on the Inbox button. A new code stops your old one working; neighbors you already have keep you.</p>
+<p>Past your neighbors the shore carries on into everyone else’s beaches: pan along it, or walk it in the chair view. Signed out, the public shore still runs past your beach: the beaches either side show, and you can scroll the whole public shore. You can look at other beaches but only dig your own; when a beach’s owner is on it at the same time, you’ll see their changes appear every few seconds. Expand the status pane (⌄, top left) to star a beach (☆), ask to be neighbors when a side is free, or tap “⌂ my beach” to head home; the Inbox’s <b>Starred</b> tab lists your starred beaches, each with a visit button. Visit any beach by its code from the Inbox’s <b>Visit by code</b> tab (your own code is there too, to share), or share a link to yours — opening it on beechshore.com lets you grab a Postcard, Square, Story, or Clean preview snapshot to post on social media.</p>
 
 <h2 id="leaderboard">Leaderboard</h2>
-<p>The trophy button shows the most-starred beaches. <b>All time</b> counts every star a beach has now. <b>Rising</b> counts stars from the past week, and the newest count most (a star’s weight halves every 2 days). Visit or star a beach from its row. Signed in only.</p>
+<p>The Inbox’s <b>Leaderboard</b> tab shows the most-starred beaches. <b>All time</b> counts every star a beach has now. <b>Rising</b> counts stars from the past week, and the newest count most (a star’s weight halves every 2 days). Visit or star a beach from its row. Signed in only.</p>
 
 <h2 id="visitors">Visitors and your inbox</h2>
 <p>A link to a beach opens it straight away, even before you sign in, as long as the beach is on the shore. To leave anything, sign in.</p>
 <h3>Leaving something</h3>
-<p>On someone else’s beach, tap the beach name at the top left, then <b>leave something</b> next to the beach’s name. A card opens where you can leave any of these, all at once:</p>
+<p>On someone else’s beach, open the toolbar, expand the status pane (⌄, top left), then tap <b>leave something</b>. A card opens where you can leave any of these, all at once:</p>
 <ul>
   <li><b>A rating</b>, one to five shells. One rating per beach; you can change it once a day. The card shows a beach’s average once it has ${RATING_SHOWN_AT} ratings. Ratings are separate from stars: a star keeps a beach in your favorites and counts on the leaderboard.</li>
   <li><b>A note</b> of up to ${NOTE_MAX} characters, or one of the quick notes (${QUICK_NOTES.map((q) => `“${esc(q)}”`).join(', ')}). Only the beach’s owner can read it. Notes can’t contain links, usernames, phone numbers or rude words. For your first day only quick notes can be sent. At most ${NOTES_PER_HOUR} notes an hour, and ${NOTES_PER_BEACH_DAY} a day to the same beach.</li>
   <li><b>A gift</b> from your bag: anything you won or bought that you still have. Free things (rocks, driftwood, shells, sea glass, flags) aren’t listed, because everyone has as many as they like. It arrives at once.</li>
 </ul>
 <h3>Your inbox</h3>
-<p>The envelope at the top right is your inbox. A red number says how many things are new. In it: visitors and what they left, gifts, neighbor requests (accept or decline right there), new neighbors, stars and ratings (gathered into one line a day), and friends who joined through your invite. When something arrives while you’re playing, a short line says so. Opening the inbox marks everything in it as seen. It keeps your newest 500 things; things you’ve seen go after 180 days.</p>
+<p>The Inbox is the top button of the toolbar; it opens on the <b>Inbox</b> tab, beside <b>Leaderboard</b>, <b>Starred</b> and <b>Visit by code</b> (signed out, it opens on the leaderboard). A red number says how many things are new. In it: visitors and what they left, gifts, neighbor requests (accept or decline right there), new neighbors, stars and ratings (gathered into one line a day), and friends who joined through your invite. When something arrives while you’re playing, a short line says so. Opening the inbox marks everything in it as seen. It keeps your newest 500 things; things you’ve seen go after 180 days.</p>
 <p>On each line you can <b>say thanks</b> (sends a quick “thank you” note back), <b>visit</b> the sender’s beach, <b>report</b> a note, or <b>block</b> the sender. Someone you block can no longer rate, write to, give to or ask to be next to you, and what they sent disappears from your inbox; they aren’t told. Unblock them from “blocked” at the bottom of the inbox. Reported notes are looked at by the beech team and removed if they break the rules.</p>
 
 <h2 id="beach-guide">Beach guide</h2>
@@ -331,7 +342,7 @@ ${GUIDE_STEPS.map((st) => `<tr><td>${esc(st.title)}</td><td>${esc(st.how)}</td><
 <p>Do the first ${GUIDE_STEPS.length - 1} and you also get ${aName(GUIDE_BONUS)}. Without signing in, the steps that need an account (the machines, visiting, stars and invites) wait, and steps you do before signing in still count, with their gifts, once you sign in.</p>
 
 <h2 id="invites">Invites</h2>
-<p>Settings → <b>Beach</b> → “invite friends” (or the last step of the beach guide) gives you your invite link, to share or copy. A link to your beach (from “share”) works as an invite too.</p>
+<p>Manage → <b>Beaches</b> → “invite friends” (or the last step of the beach guide) gives you your invite link, to share or copy. A link to your beach (from “share”) works as an invite too.</p>
 <p><b>Your friend</b> sees who invited them, lands on your beach, and gets ${aName(WELCOME_GIFT)} as soon as they sign in for the first time, with a button to ask to be your neighbor. Invites are for new players: an account more than ${Math.round(CLAIM_WINDOW_MS / 86400000)} days old can’t use one, and each player can join through one invite only.</p>
 <p><b>You</b> get a gift once your friend has settled in: when they’ve done ${SETTLE_STEPS} steps of the beach guide. The gifts climb:</p>
 <ul>${ladderItems()}</ul>
@@ -341,7 +352,7 @@ ${GUIDE_STEPS.map((st) => `<tr><td>${esc(st.title)}</td><td>${esc(st.how)}</td><
 <p>A checkpoint keeps a beach as it is now — its sand and its things — to come back to later or to put on another of your beaches. Up to ${CHECKPOINTS_PER_BEACH} per beach. Restoring needs your bag to cover the things on it; if it can’t, you can restore without them. The beach as it was is kept as a “before restoring” checkpoint, and Undo brings it back. Other devices showing that beach reload. Once a day, your beach is auto-saved as a checkpoint too, so you can always go back to yesterday’s beach — it sits in the same list, marked “auto-saved daily”. Starting a big clear-out with the bulldozer, flatten or vacuum — or any save that reshapes a tenth of the beach — keeps the beach as it was first, in the same auto slot, so you can always go back to before the big edit.</p>
 
 <h2 id="files">Beach files</h2>
-<p>Settings → <b>Beach</b> → “export beach” saves your beach as a <code>.beach.json</code> file; “import beach” opens one. Before importing you see a preview: a map, the things on it, anything that was fixed while reading, and anything your bag can’t cover (import without them, or get them in the shop). Importing replaces the beach you’re on; when signed in the old one is kept as a “Before import” checkpoint, and Undo brings it back. Without an account, only free things come in.</p>
+<p>Manage → <b>Beaches</b> → “export beach” saves your beach as a <code>.beach.json</code> file; “import beach” opens one. Before importing you see a preview: a map, the things on it, anything that was fixed while reading, and anything your bag can’t cover (import without them, or get them in the shop). Importing replaces the beach you’re on; when signed in the old one is kept as a “Before import” checkpoint, and Undo brings it back. Without an account, only free things come in.</p>
 <p>The file format is documented for anyone who wants to design beaches by hand or with a script.</p>
 
 <h2 id="shop">Shop</h2>
@@ -353,12 +364,12 @@ ${GUIDE_STEPS.map((st) => `<tr><td>${esc(st.title)}</td><td>${esc(st.how)}</td><
 <p>Every item in the game — free things, claw and vending prizes, and shop pieces — is listed on beechshore, with a picture, its size and price, and how to get it: <a href="https://beechshore.com/items">beechshore.com/items</a>. Sign in there to vote for the items you like and leave a comment on any of them.</p>
 
 <h2 id="settings">Settings</h2>
-<p>Open Beach settings for the beach location, light, pictures, smoothing, and beach files. Open Settings for your account, audio, haptics, display, and TV mode.</p>
+<p><b>Manage</b> (the gear in the toolbar) has four tabs.</p>
 <ul>
-  <li><b>Beach</b>: choose which of your beaches to configure, its real-world <b>place</b> (“near me” uses your location once), code and share links, <b>save a picture</b>, <b>smooth the beach</b> when it’s in view, <b>export</b> / <b>import</b>, and <b>checkpoints</b>.</li>
-  <li><b>Shore</b>: snap your own beaches side by side in one tap, manage left/right neighbors and requests, visit by code, and open favorite beaches.</li>
-  <li><b>Display</b>: <b>sound, music, haptics</b>, <b>battery saver</b> (draws every other frame), <b>ambient (for a TV)</b>, <b>light</b>, <b>detail</b> (takes effect next start), <b>watch on TV</b>, and <b>full screen</b>.</li>
-  <li><b>Account</b>: sign in or out, save status, link another device, and delete account.</li>
+  <li><b>Beaches</b>: choose which of your beaches to configure, its real-world <b>place</b> (“near me” uses your location once), code and share links, <b>save a picture</b>, <b>smooth the beach</b> when it’s in view, <b>export</b> / <b>import</b>, snapping your own beaches side by side, and your left/right neighbors.</li>
+  <li><b>Checkpoints</b>: save, restore, export and import checkpoints.</li>
+  <li><b>Settings</b>: your account (sign in or out, save status, link another device, delete account), <b>waves</b> (calm, gentle, lively — the beach’s own swell — or surf), <b>sound, music, haptics</b>, <b>battery saver</b> (draws every other frame), <b>ambient (for a TV)</b>, <b>light</b>, <b>detail</b> (takes effect next start), <b>watch on TV</b>, and <b>full screen</b>.</li>
+  <li><b>Help</b>: what each toolbar button does, and a link to this guide.</li>
 </ul>
 
 <h2 id="limits">Limits</h2>

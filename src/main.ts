@@ -30,7 +30,8 @@ import { MAX_OBJECTS, decodeSand, encodeSand, fitWorld, resampleField } from './
 import type { UndoHistory } from './sim/undoStack';
 import { restHeight } from './sim/profile';
 import { Ambient, toggleFullscreen } from './ui/ambient';
-import { Hud, icon, type ToolDef } from './ui/hud';
+import { Hud, icon, type DirtDef } from './ui/hud';
+import { SocialHub, StarredDialog, VisitDialog } from './ui/socialHub';
 import { SettingsSheet, StartScreen, showActionToast, showChoiceToast, showToast } from './ui/overlays';
 import { awayText } from './ui/away';
 import { CheckpointsSection } from './ui/checkpoints';
@@ -41,7 +42,7 @@ import { Shop } from './ui/shop';
 import { ShopApi, webOrderFromUrl, withoutWebOrderParams } from './net/shop';
 import { VendingMachine } from './ui/vendingMachine';
 import { DEFAULT_SIZE, ITEMS, rollPlacement, type Item } from './world/items';
-import { ACCOUNTS_ENABLED, Account, AnimalsApi, ApiError, CheckpointApi, DigFindApi, GiftApi, GuideApi, InboxApi, PullApi, ReferralApi } from './net/account';
+import { ACCOUNTS_ENABLED, Account, AnimalsApi, ApiError, CheckpointApi, DigFindApi, GiftApi, GuideApi, InboxApi, PullApi, ReferralApi, type ShoreBeach } from './net/account';
 import type { InboxPanel } from './ui/inbox';
 import type { VisitorCard } from './ui/visitorCard';
 import type { IconName } from './ui/hud';
@@ -50,14 +51,14 @@ import { shareLink } from './ui/shareSheet';
 import { BeachGuide, type GuideHost } from './ui/guide';
 import type { InvitePanel } from './ui/invite';
 import { extraById, itemById, prizeName } from './world/items';
-import { BeachSync, countItems } from './net/beachSync';
+import { BeachSync, countItems, type SyncState } from './net/beachSync';
 import { BeachStore, LOCAL_BEACH, type BeachRef } from './net/beachStore';
 import { beachBackend } from './net/storeBackends';
 import { snapshotBeforeBigEdit } from './net/bigEditSnapshot';
 import { AccountPanel } from './ui/accountPanel';
 import { Leaderboard } from './ui/leaderboard';
 import { NeighborView } from './render/neighbors';
-import { loadSettings, saveSettings, type Settings } from './ui/settingsStore';
+import { loadSettings, saveSettings, type Settings, type WaveStrength } from './ui/settingsStore';
 import { initTelemetry, reportError, reportEvent } from './net/telemetry';
 import { LocalCheckpointsSection } from './ui/localCheckpoints';
 import { watchForNewVersion } from './platform/version';
@@ -219,6 +220,10 @@ async function boot() {
   let vendingMachine: VendingMachine | null = null;
   let invitePanel: InvitePanel | null = null;
   let inboxUi: InboxPanel | null = null;
+  let socialHub: SocialHub | null = null;
+  /** neighbor requests waiting: a dot on the Inbox button */
+  let neighborAsks = 0;
+  const syncAskBadge = () => inboxUi?.button.classList.toggle('badge', neighborAsks > 0);
   let visitorUi: VisitorCard | null = null;
   // your sand, else a neighbor's, else the untouched shore (the chair can walk along all of it)
   cam.groundHeight = (x, z) => {
@@ -293,7 +298,7 @@ async function boot() {
     t: 0,
     eta: 0,
     tide: 0,
-    calmMix: 0,
+    waveMul: 1,
     undoCount: 0,
     redoCount: 0,
     digIntensity: 0,
@@ -684,17 +689,10 @@ async function boot() {
 
   const hud = new Hud(uiRoot, { undo, redo });
 
-  let calm = false;
-  const calmBtn = hud.button('wave', 'Calm the waves');
-  calmBtn.addEventListener('click', () => {
-    calm = !calm;
-    calmBtn.classList.toggle('active', calm);
-    hud.setIcon(calmBtn, calm ? 'calm' : 'wave');
-    calmBtn.setAttribute('aria-label', calm ? 'Let the waves back in' : 'Calm the waves');
-    calmBtn.title = calmBtn.getAttribute('aria-label')!;
-    send({ type: 'flags', flags: { calm } });
-    haptics.impact('light');
-  });
+  // wave strength (Manage → Settings): calm · gentle · lively · surf
+  const waveStrength = (): WaveStrength => settings.waves ?? 'lively';
+  const sendWaves = () => send({ type: 'flags', flags: { waveLevel: WAVES.levels[waveStrength()] } });
+  sendWaves();
 
   const share = async () => {
     scene.render();
@@ -766,6 +764,10 @@ async function boot() {
         if (key === 'music') audio.setMusic(s.music);
         if (key === 'haptics') haptics.enabled = s.haptics;
         if (key === 'ambient') ambient.setEnabled(s.ambient);
+        if (key === 'waves') {
+          sendWaves();
+          updatePlace(true);
+        }
       },
       smooth: () => smoothSelectedBeach(),
       smoothTarget: () => settingsBeachId(),
@@ -789,118 +791,143 @@ async function boot() {
   );
   sheet.setSettings({ ...settings, beach: beach.id });
 
-  // place + time + tide, top left — the header for the beach you're
-  // looking at. On your own beach, tapping it opens the Beach settings
-  // tab; while you're away from home, it opens the beach info (their
-  // name card, the way home) tucked underneath it, collapsed until you
-  // tap. The settings button opens the picker either way.
+  // the status pane, top left (shown with the rail): whose beach this is
+  // and the weather by default; ⌄ adds the game status and actions while
+  // you're away; × tucks it away to an i.
   const placeWrap = document.createElement('div');
-  placeWrap.className = 'place-wrap';
-  const place = document.createElement('button');
-  place.type = 'button';
-  place.className = 'place';
-  place.setAttribute('aria-label', 'Choose a beach');
-  place.setAttribute('aria-expanded', 'false');
-  placeWrap.appendChild(place);
-  const infoSlot = document.createElement('div');
-  infoSlot.className = 'place-info';
-  placeWrap.appendChild(infoSlot);
+  placeWrap.className = 'place-wrap status-pane';
+  placeWrap.innerHTML = `
+    <div class="sp-card">
+      <div class="sp-head">
+        <button type="button" class="place" aria-expanded="false" aria-controls="sp-more"></button>
+        <button type="button" class="sp-btn sp-toggle" aria-controls="sp-more">${icon('down')}</button>
+        <button type="button" class="sp-btn sp-close" aria-label="Close the status pane" title="Close the status pane">${icon('close')}</button>
+      </div>
+      <div class="sp-more" id="sp-more">
+        <p class="sp-detail"></p>
+        <div class="sp-chips"></div>
+      </div>
+    </div>
+    <button type="button" class="sp-open" aria-label="Show the status pane" title="Show the status pane"><i>i</i></button>`;
+  const place = placeWrap.querySelector<HTMLButtonElement>('.place')!;
+  const spToggle = placeWrap.querySelector<HTMLButtonElement>('.sp-toggle')!;
+  const spMore = placeWrap.querySelector<HTMLElement>('.sp-more')!;
+  const spDetail = placeWrap.querySelector<HTMLElement>('.sp-detail')!;
+  const spChips = placeWrap.querySelector<HTMLElement>('.sp-chips')!;
   uiRoot.appendChild(placeWrap);
-  place.addEventListener('click', () => {
-    if (neighbors && (neighbors.viewing || neighbors.away)) neighbors.toggleInfo();
-    else sheet.show('beach');
-  });
+  type PaneState = 'default' | 'expanded' | 'closed';
+  let paneState: PaneState = settings.statusPane ?? 'default';
+  const setPane = (state: PaneState) => {
+    paneState = state;
+    placeWrap.dataset.state = state;
+    const expanded = state === 'expanded';
+    place.setAttribute('aria-expanded', String(expanded));
+    spToggle.setAttribute('aria-expanded', String(expanded));
+    spToggle.innerHTML = icon(expanded ? 'up' : 'down');
+    const label = expanded ? 'Show less' : 'Show more';
+    spToggle.setAttribute('aria-label', label);
+    spToggle.title = label;
+    place.setAttribute('aria-label', `${label}: beach status`);
+    if (settings.statusPane !== state) {
+      settings = { ...settings, statusPane: state };
+      saveSettings(settings);
+    }
+    updatePlace(true);
+  };
+  /** Tried to dig on someone else's beach: expand the pane (holds the way home) and pulse the header. */
+  const nudgePane = () => {
+    setPane('expanded');
+    place.classList.remove('nudge');
+    void place.offsetWidth;
+    place.classList.add('nudge');
+  };
+  place.addEventListener('click', () => setPane(paneState === 'expanded' ? 'default' : 'expanded'));
+  spToggle.addEventListener('click', () => setPane(paneState === 'expanded' ? 'default' : 'expanded'));
+  placeWrap.querySelector('.sp-close')!.addEventListener('click', () => setPane('closed'));
+  placeWrap.querySelector('.sp-open')!.addEventListener('click', () => setPane('default'));
+  /** whose beach is under the view: filled in by the account layer (null: yours) */
+  let paneOwner: () => { title: string; away: boolean } = () => ({ title: `Your beach · ${beach.name}`, away: false });
+  /** extra status chips (saved, visiting…): filled in by the account layer */
+  let paneChips: () => string[] = () => [];
+  const SKY: [number, string][] = [
+    [-6, '☾'],
+    [6, '◒'],
+    [Infinity, '☀'],
+  ];
+  const swellWord = () => {
+    const w = liveState.waves * WAVES.levels[waveStrength()];
+    return w < 0.45 ? 'calm sea' : w < 0.85 ? 'gentle swell' : w < 1.15 ? 'lively swell' : 'big surf';
+  };
   let placeText = '';
   let placeAt = 0;
+  const esc = (t: string) => t.replace(/[&<>"]/g, (c) => `&${({ '&': 'amp', '<': 'lt', '>': 'gt', '"': 'quot' } as Record<string, string>)[c]};`);
   const updatePlace = (force = false) => {
     const t = performance.now();
     if (!force && t - placeAt < 1000) return;
     placeAt = t;
-    const text = `<b>${beach.name}, ${beach.place}</b><span>${live.describe(liveState)}</span>`;
-    if (text !== placeText) {
-      placeText = text;
+    const owner = paneOwner();
+    const sun = liveState.sky.sun.elevation;
+    const glyph = SKY.find(([e]) => sun < e)![1];
+    const text = `<b>${esc(owner.title)}</b><span>${glyph} ${liveState.localTime} · ${swellWord()}</span>`;
+    const detail = live.describe(liveState).split(' · ').slice(1).join(' · ');
+    const chips = [`wave · ${waveStrength()}`, ...paneChips()];
+    const key = text + detail + chips.join('|') + owner.away;
+    if (key !== placeText) {
+      placeText = key;
       place.innerHTML = text;
+      spDetail.textContent = detail;
+      spChips.innerHTML = chips.map((c) => `<span>${esc(c)}</span>`).join('');
+      placeWrap.classList.toggle('away', owner.away);
     }
   };
   updatePlace(true);
-  // the look tool (the default) only moves the view: pan, zoom, tilt, turn.
-  // sand is one top-level tool with three modes: dig (shovel), build up (dune),
-  // or blend (rake). clearing is one top-level tool with three modes: bulldozer
-  // (flatten + scoop up items), flatten the sand, or vacuum items up.
-  const SAND_MODE_DEFS: { id: SandMode; icon: 'dig' | 'build' | 'smooth'; label: string }[] = [
+  setPane(paneState);
+  // the look tool (the hand, the default) only moves the view: pan, zoom,
+  // tilt, turn. All dirt work is one rail button (the bulldozer) with a
+  // flyout: dig, build up, smooth (the sand modes), flatten, vacuum,
+  // bulldozer (the clearing modes), and the two sandcastle molds.
+  const DIRT: DirtDef[] = [
     { id: 'dig', icon: 'dig', label: 'Dig' },
-    { id: 'pile', icon: 'build', label: 'Build up sand' },
-    { id: 'smooth', icon: 'smooth', label: 'Blend sand' },
-  ];
-  const CLEARING_MODE_DEFS: { id: ClearingMode; icon: 'dozer' | 'blade' | 'vacuum'; label: string }[] = [
-    { id: 'dozer', icon: 'dozer', label: 'Bulldozer: flatten and scoop up items' },
-    { id: 'flatten', icon: 'blade', label: 'Flatten the sand back to the beach' },
-    { id: 'vacuum', icon: 'vacuum', label: 'Vacuum: pick items up' },
-  ];
-  const TOOLS: ToolDef[] = [
-    { id: 'look', icon: 'hand', label: 'Look around' },
-    { id: 'sand', icon: 'dig', label: 'Sand', modes: SAND_MODE_DEFS },
-    { id: 'clearing', icon: 'dozer', label: 'Clearing', modes: CLEARING_MODE_DEFS },
-    { id: 'castle', icon: 'sandcastle', label: 'Sandcastles', modes: [
-      { id: 'round', icon: 'castleRound', label: 'Cylinder sandcastle' },
-      { id: 'square', icon: 'castleSquare', label: 'Square sandcastle' },
-    ] },
+    { id: 'pile', icon: 'build', label: 'Build up' },
+    { id: 'smooth', icon: 'smooth', label: 'Smooth' },
+    { id: 'flatten', icon: 'blade', label: 'Flatten' },
+    { id: 'vacuum', icon: 'vacuum', label: 'Vacuum cleaner' },
+    { id: 'dozer', icon: 'dozer', label: 'Bulldozer' },
+    { id: 'round', icon: 'castleRound', label: 'Round sandcastle', sep: true },
+    { id: 'square', icon: 'castleSquare', label: 'Square sandcastle' },
   ];
   /** number keys 1-5: look, dig, build, blend, bulldozer */
-  const KEY_TOOLS = ['look', 'dig', 'pile', 'smooth', 'clearing'] as const;
+  const KEY_TOOLS = ['look', 'dig', 'pile', 'smooth', 'dozer'] as const;
   let tool = 'look';
   let sandMode: SandMode = 'dig';
   let clearingMode: ClearingMode = 'dozer';
   let castleShape: CastleShape = 'round';
-  let collapsed = false;
-  /** highlight the active tool (and, for grouped tools, the active sub-mode) */
+  /** the dirt tool the Dirt button picks up again */
+  let lastDirt = 'dig';
+  /** Minimal: the rail is closed, only the palm shows (and the view only moves) */
+  let collapsed = true;
+  /** highlight the active tool: the hand, the bag (an item in hand), or a dirt tool */
   const syncToolUI = () =>
-    hud.setTool(placing ? 'place' : tool,
-      tool === 'sand' ? sandMode : tool === 'clearing' ? clearingMode : tool === 'castle' ? castleShape : undefined);
-  const syncMoveButton = () => {
-    const button = hud.rightGroup.querySelector<HTMLButtonElement>('[data-tool="look"]');
-    button?.setAttribute('aria-pressed', String(!placing && tool === 'look'));
-    button?.classList.toggle('active', !placing && tool === 'look');
-  };
+    hud.setTool(placing ? 'place' : tool === 'sand' ? sandMode : tool === 'clearing' ? clearingMode : tool === 'castle' ? castleShape : tool);
   const syncLookOnly = () => {
     gestures.lookOnly = collapsed || (!placing && tool === 'look');
-    syncMoveButton();
-  };
-  const setSandMode = (mode: SandMode) => {
-    tool = 'sand';
-    sandMode = mode;
-    brushMode = mode;
-    placing = null;
-    inventory.deselect();
-    placeBar.show(null, DEFAULT_SIZE);
-    syncLookOnly();
-    syncToolUI();
-    haptics.impact('light');
-  };
-  const setClearingMode = (mode: ClearingMode) => {
-    tool = 'clearing';
-    clearingMode = mode;
-    brushMode = mode;
-    placing = null;
-    inventory.deselect();
-    placeBar.show(null, DEFAULT_SIZE);
-    syncLookOnly();
-    syncToolUI();
-    haptics.impact('light');
   };
   const pickTool = (id: string) => {
     if (isSandMode(id)) {
-      setSandMode(id);
-      return;
+      tool = 'sand';
+      sandMode = id;
+      brushMode = id;
+    } else if (isClearingMode(id)) {
+      tool = 'clearing';
+      clearingMode = id;
+      brushMode = id;
+    } else if (id === 'round' || id === 'square') {
+      tool = 'castle';
+      castleShape = id;
+    } else {
+      tool = 'look';
     }
-    if (isClearingMode(id)) {
-      setClearingMode(id);
-      return;
-    }
-    if (id === 'round' || id === 'square') castleShape = id;
-    tool = id === 'round' || id === 'square' ? 'castle' : id;
-    if (id === 'sand') brushMode = sandMode;
-    else if (id === 'clearing') brushMode = clearingMode;
+    if (tool !== 'look') lastDirt = id;
     placing = null;
     inventory.deselect();
     placeBar.show(null, DEFAULT_SIZE);
@@ -908,10 +935,13 @@ async function boot() {
     syncToolUI();
     haptics.impact('light');
   };
-  /** one callback for tool buttons and sub-mode buttons */
-  const pick = (id: string) => pickTool(id);
-  hud.setTools(TOOLS, tool, pick);
-  syncToolUI();
+  hud.setDirt(DIRT, pickTool);
+  // the Dirt button picks up the dirt tool you used last; its flyout stays
+  // open while a dirt tool is in use (the hand puts them away)
+  hud.dirtBtn.addEventListener('click', () => pickTool(lastDirt));
+  const moveBtn = hud.button('hand', 'Hand: look around', 'hud-btn hud-tool');
+  moveBtn.dataset.tool = 'look';
+  moveBtn.addEventListener('click', () => pickTool('look'));
 
   // the bag: rocks and driftwood (free, unlimited) for now
   const inventory = new InventoryTray((n, l, c) => hud.button(n, l, c), hud.root, ITEMS, (item) => {
@@ -1014,121 +1044,88 @@ async function boot() {
     haptics.impact(placing.kind === 'rock' ? 'medium' : 'light');
   };
 
-  const menuBtn = hud.button('menu', 'Settings');
-  const helpBtn = hud.button('help', 'Help');
-  const beachBtn = hud.button('palmtree', 'Beach settings', 'hud-btn hud-big');
-  const editBtn = hud.button('edit', 'Edit');
-  editBtn.dataset.act = 'edit-menu';
-  const shopBtn = hud.button('bag', 'Shop');
-  shopBtn.dataset.act = 'shop-menu';
-  const moveBtn = hud.toolGroup.querySelector<HTMLButtonElement>('[data-tool="look"]')!;
-  moveBtn.removeAttribute('role');
-  moveBtn.removeAttribute('aria-checked');
-  hud.topGroup.append(menuBtn, helpBtn);
+  // the rail, top to bottom: inbox (added once signed-in builds load it),
+  // hand, dirt · bag, store · view, manage — then undo, then the palm
+  hud.group(0).append(moveBtn, hud.dirtBtn);
+  hud.group(1).append(inventory.button);
+  const storeBtn = hud.button('store', 'Store', 'hud-btn hud-tool');
+  storeBtn.dataset.act = 'store';
+  if (ACCOUNTS_ENABLED) hud.group(1).append(storeBtn);
+  const viewBtn = hud.button('chair', 'View', 'hud-btn hud-tool');
+  viewBtn.dataset.act = 'view';
+  const viewLabel = document.createElement('span');
+  viewLabel.className = 'hud-view-label';
+  viewLabel.setAttribute('role', 'status');
+  const menuBtn = hud.button('menu', 'Manage', 'hud-btn hud-tool');
+  menuBtn.dataset.act = 'manage';
+  hud.group(2).append(viewBtn, menuBtn);
+  hud.rail.appendChild(viewLabel);
   menuBtn.addEventListener('click', () => sheet.toggleOpen());
-  helpBtn.addEventListener('click', () => sheet.show('help'));
-  beachBtn.addEventListener('click', () => sheet.show('beach'));
-
-  const profile = document.createElement('div');
-  profile.className = 'hud-profile';
-  profile.innerHTML = icon('profile') + '<span>Guest</span>';
-  hud.root.appendChild(profile);
-
-  const editPanel = document.createElement('div');
-  editPanel.className = 'hud-popup hud-edit';
-  editPanel.setAttribute('role', 'group');
-  editPanel.setAttribute('aria-label', 'Edit tools');
-  editPanel.append(hud.toolGroup, inventory.button, calmBtn);
-  const shopPanel = document.createElement('div');
-  shopPanel.className = 'hud-popup hud-shop';
-  shopPanel.setAttribute('role', 'group');
-  shopPanel.setAttribute('aria-label', 'Shop options');
-  hud.root.append(editPanel, shopPanel);
-
-  const attachPopup = (button: HTMLButtonElement, popup: HTMLElement) => {
-    const setOpen = (on: boolean) => {
-      popup.hidden = !on;
-      button.setAttribute('aria-expanded', String(on));
-    };
-    popup.id = button.dataset.act + '-panel';
-    button.setAttribute('aria-controls', popup.id);
-    setOpen(false);
-    button.addEventListener('click', () => {
-      const on = popup.hidden;
-      setOpen(on);
-      if (on) popup.querySelector('button')?.focus({ preventScroll: true });
-    });
-    window.addEventListener('pointerdown', (event) => {
-      if (!popup.hidden && event.target instanceof Node && !popup.contains(event.target) && !button.contains(event.target)) setOpen(false);
-    });
-    window.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape' && !popup.hidden) {
-        setOpen(false);
-        button.focus();
-      }
-    });
-    return setOpen;
-  };
-  const showEdit = attachPopup(editBtn, editPanel);
-  const showShop = attachPopup(shopBtn, shopPanel);
-  inventory.button.addEventListener('click', () => {
-    if (inventory.isOpen) showEdit(false);
-  });
 
   // ambient / TV: controls fade when idle, screen stays awake
   const tv = params.has('tv');
   const ambient = new Ambient();
   ambient.setEnabled(settings.ambient || tv);
 
-  // diorama <-> chair (sitting on the sand, looking out to sea)
-  const viewBtn = hud.button('chair', 'Sit on the beach');
-  hud.rightGroup.append(editBtn);
-  if (ACCOUNTS_ENABLED) hud.rightGroup.append(shopBtn);
-  hud.rightGroup.append(viewBtn, moveBtn, beachBtn);
-  // Undo stays in the right group, always visible: the Edit popup closes on
-  // any outside pointerdown, so Undo would vanish after digging on touch.
-  hud.rightGroup.append(hud.undoBtn);
-  syncMoveButton();
-  viewBtn.addEventListener('click', () => cam.toggleMode());
+  // the view cycles: chair → isometric → reverse isometric (looking back at
+  // the beach from the sea) → chair. A label beside the button names it.
+  type ViewName = 'chair' | 'iso' | 'reverse';
+  const VIEW_NAMES: Record<ViewName, string> = { chair: 'Chair', iso: 'Isometric', reverse: 'Reverse isometric' };
+  const VIEW_ICONS: Record<ViewName, IconName> = { chair: 'chair', iso: 'diorama', reverse: 'reverse' };
+  const currentView = (): ViewName => (cam.mode === 'chair' ? 'chair' : cam.reversed ? 'reverse' : 'iso');
+  let viewLabelTimer = 0;
+  const syncViewButton = (announce: boolean) => {
+    const v = currentView();
+    hud.setIcon(viewBtn, VIEW_ICONS[v]);
+    hud.setLabel(viewBtn, `View: ${VIEW_NAMES[v]}`);
+    if (!announce) return;
+    viewLabel.textContent = VIEW_NAMES[v];
+    viewLabel.classList.add('shown');
+    window.clearTimeout(viewLabelTimer);
+    viewLabelTimer = window.setTimeout(() => viewLabel.classList.remove('shown'), 1800);
+  };
+  const cycleView = () => {
+    const v = currentView();
+    if (v === 'chair') {
+      cam.setMode('diorama');
+      cam.faceShore(false);
+    } else if (v === 'iso') {
+      cam.faceShore(true);
+    } else {
+      cam.setMode('chair');
+    }
+    syncViewButton(true);
+    haptics.impact('light');
+  };
+  viewBtn.addEventListener('click', cycleView);
+  syncViewButton(false);
 
-  // collapse all toolbars for distraction-free panning around the beach
-  const collapseBtn = hud.button('eye', 'Hide toolbars', 'hud-btn hud-collapse');
-  collapseBtn.setAttribute('aria-pressed', 'false');
-  collapseBtn.classList.add('hud-corner');
-  hud.root.appendChild(collapseBtn);
+  // Minimal (the default): only the palm. Tapping it opens the rail, with
+  // the hand picked every time; the palm turns into a × that closes it all.
   const setCollapsed = (on: boolean) => {
     if (collapsed === on) return;
     collapsed = on;
     uiRoot.classList.toggle('ui-collapsed', on);
     hud.root.classList.toggle('collapsed', on);
-    hud.setIcon(collapseBtn, on ? 'eyeOff' : 'eye');
-    const label = on ? 'Show toolbars' : 'Hide toolbars';
-    collapseBtn.setAttribute('aria-label', label);
-    collapseBtn.title = label;
-    collapseBtn.setAttribute('aria-pressed', String(on));
+    hud.setOpen(!on);
     if (on) {
       inventory.setOpen(false);
-      showEdit(false);
-      showShop(false);
       sheet.hide();
-      if (placing) {
-        placing = null;
-        inventory.deselect();
-        placeBar.show(null, DEFAULT_SIZE);
-        syncToolUI();
-      }
     }
-    syncLookOnly();
-    haptics.impact('light');
+    // closing puts the item in hand away; opening always starts on the hand
+    pickTool('look');
   };
-  collapseBtn.addEventListener('click', () => setCollapsed(!collapsed));
+  hud.palmBtn.addEventListener('click', () => setCollapsed(!collapsed));
+  uiRoot.classList.add('ui-collapsed');
+  hud.root.classList.add('collapsed');
+  hud.setOpen(false);
 
   // the beach guide (docs/INVITES_GUIDE.md): teaches each mechanic once.
   // Its host is filled in by the account layer below (the sandbox keeps the defaults).
   const guideHost: GuideHost = {
     accounts: ACCOUNTS_ENABLED,
     signedIn: () => false,
-    signIn: () => sheet.show(),
+    signIn: () => sheet.show('account'),
     load: async () => [],
     complete: async () => {
       throw new Error('sign in first');
@@ -1146,19 +1143,21 @@ async function boot() {
   helpActions.append(guide.button, guideLink);
   guide.button.addEventListener('click', () => sheet.hide());
 
-  // the shore bar: who you're visiting, and the way home — stacked under
-  // the header, not floating at the top right
+  // the shore bar: actions for the beach you're looking at when away from
+  // home (leave something, ask to be neighbors, feed pet, star, way home)
   const shoreBar = document.createElement('div');
   shoreBar.className = 'shore-bar';
-  shoreBar.innerHTML = `<span class="sb-where"></span><button type="button" class="sb-pet" hidden>Feed pet</button><button type="button" class="sb-fav"></button><button type="button" class="sb-home" data-act="home">⌂ <span>my beach</span></button>`;
-  // the shore bar stacks under the header, not floating at the top right:
-  // move it into the header cluster, above the info card (it stays hidden
-  // until you're away from home)
-  placeWrap.insertBefore(shoreBar, infoSlot);
+  shoreBar.innerHTML = `<span class="sb-where"></span><button type="button" class="sb-leave" hidden>leave something</button><button type="button" class="sb-ask" hidden>ask to be neighbors</button><button type="button" class="sb-pet" hidden>Feed pet</button><button type="button" class="sb-fav"></button><button type="button" class="sb-home" data-act="home">⌂ <span>my beach</span></button>`;
+  spMore.appendChild(shoreBar);
   const sbWhere = shoreBar.querySelector<HTMLElement>('.sb-where')!;
+  const sbLeave = shoreBar.querySelector<HTMLButtonElement>('.sb-leave')!;
+  const sbAsk = shoreBar.querySelector<HTMLButtonElement>('.sb-ask')!;
   const sbPet = shoreBar.querySelector<HTMLButtonElement>('.sb-pet')!;
   const sbFav = shoreBar.querySelector<HTMLButtonElement>('.sb-fav')!;
   let shoreKey = '';
+  /** opens the visitor card for another beach (filled in once the account layer loads) */
+  let leaveBeach: ((b: ShoreBeach) => void) | null = null;
+  let askingCode: string | null = null;
   const visitedPetCache = new Map<string, { name: string } | null>();
   /** the beach under the view, along the shore (null: one of your own) */
   const beachHere = () => {
@@ -1176,8 +1175,36 @@ async function boot() {
     haptics.impact('light');
   };
   shoreBar.querySelector('.sb-home')!.addEventListener('click', () => void goHome());
+  sbLeave.addEventListener('click', () => {
+    const b = beachHere();
+    if (b) leaveBeach?.(b);
+  });
+  sbAsk.addEventListener('click', () => {
+    if (!neighbors) return;
+    const idx = neighbors.nearestIndex(cam.focusX);
+    const b = neighbors.beachAt(idx);
+    if (!b || !neighbors.askSideAt(idx)) return;
+    askingCode = b.code;
+    sbAsk.disabled = true;
+    void neighbors
+      .askAt(idx)
+      .then((status) => {
+        if (status) {
+          sbAsk.textContent = status === 'linked' ? 'neighbors now' : 'asked ✓';
+          showToast(uiRoot, status === 'linked' ? `You and ${b.name || 'them'} are neighbors now` : `Asked ${b.name || 'them'} to be neighbors`);
+        }
+      })
+      .catch((err: unknown) => {
+        sbAsk.disabled = false;
+        showToast(uiRoot, err instanceof Error ? err.message : 'Could not ask');
+      })
+      .finally(() => {
+        askingCode = null;
+        shoreKey = '';
+      });
+  });
   sbFav.addEventListener('click', () => {
-    if (ACCOUNTS_ENABLED && !account?.user) return sheet.show(); // stars need an account
+    if (ACCOUNTS_ENABLED && !account?.user) return sheet.show('account'); // stars need an account
     const b = beachHere();
     if (b && neighbors) void neighbors.toggleFavorite(b).catch(() => {});
   });
@@ -1200,30 +1227,33 @@ async function boot() {
       });
   });
   const updateShoreBar = () => {
-    // away is the NeighborView's call (past the seam to another beach),
-    // not a focus threshold here — the two must agree, or the header says
-    // "choose a beach" while the name tags have already moved into it
     const away = !!neighbors && neighbors.away;
-    const b = away ? beachHere() : null;
+    const idx = neighbors ? neighbors.nearestIndex(cam.focusX) : 0;
+    const here = beachHere();
+    const b = away ? here : null;
     const fav = !!b && !!neighbors?.favorites.has(b.code);
     const signedIn = !!account?.user;
-    // away from home the shore bar shows, stacked under the header: the
-    // beach info lives there too, in the card under it
-    const viewing = !!neighbors && neighbors.viewing;
-    const key = `${away}|${b?.code}|${b?.name}|${fav}|${!!neighbors?.visiting}|${signedIn}|${viewing}`;
+    const isMine = !!b && (!!neighbors?.ownedBeach(b) || b.code === neighbors?.state?.code);
+    const canLeave = !!b && !!leaveBeach && !isMine;
+    const askSide = b && neighbors ? neighbors.askSideAt(idx) : null;
+    const key = `${away}|${here?.code}|${here?.name}|${fav}|${!!neighbors?.visiting}|${signedIn}|${canLeave}|${askSide}|${askingCode === b?.code}`;
     if (key === shoreKey) return;
     shoreKey = key;
     shoreBar.classList.toggle('shown', away);
-    // the header is the info toggle while you're away from home: say so,
-    // and start closed
-    const info = viewing || (neighbors?.away ?? false);
-    placeWrap.classList.toggle('info', info);
-    place.setAttribute('aria-label', info ? 'Beach info' : 'Choose a beach');
-    place.title = info ? 'Beach info' : 'Choose a beach';
     if (b) guide.mark('visit');
     guide.render();
     const placeBeach = b?.location ? beachById(b.location) : undefined;
     sbWhere.textContent = b ? `${neighbors?.visiting ? 'Visiting ' : ''}${b.name || 'a beach'}${placeBeach ? ` · ${placeBeach.name}` : ''}` : 'Down the shore';
+    updatePlace(true);
+    sbLeave.hidden = !canLeave;
+    if (b) sbLeave.dataset.act = `leave-${b.code}`;
+    else delete sbLeave.dataset.act;
+    sbAsk.hidden = !askSide;
+    if (askSide && askingCode !== b?.code) {
+      sbAsk.textContent = 'ask to be neighbors';
+      sbAsk.disabled = false;
+      sbAsk.title = `Ask ${b?.name || 'them'} to move in on your ${askSide}`;
+    }
     sbFav.hidden = !b || !signedIn || !!neighbors?.ownedBeach(b);
     sbFav.textContent = fav ? '★' : '☆';
     sbFav.classList.toggle('on', fav);
@@ -1250,6 +1280,26 @@ async function boot() {
           .catch(() => {});
       }
     }
+  };
+
+  // the status pane's first line: whose beach is under the view
+  paneOwner = () => {
+    const away = !!neighbors && neighbors.away;
+    const here = neighbors?.beachAt(neighbors.nearestIndex(cam.focusX));
+    if (away && here) {
+      const loc = here.location ? beachById(here.location) : undefined;
+      const whose = here.beachName || `${here.name || 'Someone'}’s beach`;
+      return { title: `${whose}${loc ? ` · ${loc.name}` : ''}`, away: true };
+    }
+    if (away) return { title: 'Down the shore', away: true };
+    const own = here ? neighbors?.ownedBeach(here) : undefined;
+    if (own) {
+      const locId = own.location || here?.location;
+      const loc = locId ? beachById(locId) : undefined;
+      return { title: `${own.name || 'Your beach'}${loc ? ` · ${loc.name}` : ''}`, away: false };
+    }
+    const mine = account?.mine(sync.id)?.name;
+    return { title: `${mine || 'Your beach'} · ${beach.name}`, away: false };
   };
 
   // chair: hold ‹ or › to walk the chair along the beach (and over to the neighbors)
@@ -1281,9 +1331,7 @@ async function boot() {
     horizon.setEnabled(chair);
     walkGroup.classList.toggle('shown', chair);
     hud.root.classList.toggle('chair', chair);
-    hud.setIcon(viewBtn, chair ? 'diorama' : 'chair');
-    viewBtn.setAttribute('aria-label', chair ? 'Back to the diorama' : 'Sit on the beach');
-    viewBtn.title = viewBtn.getAttribute('aria-label')!;
+    syncViewButton(false);
     haptics.impact('light');
   });
 
@@ -1298,7 +1346,7 @@ async function boot() {
       if (cam.animating) return;
       const hit = pickAt(sx, sy);
       if (!hit) {
-        if (neighbors && neighbors.viewing) neighbors.nudgeInfo();
+        if (neighbors && neighbors.viewing) nudgePane();
         return;
       }
       if (fenced) {
@@ -1465,12 +1513,13 @@ async function boot() {
     },
     undo,
     redo,
-    tool: (i) => KEY_TOOLS[i] && pickTool(KEY_TOOLS[i]),
-    view: () => cam.toggleMode(),
-    toggleCollapse: () => setCollapsed(!collapsed),
-    exitCollapse: () => {
+    tool: (i) => {
+      if (!KEY_TOOLS[i]) return;
       if (collapsed) setCollapsed(false);
+      pickTool(KEY_TOOLS[i]);
     },
+    view: () => cycleView(),
+    toggleCollapse: () => setCollapsed(!collapsed),
     interacted: () => {
       // any input (including when there is no start screen) unlocks audio
       if (!start?.visible) audio.start();
@@ -1520,11 +1569,13 @@ async function boot() {
       // Derive the index from the current tool on each press: the mouse /
       // touch UI can change it, so a stored index would drift and LB/RB
       // would jump to the wrong tool.
-      const current = Math.max(0, TOOLS.findIndex((t) => t.id === tool));
-      const next = (current + delta + TOOLS.length) % TOOLS.length;
-      if (TOOLS[next]) pickTool(TOOLS[next].id);
+      if (collapsed) setCollapsed(false);
+      const ids = ['look', ...DIRT.map((d) => d.id)];
+      const now = tool === 'sand' ? sandMode : tool === 'clearing' ? clearingMode : tool === 'castle' ? castleShape : 'look';
+      const current = Math.max(0, ids.indexOf(now));
+      pickTool(ids[(current + delta + ids.length) % ids.length]);
     },
-    toggleView: () => cam.toggleMode(),
+    toggleView: () => cycleView(),
     toggleSettings: () => sheet.toggleOpen(),
     interacted: () => {
       if (start?.visible) begin();
@@ -1602,6 +1653,7 @@ async function boot() {
   // yours nearest the centre of the view, and moves when the view settles on
   // another one. Never mid-stroke or mid-drag; one move at a time.
   let binding = false;
+  let openingShore = false;
   const bindLive = (ref: BeachRef | null) => {
     if (binding) return;
     binding = true;
@@ -1622,7 +1674,7 @@ async function boot() {
       const x = nv.xForBeach(sync.id);
       if (x !== null) placeLive(x);
     }
-    if (binding || awaitingLoad || digging || dragging || strokeOpen || press) return;
+    if (openingShore || binding || awaitingLoad || digging || dragging || strokeOpen || press) return;
     const near = nv.ownedNearest(cam.focusX);
     if (!near || near.beach.id === sync.id || releasing.has(near.beach.id)) return;
     // the live one is off this shore (or out of view): take the one in view at once;
@@ -1734,7 +1786,7 @@ async function boot() {
     const mix = Math.min(1, (now - frameAt) / (1000 / SIM_HZ));
     renderer.setFrameMix(mix);
     const simTime = prevT + (info.t - prevT) * mix;
-    const amp = (1 - (1 - WAVES.calmFactor) * info.calmMix) * liveState.waves;
+    const amp = info.waveMul * liveState.waves;
     const camFwd = cam.forward();
     renderer.update(palette, camFwd, (now - t0) / 1000, simTime, info.tide, amp);
     neighbors?.update(palette, camFwd, (now - t0) / 1000, simTime, info.tide, amp);
@@ -1784,7 +1836,7 @@ async function boot() {
       dig: digging ? info.digIntensity : 0,
       seaPan: -right.z,
       zoomOut: cam.zoomOut01(),
-      calm: info.calmMix,
+      calm: Math.min(1, Math.max(0, (1 - info.waveMul) / (1 - WAVES.levels.calm))),
       daylight: 1 - liveState.sky.night,
     });
 
@@ -1931,19 +1983,19 @@ async function boot() {
     store.onLargeEditUnprotected(() => {
       showToast(uiRoot, 'That big edit is saved, but the copy of the beach before it couldn’t be kept — save a checkpoint from Settings if you want one to go back to.');
     });
+    const SYNC_CHIP: Partial<Record<SyncState, string>> = { saving: 'saving…', saved: 'saved', offline: 'offline', tooBig: 'too big to save' };
+    let syncChip = '';
+    s.onState((st) => {
+      syncChip = SYNC_CHIP[st] ?? '';
+      updatePlace(true);
+    });
+    paneChips = () => [neighbors?.viewing ? 'look only' : '', acct.user ? syncChip : ''].filter(Boolean);
     let toldTooBig = false;
     store.onState((st) => {
       if (st === 'tooBig' && !toldTooBig) showToast(uiRoot, 'This beach is too big to save. Smooth some of the sand and it will save again.');
       toldTooBig = st === 'tooBig';
     });
-    neighbors = new NeighborView(scene, grid, ready.rest, swell, cam, uiRoot, account, store, {
-      infoSlot,
-      infoHeader: place,
-      onInfoToggle: (open) => {
-        place.setAttribute('aria-expanded', String(open));
-        placeWrap.classList.toggle('open', open);
-      },
-    });
+    neighbors = new NeighborView(scene, grid, ready.rest, swell, cam, account, store);
     const nv = neighbors;
     nv.setLive(sync.id, renderer);
     // a save of any beach of yours that can't go through: say so once, the same way for all of them
@@ -1999,29 +2051,41 @@ async function boot() {
     // back their beach and their neighbors
     let signedInAs: string | null = null;
     account.onChange((u) => {
-      profile.querySelector('span')!.textContent = u?.name || (u ? 'Player' : 'Guest');
+      if ((u?.id ?? null) !== signedInAs) {
+        fenced = false;
+        fencedHide?.();
+        fencedHide = null;
+      }
       if (u && u.id !== signedInAs) {
+        openingShore = true;
         // the last person's beaches go; your beaches, then the shore around
         // the one this device last looked at (else home) — the view then
         // puts the waves on the beach of yours in front of you
         void (async () => {
           await s.resetToLocal();
+          if (acct.user !== u) return;
           await acct.loadBeaches().catch(() => {});
+          if (acct.user !== u) return;
           // a new sign-in (or a saved session coming back) takes over
           // editing here, fencing any older tab or device
           await s.claim();
+          if (acct.user !== u) return;
           const viewed = readView(u.id);
           const anchor = !pendingVisit && viewed && acct.beaches.some((b) => b.code === viewed && !b.home) ? viewed : null;
           // the beach the shore centres on is the one in front of you: start its waves
           // now, while the rest of the shore loads (the view takes over from here)
           const first = anchor ? acct.beaches.find((b) => b.code === anchor) : acct.home;
-          if (first) void s.bind({ id: first.id, code: first.code, owned: true, location: first.location }, { adoptLocal: true });
-          await nv.anchorAt(anchor).catch(() => nv.anchorAt(null));
-          cam.goTo(0, true);
-        })();
+          if (first) await s.bind({ id: first.id, code: first.code, owned: true, location: first.location }, { adoptLocal: true });
+          if (acct.user !== u) return;
+          if (pendingVisit) await applyPendingVisit();
+          else await nv.anchorAt(anchor).catch(() => nv.anchorAt(null));
+          if (acct.user === u) cam.goTo(0, true);
+        })().catch(() => {}).finally(() => {
+          if (acct.user === u) openingShore = false;
+        });
         void nv.loadFavorites();
-        void applyPendingVisit();
       } else if (!u) {
+        openingShore = false;
         // signed out: the account's shore goes away, but the public shore
         // still runs past your (local-only) beach — load it
         nv.clear();
@@ -2059,10 +2123,8 @@ async function boot() {
     });
     // a dot on the settings button and Shore tab when someone has asked to move in next to you
     nv.onChange((n) => {
-      const asking = n?.requests.length ?? 0;
-      menuBtn.classList.toggle('badge', asking > 0);
-      menuBtn.setAttribute('aria-label', asking ? `Settings (${asking} neighbor request${asking > 1 ? 's' : ''})` : 'Settings');
-      sheet.setShoreBadge(asking);
+      neighborAsks = n?.requests.length ?? 0;
+      syncAskBadge();
     });
     // checkpoints (docs/CHECKPOINTS.md): saved copies of your beaches
     let panel: AccountPanel | null = null;
@@ -2213,17 +2275,21 @@ async function boot() {
           sheet.hide();
         },
         inView: () => (sync.id && sync.id !== LOCAL_BEACH ? sync.id : null),
-        // about to remove it: its sand saved or not doesn't matter any more; the waves go home
-        release: async (id) => {
+        remove: async (id) => {
           releasing.add(id);
-          if (isLive(id)) {
-            const home = acct.home;
-            await sync.bind(home && home.id !== id ? { id: home.id, code: home.code, owned: true } : null);
-          }
-          store.forget(id);
-          if (nv.indexOfBeach(id) !== null) {
-            await nv.anchorAt(null);
-            cam.goTo(0, true);
+          try {
+            if (isLive(id)) {
+              const home = acct.home;
+              await sync.bind(home && home.id !== id ? { id: home.id, code: home.code, owned: true } : null);
+            }
+            await acct.removeBeach(id);
+            store.forget(id);
+            if (nv.indexOfBeach(id) !== null) {
+              await nv.anchorAt(null);
+              cam.goTo(0, true);
+            }
+          } finally {
+            releasing.delete(id);
           }
         },
         // a new beach starts at the real beach you're looking at now
@@ -2285,31 +2351,16 @@ async function boot() {
       audio.whoosh(false);
     };
 
-    // the leaderboard: the most-starred beaches, to visit and star
-    const boardBtn = hud.button('trophy', 'Most-starred beaches');
-    boardBtn.dataset.act = 'leaderboard';
-    hud.topGroup.appendChild(boardBtn);
-    for (const [id, symbol, label, open] of [
-      ['vending', 'vending', 'Item capsule', () => void vendingMachine?.open()],
-      ['claw', 'claw', 'Claw machine', () => void clawMachine?.open()],
-      ['shop', 'bag', 'Paid shop', () => void shopDialog?.open()],
-    ] as const) {
-      const button = hud.button(symbol, label);
-      button.dataset.act = id;
-      const text = document.createElement('span');
-      text.textContent = label;
-      button.appendChild(text);
-      button.addEventListener('click', () => {
-        showShop(false);
-        if (acct.user) open();
-        else sheet.show();
-      });
-      shopPanel.appendChild(button);
-    }
+    // the claw and capsule machines are tiles in the bag; the store is its own rail button
+    inventory.setMachines([
+      { id: 'vending', icon: 'vending', label: 'Item capsule', open: () => (acct.user ? void vendingMachine?.open() : sheet.show('account')) },
+      { id: 'claw', icon: 'claw', label: 'Claw machine', open: () => (acct.user ? void clawMachine?.open() : sheet.show('account')) },
+    ]);
+    storeBtn.addEventListener('click', () => (acct.user ? void shopDialog?.open() : sheet.show('account')));
 
     const board = new Leaderboard(uiRoot, {
       signedIn: () => !!acct.user,
-      signIn: () => sheet.show(),
+      signIn: () => sheet.show('account'),
       shoreUrl: SHORE_URL,
       load: (which) => nv.api.leaderboard(which),
       starred: (code) => nv.favorites.has(code),
@@ -2324,16 +2375,12 @@ async function boot() {
       },
     });
     leaderboard = board;
-    boardBtn.addEventListener('click', () => board.open());
 
     // share: the beach under the view (yours at home) as a beechshore link,
     // which previews with a picture and opens for anyone, signed in or not
-    const shareBtn = hud.button('share', 'Share this beach');
-    shareBtn.dataset.act = 'share';
-    hud.topGroup.appendChild(shareBtn);
-    shareBtn.addEventListener('click', () => void (async () => {
+    const shareBeach = () => void (async () => {
       if (!acct.user) {
-        sheet.show();
+        sheet.show('account');
         return;
       }
       const other = beachHere();
@@ -2348,9 +2395,36 @@ async function boot() {
       });
       if (r === 'copied') showToast(uiRoot, 'Link copied: paste it anywhere');
       else if (r === 'failed') showToast(uiRoot, `Couldn’t share. The link is ${shoreBeachUrl(code)}`);
-    })());
+    })();
+
+    // the social hub behind the Inbox button: Inbox · Leaderboard · Starred · Visit by code
+    const hub = new SocialHub({ signedIn: () => !!acct.user, signIn: () => sheet.show('account'), needsAccount: ['inbox', 'starred'] });
+    socialHub = hub;
+    hub.add('leaderboard', board);
+    const starred = new StarredDialog(uiRoot, {
+      list: () => [...nv.favorites.values()],
+      visit: async (code) => {
+        await nv.visit(code);
+        cam.goTo(0, true);
+      },
+      unstar: (b) => nv.setFavorite(b, false),
+    });
+    hub.add('starred', starred);
+    hub.add(
+      'visit',
+      new VisitDialog(uiRoot, {
+        visit: async (code) => {
+          await nv.visit(code);
+          cam.goTo(0, true);
+          haptics.impact('light');
+        },
+        myCode: () => (acct.user ? (acct.mine(sync.id)?.code ?? nv.state?.code ?? null) : null),
+        share: shareBeach,
+      }),
+    );
     nv.onFavorites(() => {
       board.refreshStars();
+      starred.refresh();
       if (nv.favorites.size > 0) guide.mark('star');
     });
 
@@ -2459,7 +2533,7 @@ async function boot() {
     const invites = social
       ? new social.InvitePanel(uiRoot, {
           signedIn: () => !!acct.user,
-          signIn: () => sheet.show(),
+          signIn: () => sheet.show('account'),
           name: () => acct.user?.name ?? '',
           load: () => referralApi.status(),
         })
@@ -2563,7 +2637,7 @@ async function boot() {
       const inboxApi = new InboxApi(acct);
       const inboxPanel = new InboxPanel(uiRoot, hud.root, (n, l) => hud.button(n, l), inboxApi, {
         signedIn: () => !!acct.user,
-        signIn: () => sheet.show(),
+        signIn: () => sheet.show('account'),
         visit: (code) =>
           void nv
             .visit(code)
@@ -2573,6 +2647,16 @@ async function boot() {
         toast: (t) => showToast(uiRoot, t),
       });
       inboxUi = inboxPanel;
+      // the Inbox heads the rail: signed in it opens the inbox, signed out the leaderboard
+      hud.group(0).prepend(inboxPanel.button);
+      inboxPanel.button.addEventListener('click', () => socialHub?.show(acct.user ? 'inbox' : 'leaderboard'));
+      socialHub?.add('inbox', inboxPanel);
+      const shareRow = document.createElement('div');
+      shareRow.className = 'inbox-share';
+      shareRow.innerHTML = `<button type="button" class="action" data-act="share">share this beach</button>`;
+      shareRow.querySelector('button')!.addEventListener('click', shareBeach);
+      inboxPanel.el.querySelector('.board-card')!.appendChild(shareRow);
+      syncAskBadge();
       const visitor = new VisitorCard(uiRoot, inboxApi, {
         giftable: () => {
           const out: { id: string; name: string; icon: IconName; count: number }[] = [];
@@ -2589,15 +2673,16 @@ async function boot() {
       visitorUi = visitor;
       // signed out, "leave something" signs in first, then opens the card
       let cardAfterSignIn: { code: string; owner: string; beachName?: string } | null = null;
-      // "leave something" on each beach's name tag (and so in the viewing-mode card)
-      nv.onLeave = (b) => {
+      // "leave something" in the status pane's shore bar
+      leaveBeach = (b) => {
         if (!acct.user) {
           cardAfterSignIn = { code: b.code, owner: b.name, beachName: b.beachName };
-          sheet.show();
+          sheet.show('account');
           return;
         }
         void visitor.open(b.code, b.name, b.beachName);
       };
+      shoreKey = '';
       // the poll carries the inbox: the badge, and a note for what matters
       let announced = -1;
       nv.onChange((n) => {
@@ -2729,6 +2814,12 @@ async function boot() {
     info: () => ({ ...info, buf: undefined, swashRate }),
     frames: () => frames,
     send,
+    /** open (true) or close the rail, as the palm does */
+    setRail: (on: boolean) => setCollapsed(!on),
+    /** the status pane: 'default' | 'expanded' | 'closed' */
+    setPane: (state: PaneState) => setPane(state),
+    /** the social hub: show a tab ('inbox' | 'leaderboard' | 'starred' | 'visit') */
+    hub: () => socialHub,
     sheet,
     inventory,
     claw: () => clawMachine,

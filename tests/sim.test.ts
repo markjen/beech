@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BeachSim } from '../src/sim/beachSim';
-import { BRUSH, GRID_TIERS } from '../src/config';
+import { BRUSH, GRID_TIERS, WAVES } from '../src/config';
 import { PROFILE } from '../src/config';
 
 const grid = GRID_TIERS.low;
@@ -490,5 +490,41 @@ describe('the sea takes owned things out past the offshore edge (docs/LIVE_SIM.m
     expect(sandPlusSediment(sim)).toBeCloseTo(before, 6);
     for (let s = 0; s < 30 * 5; s++) sim.step(DT);
     for (let k = 0; k < sim.n; k++) expect(Number.isFinite(sim.sand[k]) && Number.isFinite(sim.water[k])).toBe(true);
+  });
+});
+
+describe('wave strength (calm · gentle · lively · surf)', () => {
+  it('eases the swell toward the chosen level, stays finite at surf, and conserves sand', () => {
+    const surf = new BeachSim(grid, 5, { waveLevel: WAVES.levels.surf, healing: false, seep: false });
+    const calm = new BeachSim(grid, 5, { waveLevel: WAVES.levels.calm, healing: false, seep: false });
+    const s0 = sandPlusSediment(surf);
+    // a moment in: still easing (no jolt), then settled at the level
+    surf.step(DT);
+    expect(surf.waveMul).toBeGreaterThan(1);
+    expect(surf.waveMul).toBeLessThan(WAVES.levels.surf);
+    const run = { surf: 0, calm: 0 };
+    for (let s = 0; s < 30 * 20; s++) {
+      surf.step(DT);
+      calm.step(DT);
+      for (const [name, sim] of [['surf', surf], ['calm', calm]] as const) {
+        for (let j = sim.ny - 1; j >= 0; j--) {
+          if (sim.water[j * sim.nx + (sim.nx >> 1)] > 0.01) {
+            run[name] = Math.max(run[name], j * sim.dx);
+            break;
+          }
+        }
+      }
+    }
+    expect(surf.waveMul).toBeCloseTo(WAVES.levels.surf, 2);
+    expect(calm.waveMul).toBeCloseTo(WAVES.levels.calm, 2);
+    for (let k = 0; k < surf.n; k++) {
+      expect(Number.isFinite(surf.water[k])).toBe(true);
+      expect(Number.isFinite(surf.sand[k])).toBe(true);
+    }
+    // surf runs further up the beach than calm, and still not over the back
+    expect(run.surf).toBeGreaterThan(run.calm);
+    expect(run.surf).toBeLessThan(PROFILE.shoreline + 13);
+    // open boundary: sand only moves around (allow the usual transport tolerance)
+    expect(Math.abs(sandPlusSediment(surf) - s0)).toBeLessThan(1e-2 * Math.abs(s0) + 0.1);
   });
 });

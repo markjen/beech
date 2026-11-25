@@ -34,13 +34,13 @@ async function device(label) {
   await page.waitForFunction(() => window.__beech.beachId() && window.__beech.sync().state === 'saved', null, { timeout: 20000 });
   return page;
 }
-// pick a tool from the Edit popup (open it first if it's closed: a press on the sand closes it)
-const tool = async (page, id) => {
-  if (!(await page.isVisible(`button[data-tool="${id}"]`))) await page.click('[data-act="edit-menu"]');
-  await page.click(`button[data-tool="${id}"]`);
+const selectDirt = async (page) => {
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => window.__beech.setRail(true));
+  await page.click('[data-act="dirt"]');
 };
 const dig = async (page, y) => {
-  await tool(page, 'sand');
+  await selectDirt(page);
   await page.mouse.move(300, y);
   await page.mouse.down();
   for (let i = 0; i < 20; i++) {
@@ -69,6 +69,7 @@ await a.evaluate(() => window.__beech.account().fetch('/api/dev/grant', { method
 await a.evaluate(() => window.__beech.account().loadBeaches());
 await a.evaluate(() => window.__beech.sheet.show('beach'));
 await a.waitForSelector('button[data-act="new-beach"]', { timeout: 8000 });
+await a.evaluate(() => window.__beech.sheet.setTab('beach'));
 await a.click('button[data-act="new-beach"]');
 await a.waitForFunction((h) => window.__beech.beachId() !== h && window.__beech.sync().state === 'saved', home, { timeout: 20000 });
 const second = await a.evaluate(() => window.__beech.beachId());
@@ -86,17 +87,16 @@ check((await b.evaluate(() => window.__beech.beachId())) === home, 'B opens the 
 const bDug = await dug(b);
 check(Math.abs(bDug - homeDug) / homeDug < 0.2, `B shows the home sand A dug (${bDug.toFixed(1)})`);
 
-// both live at once: each device digs its own beach and saves it
-// (A digs well inside the beach: at y = 600 the brush runs along its back edge and barely changes it)
-await Promise.all([dig(a, 520), dig(b, 420)]);
-const [aNow, bNow] = [await dug(a), await dug(b)];
+// B owns the edit session after signing in, even though A is looking at a different beach.
+await dig(b, 420);
+const bNow = await dug(b);
 const sands = await b.evaluate(async (ids) => {
   const acct = window.__beech.account();
   const get = async (id) => new Uint8Array(await (await acct.fetch(`/api/beaches/mine/${id}/sand`)).arrayBuffer()).length;
   return [await get(ids[0]), await get(ids[1])];
 }, [home, second]);
 if (process.env.DEBUG_E2E) console.log('live', await a.evaluate(() => window.__beech.liveBeach()), second);
-check(aNow > secondDug && bNow > bDug, `both devices dug at the same time (A ${secondDug.toFixed(0)}->${aNow.toFixed(0)}, B ${bDug.toFixed(0)}->${bNow.toFixed(0)})`);
+check(secondDug > 1 && bNow > bDug, `each beach was edited in its own session (second ${secondDug.toFixed(0)}, home ${bDug.toFixed(0)}->${bNow.toFixed(0)})`);
 check(sands[0] > 0 && sands[1] > 0, 'each beach saved separately');
 
 // each beach has its own code and neighbors; connect the two in 1 click on the Shore tab (no code copying)
@@ -119,7 +119,7 @@ await b.evaluate(() => {
 });
 await b.waitForFunction(() => window.__beech.neighbors().snapshot('left') !== null, null, { timeout: 15000 });
 await b.waitForTimeout(400);
-await tool(b, 'sand');
+await selectDirt(b);
 await b.mouse.move(420, 460);
 await b.mouse.down();
 for (let i = 0; i < 18; i++) {
@@ -220,7 +220,9 @@ check((await a.evaluate(() => window.__beech.beachId())) === second, 'A still op
 
 // Removing the beach the waves are on must put them back on home, even when it is already visible.
 await a.evaluate(() => window.__beech.sheet.show('beach'));
+await a.evaluate(() => window.__beech.sheet.setTab('beach'));
 await a.click(`[data-act="select-beach-${second}"]`);
+await a.evaluate(() => window.__beech.sheet.setTab('beach'));
 await a.click(`[data-act="remove-beach-${second}"]`);
 await a.waitForFunction((id) => window.__beech.beachId() === id && window.__beech.account().beaches.length === 1, home, { timeout: 20000 });
 await a.waitForTimeout(800);

@@ -34,8 +34,9 @@ await page.waitForTimeout(600);
 const anaName = `ana${Date.now() % 100000}`;
 await page.evaluate((n) => window.__beech.account().signInDev(n), anaName);
 await page.waitForFunction(() => window.__beech.sync().state === 'saved', null, { timeout: 15000 });
-await page.click('[data-act="edit-menu"]');
-await page.click('button[data-tool="sand"]');
+await page.keyboard.press('Escape');
+await page.evaluate(() => window.__beech.setRail(true));
+await page.click('[data-act="dirt"]');
 await page.mouse.move(260, 560);
 await page.mouse.down();
 for (let i = 0; i < 40; i++) {
@@ -62,8 +63,16 @@ await page.evaluate(async () => {
 });
 await page.evaluate(() => window.__beech.sheet.show('shore'));
 await page.waitForSelector('#neighbor-left', { timeout: 8000 }).catch(async (e) => { console.log('PANEL', await page.evaluate(() => document.querySelector('.shore-slot')?.innerText), JSON.stringify(await page.evaluate(() => window.__beech.neighbors().state))); throw e; });
-await page.fill('#neighbor-left', anaCode.toLowerCase());
-await page.click('button[data-act="add-left"]');
+// the panel can re-render while Ben's sign-in settles (replacing the input
+// just typed into, so an empty code goes out): type, ask, and check, a few times
+for (let i = 0; i < 4; i++) {
+  await page.fill('#neighbor-left', anaCode.toLowerCase());
+  await page.click('button[data-act="add-left"]');
+  const asked = await page
+    .waitForFunction((n) => window.__beech.neighbors().state?.asked?.left?.name === n, anaName, { timeout: 8000 })
+    .then(() => true, () => false);
+  if (asked) break;
+}
 await page.waitForFunction((n) => window.__beech.neighbors().state?.asked?.left?.name === n, anaName, { timeout: 15000 });
 check((await page.textContent('.shore-slot .neighbor-section'))?.includes(`waiting for ${anaName}`), 'Ben asked Ana; the sheet says it is waiting for her');
 check((await page.evaluate(() => window.__beech.neighbors().state.left)) === null, 'not neighbors until she accepts');
@@ -92,7 +101,7 @@ await page.waitForFunction((n) => window.__beech.neighbors()?.state?.left?.name 
 check(true, 'Ben added Ana as his left neighbor');
 check((await page.evaluate(() => window.__beech.neighbors().beachAt(1)?.name)) === anaName, "Ana's beach is next to his");
 
-// pan over toward the left neighbor (world +X) and look
+// pan over to the left neighbor (world +X) and look
 await page.evaluate(() => {
   const b = window.__beech;
   b.cam.halfH = 15;
@@ -100,19 +109,18 @@ await page.evaluate(() => {
   b.cam.camera.target.x = 17;
   b.cam.camera.target.z = 0;
 });
-// wait for Ana's beach to load and its tag to show (the shore loads several beaches)
+// top-left status pane names Ana's beach with no floating name-tag pills
+await page.evaluate(() => { window.__beech.setRail(true); window.__beech.setPane('default'); });
 await page
   .waitForFunction(
-    (n) => [...document.querySelectorAll('.neighbor-tag')].some((x) => x.textContent.includes(n) && getComputedStyle(x).display !== 'none'),
+    (n) => document.querySelector('.place')?.textContent?.includes(n),
     anaName,
     { timeout: 20000 },
   )
   .catch(() => {});
-const tag = await page.evaluate((n) => {
-  const t = [...document.querySelectorAll('.neighbor-tag')].find((x) => x.textContent.includes(n));
-  return t && getComputedStyle(t).display !== 'none' ? t.textContent : null;
-}, anaName);
-check(!!tag && tag.includes(anaName), `name tag shows (${tag})`);
+const header = await page.textContent('.place');
+check(!!header && header.includes(anaName), `status pane names neighbor (${header})`);
+check((await page.locator('.neighbor-tag').count()) === 0, 'no floating neighbor-tag pills');
 check((await page.evaluate(() => window.__beech.cam.maxX)) > 40, 'camera can pan over to the neighbor');
 if (shot) await page.screenshot({ path: shot });
 

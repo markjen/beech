@@ -397,6 +397,24 @@ export class CameraController {
     return 90 - this.camera.beta / DEG;
   }
 
+  /**
+   * Is the diorama turned around, looking back at the beach from the sea?
+   * (within a quarter turn of the opposite of the starting angle)
+   */
+  get reversed(): boolean {
+    const a = this.snapTarget ?? this.camera.alpha;
+    const d = Math.abs((((a - CAMERA.alpha) % TAU) + TAU) % TAU - Math.PI);
+    return d < Math.PI / 2;
+  }
+
+  /** Ease the diorama round to the starting isometric angle, or the reverse one (from the sea). */
+  faceShore(reverse: boolean): void {
+    const goal = CAMERA.alpha + (reverse ? Math.PI : 0);
+    const a = this.camera.alpha;
+    // the nearest equivalent angle, so it turns the short way
+    this.snapTarget = a + ((((goal - a) % TAU) + TAU + Math.PI) % TAU) - Math.PI;
+  }
+
   /** Ease to the nearest 45 degree step (keeps the clean isometric angles). */
   snapRotation(direction = 0): void {
     if (this.mode === 'chair') return;

@@ -94,6 +94,16 @@ describe('binding the worker to a beach by id', () => {
     expect(w.sim().fill).toBe(2);
   });
 
+  it('does not adopt the previous account’s sand onto a fresh beach', async () => {
+    const w = await makeWorld();
+    w.setSim(1.5);
+    await w.sync.resetToLocal();
+    await w.sync.bind(w.ref('new-account'), { adoptLocal: true });
+    await w.store.flushAll();
+    expect(w.sim().fill).toBe(0);
+    expect(w.saves).toEqual([{ beach: 'new-account', fill: 0 }]);
+  });
+
   it('moving the waves hands the undo history over with the beach, and back', async () => {
     const w = await makeWorld();
     const history: UndoHistory = { undos: [{ i0: 0, j0: 0, w: 1, h: 1, delta: new Float32Array(1) }], redos: [] };

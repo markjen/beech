@@ -5,9 +5,20 @@ import { EXTRAS, isAvailable, type Item } from '../world/items';
  * The bag: a small tray of things you can put on the beach. Pick one, then
  * tap the sand to set it down; tap something already there to pick it back up.
  */
+/** A tile at the top of the bag that opens something else (the claw, the capsule machine). */
+export interface BagMachine {
+  id: string;
+  icon: IconName;
+  label: string;
+  open: () => void;
+}
+
 export class InventoryTray {
   readonly button: HTMLButtonElement;
+  /** the modal: a dimmed backdrop with the bag card centered on it */
+  private readonly modal: HTMLDivElement;
   private readonly tray: HTMLDivElement;
+  private machines: BagMachine[] = [];
   private selected: string | null = null;
   private open = false;
   /** how many of each non-free item you own, and how many are on the beach */
@@ -29,32 +40,36 @@ export class InventoryTray {
     private readonly items: Item[],
     private readonly pick: (item: Item | null) => void,
   ) {
-    this.button = hudButton('bag', 'Things to put on the beach', 'hud-btn hud-tool');
+    this.button = hudButton('bag', 'Bag', 'hud-btn hud-tool');
     this.button.dataset.tool = 'place';
-    this.button.setAttribute('aria-haspopup', 'true');
+    this.button.setAttribute('aria-haspopup', 'dialog');
     this.button.setAttribute('aria-expanded', 'false');
     this.button.addEventListener('click', () => this.toggle());
 
+    this.modal = document.createElement('div');
+    this.modal.className = 'inv-modal';
+    this.modal.inert = true;
     this.tray = document.createElement('div');
     this.tray.className = 'inv-tray';
-    this.tray.inert = true;
     this.tray.setAttribute('role', 'dialog');
-    this.tray.setAttribute('aria-label', 'Your bag');
-    parent.appendChild(this.tray);
+    this.tray.setAttribute('aria-modal', 'true');
+    this.tray.setAttribute('aria-label', 'Bag');
+    this.modal.appendChild(this.tray);
+    parent.appendChild(this.modal);
     this.render();
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && this.open) this.setOpen(false);
     });
-    window.addEventListener(
-      'pointerdown',
-      (e) => {
-        if (!this.open) return;
-        const t = e.target as Node | null;
-        if (t && (this.tray.contains(t) || this.button.contains(t))) return;
-        this.setOpen(false);
-      },
-      true,
-    );
+    // the dimmed beach around the card closes it
+    this.modal.addEventListener('click', (e) => {
+      if (e.target === this.modal) this.setOpen(false);
+    });
+  }
+
+  /** The tiles at the top of the bag (signed-in builds: the claw and capsule machines). */
+  setMachines(m: BagMachine[]): void {
+    this.machines = m;
+    this.render();
   }
 
   setOwned(owned: Map<string, number>, foundBy: Map<string, string> = new Map()): void {
@@ -127,8 +142,9 @@ export class InventoryTray {
 
   setOpen(on: boolean): void {
     this.open = on;
+    this.modal.classList.toggle('open', on);
     this.tray.classList.toggle('open', on);
-    this.tray.inert = !on;
+    this.modal.inert = !on;
     this.button.setAttribute('aria-expanded', String(on));
     if (on) this.tray.querySelector<HTMLButtonElement>('.inv-item')?.focus({ preventScroll: true });
   }
@@ -170,8 +186,31 @@ export class InventoryTray {
     this.tray.innerHTML = '';
     const h = document.createElement('div');
     h.className = 'inv-title';
-    h.textContent = 'Your bag';
-    this.tray.appendChild(h);
+    h.textContent = 'Bag';
+    const x = document.createElement('button');
+    x.type = 'button';
+    x.className = 'dlg-close';
+    x.setAttribute('aria-label', 'Close');
+    x.textContent = '×';
+    x.addEventListener('click', () => this.setOpen(false));
+    this.tray.append(h, x);
+    if (this.machines.length) {
+      const row = document.createElement('div');
+      row.className = 'inv-machines';
+      for (const m of this.machines) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'inv-item inv-machine';
+        b.dataset.act = m.id;
+        b.innerHTML = `${icon(m.icon)}<b>${m.label}</b>`;
+        b.addEventListener('click', () => {
+          this.setOpen(false);
+          m.open();
+        });
+        row.appendChild(b);
+      }
+      this.tray.appendChild(row);
+    }
     const grid = document.createElement('div');
     grid.className = 'inv-grid';
     for (const it of this.items) {

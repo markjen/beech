@@ -83,6 +83,12 @@ _(nothing right now)_
   reloads (IndexedDB, keyed by id + version), and ease the live renderer
   between beaches instead of a one-frame swap when the waves move.
 
+- [ ] **Palm-first UI, follow-ups**: real weather (temperature, sky) for
+  the status pane's first line; credit, stars and finds-today chips in
+  the expanded pane (they need their own requests); decide whether the
+  palm should also fade after idle outside ambient mode (the mockup's open
+  question; for now it never does). Tap-the-sand-to-close was left out:
+  a tap is also how you stop a glide.
 - [ ] **Live beaches, next**: ease a viewer's sand to each new save instead
   of swapping it; SSE instead of polling if the 5 s polls show up in
   Cloud Run costs; catch up the beechshore.com page pictures too; one
@@ -171,6 +177,12 @@ _(nothing right now)_
   front of you, handing sand and undo history over through the store; one
   save pipeline for all beaches. [BEACH_STORE.md](BEACH_STORE.md).
 
+- [x] **Palm-first UI** (2026-11-25): only a palm at rest; one rail
+  (Inbox, Hand, Dirt flyout, Bag, Store, View, Manage, Undo, ×); a
+  top-left status pane (default / expanded with beaches in view / closed
+  to an *i*); the Inbox hub (Inbox, Leaderboard, Starred, Visit by
+  code); the Bag as a modal; Manage tabs Beaches, Checkpoints, Settings,
+  Help; four-step wave strength; reverse isometric view. See STATUS.md.
 - [x] **Live beaches L1–L5** (2026-11-24): the sea keeps working while
   you're away. Owned things the sea carries out go back in the bag; the
   server catches a beach up on read (half tide cycles at its real place,

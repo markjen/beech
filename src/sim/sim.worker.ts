@@ -64,7 +64,7 @@ function loop() {
           t: sim.time,
           eta: sim.seaLevel(),
           tide: sim.meanLevel(),
-          calmMix: sim.calmMix,
+          waveMul: sim.waveMul,
           undoCount: sim.undo.undoCount,
           redoCount: sim.undo.redoCount,
           digIntensity: sim.digIntensity,

@@ -24,8 +24,9 @@ const open = async () => {
 };
 const dug = () => page.evaluate(() => { const b = window.__beech; let d = 0; for (let k = 0; k < b.rest.length; k++) if (b.rest[k] > 0.5) d += Math.abs(b.picker.sand[k] - b.rest[k]); return d; });
 await open();
-await page.click('[data-act="edit-menu"]');
-await page.click('button[data-tool="sand"]');
+await page.keyboard.press('Escape');
+await page.evaluate(() => window.__beech.setRail(true));
+await page.click('[data-act="dirt"]');
 await page.mouse.move(300, 560); await page.mouse.down();
 for (let i = 0; i < 25; i++) { await page.mouse.move(300 + i * 8, 560); await page.waitForTimeout(30); }
 await page.mouse.up();
@@ -38,9 +39,10 @@ await open();
 const d1 = await dug();
 check(d0 > 50 && d1 > d0 * 0.7, `the beach is kept on the device: dug ${d0.toFixed(1)}, after a reload ${d1.toFixed(1)}`);
 // a checkpoint, with a thumbnail
-await page.evaluate(() => window.__beech.sheet.show('beach'));
+await page.evaluate(() => window.__beech.sheet.show('checkpoints'));
 await page.waitForSelector('button[data-act="cp-save"]');
 await page.click('button[data-act="cp-save"]');
+await page.evaluate(() => window.__beech.sheet.setTab('checkpoints'));
 await page.waitForSelector('.cp-row .cp-thumb[src]', { timeout: 10000 });
 check((await page.textContent('.cp-row')).includes('castle'), 'saved a checkpoint on the device, with a thumbnail');
 if (process.argv[2]) await page.screenshot({ path: process.argv[2] });
@@ -48,7 +50,7 @@ if (process.argv[2]) await page.screenshot({ path: process.argv[2] });
 await page.evaluate(() => { const b = document.querySelector('button[data-act="smooth"]'); b.click(); b.click(); });
 await page.waitForTimeout(1500);
 const d2 = await dug();
-await page.evaluate(() => window.__beech.sheet.show('beach'));
+await page.evaluate(() => window.__beech.sheet.show('checkpoints'));
 await page.click('.cp-row button[data-act^="cp-restore-"]');
 await page.waitForTimeout(1500);
 const d3 = await dug();

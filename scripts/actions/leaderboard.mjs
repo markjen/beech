@@ -7,7 +7,9 @@ export default async function (page) {
     await b.account().signInDev('Shot');
     await b.neighbors().loadFavorites();
   });
-  await page.click('button[data-act="leaderboard"]');
+  await page.evaluate(() => window.__beech.setRail(true));
+  await page.click('[data-act="inbox"]');
+  await page.click('.board.open .hub-tabs [data-hub="leaderboard"]');
   if (process.env.LB_BOARD === 'rising') await page.click('.board-tabs button[data-board="rising"]');
   await page.waitForSelector('.board.open .board-row', { timeout: 10000 }).catch(() => {});
   await page.waitForTimeout(500);

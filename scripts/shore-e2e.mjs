@@ -57,27 +57,27 @@ check((await page.evaluate(() => window.__beech.neighbors().beachAt(1)?.name)) =
 check((await page.evaluate(() => window.__beech.neighbors().beachAt(2)?.name)) === names.cleo, "and Cleo beyond her (Ana's neighbor)");
 const ext = await page.evaluate(() => window.__beech.neighbors().extent);
 check(ext.left > 2 || ext.right > 0, `the shore carries on past them into other beaches (${JSON.stringify(ext)})`);
+// the way home lives in the expanded status pane (shown with the rail)
+await page.evaluate(() => { window.__beech.setRail(true); window.__beech.setPane('expanded'); });
 check(!(await page.isVisible('.shore-bar.shown')), 'no home button at home');
 
-// ask from the shore: Ben's right side is free, so the beach just to his right
-// (the end of another stretch) offers "ask to be neighbors" on its tag; Ana,
-// already his neighbor, doesn't
-await page.waitForFunction(() => document.querySelectorAll('.neighbor-tag .ask:not([hidden])').length > 0, null, { timeout: 15000 }).catch(() => {});
-const offers = await page.evaluate(() =>
-  [...document.querySelectorAll('.neighbor-tag')].map((t) => ({ name: t.querySelector('.name')?.textContent ?? '', ask: !t.querySelector('.ask')?.hidden })),
-);
-check(offers.some((o) => o.ask), `a beach at the end of a stretch offers "ask to be neighbors" (${offers.filter((o) => o.ask).map((o) => o.name).join(', ')})`);
-check(!offers.some((o) => o.ask && o.name.startsWith(names.ana)), 'Ana (already his neighbor) does not');
-const asked = await page.evaluate(async () => {
-  const b = [...document.querySelectorAll('.neighbor-tag .ask')].find((x) => !x.hidden);
-  b.click();
-  for (let i = 0; i < 50 && !window.__beech.neighbors().state?.asked.right; i++) await new Promise((r) => setTimeout(r, 200));
-  return { asked: window.__beech.neighbors().state?.asked.right?.name ?? null, label: b.textContent };
-});
-check(!!asked.asked, `asking from the tag sent the request (${asked.asked}, "${asked.label}")`);
-// take it back, so the rest of the walk is as before
+// ask from the shore: Ana (already his neighbor) doesn't offer "ask to be
+// neighbors", while the unlinked beach to Ben's right does, in the status pane
+await page.evaluate(() => window.__beech.cam.goTo(window.__beech.neighbors().xFor(1), true));
+await page.waitForFunction(() => document.querySelector('.shore-bar.shown .sb-where')?.textContent?.includes(window.__beech.neighbors().beachAt(1)?.name ?? ''), null, { timeout: 10000 }).catch(() => {});
+check(!(await page.isVisible('.shore-bar .sb-ask')), 'Ana (already his neighbor) does not offer "ask to be neighbors"');
+
+await page.evaluate(() => window.__beech.cam.goTo(window.__beech.neighbors().xFor(-1), true));
+await page.waitForSelector('.shore-bar.shown .sb-ask:not([hidden])', { timeout: 15000 }).catch(() => {});
+check(await page.isVisible('.shore-bar .sb-ask'), 'a beach at the end of a stretch offers "ask to be neighbors" in the status pane');
+await page.click('.shore-bar .sb-ask');
+await page.waitForFunction(() => !!window.__beech.neighbors().state?.asked.right, null, { timeout: 15000 }).catch(() => {});
+const askedName = await page.evaluate(() => window.__beech.neighbors().state?.asked.right?.name ?? null);
+check(!!askedName, `asking from the status pane sent the request (${askedName})`);
+// take it back and go home, so the rest of the walk is as before
 await page.evaluate(() => window.__beech.neighbors().api.remove('right'));
 await page.evaluate(() => window.__beech.neighbors().refresh());
+await page.evaluate(() => window.__beech.cam.goTo(0, true));
 
 // walk (pan) down the shore to Cleo
 await page.evaluate(() => {
@@ -115,8 +115,8 @@ check(await page.evaluate(() => window.__beech.neighbors().liveVisible), 'home a
   }
 }
 
-// visit Dot by code
-await page.evaluate(() => window.__beech.sheet.show('shore'));
+// visit Dot by code (the Inbox's Visit by code tab)
+await page.evaluate(() => window.__beech.hub().show('visit'));
 await page.fill('#visit-code', codes.dot.toLowerCase());
 await page.click('button[data-act="visit"]');
 await page.waitForFunction(() => window.__beech.neighbors().visiting !== null, null, { timeout: 15000 });
@@ -125,8 +125,9 @@ await page.waitForFunction(() => document.querySelector('.shore-bar .sb-where')?
 check((await page.textContent('.shore-bar .sb-where'))?.startsWith('Visiting'), 'the bar says Visiting');
 check(!(await page.evaluate(() => window.__beech.neighbors().liveVisible)), 'your own beach is hidden while visiting');
 // you can't dig someone else's beach
-await page.click('[data-act="edit-menu"]');
-await page.click('button[data-tool="sand"]');
+await page.keyboard.press('Escape');
+await page.evaluate(() => window.__beech.setRail(true));
+await page.click('[data-act="dirt"]');
 const d0 = await page.evaluate(() => window.__beech.info().undoCount);
 await page.mouse.move(500, 450);
 await page.mouse.down();
@@ -136,8 +137,8 @@ await page.waitForTimeout(500);
 check((await page.evaluate(() => window.__beech.info().undoCount)) === d0, "digging does nothing on someone else's beach");
 await page.click('.shore-bar .sb-fav');
 await page.waitForFunction((c) => window.__beech.neighbors().favorites.has(c), codes.dot, { timeout: 5000 });
-// favorites list in the sheet
-await page.evaluate(() => window.__beech.sheet.show('shore'));
+// the Inbox's Starred tab
+await page.evaluate(() => window.__beech.hub().show('starred'));
 await page.waitForSelector(`button[data-act="visit-${codes.cleo}"]`, { timeout: 5000 });
 check(await page.isVisible(`button[data-act="visit-${codes.dot}"]`), 'both starred beaches are in the favorites list');
 await page.click(`button[data-act="visit-${codes.cleo}"]`);

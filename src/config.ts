@@ -66,8 +66,9 @@ export const WAVES = {
   ],
   /** now and then a set much bigger than the rest (sharp peak every `period` s) */
   bigSet: { amp: 0.55, period: 330, sharpness: 8 },
-  /** amplitude multiplier while "calm waves" is on */
-  calmFactor: 0.25,
+  /** swell amplitude multiplier for each wave strength (beach settings);
+   * lively is the beach's own swell */
+  levels: { calm: 0.25, gentle: 0.6, lively: 1, surf: 1.3 },
   /** wave strength swing along the tide schedule: weaker at low tide (1 - swing),
    * stronger at high tide (1 + swing), skipped on near-tideless beaches */
   tideWaveSwing: 0.28,

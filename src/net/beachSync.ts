@@ -201,21 +201,23 @@ export class BeachSync {
 
   /**
    * Someone else signed in (or out): forget every beach of the last person.
-   * The sand in the worker carries on as this device's own beach (`local`):
-   * a first sign-in onto a beach with nothing saved keeps it.
+   * Keep the device beach for a first sign-in, without carrying a signed-in
+   * beach into another account.
    */
   resetToLocal(): Promise<void> {
     this.wanted = LOCAL_BEACH;
     return this.run(async () => {
-      // (its undo history stays behind: it was the last person's)
-      const sand = await this.host.read(true);
-      this.store.reset();
       const was = this.id;
-      this.store.put({ id: LOCAL_BEACH, owned: true }, { delta: sand.delta, objects: sand.objects, ...(sand.cover ? { cover: sand.cover } : {}) });
-      this.store.checkout(LOCAL_BEACH, { read: () => this.host.read(false) });
-      this.id = LOCAL_BEACH;
+      const local = was === LOCAL_BEACH ? await this.host.read(false) : await this.store.current(LOCAL_BEACH);
+      this.store.reset();
+      const ref = { id: LOCAL_BEACH, owned: true };
+      if (local) this.store.put(ref, local);
+      else await this.store.load(ref);
+      const sand = this.store.checkout(LOCAL_BEACH, { read: () => this.host.read(false) });
+      this.id = sand ? LOCAL_BEACH : null;
+      if (sand) this.host.write(sand);
       this.watched = false;
-      if (was !== LOCAL_BEACH) for (const fn of this.boundListeners) fn(LOCAL_BEACH);
+      if (was !== this.id) for (const fn of this.boundListeners) fn(this.id);
     });
   }
 
