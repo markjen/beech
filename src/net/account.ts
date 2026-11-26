@@ -22,6 +22,9 @@ export interface AccountUser {
   name: string;
 }
 
+/** A sign-in that can be attached to a Beech account. */
+export type LinkedProvider = 'google' | 'apple' | 'steam';
+
 export interface SavedBeach {
   location: string;
   nx: number;
@@ -209,6 +212,29 @@ export class Account {
     const user = await this.session(res);
     this.beaches = [];
     return user;
+  }
+
+  /** Which sign-ins are attached to this account (Google, Apple, Steam). */
+  async identities(): Promise<LinkedProvider[]> {
+    const res = await this.call('/api/account/identities');
+    if (!res.ok) throw await errorOf(res, 'could not load your connected sign-ins');
+    return ((await res.json()) as { identities: LinkedProvider[] }).identities;
+  }
+
+  /**
+   * Attach another sign-in to this account, so the same beaches follow you
+   * across providers. The identity is verified by the server before it is
+   * attached; if it already belongs to another account the server refuses
+   * with a 409 and this account is unchanged.
+   */
+  async attachIdentity(provider: LinkedProvider, credential: string, name = ''): Promise<LinkedProvider[]> {
+    const res = await this.call('/api/account/identities', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider, credential, name }),
+    });
+    if (!res.ok) throw await errorOf(res, 'could not link that sign-in');
+    return ((await res.json()) as { identities: LinkedProvider[] }).identities;
   }
 
   signInDev(name: string): Promise<AccountUser> {

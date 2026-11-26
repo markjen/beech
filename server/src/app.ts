@@ -724,6 +724,67 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     return c.body(null, 204);
   });
 
+  // Attach another sign-in to the account you're already signed into, so
+  // the same beaches, inventory and purchases follow you across Google,
+  // Apple and Steam. Unlike POST /account/link (which folds a whole fresh
+  // account in), this never moves data: the second identity is attached
+  // before it ever creates its own account, so there is nothing to merge.
+  // The providers are the same ones /auth/* takes, verified the same way.
+  const ATTACHABLE = ['google', 'apple', 'steam'] as const;
+  type AttachableProvider = (typeof ATTACHABLE)[number];
+  const identitiesOf = async (userId: string): Promise<AttachableProvider[]> => {
+    const rows = await db.query<{ provider: string }>(
+      'SELECT provider FROM user_identities WHERE user_id = $1 ORDER BY provider',
+      [userId],
+    );
+    return rows.map((r) => r.provider).filter((p): p is AttachableProvider => (ATTACHABLE as readonly string[]).includes(p));
+  };
+  app.get('/api/account/identities', requireUser, async (c) => {
+    return c.json({ identities: await identitiesOf(c.get('user').id) });
+  });
+  app.post('/api/account/identities', requireUser, async (c) => {
+    const { provider, credential, name } = await body<{ provider?: string; credential?: string; name?: string }>(c);
+    if (!provider || !(ATTACHABLE as readonly string[]).includes(provider)) fail(400, 'unknown provider: use google, apple, or steam');
+    if (!credential) fail(400, 'missing credential');
+    let who: VerifiedIdentity;
+    try {
+      if (provider === 'google') who = await verifyGoogle(credential!, cfg.googleClientIds);
+      else if (provider === 'apple') who = await verifyApple(credential!, cfg.appleClientIds, name ?? '');
+      else {
+        if (!cfg.steamAuth) fail(404, 'steam sign-in is not enabled');
+        who = await verifySteam(credential!, cfg.steamAuth!, name ?? '');
+      }
+    } catch (e) {
+      if (e instanceof HTTPException) throw e;
+      return fail(401, `${provider} sign-in failed: ${(e as Error).message}`);
+    }
+    const me = c.get('user').id;
+    const attached = await db.withTransaction(async (tx) => {
+      const rows = await tx.query<{ user_id: string }>(
+        'SELECT user_id FROM user_identities WHERE provider = $1 AND provider_sub = $2',
+        [who.provider, who.sub],
+      );
+      const owner = rows[0]?.user_id;
+      if (owner && owner !== me) {
+        fail(
+          409,
+          `that ${provider} sign-in is already linked to another Beech account. To use it here, sign in with that account and delete this one first, or link this account to it with a link code from the other device.`,
+        );
+      }
+      if (owner === me) return false;
+      await tx.query(
+        'INSERT INTO user_identities (provider, provider_sub, user_id, created_at) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING',
+        [who.provider, who.sub, me, (cfg.now ?? Date.now)()],
+      );
+      return true;
+    });
+    // a Google attach refreshes the verified email, as a Google sign-in does
+    if (attached && 'email' in who && who.email) {
+      await db.query('UPDATE users SET email = $1 WHERE id = $2 AND (email IS NULL OR email <> $1)', [who.email, me]);
+    }
+    return c.json({ identities: await identitiesOf(me) });
+  });
+
   // ---------------------------------------------------------------- beaches
   // A person owns one or more beaches (docs/MULTI_BEACH.md). Their home beach
   // has their user id as its id. /api/beach is the home beach, for older apps.
@@ -3786,8 +3847,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   // account page (shoreSite.ts, /account) connects with the same short-lived
   // token as item submissions (itemSubmissions.ts) and forwards its calls
   // here. Only these routes take that token: it can read your balance and
-  // history, top up, redeem a gift card, gift a thing and see your invites,
-  // and nothing else in the game.
+  // history, see your connected sign-ins, top up, redeem a gift card, gift
+  // a thing and see your invites, and nothing else in the game.
   const requireShoreAccount = async (c: Context<Env>, next: () => Promise<void>) => {
     c.header('Cache-Control', 'no-store');
     const m = /^Bearer\s+(\S+)$/.exec(c.req.header('Authorization') ?? '');
@@ -3827,6 +3888,14 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       packs: PACKS.map((p) => ({ id: p.id, name: p.name, usd: p.usd, bucks: p.bucks, featured: !!p.featured })),
       webCheckout: !!cfg.xsolla,
     });
+  });
+  // What the beechshore account page shows under "Connected sign-ins".
+  // Read-only here on purpose: attaching needs the provider's own sign-in
+  // sheet, which lives in the game (native sheets / Google's web button),
+  // so there is no attach action on that page for the shore token to call.
+  // POST /api/account/identities stays on the game session only.
+  app.get('/shore-account/identities', requireShoreAccount, async (c) => {
+    return c.json({ identities: await identitiesOf(c.get('user').id) });
   });
   app.post('/shore-account/top-up', requireShoreAccount, webCheckout);
   app.get('/shore-account/web-orders/:id', requireShoreAccount, webOrder);

@@ -763,7 +763,7 @@ ${
       ),
     );
   });
-  const ACCOUNT_API = /^\/account\/api\/(summary|top-up|redeem|gift|web-orders\/[0-9a-f-]{36})$/;
+  const ACCOUNT_API = /^\/account\/api\/(summary|identities|top-up|redeem|gift|web-orders\/[0-9a-f-]{36})$/;
   app.on(['GET', 'POST'], '/account/api/*', async (c) => {
     const p = c.req.path.slice(base.length);
     const m = ACCOUNT_API.exec(p);

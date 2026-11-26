@@ -101,6 +101,8 @@ _(nothing right now)_
 
 ## Up next (engineering)
 
+- [ ] **Apple sign-in on the web** (2026-11-26): attaching Apple while signed in works on iOS only — the web has no Apple JS SDK integration or Services ID, so web users can attach Google but not Apple. Add the Apple JS button to Settings (and the `APPLE_CLIENT_IDS` Services ID on the server) if web Apple attach is wanted.
+
 - [ ] **Beech bucks, follow-ups** ([BEECH_BUCKS.md](BEECH_BUCKS.md)): trade in
   several at once from the bag; an admin view of trade-ins and debts.
 
