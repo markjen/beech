@@ -145,7 +145,7 @@ check((await page.textContent('.shop-offers .shop-item.featured b'))?.includes("
 check((await page.$$('.shop-packs .shop-item')).length === 5, 'and five beech-buck packs');
 if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/shop.png` });
 await page.click('.shop-buy[data-product="bucks_50"]');
-await page.waitForFunction(() => document.querySelector('.shop-bucks')?.textContent === '60 beech bucks (bb)', null, { timeout: 15000 });
+await page.waitForFunction(() => document.querySelector('.shop-bucks')?.textContent === '60 beech bucks', null, { timeout: 15000 });
 check(true, 'the bucks_50 pack: bb 60 (with its bonus)');
 const allowanceBefore = await page.evaluate(() => window.__beech.account().allowance);
 await page.click('.shop-buy[data-product="beach_1"]');
@@ -153,7 +153,7 @@ await page.waitForFunction((n) => window.__beech.account().allowance > n, allowa
 check(true, `bought an extra beach (allowance ${allowanceBefore} -> ${await page.evaluate(() => window.__beech.account().allowance)})`);
 await page.click('.shop-buy[data-product="item_parasol"]');
 await page.waitForFunction(() => document.querySelector('.shop-note')?.textContent?.includes('Parasol: in your bag'), null, { timeout: 15000 });
-check((await page.textContent('.shop-bucks')) === '20 beech bucks (bb)', 'bb 40 spent');
+check((await page.textContent('.shop-bucks')) === '20 beech bucks', 'bb 40 spent');
 await page.click('.shop .claw-close');
 await page.evaluate(() => window.__beech.setRail(true));
 await page.click('button[data-tool="place"]');

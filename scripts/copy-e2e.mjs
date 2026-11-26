@@ -127,7 +127,7 @@ await pb.waitForSelector('.copybeach.open [data-act="copy-buy"]', { timeout: 600
 await pb.click('.copybeach [data-act="copy-buy"]');
 await pb.waitForSelector('.shop.open .shop-packs button[data-product="bucks_30"]', { timeout: 60000 });
 check(true, 'short of beech bucks: the shop opens at the packs');
-check((await pb.textContent('.shop.open .shop-bucks')).includes('0 beech bucks (bb)'), 'the shop shows the balance');
+check((await pb.textContent('.shop.open .shop-bucks')).includes('0 beech bucks'), 'the shop shows the balance');
 if (shots) await pb.screenshot({ path: `${shots}/shop-packs.png` });
 await pb.click('.shop.open .shop-packs button[data-product="bucks_30"]');
 await pb.waitForSelector('.copybeach.open [data-act="copy-buy"]', { timeout: 60000 });

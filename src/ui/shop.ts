@@ -183,6 +183,7 @@ export class Shop {
   private renderTabs(): void {
     const tabs = this.availableTabs();
     if (!tabs.some((t) => t.id === this.tab)) this.tab = 'all';
+    const hadFocus = this.tabsEl.contains(document.activeElement);
     this.getBucksBtn.hidden = this.tab === 'packs';
     this.tabsEl.innerHTML = '';
     for (const t of tabs) {
@@ -197,6 +198,7 @@ export class Shop {
       btn.textContent = t.label;
       btn.addEventListener('click', () => this.setTab(t.id));
       this.tabsEl.appendChild(btn);
+      if (on && hadFocus) btn.focus();
     }
   }
 
