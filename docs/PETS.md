@@ -22,7 +22,8 @@ like the other things in your bag.
    them out of `/store/products` and refuses them at `/store/purchase`,
    `/store/web-checkout` and `/store/steam/init`. Only `pet_crab` keeps its
    old listing, for the app versions already in the stores, until those
-   listings come off sale.
+   listings come off sale. The pier (`item_pier`) is `bucksOnly` too: it
+   never had a store item, so the Steam id it was given is dropped.
 4. **Pets are items.** A pet you own is on one of your beaches or in your bag.
    Pick it up on the beach (long-press) to carry it to a new spot, or put it
    in your bag; place it from the bag on any of your beaches with no pet.

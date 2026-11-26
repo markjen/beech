@@ -1613,4 +1613,6 @@ Five findings, all fixed with a test each:
   every species; `__beech.animals.setPet(species)` shows one on this device.
 - Not done: E2E for carrying a pet (no browser E2E run here); pet names for
   new adoptions still come from rename only.
-
+- New offers are sand bucks only (`Product.bucksOnly`): the five new pets and
+  the pier (its Steam id 1019 was never set up and is dropped). Real money
+  only buys sand-buck packs, plus the old item products for old app versions.

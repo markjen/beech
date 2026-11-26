@@ -81,6 +81,11 @@ describe('pet catalog', () => {
     expect((await s.post('/store/purchase', o.token, { platform: 'dev', productId: 'pet_dolphin', token: 'x' })).status).toBe(404);
   });
 
+  it('the pier is sand bucks only too', () => {
+    expect(realMoneyProductById('item_pier')).toBeUndefined();
+    expect(PRODUCTS.find((p) => p.id === 'item_pier')).toMatchObject({ bucksOnly: true, bucks: 30 });
+  });
+
   it('the app and the server agree on every pet', () => {
     expect(CLIENT_PETS.map((p) => [p.species, p.habitat, p.bucks, p.feeds, p.item])).toEqual(
       PETS.map((p) => [p.species, p.habitat, p.bucks, p.feeds, p.item]),
