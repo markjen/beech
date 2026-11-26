@@ -1628,6 +1628,14 @@
   display: none;
 }
 
+.shop-promo label {
+  display: flex;
+  flex: 1;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
 .shop-promo input {
   flex: 1;
   min-width: 0;

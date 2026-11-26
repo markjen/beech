@@ -40,11 +40,16 @@ import { HTTPException } from 'hono/http-exception';
 
 import { adminConsoleHtml, adminSignInHtml } from './adminPage.js';
 import { hashToken, newSessionToken, verifyGoogleIdToken } from './auth.js';
+import { BUCK, centsToBucks } from './bucks.js';
+import { clawBack, creditBalance } from './bucksDb.js';
 import { BadBlob, inspectBlob } from './checkpoints.js';
 import { toBytes, type Db } from './db.js';
 import { formatCents, hashesEqual, hashGiftCode, isAdminEmail, isPromoCodeShape, newGiftCardCode, normalizePromoCode } from './giftCards.js';
+import { ledgerLabel } from './ledger.js';
 import { createRateLimiter, logEvent, routeLabel } from './observability.js';
-import { PRODUCTS, productById } from './products.js';
+import { PACKS, PRODUCTS, bucksIn, packById, productById, storeProductById } from './products.js';
+import { accountPromos } from './promos.js';
+import { revokePurchaseById } from './store.js';
 import { adminSubmission, adminSubmissions, eligibleProduct, limitUpload, multipart, reviewSubmission, UUID_PATTERN } from './itemSubmissions.js';
 
 export interface AdminConfig {
@@ -302,7 +307,12 @@ export function createAdminApp(db: Db, cfg: AdminConfig): Hono<Env> {
     return c.json(decision);
   });
 
-  api.get('/products', (c) => c.json({ products: PRODUCTS.map((p) => ({ id: p.id, name: p.name, usd: p.usd })) }));
+  api.get('/products', (c) =>
+    c.json({
+      products: PRODUCTS.map((p) => ({ id: p.id, name: p.name, usd: p.usd, bucks: p.bucks })),
+      packs: PACKS.map((p) => ({ id: p.id, name: p.name, usd: p.usd, bucks: p.bucks })),
+    }),
+  );
 
   api.get('/stats', async (c) => {
     const dayAgo = clock() - 86400000;
@@ -408,9 +418,9 @@ export function createAdminApp(db: Db, cfg: AdminConfig): Hono<Env> {
     if (!isPromoCodeShape(code ?? '')) fail(400, 'codes are 3-32 letters and numbers');
     if (kind !== 'percent' && kind !== 'fixed') fail(400, 'kind must be percent or fixed');
     const v = Math.floor(Number(value ?? NaN));
-    if (!Number.isInteger(v) || v <= 0 || (kind === 'percent' && v > 100)) fail(400, 'percent is 1-100; fixed is USD cents');
+    if (!Number.isInteger(v) || v <= 0 || (kind === 'percent' && v > 100)) fail(400, 'percent is 1-100; fixed is bonus bb');
     const applies = appliesTo ? String(appliesTo) : null;
-    if (applies && !productById(applies)) fail(400, 'no such product');
+    if (applies && !packById(applies) && !productById(applies)) fail(400, 'no such pack or product');
     const max = maxUses == null ? null : Math.floor(Number(maxUses));
     if (max !== null && (!Number.isInteger(max) || max <= 0)) fail(400, 'maxUses must be a positive number');
     const exp = expiresAt == null ? null : Math.floor(Number(expiresAt));
@@ -469,8 +479,8 @@ export function createAdminApp(db: Db, cfg: AdminConfig): Hono<Env> {
       `SELECT g.id, g.amount_cents, g.redeemed_at, g.note, u.name AS redeemed_name
          FROM gift_cards g JOIN users u ON u.id = g.redeemed_by WHERE g.status = 'redeemed' ORDER BY g.redeemed_at DESC LIMIT 50`,
     );
-    const promos = await db.query<{ code: string; product_id: string; discount_cents: number; created_at: string; user_name: string | null }>(
-      `SELECT p.code, p.product_id, p.discount_cents, p.created_at, u.name AS user_name
+    const promos = await db.query<{ code: string; product_id: string; discount_cents: number; bonus_bucks: number; purchase_id: string | null; created_at: string; user_name: string | null }>(
+      `SELECT p.code, p.product_id, p.discount_cents, p.bonus_bucks, p.purchase_id, p.created_at, u.name AS user_name
          FROM promo_uses p JOIN users u ON u.id = p.user_id ORDER BY p.created_at DESC LIMIT 50`,
     );
     const ledger = await db.query<{ kind: string; amount_cents: number; ref: string; created_at: string; user_name: string | null }>(
@@ -483,10 +493,19 @@ export function createAdminApp(db: Db, cfg: AdminConfig): Hono<Env> {
         code: r.code,
         productId: r.product_id,
         discountCents: Number(r.discount_cents),
+        bonusBucks: Number(r.bonus_bucks),
+        purchaseId: r.purchase_id ? String(r.purchase_id) : null,
         usedAt: Number(r.created_at),
         user: r.user_name,
       })),
-      credit: ledger.map((r) => ({ kind: r.kind, amountCents: Number(r.amount_cents), ref: r.ref, createdAt: Number(r.created_at), user: r.user_name })),
+      credit: ledger.map((r) => ({
+        kind: r.kind,
+        amountCents: Number(r.amount_cents),
+        bucks: Math.sign(Number(r.amount_cents)) * centsToBucks(Math.abs(Number(r.amount_cents))),
+        ref: r.ref,
+        createdAt: Number(r.created_at),
+        user: r.user_name,
+      })),
     });
   });
 
@@ -705,6 +724,297 @@ export function createAdminApp(db: Db, cfg: AdminConfig): Hono<Env> {
     if (!rows.length) fail(409, "a home beach can't be removed");
     await audit(c.get('actor'), 'beach.delete', 'beach', b.id, { code: b.code, name: b.name, owner: b.owner_id });
     return c.body(null, 204);
+  });
+
+  // ---------------------------------------------------------------- users, ledger corrections, refunds
+  api.get('/users', async (c) => {
+    const q = (c.req.query('q') ?? '').trim().slice(0, 80);
+    const limit = Math.min(100, Math.max(1, Number(c.req.query('limit') ?? 50) | 0));
+    const offset = Math.min(100000, Math.max(0, Number(c.req.query('offset') ?? 0) | 0));
+    const where: string[] = [];
+    const args: unknown[] = [];
+    if (q) {
+      const code = q.toUpperCase().replace(/[^A-Z0-9]/g, '');
+      args.push(`%${q.replace(/[\\%_]/g, (m) => `\\${m}`)}%`);
+      const like = `$${args.length}`;
+      const parts = [`u.name ILIKE ${like}`, `u.email ILIKE ${like}`];
+      if (code.length === 6) {
+        args.push(code);
+        parts.push(`EXISTS (SELECT 1 FROM beach b WHERE b.owner_id = u.id AND b.code = $${args.length})`);
+      }
+      if (UUID.test(q)) {
+        args.push(q);
+        parts.push(`u.id = $${args.length}::uuid`);
+      }
+      where.push(`(${parts.join(' OR ')})`);
+    }
+    args.push(limit + 1, offset);
+    const rows = await db.query<{
+      id: string;
+      name: string;
+      email: string | null;
+      provider: string;
+      credit_cents: number;
+      creator_credit_debt_cents: number;
+      created_at: string;
+      beaches: string;
+      purchases: string;
+    }>(
+      `SELECT u.id, u.name, u.email, u.provider, u.credit_cents, u.creator_credit_debt_cents, u.created_at,
+              (SELECT COUNT(*) FROM beach b WHERE b.owner_id = u.id) AS beaches,
+              (SELECT COUNT(*) FROM purchases p WHERE p.user_id = u.id) AS purchases
+         FROM users u
+        ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+        ORDER BY u.created_at DESC, u.id
+        LIMIT $${args.length - 1} OFFSET $${args.length}`,
+      args,
+    );
+    return c.json({
+      users: rows.slice(0, limit).map((u) => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        provider: u.provider,
+        bucks: centsToBucks(Number(u.credit_cents)),
+        debt: centsToBucks(Number(u.creator_credit_debt_cents)),
+        beaches: Number(u.beaches),
+        purchases: Number(u.purchases),
+        createdAt: Number(u.created_at),
+      })),
+      more: rows.length > limit,
+    });
+  });
+
+  api.get('/users/:id', async (c) => {
+    const id = c.req.param('id');
+    if (!UUID.test(id)) fail(404, 'no such user');
+    const [u] = await db.query<{
+      id: string;
+      name: string;
+      email: string | null;
+      provider: string;
+      credit_cents: number;
+      creator_credit_debt_cents: number;
+      created_at: string;
+    }>('SELECT id, name, email, provider, credit_cents, creator_credit_debt_cents, created_at FROM users WHERE id = $1', [id]);
+    if (!u) fail(404, 'no such user');
+    const [beaches, ledgerRows, purchases, promos] = await Promise.all([
+      db.query<{ id: string; code: string; name: string; home: boolean; on_shore: boolean }>(
+        'SELECT id, code, name, home, on_shore FROM beach WHERE owner_id = $1 ORDER BY home DESC, created_at',
+        [id],
+      ),
+      db.query<{
+        id: string;
+        kind: string;
+        amount_cents: number;
+        ref: string;
+        created_at: string;
+        product_id: string | null;
+        traded: string | null;
+        who: string | null;
+      }>(
+        `SELECT l.id, l.kind, l.amount_cents, l.ref, l.created_at,
+                p.product_id,
+                (SELECT SUM(t.quantity) FROM trade_ins t
+                  WHERE l.kind = 'trade_in' AND t.user_id = l.user_id AND t.item_id = l.ref AND t.created_at = l.created_at) AS traded,
+                u2.name AS who
+           FROM credit_ledger l
+           LEFT JOIN purchases p ON l.kind IN ('pack', 'pack_refund') AND l.ref = 'purchase:' || p.id::text
+           LEFT JOIN users u2 ON l.kind = 'invite_bonus'
+                             AND u2.id::text = substring(l.ref FROM '^invited(?:_by)?:(.*)$')
+          WHERE l.user_id = $1
+          ORDER BY l.created_at DESC, l.id DESC
+          LIMIT 200`,
+        [id],
+      ),
+      db.query<{
+        id: string;
+        store: string;
+        transaction_id: string;
+        product_id: string;
+        environment: string;
+        purchased_at: string;
+        granted_at: string;
+        refunded_at: string | null;
+        promo_code: string | null;
+        bonus_bucks: number | null;
+      }>(
+        `SELECT p.id, p.store, p.transaction_id, p.product_id, p.environment, p.purchased_at, p.granted_at, p.refunded_at,
+                a.code AS promo_code, a.bonus_bucks
+           FROM purchases p
+           LEFT JOIN account_promo_codes a ON a.purchase_id = p.id
+          WHERE p.user_id = $1
+          ORDER BY p.granted_at DESC, p.id DESC
+          LIMIT 100`,
+        [id],
+      ),
+      accountPromos(db, id, clock()),
+    ]);
+    return c.json({
+      user: {
+        id: u!.id,
+        name: u!.name,
+        email: u!.email,
+        provider: u!.provider,
+        bucks: centsToBucks(Number(u!.credit_cents)),
+        debt: centsToBucks(Number(u!.creator_credit_debt_cents)),
+        createdAt: Number(u!.created_at),
+      },
+      beaches: beaches.map((b) => ({ id: b.id, code: b.code, name: b.name, home: b.home, onShore: b.on_shore })),
+      ledger: ledgerRows.map((r) => ({
+        id: Number(r.id),
+        kind: r.kind,
+        bucks: Math.sign(Number(r.amount_cents)) * centsToBucks(Math.abs(Number(r.amount_cents))),
+        what: ledgerLabel(r),
+        ref: r.ref,
+        at: Number(r.created_at),
+      })),
+      purchases: purchases.map((p) => {
+        const prod = storeProductById(p.product_id);
+        return {
+          id: String(p.id),
+          store: p.store,
+          transactionId: p.transaction_id,
+          productId: p.product_id,
+          productName: prod?.name ?? p.product_id,
+          bucks: prod ? bucksIn(prod) : 0,
+          promoCode: p.promo_code,
+          bonusBucks: Number(p.bonus_bucks ?? 0),
+          environment: p.environment,
+          purchasedAt: Number(p.purchased_at),
+          grantedAt: Number(p.granted_at),
+          refundedAt: p.refunded_at === null ? null : Number(p.refunded_at),
+        };
+      }),
+      promos,
+    });
+  });
+
+  // Make a correction to a user's ledger (+bb adds credit paying off debt
+  // first; -bb debits balance with any remainder becoming debt) or issue a
+  // bb refund.
+  api.post('/users/:id/ledger', async (c) => {
+    const id = c.req.param('id');
+    if (!UUID.test(id)) fail(404, 'no such user');
+    const p = await body<{ bucks?: number; kind?: string; reason?: string }>(c);
+    const bucks = Math.trunc(Number(p.bucks ?? NaN));
+    if (!Number.isInteger(bucks) || bucks === 0 || Math.abs(bucks) > 100000) {
+      fail(400, 'bucks must be a non-zero whole number between -100000 and 100000');
+    }
+    const kind = p.kind === undefined ? 'admin_adjustment' : p.kind;
+    if (kind !== 'admin_adjustment' && kind !== 'admin_refund') fail(400, 'kind must be admin_adjustment or admin_refund');
+    if (kind === 'admin_refund' && bucks < 0) fail(400, 'a bb refund must be a positive amount');
+    const reason = String(p.reason ?? '').trim().slice(0, 200);
+    if (!reason) fail(400, 'reason is required');
+
+    const now = clock();
+    const actor = c.get('actor');
+    const result = await db.withTransaction(async (tx) => {
+      const [before] = await tx.query<{ credit_cents: number; creator_credit_debt_cents: number }>(
+        'SELECT credit_cents, creator_credit_debt_cents FROM users WHERE id = $1 FOR NO KEY UPDATE',
+        [id],
+      );
+      if (!before) fail(404, 'no such user');
+      if (bucks > 0) await creditBalance(tx, id, bucks * BUCK, kind, reason, now);
+      else await clawBack(tx, id, Math.abs(bucks) * BUCK, kind, reason, now);
+      const [after] = await tx.query<{ credit_cents: number; creator_credit_debt_cents: number }>(
+        'SELECT credit_cents, creator_credit_debt_cents FROM users WHERE id = $1',
+        [id],
+      );
+      const out = {
+        before: { bucks: centsToBucks(Number(before!.credit_cents)), debt: centsToBucks(Number(before!.creator_credit_debt_cents)) },
+        after: { bucks: centsToBucks(Number(after.credit_cents)), debt: centsToBucks(Number(after.creator_credit_debt_cents)) },
+      };
+      await audit(actor, kind === 'admin_refund' ? 'user.bb_refund' : 'user.ledger_adjustment', 'user', id, { bucks, kind, reason, ...out }, tx);
+      return out;
+    });
+    return c.json({ user: { id, ...result.after }, bucks, kind, reason });
+  });
+
+  // Forgive some or all of a user's refund debt without minting extra balance.
+  api.post('/users/:id/forgive-debt', async (c) => {
+    const id = c.req.param('id');
+    if (!UUID.test(id)) fail(404, 'no such user');
+    const p = await body<{ bucks?: number | null; reason?: string }>(c);
+    const reason = String(p.reason ?? '').trim().slice(0, 200);
+    if (!reason) fail(400, 'reason is required');
+    const requested = p.bucks == null ? null : Math.trunc(Number(p.bucks));
+    if (requested !== null && (!Number.isInteger(requested) || requested <= 0 || requested > 100000)) {
+      fail(400, 'bucks must be a positive whole number');
+    }
+    const actor = c.get('actor');
+    const result = await db.withTransaction(async (tx) => {
+      const [before] = await tx.query<{ credit_cents: number; creator_credit_debt_cents: number }>(
+        'SELECT credit_cents, creator_credit_debt_cents FROM users WHERE id = $1 FOR NO KEY UPDATE',
+        [id],
+      );
+      if (!before) fail(404, 'no such user');
+      const debtCents = Number(before!.creator_credit_debt_cents);
+      if (debtCents <= 0) fail(409, 'user has no debt');
+      const forgiveCents = requested === null ? debtCents : Math.min(debtCents, requested * BUCK);
+      await tx.query('UPDATE users SET creator_credit_debt_cents = creator_credit_debt_cents - $2 WHERE id = $1', [id, forgiveCents]);
+      const [after] = await tx.query<{ credit_cents: number; creator_credit_debt_cents: number }>(
+        'SELECT credit_cents, creator_credit_debt_cents FROM users WHERE id = $1',
+        [id],
+      );
+      const forgiven = centsToBucks(forgiveCents);
+      const out = {
+        forgiven,
+        before: { bucks: centsToBucks(Number(before!.credit_cents)), debt: centsToBucks(debtCents) },
+        after: { bucks: centsToBucks(Number(after.credit_cents)), debt: centsToBucks(Number(after.creator_credit_debt_cents)) },
+      };
+      await audit(actor, 'user.forgive_debt', 'user', id, { reason, ...out }, tx);
+      return out;
+    });
+    return c.json({ user: { id, ...result.after }, forgiven: result.forgiven, reason });
+  });
+
+  // Issue a refund on a recorded real-money purchase: marks it refunded,
+  // expires any granted items, reverses creator credit, and claws back the
+  // pack's bb plus any promo bonus bb.
+  api.post('/purchases/:id/refund', async (c) => {
+    const id = c.req.param('id');
+    if (!/^\d+$/.test(id)) fail(404, 'no such purchase');
+    const p = (await c.req.json().catch(() => ({}))) as { reason?: string };
+    const reason = String(p.reason ?? '').trim().slice(0, 200);
+    const now = clock();
+    const actor = c.get('actor');
+    const result = await db.withTransaction(async (tx) => {
+      const [existing] = await tx.query<{ id: string; refunded_at: string | null }>(
+        'SELECT id, refunded_at FROM purchases WHERE id = $1 FOR UPDATE',
+        [id],
+      );
+      if (!existing) fail(404, 'no such purchase');
+      if (existing!.refunded_at !== null) fail(409, 'that purchase is already refunded');
+      const revoked = await revokePurchaseById(tx, id, now);
+      if (!revoked) fail(409, 'that purchase is already refunded');
+      const [u] = await tx.query<{ credit_cents: number; creator_credit_debt_cents: number }>(
+        'SELECT credit_cents, creator_credit_debt_cents FROM users WHERE id = $1',
+        [revoked!.user_id],
+      );
+      const user = {
+        id: revoked!.user_id,
+        bucks: centsToBucks(Number(u?.credit_cents ?? 0)),
+        debt: centsToBucks(Number(u?.creator_credit_debt_cents ?? 0)),
+      };
+      await audit(
+        actor,
+        'purchase.refund',
+        'purchase',
+        String(revoked!.id),
+        {
+          userId: revoked!.user_id,
+          store: revoked!.store,
+          transactionId: revoked!.transaction_id,
+          productId: revoked!.product_id,
+          reason: reason || undefined,
+          after: { bucks: user.bucks, debt: user.debt },
+        },
+        tx,
+      );
+      return { purchaseId: String(revoked!.id), refundedAt: now, user };
+    });
+    return c.json(result);
   });
 
   // ---- reports: notes players reported (docs/INBOX_NOTIFICATIONS.md, "Safety")

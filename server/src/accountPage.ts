@@ -63,6 +63,16 @@ export function accountContent(config: { api: string; connect: string; game: str
   </form>
   <p class="account-status" id="account-redeem-status" role="status"></p>
 </section>
+<section class="submission-panel" id="promo-codes">
+  <h2>Promo codes</h2>
+  <p class="muted">Add promo codes to your account. When you buy a beech-buck pack, the one that gives you the largest bonus applies automatically.</p>
+  <form class="account-row" id="account-promo">
+    <input name="code" type="text" placeholder="Promo code" autocomplete="off" aria-label="Promo code" required>
+    <button class="btn" type="submit">Add code</button>
+  </form>
+  <p class="account-status" id="account-promo-status" role="status"></p>
+  <ul class="account-friends" id="account-promos"></ul>
+</section>
 <section class="submission-panel" id="gift">
   <h2>Gift something</h2>
   <p class="muted">Send one thing from your bag to a friend’s beach. You need their 6-letter beach code.</p>
@@ -133,6 +143,7 @@ export function accountContent(config: { api: string; connect: string; game: str
     const d = data;
     document.getElementById('top-up').hidden = fromApp;
     document.getElementById('gift-card').hidden = fromApp;
+    document.getElementById('promo-codes').hidden = fromApp;
     $('bucks').innerHTML = '<img src="/icons/beech-bucks.webp" alt="" class="bucks-icon" width="18" height="18"> ' + d.bucks + ' beech ' + (d.bucks === 1 ? 'buck' : 'bucks');
     $('debt').hidden = !d.debt;
     $('debt').textContent = d.debt ? S(d.debt) + ' owed from a refund: the next beech bucks in pay it off first.' : '';
@@ -149,12 +160,29 @@ export function accountContent(config: { api: string; connect: string; game: str
       b.disabled = !d.webCheckout;
       b.dataset.pack = p.id;
       const big = document.createElement('span');
-      big.textContent = S(p.bucks);
+      big.textContent = p.bonusBucks ? S(p.bucks) + ' + ' + p.bonusBucks + ' bonus' : S(p.bucks);
       const small = document.createElement('small');
-      small.textContent = '$' + p.usd.toFixed(2) + (p.featured ? ' · best value' : '');
+      small.textContent = '$' + p.usd.toFixed(2) + (p.promoCode ? ' · ' + p.promoCode : p.featured ? ' · best value' : '');
       b.append(big, small);
       b.addEventListener('click', () => topUp(p, b));
       packs.append(b);
+    }
+    // promo codes
+    const promosEl = $('promos');
+    promosEl.replaceChildren();
+    const promoList = d.promos || [];
+    for (const pr of promoList) {
+      const li = document.createElement('li');
+      const deal = pr.kind === 'percent' ? '+' + pr.value + '% bonus bb' : '+' + pr.value + ' bonus bb';
+      const statusLabel = pr.status === 'ready'
+        ? 'ready'
+        : pr.status === 'used'
+          ? 'used' + (pr.bonusBucks ? ' (+' + S(pr.bonusBucks) + ')' : '')
+          : pr.status === 'exhausted' ? 'used up' : pr.status;
+      const packNote = pr.appliesTo ? ' · ' + (d.packs.find((x) => x.id === pr.appliesTo)?.name || pr.appliesTo) : '';
+      const expNote = pr.status === 'ready' && pr.expiresAt ? ' · expires ' + when(pr.expiresAt) : '';
+      li.textContent = pr.code + ' · ' + deal + packNote + ' · ' + statusLabel + expNote;
+      promosEl.append(li);
     }
     // gift
     const select = $('gift').elements.thing;
@@ -295,6 +323,21 @@ export function accountContent(config: { api: string; connect: string; game: str
       await load();
     } catch (err) {
       $('redeem-status').textContent = err.message;
+    }
+  });
+
+  $('promo').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const input = $('promo').elements.code;
+    $('promo-status').textContent = 'Adding…';
+    try {
+      const r = await call('/promo-codes', 'POST', { code: input.value.trim() });
+      input.value = '';
+      const deal = r.promo.kind === 'percent' ? '+' + r.promo.value + '% bonus bb' : '+' + r.promo.value + ' bonus bb';
+      $('promo-status').textContent = 'Added ' + r.promo.code + ' (' + deal + ' on your next matching pack).';
+      await load();
+    } catch (err) {
+      $('promo-status').textContent = err.message;
     }
   });
 

@@ -123,6 +123,7 @@ export function adminConsoleHtml(opts: { nonce: string; email: string; appUrl: s
   <h1>beech admin</h1>
   <nav role="tablist">
     <button type="button" role="tab" data-tab="beaches" aria-selected="true">Beaches</button>
+    <button type="button" role="tab" data-tab="users" aria-selected="false">Users &amp; Ledger</button>
     <button type="button" role="tab" data-tab="submissions" aria-selected="false">Item submissions</button>
     <button type="button" role="tab" data-tab="gifts" aria-selected="false">Gift cards</button>
     <button type="button" role="tab" data-tab="promos" aria-selected="false">Promo codes</button>
@@ -147,6 +148,18 @@ export function adminConsoleHtml(opts: { nonce: string; email: string; appUrl: s
       <div class="row"><button id="beach-more" type="button" hidden>More</button></div>
     </div>
     <div id="beach-detail" class="panel" hidden></div>
+  </section>
+
+  <section id="tab-users" hidden>
+    <div class="panel">
+      <form id="user-search" class="row">
+        <input name="q" type="search" placeholder="Name, email, user ID, or 6-letter beach code" aria-label="Search users">
+        <button type="submit" class="primary">Search</button>
+      </form>
+      <div id="user-list"><p class="muted">Loading…</p></div>
+      <div class="row"><button id="user-more" type="button" hidden>More</button></div>
+    </div>
+    <div id="user-detail" class="panel" hidden></div>
   </section>
 
   <section id="tab-submissions" hidden>
@@ -213,11 +226,12 @@ export function adminConsoleHtml(opts: { nonce: string; email: string; appUrl: s
   <section id="tab-promos" hidden>
     <div class="panel">
       <h2>New promo code</h2>
+      <p class="muted">Players load promo codes onto their account (at most once per account). Pack prices stay the same; buying a matching bb pack automatically applies the loaded code that gives the largest extra bonus bb.</p>
       <form id="promo-form">
         <label><span>Code</span><input name="code" type="text" required minlength="3" maxlength="32" placeholder="LAUNCH20"></label>
-        <label><span>Kind</span><select name="kind"><option value="percent">Percent off</option><option value="fixed">Fixed amount off</option></select></label>
-        <label><span>Value</span><input name="value" type="number" min="1" step="1" required placeholder="20 = 20% or 200 = $2.00"></label>
-        <label><span>Product</span><select name="appliesTo"><option value="">Any product</option></select></label>
+        <label><span>Kind</span><select name="kind"><option value="percent">Bonus percent (+% bb)</option><option value="fixed">Bonus beech bucks (+bb)</option></select></label>
+        <label><span>Value</span><input name="value" type="number" min="1" step="1" required placeholder="20 = +20% bb, or 15 = +15 bb"></label>
+        <label><span>Pack</span><select name="appliesTo"><option value="">Any bb pack</option></select></label>
         <label><span>Max uses</span><input name="maxUses" type="number" min="1" step="1" placeholder="unlimited"></label>
         <label><span>Expires</span><input name="expires" type="date"></label>
         <button type="submit" class="primary">Create promo code</button>
@@ -263,7 +277,7 @@ const items = (m) => { const e = Object.entries(m || {}); return e.length ? e.ma
 
 // ---- tabs
 const loaded = {};
-const loaders = { beaches: loadBeachesTab, submissions: () => loadSubmissions(0), gifts: loadGifts, promos: loadPromos, redemptions: loadRedemptions, reports: loadReports, audit: loadAudit };
+const loaders = { beaches: loadBeachesTab, users: () => loadUsers(false), submissions: () => loadSubmissions(0), gifts: loadGifts, promos: loadPromos, redemptions: loadRedemptions, reports: loadReports, audit: loadAudit };
 function show(tab) {
   document.querySelectorAll('nav [data-tab]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === tab)));
   for (const t of Object.keys(loaders)) $('tab-' + t).hidden = t !== tab;
@@ -312,7 +326,7 @@ async function openBeach(id) {
     '<div class="row"><h2>' + esc(b.name || 'Unnamed beach') + ' <span class="mono">' + esc(b.code) + '</span></h2>' +
       (b.visitUrl ? '<a href="' + esc(b.visitUrl) + '" target="_blank" rel="noopener noreferrer">Open in the game ↗</a>' : '') + '</div>' +
     '<dl>' +
-      '<dt>Owner</dt><dd>' + esc(b.owner.name || '—') + ' · ' + esc(b.owner.email || 'no email') + ' · ' + esc(b.owner.provider) + ' <span class="muted mono">' + esc(b.owner.id) + '</span></dd>' +
+      '<dt>Owner</dt><dd><a href="#" data-open-user="' + esc(b.owner.id) + '">' + esc(b.owner.name || '—') + '</a> · ' + esc(b.owner.email || 'no email') + ' · ' + esc(b.owner.provider) + ' <span class="muted mono">' + esc(b.owner.id) + '</span></dd>' +
       '<dt>Home</dt><dd>' + (b.home ? 'yes' : 'no') + '</dd>' +
       '<dt>On the shore</dt><dd>' + (b.onShore ? 'yes' : '<span class="err">hidden</span>') + '</dd>' +
       '<dt>Location</dt><dd>' + esc(b.location || '—') + (b.nx ? ' · ' + b.nx + '×' + b.ny : '') + '</dd>' +
@@ -337,8 +351,132 @@ async function openBeach(id) {
     '</p>' +
     '<p class="muted">Every action is recorded in the audit log. Clearing keeps what was there as the beach\\'s "Before it was cleared" checkpoint, so the owner can restore it.</p>';
   el.querySelectorAll('[data-open]').forEach((a) => a.addEventListener('click', (e) => { e.preventDefault(); void openBeach(a.dataset.open); }));
+  el.querySelectorAll('[data-open-user]').forEach((a) => a.addEventListener('click', (e) => { e.preventDefault(); show('users'); void openUser(a.dataset.openUser); }));
   $('rename').addEventListener('submit', (e) => { e.preventDefault(); act(b, 'rename', String(new FormData(e.target).get('name') || '')); });
   el.querySelectorAll('[data-act]').forEach((btn) => btn.addEventListener('click', () => act(b, btn.dataset.act)));
+  el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ---- users, ledger corrections & refunds
+let userSearch = { q: '', offset: 0 };
+let selectedUser = null;
+async function loadUsers(append) {
+  const qs = new URLSearchParams({ q: userSearch.q, offset: String(userSearch.offset), limit: '50' });
+  const r = await api('/users?' + qs);
+  const el = $('user-list');
+  const rows = r.users.map((u) => '<tr class="pick' + (u.id === selectedUser ? ' sel' : '') + '" data-uid="' + esc(u.id) + '">' +
+    '<td>' + esc(u.name || '—') + '</td>' +
+    '<td>' + esc(u.email || '—') + ' <span class="muted">(' + esc(u.provider) + ')</span></td>' +
+    '<td><b>bb ' + u.bucks + '</b>' + (u.debt ? ' <span class="tag off">debt bb ' + u.debt + '</span>' : '') + '</td>' +
+    '<td>' + u.beaches + '</td>' +
+    '<td>' + u.purchases + '</td>' +
+    '<td>' + when(u.createdAt) + '</td></tr>').join('');
+  if (!append) el.innerHTML = rows ? '<table><thead><tr><th>Name</th><th>Email</th><th>Balance</th><th>Beaches</th><th>Purchases</th><th>Joined</th></tr></thead><tbody>' + rows + '</tbody></table>' : '<p class="muted">No users match.</p>';
+  else el.querySelector('tbody').insertAdjacentHTML('beforeend', rows);
+  $('user-more').hidden = !r.more;
+}
+$('user-list').addEventListener('click', (e) => { const tr = e.target.closest('tr[data-uid]'); if (tr) void openUser(tr.dataset.uid); });
+$('user-search').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  userSearch = { q: String(f.get('q') || ''), offset: 0 };
+  loadUsers(false).catch((err) => say(err.message));
+});
+$('user-more').addEventListener('click', () => { userSearch.offset += 50; loadUsers(true).catch((err) => say(err.message)); });
+
+async function openUser(id) {
+  selectedUser = id;
+  document.querySelectorAll('#user-list tr[data-uid]').forEach((tr) => tr.classList.toggle('sel', tr.dataset.uid === id));
+  const d = await api('/users/' + encodeURIComponent(id));
+  const u = d.user;
+  const el = $('user-detail');
+  el.hidden = false;
+  const purchaseRows = d.purchases.map((p) =>
+    '<tr><td>' + when(p.grantedAt) + '</td><td>' + esc(p.store) + ' <span class="muted">' + esc(p.environment) + '</span></td>' +
+    '<td>' + esc(p.productName) + (p.bucks ? ' (bb ' + p.bucks + ')' : '') + '</td>' +
+    '<td>' + (p.promoCode ? esc(p.promoCode) + ' (+bb ' + p.bonusBucks + ')' : '—') + '</td>' +
+    '<td class="mono">' + esc(p.transactionId) + '</td>' +
+    '<td>' + (p.refundedAt ? '<span class="tag off">refunded ' + when(p.refundedAt) + '</span>' : '<button type="button" class="danger" data-refund-purchase="' + esc(p.id) + '" data-label="' + esc(p.productName + ' (' + p.store + ')') + '">Issue refund</button>') + '</td></tr>'
+  ).join('');
+  const promoRows = d.promos.map((pr) =>
+    '<tr><td><b>' + esc(pr.code) + '</b></td><td>' + (pr.kind === 'percent' ? '+' + pr.value + '% bb' : '+bb ' + pr.value) + '</td>' +
+    '<td>' + esc(pr.appliesTo || 'any pack') + '</td><td>' + esc(pr.status) + (pr.bonusBucks ? ' (+bb ' + pr.bonusBucks + ')' : '') + '</td>' +
+    '<td>' + when(pr.loadedAt) + '</td><td>' + when(pr.usedAt) + '</td></tr>'
+  ).join('');
+  const ledgerRows = d.ledger.map((l) =>
+    '<tr><td>' + when(l.at) + '</td><td class="mono">' + esc(l.kind) + '</td><td>' + esc(l.what) +
+    (l.ref ? '<br><span class="muted mono">' + esc(l.ref) + '</span>' : '') + '</td>' +
+    '<td class="' + (l.bucks >= 0 ? 'ok' : 'err') + '">' + (l.bucks >= 0 ? '+' : '−') + 'bb ' + Math.abs(l.bucks) + '</td>' +
+    '<td>' + (l.kind === 'spend' && l.bucks < 0 ? '<button type="button" data-prefill-refund="' + Math.abs(l.bucks) + '" data-prefill-what="' + esc(l.what) + '">Refund bb</button>' : '') + '</td></tr>'
+  ).join('');
+  el.innerHTML =
+    '<h2>' + esc(u.name || 'Unnamed user') + '</h2>' +
+    '<dl>' +
+      '<dt>User ID</dt><dd class="mono">' + esc(u.id) + '</dd>' +
+      '<dt>Email</dt><dd>' + esc(u.email || '—') + ' · ' + esc(u.provider) + '</dd>' +
+      '<dt>Balance</dt><dd><b>bb ' + u.bucks + '</b>' +
+        (u.debt ? ' · <span class="err">Debt: bb ' + u.debt + '</span> <button type="button" id="user-forgive-debt">Forgive debt</button>' : '') + '</dd>' +
+      '<dt>Beaches</dt><dd>' + (d.beaches.length ? d.beaches.map((b) => '<span class="mono">' + esc(b.code) + '</span> ' + esc(b.name || '—') + (b.home ? ' (home)' : '')).join(', ') : '—') + '</dd>' +
+      '<dt>Joined</dt><dd>' + when(u.createdAt) + '</dd>' +
+    '</dl>' +
+    '<h2>Ledger correction / bb refund</h2>' +
+    '<form id="user-ledger-form">' +
+      '<label><span>Type</span><select name="kind"><option value="admin_adjustment">Ledger correction (+ or − bb)</option><option value="admin_refund">Refund bb (+ bb)</option></select></label>' +
+      '<label><span>Amount (bb)</span><input name="bucks" type="number" step="1" required placeholder="e.g. 30 or -10"></label>' +
+      '<label><span>Reason</span><input name="reason" type="text" maxlength="200" required placeholder="shown in ledger &amp; audit log"></label>' +
+      '<button type="submit" class="primary">Apply to ledger</button>' +
+    '</form>' +
+    '<h2>Purchases</h2>' +
+    '<p class="muted">Issuing a refund here revokes the purchase in Beech (claws back pack bb + promo bonus, expires items, reverses creator credit). For Apple, Google, Steam or Xsolla charges, issue the money refund in that store\\'s console too.</p>' +
+    (purchaseRows ? '<table><thead><tr><th>When</th><th>Store</th><th>Product</th><th>Promo</th><th>Transaction</th><th></th></tr></thead><tbody>' + purchaseRows + '</tbody></table>' : '<p class="muted">No purchases yet.</p>') +
+    '<h2>Loaded promo codes</h2>' +
+    (promoRows ? '<table><thead><tr><th>Code</th><th>Bonus</th><th>Pack</th><th>Status</th><th>Loaded</th><th>Used</th></tr></thead><tbody>' + promoRows + '</tbody></table>' : '<p class="muted">No promo codes loaded.</p>') +
+    '<h2>Ledger history</h2>' +
+    (ledgerRows ? '<table><thead><tr><th>When</th><th>Kind</th><th>What</th><th>Amount</th><th></th></tr></thead><tbody>' + ledgerRows + '</tbody></table>' : '<p class="muted">No ledger entries yet.</p>');
+
+  const ledgerForm = $('user-ledger-form');
+  ledgerForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = new FormData(ledgerForm);
+    try {
+      const r = await post('/users/' + encodeURIComponent(u.id) + '/ledger', {
+        kind: String(f.get('kind')),
+        bucks: Number(f.get('bucks')),
+        reason: String(f.get('reason') || ''),
+      });
+      say('Ledger updated (new balance: bb ' + r.user.bucks + (r.user.debt ? ', debt bb ' + r.user.debt : '') + ').', true);
+      await Promise.all([openUser(u.id), loadUsers(false)]);
+    } catch (err) { say(err.message); }
+  });
+  const forgiveBtn = $('user-forgive-debt');
+  if (forgiveBtn) {
+    forgiveBtn.addEventListener('click', async () => {
+      const reason = prompt('Reason for forgiving bb ' + u.debt + ' debt for ' + (u.name || u.id) + '?');
+      if (!reason || !reason.trim()) return;
+      try {
+        const r = await post('/users/' + encodeURIComponent(u.id) + '/forgive-debt', { reason: reason.trim() });
+        say('Forgave bb ' + r.forgiven + ' debt.', true);
+        await Promise.all([openUser(u.id), loadUsers(false)]);
+      } catch (err) { say(err.message); }
+    });
+  }
+  el.querySelectorAll('[data-refund-purchase]').forEach((btn) => btn.addEventListener('click', async () => {
+    const pid = btn.dataset.refundPurchase;
+    const reason = prompt('Refund ' + btn.dataset.label + '? Enter an optional reason (Cancel to abort):', 'Admin refund');
+    if (reason === null) return;
+    try {
+      const r = await post('/purchases/' + encodeURIComponent(pid) + '/refund', { reason: reason.trim() });
+      say('Purchase refunded (new balance: bb ' + r.user.bucks + (r.user.debt ? ', debt bb ' + r.user.debt : '') + ').', true);
+      await Promise.all([openUser(u.id), loadUsers(false)]);
+    } catch (err) { say(err.message); }
+  }));
+  el.querySelectorAll('[data-prefill-refund]').forEach((btn) => btn.addEventListener('click', () => {
+    ledgerForm.elements.kind.value = 'admin_refund';
+    ledgerForm.elements.bucks.value = btn.dataset.prefillRefund;
+    ledgerForm.elements.reason.value = btn.dataset.prefillWhat || 'Refund';
+    ledgerForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    ledgerForm.elements.reason.focus();
+  }));
   el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
@@ -526,14 +664,14 @@ $('gift-copy').addEventListener('click', async () => {
 
 // ---- promo codes
 async function loadPromos() {
-  const [{ promos: list }, { products }] = await Promise.all([api('/promo-codes'), api('/products')]);
+  const [{ promos: list }, { packs }] = await Promise.all([api('/promo-codes'), api('/products')]);
   const sel = document.querySelector('#promo-form select[name=appliesTo]');
   sel.querySelectorAll('option:not([value=""])').forEach((o) => o.remove());
-  for (const p of products) { const o = document.createElement('option'); o.value = p.id; o.textContent = p.name + ' (' + money(Math.round(p.usd * 100)) + ')'; sel.appendChild(o); }
+  for (const p of (packs || [])) { const o = document.createElement('option'); o.value = p.id; o.textContent = p.name + ' (' + money(Math.round(p.usd * 100)) + ')'; sel.appendChild(o); }
   const el = $('promo-list');
   if (!list.length) { el.innerHTML = '<p class="muted">No promo codes yet.</p>'; return; }
-  el.innerHTML = '<table><tr><th>Code</th><th>Off</th><th>For</th><th>Uses</th><th>Active</th><th>Expires</th><th></th></tr>' +
-    list.map((p) => '<tr><td><b>' + esc(p.code) + '</b></td><td>' + (p.kind === 'percent' ? p.value + '%' : money(p.value)) + '</td><td>' + esc(p.appliesTo || 'any') + '</td><td>' + p.uses + (p.maxUses ? ' / ' + p.maxUses : '') + '</td><td>' + (p.active ? 'yes' : 'no') + '</td><td>' + when(p.expiresAt) + '</td>' +
+  el.innerHTML = '<table><tr><th>Code</th><th>Bonus</th><th>Pack</th><th>Uses</th><th>Active</th><th>Expires</th><th></th></tr>' +
+    list.map((p) => '<tr><td><b>' + esc(p.code) + '</b></td><td>' + (p.kind === 'percent' ? '+' + p.value + '% bb' : '+bb ' + p.value) + '</td><td>' + esc(p.appliesTo || 'any pack') + '</td><td>' + p.uses + (p.maxUses ? ' / ' + p.maxUses : '') + '</td><td>' + (p.active ? 'yes' : 'no') + '</td><td>' + when(p.expiresAt) + '</td>' +
       (p.active ? '<td><button type="button" data-disable-promo="' + esc(p.code) + '">Disable</button></td>' : '<td></td>') + '</tr>').join('') + '</table>';
   el.querySelectorAll('[data-disable-promo]').forEach((b) => b.addEventListener('click', async () => {
     try { await post('/promo-codes/' + encodeURIComponent(b.dataset.disablePromo) + '/disable'); say('Promo code disabled.', true); await loadPromos(); }
@@ -557,8 +695,8 @@ $('promo-form').addEventListener('submit', async (e) => {
 async function loadRedemptions() {
   const red = await api('/redemptions');
   const giftRows = red.giftCards.map((g) => '<tr><td>Gift card</td><td>' + money(g.amountCents) + '</td><td>' + esc(g.redeemedBy || '') + '</td><td>' + when(g.redeemedAt) + '</td></tr>').join('');
-  const promoRows = red.promoUses.map((p) => '<tr><td>Promo ' + esc(p.code) + '</td><td>−' + money(p.discountCents) + ' on ' + esc(p.productId) + '</td><td>' + esc(p.user || '') + '</td><td>' + when(p.usedAt) + '</td></tr>').join('');
-  const creditRows = red.credit.map((l) => '<tr><td>Credit ' + esc(l.kind) + '</td><td>' + (l.amountCents >= 0 ? '+' : '−') + money(Math.abs(l.amountCents)) + ' (' + esc(l.ref) + ')</td><td>' + esc(l.user || '') + '</td><td>' + when(l.createdAt) + '</td></tr>').join('');
+  const promoRows = red.promoUses.map((p) => '<tr><td>Promo ' + esc(p.code) + '</td><td>' + (p.bonusBucks ? '+bb ' + p.bonusBucks : '−' + money(p.discountCents)) + ' on ' + esc(p.productId) + '</td><td>' + esc(p.user || '') + '</td><td>' + when(p.usedAt) + '</td></tr>').join('');
+  const creditRows = red.credit.map((l) => '<tr><td>Ledger ' + esc(l.kind) + '</td><td>' + (l.bucks >= 0 ? '+' : '−') + 'bb ' + Math.abs(l.bucks) + ' (' + esc(l.ref) + ')</td><td>' + esc(l.user || '') + '</td><td>' + when(l.createdAt) + '</td></tr>').join('');
   const rows = giftRows + promoRows + creditRows;
   $('redemptions').innerHTML = rows ? '<table><tr><th>What</th><th>Amount</th><th>Who</th><th>When</th></tr>' + rows + '</table>' : '<p class="muted">Nothing redeemed yet.</p>';
 }

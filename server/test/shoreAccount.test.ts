@@ -163,4 +163,20 @@ describe('the account page', () => {
       'Extra go on the claw machine',
     ]);
   });
+
+  it('loads promo codes onto the account and shows pack bonuses in summary', async () => {
+    const a = await user();
+    await db.query(
+      "INSERT INTO promo_codes (code, kind, value, active, created_at) VALUES ('SHORE25', 'fixed', 25, true, $1)",
+      [Date.now()],
+    );
+    const load = await account('/promo-codes', a.scoped, { code: 'shore25' });
+    expect(load.status).toBe(200);
+    const s = (await (await account('/summary', a.scoped)).json()) as {
+      promos: { code: string; status: string }[];
+      packs: { id: string; bonusBucks: number; promoCode: string | null }[];
+    };
+    expect(s.promos).toEqual([expect.objectContaining({ code: 'SHORE25', status: 'ready' })]);
+    expect(s.packs.find((p) => p.id === 'bucks_30')).toEqual(expect.objectContaining({ bonusBucks: 25, promoCode: 'SHORE25' }));
+  });
 });

@@ -681,6 +681,41 @@ export class ShopApi {
     return (await res.json()) as { creditedCents: number; creditCents: number; credited: number; bucks: number };
   }
 
+  /** Promo codes loaded onto your account, and the best bonus bb for each pack. */
+  async myPromos(): Promise<{
+    promos: { code: string; kind: 'percent' | 'fixed'; value: number; appliesTo: string | null; status: string; bonusBucks: number; expiresAt: number | null }[];
+    packBonuses: Record<string, { code: string; bonusBucks: number }>;
+  }> {
+    const res = await this.account.fetch('/api/promo-codes/mine');
+    if (!res.ok) throw new Error('could not load your promo codes');
+    return (await res.json()) as {
+      promos: { code: string; kind: 'percent' | 'fixed'; value: number; appliesTo: string | null; status: string; bonusBucks: number; expiresAt: number | null }[];
+      packBonuses: Record<string, { code: string; bonusBucks: number }>;
+    };
+  }
+
+  /** Load a promo code onto your account (used automatically on your next matching bb pack purchase). */
+  async loadPromo(code: string): Promise<{
+    promo: { code: string; kind: 'percent' | 'fixed'; value: number; appliesTo: string | null; status: string };
+    promos: { code: string; kind: 'percent' | 'fixed'; value: number; appliesTo: string | null; status: string; bonusBucks: number; expiresAt: number | null }[];
+    packBonuses: Record<string, { code: string; bonusBucks: number }>;
+  }> {
+    const res = await this.account.fetch('/api/promo-codes/load', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
+    });
+    if (!res.ok) {
+      const msg = ((await res.json().catch(() => ({}))) as { error?: string }).error;
+      throw new Error(msg ?? 'that code did not work');
+    }
+    return (await res.json()) as {
+      promo: { code: string; kind: 'percent' | 'fixed'; value: number; appliesTo: string | null; status: string };
+      promos: { code: string; kind: 'percent' | 'fixed'; value: number; appliesTo: string | null; status: string; bonusBucks: number; expiresAt: number | null }[];
+      packBonuses: Record<string, { code: string; bonusBucks: number }>;
+    };
+  }
+
   /** What a product costs with a promo code, before buying. */
   async quote(
     productId: string,

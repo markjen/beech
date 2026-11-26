@@ -63,6 +63,7 @@ import {
   type Promo,
 } from './giftCards.js';
 import { appleRefund, googleVoided, revokeStorePurchase, verifyAppleTransaction, verifyGoogleOidc, verifyGooglePurchase, type VerifiedPurchase } from './store.js';
+import { accountPromos, bestPromoForPack, loadAccountPromo } from './promos.js';
 import { NOTIFY_PREFS, PUSH_DEVICES, lockPush, makeSender, pushTick, validEndpoint, validTz, type NotifyPref, type PushConfig, type PushSender } from './push.js';
 import { POOLS, GRAB_CHANCE, COOLDOWN_MAX_MS, COOLDOWN_MIN_MS, cooldownAfter, cryptoRandom, draw, grab, pullDay, starterPrize, STARTER, type Rarity } from './pulls.js';
 import { currentSet, drawVending, nextUtcMidnight } from './vending.js';
@@ -2820,14 +2821,17 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const now = clock();
     // Record it once, then grant (a pack's beech bucks, or an old app's
     // things) and any creator credit in the same transaction.
-    const rows = await db.withTransaction(async (tx) => {
+    const { rows, promo } = await db.withTransaction(async (tx) => {
       const granted = await tx.query<{ purchase_id: string }>(
         `INSERT INTO purchases (user_id, store, transaction_id, product_id, environment, purchased_at, granted_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (store, transaction_id) DO NOTHING
          RETURNING id AS purchase_id`,
         [me, v.store, v.transactionId, product!.id, v.environment, v.purchasedAt, now],
       );
-      if (granted.length) await grantPurchase(tx, { userId: me, purchaseId: granted[0].purchase_id, product: product!, now });
+      let appliedPromo: { code: string; bonusBucks: number } | null = null;
+      if (granted.length) {
+        appliedPromo = (await grantPurchase(tx, { userId: me, purchaseId: granted[0].purchase_id, product: product!, now })).promo;
+      }
       if (granted.length && v.store !== 'dev' && v.environment.toLowerCase() === 'production') {
         const offer = await creatorOffer(tx, product!, true);
         if (offer) {
@@ -2838,14 +2842,14 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
           });
         }
       }
-      return granted;
+      return { rows: granted, promo: appliedPromo };
     });
     if (!rows.length) {
       const prev = (await db.query<{ user_id: string }>('SELECT user_id FROM purchases WHERE store = $1 AND transaction_id = $2', [v!.store, v!.transactionId]))[0];
       if (prev && prev.user_id !== me) fail(409, 'that purchase was already used by another account');
       return c.json({ already: true, product: product!.id, grants: product!.grants });
     }
-    return c.json({ already: false, product: product!.id, grants: product!.grants });
+    return c.json({ already: false, product: product!.id, grants: product!.grants, promo: promo ?? undefined });
   });
 
   /** A refund: the purchase is marked, and what it granted expires now. */
@@ -3204,7 +3208,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const now = clock();
     const granted = await db.withTransaction(async (tx) => {
       const [order] = await tx.query<{ status: string }>('SELECT status FROM steam_orders WHERE order_id = $1 FOR NO KEY UPDATE', [oid]);
-      if (order?.status === 'paid') return [];
+      if (order?.status === 'paid') return { rows: [] as { purchase_id: string }[], promo: null };
       if (order?.status !== 'created') fail(409, 'the order is no longer open');
       const rows = await tx.query<{ purchase_id: string }>(
         `WITH p AS (
@@ -3220,17 +3224,18 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
          SELECT p.id AS purchase_id FROM p`,
         [me, transId, product.id, o!.sandbox ? 'Sandbox' : 'Production', now, oid],
       );
-      if (rows.length) await grantPurchase(tx, { userId: me, purchaseId: rows[0].purchase_id, product, now });
+      let appliedPromo: { code: string; bonusBucks: number } | null = null;
+      if (rows.length) appliedPromo = (await grantPurchase(tx, { userId: me, purchaseId: rows[0].purchase_id, product, now })).promo;
       if (rows.length && o!.creator_submission_id && !o!.sandbox) {
         await awardCheckoutCreatorCredit(tx, {
           submissionId: o!.creator_submission_id, product, buyer: me, storePurchaseId: rows[0].purchase_id,
           paidCents: Number(o!.amount_cents), now,
         });
       }
-      return rows;
+      return { rows, promo: appliedPromo };
     });
-    logEvent('steam_checkout_paid', { product: product.id, order_id: oid, granted: granted.length > 0 });
-    return c.json({ ok: true, already: granted.length === 0, grants: product.grants });
+    logEvent('steam_checkout_paid', { product: product.id, order_id: oid, granted: granted.rows.length > 0 });
+    return c.json({ ok: true, already: granted.rows.length === 0, grants: product.grants, promo: granted.promo ?? undefined });
   });
 
   app.post('/store/steam/cancel', requireUser, async (c) => {
@@ -3243,12 +3248,37 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   });
 
   // ---------------------------------------------------------------- gift cards, promos, credit
-  // Gift cards are prepaid credit; credit buys products server-side, where
-  // a promo code can discount the price. The server prices from its own
-  // product list — a client-supplied price is never trusted. See
-  // docs/GIFT_CARDS_PROMOS.md.
-  const redeemLimiter = createRateLimiter(10); // gift card guesses, per user per minute
+  // Gift cards are prepaid credit; promo codes are loaded onto an account and
+  // automatically grant extra bonus bb on the next matching bb pack purchase
+  // (always picking the loaded code that gives the best bonus for that pack).
+  // See docs/GIFT_CARDS_PROMOS.md and specs/tla/PromoCodes.tla.
+  const redeemLimiter = createRateLimiter(10); // gift card / promo code attempts, per user per minute
   const creditLimiter = createRateLimiter(30); // quotes and credit purchases, per user per minute
+
+  const packBonusesFor = (promos: Awaited<ReturnType<typeof accountPromos>>) => {
+    const out: Record<string, { code: string; bonusBucks: number }> = {};
+    for (const p of PACKS) {
+      const best = bestPromoForPack(promos, p);
+      if (best) out[p.id] = best;
+    }
+    return out;
+  };
+
+  const loadPromoHandler = async (c: Context<Env>) => {
+    const me = c.get('user').id;
+    if (!redeemLimiter(me)) return c.json({ error: 'slow down' }, 429);
+    const { code } = await body<{ code?: string }>(c);
+    const now = clock();
+    const res = await loadAccountPromo(db, me, String(code ?? ''), now);
+    if (!res.ok) return fail(res.status, res.error);
+    const promos = await accountPromos(db, me, now);
+    return c.json({ promo: res.promo, promos, packBonuses: packBonusesFor(promos) });
+  };
+  app.post('/promo-codes/load', requireUser, loadPromoHandler);
+  app.get('/promo-codes/mine', requireUser, async (c) => {
+    const promos = await accountPromos(db, c.get('user').id, clock());
+    return c.json({ promos, packBonuses: packBonusesFor(promos) });
+  });
 
   const loadPromo = async (code: string, conn = db): Promise<Promo | null> => {
     const rows = await conn.query<{
@@ -3920,7 +3950,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   app.get('/shore-account/summary', requireShoreAccount, async (c) => {
     const me = c.get('user').id;
     const now = clock();
-    const [[u], ledger, bag, invites] = await Promise.all([
+    const [[u], ledger, bag, invites, promos] = await Promise.all([
       db.query<{ credit_cents: number; creator_credit_debt_cents: number }>('SELECT credit_cents, creator_credit_debt_cents FROM users WHERE id = $1', [me]),
       ledgerOf(db, me),
       db.query<{ item_id: string; n: string }>(
@@ -3930,6 +3960,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
         [me, now],
       ),
       referralsOf(me),
+      accountPromos(db, me, now),
     ]);
     return c.json({
       user: { name: c.get('user').name },
@@ -3938,7 +3969,19 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       ledger,
       bag: bag.filter((r) => r.item_id !== 'beach').map((r) => ({ item: r.item_id, name: displayName(r.item_id), owned: Number(r.n) })),
       invites,
-      packs: PACKS.map((p) => ({ id: p.id, name: p.name, usd: p.usd, bucks: p.bucks, featured: !!p.featured })),
+      promos,
+      packs: PACKS.map((p) => {
+        const best = bestPromoForPack(promos, p);
+        return {
+          id: p.id,
+          name: p.name,
+          usd: p.usd,
+          bucks: p.bucks,
+          featured: !!p.featured,
+          bonusBucks: best?.bonusBucks ?? 0,
+          promoCode: best?.code ?? null,
+        };
+      }),
       webCheckout: !!cfg.xsolla,
     });
   });
@@ -3953,6 +3996,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   app.post('/shore-account/top-up', requireShoreAccount, webCheckout);
   app.get('/shore-account/web-orders/:id', requireShoreAccount, webOrder);
   app.post('/shore-account/redeem', requireShoreAccount, redeemGiftCard);
+  app.post('/shore-account/promo-codes', requireShoreAccount, loadPromoHandler);
   app.post('/shore-account/gift', requireShoreAccount, sendGift);
 
 
