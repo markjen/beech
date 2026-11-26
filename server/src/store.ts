@@ -12,6 +12,8 @@
 // same way) and Google Play real-time developer notifications (Pub/Sub push,
 // authenticated with a Google-signed OIDC token).
 
+import { revokeGrant } from './bucksDb.js';
+import { storeProductById } from './products.js';
 import { X509Certificate } from 'node:crypto';
 import { compactVerify, createRemoteJWKSet, decodeProtectedHeader, jwtVerify, SignJWT, importPKCS8 } from 'jose';
 
@@ -198,8 +200,8 @@ export async function googleVoided(
 }
 
 /**
- * A refund, from any store: the purchase is marked, and what it granted
- * expires now. Shared by the Apple/Google notification handlers (via
+ * A refund, from any store: the purchase is marked, what it granted
+ * expires now, and a pack's sand bucks (or a traded-in thing's) come back out. Shared by the Apple/Google notification handlers (via
  * `refund()` in app.ts) and the Steam `GetReport/v5` sync
  * (`syncSteamRefunds` in steamStore.ts) so every store revokes the same way.
  */
@@ -210,12 +212,15 @@ export async function revokeStorePurchase(
   now: number,
 ): Promise<void> {
   await db.withTransaction(async (tx) => {
-    const [purchase] = await tx.query<{ id: string }>(
-      `UPDATE purchases SET refunded_at = $3 WHERE store = $1 AND transaction_id = $2 AND refunded_at IS NULL RETURNING id`,
+    const [purchase] = await tx.query<{ id: string; user_id: string; product_id: string }>(
+      `UPDATE purchases SET refunded_at = $3 WHERE store = $1 AND transaction_id = $2 AND refunded_at IS NULL RETURNING id, user_id, product_id`,
       [store, transactionId, now],
     );
     if (!purchase) return;
     await tx.query('UPDATE inventory SET expires_at = $2 WHERE purchase_id = $1', [purchase.id, now]);
     await reverseCreatorCredit(tx, purchase.id, now);
+    // sand bucks (docs/SAND_BUCKS.md): a pack's bucks come back out, and so
+    // do the bucks of any of its things that were traded in
+    await revokeGrant(tx, { purchaseId: purchase.id, userId: purchase.user_id, product: storeProductById(purchase.product_id), now });
   });
 }

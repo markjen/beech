@@ -75,6 +75,7 @@ function loop() {
           loadId,
           roster,
           lost: lost.length ? lost : undefined,
+          washedFootprints: objs.takeWashedFootprints() || undefined,
           vacuumed: vacuumed.length ? vacuumed : undefined,
           stats: withStats ? sim.stats() : undefined,
           tickMs,

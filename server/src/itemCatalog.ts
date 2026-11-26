@@ -127,7 +127,8 @@ export function catalogProduct(item: CatalogItem): Product | undefined {
   return item.product ? productById(item.product) : undefined;
 }
 
-const usd = (n: number) => `$${n.toFixed(2)}`;
+/** a price in sand bucks (docs/SAND_BUCKS.md) */
+const bucks = (n: number) => `${n} sand bucks`;
 const pct = (v: number) => `${Math.round(v * 1000) / 10}%`;
 
 /** Plain-words lines saying how you get this item. */
@@ -140,9 +141,9 @@ export function howToGet(item: CatalogItem): string[] {
   }
   if (group === 'shop') {
     const product = catalogProduct(item);
-    const lines = product ? [`Buy in the shop — ${usd(product.usd)}.`] : ['Buy in the shop.'];
+    const lines = product ? [`Buy in the shop — ${bucks(product.bucks)}.`] : ['Buy in the shop.'];
     if (product && productById('pack_founder')?.grants.some((g) => g.item === item.id)) {
-      lines.push(`Also in the Founder’s pack — ${usd(productById('pack_founder')!.usd)} for two extra beaches and more.`);
+      lines.push(`Also in the Founder’s pack — ${bucks(productById('pack_founder')!.bucks)} for two extra beaches and more.`);
     }
     return lines;
   }
@@ -331,7 +332,7 @@ ${items
       <img src="${esc(links.img(it.id))}" width="400" height="400" loading="lazy" decoding="async" alt="${esc(it.name)}">
       <span class="info"><span class="t">${esc(it.name)}</span>
       <span class="s">${esc(RARITY_LABEL[it.rarity])}</span>
-      <span class="m">${counts[it.id] ? `<span class="stars">★ ${counts[it.id]}</span>` : ''}<span class="when">${esc(catalogGroup(it) === 'shop' && catalogProduct(it) ? usd(catalogProduct(it)!.usd) : '')}</span></span></span>
+      <span class="m">${counts[it.id] ? `<span class="stars">★ ${counts[it.id]}</span>` : ''}<span class="when">${esc(catalogGroup(it) === 'shop' && catalogProduct(it) ? bucks(catalogProduct(it)!.bucks) : '')}</span></span></span>
     </a></li>`,
       )
       .join('')}
@@ -361,7 +362,7 @@ export function catalogDetailHtml(d: ItemDetailData, links: ItemPageLinks, gameU
     <p class="m"><span class="stars">${esc(RARITY_LABEL[item.rarity])}</span></p>
     <ul class="facts">
       <li><b>How to get it</b><span>${howToGet(item).map(esc).join('<br>')}</span></li>
-      ${product ? `<li><b>Price</b><span>${esc(usd(product.usd))} in the shop</span></li>` : ''}
+      ${product ? `<li><b>Price</b><span>${esc(bucks(product.bucks))} in the shop</span></li>` : ''}
       <li><b>Size</b><span>${esc(sizeText(item))}</span></li>
       <li><b>Shapes</b><span>${item.variants} ${item.variants === 1 ? 'shape' : 'shapes'}</span></li>
       ${d.creator ? `<li><b>Designed by</b><span>${esc(d.creator.name)} — a community item; they earn 30% in Beech credit when it sells.</span></li>` : ''}

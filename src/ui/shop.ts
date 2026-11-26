@@ -1,25 +1,28 @@
-import { APP_LINKS, codesAllowed, shopMode, type ShopApi, type ShopProduct } from '../net/shop';
+import { APP_LINKS, codesAllowed, shopMode, type ShopApi, type ShopOffer, type ShopPack } from '../net/shop';
 import { prizeName } from '../world/items';
 import { icon, type IconName } from './hud';
 
 /**
- * The shop: extra beaches, packs and things for your beach. In the apps each
- * "buy" goes through Apple or Google. On the web it goes to Xsolla's Pay
- * Station when the server has web checkout on, and points you to the app
- * when it doesn't.
+ * The shop (docs/SAND_BUCKS.md): your sand bucks, sand-buck packs for real
+ * money, and everything for sale in sand bucks. A pack goes through Apple or
+ * Google in the apps, Steam on Steam, and Xsolla's Pay Station on the web
+ * (when the server has web checkout on; otherwise the web points you to the
+ * app). Things are bought with sand bucks, on any device. Labels and status
+ * only: how it works is in the web guide.
  */
 export class Shop {
   private readonly root: HTMLDivElement;
   private readonly list: HTMLDivElement;
   private readonly note: HTMLParagraphElement;
-  private readonly creditLine: HTMLParagraphElement;
+  private readonly balanceLine: HTMLParagraphElement;
   private readonly giftForm: HTMLFormElement;
   private readonly promoInput: HTMLInputElement;
   private busy = false;
-  private creditCents = 0;
-  /** gift cards, promo codes and credit: not in the native apps (see codesAllowed) */
+  private bucks = 0;
+  /** gift cards and promo codes: not in the native apps (see codesAllowed) */
   private readonly codes = codesAllowed();
-  private products: ShopProduct[] = [];
+  private packs: ShopPack[] = [];
+  private offers: ShopOffer[] = [];
 
   constructor(
     parent: HTMLElement,
@@ -37,8 +40,8 @@ export class Shop {
       <div class="claw-card shop-card">
         <button type="button" class="claw-close" aria-label="Close">×</button>
         <h2>Shop</h2>
+        <p class="shop-credit shop-bucks" role="status"></p>
         <p class="shop-note"></p>
-        <p class="shop-credit"></p>
         <div class="shop-list"></div>
         <form class="shop-gift">
           <input name="code" type="text" placeholder="Gift card code" autocomplete="off" aria-label="Gift card code">
@@ -49,7 +52,7 @@ export class Shop {
     parent.appendChild(this.root);
     this.list = this.root.querySelector('.shop-list')!;
     this.note = this.root.querySelector('.shop-note')!;
-    this.creditLine = this.root.querySelector('.shop-credit')!;
+    this.balanceLine = this.root.querySelector('.shop-bucks')!;
     this.giftForm = this.root.querySelector('.shop-gift')!;
     this.promoInput = this.root.querySelector('.shop-promo input')!;
     this.root.querySelector('.claw-close')!.addEventListener('click', () => this.close());
@@ -66,10 +69,9 @@ export class Shop {
       e.preventDefault();
       void this.redeem();
     });
-    // Typing a promo code can bring a product within the player's credit, so
-    // re-price the list when the code changes (on blur/Enter, not per key).
+    // a promo code changes what the offers cost: price them again
     this.promoInput.addEventListener('change', () => {
-      if (this.products.length) void this.render(this.products);
+      if (this.offers.length) void this.render();
     });
   }
 
@@ -77,29 +79,43 @@ export class Shop {
     return this.root.classList.contains('open');
   }
 
-  async open(): Promise<void> {
+  /** Open the shop; `section` 'packs' scrolls to the sand-buck packs. */
+  async open(section?: 'packs'): Promise<void> {
     this.root.classList.add('open');
     this.root.inert = false;
     this.note.textContent = 'Opening the shop…';
     this.list.innerHTML = '';
-    void this.api.retryPending().then((n) => n && this.bought(''));
-    if (shopMode() === 'web') void this.api.checkWebOrders().then((n) => n && this.bought(''));
+    void this.api.retryPending().then((n) => {
+      if (n) void this.afterPack('');
+    });
+    if (shopMode() === 'web')
+      void this.api.checkWebOrders().then((n) => {
+        if (n) void this.afterPack('');
+      });
     try {
-      const products = await this.api.products();
-        this.note.textContent = shopMode() === 'web' && !this.api.webCheckout ? 'Get these in the beech app:' : '';
-      try {
-        this.creditCents = this.codes ? await this.api.credit() : 0;
-      } catch {
-        this.creditCents = 0;
-      }
-      this.render(products);
+      const [{ packs, offers }] = await Promise.all([this.api.catalog(), this.refreshBucks()]);
+      this.packs = packs;
+      this.offers = offers;
+      this.note.textContent = '';
+      await this.render();
+      if (section === 'packs') this.list.querySelector('.shop-packs')?.scrollIntoView({ block: 'start' });
     } catch (e) {
       this.note.textContent = (e as Error).message;
     }
   }
 
-  private showCredit(): void {
-    this.creditLine.textContent = this.creditCents > 0 ? `Your credit: $${(this.creditCents / 100).toFixed(2)}` : '';
+  close(): void {
+    this.root.classList.remove('open');
+    this.root.inert = true;
+  }
+
+  private async refreshBucks(): Promise<void> {
+    try {
+      this.bucks = (await this.api.bucks()).bucks;
+    } catch {
+      /* offline: keep what we had */
+    }
+    this.balanceLine.textContent = `${this.bucks} sand bucks`;
   }
 
   private promoCode(): string | undefined {
@@ -114,11 +130,10 @@ export class Shop {
     this.busy = true;
     try {
       const r = await this.api.redeemGiftCard(code);
-      this.creditCents = r.creditCents;
-      this.note.textContent = `Gift card redeemed: $${(r.creditedCents / 100).toFixed(2)} added to your credit.`;
+      this.bucks = r.bucks;
+      this.note.textContent = `Gift card redeemed: ${r.credited} sand bucks`;
       input.value = '';
-      this.showCredit();
-      this.render(this.products);
+      await this.render();
     } catch (e) {
       this.note.textContent = (e as Error).message;
     } finally {
@@ -126,178 +141,143 @@ export class Shop {
     }
   }
 
-  close(): void {
-    this.root.classList.remove('open');
-    this.root.inert = true;
-  }
-
-  private async render(products: ShopProduct[]): Promise<void> {
-    this.products = products;
-    this.showCredit();
+  private async render(): Promise<void> {
+    this.balanceLine.textContent = `${this.bucks} sand bucks`;
     this.list.innerHTML = '';
-    const mode = shopMode();
-    // A promo code can bring a product within the player's credit, so quote
-    // each product with it and gate the credit button on the discounted
-    // price. A quote that fails (bad code, wrong product) leaves that
-    // product at full price.
-    const promo = this.promoCode();
+    // a promo code: what each offer costs with it
+    const promo = this.codes ? this.promoCode() : undefined;
     const finals = new Map<string, number>();
     if (promo) {
       await Promise.all(
-        products.map(async (p) => {
+        this.offers.map(async (o) => {
           try {
-            finals.set(p.id, (await this.api.quote(p.id, promo)).finalCents);
+            finals.set(o.id, (await this.api.quote(o.id, promo)).final);
           } catch {
-            // leave the product at full price
+            /* the code doesn't apply: full price */
           }
         }),
       );
     }
-    for (const p of [...products].sort((a, b) => Number(b.featured) - Number(a.featured))) {
-      const row = document.createElement('div');
-      row.className = `shop-item${p.featured ? ' featured' : ''}`;
-      const first = p.grants[0]?.item ?? 'bag';
-      const what = p.grants.map((g) => `${g.quantity > 1 ? `${g.quantity} × ` : ''}${prizeName(g.item)}`).join(', ');
-      row.innerHTML = `
-        <div class="shop-icon">${icon(first as IconName)}</div>
-        <div class="shop-text"><b></b><span class="shop-blurb"></span><span class="shop-what"></span></div>`;
-      row.querySelector('b')!.textContent = p.featured ? `${p.name} · best value` : p.name;
-      row.querySelector('.shop-blurb')!.textContent = p.blurb;
-      row.querySelector('.shop-what')!.textContent = what;
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'shop-buy';
-      btn.dataset.product = p.id;
-      const price = p.price ?? `$${p.usd.toFixed(2)}`;
-      const free = p.usd === 0;
-      if (free) {
-        btn.textContent = 'Free';
-        btn.addEventListener('click', () => void this.claimFree(p, btn));
-      } else if (mode === 'web' && this.api.webCheckout) {
-        btn.textContent = price;
-        btn.title = 'Pay by card';
-        btn.addEventListener('click', () => void this.payOnWeb(p, btn));
-      } else if (mode === 'web') {
-        btn.textContent = price;
-        btn.title = 'Buy in the beech app';
-        btn.addEventListener('click', () => this.getTheApp());
+    const offers = document.createElement('div');
+    offers.className = 'shop-offers';
+    for (const o of [...this.offers].sort((a, b) => Number(b.featured) - Number(a.featured))) {
+      const price = finals.get(o.id) ?? o.bucks;
+      const what = o.grants.map((g) => `${g.quantity > 1 ? `${g.quantity} × ` : ''}${prizeName(g.item)}`).join(', ');
+      const row = this.row(o.grants[0]?.item ?? 'bag', o.featured ? `${o.name} · best value` : o.name, o.blurb, what, o.featured);
+      const btn = this.button(o.id, price === 0 ? 'Free' : `${price} sand bucks`);
+      btn.classList.add('shop-bucks-buy');
+      if (price > this.bucks) {
+        btn.textContent = `${price} sand bucks`;
+        btn.classList.add('short');
+        btn.addEventListener('click', () => this.list.querySelector('.shop-packs')?.scrollIntoView({ block: 'start', behavior: 'smooth' }));
       } else {
-        btn.textContent = price;
-        btn.addEventListener('click', () => void this.buy(p, btn));
+        btn.addEventListener('click', () => void this.buyOffer(o, btn, price === 0));
       }
-      // The buttons share a row of their own under the text when the credit
-      // button is there too: on a phone the card is only 340px wide, and
-      // four flex children in one row starve the text column to a word
-      // per line. (display: contents keeps the one-button layout as-is.)
-      const actions = document.createElement('div');
-      actions.className = 'shop-actions';
-      actions.appendChild(btn);
-      row.appendChild(actions);
-      // credit from gift cards buys here too (on the web: the apps sell
-      // through the stores only); the server prices it and checks the balance.
-      // The button shows when the credit covers the price after the promo,
-      // not the undiscounted price.
-      const priceCents = finals.get(p.id) ?? Math.round(p.usd * 100);
-      if (!free && this.codes && this.creditCents >= priceCents) {
-        const creditBtn = document.createElement('button');
-        creditBtn.type = 'button';
-        creditBtn.className = 'shop-buy shop-credit-buy';
-        creditBtn.textContent = 'Buy with credit';
-        creditBtn.addEventListener('click', () => void this.buyWithCredit(p, creditBtn));
-        actions.appendChild(creditBtn);
-        row.classList.add('has-credit');
-      }
-      this.list.appendChild(row);
+      row.querySelector('.shop-actions')!.appendChild(btn);
+      offers.appendChild(row);
     }
+    const packs = document.createElement('div');
+    packs.className = 'shop-packs';
+    const h = document.createElement('h3');
+    h.textContent = 'Sand bucks';
+    packs.appendChild(h);
+    const mode = shopMode();
+    if (mode === 'web' && !this.api.webCheckout) {
+      const p = document.createElement('p');
+      p.className = 'shop-note';
+      p.textContent = 'Get these in the beech app:';
+      packs.appendChild(p);
+    }
+    for (const p of this.packs) {
+      const row = this.row('bucket', p.name, p.blurb, '', p.featured);
+      const btn = this.button(p.id, p.price ?? `$${p.usd.toFixed(2)}`);
+      if (mode === 'web' && this.api.webCheckout) btn.addEventListener('click', () => void this.payOnWeb(p, btn));
+      else if (mode === 'web') btn.addEventListener('click', () => this.getTheApp());
+      else btn.addEventListener('click', () => void this.buyPack(p, btn));
+      row.querySelector('.shop-actions')!.appendChild(btn);
+      packs.appendChild(row);
+    }
+    this.list.append(offers, packs);
+  }
+
+  private row(iconId: string, title: string, blurb: string, what: string, featured: boolean): HTMLDivElement {
+    const row = document.createElement('div');
+    row.className = `shop-item${featured ? ' featured' : ''}`;
+    row.innerHTML = `
+      <div class="shop-icon">${icon(iconId as IconName)}</div>
+      <div class="shop-text"><b></b><span class="shop-blurb"></span><span class="shop-what"></span></div>
+      <div class="shop-actions"></div>`;
+    row.querySelector('b')!.textContent = title;
+    row.querySelector('.shop-blurb')!.textContent = blurb;
+    row.querySelector('.shop-what')!.textContent = what;
+    return row;
+  }
+
+  private button(id: string, label: string): HTMLButtonElement {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'shop-buy';
+    btn.dataset.product = id;
+    btn.textContent = label;
+    return btn;
   }
 
   private getTheApp(): void {
     const ua = navigator.userAgent;
     const link = /iPhone|iPad|Mac/.test(ua) ? APP_LINKS.ios || APP_LINKS.android : APP_LINKS.android || APP_LINKS.ios;
     if (link) window.open(link, '_blank', 'noopener');
-    else this.note.textContent = 'Purchases are made in the beech app on iPhone and Android (coming to the stores soon).';
+    else this.note.textContent = 'Sand bucks are sold in the beech app on iPhone and Android (coming to the stores soon).';
+  }
+
+  private async run(btn: HTMLButtonElement, fn: () => Promise<void>): Promise<void> {
+    if (this.busy) return;
+    this.busy = true;
+    const label = btn.textContent;
+    btn.textContent = '…';
+    btn.disabled = true;
+    try {
+      await fn();
+    } catch (e) {
+      this.note.textContent = (e as Error).message;
+    } finally {
+      this.busy = false;
+      btn.textContent = label;
+      btn.disabled = false;
+    }
   }
 
   /** Web checkout: off to Xsolla's Pay Station; the return lands back on the beach (main.ts). */
-  private async payOnWeb(p: ShopProduct, btn: HTMLButtonElement): Promise<void> {
-    if (this.busy) return;
-    this.busy = true;
-    const label = btn.textContent;
-    btn.textContent = '…';
-    btn.disabled = true;
-    try {
+  private async payOnWeb(p: ShopPack, btn: HTMLButtonElement): Promise<void> {
+    await this.run(btn, async () => {
       const url = await this.api.startWebCheckout(p.id);
       this.note.textContent = 'Opening the secure checkout…';
       location.assign(url);
-    } catch (e) {
-      this.note.textContent = (e as Error).message;
-      this.busy = false;
-      btn.textContent = label;
-      btn.disabled = false;
-    }
+    });
   }
 
-  private async buy(p: ShopProduct, btn: HTMLButtonElement): Promise<void> {
-    if (this.busy) return;
-    this.busy = true;
-    const label = btn.textContent;
-    btn.textContent = '…';
-    btn.disabled = true;
-    try {
+  private async buyPack(p: ShopPack, btn: HTMLButtonElement): Promise<void> {
+    await this.run(btn, async () => {
       const r = await this.api.buy(p.id);
       if (r === 'bought') {
-        this.note.textContent = `${p.name}: added to your bag. Thank you!`;
-        this.bought(p.id);
+        this.note.textContent = `${p.name}: thank you!`;
+        await this.afterPack(p.id);
       }
-    } catch (e) {
-      this.note.textContent = (e as Error).message;
-    } finally {
-      this.busy = false;
-      btn.textContent = label;
-      btn.disabled = false;
-    }
+    });
   }
 
-  /** A free thing: the server grants it with nothing to pay (no store, no credit). */
-  private async claimFree(p: ShopProduct, btn: HTMLButtonElement): Promise<void> {
-    if (this.busy) return;
-    this.busy = true;
-    const label = btn.textContent;
-    btn.textContent = '…';
-    btn.disabled = true;
-    try {
-      await this.api.claimFree(p.id);
-      this.note.textContent = `${p.name}: added to your bag.`;
-      this.bought(p.id);
-    } catch (e) {
-      this.note.textContent = (e as Error).message;
-    } finally {
-      this.busy = false;
-      btn.textContent = label;
-      btn.disabled = false;
-    }
+  private async afterPack(id: string): Promise<void> {
+    await this.refreshBucks();
+    if (this.isOpen && this.offers.length) await this.render();
+    this.bought(id);
   }
 
-  private async buyWithCredit(p: ShopProduct, btn: HTMLButtonElement): Promise<void> {
-    if (this.busy) return;
-    this.busy = true;
-    const label = btn.textContent;
-    btn.textContent = '…';
-    btn.disabled = true;
-    try {
-      const promo = this.promoCode();
-      const r = await this.api.buyWithCredit(p.id, promo);
-      this.creditCents = r.creditCents;
-      const saved = r.discountCents > 0 ? ` (promo saved $${(r.discountCents / 100).toFixed(2)})` : '';
-      this.note.textContent = `${p.name}: added to your bag. Paid $${(r.paidCents / 100).toFixed(2)} with credit${saved}. Credit left: $${(r.creditCents / 100).toFixed(2)}.`;
-      this.bought(p.id);
-      this.render(this.products);
-    } catch (e) {
-      this.note.textContent = (e as Error).message;
-    } finally {
-      this.busy = false;
-      btn.textContent = label;
-      btn.disabled = false;
-    }
+  private async buyOffer(o: ShopOffer, btn: HTMLButtonElement, free: boolean): Promise<void> {
+    await this.run(btn, async () => {
+      const r = free ? await this.api.claimFree(o.id) : await this.api.buyWithCredit(o.id, this.codes ? this.promoCode() : undefined);
+      this.bucks = r.bucks;
+      this.note.textContent = `${o.name}: in your bag`;
+      this.bought(o.id);
+      await this.render();
+    });
   }
 }

@@ -35,6 +35,7 @@
     "e2e:sandbox": "node scripts/sandbox-e2e.mjs",
     "e2e:invites": "node scripts/invites-e2e.mjs",
     "e2e:inbox": "node scripts/inbox-e2e.mjs",
+    "e2e:copy": "node scripts/copy-e2e.mjs",
     "e2e:push": "node scripts/push-e2e.mjs"
   },
   "dependencies": {

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Run all server E2E scripts in parallel against a running dev server
 // (npm run server:dev), sharing one headless Chromium browser server.
-//   npm run e2e                       # runs all 10 server E2E scripts (default: 3 concurrent)
+//   npm run e2e                       # runs all 11 server E2E scripts (default: 3 concurrent)
 //   node scripts/run-e2e.mjs --jobs 4
 //   node scripts/run-e2e.mjs account live
 import { spawn } from 'node:child_process';
@@ -20,6 +20,7 @@ const ALL = [
   'invites-e2e',
   'inbox-e2e',
   'live-e2e',
+  'copy-e2e',
   'push-e2e',
 ];
 

@@ -18,12 +18,13 @@
 // Things on the beach follow simple rules: floaters drift along the shore and
 // strand at the high-water line, rollers creep seaward, and owned things that
 // spend too long in the sea are taken (they go back in the bag). The sea
-// brings in fresh strays along the last high-water line.
+// brings in fresh strays along the last high-water line and washes away
+// footprints wherever the tide or swash reaches them.
 //
 // Plain TypeScript with no DOM: it runs in Vitest and, bundled, on the server.
 
 import { CATCHUP, EROSION, PROFILE, SAND, WORLD_SIZE_X } from '../config';
-import { BEHAVIOUR, MAX_WILD, type PlacedObject } from './objects';
+import { BEHAVIOUR, MAX_WILD, sandWashDepth, type PlacedObject } from './objects';
 import { buildRestProfile } from './profile';
 
 export interface CatchUpInput {
@@ -196,6 +197,8 @@ export function catchUp(input: CatchUpInput): CatchUpResult {
   const { segs, highTides } = halfCycles(input.tide, from, to);
   /** seconds each object has spent in the sea */
   const soaked = new Map<number, number>();
+  const washed = new Set<number>();
+  const washDepth = sandWashDepth();
   const lost: PlacedObject[] = [];
   let lastHigh = -Infinity;
 
@@ -268,6 +271,13 @@ export function catchUp(input: CatchUpInput): CatchUpResult {
     // things on the beach
     for (const o of objects) {
       const b = BEHAVIOUR[o.kind];
+      if (b === 'wash') {
+        // Use the same swash samples as the terrain, with enough water
+        // over the sand to wash out the prints.
+        const z = sand[cellOf(o.x, o.y)] + washDepth;
+        if (BAND.some((q) => above(z - q * R, lo, hi) > 0)) washed.add(o.id);
+        continue;
+      }
       if (b !== 'float' && b !== 'tumble') continue;
       const h = sand[cellOf(o.x, o.y)];
       const inSea = D * above(h + 0.03, lo, hi);
@@ -292,6 +302,7 @@ export function catchUp(input: CatchUpInput): CatchUpResult {
 
   // owned things that spent too long in the sea are taken (back in the bag)
   let kept = objects.filter((o) => {
+    if (washed.has(o.id)) return false;
     if (o.wild) return true;
     const s = soaked.get(o.id) ?? 0;
     const b = BEHAVIOUR[o.kind];

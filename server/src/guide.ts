@@ -54,7 +54,8 @@ function ladderItems(): string {
 
 const pct = (v: number) => `${Math.round(v * 1000) / 10}%`;
 const names = (ids: string[]) => ids.map((id) => esc(displayName(id))).join(', ');
-const usd = (n: number) => `$${n.toFixed(2)}`;
+/** a price in sand bucks (docs/SAND_BUCKS.md) */
+const bucks = (n: number) => `${n} sand bucks`;
 const sentence = (s: string) => (s.endsWith('.') ? s : `${s}.`);
 const minutes = (ms: number) => {
   const m = Math.round(ms / 60000);
@@ -79,6 +80,7 @@ const BEHAVIOUR_WORDS: Record<ItemBehaviour, string> = {
   float: 'Floats on the water, and strands when it drains.',
   tumble: 'Moves in fast water, then settles on the sand.',
   fixed: 'Stays where you put it.',
+  wash: 'Washes away when the water reaches it.',
 };
 
 const byName = (a: string, b: string) => displayName(a).localeCompare(displayName(b));
@@ -88,7 +90,7 @@ const byTierThenName = (a: string, b: string) => ORDER.indexOf(itemRarity(a)) - 
 function catalogRow(id: string): string {
   const behaviour = behaviourOfKind(itemKind(id));
   const single = PRODUCTS.find((p) => p.grants.length === 1 && p.grants[0].item === id);
-  const price = single ? ` · ${usd(single.usd)}` : '';
+  const price = single ? ` · ${bucks(single.bucks)}` : '';
   // The glow line is for placed things: extras with no behaviour (beach
   // snacks, the pet crab) aren't placed on the sand, and pets don't glow.
   const words = [single?.blurb ?? '', behaviour ? BEHAVIOUR_WORDS[behaviour] : '', behaviour && itemGlows(id) ? 'Glows and sparkles on the sand.' : '']
@@ -111,7 +113,7 @@ function catalogSection(now: number): string {
     (a, b) => a.grants[0].quantity - b.grants[0].quantity,
   );
   const beachPrices = beachProducts
-    .map((p) => (p.grants[0].quantity === 1 ? usd(p.usd) : `${p.grants[0].quantity} for ${usd(p.usd)}`))
+    .map((p) => (p.grants[0].quantity === 1 ? bucks(p.bucks) : `${p.grants[0].quantity} for ${bucks(p.bucks)}`))
     .join(', or ');
   const beachBlurb = beachProducts[0]?.blurb ?? '';
   return `
@@ -140,9 +142,9 @@ ${sets
 <ul>${clawIds.map(catalogRow).join('')}</ul>
 
 <h3>From the shop</h3>
-<p>Bought in the paid shop, under Shop. Prices in US dollars; what you buy is yours on every device you sign in on.</p>
+<p>Bought in the shop with sand bucks (see <a href="#shop">Shop</a>); what you buy is yours on every device you sign in on, and can be traded back in.</p>
 <ul>${shopIds.map(catalogRow).join('')}</ul>
-${founder ? `<p>The <b>${esc(founder.name)}</b> (${usd(founder.usd)}) — ${esc(sentence(founder.blurb))}</p>` : ''}
+${founder ? `<p>The <b>${esc(founder.name)}</b> (${bucks(founder.bucks)}) — ${esc(sentence(founder.blurb))}</p>` : ''}
 
 <h3>Extras</h3>
 <p>Things you own that aren't placed on the sand.</p>
@@ -219,6 +221,7 @@ const NAV_SECTIONS: [string, string][] = [
   ['beach-guide', 'Beach guide'],
   ['invites', 'Invites'],
   ['checkpoints', 'Checkpoints'],
+  ['copying', 'Copying a beach'],
   ['files', 'Beach files'],
   ['shop', 'Shop'],
   ['item-catalog', 'Item catalog'],
@@ -356,13 +359,25 @@ ${GUIDE_STEPS.map((st) => `<tr><td>${esc(st.title)}</td><td>${esc(st.how)}</td><
 <h2 id="checkpoints">Checkpoints</h2>
 <p>A checkpoint keeps a beach as it is now — its sand and its things — to come back to later or to put on another of your beaches. Up to ${CHECKPOINTS_PER_BEACH} per beach. Restoring needs your bag to cover the things on it; if it can’t, you can restore without them. The beach as it was is kept as a “before restoring” checkpoint, and Undo brings it back. Other devices showing that beach reload. Once a day, your beach is auto-saved as a checkpoint too, so you can always go back to yesterday’s beach — it sits in the same list, marked “auto-saved daily”. All your checkpoints are in one list; when they come from more than one place, pick a beach (or imported files) to see only those. Starting a big clear-out with the bulldozer, flatten or vacuum — or any save that reshapes a tenth of the beach — keeps the beach as it was first, in the same auto slot, so you can always go back to before the big edit.</p>
 
+<h2 id="copying">Copying a beach</h2>
+<p>Like a beach on the shore? Make one of yours just like it. Visiting it, tap <b>copy</b> in the bar at the top (or <b>Copy to my beach</b> on its beechshore.com page). To copy one of your own beaches, use “duplicate” in Manage → <b>Beaches</b>. Every beach on the shore can be copied; one kept off the shore can’t.</p>
+<p>The copy sheet shows the beach, where it goes (one of your beaches, or a new one if you have room), and the things from your bag it needs. The sand and the free things — rocks, driftwood, shells, sea glass, flags — always come along. Bag things need to be in your bag and not already on another of your beaches. If something is short you choose:</p>
+<ul>
+<li><b>Buy what’s missing</b>: exactly the things you’re short of, from the shop, one at a time (and an extra beach, if you picked a new one and have no room). Things from the claw machine, the vending machine or digging aren’t sold, so they stay short; buying the rest still helps. Once you’ve bought them, tap the copy button.</li>
+<li><b>Copy without them</b>: everything else comes, and the things you’re short of are left out.</li>
+</ul>
+<p>You can also <b>keep it as a checkpoint</b>, which needs nothing from your bag, and restore it later.</p>
+<p>A copy keeps the place of the beach it goes onto (a new beach starts at the original’s place). It doesn’t bring the original’s name, stars, neighbors, notes or pet. Copying over one of your beaches keeps it first as a “before copying” checkpoint, and Undo brings it back. If the beach changes while you’re looking at it, you get the latest version. The owner hears the first time you copy their beach, and its beechshore.com page shows how many people have copied it.</p>
+
 <h2 id="files">Beach files</h2>
 <p>Manage → <b>Beaches</b> → “export beach” saves your beach as a <code>.beach.json</code> file; “import beach” opens one. Before importing you see a preview: a map, the things on it, anything that was fixed while reading, and anything your bag can’t cover (import without them, or get them in the shop). Importing replaces the beach you’re on; when signed in the old one is kept as a “Before import” checkpoint, and Undo brings it back. Without an account, only free things come in.</p>
 <p>The file format is documented for anyone who wants to design beaches by hand or with a script.</p>
 
 <h2 id="shop">Shop</h2>
-<p>Choose Paid shop from Shop. In the iPhone and Android apps you pay through your App Store or Google Play account. On the web, card payments are handled by Xsolla, our payment partner, on their secure page; prices are in US dollars and converted at checkout. Gift cards and promo codes work on the web only, and promo codes apply to buying with credit. Some things in the shop are free: tap <b>Free</b> to add one to your bag, on any device, with nothing to pay. What you buy is yours on every device you sign in on.</p>
-<p>Make an item for Beech and <a href="https://beechshore.com/submit">submit it on beechshore</a>. You can propose a price and how often it should appear. If your item is approved and sold, you earn 30% in Beech account credit to spend in the web shop.</p>
+<p>Everything in the shop is priced in <b>sand bucks</b> (1 sand buck is 10¢). Buy sand bucks in packs: in the iPhone and Android apps through your App Store or Google Play account, on Steam through Steam, and on the web by card through Xsolla, our payment partner, on their secure page (in US dollars, converted at checkout). Gift cards add sand bucks too (redeem them on the web), and promo codes take sand bucks off a price. Your sand bucks are yours on every device you sign in on, and can be spent in any of them. Some things in the shop are free: tap <b>Free</b> to add one to your bag.</p>
+<p><b>Trade-ins:</b> anything in your bag that you can place on a beach, and an extra beach you aren’t using, can be traded in for sand bucks: open your bag and tap “trade in”. You get back what you paid for it (a bundle’s or a promo’s price is shared out over what it held), so you can try things and change your mind without losing anything. Things that came free — from the claw machine, the vending machine, digging, a gift, or a reward — trade in at their shop price, or by rarity when the shop doesn’t sell them (common 5, uncommon 10, rare 15, legendary 30). A gift keeps the value it had. Something on one of your beaches has to be picked up first. Snacks, the pet sand crab and one-of-a-kind things can’t be traded in. Sand bucks can’t be cashed out or given to someone else.</p>
+<p>If a pack is refunded, its sand bucks come back out of your balance; anything already spent is owed and paid off from the next sand bucks you get.</p>
+<p>Make an item for Beech and <a href="https://beechshore.com/submit">submit it on beechshore</a>. You can propose a price and how often it should appear. If your item is approved and sold, you earn 30% of its price in sand bucks (it goes back if the buyer trades it in).</p>
 <p>Rare and legendary things glow and sparkle on the sand; lamps and flames glow at night.</p>
 
 <h2 id="item-catalog">Item catalog</h2>

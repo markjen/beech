@@ -40,13 +40,14 @@
 import { Hono, type Context } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 
-import { PRODUCTS, productById } from './products.js';
+import { PACKS, PRODUCTS, copyBasket, productById, storeProductById, type Product } from './products.js';
+import { creditBalance, grantPurchase } from './bucksDb.js';
+import { BUCK, bucksToCents, centsToBucks, listBucks, roundToBuck, shareOut, tradeable, unitsOf } from './bucks.js';
 import { issueSubmissionSession, UUID_PATTERN } from './itemSubmissions.js';
-import { awardCheckoutCreatorCredit, awardCreatorCredit, creatorOffer, creatorOffers, lockCreditUsers, nativeSalePrice, salePriceCents } from './creatorCredit.js';
+import { awardCheckoutCreatorCredit, awardCreatorCredit, creatorOffer, creatorOffers, lockCreditUsers, nativeSalePrice, reverseCreatorCreditByRef, salePriceCents } from './creatorCredit.js';
 import {
   claimCreditPurchase,
   discountCents,
-  formatCents,
   hashGiftCode,
   isGiftCodeShape,
   normalizePromoCode,
@@ -197,6 +198,13 @@ type Env = { Variables: { user: User; tokenHash: string } };
 
 /** most beaches one person can have */
 export const BEACH_CAP = 8;
+
+/** A strict copy that's short: thrown inside the transaction so a new beach made for it rolls back too. */
+class CopyShort extends Error {
+  constructor(readonly short: unknown[]) {
+    super('short');
+  }
+}
 const BEACH_HEADERS = ['X-Beach-Location', 'X-Beach-Nx', 'X-Beach-Ny', 'X-Beach-Version', 'X-Beach-Updated', 'X-Beach-Epoch', 'X-Beach-Simulated-Until'];
 /** request-only headers the app sends cross-origin (the phone apps) */
 const REQUEST_HEADERS = ['X-Beach-Items', 'X-Beach-Max', 'X-Checkpoint-Name', 'X-App-Build', 'X-Edit-Token'];
@@ -493,7 +501,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       c.get('user').id,
       item,
       Math.max(1, Math.min(10, Number(quantity) || 1)),
-      Date.now(),
+      cfg.now?.() ?? Date.now(),
     ]);
     return c.body(null, 204);
   });
@@ -1024,8 +1032,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   app.post('/beach/away/seen', requireUser, async (c) => seen(c, await homeOf(c.get('user').id)));
 
   /** how many beaches you may have: one, plus each extra beach you own */
-  const allowance = async (user: string): Promise<number> => {
-    const rows = await db.query<{ n: string | null }>(
+  const allowance = async (user: string, q: Db = db): Promise<number> => {
+    const rows = await q.query<{ n: string | null }>(
       `SELECT SUM(quantity) AS n FROM inventory WHERE user_id = $1 AND item_id = 'beach' AND (expires_at IS NULL OR expires_at > $2)`,
       [user, Date.now()],
     );
@@ -1949,7 +1957,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     id: string;
     name: string;
     kind: 'named' | 'auto' | 'tide';
-    source: 'beach' | 'import';
+    source: 'beach' | 'import' | 'copy';
     from_beach: string | null;
     origin_beach_id: string | null;
     from_name: string;
@@ -2181,6 +2189,70 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     return c.json({ ok: fit.short.length === 0, ...fit });
   });
 
+  /**
+   * Put a saved beach's bytes onto one of your beaches, inside asEditor's
+   * transaction: what was there becomes the beach's automatic "Before ..."
+   * checkpoint (skipped if it had no save), and the epoch goes up so other
+   * devices reload instead of saving over it. Shared by a restore and a
+   * copy, so the two can't drift.
+   */
+  const writeOnto = async (
+    tx: Db,
+    target: string,
+    bytes: Uint8Array,
+    info: { nx: number; ny: number },
+    placed: Record<string, number>,
+    beforeName: string,
+    copied?: { from: string; code: string; version: number },
+  ) => {
+    const current = (await tx.query<{ sand: unknown }>('SELECT sand FROM beach WHERE id = $1 AND sand IS NOT NULL', [target]))[0];
+    let before: { items: Record<string, number>; objects: number } = { items: {}, objects: 0 };
+    if (current) {
+      try {
+        before = inspectBlob(toBytes(current.sand));
+      } catch {
+        /* an unreadable old save: keep it, uncounted */
+      }
+    }
+    const now = clock();
+    const rows = await tx.query<{ version: number; epoch: number; undo: string | null }>(
+      `WITH snap AS (
+         INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at, origin_beach_id)
+         SELECT $1, owner_id, $2, 'auto', 'beach', id, name, location, nx, ny, sand, octet_length(sand), $3, $4, $5, id
+           FROM beach WHERE id = $6 AND sand IS NOT NULL
+         ON CONFLICT (from_beach) WHERE kind = 'auto' DO UPDATE SET
+           name = EXCLUDED.name, from_name = EXCLUDED.from_name, location = EXCLUDED.location, nx = EXCLUDED.nx, ny = EXCLUDED.ny,
+           sand = EXCLUDED.sand, bytes = EXCLUDED.bytes, items = EXCLUDED.items, objects = EXCLUDED.objects, created_at = EXCLUDED.created_at,
+           origin_beach_id = EXCLUDED.origin_beach_id
+         RETURNING id
+       )
+       UPDATE beach SET sand = $7, nx = $8, ny = $9, items = $10, version = version + 1, updated_at = $5, epoch = epoch + 1,
+              simulated_until = $5,
+              copied_from = CASE WHEN $11::boolean THEN $12::uuid ELSE copied_from END,
+              copied_from_code = CASE WHEN $11::boolean THEN $13 ELSE copied_from_code END,
+              copied_version = CASE WHEN $11::boolean THEN $14::integer ELSE copied_version END
+        WHERE id = $6
+       RETURNING version, epoch, (SELECT id FROM snap) AS undo`,
+      [
+        crypto.randomUUID(),
+        beforeName.slice(0, 80),
+        JSON.stringify(before.items),
+        before.objects,
+        now,
+        target,
+        bytes,
+        info.nx,
+        info.ny,
+        JSON.stringify(placed),
+        !!copied,
+        copied?.from ?? null,
+        copied?.code ?? null,
+        copied?.version ?? null,
+      ],
+    );
+    return { version: rows[0].version, epoch: Number(rows[0].epoch), updatedAt: now, undo: rows[0].undo };
+  };
+
   // put a checkpoint on one of your beaches; what was there becomes its
   // "before restoring" checkpoint, so it can be undone
   app.post('/beaches/mine/:id/restore', requireUser, async (c) => {
@@ -2202,47 +2274,177 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
         ({ bytes, dropped } = dropMissing(bytes, fit.short));
       }
       const placed = dropped ? inspect(bytes) : info;
-      // what's there now becomes the beach's "before restoring" checkpoint
-      const current = (await tx.query<{ sand: unknown }>('SELECT sand FROM beach WHERE id = $1 AND sand IS NOT NULL', [target]))[0];
-      let before: { items: Record<string, number>; objects: number } = { items: {}, objects: 0 };
-      if (current) {
-        try {
-          before = inspectBlob(toBytes(current.sand));
-        } catch {
-          /* an unreadable old save: keep it, uncounted */
+      const done = await writeOnto(tx, target, bytes, info, placed.items, `Before restoring “${cp.name}”`);
+      return c.json({ ...done, dropped });
+    }));
+  });
+
+  // ---------------------------------------------------------------- copying a beach
+  // Copy a beach on the shore (or one of your own) onto one of your beaches,
+  // or a new one (docs/COPY_BEACH.md). Like a restore, with someone else's
+  // save as the source. specs/tla/BeachCopy.tla: the read of the source
+  // (public, the version you previewed), the bag and allowance checks and
+  // the write are one transaction holding your player lock, with the
+  // source row read FOR SHARE, so its owner's save or hide waits for it.
+  const copyLimiter = createRateLimiter(20, 3600000);
+  const NO_BEACH = '00000000-0000-0000-0000-000000000000';
+  interface CopySource {
+    id: string;
+    owner_id: string;
+    code: string;
+    name: string;
+    owner_name: string | null;
+    location: string | null;
+    version: number;
+    updated_at: string | null;
+    on_shore: boolean;
+    sand: unknown;
+  }
+  /** a beach you may copy: public (on the shore and saved), or yours and saved; else 404 */
+  const copySource = async (q: Db, code: string | undefined, me: string, lock = false): Promise<CopySource> => {
+    const rows = await q.query<CopySource>(
+      `SELECT b.id, b.owner_id, b.code, b.name, u.name AS owner_name, b.location, b.version, b.updated_at, b.on_shore, b.sand
+         FROM beach b JOIN users u ON u.id = b.owner_id
+        WHERE b.code = $1${lock ? ' FOR SHARE OF b' : ''}`,
+      [normalizeCode(code ?? '')],
+    );
+    const r = rows[0];
+    if (!r || r.sand === null || (r.owner_id !== me && !r.on_shore)) fail(404, 'no beach to copy with that code');
+    return r!;
+  };
+  /** the copy's target: one of your beaches, or 'new' (null) */
+  const copyTarget = async (c: Context<Env>, raw: unknown): Promise<string | null> => {
+    if (raw === 'new') return null;
+    if (typeof raw !== 'string') return fail(400, "target is one of your beaches, or 'new'");
+    return mine(c, raw);
+  };
+  const beachCount = async (me: string, q: Db = db) =>
+    Number((await q.query<{ n: string }>('SELECT COUNT(*) AS n FROM beach WHERE owner_id = $1', [me]))[0]?.n ?? 0);
+
+  // would it fit? what's short, and what to buy so it does
+  app.get('/beaches/:code/copy-fit', requireUser, async (c) => {
+    const me = c.get('user').id;
+    const src = await copySource(db, c.req.param('code'), me);
+    const target = await copyTarget(c, c.req.query('target') ?? 'new');
+    const info = inspect(toBytes(src.sand));
+    const fit = await fitOf(me, info.items, target ?? NO_BEACH);
+    const [allowed, count] = await Promise.all([allowance(me), beachCount(me)]);
+    const room = target !== null || count < allowed;
+    const prices = await offerPrices();
+    const basket = copyBasket(fit.short, !room && count < BEACH_CAP, (p) => prices.get(p.id) ?? null);
+    const [me_] = await db.query<{ credit_cents: number }>('SELECT credit_cents FROM users WHERE id = $1', [me]);
+    return c.json({
+      code: src.code,
+      name: src.name,
+      owner: src.owner_name?.trim() || null,
+      yours: src.owner_id === me,
+      location: src.location,
+      version: Number(src.version),
+      updatedAt: src.updated_at === null ? null : Number(src.updated_at),
+      nx: info.nx,
+      ny: info.ny,
+      objects: info.objects,
+      ...fit,
+      room,
+      allowance: allowed,
+      beaches: count,
+      basket,
+      bucks: centsToBucks(Number(me_?.credit_cents ?? 0)),
+    });
+  });
+
+  // copy it: onto one of your beaches (replacing it, undoable) or a new one
+  app.post('/beaches/mine/copy', requireUser, async (c) => {
+    const me = c.get('user').id;
+    const p = await body<{ from?: string; version?: number; target?: string; mode?: 'strict' | 'drop-missing'; name?: string; location?: string }>(c);
+    const mode = p.mode ?? 'strict';
+    if (mode !== 'strict' && mode !== 'drop-missing') fail(400, 'mode must be strict or drop-missing');
+    if (!Number.isSafeInteger(p.version)) fail(400, 'version is the one you previewed');
+    if (p.location !== undefined && !/^[a-z0-9-]{1,40}$/.test(p.location)) fail(400, 'bad location');
+    const target = await copyTarget(c, p.target);
+    await requireEditToken(c);
+    if (!copyLimiter(me)) fail(429, 'too many copies: try again later');
+    return oneAtATime(me, () => asEditor(c, async (tx) => {
+      // Lock the two beach rows in id order before reading either: the
+      // target for the update, the source shared (it can't change or leave
+      // the shore until this commits). Two owners copying each other's beach
+      // onto their own at once would otherwise each share the row the other
+      // updates, and PostgreSQL would abort one as a deadlock (PR #118 review).
+      const srcId = (await tx.query<{ id: string }>('SELECT id FROM beach WHERE code = $1', [normalizeCode(p.from ?? '')]))[0]?.id;
+      const rows = [...new Set([srcId, target].filter((x): x is string => !!x))].sort();
+      for (const id of rows) {
+        await tx.query(`SELECT id FROM beach WHERE id = $1 ${id === target ? 'FOR NO KEY UPDATE' : 'FOR SHARE'}`, [id]);
+      }
+      const src = await copySource(tx, p.from, me);
+      if (Number(src.version) !== p.version) return c.json({ error: 'changed', version: Number(src.version) }, 409);
+      let bytes = toBytes(src.sand);
+      const info = inspect(bytes);
+      let beach = target;
+      if (beach === null) {
+        // a new beach: only if you're under your allowance (we hold your lock)
+        const allowed = await allowance(me, tx);
+        if ((await beachCount(me, tx)) >= allowed) return c.json({ error: 'room' }, 409);
+        const name = (p.name ?? `${src.name || 'Beach'} (copy)`).trim().slice(0, 30);
+        const location = p.location ?? src.location ?? null;
+        const made = await tx.query<{ id: string }>(
+          `INSERT INTO beach (id, owner_id, code, name, home, location, created_at) VALUES ($1, $2, $3, $4, false, $5, $6) RETURNING id`,
+          [crypto.randomUUID(), me, newNeighborCode(), name, location, clock()],
+        );
+        beach = made[0].id;
+      }
+      if (beach === src.id) fail(400, 'that is the beach you are copying');
+      const fit = await fitOf(me, info.items, beach, tx);
+      let dropped = 0;
+      if (fit.short.length) {
+        if (mode === 'strict') {
+          // nothing written: the new beach (if any) goes with the rollback
+          throw new CopyShort(fit.short);
+        }
+        ({ bytes, dropped } = dropMissing(bytes, fit.short));
+      }
+      const placed = dropped ? inspect(bytes) : info;
+      const done = await writeOnto(tx, beach, bytes, info, placed.items, `Before copying “${src.name || src.code}”`, {
+        from: src.id,
+        code: src.code,
+        version: Number(src.version),
+      });
+      if (src.owner_id !== me) {
+        // counted once per person; the owner hears about it the first time
+        const first = await tx.query('INSERT INTO beach_copies (source_beach, copier, first_at) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING RETURNING 1', [
+          src.id,
+          me,
+          clock(),
+        ]);
+        if (first.length) {
+          await tx.query(`INSERT INTO inbox (user_id, kind, actor_id, beach_id, created_at) VALUES ($1, 'copied', $2, $3, $4)`, [src.owner_id, me, src.id, clock()]);
         }
       }
-      const now = clock();
-      const rows = await tx.query<{ version: number; epoch: number; undo: string | null }>(
-        `WITH snap AS (
-           INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at, origin_beach_id)
-           SELECT $1, owner_id, $2, 'auto', 'beach', id, name, location, nx, ny, sand, octet_length(sand), $3, $4, $5, id
-             FROM beach WHERE id = $6 AND sand IS NOT NULL
-           ON CONFLICT (from_beach) WHERE kind = 'auto' DO UPDATE SET
-             name = EXCLUDED.name, from_name = EXCLUDED.from_name, location = EXCLUDED.location, nx = EXCLUDED.nx, ny = EXCLUDED.ny,
-             sand = EXCLUDED.sand, bytes = EXCLUDED.bytes, items = EXCLUDED.items, objects = EXCLUDED.objects, created_at = EXCLUDED.created_at,
-             origin_beach_id = EXCLUDED.origin_beach_id
-           RETURNING id
-         )
-         UPDATE beach SET sand = $7, nx = $8, ny = $9, items = $10, version = version + 1, updated_at = $5, epoch = epoch + 1,
-                simulated_until = $5
-          WHERE id = $6
-         RETURNING version, epoch, (SELECT id FROM snap) AS undo`,
-        [
-          crypto.randomUUID(),
-          `Before restoring “${cp.name}”`.slice(0, 80),
-          JSON.stringify(before.items),
-          before.objects,
-          now,
-          target,
-          bytes,
-          info.nx,
-          info.ny,
-          JSON.stringify(placed.items),
-        ],
-      );
-      return c.json({ version: rows[0].version, epoch: Number(rows[0].epoch), updatedAt: now, undo: rows[0].undo, dropped });
-    }));
+      logEvent('beach_copy', { mode, dropped, fresh: target === null, own: src.owner_id === me });
+      return c.json({ beach, code: (await tx.query<{ code: string }>('SELECT code FROM beach WHERE id = $1', [beach]))[0].code, ...done, dropped });
+    })).catch((e) => {
+      if (e instanceof CopyShort) return c.json({ error: 'short', short: e.short }, 409);
+      throw e;
+    });
+  });
+
+  // keep a copy as a checkpoint: nothing is placed, so the bag isn't checked
+  app.post('/checkpoints/copy', requireUser, async (c) => {
+    const me = c.get('user').id;
+    const p = await body<{ from?: string; version?: number }>(c);
+    if (!makeLimiter(me)) fail(429, 'too many checkpoints at once: try again later');
+    const src = await copySource(db, p.from, me);
+    if (p.version !== undefined && Number(src.version) !== p.version) return c.json({ error: 'changed', version: Number(src.version) }, 409);
+    const bytes = toBytes(src.sand);
+    const info = inspect(bytes);
+    await checkRoom(me, bytes.byteLength);
+    const id = crypto.randomUUID();
+    const label = (src.name || src.code).slice(0, CHECKPOINT_NAME_MAX);
+    await db.query(
+      `INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at)
+       VALUES ($1, $2, $3, 'named', 'copy', NULL, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+      [id, me, label, `${src.owner_name?.trim() || 'Someone'} · ${src.code}`, src.location, info.nx, info.ny, bytes, bytes.byteLength, JSON.stringify(info.items), info.objects, clock()],
+    );
+    return c.json({ checkpoint: checkpointJson((await myCheckpoint(c, id)) as CheckpointRow) }, 201);
   });
 
   // ---------------------------------------------------------------- the shop
@@ -2268,6 +2470,31 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     });
   });
 
+  /** what each offer costs now, in sand bucks (null: not for sale) */
+  const offerPrices = async (q: Db = db): Promise<Map<string, number | null>> => {
+    const out = new Map<string, number | null>();
+    for (const p of PRODUCTS) {
+      const cents = offerCents(p, await creatorOffer(q, p));
+      out.set(p.id, cents === null ? null : centsToBucks(cents));
+    }
+    return out;
+  };
+
+  // The shop for apps that know sand bucks (docs/SAND_BUCKS.md): packs for
+  // real money, offers for sand bucks. (/store/products stays as it was for
+  // the app versions already in the stores.)
+  app.get('/store/catalog', async (c) => {
+    const prices = await offerPrices();
+    return c.json({
+      packs: PACKS.map((p) => ({ id: p.id, name: p.name, usd: p.usd, bucks: p.bucks, blurb: p.blurb, featured: !!p.featured })),
+      offers: PRODUCTS.flatMap((p) => {
+        const bucks = prices.get(p.id);
+        return bucks === null || bucks === undefined ? [] : [{ id: p.id, name: p.name, grants: p.grants, bucks, blurb: p.blurb, featured: !!p.featured }];
+      }),
+      webCheckout: !!cfg.xsolla,
+    });
+  });
+
   /**
    * The app finished a purchase: { platform: ios | android, productId, jws (iOS) | token (Android) }.
    * We check it with the store, record it once, and add what it grants to
@@ -2276,7 +2503,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   app.post('/store/purchase', requireUser, async (c) => {
     const me = c.get('user').id;
     const { platform, productId, jws, token } = await body<{ platform?: string; productId?: string; jws?: string; token?: string }>(c);
-    const product = productById(productId ?? '');
+    const product = storeProductById(productId ?? '');
     if (!product) fail(404, 'no such product');
     const ok = (platform === 'ios' && jws) || (platform === 'android' && token) || (platform === 'dev' && cfg.devAuth && token);
     if (!ok) fail(400, 'expected { platform: ios, jws } or { platform: android, token }');
@@ -2293,21 +2520,16 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     // the app ties each purchase to the account that made it
     if (v!.account && v!.account !== me) fail(403, 'that purchase belongs to another account');
     const now = clock();
-    const items = product!.grants.map((g) => g.item);
-    const qty = product!.grants.map((g) => g.quantity);
-    // Grant the items and any creator credit in the same transaction.
+    // Record it once, then grant (a pack's sand bucks, or an old app's
+    // things) and any creator credit in the same transaction.
     const rows = await db.withTransaction(async (tx) => {
       const granted = await tx.query<{ purchase_id: string }>(
-        `WITH p AS (
-           INSERT INTO purchases (user_id, store, transaction_id, product_id, environment, purchased_at, granted_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (store, transaction_id) DO NOTHING
-           RETURNING id, user_id
-         )
-         INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at, purchase_id)
-         SELECT p.user_id, g.item, g.qty, 'shop', $7, p.id FROM p, unnest($8::text[], $9::int[]) AS g(item, qty)
-         RETURNING purchase_id`,
-        [me, v.store, v.transactionId, product!.id, v.environment, v.purchasedAt, now, items, qty],
+        `INSERT INTO purchases (user_id, store, transaction_id, product_id, environment, purchased_at, granted_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (store, transaction_id) DO NOTHING
+         RETURNING id AS purchase_id`,
+        [me, v.store, v.transactionId, product!.id, v.environment, v.purchasedAt, now],
       );
+      if (granted.length) await grantPurchase(tx, { userId: me, purchaseId: granted[0].purchase_id, product: product!, now });
       if (granted.length && v.store !== 'dev' && v.environment.toLowerCase() === 'production') {
         const offer = await creatorOffer(tx, product!, true);
         if (offer) {
@@ -2392,7 +2614,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       status,
       createdAt: created,
       paidAt: o.paid_at === null ? null : Number(o.paid_at),
-      grants: productById(o.product_id)?.grants ?? [],
+      grants: storeProductById(o.product_id)?.grants ?? [],
     };
   };
   const isUuid = (s: string) => UUID_PATTERN.test(s);
@@ -2402,7 +2624,9 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const me = c.get('user').id;
     if (!checkoutLimiter(me)) return c.json({ error: 'slow down' }, 429);
     const { productId, promoCode, country: rawCountry } = await body<{ productId?: string; promoCode?: string; country?: unknown }>(c);
-    const product = productById(productId ?? '');
+    // the web sells sand-buck packs (docs/SAND_BUCKS.md); item products stay
+    // accepted for a page loaded before the sand-bucks release
+    const product = storeProductById(productId ?? '');
     if (!product) fail(404, 'no such product');
     if (rawCountry !== undefined && (typeof rawCountry !== 'string' || !/^[A-Za-z]{2}$/.test(rawCountry))) {
       return fail(400, 'country must be a two-letter code');
@@ -2516,7 +2740,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       }
       // what was paid for must be exactly what we sold: the product, once,
       // and (in US dollars) our price
-      const product = productById(o.product_id)!;
+      const product = storeProductById(o.product_id)!;
       const items = w.items ?? [];
       if (items.length !== 1 || items[0].sku !== product.id || Number(items[0].quantity ?? 1) !== 1) {
         log('wrong_items', { items: items.map((i) => i.sku) }, 'ERROR');
@@ -2530,9 +2754,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       }
       if (currency && currency !== 'USD') log('local_currency', { currency });
       const now = clock();
-      const grantItems = product.grants.map((g) => g.item);
-      const qty = product.grants.map((g) => g.quantity);
-      // Record the payment once, mark the order paid, and grant items and credit atomically.
+      // Record the payment once, mark the order paid, and grant (sand bucks) and credit atomically.
       // A retried webhook hits the purchases unique key and changes nothing.
       // An order Xsolla already canceled is not revived by a late payment.
       const granted = await db.withTransaction(async (tx) => {
@@ -2548,11 +2770,10 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
              UPDATE web_orders SET status = 'paid', paid_at = $5 WHERE id = $6 AND status = 'created' AND EXISTS (SELECT 1 FROM p)
              RETURNING id
            )
-           INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at, purchase_id)
-           SELECT p.user_id, g.item, g.qty, 'shop', $5, p.id FROM p, unnest($7::text[], $8::int[]) AS g(item, qty)
-           RETURNING purchase_id`,
-          [o.user_id, providerId, product.id, testPayment ? 'Sandbox' : 'Production', now, o.id, grantItems, qty],
+           SELECT p.id AS purchase_id FROM p`,
+          [o.user_id, providerId, product.id, testPayment ? 'Sandbox' : 'Production', now, o.id],
         );
+        if (rows.length) await grantPurchase(tx, { userId: o.user_id, purchaseId: rows[0].purchase_id, product, now });
         if (rows.length && o.creator_submission_id && !testPayment && !o.sandbox) {
           await awardCheckoutCreatorCredit(tx, {
             submissionId: o.creator_submission_id, product, buyer: o.user_id, storePurchaseId: rows[0].purchase_id,
@@ -2606,7 +2827,9 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const me = c.get('user').id;
     if (!checkoutLimiter(me)) return c.json({ error: 'slow down' }, 429);
     const { productId } = await body<{ productId?: string }>(c);
-    const product = productById(productId ?? '');
+    // Steam sells sand-buck packs (docs/SAND_BUCKS.md); the item products stay
+    // on sale here for the Steam builds already out (PR #118 review)
+    const product = storeProductById(productId ?? '');
     if (!product) fail(404, 'no such product');
 
     const idRows = await db.query<{ provider_sub: string }>(
@@ -2657,7 +2880,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     );
     const o = rows[0];
     if (!o) fail(404, 'no such order');
-    const product = productById(o!.product_id)!;
+    const product = storeProductById(o!.product_id)!;
     if (o!.status === 'paid') return c.json({ ok: true, already: true, grants: product.grants });
     if (o!.status !== 'created') fail(409, `order is ${o!.status}`);
 
@@ -2671,8 +2894,6 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     }
 
     const now = clock();
-    const grantItems = product.grants.map((g) => g.item);
-    const qty = product.grants.map((g) => g.quantity);
     const granted = await db.withTransaction(async (tx) => {
       const [order] = await tx.query<{ status: string }>('SELECT status FROM steam_orders WHERE order_id = $1 FOR NO KEY UPDATE', [oid]);
       if (order?.status === 'paid') return [];
@@ -2688,11 +2909,10 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
             WHERE order_id = $6 AND status = 'created' AND EXISTS (SELECT 1 FROM p)
            RETURNING order_id
          )
-         INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at, purchase_id)
-         SELECT p.user_id, g.item, g.qty, 'shop', $5, p.id FROM p, unnest($7::text[], $8::int[]) AS g(item, qty)
-         RETURNING purchase_id`,
-        [me, transId, product.id, o!.sandbox ? 'Sandbox' : 'Production', now, oid, grantItems, qty],
+         SELECT p.id AS purchase_id FROM p`,
+        [me, transId, product.id, o!.sandbox ? 'Sandbox' : 'Production', now, oid],
       );
+      if (rows.length) await grantPurchase(tx, { userId: me, purchaseId: rows[0].purchase_id, product, now });
       if (rows.length && o!.creator_submission_id && !o!.sandbox) {
         await awardCheckoutCreatorCredit(tx, {
           submissionId: o!.creator_submission_id, product, buyer: me, storePurchaseId: rows[0].purchase_id,
@@ -2761,45 +2981,53 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     if (!known) fail(404, "that code isn't valid");
     if (known.status !== 'active') fail(409, known.status === 'redeemed' ? 'that card was already used' : 'that card is disabled');
     if (known.expires_at !== null && Number(known.expires_at) <= now) fail(409, 'that card has expired');
-    // one statement: claim the card (only if still active and unexpired —
-    // a second redeem racing this one claims nothing), credit the player,
-    // and log the movement, all or nothing
-    const rows = await db.query<{ amount_cents: number; credit_cents: number }>(
-      `WITH claimed AS (
-         UPDATE gift_cards SET status = 'redeemed', redeemed_by = $2, redeemed_at = $3
+    // one transaction: claim the card (only if still active and unexpired —
+    // a second redeem racing this one claims nothing), then its sand bucks
+    // in (10 cents a buck, a part buck rounded up), paying off any debt first
+    const result = await db.withTransaction(async (tx) => {
+      const [claimed] = await tx.query<{ id: string; amount_cents: number }>(
+        `UPDATE gift_cards SET status = 'redeemed', redeemed_by = $2, redeemed_at = $3
           WHERE code_hash = $1 AND status = 'active' AND (expires_at IS NULL OR expires_at > $3)
-          RETURNING id, amount_cents
-       ), credited AS (
-         UPDATE users SET credit_cents = credit_cents + (SELECT amount_cents FROM claimed)
-          WHERE id = $2 AND EXISTS (SELECT 1 FROM claimed)
-          RETURNING credit_cents
-       ), logged AS (
-         INSERT INTO credit_ledger (user_id, kind, amount_cents, ref, created_at)
-         SELECT $2, 'gift_card', amount_cents, id::text, $3 FROM claimed
-         RETURNING 1
-       )
-       SELECT claimed.amount_cents, credited.credit_cents FROM claimed, credited`,
-      [hash, me, now],
-    );
-    if (!rows[0]) fail(409, 'that card was just used');
-    return c.json({ creditedCents: Number(rows[0].amount_cents), creditCents: Number(rows[0].credit_cents) });
+          RETURNING id, amount_cents`,
+        [hash, me, now],
+      );
+      if (!claimed) return null;
+      const cents = Math.ceil(Number(claimed.amount_cents) / BUCK) * BUCK;
+      await creditBalance(tx, me, cents, 'gift_card', String(claimed.id), now);
+      const [u] = await tx.query<{ credit_cents: number }>('SELECT credit_cents FROM users WHERE id = $1', [me]);
+      return { creditedCents: cents, creditCents: Number(u.credit_cents) };
+    });
+    if (!result) fail(409, 'that card was just used');
+    return c.json({ ...result!, credited: result!.creditedCents / BUCK, bucks: result!.creditCents / BUCK });
   });
 
   app.get('/credit', requireUser, async (c) => {
-    const rows = await db.query<{ credit_cents: number }>('SELECT credit_cents FROM users WHERE id = $1', [c.get('user').id]);
-    return c.json({ creditCents: Number(rows[0]?.credit_cents ?? 0) });
+    const rows = await db.query<{ credit_cents: number; creator_credit_debt_cents: number }>(
+      'SELECT credit_cents, creator_credit_debt_cents FROM users WHERE id = $1',
+      [c.get('user').id],
+    );
+    const cents = Number(rows[0]?.credit_cents ?? 0);
+    return c.json({ creditCents: cents, bucks: centsToBucks(cents), debt: centsToBucks(Number(rows[0]?.creator_credit_debt_cents ?? 0)) });
   });
 
-  // What a product costs with a promo code, before buying (validates the
-  // code but doesn't use it).
+  /** An offer's price in cents of sand bucks (whole bucks): a community item's approved price, rounded; else its bucks price. */
+  const offerCents = (product: Product, offer: Awaited<ReturnType<typeof creatorOffer>>): number | null => {
+    if (!offer) return bucksToCents(product.bucks);
+    const cents = salePriceCents(product, offer);
+    return cents === null ? null : roundToBuck(cents);
+  };
+  /** a promo's discount, in whole bucks (never more than the price) */
+  const bucksDiscount = (promo: Promo, priceCents: number) => Math.floor(discountCents(promo, priceCents) / BUCK) * BUCK;
+
+  // What a product costs in sand bucks with a promo code, before buying
+  // (validates the code but doesn't use it). docs/SAND_BUCKS.md.
   app.post('/store/quote', requireUser, async (c) => {
     const me = c.get('user').id;
     if (!creditLimiter(me)) return c.json({ error: 'slow down' }, 429);
     const { productId, promoCode } = await body<{ productId?: string; promoCode?: string }>(c);
     const product = productById(productId ?? '');
     if (!product) fail(404, 'no such product');
-    const offer = await creatorOffer(db, product!);
-    const priceCents = salePriceCents(product!, offer) ?? fail(404, 'that product is not for sale');
+    const priceCents = offerCents(product!, await creatorOffer(db, product!)) ?? fail(404, 'that product is not for sale');
     let discount = 0;
     let promo: Promo | null = null;
     if (promoCode) {
@@ -2807,29 +3035,38 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       if (!promo) fail(404, 'no such code');
       const blocked = promoBlocked(promo!, product!.id, clock());
       if (blocked) fail(400, blocked);
-      discount = discountCents(promo!, priceCents);
+      discount = bucksDiscount(promo!, priceCents);
     }
     return c.json({
       product: product!.id,
       priceCents,
       discountCents: discount,
       finalCents: priceCents - discount,
+      price: centsToBucks(priceCents),
+      final: centsToBucks(priceCents - discount),
       promo: promo ? promo.code : undefined,
     });
   });
 
-  // The credit debit, promo, inventory grant, receipt and creator credit
-  // commit together. A repeated request ID returns the first receipt.
-  app.post('/store/credit-purchase', requireUser, async (c) => {
-    const me = c.get('user').id;
-    if (!creditLimiter(me)) return c.json({ error: 'slow down' }, 429);
-    const { productId, promoCode, requestId, freeOnly } =
-      await body<{ productId?: string; promoCode?: string; requestId?: string; freeOnly?: boolean }>(c);
-    const product = productById(productId ?? '') ?? fail(404, 'no such product');
+  /**
+   * Buy with sand bucks (Spend in specs/tla/SandBucks.tla): one offer, or a
+   * basket of them ("buy what's missing", docs/COPY_BEACH.md). The debit, the
+   * promo, the grant (each unit with its trade-in value: the price paid,
+   * shared out) and any creator credit commit together. A repeated request ID
+   * returns the first receipt.
+   */
+  const buyWithBucks = async (
+    c: Context<Env>,
+    me: string,
+    lines: { product: Product; quantity: number }[],
+    opts: { promoCode?: string; requestId?: string; freeOnly?: boolean; ref: string },
+  ) => {
+    const { promoCode, requestId, freeOnly } = opts;
     if (requestId !== undefined && (typeof requestId !== 'string' || !UUID_PATTERN.test(requestId))) fail(400, 'invalid request ID');
     if (promoCode !== undefined && typeof promoCode !== 'string') fail(400, 'invalid promo code');
     if (freeOnly !== undefined && typeof freeOnly !== 'boolean') fail(400, 'invalid free claim');
     if (freeOnly && promoCode !== undefined) fail(400, 'free claims do not use promo codes');
+    if (promoCode && lines.length !== 1) fail(400, 'a promo code is for one thing at a time');
     const code = promoCode ? normalizePromoCode(promoCode) : null;
     const now = clock();
     const result = await db.withTransaction(async (tx) => {
@@ -2838,55 +3075,214 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
         const [claimed] = await tx.query(
           `INSERT INTO credit_shop_orders (user_id, request_id, product_id, promo_code, paid_cents, discount_cents)
            VALUES ($1, $2, $3, $4, 0, 0) ON CONFLICT DO NOTHING RETURNING 1`,
-          [me, requestId, product.id, code],
+          [me, requestId, opts.ref, code],
         );
         if (!claimed) {
           const [order] = await tx.query<{ product_id: string; promo_code: string | null; paid_cents: number; discount_cents: number }>(
             'SELECT product_id, promo_code, paid_cents, discount_cents FROM credit_shop_orders WHERE user_id = $1 AND request_id = $2',
             [me, requestId],
           );
-          if (!order || order.product_id !== product.id || order.promo_code !== code) fail(409, 'that request ID was used for a different purchase');
+          if (!order || order.product_id !== opts.ref || order.promo_code !== code) fail(409, 'that request ID was used for a different purchase');
           if (freeOnly && order.paid_cents !== 0) fail(409, 'that request ID was used for a paid purchase');
           return { paidCents: order.paid_cents, discountCents: order.discount_cents, creditCents: await balance() };
         }
       }
-
-      const offer = await creatorOffer(tx, product, true);
-      const price = salePriceCents(product, offer) ?? fail(404, 'that product is not for sale');
+      // what each line costs, and its creator (if it's a community item)
+      const priced: { product: Product; quantity: number; cents: number; offer: Awaited<ReturnType<typeof creatorOffer>> }[] = [];
+      for (const l of lines) {
+        const offer = await creatorOffer(tx, l.product, true);
+        const cents = offerCents(l.product, offer) ?? fail(404, `${l.product.name} is not for sale`);
+        priced.push({ ...l, cents, offer });
+      }
+      const price = priced.reduce((t, l) => t + l.cents * l.quantity, 0);
       if (freeOnly && price !== 0) fail(409, 'that item is no longer free. Reopen the shop for its current price.');
       let discount = 0;
       if (code !== null) {
         const promo = await loadPromo(code, tx) ?? fail(404, 'no such code');
-        const blocked = promoBlocked(promo, product.id, now);
+        const blocked = promoBlocked(promo, priced[0].product.id, now);
         if (blocked) fail(400, blocked);
-        discount = discountCents(promo, price);
+        discount = bucksDiscount(promo, price);
       }
       const paid = price - discount;
-      if (offer) await lockCreditUsers(tx, me, offer);
+      for (const l of priced) if (l.offer) await lockCreditUsers(tx, me, l.offer);
       const available = await balance();
       if (available < paid) throw new HTTPException(402, {
-        message: `not enough credit: ${formatCents(paid)} needed, ${formatCents(available)} available`,
+        message: `not enough sand bucks: ${centsToBucks(paid)} needed, ${centsToBucks(available)} in your balance`,
       });
-
+      // every unit's trade-in value: what was paid, shared out by list value
+      const perLine = priced.map((l) => Array.from({ length: l.quantity }, () => unitsOf(l.product.grants)).flat());
+      const lineShares = shareOut(paid, priced.map((l) => l.cents * l.quantity));
+      const units = perLine.flat();
+      const values = perLine.flatMap((u, i) => shareOut(lineShares[i], u.map((item) => listBucks(item) ?? 1)));
+      const creatorItems = new Set(priced.filter((l) => l.offer).map((l) => l.product.grants[0].item));
+      const rows = new Map<string, { item: string; qty: number; unit: number }>();
+      units.forEach((item, i) => {
+        // a community item's units each get their own row: each carries its own royalty
+        const key = creatorItems.has(item) ? `${item}|#${i}` : `${item}|${values[i]}`;
+        const r = rows.get(key) ?? { item, qty: 0, unit: values[i] };
+        r.qty++;
+        rows.set(key, r);
+      });
+      const grant = [...rows.values()];
       const granted = await claimCreditPurchase(tx, {
         userId: me,
-        productId: product.id,
+        productId: opts.ref,
         promoCode: code,
         finalCents: paid,
         discountCents: discount,
-        items: product.grants.map((g) => g.item),
-        quantities: product.grants.map((g) => g.quantity),
+        items: grant.map((g) => g.item),
+        quantities: grant.map((g) => g.qty),
+        unitCents: grant.map((g) => g.unit),
         now,
       });
       if (!granted.length) fail(409, 'that did not go through: try again');
-      if (offer) await awardCreatorCredit(tx, { offer, buyer: me, purchaseRef: `credit:${granted[0]}`, paidCents: paid, now });
+      // a community item's creator earns 30% of what its units were paid
+      for (const l of priced) {
+        if (!l.offer) continue;
+        const item = l.product.grants[0].item;
+        const paidEach = units.map((u, i) => (u === item ? values[i] : -1)).filter((v) => v >= 0);
+        const own = granted.filter((r) => r.item_id === item);
+        for (let k = 0; k < own.length; k++) {
+          await awardCreatorCredit(tx, { offer: l.offer, buyer: me, purchaseRef: `credit:${own[k].id}`, paidCents: paidEach[k] ?? 0, now });
+        }
+      }
       if (requestId) await tx.query(
         'UPDATE credit_shop_orders SET paid_cents = $3, discount_cents = $4 WHERE user_id = $1 AND request_id = $2',
         [me, requestId, paid, discount],
       );
       return { paidCents: paid, discountCents: discount, creditCents: await balance() };
     });
-    return c.json({ product: product.id, grants: product.grants, ...result });
+    return {
+      ...result,
+      paid: centsToBucks(Number(result.paidCents)),
+      discount: centsToBucks(Number(result.discountCents)),
+      bucks: centsToBucks(Number(result.creditCents)),
+    };
+  };
+
+  // one offer (the shop), or a free one
+  app.post('/store/credit-purchase', requireUser, async (c) => {
+    const me = c.get('user').id;
+    if (!creditLimiter(me)) return c.json({ error: 'slow down' }, 429);
+    const { productId, promoCode, requestId, freeOnly } =
+      await body<{ productId?: string; promoCode?: string; requestId?: string; freeOnly?: boolean }>(c);
+    const product = productById(productId ?? '') ?? fail(404, 'no such product');
+    const r = await buyWithBucks(c, me, [{ product, quantity: 1 }], { promoCode, requestId, freeOnly, ref: product.id });
+    return c.json({ product: product.id, grants: product.grants, ...r });
+  });
+  app.post('/store/buy', requireUser, async (c) => {
+    const me = c.get('user').id;
+    if (!creditLimiter(me)) return c.json({ error: 'slow down' }, 429);
+    const p = await body<{ productId?: string; basket?: { product?: string; quantity?: number }[]; promoCode?: string; requestId?: string }>(c);
+    let lines: { product: Product; quantity: number }[];
+    if (p.basket !== undefined) {
+      if (!Array.isArray(p.basket) || !p.basket.length || p.basket.length > 20) fail(400, 'a basket is 1 to 20 lines');
+      lines = p.basket.map((l) => {
+        const product = productById(String(l.product ?? '')) ?? fail(404, 'no such product');
+        const quantity = Number(l.quantity ?? 1);
+        if (!Number.isInteger(quantity) || quantity < 1 || quantity > 20) fail(400, 'a quantity is 1 to 20');
+        return { product, quantity };
+      });
+    } else {
+      lines = [{ product: productById(p.productId ?? '') ?? fail(404, 'no such product'), quantity: 1 }];
+    }
+    const ref = lines.length === 1 && lines[0].quantity === 1 ? lines[0].product.id : `basket:${lines.map((l) => `${l.product.id}x${l.quantity}`).join(',')}`.slice(0, 200);
+    const r = await buyWithBucks(c, me, lines, { promoCode: p.promoCode, requestId: p.requestId, ref });
+    return c.json({ lines: lines.map((l) => ({ product: l.product.id, quantity: l.quantity, grants: l.product.grants })), ...r });
+  });
+
+  // ---------------------------------------------------------------- trade-ins
+  // What each thing in your bag trades in for (docs/SAND_BUCKS.md): how many
+  // you own, how many are on your beaches, and the value of each unit,
+  // newest first (the order a trade-in takes them).
+  app.get('/bag', requireUser, async (c) => {
+    const me = c.get('user').id;
+    const now = clock();
+    const rows = await db.query<{ item_id: string; quantity: number; unit_cents: number | null }>(
+      `SELECT item_id, quantity, unit_cents FROM inventory
+        WHERE user_id = $1 AND quantity > 0 AND (expires_at IS NULL OR expires_at > $2)
+        ORDER BY acquired_at DESC, id DESC`,
+      [me, now],
+    );
+    const placed = await itemsElsewhere(me, NO_BEACH);
+    const [count, uniques] = await Promise.all([
+      beachCount(me),
+      db.query<{ item_id: string }>('SELECT item_id FROM unique_items WHERE owner_id = $1', [me]),
+    ]);
+    const unique = new Set(uniques.map((u) => u.item_id));
+    const items = new Map<string, { item: string; owned: number; placed: number; values: number[] }>();
+    for (const r of rows) {
+      const list = listBucks(r.item_id);
+      if (list === null || unique.has(r.item_id)) continue;
+      const e = items.get(r.item_id) ?? { item: r.item_id, owned: 0, placed: r.item_id === 'beach' ? Math.max(0, count - 1) : (placed[r.item_id] ?? 0), values: [] };
+      e.owned += Number(r.quantity);
+      for (let i = 0; i < Number(r.quantity) && e.values.length < 50; i++) e.values.push(r.unit_cents === null ? list : centsToBucks(Number(r.unit_cents)));
+      items.set(r.item_id, e);
+    }
+    return c.json({
+      items: [...items.values()].map((e) => ({ ...e, free: Math.max(0, e.owned - e.placed) })),
+    });
+  });
+
+  // Trade a thing in for its sand bucks (TradeAtomic in specs/tla/SandBucks.tla):
+  // one transaction holding the player's lock (the one saves, restores,
+  // copies and gifts take), so a save placing it, or a second trade-in of the
+  // same last one, can't land in between. Only what isn't on a beach.
+  app.post('/bag/trade-in', requireUser, async (c) => {
+    const me = c.get('user').id;
+    const { item, quantity = 1 } = await body<{ item?: string; quantity?: number }>(c);
+    if (typeof item !== 'string' || !item || item.length > 40) fail(400, 'say which thing to trade in');
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 50) fail(400, 'a quantity is 1 to 50');
+    if (!tradeable(item!) || (await db.query('SELECT 1 FROM unique_items WHERE item_id = $1', [item])).length) {
+      fail(400, "that can't be traded in");
+    }
+    if (!creditLimiter(me)) return c.json({ error: 'slow down' }, 429);
+    const now = clock();
+    const list = bucksToCents(listBucks(item!)!);
+    const out = await withPlayerWriteLock(me, async (tx) => {
+      const [{ n: ownedN }] = await tx.query<{ n: string | null }>(
+        `SELECT SUM(quantity) AS n FROM inventory WHERE user_id = $1 AND item_id = $2 AND quantity > 0 AND (expires_at IS NULL OR expires_at > $3)`,
+        [me, item, now],
+      );
+      const owned = Number(ownedN ?? 0);
+      let free: number;
+      if (item === 'beach') {
+        free = Math.min(owned, (await allowance(me, tx)) - (await beachCount(me, tx)));
+      } else {
+        const placed = (await itemsElsewhere(me, NO_BEACH, tx))[item!] ?? 0;
+        free = owned - placed;
+      }
+      if (free < quantity) return { error: free > 0 ? `only ${free} can be traded in` : item === 'beach' ? 'every extra beach is in use' : 'pick it up off your beach first', free: Math.max(0, free) };
+      // the newest first: "buy it, then change your mind" gives back exactly what was paid
+      const rows = await tx.query<{ id: string; quantity: number; unit_cents: number | null; royalty_ref: string }>(
+        `SELECT id, quantity, unit_cents,
+                COALESCE(royalty_ref, CASE WHEN purchase_id IS NOT NULL THEN 'store:' || purchase_id ELSE 'credit:' || id END) AS royalty_ref
+           FROM inventory
+          WHERE user_id = $1 AND item_id = $2 AND quantity > 0 AND (expires_at IS NULL OR expires_at > $3)
+          ORDER BY acquired_at DESC, id DESC FOR UPDATE`,
+        [me, item, now],
+      );
+      let left = quantity;
+      let cents = 0;
+      for (const r of rows) {
+        if (left <= 0) break;
+        const take = Math.min(left, Number(r.quantity));
+        const unit = r.unit_cents === null ? list : Number(r.unit_cents);
+        await tx.query('UPDATE inventory SET quantity = quantity - $2 WHERE id = $1 AND quantity >= $2', [r.id, take]);
+        await tx.query('INSERT INTO trade_ins (user_id, inventory_id, item_id, quantity, value_cents, created_at) VALUES ($1, $2, $3, $4, $5, $6)', [
+          me, r.id, item, take, unit * take, now,
+        ]);
+        // a community item's creator gives back the credit it earned
+        if (take === Number(r.quantity)) await reverseCreatorCreditByRef(tx, r.royalty_ref, now);
+        cents += unit * take;
+        left -= take;
+      }
+      await creditBalance(tx, me, cents, 'trade_in', item!, now);
+      const [u] = await tx.query<{ credit_cents: number }>('SELECT credit_cents FROM users WHERE id = $1', [me]);
+      return { cents, balance: Number(u.credit_cents) };
+    });
+    if ('error' in out) return c.json({ error: out.error, free: out.free }, 409);
+    return c.json({ item, quantity, credited: centsToBucks(out.cents), bucks: centsToBucks(out.balance) });
   });
 
   // (after /beaches/mine…, so 'mine' isn't taken for a code)
@@ -2928,13 +3324,17 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
                AND (expires_at IS NULL OR expires_at > $3)
              ORDER BY acquired_at ASC LIMIT 1
           ) AND quantity > 0
-         RETURNING item_id, expires_at, purchase_id
+         RETURNING id, item_id, expires_at, purchase_id, unit_cents, royalty_ref
        ), given AS (
          -- the gift keeps the purchase it came from, so a refund of that
          -- purchase takes it back from the recipient too (otherwise: buy,
          -- gift it to a second account, get a refund, keep the item)
-         INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at, expires_at, purchase_id)
-         SELECT $4, item_id, 1, 'gift', $3, expires_at, purchase_id FROM giver
+         -- and its trade-in value (docs/SAND_BUCKS.md), so a discount can't be cashed out by gifting
+         -- and the creator royalty it earned, so trading the gift in takes that back
+         INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at, expires_at, purchase_id, unit_cents, royalty_ref)
+         SELECT $4, item_id, 1, 'gift', $3, expires_at, purchase_id, unit_cents,
+                COALESCE(royalty_ref, CASE WHEN purchase_id IS NOT NULL THEN 'store:' || purchase_id ELSE 'credit:' || id END)
+           FROM giver
          RETURNING item_id
        ), logged AS (
          INSERT INTO gifts (from_id, to_id, item_id, created_at)

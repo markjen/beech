@@ -131,7 +131,7 @@ Before/after in `docs/shore-card-before.png` and `docs/shore-card-after.png`.
   link** (copies `?visit=`), and "see it on beechshore ↗". The leaderboard
   links to `/top`. Opening a `?visit=` link signed out opens that public beach
   in the game right away, in read-only 3D.
-- **Shore → game:** "Visit in beech" on every beach, "Build a beach" in the
+- **Shore → game:** "Visit in beech" and "Copy to my beach" (`?visit=CODE&copy=1`, docs/COPY_BEACH.md; the page also shows "copied N times" and "Copied from …") on every beach, "Build a beach" in the
   header, "Make one of your own" under each beach, "Play beech" in the footer.
   The footer also links the Discord server for feedback, bug reports and
   ideas (invite URL in `server/src/community.ts` — the server's permanent

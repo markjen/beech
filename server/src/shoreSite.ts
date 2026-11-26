@@ -913,6 +913,18 @@ ${
     const isoHref = href(`/img/${b.code}/iso.png?v=${isoVersion}`);
     const oceanHref = href(`/img/${b.code}/iso-ocean.png?v=${isoVersion}`);
     const n = now();
+    // copying (docs/COPY_BEACH.md): how many people copied it, and the beach
+    // it was copied from while that one is public
+    const [copyRow] = await db.query<{ copies: string; from_code: string | null; from_name: string | null }>(
+      `SELECT (SELECT COUNT(*) FROM beach_copies WHERE source_beach = b.id) AS copies,
+              f.code AS from_code, COALESCE(NULLIF(f.name, ''), fu.name) AS from_name
+         FROM beach b LEFT JOIN beach f ON f.id = b.copied_from AND f.on_shore AND f.sand IS NOT NULL
+         LEFT JOIN users fu ON fu.id = f.owner_id
+        WHERE b.id = $1`,
+      [node.id],
+    );
+    const copies = Number(copyRow?.copies ?? 0);
+    const copiedFrom = copyRow?.from_code ? `<p class="nb">Copied from <a href="${href(`/${copyRow.from_code}`)}">${esc(copyRow.from_name || copyRow.from_code)}</a></p>` : '';
     const step = (s: Step | undefined, dir: 'left' | 'right') =>
       s
         ? `<a class="walk ${dir}" href="${href(`/${s.code}`)}" rel="${dir === 'left' ? 'prev' : 'next'}" data-key="${dir === 'left' ? 'ArrowLeft' : 'ArrowRight'}" title="Walk ${dir} to ${esc(beachTitle(s))}" aria-label="Walk ${dir} to ${esc(beachTitle(s))}">${dir === 'left' ? '‹' : '›'}</a>`
@@ -946,12 +958,14 @@ ${
       }</p>
       <p class="m">${b.stars ? `<span class="stars">★ ${b.stars} ${b.stars === 1 ? 'star' : 'stars'}</span>` : ''}${
         b.recent ? `<span class="up">▲ ${b.recent} this week</span>` : ''
-      }<span class="when">changed ${esc(ago(b.updatedAt, n))}</span></p>
+      }${copies ? `<span class="copies">copied ${copies === 1 ? 'once' : `${copies} times`}</span>` : ''}<span class="when">changed ${esc(ago(b.updatedAt, n))}</span></p>
+      ${copiedFrom}
       ${neighbors.length ? `<p class="nb">Neighbors: ${neighbors.map((s) => `<a href="${href(`/${s.code}`)}">${esc(beachTitle(s))}</a>`).join(' and ')}</p>` : ''}
     </div>
     <div class="actions">
       <div class="action-row">
         <a class="btn big" href="${esc(visitUrl(b.code))}">Visit in beech →</a>
+        <a class="btn ghost big" href="${esc(`${visitUrl(b.code)}&copy=1`)}">Copy to my beach →</a>
         <a class="btn ghost big" href="#share">${ICONS.share} Share snapshot</a>
       </div>
       <p class="hint">Walk onto it in 3D, sit in a deckchair, star it. The waves are live.</p>

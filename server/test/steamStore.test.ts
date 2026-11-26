@@ -111,10 +111,10 @@ describe('Steam Wallet microtransaction routes', () => {
     return (await r.json()) as { token: string; user: { id: string } };
   };
 
-  it('initializes, finalizes once, and grants multi-item pack idempotently', async () => {
+  it('initializes, finalizes once, and grants a sand-buck pack idempotently', async () => {
     const { token } = await signInSteam('10');
 
-    const initRes = await post('/store/steam/init', { productId: 'pack_founder' }, token);
+    const initRes = await post('/store/steam/init', { productId: 'bucks_100' }, token);
     expect(initRes.status).toBe(200);
     const { orderId } = (await initRes.json()) as { orderId: string };
 
@@ -127,37 +127,35 @@ describe('Steam Wallet microtransaction routes', () => {
     expect(fin2.status).toBe(200);
     expect(await fin2.json()).toEqual(expect.objectContaining({ ok: true, already: true }));
 
-    const inv = (await (await app.request('/inventory', { headers: { Authorization: `Bearer ${token}` } })).json()) as {
-      items: { item: string; quantity: number }[];
-    };
-    const count = (id: string) => inv.items.filter((x) => x.item === id).reduce((s, x) => s + x.quantity, 0);
-    expect(count('beach')).toBe(2);
-    expect(count('lighthouse')).toBe(1);
-    expect(count('tikitorch')).toBe(2);
+    // Steam sells sand-buck packs (docs/SAND_BUCKS.md): 100 to the balance, once
+    const credit = (await (await app.request('/credit', { headers: { Authorization: `Bearer ${token}` } })).json()) as { bucks: number };
+    expect(credit.bucks).toBe(100);
+    // the Steam builds already out still buy things directly (PR #118 review)
+    expect((await post('/store/steam/init', { productId: 'item_parasol' }, token)).status).toBe(200);
   });
 
   it('rejects non-Steam accounts, canceled orders, and init failures cleanly', async () => {
     const dev = (await (await post('/auth/dev', { name: 'WebOnly' })).json()) as { token: string };
-    expect((await post('/store/steam/init', { productId: 'beach_1' }, dev.token)).status).toBe(400);
+    expect((await post('/store/steam/init', { productId: 'bucks_30' }, dev.token)).status).toBe(400);
 
     const { token } = await signInSteam('11');
     failInit = true;
-    expect((await post('/store/steam/init', { productId: 'beach_1' }, token)).status).toBe(502);
+    expect((await post('/store/steam/init', { productId: 'bucks_30' }, token)).status).toBe(502);
     failInit = false;
 
-    const { orderId } = (await (await post('/store/steam/init', { productId: 'beach_1' }, token)).json()) as { orderId: string };
+    const { orderId } = (await (await post('/store/steam/init', { productId: 'bucks_30' }, token)).json()) as { orderId: string };
     expect((await post('/store/steam/cancel', { orderId }, token)).status).toBe(204);
     expect((await post('/store/steam/finalize', { orderId }, token)).status).toBe(409);
 
-    const { orderId: oid2 } = (await (await post('/store/steam/init', { productId: 'item_parasol' }, token)).json()) as { orderId: string };
+    const { orderId: oid2 } = (await (await post('/store/steam/init', { productId: 'bucks_10' }, token)).json()) as { orderId: string };
     failFinalize = true;
     expect((await post('/store/steam/finalize', { orderId: oid2 }, token)).status).toBe(402);
     failFinalize = false;
   });
 
-  it('revokes granted items when syncSteamRefunds reports a refund', async () => {
+  it('takes the sand bucks back when syncSteamRefunds reports a refund', async () => {
     const { token } = await signInSteam('12');
-    const { orderId } = (await (await post('/store/steam/init', { productId: 'item_lighthouse' }, token)).json()) as { orderId: string };
+    const { orderId } = (await (await post('/store/steam/init', { productId: 'bucks_30' }, token)).json()) as { orderId: string };
     expect((await post('/store/steam/finalize', { orderId }, token)).status).toBe(200);
 
     const rows = await db.query<{ trans_id: string }>('SELECT trans_id FROM steam_orders WHERE order_id = $1', [orderId]);
@@ -168,9 +166,7 @@ describe('Steam Wallet microtransaction routes', () => {
     });
     expect(revoked).toBe(1);
 
-    const inv = (await (await app.request('/inventory', { headers: { Authorization: `Bearer ${token}` } })).json()) as {
-      items: { item: string; quantity: number }[];
-    };
-    expect(inv.items.filter((x) => x.item === 'lighthouse')).toHaveLength(0);
+    const credit = (await (await app.request('/credit', { headers: { Authorization: `Bearer ${token}` } })).json()) as { bucks: number; debt: number };
+    expect(credit).toEqual(expect.objectContaining({ bucks: 0, debt: 0 }));
   });
 });

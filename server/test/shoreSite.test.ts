@@ -128,6 +128,26 @@ describe('the shore site', () => {
     expect(html).not.toContain(people.Bob.code);
   });
 
+  it('a beach page offers a copy, and shows how often it was copied and where a copy came from', async () => {
+    const page = async (code: string) => (await root.request(`/${code}`, shoreHost)).text();
+    expect(await page(people.Ana.code)).toContain(`https://play.example.test/?visit=${people.Ana.code}&amp;copy=1`);
+    // Dee and Eve copied Ana's beach (Eve twice: counted once); Dee's is the copy
+    await db.query('INSERT INTO beach_copies (source_beach, copier, first_at) VALUES ($1, $2, 1), ($1, $3, 2)', [
+      people.Ana.beachId,
+      people.Dee.beachId,
+      people['<b>Eve</b>'].beachId,
+    ]);
+    await db.query('UPDATE beach SET copied_from = $1 WHERE id = $2', [people.Ana.beachId, people.Dee.beachId]);
+    expect(await page(people.Ana.code)).toContain('copied 2 times');
+    const dee = await page(people.Dee.code);
+    expect(dee).toContain(`Copied from <a href="/${people.Ana.code}">`);
+    // a copy of a beach that has left the shore doesn't link to it
+    await db.query('UPDATE beach SET copied_from = $1 WHERE id = $2', [people.Bob.beachId, people.Dee.beachId]);
+    expect(await page(people.Dee.code)).not.toContain('Copied from');
+    await db.query('UPDATE beach SET copied_from = NULL WHERE id = $1', [people.Dee.beachId]);
+    await db.query('DELETE FROM beach_copies WHERE source_beach = $1', [people.Ana.beachId]);
+  });
+
   it('tiles touch edge to edge: no gap between beach cards', async () => {
     // the grid (home, lists, by place) and the "Along the shore" strip on a
     // beach page both render contiguously; the stylesheet is shared, so one

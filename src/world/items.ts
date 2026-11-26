@@ -44,8 +44,7 @@ export const ITEMS: Item[] = [
   { id: 'seaweed', name: 'Seaweed', kind: 'seaweed', rarity: 'common', source: 'free', unlimited: true, size: [0.15, 0.6], variants: 3 },
   { id: 'cowrie', name: 'Cowrie', kind: 'shell', rarity: 'rare', source: 'free', unlimited: true, size: [0.05, 0.2], variants: 3 },
   { id: 'flag', name: 'Flag', kind: 'flag', rarity: 'common', source: 'free', unlimited: true, size: [0.4, 0.4], variants: 4, fixedSize: true },
-  // a trail of footprints pressed into the sand: placed like any free
-  // item, and staying where you put it
+  // A trail pressed into the sand until the water reaches it.
   { id: 'footprints', name: 'Footprints', kind: 'footprints', rarity: 'common', source: 'free', unlimited: true, size: [0.5, 2.0], variants: 3 },
   // won from the claw machine (server/src/pulls.ts); you can place as many as you own
   { id: 'conch', name: 'Conch', kind: 'conch', rarity: 'common', source: 'pull', unlimited: false, size: [0.1, 0.35], variants: 3 },

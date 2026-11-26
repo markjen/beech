@@ -41,6 +41,8 @@ export function describeEntry(e: InboxEntry): { title: string; detail: string[] 
       return { title: `${who} joined through your invite`, detail };
     case 'invite_settled':
       return { title: `${who} settled in${e.item ? `: you got ${aPrize(e.item)}` : ''}`, detail };
+    case 'copied':
+      return { title: `${who} copied ${where}`, detail };
     default:
       return { title: String((e.payload as { text?: string }).text ?? 'News from beech'), detail };
   }
@@ -57,7 +59,7 @@ export function ago(at: number, now = Date.now()): string {
 }
 
 /** the kinds worth a note over the beach when they arrive (the rest wait in the inbox) */
-export const ANNOUNCE = new Set(['visit', 'gift', 'neighbor_request', 'neighbor_linked', 'invite_settled']);
+export const ANNOUNCE = new Set(['visit', 'gift', 'neighbor_request', 'neighbor_linked', 'invite_settled', 'copied']);
 
 /** The note over the beach for a new row: "Ben left you something". */
 export function announce(kind: string, name: string | null): string {
@@ -73,6 +75,8 @@ export function announce(kind: string, name: string | null): string {
       return `You and ${who} are neighbors`;
     case 'invite_settled':
       return `${who} settled in`;
+    case 'copied':
+      return `${who} copied your beach`;
     default:
       return 'Something new in your inbox';
   }

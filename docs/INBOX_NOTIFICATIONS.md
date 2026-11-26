@@ -32,7 +32,7 @@ same lock. Tests: `server/test/stateMachines/push.test.ts`.
   `window.beechSteam.notify`) when the 30 s poll brings something pushable
   while the game isn't the window in front, minimised included. Nothing
   reaches a player whose game is closed; the guide says so.
-- **The queue is a column**, not a table: `inbox.pushed_at` (migration 30).
+- **The queue is a column**, not a table: `inbox.pushed_at` (migration 33).
   A row is due while it's empty; a push claim marks every due row, sent or
   folded or skipped (read, blocked, muted, older than a day). Rows from
   before push were marked done by the migration. Marking per row, not a

@@ -490,7 +490,7 @@ notifications) is built too (2026-11-26) and waits on the owner's keys
   no new server dependency), APNs straight from the server for the iOS app
   (not through Firebase, unlike the earlier plan), FCM for the Android app,
   and on Steam the running game shows OS notifications from the poll
-  (Electron `Notification`; Steam has no push service). Migration 30
+  (Electron `Notification`; Steam has no push service). Migration 33
   (`push_subscriptions` tied to the session, `push_state` as the push
   lock, `notify_prefs`, `inbox.pushed_at`). One push an hour, none
   22:00–08:00 on the device clock, never stars or ratings, never a note's
@@ -1425,3 +1425,59 @@ CI runs the TypeScript tests with the server suite, and TLC on every
 spec's fixed form in the `Specs` workflow when `specs/` or `server/src/`
 changes. New gameplay and features follow the model-first workflow
 (CLAUDE.md ground rule, the `model-first` skill, STATE_MACHINES.md).
+
+## Copying a beach (built 2026-11-26, docs/COPY_BEACH.md)
+
+- Copy a public beach (or duplicate one of your own) onto one of your
+  beaches or a new one: `copy` in the shore bar, "Copy to my beach" on
+  beechshore.com (`?visit=CODE&copy=1`), "duplicate" in your beaches. When
+  the bag is short: buy what's missing (the server works out the basket;
+  bought one product at a time through the existing purchase paths), copy
+  without them (`drop-missing`), or keep it as a checkpoint. Undo after
+  every copy.
+- One transaction per copy (player lock, source row `FOR SHARE`), as
+  `specs/tla/BeachCopy.tla` requires; the restore route shares its write
+  (`writeOnto`). Migration 30. Copies counted once per person
+  (`beach_copies`), the owner gets an inbox row the first time, and the
+  beach page shows "copied N times" and "Copied from".
+- Differs from the design: no multi-product web order yet (one card
+  checkout per product); the app shows the server's basket rather than
+  computing its own; a new beach takes the original's place.
+
+## Sand bucks and trade-ins (2026-11-26, docs/SAND_BUCKS.md)
+
+- Everything in the shop is priced in sand bucks (whole numbers, 10¢ a
+  buck, same prices as before). Real money only buys sand-buck packs (App
+  Store, Play, Steam, Xsolla, gift cards). The balance stays in
+  `users.credit_cents`, always a whole number of bucks.
+- Trade-ins: anything placeable that isn't on a beach, and unused extra
+  beaches, go back for their recorded value (`inventory.unit_cents`: what
+  was paid, a bundle or promo shared out; free things at list value; gifts
+  keep theirs). Snacks, the pet crab and one-of-a-kind items can't be
+  traded. One transaction under the player lock (`specs/tla/SandBucks.tla`).
+- Refunds of packs claw back their bucks; what was spent becomes debt,
+  paid off by the next bucks in. Creator royalties are in whole bucks and go
+  back on a trade-in.
+- Old app versions keep `/store/products` and their item receipts; new apps
+  use `/store/catalog`. The copy sheet's "Buy what's missing" is now one
+  sand-buck purchase (a pack first when the balance is short).
+- Differs from the design: none so far. Owner tasks (store products) in
+  BACKLOG.md.
+
+### Review of PR #118 (2026-11-26)
+
+Five findings, all fixed with a test each:
+- the copy sheet's "Buy what's missing" reused nothing between attempts: a
+  lost answer, then a retry, could charge twice. It now keeps the request ID
+  until a receipt or a definite no (`tests/shopBasket.test.ts`, and a replay
+  in `bucks.test.ts`);
+- switching the copy target left the old basket buyable while the new fit
+  loaded; the sheet now shows nothing to act on until the right answer is in,
+  and drops answers for a target no longer selected;
+- Steam (and a stale web page) can still check out the old item products;
+- two owners copying each other's beach at once deadlocked on PostgreSQL;
+  the copy now locks both beach rows in id order (a PostgreSQL-only test in
+  `copy.test.ts` reproduced it first);
+- a gifted community item now carries its creator royalty, so trading the
+  gift in takes back the right one (migration 32, `inventory.royalty_ref`).
+
