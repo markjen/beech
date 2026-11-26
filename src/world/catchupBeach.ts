@@ -63,7 +63,7 @@ export async function catchUpSaved(
     to,
     maxGapDays,
   });
-  const changed = out.sandMoved > 1e-6 || out.lost.length > 0 || out.broughtIn > 0;
+  const changed = out.sandMoved > 1e-6 || out.objects.length < saved.objects.length || out.broughtIn > 0;
   return {
     // the sand piled on buried rocks (BCH3) is kept as it was: the catch-up
     // works on the sand around them

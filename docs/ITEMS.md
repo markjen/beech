@@ -36,14 +36,15 @@ Unlimited, yours from the start. Place as many as you like.
 | Seaweed | `seaweed` | common | 0.15–0.6 | 3 | tumble | `src/render/objects.ts` |
 | Cowrie | `shell` | rare | 0.05–0.2 | 3 | tumble | `src/render/objects.ts` |
 | Flag | `flag` | common | 0.4 fixed | 4 | fixed | `src/render/objects.ts` |
-| Footprints | `footprints` | common | 0.5–2.0 | 3 | fixed | `src/render/objects.ts` |
+| Footprints | `footprints` | common | 0.5–2.0 | 3 | wash | `src/render/objects.ts` |
 
 Footprints are a trail of prints pressed into the sand — darker than
 the dry sand around them, so they read as dips. Tap to set down one
 trail, or drag with footprints in hand to leave a trail along the path
 you draw: one trail per stride, each running in the direction you are
 walking, its prints alternating left and right across the joins, up to
-100 trails per drag. Undo takes a whole drag back at once. The little figure
+100 trails per drag. Undo takes a whole drag back at once. Each trail washes
+away when the water reaches it. The little figure
 walking the waterline from the same backlog line did not ship with
 them: there is no character mesh, walk animation, or fading-decal
 system in the app, so it would need a new render subsystem rather

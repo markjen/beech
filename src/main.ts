@@ -457,6 +457,7 @@ async function boot() {
       pendingTouch = true;
     }
     if (m.lost) seaTook(m.lost.length);
+    if (m.washedFootprints) markDirty(1500);
     if (m.vacuumed) vacuumedUp(m.vacuumed);
     // a held thing follows the finger; one just put down waits for the worker
     if (settling) {

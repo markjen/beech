@@ -29,6 +29,22 @@ var PROFILE = {
   /** how far below the rest surface you can dig before hitting "rock" */
   digDepthLimit: 1.2
 };
+var WATER = {
+  gravity: 9.81,
+  /** quadratic bed friction coefficient */
+  friction: 0.012,
+  /** additional linear damping of fluxes (1/s); below ~0.4 a checkerboard mode can grow */
+  linearDamping: 0.5,
+  /** linear damping in water deeper than ~1 m (offshore), so waves don't lose
+   * their height crossing the extra sea */
+  deepDamping: 0.12,
+  /** depth used to cap wave speed in the flux update (keeps CFL comfortably safe) */
+  maxFluxDepth: 0.9,
+  /** below this depth a cell counts as dry */
+  dryDepth: 4e-3,
+  /** substeps per sim tick */
+  substeps: 2
+};
 var SAND = {
   /** angle of repose in degrees */
   reposeDry: 36,
@@ -170,9 +186,9 @@ var BEHAVIOUR = {
   bonfire: "fixed",
   hammock: "fixed",
   towel: "fixed",
-  // a trail of prints pressed into the sand: it stays where you put it
-  footprints: "fixed"
+  footprints: "wash"
 };
+var sandWashDepth = () => WATER.dryDepth * 2;
 var MAX_WILD = 6;
 
 function hash2(x, y, seed = 1) {
@@ -349,6 +365,8 @@ function catchUp(input) {
   };
   const { segs, highTides } = halfCycles(input.tide, from, to);
   const soaked = /* @__PURE__ */ new Map();
+  const washed = /* @__PURE__ */ new Set();
+  const washDepth = sandWashDepth();
   const lost = [];
   let lastHigh = -Infinity;
   for (const [t0, t1, lo, hi] of segs) {
@@ -408,6 +426,11 @@ function catchUp(input) {
     }
     for (const o of objects) {
       const b = BEHAVIOUR[o.kind];
+      if (b === "wash") {
+        const z = sand[cellOf(o.x, o.y)] + washDepth;
+        if (BAND.some((q) => above(z - q * R, lo, hi) > 0)) washed.add(o.id);
+        continue;
+      }
       if (b !== "float" && b !== "tumble") continue;
       const h = sand[cellOf(o.x, o.y)];
       const inSea = D * above(h + 0.03, lo, hi);
@@ -428,6 +451,7 @@ function catchUp(input) {
     }
   }
   let kept = objects.filter((o) => {
+    if (washed.has(o.id)) return false;
     if (o.wild) return true;
     const s = soaked.get(o.id) ?? 0;
     const b = BEHAVIOUR[o.kind];
@@ -2397,7 +2421,7 @@ async function catchUpSaved(bytes, location, from, to, maxGapDays = CATCHUP.maxG
     to,
     maxGapDays
   });
-  const changed = out.sandMoved > 1e-6 || out.lost.length > 0 || out.broughtIn > 0;
+  const changed = out.sandMoved > 1e-6 || out.objects.length < saved.objects.length || out.broughtIn > 0;
   return {
     // the sand piled on buried rocks (BCH3) is kept as it was: the catch-up
     // works on the sand around them
