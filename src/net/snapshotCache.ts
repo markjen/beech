@@ -1,5 +1,5 @@
 import { BEACH_STORE } from '../config';
-import { localDelete, localGet, localSet } from './localStore';
+import { localTransaction } from './localStore';
 
 /**
  * Other people's beaches as last fetched, kept on the device
@@ -17,69 +17,99 @@ export interface Snapshot {
   version?: number;
 }
 
+interface SnapshotRead {
+  snapshot: Snapshot | null;
+  generation: number | null;
+}
+
 export interface SnapshotCache {
-  get(id: string): Promise<Snapshot | null>;
-  put(id: string, snap: Snapshot): Promise<void>;
+  read(id: string): Promise<SnapshotRead>;
+  write(id: string, snapshot: Snapshot | null, generation: number): Promise<void>;
   clear(): Promise<void>;
 }
 
-/** An in-memory cache (tests, and anywhere IndexedDB isn't wanted). */
+/** An in-memory cache for tests. */
 export function memorySnapshotCache(capacity: number = BEACH_STORE.diskCapacity): SnapshotCache & { ids(): string[] } {
   const map = new Map<string, Snapshot>();
+  let generation = 0;
   return {
-    async get(id) {
-      const s = map.get(id);
-      if (!s) return null;
-      map.delete(id);
-      map.set(id, s);
-      return s;
+    async read(id) {
+      const snapshot = map.get(id) ?? null;
+      if (snapshot) {
+        map.delete(id);
+        map.set(id, snapshot);
+      }
+      return { snapshot, generation };
     },
-    async put(id, snap) {
+    async write(id, snapshot, expected) {
+      if (generation !== expected) return;
       map.delete(id);
-      map.set(id, snap);
+      if (snapshot) map.set(id, snapshot);
       while (map.size > capacity) map.delete(map.keys().next().value as string);
     },
     async clear() {
+      generation++;
       map.clear();
     },
     ids: () => [...map.keys()],
   };
 }
 
+interface SnapshotIndex {
+  ids: string[];
+  generation: number;
+}
+
 const INDEX = 'snaps';
 const key = (id: string) => `snap:${id}`;
 
-/** The device's cache, in IndexedDB: the least recently used go past `capacity`. */
+/** The index and the saved bytes change in one transaction, even across tabs. */
 export function idbSnapshotCache(capacity: number = BEACH_STORE.diskCapacity): SnapshotCache {
-  // index changes run one at a time (a read-modify-write of the id list)
-  let queue: Promise<unknown> = Promise.resolve();
-  const serial = <T>(fn: () => Promise<T>): Promise<T> => {
-    const p = queue.then(fn, fn);
-    queue = p.catch(() => {});
-    return p;
-  };
-  const touch = (id: string, add: boolean) =>
-    serial(async () => {
-      const ids = ((await localGet<string[]>(INDEX)) ?? []).filter((x) => x !== id);
-      if (add) ids.push(id);
-      const gone = ids.splice(0, Math.max(0, ids.length - capacity));
-      await localSet(INDEX, ids);
-      for (const g of gone) await localDelete(key(g));
+  function withIndex<T>(run: (index: SnapshotIndex, store: IDBObjectStore, result: (value: T) => void) => void): Promise<T | null> {
+    return localTransaction<T>((store, result) => {
+      const req = store.get(INDEX);
+      req.onsuccess = () => {
+        const index = req.result as SnapshotIndex | string[] | undefined;
+        run(Array.isArray(index) ? { ids: index, generation: 0 } : (index ?? { ids: [], generation: 0 }), store, result);
+      };
     });
+  }
+
   return {
-    async get(id) {
-      const s = await localGet<Snapshot>(key(id));
-      if (s) void touch(id, true);
-      return s;
+    async read(id) {
+      return (await withIndex<SnapshotRead>((index, store, result) => {
+        const { ids, generation } = index;
+        if (!ids.includes(id)) return result({ snapshot: null, generation });
+        const req = store.get(key(id));
+        req.onsuccess = () => {
+          const snapshot = (req.result as Snapshot | undefined) ?? null;
+          index.ids = ids.filter((other) => other !== id);
+          if (snapshot) index.ids.push(id);
+          store.put(index, INDEX);
+          result({ snapshot, generation });
+        };
+      })) ?? { snapshot: null, generation: null };
     },
-    async put(id, snap) {
-      await localSet(key(id), snap);
-      await touch(id, true);
+    async write(id, snapshot, expected) {
+      await withIndex((index, store) => {
+        if (index.generation !== expected) return;
+        index.ids = index.ids.filter((other) => other !== id);
+        if (snapshot) {
+          index.ids.push(id);
+          store.put(snapshot, key(id));
+        } else {
+          store.delete(key(id));
+        }
+        const evicted = index.ids.splice(0, Math.max(0, index.ids.length - capacity));
+        for (const other of evicted) store.delete(key(other));
+        store.put(index, INDEX);
+      });
     },
-    clear: () =>
-      serial(async () => {
-        for (const id of (await localGet<string[]>(INDEX)) ?? []) await localDelete(key(id));
-        await localSet(INDEX, []);
-      }),
+    async clear() {
+      await withIndex(({ generation }, store) => {
+        store.delete(IDBKeyRange.bound('snap:', 'snap:\uffff'));
+        store.put({ ids: [], generation: generation + 1 }, INDEX);
+      });
+    },
   };
 }

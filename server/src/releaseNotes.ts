@@ -17,17 +17,19 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: '2026-11-26',
-    title: 'Real weather, 21 new beaches, sand bucks, trade-ins and copying a beach',
+    title: 'Real weather, 21 new beaches, piers, sand bucks, trade-ins, copying a beach and notifications',
     changes: [
       'Real weather: every beach’s sky now follows a live forecast. Clouds drift over, fog rolls in, rain and snow fall, and the swell follows the real sea. The status pane shows the weather and temperature.',
       '21 new real beaches, from Whitehaven and Cable Beach to Nazaré, Sylt, Tofino, Cancún and Zanzibar: 34 in all, each with its own real tides.',
       'A new place picker in Manage → Beaches: search, tap a dot on a world map, or browse by region, with each place’s local time and weather.',
+      'Piers: snap three of your beaches side by side and the middle one can hold a timber pier that runs from the sand out over the water. Buy one in Manage → Beaches (30 sand bucks), look at it on your beach, then place it. Everyone visiting sees it too, and so do your beach’s pictures on beechshore.com.',
       'The shop opens again in the Android and iPhone apps (it was stuck on “Opening the shop…”).',
       'When you aren’t signed in, a Sign in button sits in the lower-left corner of the title screen and your beach, so signing in is one tap away.',
       'Sand bucks: everything in the shop is now priced in sand bucks (1 sand buck is 10¢; prices are the same as before). Buy sand bucks in packs, from the App Store, Google Play, Steam or by card on the web, then spend them on anything, on any device. Gift cards add sand bucks.',
       'Trade-ins: anything in your bag that isn’t on a beach can be traded back in for what you paid, so you can try a build and change your mind for free. Pick it up from your bag and tap “trade in”. Things you got for free trade in at their shop price. An extra beach you aren’t using can be traded in too.',
       'Copy any beach on the shore onto one of your own: tap “copy” while visiting it, or “Copy to my beach” on its beechshore.com page. If your bag is short of something it needs, buy just what’s missing or copy it without them. You can also duplicate your own beaches, and keep a copy as a checkpoint for later.',
       'You’ll hear when someone copies your beach, and its beechshore.com page shows how many people have.',
+      'Notifications: find out when someone leaves you something, gives you a gift, wants to be your neighbor, or a friend settles in, on the phone apps, in your browser, and on Steam while the game is running. Turn them on when the game asks, or in Settings, and pick what you hear about. At most one an hour, and none at night.',
       'Watching someone else’s beach while they play, their changes to the sand now flow in smoothly instead of popping, and things they move slide to their new spot.',
       'Your bag and the Beaches tab show how many of your extra beach slots are in use, and removing a beach frees its slot.',
       'Signed out, your bag now has a sign-in button at the top.',

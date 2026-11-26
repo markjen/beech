@@ -56,7 +56,8 @@ import {
   promoBlocked,
   type Promo,
 } from './giftCards.js';
-import { appleRefund, googleVoided, revokeStorePurchase, verifyAppleTransaction, verifyGooglePurchase, type VerifiedPurchase } from './store.js';
+import { appleRefund, googleVoided, revokeStorePurchase, verifyAppleTransaction, verifyGoogleOidc, verifyGooglePurchase, type VerifiedPurchase } from './store.js';
+import { NOTIFY_PREFS, PUSH_DEVICES, lockPush, makeSender, pushTick, validEndpoint, validTz, type NotifyPref, type PushConfig, type PushSender } from './push.js';
 import { POOLS, GRAB_CHANCE, COOLDOWN_MAX_MS, COOLDOWN_MIN_MS, cooldownAfter, cryptoRandom, draw, grab, pullDay, starterPrize, STARTER, type Rarity } from './pulls.js';
 import { currentSet, drawVending, nextUtcMidnight } from './vending.js';
 import { DIG_FIND_DAILY_CAP, DIG_FIND_ROLL_COOLDOWN_MS, digDraw, qualifiesForFind } from './digFinds.js';
@@ -87,7 +88,7 @@ import {
   type VerifiedIdentity,
 } from './auth.js';
 import { toBytes, type Db } from './db.js';
-import { BEACH, NODE, SIDES, beachJson, isPublic, normalizeCode, shoreGraph, type NodeRow, type Side } from './shore.js';
+import { BEACH, NODE, PIER_SITE, SIDES, beachJson, isPublic, normalizeCode, shoreGraph, type NodeRow, type Side } from './shore.js';
 import {
   BadBlob,
   CHECKPOINT_BYTES_PER_USER,
@@ -186,6 +187,12 @@ export interface AppConfig {
   xsolla?: XsollaConfig;
   /** injectable for tests: how a Pay Station payment token is made */
   xsollaToken?: CreateToken;
+  /**
+   * Push notifications (docs/INBOX_NOTIFICATIONS.md, server/src/push.ts):
+   * which platforms are set up, how a push is sent (tests pass their own),
+   * and who may call POST /push/tick (Cloud Scheduler's OIDC token).
+   */
+  push?: { config: PushConfig; send?: PushSender; tick?: { audience: string; email: string } };
 }
 
 export interface User {
@@ -1872,8 +1879,10 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
 
   // ---------------------------------------------------------------- my beaches
   const myBeaches = async (user: string) => {
-    const rows = await db.query<NodeRow & { home: boolean; on_shore: boolean; items: Record<string, number> | string }>(
-      `SELECT ${NODE}, b.home, b.on_shore, b.items FROM ${BEACH} WHERE b.owner_id = $1 ORDER BY b.home DESC, b.created_at`,
+    const rows = await db.query<NodeRow & { home: boolean; on_shore: boolean; items: Record<string, number> | string; pier_attached: boolean; pier_site: boolean }>(
+      `SELECT ${NODE}, b.home, b.on_shore, b.items,
+              EXISTS (SELECT 1 FROM beach_piers ap WHERE ap.beach_id = b.id) AS pier_attached, ${PIER_SITE} AS pier_site
+         FROM ${BEACH} WHERE b.owner_id = $1 ORDER BY b.home DESC, b.created_at`,
       [user],
     );
     return Promise.all(
@@ -1890,6 +1899,11 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
           items: typeof r.items === 'string' ? (JSON.parse(r.items) as Record<string, number>) : r.items,
           left: left ? { ...beachJson(left), yours: left.owner_id === user } : null,
           right: right ? { ...beachJson(right), yours: right.owner_id === user } : null,
+          // docs/PIERS.md: a site sits between two of your beaches; an
+          // attached pier shows there ('active') or waits for the site to
+          // come back ('paused')
+          pierSite: !!r.pier_site,
+          pier: r.pier_attached ? (r.pier_site ? ('active' as const) : ('paused' as const)) : null,
         };
       }),
     );
@@ -1897,8 +1911,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
 
   app.get('/beaches/mine', requireUser, async (c) => {
     const me = c.get('user').id;
-    const [beaches, allowed] = await Promise.all([myBeaches(me), allowance(me)]);
-    return c.json({ allowance: allowed, cap: BEACH_CAP, beaches });
+    const [beaches, allowed, piers] = await Promise.all([myBeaches(me), allowance(me), pierCounts(me)]);
+    return c.json({ allowance: allowed, cap: BEACH_CAP, beaches, piers });
   });
 
   // make another beach (if your allowance has room)
@@ -1951,6 +1965,59 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const rows = await db.query('DELETE FROM beach WHERE id = $1 AND NOT home RETURNING id', [id]);
     if (!rows.length) fail(400, "your home beach can't be removed (make another one home first)");
     return c.body(null, 204);
+  });
+
+  // ---------------------------------------------------------------- piers
+  // docs/PIERS.md, specs/tla/Piers.tla. A pier is a bag item ('pier', bought
+  // with sand bucks); a beach_piers row lands one on a beach. Rows count as
+  // placed against what's owned, so the bag, trade-ins and gifts see them.
+  /** piers you own, and how many are on beaches (active or paused) */
+  const pierCounts = async (user: string, q: Db = db): Promise<{ owned: number; placed: number }> => {
+    const r = (
+      await q.query<{ owned: string | null; placed: string }>(
+        `SELECT (SELECT SUM(quantity) FROM inventory WHERE user_id = $1 AND item_id = 'pier' AND quantity > 0 AND (expires_at IS NULL OR expires_at > $2)) AS owned,
+                (SELECT COUNT(*) FROM beach_piers WHERE owner_id = $1) AS placed`,
+        [user, clock()],
+      )
+    )[0];
+    return { owned: Number(r?.owned ?? 0), placed: Number(r?.placed ?? 0) };
+  };
+
+  // Land: one transaction holding the player's lock (with the edit token
+  // check), the beach's row, and its two links and the beaches on them
+  // (FOR SHARE), so an unlink or a deletion of a supporting beach can't land
+  // between the check and the insert (PlacementWasEligible), and a trade-in
+  // or gift, which take the same player lock, can't take the last free pier
+  // (PaidAttachment). The primary key on beach_id keeps one per beach.
+  app.put('/beaches/mine/:id/pier', requireUser, async (c) => {
+    const me = c.get('user').id;
+    const id = await mine(c, c.req.param('id'));
+    await asEditor(c, async (tx) => {
+      await tx.query('SELECT id FROM beach WHERE id = $1 FOR NO KEY UPDATE', [id]);
+      const sides = await tx.query<{ side: Side; owner_id: string }>(
+        `SELECT n.side, nb.owner_id FROM neighbors n JOIN beach nb ON nb.id = n.neighbor_beach_id
+          WHERE n.beach_id = $1 FOR SHARE OF n, nb`,
+        [id],
+      );
+      const own = (s: Side) => sides.some((r) => r.side === s && r.owner_id === me);
+      if (!own('left') || !own('right')) fail(409, 'a pier needs one of your beaches on each side');
+      if ((await tx.query('SELECT 1 FROM beach_piers WHERE beach_id = $1', [id])).length) fail(409, 'this beach already has a pier');
+      const { owned, placed } = await pierCounts(me, tx);
+      if (owned <= placed) fail(409, 'no pier in your bag');
+      await tx.query('INSERT INTO beach_piers (beach_id, owner_id, placed_at) VALUES ($1, $2, $3)', [id, me, clock()]);
+    });
+    return c.json({ pier: 'active', piers: await pierCounts(me) });
+  });
+
+  // Lift: active or paused, the pier goes back to the bag.
+  app.delete('/beaches/mine/:id/pier', requireUser, async (c) => {
+    const me = c.get('user').id;
+    const id = await mine(c, c.req.param('id'));
+    await asEditor(c, async (tx) => {
+      const gone = await tx.query('DELETE FROM beach_piers WHERE beach_id = $1 AND owner_id = $2 RETURNING beach_id', [id, me]);
+      if (!gone.length) fail(404, 'no pier on this beach');
+    });
+    return c.json({ pier: null, piers: await pierCounts(me) });
   });
 
   app.get('/beaches/mine/:id/sand', requireUser, async (c) => sendBeach(c, await mine(c, c.req.param('id'))));
@@ -2052,6 +2119,9 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const rows = await q.query<{ items: Record<string, number> | string }>('SELECT items FROM beach WHERE owner_id = $1 AND id <> $2', [user, except]);
     const out: Record<string, number> = {};
     for (const r of rows) for (const [k, v] of Object.entries(jsonMap(r.items))) out[k] = (out[k] ?? 0) + Number(v);
+    // piers aren't in any save: they're placed by beach_piers rows (docs/PIERS.md)
+    const piers = Number((await q.query<{ n: string }>('SELECT COUNT(*) AS n FROM beach_piers WHERE owner_id = $1', [user]))[0]?.n ?? 0);
+    if (piers) out.pier = (out.pier ?? 0) + piers;
     return out;
   };
   const fitOf = async (user: string, need: Record<string, number>, target: string, q: Db = db) => {
@@ -3325,6 +3395,12 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
    * move. Returns the inbox row's id, or null when there was nothing to give.
    */
   const giveOne = async (tx: Db, me: string, item: string, to: string, beach: string, now: number): Promise<string | null> => {
+    // a pier on a beach stays yours (Piers.tla, PaidAttachment): only a free
+    // one can go, checked under the giver's lock, which placing one also takes
+    if (item === 'pier') {
+      const { owned, placed } = await pierCounts(me, tx);
+      if (owned <= placed) return null;
+    }
     const rows = await tx.query<{ inbox: string | null }>(
       `WITH giver AS (
          UPDATE inventory SET quantity = quantity - 1
@@ -3820,11 +3896,16 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const them = await nodeByCode(c.req.param('code') ?? '');
     if (!them) fail(404, 'no beach has that code');
     if (them!.owner_id === c.get('user').id) fail(400, "that's you");
-    await db.query('INSERT INTO blocks (blocker_id, blocked_id, created_at) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING', [
-      c.get('user').id,
-      them!.owner_id,
-      clock(),
-    ]);
+    // under the push lock, so a push being sent now finishes first and none
+    // after this returns carries them (specs/tla/Push.tla, Block)
+    await db.withTransaction(async (tx) => {
+      await lockPush(tx, c.get('user').id);
+      await tx.query('INSERT INTO blocks (blocker_id, blocked_id, created_at) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING', [
+        c.get('user').id,
+        them!.owner_id,
+        clock(),
+      ]);
+    });
     // their pending requests to you go too
     await db.query(
       `DELETE FROM neighbor_requests r USING beach f, beach t
@@ -3837,6 +3918,98 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const them = await nodeByCode(c.req.param('code') ?? '');
     if (them) await db.query('DELETE FROM blocks WHERE blocker_id = $1 AND blocked_id = $2', [c.get('user').id, them.owner_id]);
     return c.body(null, 204);
+  });
+
+  // ---------------------------------------------------------------- push notifications
+  // docs/INBOX_NOTIFICATIONS.md ("Push"), specs/tla/Push.tla. A device
+  // subscribes; the tick (Cloud Scheduler, or the server's own timer) sends
+  // what's due under the player's push lock. Steam has no push service: the
+  // running app shows OS notifications from the poll instead.
+  const pushCfg = cfg.push?.config ?? {};
+  const pushSend: PushSender = cfg.push?.send ?? makeSender(pushCfg, fetch, clock);
+  const pushOn = (platform: string) =>
+    platform === 'web' ? !!pushCfg.web : platform === 'ios' ? !!pushCfg.apns : platform === 'android' ? !!pushCfg.fcm : false;
+
+  // GET /push/config: what this server can push to (the web key is public)
+  app.get('/push/config', (c) =>
+    c.json({ web: pushCfg.web?.publicKey ?? null, ios: !!pushCfg.apns, android: !!pushCfg.fcm }),
+  );
+
+  // POST /push/subscribe { platform, endpoint, keys?: { p256dh, auth }, tz }
+  app.post('/push/subscribe', requireUser, async (c) => {
+    const b = await body<{ platform?: string; endpoint?: unknown; keys?: { p256dh?: unknown; auth?: unknown }; tz?: unknown }>(c);
+    const platform = String(b.platform ?? '');
+    if (!['web', 'ios', 'android'].includes(platform)) fail(400, 'platform is web, ios or android');
+    if (!pushOn(platform)) fail(404, 'push is not set up for that platform');
+    if (!validEndpoint(platform, b.endpoint)) fail(400, 'that is not a push subscription');
+    const keyOk = (k: unknown, n: number) => typeof k === 'string' && /^[A-Za-z0-9_-]+={0,2}$/.test(k) && Buffer.from(k, 'base64url').length === n;
+    if (platform === 'web' && !(keyOk(b.keys?.p256dh, 65) && keyOk(b.keys?.auth, 16))) fail(400, 'that is not a push subscription');
+    const tz = validTz(b.tz) ? b.tz : 'UTC';
+    const me = c.get('user').id;
+    // one row per endpoint: a device that signs in as someone else moves to them
+    await db.query(
+      `INSERT INTO push_subscriptions (user_id, session_hash, platform, endpoint, p256dh, auth, tz, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       ON CONFLICT (endpoint) DO UPDATE SET user_id = EXCLUDED.user_id, session_hash = EXCLUDED.session_hash,
+         platform = EXCLUDED.platform, p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth, tz = EXCLUDED.tz, created_at = EXCLUDED.created_at`,
+      [me, c.get('tokenHash'), platform, b.endpoint, platform === 'web' ? b.keys!.p256dh : null, platform === 'web' ? b.keys!.auth : null, tz, clock()],
+    );
+    await db.query(
+      `DELETE FROM push_subscriptions WHERE user_id = $1 AND id NOT IN (SELECT id FROM push_subscriptions WHERE user_id = $1 ORDER BY created_at DESC, id DESC LIMIT $2)`,
+      [me, PUSH_DEVICES],
+    );
+    return c.body(null, 204);
+  });
+
+  // DELETE /push/subscribe { endpoint }: this device stops (waits for a send in progress)
+  app.delete('/push/subscribe', requireUser, async (c) => {
+    const { endpoint } = await body<{ endpoint?: unknown }>(c);
+    if (typeof endpoint !== 'string') fail(400, 'which endpoint?');
+    await db.query('DELETE FROM push_subscriptions WHERE user_id = $1 AND endpoint = $2', [c.get('user').id, endpoint]);
+    return c.body(null, 204);
+  });
+
+  const prefsOf = async (user: string, conn = db) => {
+    const r = (await conn.query<Record<NotifyPref, boolean>>('SELECT gifts, neighbors, invites FROM notify_prefs WHERE user_id = $1', [user]))[0];
+    return { gifts: r?.gifts ?? true, neighbors: r?.neighbors ?? true, invites: r?.invites ?? true };
+  };
+  app.get('/notify-prefs', requireUser, async (c) => c.json(await prefsOf(c.get('user').id)));
+
+  // PUT /notify-prefs { gifts?, neighbors?, invites? }: under the push lock (Push.tla, Mute)
+  app.put('/notify-prefs', requireUser, async (c) => {
+    const b = await body<Partial<Record<NotifyPref, unknown>>>(c);
+    const me = c.get('user').id;
+    const patch: Partial<Record<NotifyPref, boolean>> = {};
+    for (const k of NOTIFY_PREFS) {
+      const value = b[k];
+      if (value === undefined) continue;
+      if (typeof value !== 'boolean') fail(400, `${k} is true or false`);
+      patch[k] = value as boolean;
+    }
+    const next = await db.withTransaction(async (tx) => {
+      await lockPush(tx, me);
+      const prefs = { ...(await prefsOf(me, tx)), ...patch };
+      await tx.query(
+        `INSERT INTO notify_prefs (user_id, gifts, neighbors, invites) VALUES ($1, $2, $3, $4)
+         ON CONFLICT (user_id) DO UPDATE SET gifts = EXCLUDED.gifts, neighbors = EXCLUDED.neighbors, invites = EXCLUDED.invites`,
+        [me, prefs.gifts, prefs.neighbors, prefs.invites],
+      );
+      return prefs;
+    });
+    return c.json(next);
+  });
+
+  // POST /push/tick: Cloud Scheduler, once a minute, with an OIDC token
+  app.post('/push/tick', async (c) => {
+    if (!cfg.push?.tick) fail(404, 'not set up');
+    try {
+      await verifyGoogleOidc(c.req.header('Authorization'), cfg.push!.tick!);
+    } catch {
+      fail(401, 'not allowed');
+    }
+    const r = await pushTick(db, pushSend, clock);
+    if (r.pushes) logEvent('push_tick', { ...r });
+    return c.json(r);
   });
 
   return app;

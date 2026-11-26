@@ -58,6 +58,10 @@ export interface MineCallbacks {
   onSelect?: (beach: MyBeach | undefined) => void;
   /** Fired when auth state transitions so the sheet can switch to Account/Beach tab. */
   onAuthChange?: (signedIn: boolean) => void;
+  /** Piers (docs/PIERS.md): buy one for sand bucks (resolves once it's in the bag). */
+  buyPier?: () => Promise<void>;
+  /** Show the pier on this beach with "place pier" and "cancel". */
+  previewPier?: (beach: MyBeach) => void;
 }
 
 /** Account, beach settings, shore connections, and checkpoints rendered across the settings sheet's tabs. */
@@ -571,7 +575,52 @@ export class AccountPanel {
       wrap.appendChild(row);
     }
 
+    for (const chain of stretches) for (const b of chain) {
+      const row = this.pierRow(b);
+      if (row) wrap.appendChild(row);
+    }
+
     return wrap;
+  }
+
+  /** A pier site, or a beach holding a pier: buy, place, or remove it (docs/PIERS.md). */
+  private pierRow(b: MyBeach): HTMLElement | null {
+    const a = this.account;
+    if (!b.pier && !b.pierSite) return null;
+    const row = document.createElement('div');
+    row.className = 'slot pier-row';
+    row.dataset.pierBeach = b.id;
+    const label = document.createElement('span');
+    label.className = 'fav-name';
+    label.textContent = `${b.pier === 'paused' ? 'pier paused' : 'pier'} · ${ownBeachLabel(b)}`;
+    row.appendChild(label);
+    const button = (text: string, act: string, fn: () => Promise<void>) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'action';
+      btn.dataset.act = act;
+      btn.textContent = text;
+      btn.addEventListener('click', () => {
+        btn.disabled = true;
+        void this.guard(fn).finally(() => (btn.disabled = false));
+      });
+      row.appendChild(btn);
+    };
+    if (b.pier) {
+      button('remove pier', 'pier-remove', async () => {
+        await a.removePier(b.id);
+        this.mine?.changed();
+      });
+    } else if (a.piers.owned > a.piers.placed) {
+      if (this.mine?.previewPier) button('place pier', 'pier-place', async () => this.mine?.previewPier?.(b));
+    } else if (this.mine?.buyPier) {
+      button('buy pier · 30 sand bucks', 'pier-buy', async () => {
+        await this.mine!.buyPier!();
+        await a.loadBeaches();
+        this.mine?.previewPier?.(b);
+      });
+    }
+    return row;
   }
 
   /** Neighbors of the selected beach: requests and left/right slots. */

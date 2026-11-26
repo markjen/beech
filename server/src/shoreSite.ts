@@ -55,7 +55,7 @@ import {
   voteCounts,
 } from './itemCatalog.js';
 import { createRateLimiter, logEvent } from './observability.js';
-import { BEACH, NODE, isPublic, normalizeCode, shoreGraph, type NodeRow, type Step } from './shore.js';
+import { BEACH, NODE, imageVersion, isPublic, normalizeCode, shoreGraph, type NodeRow, type Step } from './shore.js';
 import { createItemSubmission, creatorSubmissions, limitUpload, multipart, requireSubmissionSession } from './itemSubmissions.js';
 import { assetExample, assetSchema } from './submissionAssets.js';
 import { connectContent, specContent, submissionContent } from './submissionPage.js';
@@ -68,8 +68,8 @@ export interface ShoreSiteConfig {
   gameUrl: string;
   /** the site's public origin for links people share (https://beechshore.com); unset: from the request */
   publicUrl?: string;
-  /** canonical shore origin, used only by the game's account connection window */
-  submissionOrigin?: string;
+  /** public shore origin for canonical URLs and the alternate mount's account connection window */
+  canonicalOrigin?: string;
   /** built web app dir (public/): where item renders live (public/items/<id>.png) */
   publicDir?: string;
   /** uncached image draws per minute per client IP (default 60) */
@@ -100,6 +100,8 @@ export interface ShoreBeach {
   updatedAt: number | null;
   stars: number;
   recent: number;
+  /** it shows a pier (docs/PIERS.md): drawn in its pictures */
+  pier?: boolean;
 }
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -152,9 +154,14 @@ export function createShoreSite(db: Db, cfg: ShoreSiteConfig): Hono<any, any, an
     const proto = c.req.header('x-forwarded-proto')?.split(',')[0]?.trim() || u.protocol.replace(':', '');
     return `${proto}://${c.req.header('host') ?? u.host}${href(p)}`;
   };
+  const canonical = (url: string) => {
+    if (!cfg.canonicalOrigin) return url;
+    const { pathname, search } = new URL(url);
+    return `${cfg.canonicalOrigin}${pathname.slice(base.length) || '/'}${search}`;
+  };
   const visitUrl = (code: string) => `${game}/?visit=${code}`;
-  const imgPath = (b: Pick<ShoreBeach, 'code' | 'updatedAt'>, kind: 'card' | 'thumb') =>
-    `/img/${b.code}${kind === 'thumb' ? '/thumb' : ''}.png?v=${b.updatedAt ?? 0}`;
+  const imgPath = (b: Pick<ShoreBeach, 'code' | 'updatedAt' | 'pier'>, kind: 'card' | 'thumb') =>
+    `/img/${b.code}${kind === 'thumb' ? '/thumb' : ''}.png?v=${imageVersion(b.updatedAt, b.pier)}`;
 
   // ------------------------------------------------------------ data
   const SCORE = `
@@ -179,6 +186,7 @@ export function createShoreSite(db: Db, cfg: ShoreSiteConfig): Hono<any, any, an
     updatedAt: r.updated_at === null ? null : Number(r.updated_at),
     stars: Number(r.stars),
     recent: Number(r.recent),
+    pier: !!r.pier,
   });
   const scoreArgs = () => {
     const t = now();
@@ -282,34 +290,32 @@ export function createShoreSite(db: Db, cfg: ShoreSiteConfig): Hono<any, any, an
     );
     const row = rows[0];
     if (!row) return c.text('no such beach on the shore', 404);
-    const v = String(row.updated_at ?? 0);
+    const v = imageVersion(row.updated_at, row.pier);
     // The 3D views also show the beaches either side, so their cache key
     // carries their save times too: a neighbour rebuilding changes the
     // picture even though this beach did not.
     let version = v;
-    let left: { bytes: Uint8Array; location: string | null; linked: boolean } | null = null;
-    let right: { bytes: Uint8Array; location: string | null; linked: boolean } | null = null;
+    let left: { bytes: Uint8Array; location: string | null; linked: boolean; pier: boolean } | null = null;
+    let right: { bytes: Uint8Array; location: string | null; linked: boolean; pier: boolean } | null = null;
     if (kind === 'iso' || kind === 'iso-ocean') {
       const { left: wl, right: wr } = await graph.walk(row, ['left', 'right'], 1, new Set([row.id]), isPublic);
       const fetchOne = async (s: Step | undefined) => {
         if (!s) return null;
-        const r = await db.query<{ sand: unknown; location: string | null; updated_at: string | null }>(
-          `SELECT b.sand, b.location, b.updated_at FROM beach b WHERE b.code = $1 AND ${PUBLIC}`,
-          [s.code],
-        );
+        const r = await db.query<NodeRow & { sand: unknown }>(`SELECT ${NODE}, b.sand FROM ${BEACH} WHERE b.code = $1 AND ${PUBLIC}`, [s.code]);
         if (!r[0]) return null; // walked past it, or it went private since
         return {
           bytes: toBytes(r[0].sand),
           location: r[0].location,
           linked: s.linked,
-          updatedAt: r[0].updated_at === null ? null : Number(r[0].updated_at),
+          pier: !!r[0].pier,
+          version: imageVersion(r[0].updated_at, r[0].pier),
         };
       };
       const l = await fetchOne(wl[0]);
       const r = await fetchOne(wr[0]);
       left = l;
       right = r;
-      version = `${v}.${l?.updatedAt ?? 0}.${r?.updatedAt ?? 0}`;
+      version = `${v}.${l?.version ?? 0}.${r?.version ?? 0}`;
     }
     const key = `${code}:${version}:${kind}`;
     let png = imageCache.get(key);
@@ -322,10 +328,10 @@ export function createShoreSite(db: Db, cfg: ShoreSiteConfig): Hono<any, any, an
       const t0 = Date.now();
       png =
         kind === 'iso'
-          ? beachIsoPng({ bytes: toBytes(row.sand), location: row.location }, left, right, CARD, 'land')
+          ? beachIsoPng({ bytes: toBytes(row.sand), location: row.location, pier: !!row.pier }, left, right, CARD, 'land')
           : kind === 'iso-ocean'
-            ? beachIsoPng({ bytes: toBytes(row.sand), location: row.location }, left, right, CARD, 'ocean')
-            : beachPng(toBytes(row.sand), { ...(kind === 'card' ? CARD : THUMB), location: row.location });
+            ? beachIsoPng({ bytes: toBytes(row.sand), location: row.location, pier: !!row.pier }, left, right, CARD, 'ocean')
+            : beachPng(toBytes(row.sand), { ...(kind === 'card' ? CARD : THUMB), location: row.location, pier: !!row.pier });
       remember(key, png);
       logEvent('shore_image', { kind, ms: Date.now() - t0, bytes: png.length });
     }
@@ -371,7 +377,7 @@ export function createShoreSite(db: Db, cfg: ShoreSiteConfig): Hono<any, any, an
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>${esc(m.title)}</title>
 <meta name="description" content="${esc(m.description)}">
-<link rel="canonical" href="${esc(m.url)}">
+<link rel="canonical" href="${esc(canonical(m.url))}">
 <meta name="theme-color" content="#fbf6ee">
 <link rel="icon" href="${FAVICON}" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -537,8 +543,8 @@ ${places ? `<section><div class="sec-head"><h2>By real beach</h2></div><div clas
       c,
       layout(
         {
-          title: 'beechshore: every beach on the shore',
-          description: 'Sandcastles, moats and harbours people built in beech, one beach after another along an endless shore. Walk it, then build your own.',
+          title: 'Beechshore | Explore Player-Built Beaches in Beech',
+          description: 'Explore sandcastles, moats and harbours built by players in Beech, a beach-building game. Visit public beaches in 3D, browse the item catalog, or build your own beach.',
           url,
           image: abs(c, featured ? imgPath(featured, 'card') : '/img/shore.png'),
           imageAlt: 'A beach from above, sand and sea',
@@ -577,7 +583,7 @@ ${places ? `<section><div class="sec-head"><h2>By real beach</h2></div><div clas
         c,
         layout(
           {
-            title: `${L.title} · beechshore`,
+            title: `${L.title}${page > 1 ? `, page ${page}` : ''} · beechshore`,
             description: L.blurb,
             url,
             image: abs(c, bs[0] ? imgPath(bs[0], 'card') : '/img/shore.png'),
@@ -586,6 +592,7 @@ ${places ? `<section><div class="sec-head"><h2>By real beach</h2></div><div clas
           main,
           { share: { url, text: `${L.title} on beechshore 🏖️`, title: L.title }, active: sort },
         ),
+        page > 1 && !bs.length ? 404 : 200,
       );
     });
   }
@@ -603,6 +610,7 @@ ${places ? `<section><div class="sec-head"><h2>By real beach</h2></div><div clas
       }
     }
     const hits = raw ? await search(raw, PAGE) : [];
+    c.header('X-Robots-Tag', 'noindex');
     const url = abs(c, '/find');
     const main = `
 <section class="head">
@@ -645,7 +653,7 @@ ${
     const page = Math.min(500, Math.max(1, Number(c.req.query('page') ?? 1) | 0 || 1));
     const rows = await list('top', PAGE + 1, (page - 1) * PAGE, p.id);
     const bs = rows.slice(0, PAGE);
-    const url = abs(c, `/at/${p.id}`);
+    const url = abs(c, `/at/${p.id}${page > 1 ? `?page=${page}` : ''}`);
     const main = `
 <section class="head">
   <h1>${esc(p.name)}</h1>
@@ -659,7 +667,7 @@ ${
       c,
       layout(
         {
-          title: `${p.name}, ${p.place} · beechshore`,
+          title: `${p.name}, ${p.place}${page > 1 ? `, page ${page}` : ''} · beechshore`,
           description: `Beaches people built at ${p.name} in beech.`,
           url,
           image: abs(c, bs[0] ? imgPath(bs[0], 'card') : '/img/shore.png'),
@@ -668,6 +676,7 @@ ${
         main,
         { share: { url, text: `Beaches built at ${p.name} 🏖️`, title: p.name } },
       ),
+      page > 1 && !bs.length ? 404 : 200,
     );
   });
 
@@ -677,20 +686,20 @@ ${
     return c.redirect(rows[0] ? href(`/${rows[0].code}`) : href('/'), 302);
   });
 
-  app.get('/robots.txt', (c) => c.text(`User-agent: *\nAllow: /\nDisallow: ${base}/random\nDisallow: ${base}/find\nSitemap: ${abs(c, '/sitemap.xml')}\n`));
+  app.get('/robots.txt', (c) => c.text(`User-agent: *\nAllow: /\nDisallow: ${base}/random\nSitemap: ${canonical(abs(c, '/sitemap.xml'))}\n`));
 
   app.get('/sitemap.xml', async (c) => {
     const rows = await db.query<{ code: string; updated_at: string | null }>(
       `SELECT b.code, b.updated_at FROM beach b WHERE ${PUBLIC} ORDER BY b.updated_at DESC NULLS LAST LIMIT 5000`,
     );
     const n = await counts();
+    const entry = (path: string, updatedAt?: string | null) =>
+      `<url><loc>${esc(canonical(abs(c, path)))}</loc>${updatedAt ? `<lastmod>${new Date(Number(updatedAt)).toISOString()}</lastmod>` : ''}</url>`;
     const urls = [
-      `<url><loc>${esc(abs(c, '/'))}</loc></url>`,
-      ...(['top', 'rising', 'new'] as const).map((s) => `<url><loc>${esc(abs(c, `/${s}`))}</loc></url>`),
-      `<url><loc>${esc(abs(c, '/items'))}</loc></url>`,
-      ...CATALOG_ITEMS.map((i) => `<url><loc>${esc(abs(c, `/items/${i.id}`))}</loc></url>`),
-      ...PLACES.filter((p) => n.places[p.id]).map((p) => `<url><loc>${esc(abs(c, `/at/${p.id}`))}</loc></url>`),
-      ...rows.map((r) => `<url><loc>${esc(abs(c, `/${r.code}`))}</loc>${r.updated_at ? `<lastmod>${new Date(Number(r.updated_at)).toISOString()}</lastmod>` : ''}</url>`),
+      ...['/', '/top', '/rising', '/new', '/items', '/submit', '/submit/spec'].map((path) => entry(path)),
+      ...CATALOG_ITEMS.map((i) => entry(`/items/${i.id}`)),
+      ...PLACES.filter((p) => n.places[p.id]).map((p) => entry(`/at/${p.id}`)),
+      ...rows.map((r) => entry(`/${r.code}`, r.updated_at)),
     ];
     c.header('Content-Type', 'application/xml; charset=utf-8');
     c.header('Cache-Control', 'public, max-age=3600');
@@ -716,11 +725,12 @@ ${
   app.get('/submit/example.json', (c) => c.json(assetExample, 200, { 'Cache-Control': 'public, max-age=60' }));
   if (!cfg.publicUrl) {
     app.get('/submit/connect', (c) => {
-      const destination = c.req.query('destination') === 'shore' ? cfg.submissionOrigin : null;
+      const destination = c.req.query('destination') === 'shore' ? cfg.canonicalOrigin : null;
       if (c.req.query('destination') === 'shore' && !destination) return c.text('Submission site unavailable', 404);
       c.header('Cache-Control', 'no-store');
       c.header('X-Frame-Options', 'DENY');
       c.header('Referrer-Policy', 'no-referrer');
+      c.header('X-Robots-Tag', 'noindex');
       return c.html(submissionLayout(c, 'Connect Beech', '/submit/connect', connectContent(destination ?? null)));
     });
   }
@@ -909,7 +919,8 @@ ${
     const text = shareText(b);
     const cardHref = href(imgPath(b, 'card'));
     const thumbHref = href(imgPath(b, 'thumb'));
-    const isoVersion = `${b.updatedAt ?? 0}.${left[0]?.updatedAt ?? 0}.${right[0]?.updatedAt ?? 0}`;
+    // the same version the image route works out: each beach's save time and pier
+    const isoVersion = `${imageVersion(b.updatedAt, b.pier)}.${left[0] ? imageVersion(left[0].updatedAt, left[0].pier) : 0}.${right[0] ? imageVersion(right[0].updatedAt, right[0].pier) : 0}`;
     const isoHref = href(`/img/${b.code}/iso.png?v=${isoVersion}`);
     const oceanHref = href(`/img/${b.code}/iso-ocean.png?v=${isoVersion}`);
     const n = now();
@@ -930,7 +941,7 @@ ${
         ? `<a class="walk ${dir}" href="${href(`/${s.code}`)}" rel="${dir === 'left' ? 'prev' : 'next'}" data-key="${dir === 'left' ? 'ArrowLeft' : 'ArrowRight'}" title="Walk ${dir} to ${esc(beachTitle(s))}" aria-label="Walk ${dir} to ${esc(beachTitle(s))}">${dir === 'left' ? '‹' : '›'}</a>`
         : '';
     const strip = (s: Step) =>
-      `<li><a href="${href(`/${s.code}`)}"><span class="sthumb"><img src="${esc(href(`/img/${s.code}/thumb.png?v=${s.updatedAt ?? 0}`))}" width="${THUMB.width}" height="${THUMB.height}" loading="lazy" alt="${esc(beachTitle(s))}"></span><span class="slabel"><span>${esc(beachTitle(s))}</span>${s.linked ? '<span class="linked-dot">Neighbor</span>' : ''}</span></a></li>`;
+      `<li><a href="${href(`/${s.code}`)}"><span class="sthumb"><img src="${esc(href(`/img/${s.code}/thumb.png?v=${imageVersion(s.updatedAt, s.pier)}`))}" width="${THUMB.width}" height="${THUMB.height}" loading="lazy" alt="${esc(beachTitle(s))}"></span><span class="slabel"><span>${esc(beachTitle(s))}</span>${s.linked ? '<span class="linked-dot">Neighbor</span>' : ''}</span></a></li>`;
     // left is on the left, the way you'd see it facing the sea
     const hereItem = `<li class="here"><div class="here-inner"><span class="sthumb"><img src="${esc(thumbHref)}" width="${THUMB.width}" height="${THUMB.height}" alt=""></span><span class="slabel"><span>${esc(title)}</span></span></div></li>`;
     const shore = [...left].reverse().map(strip).join('') + hereItem + right.map(strip).join('');

@@ -1490,3 +1490,60 @@ body.ambient-idle .hud-sign-in {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+
+/* Settings → notifications (src/ui/notifySettings.ts) */
+.notify-settings .row.sub > span {
+  padding-left: 14px;
+  opacity: 0.85;
+}
+.notify-settings .row.status > span {
+  font-size: 0.85em;
+  opacity: 0.7;
+}
+
+/* the pier preview (docs/PIERS.md): "place pier" and "cancel" over the beach */
+.pier-preview {
+  position: fixed;
+  left: 50%;
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100vw - 32px);
+  box-sizing: border-box;
+  padding: 8px 10px 8px 16px;
+  border-radius: 999px;
+  background: var(--ui-bg);
+  color: var(--ui-fg);
+  box-shadow: 0 4px 18px var(--ui-shadow);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 40;
+  pointer-events: auto;
+}
+
+.pier-preview[hidden] {
+  display: none;
+}
+
+.pier-preview-status {
+  font-size: 13px;
+  opacity: 0.8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.pier-preview .action {
+  flex: none;
+  white-space: nowrap;
+}
+
+.pier-preview .pier-place {
+  opacity: 1;
+  background: var(--ui-fg);
+  color: var(--ui-bg);
+  border-color: var(--ui-fg);
+}

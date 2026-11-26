@@ -114,6 +114,21 @@ like the card; samples in `docs/shore-iso-sample.png` (ocean) and
 `docs/shore-iso-land-sample.png` (land), re-rendered from a constructed
 player-like beach by `server/scripts/render-iso-samples.ts`.
 
+**Piers** ([PIERS.md](PIERS.md)): a beach whose pier shows (the derived
+`pier` flag, so a paused pier doesn't) gets it in every picture. From
+above (`drawPierTop`): the deck, the wider end platform and the ramp with
+its planks and rails, and the deck's shadow. In the 3D views
+(`pierPieces`/`drawPierPiece`): the same boxes as the app's pier
+(`pierBoxes`: pilings, deck, ramp, rails), cut into the terrain's 0.5 m
+cells so they paint back to front with everything else; each piece draws
+only the faces turned toward the camera, and pilings stop at the water or
+the sand. A neighbour's pier shows on the neighbour. `PIER` and the
+colours are copies of the app's; `tests/beachImage.test.ts` keeps them in
+step. Placing, removing or pausing a pier changes the pictures without a
+save, so every picture URL's `?v=` is `imageVersion(save time, pier)`
+(`server/src/shore.ts`): a `p` on the end when it shows, for the beach and
+for each neighbour in the 3D views' key.
+
 The top-down card is exactly the beach edge to edge: the 32 m beach is
 stretched alongshore to fill the 1200 px width (37.5 px/m alongshore,
 30.7 px/m cross-shore), so there are no pale bands of empty shore
@@ -177,4 +192,5 @@ Nothing else changes: the server already answers to those hosts.
   `/img/:CODE/thumb.png`, `/img/:CODE/iso.png`, and `/img/:CODE/iso-ocean.png` are limited to 60 per
   minute per client IP (`429` with `Retry-After: 60`); cache hits are not
   limited. The 3D view's cache key carries the neighbours' save times too, so
-  a neighbour rebuilding changes the picture.
+  a neighbour rebuilding changes the picture. Every key also carries
+  whether each beach's pier shows (`imageVersion`).

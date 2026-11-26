@@ -29,9 +29,23 @@ export interface NodeRow {
   updated_at: string | null;
   on_shore: boolean;
   saved: boolean;
+  /** a pier is attached and its beach qualifies, so it shows (docs/PIERS.md) */
+  pier: boolean;
 }
+/**
+ * A beach of `b`'s owner is linked on `b`'s `side` (docs/PIERS.md): the
+ * pier site test. Links are mutual and a beach can't be both neighbors of
+ * another, so a left and a right one are two different beaches.
+ */
+export const OWN_SIDE = (side: 'left' | 'right') =>
+  `EXISTS (SELECT 1 FROM neighbors pn JOIN beach pb ON pb.id = pn.neighbor_beach_id
+            WHERE pn.beach_id = b.id AND pn.side = '${side}' AND pb.owner_id = b.owner_id)`;
+/** `b` sits between two of its owner's own beaches */
+export const PIER_SITE = `(${OWN_SIDE('left')} AND ${OWN_SIDE('right')})`;
+/** `b` shows a pier: one is attached, and the beach still qualifies (a dormant one doesn't show) */
+export const PIER_SHOWN = `(EXISTS (SELECT 1 FROM beach_piers bp WHERE bp.beach_id = b.id) AND ${PIER_SITE})`;
 /** a beach and its owner's first name (select list, with `BEACH` as the FROM) */
-export const NODE = `b.id, u.name, b.name AS beach_name, b.owner_id, b.code, b.created_at, b.location, b.updated_at, b.on_shore, (b.sand IS NOT NULL) AS saved`;
+export const NODE = `b.id, u.name, b.name AS beach_name, b.owner_id, b.code, b.created_at, b.location, b.updated_at, b.on_shore, (b.sand IS NOT NULL) AS saved, ${PIER_SHOWN} AS pier`;
 export const BEACH = `beach b JOIN users u ON u.id = b.owner_id`;
 
 export const beachJson = (r: NodeRow) => ({
@@ -43,9 +57,20 @@ export const beachJson = (r: NodeRow) => ({
   beachName: r.beach_name || undefined,
   location: r.location,
   updatedAt: r.updated_at === null ? null : Number(r.updated_at),
+  /** it shows a pier (left out when it doesn't) */
+  ...(r.pier ? { pier: true as const } : {}),
 });
 export type BeachJson = ReturnType<typeof beachJson>;
 export type Step = BeachJson & { linked: boolean };
+
+/**
+ * The version a beach's pictures carry (`?v=`): its save time, and whether
+ * its pier shows, since placing, removing or pausing one changes the
+ * pictures without a save (docs/PIERS.md). Picture URLs are cached for
+ * good, so anything drawn has to be in here.
+ */
+export const imageVersion = (updatedAt: number | string | null | undefined, pier: boolean | undefined): string =>
+  `${updatedAt ?? 0}${pier ? 'p' : ''}`;
 
 /** Can anyone, signed in or not, see this beach (beechshore.com)? On the shore and saved. */
 export const isPublic = (r: Pick<NodeRow, 'on_shore' | 'saved'>): boolean => !!r.on_shore && !!r.saved;

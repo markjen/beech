@@ -29,13 +29,15 @@
     "e2e:neighbors": "node scripts/neighbors-e2e.mjs",
     "e2e:shore": "node scripts/shore-e2e.mjs",
     "e2e:beaches": "node scripts/beaches-e2e.mjs",
+    "e2e:piers": "node scripts/piers-e2e.mjs",
     "e2e:leaderboard": "node scripts/leaderboard-e2e.mjs",
     "e2e:checkpoints": "node scripts/checkpoints-e2e.mjs",
     "e2e:live": "node scripts/live-e2e.mjs",
     "e2e:sandbox": "node scripts/sandbox-e2e.mjs",
     "e2e:invites": "node scripts/invites-e2e.mjs",
     "e2e:inbox": "node scripts/inbox-e2e.mjs",
-    "e2e:copy": "node scripts/copy-e2e.mjs"
+    "e2e:copy": "node scripts/copy-e2e.mjs",
+    "e2e:push": "node scripts/push-e2e.mjs"
   },
   "dependencies": {
     "@babylonjs/core": "8.56.2",
@@ -47,6 +49,7 @@
     "@capacitor/haptics": "^8.0.2",
     "@capacitor/ios": "^8.6.0",
     "@capacitor/local-notifications": "8.3.1",
+    "@capacitor/push-notifications": "8.1.3",
     "@capacitor/share": "8.0.2",
     "@capgo/capacitor-social-login": "8.7.6",
     "@capgo/native-purchases": "8.9.6",

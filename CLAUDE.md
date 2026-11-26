@@ -52,6 +52,7 @@ Read these first:
   with no shared state), are in its "Model-first workflow" section and the
   `model-first` skill. A feature design doc gets a "State machine" section
   naming its spec.
+- **Review and land a PR:** Use the shared [review-pr skill](.agents/skills/review-pr/SKILL.md). Invoke it as `$review-pr 123` in Codex or `/review-pr 123` in Claude Code. Follow it through the verified merge unless the request narrows the scope.
 - **Git & PR workflow:** Always push finished work to GitHub. For bigger or higher-risk changes, push a feature branch and open a pull request. For smaller, high-confidence changes, push directly to `main`.
 - `npm test` and `npm run build` must pass before every commit. CI runs both.
 - The simulation (`src/sim/`) is plain TypeScript with no DOM or Babylon
@@ -91,10 +92,10 @@ Read these first:
   `server/`, which runs on Cloud Run, see docs/GCP.md). Keep anything that needs the network behind `ACCOUNTS_ENABLED`.
 - Server changes: `cd server && npm run typecheck && npm test` (PGlite; set
   `TEST_DATABASE_URL` to also run against real Postgres), then
-  `npm run server:dev` with `npm run e2e` (runs all 10 server E2E scripts in
+  `npm run server:dev` with `npm run e2e` (runs all 12 server E2E scripts in
   parallel; individual scripts are `e2e:accounts`, `e2e:neighbors`, `e2e:shore`,
   `e2e:beaches`, `e2e:leaderboard`, `e2e:checkpoints`, `e2e:invites`,
-  `e2e:inbox`, `e2e:live`, `e2e:copy`).
+  `e2e:inbox`, `e2e:live`, `e2e:copy`, `e2e:push`, `e2e:piers`).
   Schema changes are new entries appended to `server/src/migrations.ts`, never
   edits to applied ones. Never enable `DEV_AUTH` outside local development.
 - Android builds here need an SDK: install the command-line tools to a scratch

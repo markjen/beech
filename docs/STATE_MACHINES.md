@@ -16,7 +16,8 @@ rest of `npm test` in `server/`. No E2E, no rendering.
 | Neighbor links | `Neighbors.tla` | `neighbors.test.ts` | one-sided links, two neighbors on one side, two beaches linked on both sides |
 | Copying a beach | `BeachCopy.tla` | `copy.test.ts` | more placed than owned, more beaches than the allowance, a copy of a beach just taken off the shore, a different version than previewed |
 | Sand bucks and trade-ins | `SandBucks.tla` | `bucks.test.ts` | a trade-in of a thing on a beach, the last one traded in twice, bucks lost or minted by spending, trading in or a refund |
-| Piers (designed) | `Piers.tla` | Planned | a pier landed after an unlink, duplicate attachments, an attachment surviving a refund |
+| Piers | `Piers.tla` | `piers.test.ts` | a pier landed after an unlink, two on one beach, a placed pier traded in or given away |
+| Push notifications | `Push.tla` | `push.test.ts` | a push sent twice, two in an hour, a push after unsubscribing, signing out, blocking or muting |
 
 ## How it fits together
 
@@ -149,22 +150,64 @@ Invariants: `ValueConserved`, `NoPhantomUnits`, `NeverTradePlaced`,
 
 ## Piers (`Piers.tla`)
 
-Proposed routes for [Piers](PIERS.md). State includes direct links, the
-phase of each purchase and the beach each purchase is attached to.
+[Piers](PIERS.md). State: the beaches and their direct links, how many
+piers the player owns, and how many attachments each beach holds. The pier
+is a bag unit bought with sand bucks (`Buy`); attachments are counted
+against what's owned.
 
-| Action | Route | Proposed atomic step |
+| Action | Route | Atomic step |
 | --- | --- | --- |
-| `Begin` | `POST /beaches/mine/:id/pier/checkout` | Under the beach owner's account lock, check that the site qualifies and is vacant, then issue an account-bound checkout authorization. Start the provider flow after the transaction. |
-| `Settle`, `Close` | Existing store confirmation, cancellation and refund routes | Deduplicate by provider order or receipt. Under the buyer's account lock, grant the entitlement once or close it and clear its attachment. An authoritative refund or cancellation is terminal even if a confirmation arrives later. |
-| `Land` | `PUT /beaches/mine/:id/pier` | Use `asEditor` to hold the owner's account lock while checking links, site vacancy and entitlement, then insert the attachment. Unique keys on beach and entitlement prevent double placement. |
-| `Lift` | `DELETE /beaches/mine/:id/pier` | Use `asEditor` to remove the specified attachment and free the entitlement. |
-| `Link`, `Unlink`, `DeleteBeach` | Existing neighbor link, unlink and beach deletion routes, including admin writes | Hold the affected owner account locks before changing the graph, taking multiple account locks in ID order and before beach row locks. Derive pier visibility from the new graph. Beach deletion removes the attachment and leaves the entitlement in the bag. |
+| `Buy` | `POST /store/buy`, `POST /store/credit-purchase` (`item_pier`) | `buyWithBucks`, as in `SandBucks` |
+| `GiveAway` | `POST /bag/trade-in`, `POST /gifts`, visitor gifts | one transaction under the player's lock; `itemsElsewhere` counts `beach_piers` rows as placed, and `giveOne` refuses a pier unless one is free |
+| `Land` | `PUT /beaches/mine/:id/pier` | `asEditor` (the player's lock and the edit token), then the beach row `FOR NO KEY UPDATE` and its links and their beaches `FOR SHARE`, the vacancy and bag checks, and the insert. The primary key on `beach_id` keeps one per beach |
+| `Lift` | `DELETE /beaches/mine/:id/pier` | `asEditor`, one `DELETE` |
+| `Link`, `Unlink`, `DeleteBeach` | the existing neighbor routes and `DELETE /beaches/mine/:id` | unchanged: an unlink or a deletion of a beach next to the one being placed waits on `Land`'s `FOR SHARE` row locks. Deleting a beach cascades its attachment (the pier is back in the bag). Visibility is derived (`PIER_SHOWN`), never stored |
 
-The selected model explores 6,012 distinct states. The alternate model
-finds a stale placement after a supporting link is removed between
-`LandCheck` and `Land`. Check and write under the same lock to enforce
-`PlacementWasEligible`. The model also checks `PaidAttachment` and
-`OnePerBeach`. Run `specs/tla/check.sh --bugs Piers` to reproduce both runs.
+The design passes with 1,532 distinct states (`PaidAttachment`,
+`OnePerBeach`, `NoOrphan`, `PlacementWasEligible`). The other form, which
+checks eligibility before the write's transaction and lets a pier leave
+the bag without counting placed ones, breaks `PlacementWasEligible` (an
+unlink between `LandCheck` and `Land`) and `PaidAttachment` (a trade-in of
+the placed pier). Both are replayed in `piers.test.ts` and fail against
+that form. Run `specs/tla/check.sh --bugs Piers` to see them.
+
+## Push notifications (`Push.tla`)
+
+One player, their devices and the push tick
+([INBOX_NOTIFICATIONS.md](INBOX_NOTIFICATIONS.md), "Push";
+`server/src/push.ts`). State: the inbox rows (pushed or not, read or not),
+blocks, muted kinds, sessions and subscriptions, subscriptions the push
+service has forgotten, the hour and the hour of the last push, and the
+player's push lock. Two senders can run at once (two Cloud Run instances,
+or Cloud Scheduler and the server's own timer).
+
+| Action | Route or job | Code |
+| --- | --- | --- |
+| `Arrive` | every route that writes an inbox row | the row's own statement (unchanged); `pushed_at` starts empty |
+| `Read` | `POST /inbox/read` | one `UPDATE` that waits if delivery has locked the inbox row |
+| `Block` | `PUT /blocks/:code` | one transaction: `lockPush` (the `push_state` row `FOR UPDATE`), then the insert |
+| `Mute`, `Unmute` | `PUT /notify-prefs` | take `lockPush` before reading preferences and applying the requested fields |
+| `Subscribe` | `POST /push/subscribe` | one upsert on the endpoint; needs no lock |
+| `Unsubscribe` | `DELETE /push/subscribe` | one `DELETE` that waits for the sender's subscription row lock |
+| `SignOut` | `POST /auth/logout`, or session expiry | logout cascades to the subscription and waits for its row lock. An elapsed session is ineligible even while its row still exists. |
+| `Expire` | the push service | — (the next send answers 404/410) |
+| `Claim` | `pushTick` (`POST /push/tick` or the timer) | `pushPlayer` marks due rows and reserves the hour under `lockPush`, then commits before contacting providers |
+| `BeginSend`, `Deliver`, `Finish` | the same tick | a second transaction retakes the push lock, locks subscription and inbox rows, and rechecks eligibility before sending. A 404/410 deletes that subscription. |
+| `Crash` | worker exit or send transaction rollback | discard the in-memory batch. The committed claim survives and subsequent ticks skip it. |
+
+Invariants: `AtMostOnce` (a row reaches each device at most once),
+`OnePerHour`, `NotAfterGone` (nothing after an unsubscribe or sign-out has
+returned), `NeverBlocked`, `NeverMuted`, `OnlyPushKinds` (never a star),
+`NotInQuietHours`, `SubsHaveSessions`.
+
+The unlocked form (read what's due, send, then write it down; nothing
+waits) breaks the first five: two senders push the same rows twice in one
+hour, and an unsubscribe, sign-out, block or mute that lands mid-send
+returns before a push it should have stopped. The fixed model uses symmetry
+reduction for the interchangeable actors, devices, and workers. The tests hold
+sends open at a fake provider to replay those races and inject a rollback after provider
+acceptance to verify that later ticks skip the committed claim. A crash after
+claiming can drop the notification. The inbox entry remains available.
 
 ## Bugs found (2026-11-25), all fixed
 

@@ -64,6 +64,8 @@ import { beachBackend } from './net/storeBackends';
 import { idbSnapshotCache } from './net/snapshotCache';
 import { snapshotBeforeBigEdit } from './net/bigEditSnapshot';
 import { AccountPanel } from './ui/accountPanel';
+import { PierPreview } from './ui/pierPreview';
+import { ownBeachLabel } from './ui/shoreConnect';
 import { Leaderboard } from './ui/leaderboard';
 import { NeighborView } from './render/neighbors';
 import { loadSettings, saveSettings, type Settings, type WaveStrength } from './ui/settingsStore';
@@ -347,6 +349,7 @@ async function boot() {
   let loadId = 0;
 
   let pendingBuf: Float32Array | null = null;
+  let pendingBeachHandoff = false;
   let pendingTouch = false;
   type SandReply = { delta: Float32Array; objects: PlacedObject[]; cover?: Float32Array };
   /** what's on the beach now (the worker sends the roster when it changes, positions every frame) */
@@ -431,6 +434,7 @@ async function boot() {
       // the worker has the new beach now: move the live renderer there and
       // let the snapshot take the old one, in the same frame
       awaitingLoad = 0;
+      pendingBeachHandoff = true;
       liveArrived();
     }
     // everything's position this frame, in roster order (no objects made per frame)
@@ -2079,7 +2083,7 @@ async function boot() {
   const liveArrived = () => {
     const id = sync.id;
     // the waves moved onto a beach drawn as a snapshot: ease from its water, not a one-frame swap
-    if (id && neighbors?.showsSnapshot(id)) renderer.easeFromStatic(BEACH_STORE.liveEaseMs);
+    renderer.easeFromStatic(id && neighbors?.showsSnapshot(id) ? BEACH_STORE.liveEaseMs : 0);
     neighbors?.setLive(id, renderer);
     const x = id && neighbors ? neighbors.xForBeach(id) : 0;
     placeLive(x ?? 0);
@@ -2206,7 +2210,8 @@ async function boot() {
       const buf = pendingBuf;
       pendingBuf = null;
       picker.updateFromFrame(buf);
-      if (!noRender) renderer.uploadFrame(buf);
+      if (!noRender) renderer.uploadFrame(buf, pendingBeachHandoff);
+      pendingBeachHandoff = false;
       send({ type: 'return', buf }, [buf.buffer]);
     }
 
@@ -2585,6 +2590,7 @@ async function boot() {
     let signedInAs: string | null = null;
     account.onChange((u) => {
       if ((u?.id ?? null) !== signedInAs) {
+        if (signedInAs) void snapshots?.clear();
         undoTargets.length = 0;
         redoTargets.length = 0;
         fenced = false;
@@ -2625,8 +2631,6 @@ async function boot() {
         // still runs past your (local-only) beach — load it
         nv.clear();
         if (signedInAs) {
-          // a shared device: the beaches you looked at go with you
-          void snapshots?.clear();
           void s.resetToLocal().then(() => nv.refresh());
         }
       }
@@ -2784,6 +2788,7 @@ async function boot() {
     });
     // go to one of your beaches: glide if it's on this shore, else lay the shore out around it
     // (the waves follow the view there: nothing is switched)
+    let pierPreview: PierPreview | null = null;
     const openMine = async (id: string) => {
       const idx = nv.indexOfBeach(id);
       if (idx !== null && !nv.visiting) {
@@ -2853,6 +2858,36 @@ async function boot() {
         },
         onAuthChange: (signedIn) => {
           sheet.setTab(signedIn ? 'beach' : 'account');
+        },
+        // piers (docs/PIERS.md): bought with sand bucks into the bag, then
+        // shown on the beach until "place pier" or "cancel"
+        buyPier: async () => {
+          try {
+            await new ShopApi(acct).buyBasket([{ product: 'item_pier', quantity: 1 }]);
+          } catch (e) {
+            // short of sand bucks: the shop, at the packs
+            if (/not enough sand bucks/.test((e as Error).message)) {
+              sheet.hide();
+              void shopDialog?.open('packs');
+            }
+            throw e;
+          }
+          void refreshOwned();
+        },
+        previewPier: (b) => {
+          pierPreview ??= new PierPreview(uiRoot);
+          const preview = pierPreview;
+          void openMine(b.id);
+          nv.previewPier(b.id);
+          preview.show(
+            `pier · ${ownBeachLabel(b)}`,
+            async () => {
+              await acct.placePier(b.id);
+              await nv.refresh();
+              nv.previewPier(null);
+            },
+            () => nv.previewPier(null),
+          );
         },
       },
       checkpoints,
@@ -3198,8 +3233,15 @@ async function boot() {
     // card) load in their own chunk, off the start-up bundle (perf/budget.json).
     // If that fails (a first visit while offline), the game carries on
     // without them; account features need the network anyway.
-    const social = await Promise.all([import('./ui/invite'), import('./ui/inbox'), import('./ui/visitorCard'), import('./ui/inboxText')]).then(
-      ([invite, inbox, visitorCard, inboxText]) => ({ ...invite, ...inbox, ...visitorCard, ...inboxText }),
+    const social = await Promise.all([
+      import('./ui/invite'),
+      import('./ui/inbox'),
+      import('./ui/visitorCard'),
+      import('./ui/inboxText'),
+      import('./platform/notify'),
+      import('./ui/notifySettings'),
+    ]).then(
+      ([invite, inbox, visitorCard, inboxText, notify, notifySettings]) => ({ ...invite, ...inbox, ...visitorCard, ...inboxText, ...notify, ...notifySettings }),
       () => null,
     );
     const guideApi = new GuideApi(acct);
@@ -3307,7 +3349,7 @@ async function boot() {
     });
     // ---- visitors and the inbox (docs/INBOX_NOTIFICATIONS.md)
     if (social) {
-      const { InboxPanel, VisitorCard, ANNOUNCE, announce } = social;
+      const { InboxPanel, VisitorCard, ANNOUNCE, announce, Notifier, NotifySettings, openedFromNotification } = social;
       const inboxApi = new InboxApi(acct);
       const inboxPanel = new InboxPanel(uiRoot, hud.root, (n, l) => hud.button(n, l), inboxApi, {
         signedIn: () => !!acct.user,
@@ -3357,6 +3399,30 @@ async function boot() {
         void visitor.open(b.code, b.name, b.beachName);
       };
       shoreKey = '';
+      // notifications (docs/INBOX_NOTIFICATIONS.md, "Push"): web push, native
+      // push, or (Steam) the game's own OS notifications; a tap opens the inbox
+      const openInbox = () => {
+        if (acct.user) socialHub?.show('inbox');
+      };
+      const notifier = new Notifier(acct, openInbox);
+      const notifyRows = new NotifySettings(notifier, () => !!acct.user);
+      sheet.accountSlot.after(notifyRows.el);
+      steamBridge()?.onNotifyClick?.(openInbox);
+      navigator.serviceWorker?.addEventListener('message', (e: MessageEvent) => {
+        if ((e.data as { type?: string } | null)?.type === 'open-inbox') openInbox();
+      });
+      let inboxFromLink = openedFromNotification();
+      // ask once, when the first thing worth a notification arrives (never at
+      // start-up), after its own note over the beach has had its time
+      const ANNOUNCE_MS = 10000;
+      const maybeAsk = async () => {
+        if (!notifier.shouldAsk() || !(await notifier.channel())) return;
+        notifier.markAsked();
+        setTimeout(
+          () => showActionToast(uiRoot, 'Want to know when someone leaves you something?', 'yes', () => void notifier.enable().then(() => notifyRows.render()), 15000),
+          ANNOUNCE_MS + 500,
+        );
+      };
       // the poll carries the inbox: the badge, and a note for what matters
       let announced = -1;
       nv.onChange((n) => {
@@ -3367,16 +3433,25 @@ async function boot() {
           return;
         }
         if (announced >= 0 && latest.id > announced && ANNOUNCE.has(latest.kind) && !inboxPanel.isOpen) {
-          showActionToast(uiRoot, announce(latest.kind, latest.name), 'open', () => void inboxPanel.open(), 10000);
+          const text = announce(latest.kind, latest.name);
+          showActionToast(uiRoot, text, 'open', () => void inboxPanel.open(), ANNOUNCE_MS);
+          void notifier.local(latest.kind, text);
+          void maybeAsk();
           if (latest.kind === 'visit' || latest.kind === 'gift' || latest.kind === 'invite_settled') refreshOwned();
         }
         announced = Math.max(announced, latest.id);
       });
       acct.onChange((u) => {
+        void notifyRows.render();
         if (!u) {
           announced = -1;
           inboxPanel.setSummary(null);
           return;
+        }
+        void notifier.resync().then(() => notifyRows.render());
+        if (inboxFromLink) {
+          inboxFromLink = false;
+          openInbox();
         }
         inboxPanel.setSummary({ unread: 0, latest: null });
         if (cardAfterSignIn) {

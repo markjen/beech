@@ -188,8 +188,10 @@ and vending prize cards can be closed while keeping the prize in the bag.
   (`placeCoords()` in `src/world/catchupBeach.ts`). Failed fetches are
   logged (`weather_fetch_failed`) and retried after a minute.
 - Licence: Open-Meteo's free API is non-commercial only. `OPEN_METEO_API_KEY`
-  (a paid plan) switches the server to the `customer-*` hosts with the key;
-  setting it up is an owner task in BACKLOG.md.
+  (a paid plan) switches the server to the `customer-*` hosts with the key.
+  The deploy passes it once the `OPEN_METEO_ENABLED` variable is set (the
+  same optional-secret pattern as push); setting it up is an owner task in
+  BACKLOG.md.
 - The app (production builds only, `src/net/weather.ts`) fetches it at
   start and every 15 minutes, and keeps the last report in `localStorage`
   so the first frame is already right. The sandbox has no weather unless
@@ -385,7 +387,9 @@ accepted the repo's default branch, so the deploy job ran only there.
   Other people's beaches are kept on the device too (IndexedDB, by id,
   checked against the shore's save time), so a reload or re-anchor draws
   them without refetching; when the waves move onto a beach its snapshot's
-  water eases into the simulation's (`BEACH_STORE.liveEaseMs`).
+  water eases into the simulation's (`BEACH_STORE.liveEaseMs`). The handoff
+  starts with the new beach's sand. Clearing the IndexedDB cache on sign-out
+  also invalidates writes from requests already in flight.
 - Neighbors, requests and codes in settings follow the selected beach
   (`?beach=`); the shore is laid out around an anchor (home, a beach you
   went to, or one you're visiting). Putting one of your own beach codes next to another links them
@@ -398,11 +402,35 @@ accepted the repo's default branch, so the deploy job ran only there.
   beach in view per device. Needs DEV_AUTH for
   `/api/dev/grant`.
 
-## Piers (designed 2026-11-26)
+## Piers (built 2026-11-26)
 
-[Piers](PIERS.md) describes the unlock, shop flow, placement and behavior
-when links change. TLC checked the proposed purchase and placement model.
-Gameplay implementation is on the backlog.
+[Piers](PIERS.md): the middle of three of your own beaches side by side can
+hold a timber pier (18 m deck from dry sand out over the water, paired
+pilings, rails, a wider end platform). Decorative only.
+
+- **Bought with sand bucks**, not as its own real-money purchase (the design
+  said $2.99): `item_pier`, 30 sand bucks, a `pier` in the bag. Differs from
+  the design because the shop moved to sand bucks; a pier is counted
+  against what's owned rather than tied to one order.
+- Manage → Beaches lists each site under your stretches: **buy pier · 30
+  sand bucks** (short of bucks: the shop at the packs), **place pier** with
+  a spare in the bag, **remove pier**, and **pier paused** when a side link
+  is gone. Placing shows the pier on the beach first with **place pier** /
+  **cancel**.
+- Server: `beach_piers` (migration 34), `PUT`/`DELETE
+  /beaches/mine/:id/pier`, `pier` on beaches in shore data (signed in and
+  public), `pier`/`pierSite` per beach and `piers {owned, placed}` in
+  `/beaches/mine`. Placed piers count as placed for the bag, trade-ins and
+  gifts.
+- Drawn by `NeighborView` for every beach in view, yours or anyone's, at
+  the beach's centre (`src/render/pier.ts`, `PIER` in config).
+- beechshore.com draws it too: the card, the thumbnail and both 3D views
+  (`server/src/beachImage.ts`), with the pier in each picture URL's `?v=`
+  so a placed, removed or paused pier shows at once (SHORE_SITE.md).
+- Not yet: tuning the deck height against big real tides (1.35 m above
+  still water now).
+- Tests: `server/test/stateMachines/piers.test.ts`, `tests/pier.test.ts`,
+  `npm run e2e:piers`.
 
 ## Mutual neighbors and the global beachfront (added after the bulldozer)
 
@@ -543,7 +571,30 @@ Gameplay implementation is on the backlog.
 ## Visitors and the inbox (2026-11-24)
 
 Design, as-built notes and decisions in [INBOX_NOTIFICATIONS.md](INBOX_NOTIFICATIONS.md).
-Phases V1–V4 are built; push (V5 web, V6 native) is not.
+Phases V1–V4 are built; push (V5 web, V6 native, and Steam's own
+notifications) is built too (2026-11-26) and waits on the owner's keys
+(below).
+
+- **Notifications (2026-11-26).** Modelled first (`specs/tla/Push.tla`,
+  STATE_MACHINES.md). Web push (VAPID + RFC 8291 in `server/src/push.ts`,
+  no new server dependency), APNs straight from the server for the iOS app
+  (not through Firebase, unlike the earlier plan), FCM for the Android app,
+  and on Steam the running game shows OS notifications from the poll
+  (Electron `Notification`; Steam has no push service). Migration 33
+  (`push_subscriptions` tied to the session, `push_state` as the push
+  lock, `notify_prefs`, `inbox.pushed_at`). The sender commits its claim
+  before sending, then rechecks device sessions and preferences under lock.
+  Preference edits on different devices preserve each other's changes.
+  One push an hour, none from 22:00 to 08:00 on the device clock, never
+  stars or ratings, never a note's
+  text. The game asks once, after the first pushable thing arrives; the
+  switch and three kinds are in Settings. Each platform is on once its
+  settings exist (the deploy adds them only when their GitHub variables
+  are set); native app builds opt in with `NATIVE_PUSH=1`. Tests:
+  `server/test/push.test.ts`, `server/test/stateMachines/push.test.ts`,
+  `tests/notify.test.ts`, `npm run e2e:push` (the dev server makes
+  throwaway VAPID keys). Not yet tried on a real phone or browser push
+  service: headless Chromium refuses push subscriptions.
 
 - **Signed-out visits** use main's read-only 3D visits (the beechshore
   follow-ups: `/api/public/…`, strictly `isPublic`). On top of that, an
@@ -1304,7 +1355,9 @@ the HUD layout in the section above.
   is saved in settings (`statusPane`). There is no weather data, so
   "weather" is the sky (☀ ◒ ☾), the local time and a swell word from the
   live wave scale. The mockup's credit, stars and finds chips were left
-  out; they would need extra requests. The "also in view" list
+  out; they would need extra requests. The credit (sand bucks) chip is
+  out on purpose: the balance is only useful in the shop, where it
+  already shows (Mark, 2026-11-26). The "also in view" list
   (`ShoreInfo`) and floating neighbor name-tag pills (`tagPlace`) are
   removed — the top-left card already shows whose beach you're looking at.
 - **The home icon** appears in the top right while away, including when the

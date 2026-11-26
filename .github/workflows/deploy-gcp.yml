@@ -25,6 +25,15 @@ name: Deploy production (Google Cloud Run)
 #   vars.GOOGLE_CLIENT_IDS          accepted client IDs, comma-separated (web, iOS, Android)
 #   vars.APPLE_CLIENT_IDS           optional
 #   vars.ADMIN_EMAILS               Google accounts allowed into the admin console
+# Push notifications (docs/INBOX_NOTIFICATIONS.md, "Turning on push"), each
+# part added only once its variable is set, so a deploy never names a secret
+# that doesn't exist yet:
+#   vars.VAPID_PUBLIC_KEY, vars.VAPID_SUBJECT   web push (+ secret beech-vapid-private-key)
+#   vars.APNS_KEY_ID, vars.APNS_TEAM_ID         iOS app push (+ secret beech-apns-key, the .p8)
+#   vars.FCM_PROJECT_ID                         Android app push (the service's own identity sends)
+#   vars.PUSH_TICK_SERVICE_ACCOUNT              Cloud Scheduler's account for POST /api/push/tick
+#   vars.PUSH_TICK_AUDIENCE                     its OIDC audience (the tick URL)
+#   vars.OPEN_METEO_ENABLED=1                   real weather on Open-Meteo's paid plan (+ secret beech-open-meteo-api-key)
 # Secret Manager: beech-db-password, beech-admin-token (admin service only),
 #   beech-gift-code-pepper (both: the game redeems, the admin service issues),
 #   beech-xsolla-api-key and beech-xsolla-webhook-secret (game service only,
@@ -76,15 +85,40 @@ jobs:
           docker push "$IMAGE"
           docker push "$ADMIN_IMAGE"
       - name: Deploy to Cloud Run
+        env:
+          VAPID_PUBLIC_KEY: ${{ vars.VAPID_PUBLIC_KEY }}
+          VAPID_SUBJECT: ${{ vars.VAPID_SUBJECT }}
+          APNS_KEY_ID: ${{ vars.APNS_KEY_ID }}
+          APNS_TEAM_ID: ${{ vars.APNS_TEAM_ID }}
+          FCM_PROJECT_ID: ${{ vars.FCM_PROJECT_ID }}
+          PUSH_TICK_SERVICE_ACCOUNT: ${{ vars.PUSH_TICK_SERVICE_ACCOUNT }}
+          PUSH_TICK_AUDIENCE: ${{ vars.PUSH_TICK_AUDIENCE }}
+          OPEN_METEO_ENABLED: ${{ vars.OPEN_METEO_ENABLED }}
         run: |
+          PUSH_ENV=""
+          PUSH_SECRETS=""
+          if [ -n "$VAPID_PUBLIC_KEY" ]; then
+            PUSH_ENV="$PUSH_ENV;VAPID_PUBLIC_KEY=$VAPID_PUBLIC_KEY;VAPID_SUBJECT=$VAPID_SUBJECT"
+            PUSH_SECRETS="$PUSH_SECRETS,VAPID_PRIVATE_KEY=beech-vapid-private-key:latest"
+          fi
+          if [ -n "$APNS_KEY_ID" ]; then
+            PUSH_ENV="$PUSH_ENV;APNS_KEY_ID=$APNS_KEY_ID;APNS_TEAM_ID=$APNS_TEAM_ID"
+            PUSH_SECRETS="$PUSH_SECRETS,APNS_KEY=beech-apns-key:latest"
+          fi
+          if [ -n "$FCM_PROJECT_ID" ]; then PUSH_ENV="$PUSH_ENV;FCM_PROJECT_ID=$FCM_PROJECT_ID"; fi
+          # real weather: Open-Meteo's free API is non-commercial only (server/src/weather.ts)
+          if [ -n "$OPEN_METEO_ENABLED" ]; then PUSH_SECRETS="$PUSH_SECRETS,OPEN_METEO_API_KEY=beech-open-meteo-api-key:latest"; fi
+          if [ -n "$PUSH_TICK_SERVICE_ACCOUNT" ]; then
+            PUSH_ENV="$PUSH_ENV;PUSH_TICK_SERVICE_ACCOUNT=$PUSH_TICK_SERVICE_ACCOUNT;PUSH_TICK_AUDIENCE=$PUSH_TICK_AUDIENCE"
+          fi
           gcloud run deploy beech \
             --image "$IMAGE" \
             --region "$REGION" \
             --allow-unauthenticated \
             --service-account "${{ vars.GCP_RUNTIME_SA }}" \
             --add-cloudsql-instances "${{ vars.GCP_SQL_INSTANCE }}" \
-            --set-env-vars "^;^DB_SOCKET=/cloudsql/${{ vars.GCP_SQL_INSTANCE }};DB_NAME=beech;DB_USER=beech;GOOGLE_CLIENT_IDS=${{ vars.GOOGLE_CLIENT_IDS }};APPLE_CLIENT_IDS=${{ vars.APPLE_CLIENT_IDS }};ALLOWED_ORIGINS=https://play.beech.games,capacitor://localhost,https://localhost,app://beech;XSOLLA_PROJECT_ID=324072;XSOLLA_SANDBOX=1" \
-            --set-secrets "DB_PASSWORD=beech-db-password:latest,GIFT_CODE_PEPPER=beech-gift-code-pepper:latest,XSOLLA_API_KEY=beech-xsolla-api-key:latest,XSOLLA_WEBHOOK_SECRET=beech-xsolla-webhook-secret:latest" \
+            --set-env-vars "^;^DB_SOCKET=/cloudsql/${{ vars.GCP_SQL_INSTANCE }};DB_NAME=beech;DB_USER=beech;GOOGLE_CLIENT_IDS=${{ vars.GOOGLE_CLIENT_IDS }};APPLE_CLIENT_IDS=${{ vars.APPLE_CLIENT_IDS }};ALLOWED_ORIGINS=https://play.beech.games,capacitor://localhost,https://localhost,app://beech;XSOLLA_PROJECT_ID=324072;XSOLLA_SANDBOX=1$PUSH_ENV" \
+            --set-secrets "DB_PASSWORD=beech-db-password:latest,GIFT_CODE_PEPPER=beech-gift-code-pepper:latest,XSOLLA_API_KEY=beech-xsolla-api-key:latest,XSOLLA_WEBHOOK_SECRET=beech-xsolla-webhook-secret:latest$PUSH_SECRETS" \
             --cpu 1 --memory 512Mi --concurrency 80 \
             --min-instances 0 --max-instances 10
       - name: Deploy the admin console to Cloud Run

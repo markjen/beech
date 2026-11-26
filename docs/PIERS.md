@@ -1,9 +1,9 @@
 # Piers
 
-Status is **designed**. Target the account-enabled game.
+Status is **built** (2026-11-26) in the account-enabled game.
 
 Link three beaches you own side by side to unlock a pier on the middle
-beach. Buy it in the shop, preview it from the beach, then choose **Place
+beach. Buy it for sand bucks, preview it from the beach, then choose **Place
 pier** to run a wooden deck straight from the sand out over the water.
 
 ```text
@@ -28,11 +28,16 @@ Shoreline  ├──────────────┼───────
   or **Place pier** when the player already has a spare. An attached pier
   offers **Remove pier**. A dormant pier has the status **Pier paused**
   and can still be removed. Put the unlock rule in the player guide.
-- The shop uses a one-time purchase that adds one pier to the bag. Proposed
-  US price is **$2.99**. Checkout remembers the
-  beach to return to and leaves the pier in the bag until the player
-  confirms placement. If the player cancels the preview, they can come
-  back later. Each additional placement needs another copy.
+- The pier is a shop offer (`item_pier`, **30 sand bucks**, the $2.99
+  tier; see [SAND_BUCKS.md](SAND_BUCKS.md)) that adds one `pier` to the
+  bag. It's bought like any other offer (`POST /store/buy`, one statement),
+  so there is no pending checkout to track: real money only ever buys
+  packs. **Buy pier** in the beach list buys it and opens the preview;
+  short of sand bucks, the shop opens at the packs. The pier stays in the
+  bag until the player confirms placement. If the player cancels the
+  preview, they can come back later. Each additional placement needs
+  another copy. It can also be bought from the shop itself, and traded in
+  or given away while it's in the bag (not while it's on a beach).
 - The preview frames the middle beach and shows the whole deck. The pier
   has one fixed position and orientation. Show **Place pier** and **Cancel**
   together so a player can inspect it before changing their beach.
@@ -59,28 +64,52 @@ Shoreline  ├──────────────┼───────
 | One supporting link is removed or an outer beach is deleted | The attached pier goes dormant and disappears from owner and visitor views. The player can leave it attached or return it to the bag. |
 | The same middle beach qualifies again | Its attached pier reappears, including if a different owned beach fills the missing side. |
 | The player removes the pier or deletes its middle beach | That pier returns to the bag and can be placed at another eligible site. |
-| A link changes during checkout | A confirmed payment still grants the pier. Placement checks the current links and can wait until a site qualifies. |
-| A purchase is refunded | Revoke the specific pier from that purchase and clear its attachment if it has one. Other copies stay available. |
+| A link changes between buying and placing | The pier stays in the bag. Placement checks the current links and can wait until a site qualifies. |
+| The pier is traded in or given away | Only a pier in the bag (owned minus placed) can go. A placed one has to be removed first. |
+| A sand-buck pack is refunded | The sand bucks are clawed back ([SAND_BUCKS.md](SAND_BUCKS.md)); the pier stays, like any other thing bought with them. |
 
 ## State machine
 
-[Piers.tla](../specs/tla/Piers.tla) models the link graph, two independent
-orders and the attachments. An attachment refers to one paid entitlement
-and one beach. The server derives visibility from the attachment, current
-entitlement and current shore links. A dormant attachment still occupies
-its beach's pier slot. Store attachments alongside beach metadata so the
-account owns the pier independently of the beach's sand and checkpoints.
+[Piers.tla](../specs/tla/Piers.tla) models the link graph, the number of
+piers the player owns and the attachments. Attachments are counted against
+what's owned (the bag shows owned minus placed), not tied to one purchase:
+with sand bucks, a pier is one bag unit like any other. The server derives
+visibility from the attachment and the current shore links; a dormant
+attachment still occupies its beach's pier slot. Attachments live in
+`beach_piers (beach_id PK, owner_id, placed_at)`, apart from the beach's
+sand and checkpoints, so a restore or a copy never touches them.
 
-Check eligibility and write the checkout authorization or placement under
-the same account lock that protects changes to eligible links. Fulfill each
-verified purchase once using the existing receipt or order identity.
-Serialize refunds and placement against that identity. Include a boolean
-for active pier visibility in owner and visitor shore data. Invalidate
-cached shore metadata and any public images
-that draw the pier when its visibility changes. See the proposed route
-mapping in [State machines](STATE_MACHINES.md#piers-pierstla).
+Placement checks eligibility, the beach's vacancy and the bag, and inserts
+the row, in one transaction holding the player's lock (`asEditor`), the
+beach row, and its two neighbor links and the beaches on them (`FOR
+SHARE`), so an unlink or a deletion of a supporting beach waits for it
+(`PlacementWasEligible`). Trade-ins and gifts count placed piers under the
+same player lock (`PaidAttachment`). The `pier` flag in owner and visitor
+shore data is derived in SQL (`PIER_SHOWN` in `server/src/shore.ts`), so
+there's nothing stored to invalidate. The beechshore.com pictures draw the
+pier (top-down and both 3D views, `server/src/beachImage.ts`), and their
+cached-for-good URLs carry it in `?v=` (`imageVersion`), so placing,
+removing or pausing one gives new pictures ([SHORE_SITE.md](SHORE_SITE.md#the-pictures)). The route mapping is in
+[State machines](STATE_MACHINES.md#piers-pierstla).
+
+## Code
+
+- Server: `server/src/app.ts` (`PUT`/`DELETE /beaches/mine/:id/pier`,
+  `pierCounts`, the pier lines in `itemsElsewhere` and `giveOne`),
+  `server/src/shore.ts` (`PIER_SITE`, `PIER_SHOWN`), migration 34.
+- Tests: `server/test/stateMachines/piers.test.ts` (transitions, both TLC
+  replays, a random walk against `piersModel.ts`), `tests/pier.test.ts`
+  (the shape against the beach profile), `npm run e2e:piers`.
+- App: `src/render/pier.ts` (the mesh, `PIER` in `src/config.ts`, colours in
+  `src/palette.ts`), drawn for every beach in view by `NeighborView`;
+  `src/ui/accountPanel.ts` (the rows under your stretches),
+  `src/ui/pierPreview.ts` (place pier / cancel).
 
 ## Release checks
+
+All of these are covered by the state-machine tests and `e2e:piers`,
+except the high/low tide silhouette, which was checked by eye at the
+default tide only.
 
 - Test isolated and two-beach accounts, an eligible trio, a trio with a
   foreign neighbor and two eligible centers on a longer stretch.

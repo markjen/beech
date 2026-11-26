@@ -331,7 +331,6 @@ export const ANIMALS = {
   dolphinBreachHeight: 1.15,
 };
 
-
 /** Real weather at each place (src/world/weather.ts, server/src/weather.ts). */
 export const WEATHER = {
   /** how often the app asks the server for the weather (ms) */
@@ -357,4 +356,34 @@ export const WEATHER = {
   easePerSecond: 0.08,
   /** rain drops and snowflakes at full strength */
   maxDrops: 260,
+};
+
+/**
+ * The pier (docs/PIERS.md): fixed position and size on the middle of three
+ * of your beaches. Cross-shore distances are metres from the offshore edge
+ * (the still-water shoreline is at PROFILE.shoreline, 16.5 m); heights are
+ * metres above still water.
+ */
+export const PIER = {
+  /** where the ramp meets the sand (dry, landward of the shoreline) */
+  landY: 21,
+  /** where the ramp reaches the deck */
+  rampTopY: 18,
+  /** the seaward end */
+  endY: 3,
+  /** where the wider end platform starts */
+  platformY: 6.5,
+  /** deck width, and the end platform's */
+  width: 2.5,
+  platformWidth: 4,
+  /** deck surface height, and the sand height at the ramp's foot */
+  deckHeight: 1.35,
+  footHeight: 0.36,
+  deckThickness: 0.14,
+  /** pilings: spacing along the pier, how far down they go */
+  pilingStep: 3,
+  pilingDepth: -2.7,
+  pilingSize: 0.22,
+  /** rail height above the deck */
+  railHeight: 0.9,
 };
