@@ -968,6 +968,15 @@ const MIGRATIONS: string[] = [
   CREATE INDEX beach_sections_owner ON beach_sections (owner_id);
   ALTER TABLE beach ADD COLUMN sections_rev INTEGER NOT NULL DEFAULT 0;
   `,
+
+  // 39: account merges (docs/STEAM.md, "Merging accounts"). The merge writes
+  // the absorbed account's beech-buck credit into the survivor's ledger as
+  // 'merge', so the balance can still be explained afterwards.
+  `
+  ALTER TABLE credit_ledger DROP CONSTRAINT credit_ledger_kind_check;
+  ALTER TABLE credit_ledger ADD CONSTRAINT credit_ledger_kind_check
+    CHECK (kind IN ('gift_card', 'spend', 'creator_royalty', 'creator_royalty_refund', 'pack', 'pack_refund', 'trade_in', 'trade_in_refund', 'invite_bonus', 'merge'));
+  `,
 ];
 
 /** Apply migrations up to `upTo` (default: all). Tests use `upTo` to check a migration on older data. */

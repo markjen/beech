@@ -58,6 +58,43 @@ export class ApiError extends Error {
   }
 }
 
+/** What merging this account into the code-owner's account would do (server/src/accountMerge.ts). */
+export interface MergePreview {
+  survivor: { id: string; name: string };
+  absorbed: { id: string; name: string };
+  /** the absorbed account holds nothing to move: it links without confirming */
+  empty: boolean;
+  /** things that stop the merge; empty means it can go ahead */
+  blocks: string[];
+  beaches: { moved: number; survivorHas: number; allowanceAfter: number; overAllowance: boolean };
+  inventory: { rowsMerged: number; rowsMoved: number; quantitySummed: number };
+  /** beech-buck credit (cents) and creator-credit debt (cents) moving to the survivor */
+  creditCents: number;
+  debtCents: number;
+  purchases: number;
+  checkpoints: number;
+  favorites: { moved: number; deduped: number; discarded: number };
+  stars: { moved: number; deduped: number; discarded: number };
+  ratings: { moved: number; discarded: number };
+  neighbors: { linksRetired: number; requestsRetired: number };
+  referrals: { moved: number; dropped: number; reranked: number };
+  submissions: number;
+  inbox: { moved: number; folded: number };
+  sessionsInvalidated: number;
+  /** human-readable lines, in the order the UI shows them */
+  notes: string[];
+}
+
+/** The link needs confirming first: the server's 409 carries a fresh preview. */
+export class MergeNeedsConfirmError extends ApiError {
+  constructor(
+    readonly preview: MergePreview,
+    message: string,
+  ) {
+    super(409, message);
+  }
+}
+
 function readToken(): string | null {
   try {
     return localStorage.getItem(TOKEN_KEY);
@@ -202,13 +239,33 @@ export class Account {
     return (await res.json()) as { code: string; expiresAt: number };
   }
 
-  /** Link this fresh account to an existing account using its 8-character code. */
-  async redeemLinkCode(code: string): Promise<AccountUser> {
-    const res = await this.call('/api/account/link', {
+  /** What linking this account into the code-owner's account would do (POST /api/account/link/preview). */
+  async previewLinkCode(code: string): Promise<MergePreview> {
+    const res = await this.call('/api/account/link/preview', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code }),
     });
+    if (!res.ok) throw await errorOf(res, 'could not preview that link');
+    return ((await res.json()) as { preview: MergePreview }).preview;
+  }
+
+  /**
+   * Link this account to an existing account using its 8-character code. The
+   * code-owner's account survives; this one is merged into it and gone. A
+   * non-empty account needs `confirmed` — without it the server answers 409
+   * with a preview of what the merge would do (see previewLinkCode).
+   */
+  async redeemLinkCode(code: string, confirmed = false): Promise<AccountUser> {
+    const res = await this.call('/api/account/link', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, confirmed }),
+    });
+    if (res.status === 409) {
+      const data = (await res.json().catch(() => ({}))) as { error?: string; preview?: MergePreview };
+      if (data.preview) throw new MergeNeedsConfirmError(data.preview, data.error ?? 'confirm the merge first');
+    }
     const user = await this.session(res);
     this.beaches = [];
     return user;

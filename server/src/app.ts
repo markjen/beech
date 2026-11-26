@@ -9,6 +9,9 @@
 //   GET    /api/beach                                      -> sand bytes + X-Beach-* headers | 404
 //   PUT    /api/beach            sand bytes, X-Beach-Location/Nx/Ny -> { version, updatedAt } (+ largeEdit / largeEditCheckpoint when the save reshaped the beach)
 //   DELETE /api/account                                    -> 204 (user, sessions, beach, neighbor links)
+//   POST   /api/account/link-code                          -> { code, expiresAt } (10-min one-time code)
+//   POST   /api/account/link/preview   { code }            -> { preview } (what merging this account would do)
+//   POST   /api/account/link           { code, confirmed? } -> { token, user, merged } (409 + preview until confirmed)
 //
 //   GET    /api/neighbors                                  -> { code, left, right, asked, requests }
 //   PUT    /api/neighbors/:side  { code }                  -> { status: asked | linked, neighbor }
@@ -100,6 +103,7 @@ import {
   type VerifiedIdentity,
 } from './auth.js';
 import { toBytes, type Db } from './db.js';
+import { executeAccountMerge, planAccountMerge } from './accountMerge.js';
 import { BEACH, NODE, PIER_SITE, SIDES, beachJson, isPublic, normalizeCode, shoreGraph, type NodeRow, type Side } from './shore.js';
 import {
   BadBlob,
@@ -608,6 +612,9 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   // Cross-platform account linking (docs/STEAM.md): generate a 10-minute code on
   // your existing device (web/iOS/Android), then enter it on a fresh Steam
   // account so both share the same user_id, beaches, inventory, and purchases.
+  // Since account merging, the redeeming account need not be empty: its
+  // beaches, items, credit, and purchases fold into the code owner's account
+  // (server/src/accountMerge.ts), after a preview the user confirms.
   const LINK_CODE_TTL_MS = 10 * 60 * 1000;
   app.post('/account/link-code', requireUser, async (c) => {
     const now = (cfg.now ?? Date.now)();
@@ -625,85 +632,62 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     return c.json({ code, expiresAt });
   });
 
-  app.post('/account/link', requireUser, async (c) => {
-    const now = (cfg.now ?? Date.now)();
-    const { code } = await body<{ code?: string }>(c);
+  /** The account a link code belongs to (the merge survivor). */
+  const lookupLinkCode = async (code: string, now: number): Promise<{ targetId: string; codeHash: string }> => {
     const normalized = normalizeLinkCode(code ?? '');
     if (normalized.length !== 8) fail(400, 'enter the 8-character link code');
     const codeHash = await hashToken(normalized);
-    const currentId = c.get('user').id;
-
-    const codeRows = await db.query<{ user_id: string; expires_at: string }>(
+    const rows = await db.query<{ user_id: string; expires_at: string }>(
       'SELECT user_id, expires_at FROM account_link_codes WHERE code_hash = $1',
       [codeHash],
     );
-    const row = codeRows[0];
+    const row = rows[0];
     if (!row || Number(row.expires_at) <= now) fail(404, 'that link code is invalid or has expired');
-    const targetId = row.user_id;
+    return { targetId: row.user_id, codeHash };
+  };
+
+  /** What redeeming this code would do — shown before the user confirms. */
+  app.post('/account/link/preview', requireUser, async (c) => {
+    const now = (cfg.now ?? Date.now)();
+    const { code } = await body<{ code?: string }>(c);
+    const { targetId } = await lookupLinkCode(code ?? '', now);
+    const currentId = c.get('user').id;
+    if (targetId === currentId) fail(400, 'this device is already signed into that account');
+    const plan = await db.withTransaction((tx) => planAccountMerge(tx, targetId, currentId, now, BEACH_CAP));
+    return c.json({ preview: plan.preview });
+  });
+
+  app.post('/account/link', requireUser, async (c) => {
+    const now = (cfg.now ?? Date.now)();
+    const { code, confirmed } = await body<{ code?: string; confirmed?: boolean }>(c);
+    const { targetId, codeHash } = await lookupLinkCode(code ?? '', now);
+    const currentId = c.get('user').id;
     if (targetId === currentId) fail(400, 'this device is already signed into that account');
 
-    // Only merge a fresh/empty account so nobody loses saved data. Stars,
-    // favorites, neighbor links/requests, and checkpoints are all lost on
-    // the merge (the user row is deleted; those tables cascade), so they
-    // count toward "not empty" too — a fresh Steam account has none of them.
-    const [beaches, items, purchases, stars, favorites, neighbors, requests, checkpoints] = await Promise.all([
-      db.query<{ count: string; saved: string }>(
-        'SELECT COUNT(*)::text AS count, COUNT(*) FILTER (WHERE sand IS NOT NULL)::text AS saved FROM beach WHERE owner_id = $1',
-        [currentId],
-      ),
-      db.query<{ count: string }>('SELECT COUNT(*)::text AS count FROM inventory WHERE user_id = $1 AND quantity > 0', [currentId]),
-      db.query<{ count: string }>('SELECT COUNT(*)::text AS count FROM purchases WHERE user_id = $1', [currentId]),
-      db.query<{ count: string }>('SELECT COUNT(*)::text AS count FROM star_first WHERE user_id = $1', [currentId]),
-      db.query<{ count: string }>('SELECT COUNT(*)::text AS count FROM favorites WHERE user_id = $1', [currentId]),
-      // Neighbor links/requests name beaches, not users (migration 7), so
-      // they are checked through the account's beaches.
-      db.query<{ count: string }>(
-        'SELECT COUNT(*)::text AS count FROM neighbors WHERE beach_id IN (SELECT id FROM beach WHERE owner_id = $1) OR neighbor_beach_id IN (SELECT id FROM beach WHERE owner_id = $1)',
-        [currentId],
-      ),
-      db.query<{ count: string }>(
-        'SELECT COUNT(*)::text AS count FROM neighbor_requests WHERE from_beach IN (SELECT id FROM beach WHERE owner_id = $1) OR to_beach IN (SELECT id FROM beach WHERE owner_id = $1)',
-        [currentId],
-      ),
-      db.query<{ count: string }>('SELECT COUNT(*)::text AS count FROM checkpoints WHERE owner_id = $1', [currentId]),
-    ]);
-    const nonEmpty =
-      Number(beaches[0]?.count ?? 0) > 1 ||
-      Number(beaches[0]?.saved ?? 0) > 0 ||
-      Number(items[0]?.count ?? 0) > 0 ||
-      Number(purchases[0]?.count ?? 0) > 0 ||
-      Number(stars[0]?.count ?? 0) > 0 ||
-      Number(favorites[0]?.count ?? 0) > 0 ||
-      Number(neighbors[0]?.count ?? 0) > 0 ||
-      Number(requests[0]?.count ?? 0) > 0 ||
-      Number(checkpoints[0]?.count ?? 0) > 0;
-    if (nonEmpty) {
-      fail(409, 'this account already has a saved beach, items, stars, neighbors, or checkpoints; delete it first to link another account');
-    }
-
-    // Consume the one-time code, move identities to targetId, and drop the empty user row.
-    // One transaction: a crash between the identity move and the user delete
-    // would orphan a user row with no identities (and a spent link code).
-    const claimed = await db.withTransaction(async (tx) => {
-      // An upload or creator-credit grant cannot slip in between this check
-      // and removal of the account.
-      await tx.query('SELECT id FROM users WHERE id = $1 FOR NO KEY UPDATE', [currentId]);
-      const [creatorState] = await tx.query(
-        `SELECT 1 FROM users WHERE id = $1 AND (credit_cents > 0 OR creator_credit_debt_cents > 0)
-         UNION ALL SELECT 1 FROM item_submissions WHERE submitter_user_id = $1 LIMIT 1`,
-        [currentId],
-      );
-      if (creatorState) fail(409, 'this account already has item submissions or credit; sign in with the account you want to keep');
-      const rows = await tx.query<{ user_id: string }>(
+    // Plan inside the transaction, holding both user rows, so nothing can
+    // change under the merge; the code is consumed in the same transaction.
+    // A non-empty merge needs confirmed: true — the client shows the
+    // preview first. The code is only spent once the merge is going ahead.
+    const outcome = await db.withTransaction(async (tx) => {
+      for (const id of [targetId, currentId].sort()) {
+        await tx.query('SELECT id FROM users WHERE id = $1 FOR NO KEY UPDATE', [id]);
+      }
+      const plan = await planAccountMerge(tx, targetId, currentId, now, BEACH_CAP);
+      if (plan.preview.blocks.length) return { blocked: plan.preview };
+      if (!plan.preview.empty && confirmed !== true) return { needsConfirm: plan.preview };
+      const claimed = await tx.query<{ user_id: string }>(
         'DELETE FROM account_link_codes WHERE code_hash = $1 AND expires_at > $2 RETURNING user_id',
         [codeHash, now],
       );
-      if (!rows.length) return rows;
-      await tx.query('UPDATE user_identities SET user_id = $1 WHERE user_id = $2', [targetId, currentId]);
-      await tx.query('DELETE FROM users WHERE id = $1', [currentId]);
-      return rows;
+      if (!claimed.length || claimed[0].user_id !== targetId) return { gone: true };
+      await executeAccountMerge(tx, plan, now);
+      return { merged: plan.preview };
     });
-    if (!claimed.length) fail(404, 'that link code is invalid or has expired');
+    if (outcome.blocked) return c.json({ error: outcome.blocked.blocks.join('; '), preview: outcome.blocked }, 409);
+    if (outcome.needsConfirm) {
+      return c.json({ error: 'this account has saved data: confirm the merge first', preview: outcome.needsConfirm }, 409);
+    }
+    if (outcome.gone) fail(404, 'that link code is invalid or has expired');
 
     const targetRows = await db.query<User>('SELECT id, name FROM users WHERE id = $1', [targetId]);
     const targetUser = targetRows[0];
@@ -716,7 +700,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       now,
       now + SESSION_DAYS * 86400000,
     ]);
-    return c.json({ token, user: targetUser });
+    return c.json({ token, user: targetUser, merged: outcome.merged });
   });
 
   app.delete('/account', requireUser, async (c) => {

@@ -52,6 +52,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       'Sand bucks are now beech bucks (bb) — same currency, new name, with a coin of its own. Your balance is unchanged.',
       'Settings → Account now links to your Beechshore account, for topping up your balance and seeing its history.',
       'Link another sign-in in Settings — Google, Apple or Steam — and the same beaches follow you everywhere.',
+      'Linking a second account that already has beaches now merges it into the one you keep, showing you what moves first.',
     ],
   },
   {
