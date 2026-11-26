@@ -7,7 +7,7 @@ function makeBeach(
   id: string,
   code: string,
   name: string,
-  opts: Partial<Pick<MyBeach, 'home' | 'left' | 'right' | 'pierSite'>> = {},
+  opts: Partial<Pick<MyBeach, 'home' | 'left' | 'right' | 'pierSite' | 'pier'>> = {},
 ): MyBeach {
   return {
     id,
@@ -21,6 +21,7 @@ function makeBeach(
     left: opts.left ?? null,
     right: opts.right ?? null,
     pierSite: opts.pierSite,
+    pier: opts.pier,
   };
 }
 
@@ -89,6 +90,17 @@ describe('shoreConnect', () => {
     const a = makeBeach('a', 'AAA111', 'Home', { home: true });
     const b = makeBeach('b', 'BBB222', 'Bondi', { pierSite: true });
     expect(hasSparePierWithoutSite([a, b], { owned: 1, placed: 0 })).toBe(false);
+  });
+
+  it('flags a spare pier when the only site already has a pier on it', () => {
+    // One trio, its middle beach already holds a pier, and a second pier in
+    // the bag: the site offers no place for the spare, so the hint must show.
+    const a = makeBeach('a', 'AAA111', 'Home', { home: true });
+    const b = makeBeach('b', 'BBB222', 'Bondi', { pierSite: true, pier: 'active' });
+    expect(hasSparePierWithoutSite([a, b], { owned: 2, placed: 1 })).toBe(true);
+    // A paused pier on the site still occupies it.
+    const c = makeBeach('c', 'CCC333', 'Brighton', { pierSite: true, pier: 'paused' });
+    expect(hasSparePierWithoutSite([a, c], { owned: 2, placed: 1 })).toBe(true);
   });
 
   it('does not flag when no pier is spare', () => {

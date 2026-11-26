@@ -72,13 +72,15 @@ export function ownBeachLabel(b: Pick<MyBeach, 'name' | 'home'>): string {
 
 /**
  * A pier in the bag with nowhere to put it: the player owns more piers than
- * are placed, but no beach sits between two of their own (docs/PIERS.md).
- * The shop sells the pier without that check, so the account panel has to
- * say so instead of leaving the pier invisible.
+ * are placed, but no beach can take one — no beach sits between two of their
+ * own without a pier already on it (docs/PIERS.md). A site with a pier
+ * already attached offers no place for a spare. The shop sells the pier
+ * without that check, so the account panel has to say so instead of leaving
+ * the pier invisible.
  */
 export function hasSparePierWithoutSite(
   beaches: readonly MyBeach[],
   piers: { owned: number; placed: number },
 ): boolean {
-  return piers.owned > piers.placed && !beaches.some((b) => b.pierSite);
+  return piers.owned > piers.placed && !beaches.some((b) => b.pierSite && !b.pier);
 }
