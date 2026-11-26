@@ -215,12 +215,12 @@ describe('web checkout', () => {
     const o = await checkout(p.token);
     expect(await owned(p.token, 'bucks')).toBe(0);
     expect((await hook(paid(o, p.id))).status).toBe(204);
-    expect(await owned(p.token, 'bucks')).toBe(30);
+    expect(await owned(p.token, 'bucks')).toBe(33);
     expect(await orderStatus(p.token, o.order)).toBe('paid');
     // retries, including two at once, grant nothing more
     const again = await Promise.all([hook(paid(o, p.id)), hook(paid(o, p.id))]);
     expect(again.map((r) => r.status)).toEqual([204, 204]);
-    expect(await owned(p.token, 'bucks')).toBe(30);
+    expect(await owned(p.token, 'bucks')).toBe(33);
     const rows = await db.query<{ store: string; transaction_id: string; environment: string }>(
       'SELECT store, transaction_id, environment FROM purchases WHERE user_id = $1',
       [p.id],
@@ -232,7 +232,7 @@ describe('web checkout', () => {
     const p = await signIn('web-buyer-pack');
     const o = await checkout(p.token, 'bucks_100');
     expect((await hook(paid(o, p.id, {}, 'bucks_100', '9.99'))).status).toBe(204);
-    expect(await owned(p.token, 'bucks')).toBe(100);
+    expect(await owned(p.token, 'bucks')).toBe(130);
   });
 
   it('grants nothing for the wrong amount, items, player or order, or a test payment on live', async () => {
@@ -266,7 +266,7 @@ describe('web checkout', () => {
     // a local-currency payment of the right item is fine (Xsolla converts)
     r = await hook(paid(o, p.id, { order: { id: Number(o.xsollaOrder), mode: 'default', currency: 'EUR', amount: '2.79' } }));
     expect(r.status).toBe(204);
-    expect(await owned(p.token, 'bucks')).toBe(30);
+    expect(await owned(p.token, 'bucks')).toBe(33);
   });
 
   it('a refund or cancellation takes the sand bucks back', async () => {
@@ -302,7 +302,7 @@ describe('web checkout', () => {
       expect(await orderStatus(p.token, o.order)).toBe('expired');
       expect((await hook(paid(o, p.id))).status).toBe(204);
       expect(await orderStatus(p.token, o.order)).toBe('paid');
-      expect(await owned(p.token, 'bucks')).toBe(30);
+      expect(await owned(p.token, 'bucks')).toBe(33);
     } finally {
       skew = 0;
     }

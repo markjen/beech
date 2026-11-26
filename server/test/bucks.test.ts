@@ -4,10 +4,14 @@ import { listBucks, shareOut, splitEvenly, tradeable, unitsOf } from '../src/buc
 import { PACKS, PRODUCTS, bucksIn, storeProductById } from '../src/products.js';
 
 describe('sand bucks', () => {
-  it('every price is whole sand bucks, at 10 cents a buck, and packs give what they cost', () => {
+  it('every price is whole sand bucks; packs carry a growing bonus, so bigger packs cost less per buck', () => {
     for (const p of [...PRODUCTS, ...PACKS]) expect(Number.isInteger(p.bucks), p.id).toBe(true);
-    for (const p of PACKS) expect(bucksIn(p), p.id).toBe(Math.round(p.usd * 10));
-    expect(storeProductById('bucks_30')?.bucks).toBe(30);
+    // base rate 10¢ a buck on the smallest pack; the bonus grows with the pack
+    expect(bucksIn(PACKS[0])).toBe(Math.round(PACKS[0].usd * 10));
+    const perBuck = PACKS.map((p) => p.usd / bucksIn(p));
+    for (let i = 1; i < perBuck.length; i++) expect(perBuck[i], PACKS[i].id).toBeLessThan(perBuck[i - 1]);
+    expect(storeProductById('bucks_30')?.bucks).toBe(33);
+    expect(storeProductById('bucks_200')?.bucks).toBe(280);
     expect(storeProductById('item_lighthouse')?.bucks).toBe(30); // an old app's receipt
   });
 

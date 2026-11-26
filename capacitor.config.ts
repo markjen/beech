@@ -43,6 +43,14 @@ const config: CapacitorConfig = {
       providers: { google: true, apple: true, facebook: false, twitter: false },
       logLevel: 1,
     },
+    // store purchases (src/net/shop.ts): finish a purchase only after the
+    // server has confirmed it — the plugin's default consumes a consumable
+    // the moment the store reports it bought, before the grant is checked.
+    // iOS reads this before the transaction listener starts; Android reads
+    // it at plugin load. src/net/shop.ts also calls configure() as a backup.
+    NativePurchases: {
+      autoFinishTransactions: false,
+    },
   },
 };
 

@@ -37,9 +37,14 @@ and vending goes, and gifts, a way to earn sand bucks. That's on purpose:
 | Claw, vending and digging finds (trade-in only) | common 5, uncommon 10, rare 15, legendary 30 |
 | Community items | their approved price, rounded to the buck |
 
-**Packs (real money):** 10 sand bucks $0.99 (`bucks_10`), 30 for $2.99
-(`bucks_30`), 50 for $4.99 (`bucks_50`), 100 for $9.99 (`bucks_100`), 200 for
-$19.99 (`bucks_200`). Gift cards give 1 sand buck per 10¢ of their value.
+**Packs (real money):** 10 sand bucks $0.99 (`bucks_10`), 33 for $2.99
+(`bucks_30`), 60 for $4.99 (`bucks_50`), 130 for $9.99 (`bucks_100`), 280 for
+$19.99 (`bucks_200`). The base rate is 10¢ a buck; bigger packs carry a
+bonus (+10% / +20% / +30% / +40%), so the price per buck falls as the pack
+grows (9.90¢, 9.06¢, 8.32¢, 7.68¢, 7.14¢). The product id is the price tier,
+not the grant — the ids are the product ids in the stores, Xsolla and Steam,
+so they stay put while the grant carries the bonus. Gift cards give 1 sand
+buck per 10¢ of their value.
 
 ## How it's kept
 

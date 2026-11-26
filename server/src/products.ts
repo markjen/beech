@@ -70,13 +70,20 @@ export const PRODUCTS: Product[] = [
 
 export const productById = (id: string): Product | undefined => PRODUCTS.find((p) => p.id === id);
 
-/** Sand-buck packs: what real money buys (docs/SAND_BUCKS.md). 1 sand buck = 10¢. */
+/**
+ * Sand-buck packs: what real money buys (docs/SAND_BUCKS.md). 1 sand buck =
+ * 10¢ at the base rate; bigger packs carry a bonus, so the price per buck
+ * falls as the pack grows (10: 9.90¢, 33: 9.06¢, 60: 8.32¢, 130: 7.68¢,
+ * 280: 7.14¢). The id is the price tier, not the grant: the ids are the
+ * product ids in the stores, Xsolla and Steam, so they stay put while the
+ * grant (and the name) carries the bonus.
+ */
 export const PACKS: Product[] = [
   { id: 'bucks_10', steamItemId: 1101, name: '10 sand bucks', grants: [{ item: 'bucks', quantity: 10 }], usd: 0.99, bucks: 10, blurb: 'Enough for a parasol or a deckchair' },
-  { id: 'bucks_30', steamItemId: 1102, name: '30 sand bucks', grants: [{ item: 'bucks', quantity: 30 }], usd: 2.99, bucks: 30, blurb: 'A lighthouse, or an extra beach' },
-  { id: 'bucks_50', steamItemId: 1103, name: '50 sand bucks', grants: [{ item: 'bucks', quantity: 50 }], usd: 4.99, bucks: 50, blurb: 'A centrepiece and a few things around it' },
-  { id: 'bucks_100', steamItemId: 1104, name: '100 sand bucks', grants: [{ item: 'bucks', quantity: 100 }], usd: 9.99, bucks: 100, blurb: 'The Founder’s pack, or a whole new build', featured: true },
-  { id: 'bucks_200', steamItemId: 1105, name: '200 sand bucks', grants: [{ item: 'bucks', quantity: 200 }], usd: 19.99, bucks: 200, blurb: 'For a stretch of shore' },
+  { id: 'bucks_30', steamItemId: 1102, name: '33 sand bucks', grants: [{ item: 'bucks', quantity: 33 }], usd: 2.99, bucks: 33, blurb: 'A lighthouse, or an extra beach — plus 3 free' },
+  { id: 'bucks_50', steamItemId: 1103, name: '60 sand bucks', grants: [{ item: 'bucks', quantity: 60 }], usd: 4.99, bucks: 60, blurb: 'A centrepiece and a few things around it — plus 10 free' },
+  { id: 'bucks_100', steamItemId: 1104, name: '130 sand bucks', grants: [{ item: 'bucks', quantity: 130 }], usd: 9.99, bucks: 130, blurb: 'The Founder’s pack, or a whole new build — plus 30 free' },
+  { id: 'bucks_200', steamItemId: 1105, name: '280 sand bucks', grants: [{ item: 'bucks', quantity: 280 }], usd: 19.99, bucks: 280, blurb: 'For a stretch of shore — plus 80 free, the best value per buck', featured: true },
 ];
 export const packById = (id: string): Product | undefined => PACKS.find((p) => p.id === id);
 /** What a real-money receipt can be for: a pack, or (from an old app version) an offer. */
