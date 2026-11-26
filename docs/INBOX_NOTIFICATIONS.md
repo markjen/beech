@@ -264,7 +264,14 @@ goes in the repo. The code is built (2026-11-26); each platform switches on
 by itself once its part below is done, and the deploy only adds a part's
 settings once its GitHub variable exists. Everything here is free.
 
-Run these with the same shell variables as GCP.md, "One-time setup":
+**Quick way:** `scripts/setup-push.sh web`, `scripts/setup-push.sh ios
+<AuthKey_KEYID.p8> <TEAM_ID>` and `scripts/setup-push.sh android` do every
+Google Cloud step below (run them where gcloud is signed in to
+`beech-prod`; they're safe to re-run and never print a secret), then print
+the GitHub variables to set. The Apple and Firebase console steps (B1, B4,
+C1, C2) and the GitHub variables and secrets stay by hand.
+
+By hand, with the same shell variables as GCP.md, "One-time setup":
 
 ```bash
 PROJECT=beech-prod; REGION=us-central1

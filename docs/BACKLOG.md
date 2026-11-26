@@ -71,7 +71,8 @@ The single list of what's left to do, for the owner and for agents.
   iOS (the APNs `.p8` in Secret Manager, two variables, the capability),
   Android (Firebase on `beech-prod`, the `GOOGLE_SERVICES_JSON` secret, the
   FCM role, a variable), then `NATIVE_PUSH=1` and a store release, and the
-  Play Data safety form. Step by step in
+  Play Data safety form. The gcloud parts are one command each
+  (`scripts/setup-push.sh web | ios | android`). Step by step in
   [INBOX_NOTIFICATIONS.md](INBOX_NOTIFICATIONS.md), "Turning on push:
   owner steps". Steam needs nothing.
 
