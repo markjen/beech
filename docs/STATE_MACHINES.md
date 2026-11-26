@@ -15,6 +15,7 @@ rest of `npm test` in `server/`. No E2E, no rendering.
 | Editing beaches | `BeachEditing.tla` | `editing.test.ts` | a fenced device overwriting the editor, more placed than owned, a restore overwritten |
 | Neighbor links | `Neighbors.tla` | `neighbors.test.ts` | one-sided links, two neighbors on one side, two beaches linked on both sides |
 | Copying a beach | `BeachCopy.tla` | `copy.test.ts` | more placed than owned, more beaches than the allowance, a copy of a beach just taken off the shore, a different version than previewed |
+| Sand bucks and trade-ins | `SandBucks.tla` | `bucks.test.ts` | a trade-in of a thing on a beach, the last one traded in twice, bucks lost or minted by spending, trading in or a refund |
 
 ## How it fits together
 
@@ -30,7 +31,7 @@ rest of `npm test` in `server/`. No E2E, no rendering.
    thresholds of 2), which is enough for these races, and each run takes
    seconds to minutes.
 3. **Reference models.** `snacksModel.ts`, `editingModel.ts`,
-   `neighborsModel.ts` and `copyModel.ts` are the specs in TypeScript, `Fixed = TRUE`, one
+   `neighborsModel.ts`, `copyModel.ts` and `bucksModel.ts` are the specs in TypeScript, `Fixed = TRUE`, one
    action at a time. Each method is one TLA+ action and returns the HTTP
    answer the server should give.
 4. **Tests**, in three layers per machine:
@@ -124,6 +125,26 @@ holds, and each copy request's step, target, mode and pinned version.
 Invariants: `WithinBag`, `WithinAllowance`, `CopiedWhatSeen`,
 `NoCopyOffShore`, `NothingOffBeach`. The three-statement form breaks the
 first, second and fourth; the design (one transaction) passes.
+
+## Sand bucks and trade-ins (`SandBucks.tla`)
+
+[SAND_BUCKS.md](SAND_BUCKS.md). State: the balance and debt, the bag's units
+by trade-in value, what's on the beaches, packs bought, and each trade-in's
+step.
+
+| Action | Route | Code |
+| --- | --- | --- |
+| `BuyPack` | `POST /store/purchase`, the Xsolla webhook, `POST /store/steam/finalize`, gift card redeem | `grantPurchase` / `creditBalance` (`server/src/bucksDb.ts`) |
+| `RefundPack` | store refund notifications, the Steam refund sync | `revokeStorePurchase` → `revokeGrant` / `clawBack` |
+| `Spend` | `POST /store/buy`, `POST /store/credit-purchase` | `buyWithBucks`: one `claimCreditPurchase` statement |
+| `FreeGrant` | claw, vending, dig finds, rewards, gifts in | the existing grants (`unit_cents` NULL = list value) |
+| `GiftOut` | `POST /gifts` | `giveOne` (moves `unit_cents`) |
+| `Save` | `PUT /beaches/mine/:id/sand` | `saveBeach` |
+| `TradeCheck` .. `TradeWrite` / `TradeAtomic` | `POST /bag/trade-in` | one transaction under `withPlayerWriteLock` |
+
+Invariants: `ValueConserved`, `NoPhantomUnits`, `NeverTradePlaced`,
+`NoNegative`. The two-statement trade-in breaks `NoPhantomUnits` and
+`NeverTradePlaced`; both are replayed in `bucks.test.ts`.
 
 ## Bugs found (2026-11-25), all fixed
 

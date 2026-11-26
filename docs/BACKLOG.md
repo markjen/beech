@@ -14,6 +14,16 @@ The single list of what's left to do, for the owner and for agents.
 
 ## Owner: things only you can do
 
+- [ ] **Sand-buck packs in the stores** (docs/SAND_BUCKS.md, "Owner tasks"):
+  create the consumable products `bucks_10`, `bucks_30`, `bucks_50`,
+  `bucks_100`, `bucks_200` ($0.99 / $2.99 / $4.99 / $9.99 / $19.99) in App
+  Store Connect and the Play Console, the same SKUs in Xsolla's catalog, and
+  Steam item ids 1101–1105. Update the store listings' in-app purchase
+  wording. Once the new app is live, take the old item products off sale.
+- [ ] **Watch the trade-in economy**: free claw, vending and dig finds trade
+  in at full value (your call, 2026-11-26). Check the `trade_ins` and
+  `credit_ledger` totals after the first weeks.
+
 - [ ] **Store products and payouts**: the Paid Apps agreement and banking on
   Apple, the payments profile on Google, then create the products and
   notification URLs. Step by step in MOBILE.md, "In-app purchases".
@@ -77,6 +87,10 @@ The single list of what's left to do, for the owner and for agents.
 _(nothing right now)_
 
 ## Up next (engineering)
+
+- [ ] **Sand bucks, follow-ups** ([SAND_BUCKS.md](SAND_BUCKS.md)): show the
+  balance on the HUD (not only in the shop and the copy sheet); trade in
+  several at once from the bag; an admin view of trade-ins and debts.
 
 Items marked **(model first)** change state the server keeps: they start
 with their TLA+ spec ([STATE_MACHINES.md](STATE_MACHINES.md#model-first-workflow),

@@ -1,6 +1,6 @@
 # Sand bucks and trade-ins (design)
 
-Status: **building** (2026-11-26). State machine:
+Status: **built** (2026-11-26), as designed. State machine:
 [`specs/tla/SandBucks.tla`](../specs/tla/SandBucks.tla) (see
 [State machine](#state-machine)).
 

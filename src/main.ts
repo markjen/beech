@@ -41,7 +41,7 @@ import { InventoryTray, PlaceBar } from './ui/inventory';
 import { ClawMachine } from './ui/clawMachine';
 import { DigFind } from './ui/digFind';
 import { Shop } from './ui/shop';
-import { ShopApi, shopMode, webOrderFromUrl, withoutWebOrderParams } from './net/shop';
+import { ShopApi, webOrderFromUrl, withoutWebOrderParams, type BagEntry } from './net/shop';
 import { CopySheet, rememberCopy, takePendingCopy } from './ui/copyBeach';
 import { VendingMachine } from './ui/vendingMachine';
 import { DEFAULT_SIZE, ITEMS, rollPlacement, type Item } from './world/items';
@@ -2949,12 +2949,42 @@ async function boot() {
           if (it.foundBy !== undefined) foundBy.set(it.item, it.foundBy);
         }
         inventory.setOwned(owned, foundBy);
+        // what each thing trades in for (docs/SAND_BUCKS.md): the next one that isn't on a beach
+        const bag = await acct.fetch('/api/bag').then((r) => (r.ok ? (r.json() as Promise<{ items: BagEntry[] }>) : null)).catch(() => null);
+        if (bag) {
+          inventory.setTradeValues(new Map(bag.items.filter((e) => e.free > 0 && e.values.length).map((e) => [e.item, e.values[0]])));
+          placeBar.refreshTrade();
+        }
         // what you've dug up, for the bag's "found" list
         const dug = await new DigFindApi(acct).list().catch(() => null);
         if (dug) inventory.setFound(countFound(), dug);
       } catch {
         /* offline: keep what we had */
       }
+    };
+    // trading in (docs/SAND_BUCKS.md): the thing in hand, or an extra beach
+    // from the bag, back for its sand bucks. Every beach is saved first, so
+    // the server counts what's on them as it is now.
+    const tradeIn = async (id: string) => {
+      await store.flushAll();
+      const res = await acct.fetch('/api/bag/trade-in', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ item: id, quantity: 1 }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string; credited?: number; bucks?: number };
+      if (!res.ok) throw new Error(data.error ?? 'that did not go through');
+      await loadOwned();
+      if (id === 'beach') void acct.loadBeaches().catch(() => {});
+      return { credited: data.credited ?? 0, left: inventory.tradeValue(id) === undefined ? 0 : 1 };
+    };
+    placeBar.setTrade({ value: (item) => inventory.tradeValue(item.id), tradeIn: (item) => tradeIn(item.id) });
+    inventory.onTradeIn = (id) => {
+      const v = inventory.tradeValue(id);
+      if (v === undefined || !window.confirm(`Trade in an extra beach for ${v} sand bucks?`)) return;
+      void tradeIn(id)
+        .then((r) => showToast(uiRoot, `+${r.credited} sand bucks`))
+        .catch((e: unknown) => showToast(uiRoot, (e as Error).message));
     };
     // gifting: an item in hand can go to someone else, by their code
     const giftApi = new GiftApi(acct);
@@ -2981,9 +3011,17 @@ async function boot() {
     claw.onClosed = () => guide.mark('claw');
     // the shop: paid through Apple / Google in the apps (src/net/shop.ts)
     const shopApi = new ShopApi(acct);
-    const shop = new Shop(uiRoot, shopApi, () => {
+    const shop = new Shop(uiRoot, shopApi, (id) => {
       void loadOwned();
       void acct.loadBeaches().catch(() => {});
+      // a pack bought for a copy (docs/SAND_BUCKS.md): back to the copy
+      if (id.startsWith('bucks_')) {
+        const p = takePendingCopy();
+        if (p) {
+          shop.close();
+          void copySheet.open(p.code, p.target);
+        }
+      }
     });
     shopDialog = shop;
     // back from web checkout (Pay Station adds ?web_order=…): once signed
@@ -3023,31 +3061,16 @@ async function boot() {
         return res.ok ? new Uint8Array(await res.arrayBuffer()) : null;
       },
       flush: (id) => store.flush(id),
-      buy: async (product) => {
-        const mode = shopMode();
-        if (mode === 'web') {
-          await shopApi.products();
-          // credit from gift cards first (the web only); else the card checkout
-          const credit = await shopApi.credit().catch(() => 0);
-          const quote = credit > 0 ? await shopApi.quote(product).catch(() => null) : null;
-          if (quote && credit >= quote.finalCents) {
-            await shopApi.buyWithCredit(product);
-            void loadOwned();
-            return 'bought';
-          }
-          if (!shopApi.webCheckout) {
-            showToast(uiRoot, 'Purchases are made in the beech app on iPhone and Android');
-            return 'stopped';
-          }
-          location.assign(await shopApi.startWebCheckout(product));
-          return 'away';
-        }
-        const r = await shopApi.buy(product);
-        if (r !== 'bought') return 'stopped';
-        void loadOwned();
-        return 'bought';
+      buyBasket: async (lines) => {
+        await shopApi.buyBasket(lines);
+        await loadOwned();
       },
-      remember: (p) => rememberCopy(p),
+      // not enough sand bucks: the shop's packs; the copy reopens once a pack is in (or after a web checkout)
+      getBucks: (p) => {
+        rememberCopy(p);
+        copySheet.close();
+        void shopDialog?.open('packs');
+      },
       copied: async (done, target, fit) => {
         await acct.loadBeaches().catch(() => {});
         await loadOwned();
@@ -3440,6 +3463,8 @@ async function boot() {
     visitor: () => visitorUi,
     /** open the copy sheet for a beach code (docs/COPY_BEACH.md) */
     copyBeach: (code: string) => copyBeach?.(code),
+    /** reload what you own (sand bucks e2e, docs/SAND_BUCKS.md) */
+    refreshOwned: () => refreshOwned(),
     objectView,
     animals: {
       snapshot: () => ({ ...animals.snapshot(), food: { ...animals.snapshot().food } }),

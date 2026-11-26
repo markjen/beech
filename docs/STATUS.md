@@ -1412,3 +1412,24 @@ changes. New gameplay and features follow the model-first workflow
 - Differs from the design: no multi-product web order yet (one card
   checkout per product); the app shows the server's basket rather than
   computing its own; a new beach takes the original's place.
+
+## Sand bucks and trade-ins (2026-11-26, docs/SAND_BUCKS.md)
+
+- Everything in the shop is priced in sand bucks (whole numbers, 10¢ a
+  buck, same prices as before). Real money only buys sand-buck packs (App
+  Store, Play, Steam, Xsolla, gift cards). The balance stays in
+  `users.credit_cents`, always a whole number of bucks.
+- Trade-ins: anything placeable that isn't on a beach, and unused extra
+  beaches, go back for their recorded value (`inventory.unit_cents`: what
+  was paid, a bundle or promo shared out; free things at list value; gifts
+  keep theirs). Snacks, the pet crab and one-of-a-kind items can't be
+  traded. One transaction under the player lock (`specs/tla/SandBucks.tla`).
+- Refunds of packs claw back their bucks; what was spent becomes debt,
+  paid off by the next bucks in. Creator royalties are in whole bucks and go
+  back on a trade-in.
+- Old app versions keep `/store/products` and their item receipts; new apps
+  use `/store/catalog`. The copy sheet's "Buy what's missing" is now one
+  sand-buck purchase (a pack first when the balance is short).
+- Differs from the design: none so far. Owner tasks (store products) in
+  BACKLOG.md.
+

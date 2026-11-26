@@ -92,8 +92,8 @@ await pb.evaluate((n) => window.__beech.account().signInDev(n), `ben${tag}`);
 await pb.waitForSelector('.copybeach.open [data-act="copy-drop"]', { timeout: 60000 });
 check(true, 'after signing in, the copy sheet opens');
 const sheetText = await pb.textContent('.copybeach.open');
-check(/Lighthouse × 1/.test(sheetText) && /1 short/.test(sheetText) && /\$2\.99/.test(sheetText), 'it lists the lighthouse as short, with its price');
-check((await pb.textContent('.copybeach [data-act="copy-buy"]')).includes('Buy what’s missing · $2.99'), 'buy what’s missing: exactly the lighthouse');
+check(/Lighthouse × 1/.test(sheetText) && /1 short/.test(sheetText) && /30 sand bucks/.test(sheetText), 'it lists the lighthouse as short, with its price in sand bucks');
+check((await pb.textContent('.copybeach [data-act="copy-buy"]')).includes('Buy what’s missing · 30 sand bucks'), 'buy what’s missing: exactly the lighthouse');
 check((await pb.textContent('.copybeach [data-act="copy-drop"]')).includes('Copy without them (1 left out)'), 'or copy without it');
 check(!!(await pb.$('.copybeach .beach-pill.on')) && (await pb.textContent('.copybeach .beach-pill.on')).includes('⌂'), 'no room for a new beach: it goes onto his home');
 if (shots) await pb.screenshot({ path: `${shots}/copy-sheet.png` });
@@ -104,22 +104,30 @@ const before = await api(pb, `/api/beaches/mine/${benHome}/sand`);
 await pb.click('.copybeach [data-act="copy-drop"]');
 await pb.waitForFunction(() => [...document.querySelectorAll('.hint')].some((h) => h.textContent.includes('Copied')), null, { timeout: 60000 });
 check(true, 'copied, with a toast');
+// the toast lasts 10 s, and loading the beach can take most of that here: hold on to its Undo now
+const undo = await pb.$('.hint .hint-action');
+check(!!undo && (await undo.textContent()) === 'Undo', 'the toast offers Undo');
 await pb.waitForFunction(() => window.__beech.beachId() && window.__beech.sync().state === 'saved', null, { timeout: 30000 });
 await pb.waitForFunction(() => window.__beech.info().objects.filter((o) => o.item === 'rock' && !o.wild).length >= 2, null, { timeout: 30000 });
 check(!(await things(pb)).includes('lighthouse'), `the rocks came, the lighthouse didn't (${await things(pb)})`);
-const undo = pb.locator('.hint button', { hasText: 'Undo' }).first();
-const hasUndo = await undo.waitFor({ timeout: 10000 }).then(() => true, () => false);
-check(hasUndo, 'the toast offers Undo');
-if (hasUndo) {
-  await undo.click();
+if (undo) {
+  await undo.evaluate((b) => b.click());
   await pb.waitForFunction(() => window.__beech.info().objects.filter((o) => o.item === 'rock' && !o.wild).length === 0, null, { timeout: 30000 }).catch(() => {});
   check(!(await things(pb)).includes('rock'), 'Undo put his beach back');
 }
 void before;
 
-// ---- buy what's missing from the sheet, then copy the whole beach
+// ---- buy what's missing: no sand bucks yet, so a pack first (docs/SAND_BUCKS.md), then back to the copy
 await pb.evaluate((c) => window.__beech.copyBeach(c), anaCode);
 await pb.waitForSelector('.copybeach.open [data-act="copy-buy"]', { timeout: 60000 });
+await pb.click('.copybeach [data-act="copy-buy"]');
+await pb.waitForSelector('.shop.open .shop-packs button[data-product="bucks_30"]', { timeout: 60000 });
+check(true, 'short of sand bucks: the shop opens at the packs');
+check((await pb.textContent('.shop.open .shop-bucks')).includes('0 sand bucks'), 'the shop shows the balance');
+if (shots) await pb.screenshot({ path: `${shots}/shop-packs.png` });
+await pb.click('.shop.open .shop-packs button[data-product="bucks_30"]');
+await pb.waitForSelector('.copybeach.open [data-act="copy-buy"]', { timeout: 60000 });
+check((await pb.textContent('.copybeach.open')).includes('30 sand bucks'), 'with a pack bought, the copy sheet is back');
 await pb.click('.copybeach [data-act="copy-buy"]');
 await pb.waitForSelector('.copybeach.open [data-act="copy-go"]', { timeout: 60000 });
 check((await pb.textContent('.copybeach [data-act="copy-go"]')).startsWith('Replace'), 'after buying, the button copies the whole beach');
@@ -127,6 +135,22 @@ if (shots) await pb.screenshot({ path: `${shots}/copy-bought.png` });
 await pb.click('.copybeach [data-act="copy-go"]');
 await pb.waitForFunction(() => window.__beech.info().objects.some((o) => o.item === 'lighthouse'), null, { timeout: 60000 });
 check(true, 'the lighthouse is on his beach');
+check((await api(pb, '/api/credit')).body?.bucks === 0, 'one purchase of 30 sand bucks paid for it');
+
+// ---- trade a thing in from the bag (the bar that shows while it's in hand)
+await api(pb, '/api/dev/grant', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ item: 'parasol' }) });
+await pb.evaluate(() => window.__beech.refreshOwned?.());
+await pb.waitForFunction(() => window.__beech.inventory.tradeValue('parasol') === 10, null, { timeout: 30000 });
+await pb.evaluate(() => window.__beech.setRail(true)); // the HUD starts as just the palm
+await pb.evaluate(() => window.__beech.inventory.select('parasol'));
+await pb.waitForSelector('.place-bar.shown .pb-trade:not([hidden])', { timeout: 30000 });
+check((await pb.textContent('.place-bar .pb-trade')) === 'trade in · 10', 'the parasol in hand offers "trade in · 10"');
+await pb.click('.place-bar .pb-trade');
+check((await pb.textContent('.place-bar .pb-trade')) === 'sure? · 10', 'the first tap asks');
+if (shots) await pb.screenshot({ path: `${shots}/trade-in.png` });
+await pb.click('.place-bar .pb-trade');
+await pb.waitForFunction(() => document.querySelector('.place-bar .pb-status')?.textContent === '+10 sand bucks', null, { timeout: 30000 });
+check((await api(pb, '/api/credit')).body?.bucks === 10, 'traded in: 10 sand bucks back');
 
 // ---- Ana hears about it once, and the shore page counts it
 const pa2 = await open('nointro&fixedres&seed=1&nofinds', { width: 390, height: 844 });
@@ -143,7 +167,7 @@ const benCode = await pb.evaluate(() => window.__beech.account().home?.code);
 await pa2.evaluate((c) => window.__beech.neighbors().visit(c), benCode);
 await pa2.waitForFunction((c) => window.__beech.neighbors().visiting?.code === c, benCode, { timeout: 60000 });
 await pa2.click('[data-act="palm"]');
-await pa2.click('.place');
+await pa2.click('.sp-toggle');
 const copyBtn = `.shore-bar [data-act="copy-${benCode}"]:not([hidden])`;
 await pa2.waitForSelector(copyBtn, { timeout: 60000 });
 check(true, 'visiting, the shore bar offers "copy"');

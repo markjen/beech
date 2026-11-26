@@ -360,7 +360,11 @@ Each one leaves the app playable.
   `beach.copied_from`, `copied_from_code`, `copied_version`,
   `beach_copies`, the checkpoint source `copy` and the inbox kind
   `copied`.
-- **Buying** goes one product at a time through the paths the shop already
+- **Since sand bucks (docs/SAND_BUCKS.md):** "Buy what's missing" is one
+  `POST /api/store/buy { basket }` in sand bucks. When the balance is short,
+  the sheet opens the shop at the sand-buck packs and comes back once one is
+  bought (or after the web checkout). The rest of this bullet is history.
+- **Buying** went one product at a time through the paths the shop already
   uses: credit when it covers the price (web), the card checkout (web;
   the page leaves, and the sheet reopens when the payment comes back),
   the App Store or Play (one sheet each), or Steam. No new payment

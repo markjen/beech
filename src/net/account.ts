@@ -560,10 +560,12 @@ export interface CopyFit {
   allowance: number;
   beaches: number;
   basket: {
-    lines: { product: string; quantity: number; item: string; cents: number }[];
-    cents: number;
+    lines: { product: string; quantity: number; item: string; bucks: number }[];
+    bucks: number;
     notForSale: { item: string; missing: number }[];
   };
+  /** your sand bucks (docs/SAND_BUCKS.md) */
+  bucks: number;
 }
 
 export interface CopyDone {

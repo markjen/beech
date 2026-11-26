@@ -13,7 +13,6 @@ import { drawMap } from './beachFileDialog';
 
 export type CopyTarget = string | 'new';
 export type CopyMode = 'strict' | 'drop-missing';
-export type BuyResult = 'bought' | 'away' | 'stopped';
 
 export interface CopyHost {
   api: CopyApi;
@@ -30,9 +29,10 @@ export interface CopyHost {
   /** save a beach of yours before it's replaced */
   flush(id: string): Promise<void>;
   /** buy one of a product. 'away': the page is leaving for a checkout */
-  buy(product: string): Promise<BuyResult>;
-  /** before buying: remember the copy, to reopen it after a web checkout */
-  remember(p: { code: string; target: CopyTarget; mode: CopyMode }): void;
+  /** buy the basket with sand bucks, in one go (docs/SAND_BUCKS.md) */
+  buyBasket(lines: { product: string; quantity: number }[]): Promise<void>;
+  /** not enough sand bucks: open the shop at the packs, remembering the copy to come back to */
+  getBucks(p: { code: string; target: CopyTarget; mode: CopyMode }): void;
   /** it's copied: go there, reload what changed, offer Undo */
   copied(done: CopyDone, target: CopyTarget, fit: CopyFit): Promise<void>;
   /** kept as a checkpoint */
@@ -41,7 +41,7 @@ export interface CopyHost {
 }
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
-const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+const bucks = (n: number) => `${n} sand bucks`;
 const isFree = (id: string) => itemById(id)?.unlimited === true;
 const beachLabel = (b: MyBeach) => b.name || (b.home ? 'Home' : 'Beach');
 
@@ -168,7 +168,7 @@ export class CopySheet {
         const missing = short.need - short.have;
         const line = f.basket.lines.find((l) => l.item === id);
         const placed = (f.elsewhere[id] ?? 0) > 0 && (f.owned[id] ?? 0) > 0 ? ' · on your other beaches' : '';
-        state = `${missing} short${placed} · ${line ? money(line.cents) : 'not in shop'}`;
+        state = `${missing} short${placed} · ${line ? bucks(line.bucks * line.quantity) : 'not in shop'}`;
       }
       out.push(`<li class="${short ? 'short' : ''}"><span>${esc(prizeName(id))} × ${n}</span><span>${esc(state)}</span></li>`);
     }
@@ -208,7 +208,7 @@ export class CopySheet {
       if (lines.length) {
         const all = buyable === shortItems;
         actions.push(
-          `<button type="button" class="claw-go" data-act="copy-buy">${all || !shortItems ? 'Buy what’s missing' : `Buy the ${buyable} you can`} · ${money(f.basket.cents)}</button>`,
+          `<button type="button" class="claw-go" data-act="copy-buy">${all || !shortItems ? 'Buy what’s missing' : `Buy the ${buyable} you can`} · ${bucks(f.basket.bucks)}</button>`,
         );
       }
       if (shortItems && !noRoom) actions.push(`<button type="button" class="shop-buy" data-act="copy-drop">Copy without them (${left} left out)</button>`);
@@ -217,6 +217,7 @@ export class CopySheet {
       <p class="shop-note">${esc(by)}</p>
       <div class="copy-onto"><span>Onto</span>${pills}</div>
       ${this.rows(f)}
+      ${lines.length ? `<p class="copy-status">${esc(bucks(f.bucks))}</p>` : ''}
       ${this.status ? `<p class="copy-status" role="status">${esc(this.status)}</p>` : ''}
       <div class="beachfile-actions">${actions.join('')}</div>
       <button type="button" class="action beachfile-keep" data-act="copy-keep">keep it as a checkpoint</button>`;
@@ -290,22 +291,14 @@ export class CopySheet {
   private async buy(): Promise<void> {
     const f = this.fit;
     if (!f) return;
+    // not enough sand bucks: get some first, then come back here
+    if (f.bucks < f.basket.bucks) {
+      this.host.getBucks({ code: this.code, target: this.target, mode: 'strict' });
+      return;
+    }
     await this.run(async () => {
-      this.host.remember({ code: this.code, target: this.target, mode: 'strict' });
-      let bought = 0;
-      for (const line of f.basket.lines) {
-        for (let i = 0; i < line.quantity; i++) {
-          this.status = `Buying ${prizeName(line.item).toLowerCase()}…`;
-          const r = await this.host.buy(line.product);
-          if (r === 'away') return; // off to the checkout: the sheet reopens on the way back
-          if (r === 'stopped') {
-            await this.after(bought);
-            return;
-          }
-          bought++;
-        }
-      }
-      await this.after(bought);
+      await this.host.buyBasket(f.basket.lines.map((l) => ({ product: l.product, quantity: l.quantity })));
+      await this.after(1);
     });
   }
 

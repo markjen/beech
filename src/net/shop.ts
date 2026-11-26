@@ -23,6 +23,39 @@ export interface ShopProduct {
   price?: string;
 }
 
+/** A sand-buck pack: what real money buys (docs/SAND_BUCKS.md). */
+export interface ShopPack {
+  id: string;
+  name: string;
+  usd: number;
+  /** sand bucks it gives */
+  bucks: number;
+  blurb: string;
+  featured: boolean;
+  /** the store's own price for this person, when the app knows it */
+  price?: string;
+}
+
+/** Something the shop sells for sand bucks. */
+export interface ShopOffer {
+  id: string;
+  name: string;
+  grants: { item: string; quantity: number }[];
+  /** price in sand bucks (0: free) */
+  bucks: number;
+  blurb: string;
+  featured: boolean;
+}
+
+/** A thing in your bag, and what each of its units trades in for (newest first). */
+export interface BagEntry {
+  item: string;
+  owned: number;
+  placed: number;
+  free: number;
+  values: number[];
+}
+
 export type ShopMode = 'native' | 'steam' | 'dev' | 'web';
 
 /** In the mobile apps: StoreKit/Play. On Steam: Steam Wallet. Dev builds: pretend store. Web: Xsolla or app links. */
@@ -143,7 +176,78 @@ export class ShopApi {
 
   constructor(private readonly account: Account) {}
 
-  /** The products, with the store's local prices in the apps. */
+  /**
+   * The shop (docs/SAND_BUCKS.md): sand-buck packs for real money, with the
+   * store's local prices in the apps, and what sand bucks buy.
+   */
+  async catalog(): Promise<{ packs: ShopPack[]; offers: ShopOffer[] }> {
+    const res = await this.account.fetch('/api/store/catalog');
+    if (!res.ok) throw new Error('the shop is closed right now');
+    const data = (await res.json()) as { packs: ShopPack[]; offers: ShopOffer[]; webCheckout?: boolean };
+    this.webCheckout = !!data.webCheckout;
+    let packs = data.packs;
+    if (shopMode() === 'native') {
+      try {
+        const p = await native();
+        const { products } = await p.getProducts({ productIdentifiers: packs.map((x) => x.id) });
+        for (const sp of products) {
+          const mine = packs.find((x) => x.id === sp.identifier);
+          if (mine) mine.price = sp.priceString;
+        }
+        // only what the store actually offers here can be bought
+        packs = packs.filter((x) => x.price);
+      } catch (e) {
+        reportError('shop', e, { source: 'shop:getProducts' });
+        /* store unreachable: show US prices, buying will say why it can't */
+      }
+    }
+    return { packs, offers: data.offers };
+  }
+
+  /** Your sand bucks (and any owed after a refund). */
+  async bucks(): Promise<{ bucks: number; debt: number }> {
+    const res = await this.account.fetch('/api/credit');
+    if (!res.ok) throw new Error('could not read your sand bucks');
+    const d = (await res.json()) as { bucks?: number; debt?: number };
+    return { bucks: d.bucks ?? 0, debt: d.debt ?? 0 };
+  }
+
+  /** Buy a basket of offers with sand bucks, in one go ("buy what's missing"). */
+  async buyBasket(lines: { product: string; quantity: number }[]): Promise<{ paid: number; bucks: number }> {
+    const res = await this.account.fetch('/api/store/buy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ basket: lines, requestId: crypto.randomUUID() }),
+    });
+    if (!res.ok) {
+      const msg = ((await res.json().catch(() => ({}))) as { error?: string }).error;
+      throw new Error(msg ?? 'that did not go through');
+    }
+    return (await res.json()) as { paid: number; bucks: number };
+  }
+
+  /** What's in your bag and what each thing trades in for. */
+  async bag(): Promise<BagEntry[]> {
+    const res = await this.account.fetch('/api/bag');
+    if (!res.ok) throw new Error('could not read your bag');
+    return ((await res.json()) as { items: BagEntry[] }).items;
+  }
+
+  /** Trade one (or more) of a thing in for its sand bucks. */
+  async tradeIn(item: string, quantity = 1): Promise<{ credited: number; bucks: number }> {
+    const res = await this.account.fetch('/api/bag/trade-in', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ item, quantity }),
+    });
+    if (!res.ok) {
+      const msg = ((await res.json().catch(() => ({}))) as { error?: string }).error;
+      throw new Error(msg ?? 'that did not go through');
+    }
+    return (await res.json()) as { credited: number; bucks: number };
+  }
+
+  /** The products, with the store's local prices in the apps (the shop before sand bucks). */
   async products(): Promise<ShopProduct[]> {
     const res = await this.account.fetch('/api/store/products');
     if (!res.ok) throw new Error('the shop is closed right now');
@@ -424,7 +528,7 @@ export class ShopApi {
   }
 
   /** Redeem a gift card code into account credit. */
-  async redeemGiftCard(code: string): Promise<{ creditedCents: number; creditCents: number }> {
+  async redeemGiftCard(code: string): Promise<{ creditedCents: number; creditCents: number; credited: number; bucks: number }> {
     const res = await this.account.fetch('/api/gift-cards/redeem', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -434,14 +538,14 @@ export class ShopApi {
       const msg = ((await res.json().catch(() => ({}))) as { error?: string }).error;
       throw new Error(msg ?? 'that code did not work');
     }
-    return (await res.json()) as { creditedCents: number; creditCents: number };
+    return (await res.json()) as { creditedCents: number; creditCents: number; credited: number; bucks: number };
   }
 
   /** What a product costs with a promo code, before buying. */
   async quote(
     productId: string,
     promoCode?: string,
-  ): Promise<{ priceCents: number; discountCents: number; finalCents: number; promo?: string }> {
+  ): Promise<{ priceCents: number; discountCents: number; finalCents: number; price: number; final: number; promo?: string }> {
     const res = await this.account.fetch('/api/store/quote', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -451,7 +555,7 @@ export class ShopApi {
       const msg = ((await res.json().catch(() => ({}))) as { error?: string }).error;
       throw new Error(msg ?? 'could not price that');
     }
-    return (await res.json()) as { priceCents: number; discountCents: number; finalCents: number; promo?: string };
+    return (await res.json()) as { priceCents: number; discountCents: number; finalCents: number; price: number; final: number; promo?: string };
   }
 
   /** Buy a product with account credit, with an optional promo code. */
@@ -487,7 +591,7 @@ export class ShopApi {
       const msg = ((await res.json().catch(() => ({}))) as { error?: string }).error;
       throw new Error(msg ?? 'the credit purchase did not go through');
     }
-    const receipt = (await res.json()) as { paidCents: number; discountCents: number; creditCents: number };
+    const receipt = (await res.json()) as { paidCents: number; discountCents: number; creditCents: number; paid: number; discount: number; bucks: number };
     clearRequest();
     return receipt;
   }
