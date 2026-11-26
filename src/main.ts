@@ -3027,8 +3027,15 @@ async function boot() {
     // card) load in their own chunk, off the start-up bundle (perf/budget.json).
     // If that fails (a first visit while offline), the game carries on
     // without them; account features need the network anyway.
-    const social = await Promise.all([import('./ui/invite'), import('./ui/inbox'), import('./ui/visitorCard'), import('./ui/inboxText')]).then(
-      ([invite, inbox, visitorCard, inboxText]) => ({ ...invite, ...inbox, ...visitorCard, ...inboxText }),
+    const social = await Promise.all([
+      import('./ui/invite'),
+      import('./ui/inbox'),
+      import('./ui/visitorCard'),
+      import('./ui/inboxText'),
+      import('./platform/notify'),
+      import('./ui/notifySettings'),
+    ]).then(
+      ([invite, inbox, visitorCard, inboxText, notify, notifySettings]) => ({ ...invite, ...inbox, ...visitorCard, ...inboxText, ...notify, ...notifySettings }),
       () => null,
     );
     const guideApi = new GuideApi(acct);
@@ -3136,7 +3143,7 @@ async function boot() {
     });
     // ---- visitors and the inbox (docs/INBOX_NOTIFICATIONS.md)
     if (social) {
-      const { InboxPanel, VisitorCard, ANNOUNCE, announce } = social;
+      const { InboxPanel, VisitorCard, ANNOUNCE, announce, Notifier, NotifySettings, openedFromNotification } = social;
       const inboxApi = new InboxApi(acct);
       const inboxPanel = new InboxPanel(uiRoot, hud.root, (n, l) => hud.button(n, l), inboxApi, {
         signedIn: () => !!acct.user,
@@ -3186,6 +3193,30 @@ async function boot() {
         void visitor.open(b.code, b.name, b.beachName);
       };
       shoreKey = '';
+      // notifications (docs/INBOX_NOTIFICATIONS.md, "Push"): web push, native
+      // push, or (Steam) the game's own OS notifications; a tap opens the inbox
+      const openInbox = () => {
+        if (acct.user) socialHub?.show('inbox');
+      };
+      const notifier = new Notifier(acct, openInbox);
+      const notifyRows = new NotifySettings(notifier, () => !!acct.user);
+      sheet.accountSlot.after(notifyRows.el);
+      steamBridge()?.onNotifyClick?.(openInbox);
+      navigator.serviceWorker?.addEventListener('message', (e: MessageEvent) => {
+        if ((e.data as { type?: string } | null)?.type === 'open-inbox') openInbox();
+      });
+      let inboxFromLink = openedFromNotification();
+      // ask once, when the first thing worth a notification arrives (never at
+      // start-up), after its own note over the beach has had its time
+      const ANNOUNCE_MS = 10000;
+      const maybeAsk = async () => {
+        if (!notifier.shouldAsk() || !(await notifier.channel())) return;
+        notifier.markAsked();
+        setTimeout(
+          () => showActionToast(uiRoot, 'Want to know when someone leaves you something?', 'yes', () => void notifier.enable().then(() => notifyRows.render()), 15000),
+          ANNOUNCE_MS + 500,
+        );
+      };
       // the poll carries the inbox: the badge, and a note for what matters
       let announced = -1;
       nv.onChange((n) => {
@@ -3196,16 +3227,25 @@ async function boot() {
           return;
         }
         if (announced >= 0 && latest.id > announced && ANNOUNCE.has(latest.kind) && !inboxPanel.isOpen) {
-          showActionToast(uiRoot, announce(latest.kind, latest.name), 'open', () => void inboxPanel.open(), 10000);
+          const text = announce(latest.kind, latest.name);
+          showActionToast(uiRoot, text, 'open', () => void inboxPanel.open(), ANNOUNCE_MS);
+          void notifier.local(latest.kind, text);
+          void maybeAsk();
           if (latest.kind === 'visit' || latest.kind === 'gift' || latest.kind === 'invite_settled') refreshOwned();
         }
         announced = Math.max(announced, latest.id);
       });
       acct.onChange((u) => {
+        void notifyRows.render();
         if (!u) {
           announced = -1;
           inboxPanel.setSummary(null);
           return;
+        }
+        void notifier.resync().then(() => notifyRows.render());
+        if (inboxFromLink) {
+          inboxFromLink = false;
+          openInbox();
         }
         inboxPanel.setSummary({ unread: 0, latest: null });
         if (cardAfterSignIn) {

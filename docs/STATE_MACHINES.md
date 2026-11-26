@@ -15,6 +15,7 @@ rest of `npm test` in `server/`. No E2E, no rendering.
 | Editing beaches | `BeachEditing.tla` | `editing.test.ts` | a fenced device overwriting the editor, more placed than owned, a restore overwritten |
 | Neighbor links | `Neighbors.tla` | `neighbors.test.ts` | one-sided links, two neighbors on one side, two beaches linked on both sides |
 | Piers (designed) | `Piers.tla` | Planned | a pier landed after an unlink, duplicate attachments, an attachment surviving a refund |
+| Push notifications | `Push.tla` | `push.test.ts` | a push sent twice, two in an hour, a push after unsubscribing, signing out, blocking or muting |
 
 ## How it fits together
 
@@ -125,6 +126,44 @@ finds a stale placement after a supporting link is removed between
 `LandCheck` and `Land`. Check and write under the same lock to enforce
 `PlacementWasEligible`. The model also checks `PaidAttachment` and
 `OnePerBeach`. Run `specs/tla/check.sh --bugs Piers` to reproduce both runs.
+
+## Push notifications (`Push.tla`)
+
+One player, their devices and the push tick
+([INBOX_NOTIFICATIONS.md](INBOX_NOTIFICATIONS.md), "Push";
+`server/src/push.ts`). State: the inbox rows (pushed or not, read or not),
+blocks, muted kinds, sessions and subscriptions, subscriptions the push
+service has forgotten, the hour and the hour of the last push, and the
+player's push lock. Two senders can run at once (two Cloud Run instances,
+or Cloud Scheduler and the server's own timer).
+
+| Action | Route or job | Code |
+| --- | --- | --- |
+| `Arrive` | every route that writes an inbox row | the row's own statement (unchanged); `pushed_at` starts empty |
+| `Read` | `POST /inbox/read` | one `UPDATE`; needs no lock (a read row is only skipped) |
+| `Block` | `PUT /blocks/:code` | one transaction: `lockPush` (the `push_state` row `FOR UPDATE`), then the insert |
+| `Mute`, `Unmute` | `PUT /notify-prefs` | one transaction: `lockPush`, then the upsert |
+| `Subscribe` | `POST /push/subscribe` | one upsert on the endpoint; needs no lock |
+| `Unsubscribe` | `DELETE /push/subscribe` | one `DELETE`; waits for a sender's `FOR SHARE` on the row |
+| `SignOut` | `POST /auth/logout` | the session's `DELETE` cascades to its subscription, which waits the same way |
+| `Expire` | the push service | — (the next send answers 404/410) |
+| `Claim`, `Deliver`, `Finish` | `pushTick` (`POST /push/tick`, and the timer in `server.ts`) | `pushPlayer`: one transaction holding `lockPush` and the subscriptions `FOR SHARE` from the claim to the end of the sends; the claim marks every due row `pushed_at` and the hour used, the sends run inside it, a 404/410 deletes that subscription |
+
+Invariants: `AtMostOnce` (a row reaches each device at most once),
+`OnePerHour`, `NotAfterGone` (nothing after an unsubscribe or sign-out has
+returned), `NeverBlocked`, `NeverMuted`, `OnlyPushKinds` (never a star),
+`NotInQuietHours`, `SubsHaveSessions`.
+
+The unlocked form (read what's due, send, then write it down; nothing
+waits) breaks the first five: two senders push the same rows twice in one
+hour, and an unsubscribe, sign-out, block or mute that lands mid-send
+returns before a push it should have stopped. The design holds over 5.8
+million states (about a minute). The tests replay each race by holding a
+send open at a fake push service: on the built code the second request
+waits for the send. Checked once against the unlocked form (sends moved
+after the commit): the four narrowing replays fail there. The cost is that
+a player's push holds a database connection for up to one send timeout
+(5 s); sends for one player run in parallel.
 
 ## Bugs found (2026-11-25), all fixed
 

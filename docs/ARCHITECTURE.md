@@ -84,7 +84,7 @@ simulated one.
 | `src/render/neighbors.ts` | The shore: beaches down the chain of neighbor links as snapshot dioramas (drawn near the view), visiting by code, favorites |
 | `Dockerfile` | Production image: web app (accounts on) + API server |
 | `src/audio/ambience.ts` | Procedural Web Audio soundscape |
-| `src/platform/*` | Runtime detection (`runtime.ts` for web/iOS/Android/Steam), haptics (Capacitor or vibrate), PWA registration, quality tier from benchmark |
+| `src/platform/*` | Runtime detection (`runtime.ts` for web/iOS/Android/Steam), haptics (Capacitor or vibrate), PWA registration, quality tier from benchmark, inbox notifications (`notify.ts`: web push, native push, Steam OS notifications) |
 | `src/ui/*` | The HUD (`hud.ts`: palm, rail, dirt flyout, undo), the status pane (built in `main.ts`), start screen, hint, Manage sheet (`overlays.ts`), debug panel, settings storage |
 | `scripts/` | `shot.mjs` (screenshots), `smoke.mjs` (end-to-end), `make-icons.mjs`, `set-version.mjs`, `extract-tides.mjs` (rebuild tide constants from TICON-3), `artifact-page.mjs` (claude.ai preview), `actions/*` (scripted interactions for screenshots) |
 | `android/`, `ios/` | Capacitor native shells (see docs/MOBILE.md) |

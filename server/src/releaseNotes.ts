@@ -17,8 +17,9 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: '2026-11-26',
-    title: 'Smoother live beaches',
+    title: 'Smoother live beaches, and notifications',
     changes: [
+      'Notifications: find out when someone leaves you something, gives you a gift, wants to be your neighbor, or a friend settles in, on the phone apps, in your browser, and on Steam while the game is running. Turn them on when the game asks, or in Settings, and pick what you hear about. At most one an hour, and none at night.',
       'Watching someone else’s beach while they play, their changes to the sand now flow in smoothly instead of popping, and things they move slide to their new spot.',
       'Your bag and the Beaches tab show how many of your extra beach slots are in use, and removing a beach frees its slot.',
       'The checkpoint list can be filtered by the beach it came from, or by imported files. Checkpoints from removed beaches keep their own place in the filter.',

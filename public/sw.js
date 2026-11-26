@@ -4,7 +4,8 @@
 // Vite gives built assets content hashes, so a new deploy just adds new files;
 // old ones are pruned when this file's CACHE version changes.
 // /api/* always goes to the network.
-const CACHE = 'beech-v2';
+// - push: inbox notifications (docs/INBOX_NOTIFICATIONS.md); a tap opens the inbox
+const CACHE = 'beech-v3';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icons/icon-192.png'];
 
 self.addEventListener('install', (event) => {
@@ -60,5 +61,40 @@ self.addEventListener('fetch', (event) => {
           return res;
         }),
     ),
+  );
+});
+
+// Web push: the server sends { title, body, tag } (server/src/push.ts).
+self.addEventListener('push', (event) => {
+  let msg = {};
+  try {
+    msg = event.data ? event.data.json() : {};
+  } catch {
+    /* not ours */
+  }
+  event.waitUntil(
+    self.registration.showNotification(msg.title || 'beech', {
+      body: msg.body || 'Something new in your inbox',
+      tag: msg.tag || 'beech-inbox',
+      renotify: true,
+      icon: './icons/icon-192.png',
+      badge: './icons/icon-192.png',
+    }),
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = new URL('./?inbox=1', self.registration.scope).href;
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((wins) => {
+      for (const w of wins) {
+        if (new URL(w.url).origin === self.location.origin) {
+          w.postMessage({ type: 'open-inbox' });
+          return w.focus();
+        }
+      }
+      return self.clients.openWindow(url);
+    }),
   );
 });

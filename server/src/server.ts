@@ -56,6 +56,7 @@ import { migrate } from './migrations.js';
 import { logEvent } from './observability.js';
 import { createRootApp, DEFAULT_SHORE, DEFAULT_LANDING } from './rootApp.js';
 import { steamStoreFromEnv, syncSteamRefunds } from './steamStore.js';
+import { devVapidKeys, makeSender, pushFromEnv, pushTick } from './push.js';
 import { xsollaFromEnv } from './xsolla.js';
 
 const env = process.env;
@@ -126,7 +127,36 @@ if (steamStore) {
   refundTimer.unref();
 }
 
+// Push notifications (docs/INBOX_NOTIFICATIONS.md): each platform is on
+// once its settings are there. The send queue is ticked once a minute here
+// and, when it's set up, by Cloud Scheduler (POST /api/push/tick), since
+// Cloud Run may idle this instance's CPU between requests. Two ticks at once
+// are safe: each player's push runs under their push lock (specs/tla/Push.tla).
+const pushConfig = pushFromEnv(env);
+// local development: throwaway VAPID keys, so web push can be tried (and
+// npm run e2e:push runs) without setting anything up
+if (devAuth && !pushConfig.web) pushConfig.web = { ...devVapidKeys(), subject: 'mailto:dev@localhost' };
+const pushSend = makeSender(pushConfig);
+logEvent('push_config', { web: !!pushConfig.web, ios: !!pushConfig.apns, android: !!pushConfig.fcm });
+if (pushConfig.web || pushConfig.apns || pushConfig.fcm) {
+  let ticking = false;
+  const pushTimer = setInterval(() => {
+    if (ticking) return;
+    ticking = true;
+    void pushTick(db, pushSend, Date.now())
+      .then((r) => r.pushes && logEvent('push_tick', { ...r }))
+      .catch((e) => logEvent('push_tick_error', { message: (e as Error).message }, 'WARNING'))
+      .finally(() => (ticking = false));
+  }, 60_000);
+  pushTimer.unref();
+}
+
 const api = createApp(db, {
+  push: {
+    config: pushConfig,
+    send: pushSend,
+    tick: env.PUSH_TICK_AUDIENCE && env.PUSH_TICK_SERVICE_ACCOUNT ? { audience: env.PUSH_TICK_AUDIENCE, email: env.PUSH_TICK_SERVICE_ACCOUNT } : undefined,
+  },
   googleClientIds: list(env.GOOGLE_CLIENT_IDS),
   appleClientIds: list(env.APPLE_CLIENT_IDS),
   steamAuth,

@@ -1283,3 +1283,13 @@ body.ambient-idle .shore-home {
 }
 
 /* ---- visitors and the inbox (docs/INBOX_NOTIFICATIONS.md) ---- */
+
+/* Settings → notifications (src/ui/notifySettings.ts) */
+.notify-settings .row.sub > span {
+  padding-left: 14px;
+  opacity: 0.85;
+}
+.notify-settings .row.status > span {
+  font-size: 0.85em;
+  opacity: 0.7;
+}
