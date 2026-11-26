@@ -355,7 +355,7 @@ export class Gestures {
   };
 
   private onKeyDown = (e: KeyboardEvent) => {
-    if (e.target instanceof HTMLInputElement) return;
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
     this.h.interacted();
     const k = e.key.toLowerCase();
     if ((e.ctrlKey || e.metaKey) && k === 'z') {

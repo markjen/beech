@@ -69,6 +69,28 @@ await pb.evaluate((c) => window.__beech.visitor().open(c, 'ana'), anaCode);
 await pb.waitForSelector('.visitor.open .visitor-gift[data-item="parasol"]', { timeout: 60000 });
 check(!(await pb.$('.visitor.open .visitor-gift[data-item="rock"]')), 'free things aren’t offered as gifts');
 check(!(await pb.$('.visitor.open .visitor-note')), 'a brand-new account gets quick notes only');
+
+// Allow free text for this card without waiting for the test account to age.
+const ratingUrl = `**/api/beaches/${anaCode}/rating`;
+const allowFreeText = async (route) => {
+  const response = await route.fetch();
+  await route.fulfill({ response, json: { ...await response.json(), freeText: true } });
+};
+await pb.route(ratingUrl, allowFreeText);
+await pb.evaluate((c) => window.__beech.visitor().open(c, 'ana'), anaCode);
+const note = pb.locator('.visitor.open .visitor-note');
+const send = pb.locator('[data-act="visitor-leave"]');
+await note.press('Space');
+check(await note.inputValue() === ' ', 'the note field accepts the Space key');
+check(await send.isDisabled(), 'a whitespace-only note cannot be sent');
+await note.pressSequentially('I can add a space');
+check(await note.inputValue() === ' I can add a space', 'spaces between words are preserved while typing');
+check(await send.isEnabled(), 'a typed note can be sent on its own');
+await note.clear();
+check(await send.isDisabled(), 'clearing the note disables sending again');
+await pb.unroute(ratingUrl, allowFreeText);
+await pb.evaluate((c) => window.__beech.visitor().open(c, 'ana'), anaCode);
+
 await pb.click('.visitor-shell[data-shells="4"]');
 await pb.click('.visitor-quick button >> text=Lovely beach!');
 await pb.click('.visitor-gift[data-item="parasol"]');
