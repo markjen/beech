@@ -1256,7 +1256,9 @@ the HUD layout in the section above.
   is saved in settings (`statusPane`). There is no weather data, so
   "weather" is the sky (☀ ◒ ☾), the local time and a swell word from the
   live wave scale. The mockup's credit, stars and finds chips were left
-  out; they would need extra requests. The "also in view" list
+  out; they would need extra requests. The credit (sand bucks) chip is
+  out on purpose: the balance is only useful in the shop, where it
+  already shows (Mark, 2026-11-26). The "also in view" list
   (`ShoreInfo`) and floating neighbor name-tag pills (`tagPlace`) are
   removed — the top-left card already shows whose beach you're looking at.
 - **The home icon** appears in the top right while away, including when the

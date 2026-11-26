@@ -88,8 +88,7 @@ _(nothing right now)_
 
 ## Up next (engineering)
 
-- [ ] **Sand bucks, follow-ups** ([SAND_BUCKS.md](SAND_BUCKS.md)): show the
-  balance on the HUD (not only in the shop and the copy sheet); trade in
+- [ ] **Sand bucks, follow-ups** ([SAND_BUCKS.md](SAND_BUCKS.md)): trade in
   several at once from the bag; an admin view of trade-ins and debts.
 
 Items marked **(model first)** change state the server keeps: they start
@@ -109,8 +108,9 @@ picked up.
   per beach, with editable sand and automatic joins between matching rows
   on linked beaches. See [INLAND_SECTIONS.md](INLAND_SECTIONS.md).
 - [ ] **Palm-first UI, follow-ups**: real weather (temperature, sky) for
-  the status pane's first line; credit, stars and finds-today chips in
-  the expanded pane (they need their own requests); decide whether the
+  the status pane's first line; stars and finds-today chips in
+  the expanded pane (they need their own requests; no credit/sand-bucks
+  chip: Mark, 2026-11-26, the balance is only useful in the shop); decide whether the
   palm should also fade after idle outside ambient mode (the mockup's open
   question; for now it never does). Tap-the-sand-to-close was left out:
   a tap is also how you stop a glide.
