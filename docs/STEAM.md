@@ -115,11 +115,6 @@ Required 2024+ Steam graphical asset sizes (older dimensions are rejected):
   | 1016 | Beach snacks (10) | 0.99 |
   | 1017 | Beach snacks (35) | 2.99 |
   | 1018 | Pet sand crab | 1.99 |
-  | 1019 | Pet sandpiper | 2.99 |
-  | 1020 | Pet octopus | 3.99 |
-  | 1021 | Pet harbor seal | 4.99 |
-  | 1022 | Pet sea turtle | 5.99 |
-  | 1023 | Pet dolphin | 7.99 |
 
 - Create the 10 achievement definitions (IDs in `src/platform/steamFeatures.ts`, S4): `FIRST_DIG`, `BURIED_FIND`, `CHAIR_VIEW`, `NIGHT_BEACH`, `WALK_SHORE`, `FIRST_NEIGHBOR`, `CLAW_WIN`, `VENDING_PULL`, `CHECKPOINT_SAVED`, `FIVE_BEACHES`.
 - Create the Rich Presence `#Status_*` display tokens matching the presence strings in S4.

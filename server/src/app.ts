@@ -41,7 +41,7 @@
 import { Hono, type Context } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 
-import { PACKS, PRODUCTS, copyBasket, productById, storeProductById, type Product } from './products.js';
+import { PACKS, PRODUCTS, copyBasket, productById, realMoneyProductById, storeProductById, type Product } from './products.js';
 import { createWeather } from './weather.js';
 import { creditBalance, grantPurchase } from './bucksDb.js';
 import { BUCK, bucksToCents, centsToBucks, listBucks, roundToBuck, shareOut, tradeable, unitsOf } from './bucks.js';
@@ -2585,6 +2585,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const price = await creatorOffers(db);
     return c.json({
       products: PRODUCTS.flatMap((p) => {
+        if (p.bucksOnly) return [];
         const cents = price(p);
         return cents === null ? [] : [{ id: p.id, name: p.name, grants: p.grants, usd: cents / 100, blurb: p.blurb, featured: !!p.featured }];
       }),
@@ -2626,7 +2627,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   app.post('/store/purchase', requireUser, async (c) => {
     const me = c.get('user').id;
     const { platform, productId, jws, token } = await body<{ platform?: string; productId?: string; jws?: string; token?: string }>(c);
-    const product = storeProductById(productId ?? '');
+    const product = realMoneyProductById(productId ?? '');
     if (!product) fail(404, 'no such product');
     const ok = (platform === 'ios' && jws) || (platform === 'android' && token) || (platform === 'dev' && cfg.devAuth && token);
     if (!ok) fail(400, 'expected { platform: ios, jws } or { platform: android, token }');
@@ -2749,7 +2750,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const { productId, promoCode, country: rawCountry } = await body<{ productId?: string; promoCode?: string; country?: unknown }>(c);
     // the web sells sand-buck packs (docs/SAND_BUCKS.md); item products stay
     // accepted for a page loaded before the sand-bucks release
-    const product = storeProductById(productId ?? '');
+    const product = realMoneyProductById(productId ?? '');
     if (!product) fail(404, 'no such product');
     if (rawCountry !== undefined && (typeof rawCountry !== 'string' || !/^[A-Za-z]{2}$/.test(rawCountry))) {
       return fail(400, 'country must be a two-letter code');
@@ -2952,7 +2953,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const { productId } = await body<{ productId?: string }>(c);
     // Steam sells sand-buck packs (docs/SAND_BUCKS.md); the item products stay
     // on sale here for the Steam builds already out (PR #118 review)
-    const product = storeProductById(productId ?? '');
+    const product = realMoneyProductById(productId ?? '');
     if (!product) fail(404, 'no such product');
 
     const idRows = await db.query<{ provider_sub: string }>(
@@ -2976,7 +2977,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       const { transId } = await steamInit(cfg.steamStore!, {
         orderId,
         steamId,
-        itemId: product!.steamItemId,
+        itemId: product!.steamItemId ?? fail(404, 'that product is not sold on Steam'),
         amountCents,
         description: product!.name,
       });

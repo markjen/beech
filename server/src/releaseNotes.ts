@@ -23,7 +23,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       '21 new real beaches, from Whitehaven and Cable Beach to Nazaré, Sylt, Tofino, Cancún and Zanzibar: 34 in all, each with its own real tides.',
       'A new place picker in Manage → Beaches: search, tap a dot on a world map, or browse by region, with each place’s local time and weather.',
       'Piers: snap three of your beaches side by side and the middle one can hold a timber pier that runs from the sand out over the water. Buy one in Manage → Beaches (30 sand bucks), look at it on your beach, then place it. Everyone visiting sees it too, and so do your beach’s pictures on beechshore.com.',
-      'Five new animals: a sandpiper that chases the waves, an octopus in the shallows that changes colour, a harbor seal and a sea turtle that swim the surf and come ashore, and the dolphin, now a pet too. Each can visit, be befriended with snacks, or be bought in the shop. Befriending one costs half its shop price in snacks.',
+      'Five new animals: a sandpiper that chases the waves, an octopus in the shallows that changes colour, a harbor seal and a sea turtle that swim the surf and come ashore, and the dolphin, now a pet too. Each can visit, be befriended with snacks, or be bought in the shop with sand bucks. Befriending one takes a quarter of its price in snacks (5 for a crab, 20 for a dolphin).',
       'Snacks can go in the water now, where they float for sea animals.',
       'Pets are yours to move: long-press your pet to carry it to a new spot or put it in your bag, then set it down on any of your beaches with no pet.',
       'The shop opens again in the Android and iPhone apps (it was stuck on “Opening the shop…”).',

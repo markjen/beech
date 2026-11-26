@@ -29,11 +29,6 @@ The single list of what's left to do, for the owner and for agents.
   Store Connect and the Play Console, the same SKUs in Xsolla's catalog, and
   Steam item ids 1101–1105. Update the store listings' in-app purchase
   wording. Once the new app is live, take the old item products off sale.
-- [ ] **Pet items in Steam** (docs/PETS.md): only if old Steam builds
-  should sell pets for real money, add item ids 1019–1023 (sandpiper $2.99,
-  octopus $3.99, seal $4.99, turtle $5.99, dolphin $7.99) to the
-  `ISteamMicroTxn` definitions (docs/STEAM.md). New apps buy them with sand
-  bucks and need nothing in the stores.
 - [ ] **Watch the trade-in economy**: free claw, vending and dig finds trade
   in at full value (your call, 2026-11-26). Check the `trade_ins` and
   `credit_ledger` totals after the first weeks.
@@ -238,8 +233,8 @@ picked up.
   See STATUS.md, "Real weather".
 
 - [x] **Pets: six species, movable** (2026-11-26): sand crab, sandpiper,
-  octopus, harbor seal, sea turtle, dolphin; befriend for half the shop
-  price in snacks; snacks float in the water; pets carried, put in the bag
+  octopus, harbor seal, sea turtle, dolphin; befriend for a quarter of the
+  price in snacks; sold for sand bucks only (no store items); snacks float in the water; pets carried, put in the bag
   and placed on any of your beaches. [PETS.md](PETS.md), `specs/tla/Pets.tla`.
 - [x] **Copy a beach** onto one of your own (2026-11-26): shore bar,
   beechshore.com and duplicate; buy what's missing or copy without them;

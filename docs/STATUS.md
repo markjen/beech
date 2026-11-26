@@ -1581,9 +1581,12 @@ Five findings, all fixed with a test each:
 - Six species, wild first: sand crab, sandpiper, octopus, harbor seal, sea
   turtle, dolphin. One table on each side (`server/src/petCatalog.ts`,
   `src/world/pets.ts`), kept in step by `server/test/stateMachines/pets.test.ts`.
-  Befriending takes `feeds` snacks (1 buck each) = half the shop price
-  (20/30/40/50/60/80 bucks); a test holds that rule. Products `pet_<species>`
-  (Steam ids 1019–1023) are built from the table; none trade in.
+  Befriending takes `feeds` snacks (1 buck each) = a quarter of the shop
+  price (20/28/40/48/60/80 bucks: 5/7/10/12/15/20 snacks); tests hold that
+  rule. Products `pet_<species>` are built from the table, sand bucks only
+  (`Product.bucksOnly`: not in `/store/products`, refused by every
+  real-money checkout via `realMoneyProductById`; only `pet_crab` keeps its
+  old listing for old apps); none trade in.
 - `AnimalController` (`src/world/animals.ts`) moves each its own way: crab as
   before; sandpiper walks forwards and targets the wave edge, flies in and
   flutters from the brush; octopus creeps in 0.15–1.3 m of water, tints to

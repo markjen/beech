@@ -18,8 +18,13 @@ import { PETS } from './petCatalog.js';
 
 export interface Product {
   id: string;
-  /** stable integer itemid sent to Steam ISteamMicroTxn/InitTxn */
-  steamItemId: number;
+  /** stable integer itemid sent to Steam ISteamMicroTxn/InitTxn (packs, and the old item products) */
+  steamItemId?: number;
+  /**
+   * sold only for sand bucks: not in any store, Steam or web checkout, and not
+   * listed for the app versions that sold things for real money
+   */
+  bucksOnly?: boolean;
   name: string;
   /** what you get */
   grants: { item: string; quantity: number }[];
@@ -66,14 +71,15 @@ export const PRODUCTS: Product[] = [
   { id: 'item_towel', steamItemId: 1015, name: 'Beach towel', grants: [{ item: 'towel', quantity: 1 }], usd: 0.99, bucks: 10, blurb: 'Striped, lying flat on the sand' },
   { id: 'food_pack_10', steamItemId: 1016, name: 'Beach snacks (10)', grants: [{ item: 'crab-treat', quantity: 10 }], usd: 0.99, bucks: 10, blurb: 'Ten treats to attract and feed beach animals' },
   { id: 'food_pack_35', steamItemId: 1017, name: 'Beach snacks (35)', grants: [{ item: 'crab-treat', quantity: 35 }], usd: 2.99, bucks: 30, blurb: 'Thirty-five treats to attract and feed beach animals' },
-  { id: 'item_pier', steamItemId: 1019, name: 'Pier', grants: [{ item: 'pier', quantity: 1 }], usd: 2.99, bucks: 30, blurb: 'A timber pier out over the water, for the middle of three of your beaches side by side' },
-  // pets: one product per species, priced from the pet table (docs/PETS.md)
+  { id: 'item_pier', bucksOnly: true, name: 'Pier', grants: [{ item: 'pier', quantity: 1 }], usd: 2.99, bucks: 30, blurb: 'A timber pier out over the water, for the middle of three of your beaches side by side' },
+  // pets: one product per species, priced from the pet table (docs/PETS.md).
+  // Sand bucks only; the crab keeps its old store listing for old app versions.
   ...PETS.map((p): Product => ({
     id: p.product,
-    steamItemId: p.steamItemId,
+    ...(p.legacySteamItemId ? { steamItemId: p.legacySteamItemId } : { bucksOnly: true }),
     name: `Pet ${p.name.toLowerCase()}`,
     grants: [{ item: p.item, quantity: 1 }],
-    usd: Math.round(p.bucks * 10 - 1) / 100,
+    usd: p.legacySteamItemId ? 1.99 : p.bucks / 10,
     bucks: p.bucks,
     blurb: p.blurb,
   })),
@@ -99,6 +105,11 @@ export const PACKS: Product[] = [
 export const packById = (id: string): Product | undefined => PACKS.find((p) => p.id === id);
 /** What a real-money receipt can be for: a pack, or (from an old app version) an offer. */
 export const storeProductById = (id: string): Product | undefined => packById(id) ?? productById(id);
+/** What real money can start a purchase of (stores, Steam, card): packs, and the old item products. */
+export const realMoneyProductById = (id: string): Product | undefined => {
+  const p = storeProductById(id);
+  return p && !p.bucksOnly ? p : undefined;
+};
 /** sand bucks a real-money product gives (0 for an old app's offer, which gives things) */
 export const bucksIn = (p: Product): number => p.grants.filter((g) => g.item === 'bucks').reduce((t, g) => t + g.quantity, 0);
 

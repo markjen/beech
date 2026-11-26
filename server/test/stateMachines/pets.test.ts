@@ -2,8 +2,8 @@
 // Fast: the real server in-process on PGlite, no rendering.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { befriendThreshold, TREAT_ITEM_ID } from '../../src/animals.js';
-import { PETS, SNACK_BUCKS } from '../../src/petCatalog.js';
-import { PRODUCTS } from '../../src/products.js';
+import { FEED_SHARE, PETS, SNACK_BUCKS } from '../../src/petCatalog.js';
+import { PRODUCTS, realMoneyProductById } from '../../src/products.js';
 import { listBucks } from '../../src/bucks.js';
 import { PETS as CLIENT_PETS } from '../../../src/world/pets';
 import { startServer, type Server } from './harness.js';
@@ -48,10 +48,11 @@ async function where(o: Owner) {
 }
 
 describe('pet catalog', () => {
-  it('feeding to befriend costs exactly half the shop price, for every pet', () => {
+  it('feeding to befriend costs exactly a quarter of the shop price, for every pet', () => {
     expect(PETS).toHaveLength(6);
+    expect(FEED_SHARE).toBe(1 / 4);
     for (const p of PETS) {
-      expect(p.feeds * SNACK_BUCKS * 2, p.species).toBe(p.bucks);
+      expect(p.feeds * SNACK_BUCKS, p.species).toBe(p.bucks * FEED_SHARE);
       expect(befriendThreshold(p.species)).toBe(p.feeds);
     }
     // one snack is one buck, as sold in the shop
@@ -59,13 +60,25 @@ describe('pet catalog', () => {
     expect(pack.bucks / pack.grants[0].quantity).toBe(SNACK_BUCKS);
   });
 
-  it('every pet is sold in the shop at its price, and none can be traded in', () => {
+  it('every pet is sold for sand bucks at its price, never for real money (but the old crab listing), and none trade in', () => {
     for (const p of PETS) {
       const prod = PRODUCTS.find((x) => x.id === p.product);
       expect(prod, p.species).toMatchObject({ bucks: p.bucks, grants: [{ item: p.item, quantity: 1 }] });
       expect(listBucks(p.item)).toBeNull();
+      expect(!!realMoneyProductById(p.product), p.species).toBe(p.species === 'crab');
+      expect(prod!.steamItemId === undefined, p.species).toBe(p.species !== 'crab');
     }
-    expect(new Set(PRODUCTS.map((p) => p.steamItemId)).size).toBe(PRODUCTS.length);
+    const ids = PRODUCTS.flatMap((p) => (p.steamItemId === undefined ? [] : [p.steamItemId]));
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('new pets are in the sand-bucks shop, and refused by every real-money checkout', async () => {
+    const o = await owner();
+    const catalog = (await (await s.req('/store/catalog')).json()) as { offers: { id: string; bucks: number }[] };
+    expect(catalog.offers.find((x) => x.id === 'pet_dolphin')).toMatchObject({ bucks: 80 });
+    const old = (await (await s.req('/store/products')).json()) as { products: { id: string }[] };
+    expect(old.products.map((p) => p.id)).not.toContain('pet_dolphin');
+    expect((await s.post('/store/purchase', o.token, { platform: 'dev', productId: 'pet_dolphin', token: 'x' })).status).toBe(404);
   });
 
   it('the app and the server agree on every pet', () => {

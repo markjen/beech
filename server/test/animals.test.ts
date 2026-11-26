@@ -160,8 +160,8 @@ describe('resident pets (A3)', () => {
     const early = await req('/pet/adopt', json('POST', { mode: 'befriend', name: 'Pinchy' }), u.token);
     expect(early.status).toBe(409);
 
-    // Grant enough snacks to hit threshold + 1 extra for feeding after adoption
-    expect((await req('/dev/grant', json('POST', { item: TREAT_ITEM_ID, quantity: BEFRIEND_FEED_THRESHOLD + 1 }), u.token)).status).toBe(204);
+    // Grant just enough snacks to hit the threshold (one more comes after adoption)
+    expect((await req('/dev/grant', json('POST', { item: TREAT_ITEM_ID, quantity: BEFRIEND_FEED_THRESHOLD }), u.token)).status).toBe(204);
 
     let ready = false;
     for (let i = 0; i < BEFRIEND_FEED_THRESHOLD; i++) {

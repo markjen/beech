@@ -33,9 +33,9 @@ function run(ctrl: AnimalController, env: AnimalEnv, seconds: number, each?: () 
 }
 
 describe('pet catalog (app)', () => {
-  it('six pets; feeding to befriend is half the price for each', () => {
+  it('six pets; feeding to befriend is a quarter of the price for each', () => {
     expect(PETS.map((p) => p.species)).toEqual(['crab', 'sandpiper', 'octopus', 'seal', 'turtle', 'dolphin']);
-    for (const p of PETS) expect(p.feeds * 2).toBe(p.bucks);
+    for (const p of PETS) expect(p.feeds * 4).toBe(p.bucks);
     expect(new Set(PETS.map((p) => p.bucks)).size).toBe(6);
   });
 
