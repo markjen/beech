@@ -16,7 +16,7 @@ like the other things in your bag.
    bucks). For every species `feeds × 1 buck = price ÷ 4` (`FEED_SHARE`), so
    befriending is quick: 5 to 20 snacks. Checked by tests on both sides so a
    future price change can't break it.
-7. **Sand bucks only.** Pets are offers in the sand-bucks shop
+4. **Sand bucks only.** Pets are offers in the sand-bucks shop
    (`/store/catalog`), bought on every platform with sand bucks. New pet
    products have no App Store, Play, Steam or Xsolla item: `bucksOnly` keeps
    them out of `/store/products` and refuses them at `/store/purchase`,
@@ -24,16 +24,16 @@ like the other things in your bag.
    old listing, for the app versions already in the stores, until those
    listings come off sale. The pier (`item_pier`) is `bucksOnly` too: it
    never had a store item, so the Steam id it was given is dropped.
-4. **Pets are items.** A pet you own is on one of your beaches or in your bag.
+5. **Pets are items.** A pet you own is on one of your beaches or in your bag.
    Pick it up on the beach (long-press) to carry it to a new spot, or put it
    in your bag; place it from the bag on any of your beaches with no pet.
    Moving between beaches = put in bag, then place. Name, fed count and
    hunger come with it; a pet in the bag doesn't get hungrier.
-5. **Water pets are visible.** Sea pets swim at the surface: the dolphin's
+6. **Water pets are visible.** Sea pets swim at the surface: the dolphin's
    back and fin, the turtle's shell and head, the seal's head, the octopus's
    mantle in the shallows always break the water. A unit test holds every sea
    pet's top above the water line while swimming.
-6. **Cozy.** As before: moods from `last_fed_at` (happy, peckish, hungry,
+7. **Cozy.** As before: moods from `last_fed_at` (happy, peckish, hungry,
    sleepy), pets never die or leave. Visitors: 1 free feed a day, then their
    own snacks.
 

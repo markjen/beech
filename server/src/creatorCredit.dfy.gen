@@ -6,7 +6,7 @@ type i__type(==)
 
 datatype Offer = Offer(id: string, submitter_user_id: string, product_id: string, item_id: string, approved_price_cents: Option<int>, for_sale: bool, status: string)
 
-datatype Product = Product(id: string, steamItemId: int, name: string, grants: seq<i__type>, usd: int, bucks: int, blurb: string, featured: Option<bool>)
+datatype Product = Product(id: string, steamItemId: Option<int>, bucksOnly: Option<bool>, name: string, grants: seq<i__type>, usd: int, bucks: int, blurb: string, featured: Option<bool>)
 
 function salePriceCents(product: Product, offer: Option<Offer>): Option<int>
 {

@@ -1,6 +1,6 @@
 // The pets you can befriend or buy (docs/PETS.md). One table, so the shop,
 // befriending and the bag all agree. The app keeps the same table in
-// src/world/pets.ts; server/test/petCatalog.test.ts keeps the two in step.
+// src/world/pets.ts; server/test/stateMachines/pets.test.ts keeps the two in step.
 
 export type PetSpecies = 'crab' | 'sandpiper' | 'octopus' | 'seal' | 'turtle' | 'dolphin';
 export type Habitat = 'land' | 'sea' | 'both';

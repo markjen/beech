@@ -8,9 +8,9 @@ export const TREAT_ITEM_ID = 'crab-treat';
 export const PET_CRAB_ITEM_ID = 'pet-crab';
 /** Chance to receive a bonus free beach snack alongside a digging find. */
 export const FREE_TREAT_CHANCE = 0.25;
-/** How many times feeding wild crabs on a beach unlocks befriending one (each species: its `feeds`, half its price). */
+/** How many times feeding wild crabs on a beach unlocks befriending one (each species: its `feeds`, a quarter of its price). */
 export const BEFRIEND_FEED_THRESHOLD = PETS[0].feeds;
-/** Snacks it takes to befriend a wild one of this species (docs/PETS.md: half its shop price). */
+/** Snacks it takes to befriend a wild one of this species (docs/PETS.md: a quarter of its shop price). */
 export const befriendThreshold = (species: string): number => petSpec(species)?.feeds ?? BEFRIEND_FEED_THRESHOLD;
 /** A known species, or undefined (default: crab). */
 export function speciesOf(raw: unknown): PetSpecies | undefined {
