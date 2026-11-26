@@ -2178,8 +2178,8 @@ async function boot() {
     const simTime = prevT + (info.t - prevT) * mix;
     const amp = info.waveMul * liveState.waves;
     const camFwd = cam.forward();
-    renderer.update(palette, camFwd, (now - t0) / 1000, simTime, info.tide, amp);
-    neighbors?.update(palette, camFwd, (now - t0) / 1000, simTime, info.tide, amp);
+    renderer.update(palette, camFwd, (now - t0) / 1000, simTime, info.tide, amp, now);
+    neighbors?.update(palette, camFwd, (now - t0) / 1000, simTime, info.tide, amp, now);
     // the live beach is drawn while it's near the view
     const ownShown = liveShown();
     renderer.setVisible(ownShown);

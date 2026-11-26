@@ -283,7 +283,7 @@ export class BeachRenderer {
 
     this.buildMeshes();
     this.bindFieldTextures();
-    this.syncNeighborUniforms(true);
+    this.syncNeighborUniforms(performance.now(), true);
   }
 
   /** A flat-shaded lit material with a fixed colour (props such as shells). `shine` is its specular strength, 0 for matte. */
@@ -575,10 +575,10 @@ export class BeachRenderer {
     if (this.negNeighbor === negX && this.posNeighbor === posX) return;
     this.negNeighbor = negX;
     this.posNeighbor = posX;
-    this.syncNeighborUniforms(true);
+    this.syncNeighborUniforms(performance.now(), true);
   }
 
-  private syncNeighborUniforms(force = false): void {
+  private syncNeighborUniforms(now: number, force = false): void {
     const neg = this.negNeighbor;
     const pos = this.posNeighbor;
     const negGen = neg ? neg.texGen : this.texGen;
@@ -614,7 +614,7 @@ export class BeachRenderer {
       }
     }
     if (neg || refsChanged) {
-      const nm = neg ? neg.frameMix : 1;
+      const nm = neg ? neg.frameMixAt(now) : 1;
       const ns = neg ? neg.staticMix : 0;
       for (const m of this.fieldMats) {
         m.setFloat('negMix', nm);
@@ -622,7 +622,7 @@ export class BeachRenderer {
       }
     }
     if (pos || refsChanged) {
-      const pm = pos ? pos.frameMix : 1;
+      const pm = pos ? pos.frameMixAt(now) : 1;
       const ps = pos ? pos.staticMix : 0;
       for (const m of this.fieldMats) {
         m.setFloat('posMix', pm);
@@ -738,6 +738,13 @@ export class BeachRenderer {
     this.frameMix = Math.max(0, Math.min(1, m));
   }
 
+  /** Sample the blend at the same time on both sides of a linked edge. */
+  private frameMixAt(now: number): number {
+    if (!this.frameEase) return this.frameMix;
+    const u = Math.max(0, Math.min(1, (now - this.frameEase.t0) / this.frameEase.ms));
+    return u * u * (3 - 2 * u);
+  }
+
   /** Brush ring under the finger. x,z world; r metres; alpha 0..1 */
   setBrush(x: number, z: number, r: number, alpha: number, color: RGB): void {
     if (this.brush.x !== x || this.brush.y !== z || this.brush.z !== r || this.brush.w !== alpha) {
@@ -753,7 +760,7 @@ export class BeachRenderer {
     }
   }
 
-  update(p: Palette, cameraDir: Vector3, time: number, simTime: number, tide: number, ampScale: number): void {
+  update(p: Palette, cameraDir: Vector3, time: number, simTime: number, tide: number, ampScale: number, now = performance.now()): void {
     const palChanged = p !== this.lastPalette;
     const camChanged = !this.hasLitState || this._camDir.x !== cameraDir.x || this._camDir.y !== cameraDir.y || this._camDir.z !== cameraDir.z;
     if (palChanged || camChanged) {
@@ -783,10 +790,10 @@ export class BeachRenderer {
     }
     const swellEnv = swellEnvelope(simTime, sw);
 
-    if (this.frameEase) {
-      const u = Math.min(1, (performance.now() - this.frameEase.t0) / this.frameEase.ms);
-      this.frameMix = u * u * (3 - 2 * u);
-      if (u >= 1) this.frameEase = null;
+    const frameMix = this.frameMixAt(now);
+    if (this.frameEase && frameMix === 1) {
+      this.frameMix = 1;
+      this.frameEase = null;
     }
     if (this.ease) {
       const u = Math.min(1, (performance.now() - this.ease.t0) / this.ease.ms);
@@ -794,14 +801,14 @@ export class BeachRenderer {
       if (u >= 1) this.ease = null;
     }
     for (const m of this.fieldMats) {
-      m.setFloat('frameMix', this.frameMix);
+      m.setFloat('frameMix', frameMix);
       if (ampChanged) m.setVector3('swellA', this._swellA);
       m.setFloat('swellEnv', swellEnv);
       m.setFloat('simTime', simTime);
       m.setFloat('tide', tide);
     }
     // keep linked neighbor texture swaps & frameMix in sync every frame
-    if (this.negNeighbor || this.posNeighbor) this.syncNeighborUniforms();
+    if (this.negNeighbor || this.posNeighbor) this.syncNeighborUniforms(now);
 
     this.waterMat.setFloat('time', time);
 
