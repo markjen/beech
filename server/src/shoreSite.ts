@@ -68,8 +68,8 @@ export interface ShoreSiteConfig {
   gameUrl: string;
   /** the site's public origin for links people share (https://beechshore.com); unset: from the request */
   publicUrl?: string;
-  /** canonical shore origin, used only by the game's account connection window */
-  submissionOrigin?: string;
+  /** public shore origin for canonical URLs and the alternate mount's account connection window */
+  canonicalOrigin?: string;
   /** built web app dir (public/): where item renders live (public/items/<id>.png) */
   publicDir?: string;
   /** uncached image draws per minute per client IP (default 60) */
@@ -151,6 +151,11 @@ export function createShoreSite(db: Db, cfg: ShoreSiteConfig): Hono<any, any, an
     const u = new URL(c.req.url);
     const proto = c.req.header('x-forwarded-proto')?.split(',')[0]?.trim() || u.protocol.replace(':', '');
     return `${proto}://${c.req.header('host') ?? u.host}${href(p)}`;
+  };
+  const canonical = (url: string) => {
+    if (!cfg.canonicalOrigin) return url;
+    const { pathname, search } = new URL(url);
+    return `${cfg.canonicalOrigin}${pathname.slice(base.length) || '/'}${search}`;
   };
   const visitUrl = (code: string) => `${game}/?visit=${code}`;
   const imgPath = (b: Pick<ShoreBeach, 'code' | 'updatedAt'>, kind: 'card' | 'thumb') =>
@@ -371,7 +376,7 @@ export function createShoreSite(db: Db, cfg: ShoreSiteConfig): Hono<any, any, an
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>${esc(m.title)}</title>
 <meta name="description" content="${esc(m.description)}">
-<link rel="canonical" href="${esc(m.url)}">
+<link rel="canonical" href="${esc(canonical(m.url))}">
 <meta name="theme-color" content="#fbf6ee">
 <link rel="icon" href="${FAVICON}" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -537,8 +542,8 @@ ${places ? `<section><div class="sec-head"><h2>By real beach</h2></div><div clas
       c,
       layout(
         {
-          title: 'beechshore: every beach on the shore',
-          description: 'Sandcastles, moats and harbours people built in beech, one beach after another along an endless shore. Walk it, then build your own.',
+          title: 'Beechshore | Explore Player-Built Beaches in Beech',
+          description: 'Explore sandcastles, moats and harbours built by players in Beech, a beach-building game. Visit public beaches in 3D, browse the item catalog, or build your own beach.',
           url,
           image: abs(c, featured ? imgPath(featured, 'card') : '/img/shore.png'),
           imageAlt: 'A beach from above, sand and sea',
@@ -577,7 +582,7 @@ ${places ? `<section><div class="sec-head"><h2>By real beach</h2></div><div clas
         c,
         layout(
           {
-            title: `${L.title} · beechshore`,
+            title: `${L.title}${page > 1 ? `, page ${page}` : ''} · beechshore`,
             description: L.blurb,
             url,
             image: abs(c, bs[0] ? imgPath(bs[0], 'card') : '/img/shore.png'),
@@ -586,6 +591,7 @@ ${places ? `<section><div class="sec-head"><h2>By real beach</h2></div><div clas
           main,
           { share: { url, text: `${L.title} on beechshore 🏖️`, title: L.title }, active: sort },
         ),
+        page > 1 && !bs.length ? 404 : 200,
       );
     });
   }
@@ -603,6 +609,7 @@ ${places ? `<section><div class="sec-head"><h2>By real beach</h2></div><div clas
       }
     }
     const hits = raw ? await search(raw, PAGE) : [];
+    c.header('X-Robots-Tag', 'noindex');
     const url = abs(c, '/find');
     const main = `
 <section class="head">
@@ -645,7 +652,7 @@ ${
     const page = Math.min(500, Math.max(1, Number(c.req.query('page') ?? 1) | 0 || 1));
     const rows = await list('top', PAGE + 1, (page - 1) * PAGE, p.id);
     const bs = rows.slice(0, PAGE);
-    const url = abs(c, `/at/${p.id}`);
+    const url = abs(c, `/at/${p.id}${page > 1 ? `?page=${page}` : ''}`);
     const main = `
 <section class="head">
   <h1>${esc(p.name)}</h1>
@@ -659,7 +666,7 @@ ${
       c,
       layout(
         {
-          title: `${p.name}, ${p.place} · beechshore`,
+          title: `${p.name}, ${p.place}${page > 1 ? `, page ${page}` : ''} · beechshore`,
           description: `Beaches people built at ${p.name} in beech.`,
           url,
           image: abs(c, bs[0] ? imgPath(bs[0], 'card') : '/img/shore.png'),
@@ -668,6 +675,7 @@ ${
         main,
         { share: { url, text: `Beaches built at ${p.name} 🏖️`, title: p.name } },
       ),
+      page > 1 && !bs.length ? 404 : 200,
     );
   });
 
@@ -677,20 +685,20 @@ ${
     return c.redirect(rows[0] ? href(`/${rows[0].code}`) : href('/'), 302);
   });
 
-  app.get('/robots.txt', (c) => c.text(`User-agent: *\nAllow: /\nDisallow: ${base}/random\nDisallow: ${base}/find\nSitemap: ${abs(c, '/sitemap.xml')}\n`));
+  app.get('/robots.txt', (c) => c.text(`User-agent: *\nAllow: /\nDisallow: ${base}/random\nSitemap: ${canonical(abs(c, '/sitemap.xml'))}\n`));
 
   app.get('/sitemap.xml', async (c) => {
     const rows = await db.query<{ code: string; updated_at: string | null }>(
       `SELECT b.code, b.updated_at FROM beach b WHERE ${PUBLIC} ORDER BY b.updated_at DESC NULLS LAST LIMIT 5000`,
     );
     const n = await counts();
+    const entry = (path: string, updatedAt?: string | null) =>
+      `<url><loc>${esc(canonical(abs(c, path)))}</loc>${updatedAt ? `<lastmod>${new Date(Number(updatedAt)).toISOString()}</lastmod>` : ''}</url>`;
     const urls = [
-      `<url><loc>${esc(abs(c, '/'))}</loc></url>`,
-      ...(['top', 'rising', 'new'] as const).map((s) => `<url><loc>${esc(abs(c, `/${s}`))}</loc></url>`),
-      `<url><loc>${esc(abs(c, '/items'))}</loc></url>`,
-      ...CATALOG_ITEMS.map((i) => `<url><loc>${esc(abs(c, `/items/${i.id}`))}</loc></url>`),
-      ...PLACES.filter((p) => n.places[p.id]).map((p) => `<url><loc>${esc(abs(c, `/at/${p.id}`))}</loc></url>`),
-      ...rows.map((r) => `<url><loc>${esc(abs(c, `/${r.code}`))}</loc>${r.updated_at ? `<lastmod>${new Date(Number(r.updated_at)).toISOString()}</lastmod>` : ''}</url>`),
+      ...['/', '/top', '/rising', '/new', '/items', '/submit', '/submit/spec'].map((path) => entry(path)),
+      ...CATALOG_ITEMS.map((i) => entry(`/items/${i.id}`)),
+      ...PLACES.filter((p) => n.places[p.id]).map((p) => entry(`/at/${p.id}`)),
+      ...rows.map((r) => entry(`/${r.code}`, r.updated_at)),
     ];
     c.header('Content-Type', 'application/xml; charset=utf-8');
     c.header('Cache-Control', 'public, max-age=3600');
@@ -716,11 +724,12 @@ ${
   app.get('/submit/example.json', (c) => c.json(assetExample, 200, { 'Cache-Control': 'public, max-age=60' }));
   if (!cfg.publicUrl) {
     app.get('/submit/connect', (c) => {
-      const destination = c.req.query('destination') === 'shore' ? cfg.submissionOrigin : null;
+      const destination = c.req.query('destination') === 'shore' ? cfg.canonicalOrigin : null;
       if (c.req.query('destination') === 'shore' && !destination) return c.text('Submission site unavailable', 404);
       c.header('Cache-Control', 'no-store');
       c.header('X-Frame-Options', 'DENY');
       c.header('Referrer-Policy', 'no-referrer');
+      c.header('X-Robots-Tag', 'noindex');
       return c.html(submissionLayout(c, 'Connect Beech', '/submit/connect', connectContent(destination ?? null)));
     });
   }
