@@ -14,6 +14,7 @@ rest of `npm test` in `server/`. No E2E, no rendering.
 | Beach snacks and pets | `Snacks.tla` | `snacks.test.ts` | snacks lost or duplicated, a crab befriended for less, extra free feeds |
 | Editing beaches | `BeachEditing.tla` | `editing.test.ts` | a fenced device overwriting the editor, more placed than owned, a restore overwritten |
 | Neighbor links | `Neighbors.tla` | `neighbors.test.ts` | one-sided links, two neighbors on one side, two beaches linked on both sides |
+| Piers (designed) | `Piers.tla` | Planned | a pier landed after an unlink, duplicate attachments, an attachment surviving a refund |
 
 ## How it fits together
 
@@ -105,6 +106,25 @@ State: link rows `<<beach, side, neighbor>>` and requests `<<from, side, to>>`.
 
 Invariants: `Mutual`, `OnePerSide`, `LinkedOnce` (two beaches are never
 neighbors on both sides of each other), `NoSelf`.
+
+## Piers (`Piers.tla`)
+
+Proposed routes for [Piers](PIERS.md). State includes direct links, the
+phase of each purchase and the beach each purchase is attached to.
+
+| Action | Route | Proposed atomic step |
+| --- | --- | --- |
+| `Begin` | `POST /beaches/mine/:id/pier/checkout` | Under the beach owner's account lock, check that the site qualifies and is vacant, then issue an account-bound checkout authorization. Start the provider flow after the transaction. |
+| `Settle`, `Close` | Existing store confirmation, cancellation and refund routes | Deduplicate by provider order or receipt. Under the buyer's account lock, grant the entitlement once or close it and clear its attachment. An authoritative refund or cancellation is terminal even if a confirmation arrives later. |
+| `Land` | `PUT /beaches/mine/:id/pier` | Use `asEditor` to hold the owner's account lock while checking links, site vacancy and entitlement, then insert the attachment. Unique keys on beach and entitlement prevent double placement. |
+| `Lift` | `DELETE /beaches/mine/:id/pier` | Use `asEditor` to remove the specified attachment and free the entitlement. |
+| `Link`, `Unlink`, `DeleteBeach` | Existing neighbor link, unlink and beach deletion routes, including admin writes | Hold the affected owner account locks before changing the graph, taking multiple account locks in ID order and before beach row locks. Derive pier visibility from the new graph. Beach deletion removes the attachment and leaves the entitlement in the bag. |
+
+The selected model explores 6,012 distinct states. The alternate model
+finds a stale placement after a supporting link is removed between
+`LandCheck` and `Land`. Check and write under the same lock to enforce
+`PlacementWasEligible`. The model also checks `PaidAttachment` and
+`OnePerBeach`. Run `specs/tla/check.sh --bugs Piers` to reproduce both runs.
 
 ## Bugs found (2026-11-25), all fixed
 

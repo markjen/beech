@@ -336,6 +336,12 @@ accepted the repo's default branch, so the deploy job ran only there.
   beach in view per device. Needs DEV_AUTH for
   `/api/dev/grant`.
 
+## Piers (designed 2026-11-26)
+
+[Piers](PIERS.md) describes the unlock, shop flow, placement and behavior
+when links change. TLC checked the proposed purchase and placement model.
+Gameplay implementation is on the backlog.
+
 ## Mutual neighbors and the global beachfront (added after the bulldozer)
 
 - **Asking and accepting:** in settings, put a code in "left" or "right" and
