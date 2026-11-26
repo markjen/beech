@@ -558,7 +558,7 @@ describe('piers on the shore site (docs/PIERS.md)', () => {
 
     const items = await (await root.request('/items', shoreHost)).text();
     expect(headerNav(items)).toContain('href="/items" aria-current="page">Items</a>');
-    expect(items).toContain('<div class="tabs"><a href="/items" aria-current="page">All items</a><a href="/submit">Submit an item</a></div>');
+    expect(items).toContain('<div class="tabs"><a href="/items" aria-current="page">All items</a><a href="/submit">Submit an item</a><a href="/submit/spec">Asset spec</a></div>');
 
     const submit = await (await root.request('/submit', shoreHost)).text();
     expect(headerNav(submit)).toContain('href="/items" aria-current="page">Items</a>');
