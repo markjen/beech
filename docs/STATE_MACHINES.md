@@ -18,6 +18,7 @@ rest of `npm test` in `server/`. No E2E, no rendering.
 | Copying a beach | `BeachCopy.tla` | `copy.test.ts` | more placed than owned, more beaches than the allowance, a copy of a beach just taken off the shore, a different version than previewed |
 | Beech bucks and trade-ins | `SandBucks.tla` | `bucks.test.ts` | a trade-in of a thing on a beach, the last one traded in twice, bucks lost or minted by spending, trading in or a refund |
 | Piers | `Piers.tla` | `piers.test.ts` | a pier landed after an unlink, two on one beach, a placed pier traded in or given away |
+| Inland sections | `InlandSections.tla` | `sections.test.ts` | a reorder from one device silently undone by another, one section placed on two beaches, a placed section traded in |
 | Push notifications | `Push.tla` | `push.test.ts` | a push sent twice, two in an hour, a push after unsubscribing, signing out, blocking or muting |
 
 ## How it fits together
@@ -186,6 +187,33 @@ the bag without counting placed ones, breaks `PlacementWasEligible` (an
 unlink between `LandCheck` and `Land`) and `PaidAttachment` (a trade-in of
 the placed pier). Both are replayed in `piers.test.ts` and fail against
 that form. Run `specs/tla/check.sh --bugs Piers` to see them.
+
+## Inland sections (`InlandSections.tla`)
+
+[Inland sections](INLAND_SECTIONS.md). State: the player's beaches, each
+one's layout (the section types in its rows, front first) and revision, how
+many of each type the player owns, and what each of two devices last read.
+A section is a bag unit bought with beech bucks (`Buy`); placed rows are
+counted against what's owned, per type, across every beach.
+
+| Action | Route | Atomic step |
+| --- | --- | --- |
+| `Buy` | `POST /store/buy`, `POST /store/credit-purchase` (`item_section_*`) | `buyWithBucks`, as in `SandBucks` |
+| `GiveAway` | `POST /bag/trade-in`, `POST /gifts`, visitor gifts | one transaction under the player's lock; `itemsElsewhere` counts `beach_sections` rows as placed, and `giveOne` refuses a section unless one of that type is free |
+| `Read` | `GET /beaches/mine` (`sections`, `sectionsRev` per beach) | one read |
+| `Write` | `PUT /beaches/mine/:id/sections` `{rows, rev}` | `asEditor` (the player's lock and the edit token), then the beach row `FOR NO KEY UPDATE`; the revision must match, the rows must be at most four and fit in what's owned counting every other beach; then the rows are replaced and `sections_rev` bumps, all in that transaction. Append, replace, reorder and return to the bag are all this one write |
+| `DeleteBeach` | `DELETE /beaches/mine/:id` | unchanged: its rows cascade (the sections are back in the bag) |
+
+Joins with neighbors are derived from the shore (same type, same row, a
+direct link) and never stored, so they need no state. The design passes
+with 60,530 distinct states (`PaidPlacement`, `RowsBound`, `NoOrphan`,
+`NoLostUpdate`). The other form, which checks the bag and the rows before
+the write's transaction and keeps no revision, breaks `PaidPlacement` (the
+last copy placed on two beaches at once, or traded in during a placement)
+and `NoLostUpdate` (two devices write from the same layout). All three are
+replayed in `sections.test.ts`; the `NoLostUpdate` replay fails with the
+revision check taken out. Run `specs/tla/check.sh --bugs InlandSections`
+to see them.
 
 ## Push notifications (`Push.tla`)
 

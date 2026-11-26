@@ -1,5 +1,5 @@
 {
-  "about": "Performance budgets checked by scripts/perf.mjs (npm run perf) and the Performance workflow. Counts are exact and fail CI when exceeded. Timings come from a shared CI machine with a software GPU, so they're loose and only catch big regressions. Raise a number only on purpose, in the same commit as the change that needs it, and say why (docs/PERFORMANCE.md). Measured 2026-11-23 at 80de318: 0 things 10 draws; 400 things 132 draws; 2000 things 315 draws, 149 for things, 95 touched a frame (the flags), 0.4 ms main thread, 6 ms worker tick; main bundle 309 KB gzip. Glows instanced (2026-11-23): 400 things 98 draws; 2000 things 163 draws, 153 for things and glows. Perf pass (2026-11-24): GPU flag flutter, shared sub-part prop sources, merged lighthouse bands, texSubImage2D coalesced to render loop, and dirty-row slump / algebraic flow / lazy wet-foam/erode in sim. Measured at 2000 things: 91 draws (81 for things and glows), 0 touched a frame, 0.10 ms main thread; 400 things: 80 draws, 0 touched. Sim tick in Node dropped −41% (low 10.3→5.9, medium 17.4→10.4, high 27.4→15.7 ms on this runner). The server catch-up (docs/LIVE_SIM.md, 2026-11-23): 14 days of Brighton tides with four castles, 30-45 ms on every tier; a whole beach dug up is about 200 ms on high.",
+  "about": "Performance budgets checked by scripts/perf.mjs (npm run perf) and the Performance workflow. Counts are exact and fail CI when exceeded. Timings come from a shared CI machine with a software GPU, so they're loose and only catch big regressions. Raise a number only on purpose, in the same commit as the change that needs it, and say why (docs/PERFORMANCE.md). Measured 2026-11-23 at 80de318: 0 things 10 draws; 400 things 132 draws; 2000 things 315 draws, 149 for things, 95 touched a frame (the flags), 0.4 ms main thread, 6 ms worker tick; main bundle 309 KB gzip. Glows instanced (2026-11-23): 400 things 98 draws; 2000 things 163 draws, 153 for things and glows. Perf pass (2026-11-24): GPU flag flutter, shared sub-part prop sources, merged lighthouse bands, texSubImage2D coalesced to render loop, and dirty-row slump / algebraic flow / lazy wet-foam/erode in sim. Measured at 2000 things: 91 draws (81 for things and glows), 0 touched a frame, 0.10 ms main thread; 400 things: 80 draws, 0 touched. Sim tick in Node dropped −41% (low 10.3→5.9, medium 17.4→10.4, high 27.4→15.7 ms on this runner). The server catch-up (docs/LIVE_SIM.md, 2026-11-23): 14 days of Brighton tides with four castles, 30-45 ms on every tier; a whole beach dug up is about 200 ms on high. Inland sections (2026-11-26): main bundle measured 350.6 KB gzip, over the 350 KB budget; budget raised 350 → 355 for the inland-sections feature, with a little headroom.",
   "counts": {
     "scenes.0.drawCallsPerFrame": 12,
     "scenes.400.drawCallsPerFrame": 95,
@@ -7,7 +7,7 @@
     "scenes.2000.meshes": 115,
     "scenes.2000.thingDrawCalls": 105,
     "scenes.2000.touchedPerFrame": 25,
-    "bundle.mainJsGzipKB": 350,
+    "bundle.mainJsGzipKB": 355,
     "bundle.totalJsGzipKB": 450
   },
   "timings": {

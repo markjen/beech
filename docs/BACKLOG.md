@@ -119,9 +119,11 @@ picked up.
 - [ ] **Piers, follow-ups** ([PIERS.md](PIERS.md)): check the deck against big real tides and storm
   waves (it's 1.35 m above still water); a ghostly look for the preview
   so it reads as not placed yet.
-- [ ] **Inland beach sections (model first)**: add up to four inland rows
-  per beach, with editable sand and automatic joins between matching rows
-  on linked beaches. See [INLAND_SECTIONS.md](INLAND_SECTIONS.md).
+- [ ] **Inland sections, follow-ups** ([INLAND_SECTIONS.md](INLAND_SECTIONS.md)):
+  editable sand in a Sand Extension (dig, sculpt, molds, props; needs a
+  section ID per copy and a sand revision, extend `InlandSections.tla`
+  first); draw the rows on beechshore.com's pictures and 3D views (and put
+  them in the pictures' `?v=`); a replace-in-place control in the editor.
 - [ ] **Palm-first UI, follow-ups**: stars and finds-today chips in
   the expanded pane (they need their own requests; no credit/sand-bucks
   chip: Mark, 2026-11-26, the balance is only useful in the shop); decide whether the
@@ -227,6 +229,12 @@ picked up.
   shower night.
 
 ## Done (recent)
+
+- [x] **Inland beach sections** (2026-11-26): up to four rows behind each
+  beach, eight types (sand, boardwalk, path, playground, road, storefronts,
+  dune garden, picnic grove), 15 beech bucks each; an editor with a live
+  preview; joins with linked neighbors; everyone sees them. Scenery only
+  for now. `specs/tla/InlandSections.tla`, INLAND_SECTIONS.md.
 
 - [x] **Your account on beechshore, S$, bag trade-ins, invite bonuses**
   (2026-11-26): `beechshore.com/account` with balance, history (the

@@ -2,6 +2,7 @@ import { beachById } from '../world/locations';
 import { shoreRowOrder } from '../render/shoreSpacing';
 import { MAX_OBJECTS } from '../sim/sandCodec';
 import { renderBeachMap, sortBeachesWestToEast } from './beachMap';
+import { SECTION_ROWS } from '../world/sections';
 import { buildOwnStretches, connectableBeaches, hasSparePierWithoutSite, ownBeachLabel } from './shoreConnect';
 import { DEV_AUTH, googleSignInAvailable, renderGoogleButton, type Account, type LinkedProvider, type MyBeach, type Neighbors, type Side } from '../net/account';
 import { beachShareText, shareUrl, shoreAccountUrl, shoreBeachUrl } from '../net/share';
@@ -64,6 +65,8 @@ export interface MineCallbacks {
   buyPier?: () => Promise<void>;
   /** Show the pier on this beach with "place pier" and "cancel". */
   previewPier?: (beach: MyBeach) => void;
+  /** Open the inland sections editor for this beach (docs/INLAND_SECTIONS.md). */
+  editSections?: (beach: MyBeach) => void;
 }
 
 /** Account, beach settings, shore connections, and checkpoints rendered across the settings sheet's tabs. */
@@ -480,6 +483,9 @@ export class AccountPanel {
     const sel = this.selectedBeach;
     if (sel) {
       wrap.appendChild(this.neighborSection(this.neighbors, sel));
+      // 3. The rows behind it (docs/INLAND_SECTIONS.md)
+      const rows = this.sectionsRow(sel);
+      if (rows) wrap.appendChild(rows);
     }
 
     // (visiting by code and the starred beaches live in the Inbox now)
@@ -602,6 +608,28 @@ export class AccountPanel {
     }
 
     return wrap;
+  }
+
+  /** Each beach's inland sections: how many rows, and the editor (docs/INLAND_SECTIONS.md). */
+  private sectionsRow(b: MyBeach): HTMLElement | null {
+    const edit = this.mine?.editSections;
+    if (!edit) return null;
+    const row = document.createElement('div');
+    row.className = 'slot sections-row';
+    row.dataset.sectionsBeach = b.id;
+    const label = document.createElement('span');
+    label.className = 'fav-name';
+    const n = b.sections?.length ?? 0;
+    label.textContent = `inland sections${n ? ` · ${n} of ${SECTION_ROWS}` : ''}`;
+    row.appendChild(label);
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'action';
+    btn.dataset.act = 'sections-edit';
+    btn.textContent = n ? 'change' : 'add';
+    btn.addEventListener('click', () => edit(b));
+    row.appendChild(btn);
+    return row;
   }
 
   /** A pier site, or a beach holding a pier: buy, place, or remove it (docs/PIERS.md). */

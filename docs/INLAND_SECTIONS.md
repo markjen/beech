@@ -1,6 +1,37 @@
 # Inland beach sections
 
-Status is **designed** for the account-enabled game.
+Status: **built** for the account-enabled game (2026-11-26) as scenery,
+with the differences below. Editable sand in a Sand Extension is not built
+yet (BACKLOG.md).
+
+## What was built, and how it differs from this design
+
+- **Bought with beech bucks** (15 each), not $1.49 purchases, like piers:
+  one `item_section_*` product per type, granting a `section-*` bag item.
+- **Counted, not individual copies.** A placed row is counted against
+  what's owned of its type across every beach (the pier model), instead of
+  a stable section ID per purchase. Stored props and per-copy sand would
+  need IDs; they come with editable sand. Refunds don't apply: beech bucks
+  are spent, so there is no per-section purchase to refund.
+- **One write for every change.** `PUT /beaches/mine/:id/sections
+  {rows, rev}` replaces the whole list (append, replace, reorder, return to
+  the bag), made from the revision the editor opened at. The same type can
+  fill more than one row if you own enough.
+- **Editor:** Manage → Beaches → **inland sections** on the selected beach
+  (`src/ui/sectionsEditor.ts`): each row with ↑ ↓ and **to bag**, then
+  **+ type** for what's free or **type · bb 15** to buy one; the rows show
+  behind the beach as you change them; **save** / **cancel**. A stale
+  revision is refused (the player reopens the editor).
+- **Rendering:** `src/render/sections.ts` (`SectionLayer`, loaded on first
+  use), drawn by `NeighborView` for every beach in view, yours or anyone's.
+  Joins are derived in `NeighborView.syncSections` from the shore entries
+  (`sectionJoins` in `src/world/sections.ts`), so a culled neighbor still
+  joins. The camera can pan inland over the deepest occupied row
+  (`CameraController.maxZ`). Ground level is the beach's back height, so
+  no apron is needed.
+- **Not yet:** beechshore.com pictures don't draw the rows; the access
+  points are drawn per type (a crossing, a ramp, a gap in a fence) rather
+  than one shared connector.
 
 ## Player experience
 

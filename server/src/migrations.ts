@@ -949,6 +949,25 @@ const MIGRATIONS: string[] = [
     CHECK (kind IN ('gift_card', 'spend', 'creator_royalty', 'creator_royalty_refund', 'pack', 'pack_refund', 'trade_in', 'trade_in_refund', 'invite_bonus'));
   ALTER TABLE referrals ADD COLUMN bonus_bucks INTEGER;
   `,
+
+  // 38: inland beach sections (docs/INLAND_SECTIONS.md, specs/tla/InlandSections.tla).
+  // One row per placed section, by row behind the beach (0 = just behind the
+  // sand). The section itself is a bag item ('section-*'); rows count as
+  // placed against what's owned, per type. sections_rev bumps on every
+  // layout change, so a write made from an older layout is refused.
+  // Deleting the beach deletes its rows: the sections are back in the bag.
+  `
+  CREATE TABLE beach_sections (
+    beach_id UUID NOT NULL REFERENCES beach (id) ON DELETE CASCADE,
+    row SMALLINT NOT NULL CHECK (row >= 0 AND row < 4),
+    owner_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    item_id TEXT NOT NULL,
+    placed_at BIGINT NOT NULL,
+    PRIMARY KEY (beach_id, row)
+  );
+  CREATE INDEX beach_sections_owner ON beach_sections (owner_id);
+  ALTER TABLE beach ADD COLUMN sections_rev INTEGER NOT NULL DEFAULT 0;
+  `,
 ];
 
 /** Apply migrations up to `upTo` (default: all). Tests use `upTo` to check a migration on older data. */

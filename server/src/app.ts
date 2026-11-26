@@ -46,6 +46,7 @@ import { ledgerOf } from './ledger.js';
 import { displayName } from './prizeNames.js';
 import { createWeather } from './weather.js';
 import { creditBalance, grantPurchase } from './bucksDb.js';
+import { SECTION_IDS, SECTION_ROWS, isSection } from './sections.js';
 import { BUCK, bucksToCents, centsToBucks, listBucks, roundToBuck, shareOut, tradeable, unitsOf } from './bucks.js';
 import { issueSubmissionSession, UUID_PATTERN } from './itemSubmissions.js';
 import { awardCheckoutCreatorCredit, awardCreatorCredit, creatorOffer, creatorOffers, lockCreditUsers, nativeSalePrice, reverseCreatorCreditByRef, salePriceCents } from './creatorCredit.js';
@@ -2042,8 +2043,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
 
   // ---------------------------------------------------------------- my beaches
   const myBeaches = async (user: string) => {
-    const rows = await db.query<NodeRow & { home: boolean; on_shore: boolean; items: Record<string, number> | string; pier_attached: boolean; pier_site: boolean }>(
-      `SELECT ${NODE}, b.home, b.on_shore, b.items,
+    const rows = await db.query<NodeRow & { home: boolean; on_shore: boolean; items: Record<string, number> | string; pier_attached: boolean; pier_site: boolean; sections_rev: number }>(
+      `SELECT ${NODE}, b.home, b.on_shore, b.items, b.sections_rev,
               EXISTS (SELECT 1 FROM beach_piers ap WHERE ap.beach_id = b.id) AS pier_attached, ${PIER_SITE} AS pier_site
          FROM ${BEACH} WHERE b.owner_id = $1 ORDER BY b.home DESC, b.created_at`,
       [user],
@@ -2067,6 +2068,10 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
           // come back ('paused')
           pierSite: !!r.pier_site,
           pier: r.pier_attached ? (r.pier_site ? ('active' as const) : ('paused' as const)) : null,
+          // docs/INLAND_SECTIONS.md: the rows behind it, front first, and the
+          // revision a layout change has to be made from
+          sections: r.sections ? r.sections.split(',') : [],
+          sectionsRev: Number(r.sections_rev),
         };
       }),
     );
@@ -2074,8 +2079,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
 
   app.get('/beaches/mine', requireUser, async (c) => {
     const me = c.get('user').id;
-    const [beaches, allowed, piers] = await Promise.all([myBeaches(me), allowance(me), pierCounts(me)]);
-    return c.json({ allowance: allowed, cap: BEACH_CAP, beaches, piers });
+    const [beaches, allowed, piers, sections] = await Promise.all([myBeaches(me), allowance(me), pierCounts(me), sectionCounts(me)]);
+    return c.json({ allowance: allowed, cap: BEACH_CAP, beaches, piers, sections });
   });
 
   // make another beach (if your allowance has room)
@@ -2189,6 +2194,62 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     return c.json({ pier: null, piers: await pierCounts(me) });
   });
 
+  // ---------------------------------------------------------------- inland sections
+  // docs/INLAND_SECTIONS.md, specs/tla/InlandSections.tla. A section is a bag
+  // item ('section-*', bought with beech bucks); beach_sections rows place
+  // them in rows behind a beach. Rows count as placed against what's owned,
+  // per type, so the bag, trade-ins and gifts see them.
+  /** per section type: how many you own, and how many are on your beaches */
+  const sectionCounts = async (user: string, q: Db = db): Promise<{ owned: Record<string, number>; placed: Record<string, number> }> => {
+    // one after the other: `q` may be a transaction's single connection
+    const owned = await q.query<{ item_id: string; n: string }>(
+      `SELECT item_id, SUM(quantity) AS n FROM inventory
+        WHERE user_id = $1 AND item_id = ANY($2) AND quantity > 0 AND (expires_at IS NULL OR expires_at > $3) GROUP BY item_id`,
+      [user, SECTION_IDS, clock()],
+    );
+    const placed = await q.query<{ item_id: string; n: string }>('SELECT item_id, COUNT(*) AS n FROM beach_sections WHERE owner_id = $1 GROUP BY item_id', [user]);
+    const map = (rows: { item_id: string; n: string }[]) => Object.fromEntries(rows.map((r) => [r.item_id, Number(r.n)]));
+    return { owned: map(owned), placed: map(placed) };
+  };
+
+  // Write (InlandSections.tla): the whole layout in one request, made from
+  // the layout at `rev`. One transaction holding the player's lock (asEditor,
+  // with the edit token) and the beach row: the revision must still match
+  // (NoLostUpdate: a second device's change isn't silently undone), the rows
+  // must fit in SECTION_ROWS and in what's owned counting every other beach
+  // (PaidPlacement: trade-ins and gifts take the same player lock), then the
+  // rows are replaced and the revision bumps. Appending, replacing a row,
+  // reordering and returning one to the bag are all this one write.
+  app.put('/beaches/mine/:id/sections', requireUser, async (c) => {
+    const me = c.get('user').id;
+    const id = await mine(c, c.req.param('id'));
+    const { rows, rev } = await body<{ rows?: unknown; rev?: unknown }>(c);
+    if (!Array.isArray(rows) || !rows.every((r) => typeof r === 'string' && isSection(r))) fail(400, 'say which sections, front row first');
+    if (!Number.isInteger(rev)) fail(400, 'say which layout this was made from');
+    const want = rows as string[];
+    if (want.length > SECTION_ROWS) fail(409, `a beach has room for ${SECTION_ROWS} sections`);
+    const out = await asEditor(c, async (tx) => {
+      const [b] = await tx.query<{ sections_rev: number }>('SELECT sections_rev FROM beach WHERE id = $1 FOR NO KEY UPDATE', [id]);
+      if (!b) fail(404, 'no such beach');
+      if (Number(b.sections_rev) !== rev) fail(409, 'this beach changed: look again');
+      const here = await tx.query<{ item_id: string }>('SELECT item_id FROM beach_sections WHERE beach_id = $1', [id]);
+      const { owned, placed } = await sectionCounts(me, tx);
+      const count = (list: string[], t: string) => list.filter((x) => x === t).length;
+      const mineHere = here.map((r) => r.item_id);
+      for (const t of new Set(want)) {
+        if ((placed[t] ?? 0) - count(mineHere, t) + count(want, t) > (owned[t] ?? 0)) fail(409, 'not enough of that section in your bag');
+      }
+      const now = clock();
+      await tx.query('DELETE FROM beach_sections WHERE beach_id = $1', [id]);
+      for (let i = 0; i < want.length; i++) {
+        await tx.query('INSERT INTO beach_sections (beach_id, row, owner_id, item_id, placed_at) VALUES ($1, $2, $3, $4, $5)', [id, i, me, want[i], now]);
+      }
+      const [next] = await tx.query<{ sections_rev: number }>('UPDATE beach SET sections_rev = sections_rev + 1 WHERE id = $1 RETURNING sections_rev', [id]);
+      return Number(next.sections_rev);
+    });
+    return c.json({ rows: want, rev: out, sections: await sectionCounts(me) });
+  });
+
   app.get('/beaches/mine/:id/sand', requireUser, async (c) => sendBeach(c, await mine(c, c.req.param('id'))));
   app.put('/beaches/mine/:id/sand', requireUser, async (c) => saveBeach(c, await mine(c, c.req.param('id'))));
   app.post('/beaches/mine/:id/here', requireUser, async (c) => here(c, await mine(c, c.req.param('id'))));
@@ -2291,6 +2352,9 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     // piers aren't in any save: they're placed by beach_piers rows (docs/PIERS.md)
     const piers = Number((await q.query<{ n: string }>('SELECT COUNT(*) AS n FROM beach_piers WHERE owner_id = $1', [user]))[0]?.n ?? 0);
     if (piers) out.pier = (out.pier ?? 0) + piers;
+    // nor are inland sections: beach_sections rows (docs/INLAND_SECTIONS.md)
+    const secs = await q.query<{ item_id: string; n: string }>('SELECT item_id, COUNT(*) AS n FROM beach_sections WHERE owner_id = $1 GROUP BY item_id', [user]);
+    for (const r of secs) out[r.item_id] = (out[r.item_id] ?? 0) + Number(r.n);
     return out;
   };
   const fitOf = async (user: string, need: Record<string, number>, target: string, q: Db = db) => {
@@ -3581,6 +3645,11 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     if (item === 'pier') {
       const { owned, placed } = await pierCounts(me, tx);
       if (owned <= placed) return null;
+    }
+    // so does a placed inland section (InlandSections.tla, PaidPlacement)
+    if (isSection(item)) {
+      const { owned, placed } = await sectionCounts(me, tx);
+      if ((owned[item] ?? 0) <= (placed[item] ?? 0)) return null;
     }
     const rows = await tx.query<{ inbox: string | null }>(
       `WITH giver AS (

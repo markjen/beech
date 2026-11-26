@@ -54,6 +54,8 @@ export class CameraController {
   /** how far the camera may pan along the shore (widens when neighbors are shown) */
   minX = -WORLD_SIZE_X / 2;
   maxX = WORLD_SIZE_X / 2;
+  /** how far inland the view can pan (past the sand when a beach has inland sections, docs/INLAND_SECTIONS.md) */
+  maxZ = WORLD_SIZE_Z / 2;
   /** keys currently held for keyboard panning */
   readonly held = new Set<string>();
   /** chair state */
@@ -68,6 +70,7 @@ export class CameraController {
   private walkHeld = 0;
   /** gliding along the shore to this x (the home button) */
   private glideX: number | null = null;
+  private glideZ: number | null = null;
   /** sand height lookup (set by main), so the chair sits on the real surface */
   groundHeight: (x: number, z: number) => number = () => 0.8;
   private listeners: ((m: ViewMode) => void)[] = [];
@@ -353,9 +356,20 @@ export class CameraController {
     this.glideX = x;
   }
 
+  /** Glide inland or seaward to world z (diorama), within the pan limits. */
+  goToZ(z: number): void {
+    this.glideZ = Math.min(this.maxZ, Math.max(-WORLD_SIZE_Z / 2 - 4, z));
+  }
+
+  /** The diorama view's focus inland (world z). */
+  get focusZ(): number {
+    return this.camera.target.z;
+  }
+
   panScreen(px: number, py: number, sx: number, sy: number): void {
     if (this.anim) return;
     this.glideX = null;
+    this.glideZ = null;
     if (this.mode === 'chair') {
       // drag the view: the scene follows the fingers
       const k = this.fov / (this.canvas.clientHeight || 1);
@@ -455,7 +469,7 @@ export class CameraController {
   private moveTarget(d: Vector3): void {
     const t = this.camera.target;
     t.x = Math.min(this.maxX, Math.max(this.minX, t.x + d.x));
-    t.z = Math.min(WORLD_SIZE_Z / 2, Math.max(-WORLD_SIZE_Z / 2 - 4, t.z + d.z));
+    t.z = Math.min(this.maxZ, Math.max(-WORLD_SIZE_Z / 2 - 4, t.z + d.z));
     t.y = PICK_Y;
     this.camera.target = t;
   }
@@ -541,6 +555,12 @@ export class CameraController {
       const d = this.glideX - t.x;
       t.x += d * Math.min(1, dt * 2.5) + Math.sign(d) * Math.min(Math.abs(d), dt * 2);
       if (Math.abs(d) < 0.02 || panning) this.glideX = null;
+    }
+    if (this.glideZ !== null) {
+      const t = this.camera.target;
+      const d = this.glideZ - t.z;
+      t.z += d * Math.min(1, dt * 2.5) + Math.sign(d) * Math.min(Math.abs(d), dt * 2);
+      if (Math.abs(d) < 0.02 || panning) this.glideZ = null;
     }
     // glide after a pan
     if (!panning && this.panVel.lengthSquared() > 1e-6) {

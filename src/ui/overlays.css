@@ -1558,3 +1558,110 @@ body.ambient-idle .hud-sign-in {
   color: var(--ui-bg);
   border-color: var(--ui-fg);
 }
+
+/* inland sections (docs/INLAND_SECTIONS.md, src/ui/sectionsEditor.ts): the rows behind a beach */
+.sections-editor {
+  position: fixed;
+  left: 50%;
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  width: min(440px, calc(100vw - 32px));
+  max-height: min(70vh, 560px);
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: var(--ui-bg);
+  color: var(--ui-fg);
+  box-shadow: 0 4px 18px var(--ui-shadow);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 40;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 13px;
+}
+.sections-editor[hidden] {
+  display: none;
+}
+.sections-title {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sections-rows {
+  margin: 0;
+  padding-left: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sections-rows li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.sections-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sections-rows .action {
+  flex: none;
+  padding: 4px 9px;
+  min-height: 30px;
+}
+.sections-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.sections-add .action {
+  flex: 0 1 auto;
+  white-space: nowrap;
+  padding: 4px 10px;
+  min-height: 30px;
+}
+.sections-status:empty {
+  display: none;
+}
+.sections-status {
+  opacity: 0.8;
+}
+.sections-foot {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.sections-foot .action {
+  flex: none;
+}
+.sections-editor .sections-save {
+  opacity: 1;
+  background: var(--ui-fg);
+  color: var(--ui-bg);
+  border-color: var(--ui-fg);
+}
+.sections-editor .sections-save:disabled {
+  opacity: 0.4;
+}
+
+/* Manage → Beaches: the selected beach's inland sections row */
+.sections-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+.sections-row .fav-name {
+  flex: 1;
+  min-width: 0;
+}
+.sections-row .action {
+  flex: none;
+}

@@ -2,7 +2,7 @@ import type { Ray } from '@babylonjs/core/Culling/ray';
 import type { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import type { Scene } from '@babylonjs/core/scene';
 
-import { BEACH_STORE, SIM_HZ, WORLD_SIZE_X, WORLD_SIZE_Z, type GridSpec } from '../config';
+import { BEACH_STORE, SECTION, SIM_HZ, WORLD_SIZE_X, WORLD_SIZE_Z, type GridSpec } from '../config';
 import type { CameraController } from '../input/cameraController';
 import { pickHeightfield } from '../input/sandPicker';
 import type { Account, MyBeach, Neighbors, ShoreBeach, Side } from '../net/account';
@@ -15,6 +15,8 @@ import type { Swell } from '../sim/waves';
 import { BeachRenderer, OCEAN_REACH, ORIGIN_Z } from './beachRenderer';
 import { ObjectView } from './objects';
 import { PierLayer, type PierSpot } from './pier';
+import type { SectionLayer, SectionSpot } from './sections';
+import { sectionJoins } from '../world/sections';
 import {
   boundaryLinked,
   indicesOverlapping,
@@ -128,6 +130,12 @@ export class NeighborView {
   private piers: PierLayer | null = null;
   /** a beach of yours showing a pier you haven't placed yet (the "place pier" preview) */
   private piersPreview: string | null = null;
+  /** the inland sections behind each beach (docs/INLAND_SECTIONS.md), whoever's beach they're on */
+  private sections: SectionLayer | null = null;
+  /** the section renderer loads on first use (most beaches have no rows) */
+  private sectionsLoading = false;
+  /** a beach of yours showing a layout you haven't saved yet (the Inland sections preview) */
+  private sectionsPreview: { id: string; rows: string[] } | null = null;
 
   constructor(
     private readonly scene: Scene,
@@ -247,6 +255,65 @@ export class NeighborView {
   previewPier(beachId: string | null): void {
     this.piersPreview = beachId;
     this.syncPiers();
+  }
+
+  /** How many inland section rows are drawn now (e2e). */
+  sectionRowsDrawn(beachId?: string): number {
+    return this.sections?.rows(beachId) ?? 0;
+  }
+
+  /** Show this layout behind one of your beaches before it's saved (null: stop). */
+  previewSections(beachId: string | null, rows: string[] = []): void {
+    this.sectionsPreview = beachId ? { id: beachId, rows: [...rows] } : null;
+    this.syncSections();
+  }
+
+  /** The rows behind a beach as drawn: its own, or the preview's. */
+  private rowsOf(b: ShoreBeach): readonly string[] {
+    return this.sectionsPreview?.id === b.id ? this.sectionsPreview.rows : (b.sections ?? []);
+  }
+
+  /**
+   * The rows that should show behind every beach near the view, each edge
+   * joined to a directly linked neighbor with the same type in the same row
+   * (derived here, so a culled or not-yet-built neighbor still joins).
+   */
+  private syncSections(): void {
+    if (!this.sections) {
+      const r = this.liveRenderer;
+      if (!r || this.sectionsLoading) return;
+      const any = this.sectionsPreview?.rows.length || [...this.entries.values()].some((e) => e.beach.sections?.length);
+      if (!any) return;
+      this.sectionsLoading = true;
+      void import('./sections')
+        .then(({ SectionLayer }) => {
+          this.sections = new SectionLayer(this.scene, (c) => r.createPropMaterial(c));
+          this.syncSections();
+        })
+        .finally(() => (this.sectionsLoading = false));
+      return;
+    }
+    const isLinked = (k: number) => this.entries.get(k)?.beach.linked === true;
+    const want: SectionSpot[] = [];
+    for (const e of this.entries.values()) {
+      if (e.index < this.win[0] - 1 || e.index > this.win[1] + 1) continue;
+      const rows = this.rowsOf(e.beach);
+      if (!rows.length) continue;
+      const side = (k: number) => {
+        const lower = Math.min(e.index, k);
+        const n = this.entries.get(k);
+        return n && boundaryLinked(lower, isLinked) ? this.rowsOf(n.beach) : null;
+      };
+      const up = side(e.index + 1);
+      const down = side(e.index - 1);
+      // which of the two is towards +x
+      const upIsPos = this.xFor(e.index + 1) > this.xFor(e.index);
+      const rowsJoined = sectionJoins(rows, upIsPos ? down : up, upIsPos ? up : down);
+      want.push({ key: `${e.beach.id}@${e.index}`, x: this.xFor(e.index), rows: rowsJoined });
+    }
+    this.sections.sync(want);
+    const deepest = want.reduce((m, w) => Math.max(m, w.rows.length), 0);
+    this.cam.maxZ = WORLD_SIZE_Z / 2 + deepest * SECTION.depth;
   }
 
   /** The piers that should show: on beaches that have one, and the preview. */
@@ -1053,11 +1120,13 @@ export class NeighborView {
       this.win = [0, 0];
       this.syncSeams();
       this.syncPiers();
+      this.syncSections();
       return;
     }
     void this.fillWindow();
     this.syncSeams();
     this.syncPiers();
+    this.syncSections();
     // infinite scroll: keep the shore loaded a few beaches past the view
     const c = this.nearestIndex(this.cam.focusX);
     const ext = this.extent;
