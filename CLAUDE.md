@@ -52,6 +52,7 @@ Read these first:
   with no shared state), are in its "Model-first workflow" section and the
   `model-first` skill. A feature design doc gets a "State machine" section
   naming its spec.
+- **Review and land a PR:** Use the shared [review-pr skill](.agents/skills/review-pr/SKILL.md). Invoke it as `$review-pr 123` in Codex or `/review-pr 123` in Claude Code. Follow it through the verified merge unless the request narrows the scope.
 - **Git & PR workflow:** Always push finished work to GitHub. For bigger or higher-risk changes, push a feature branch and open a pull request. For smaller, high-confidence changes, push directly to `main`.
 - `npm test` and `npm run build` must pass before every commit. CI runs both.
 - The simulation (`src/sim/`) is plain TypeScript with no DOM or Babylon
