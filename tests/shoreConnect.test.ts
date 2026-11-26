@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
 import type { MyBeach } from '../src/net/account';
-import { buildOwnStretches, connectableBeaches, ownBeachLabel } from '../src/ui/shoreConnect';
+import { buildOwnStretches, connectableBeaches, hasSparePierWithoutSite, ownBeachLabel } from '../src/ui/shoreConnect';
 
 function makeBeach(
   id: string,
   code: string,
   name: string,
-  opts: Partial<Pick<MyBeach, 'home' | 'left' | 'right'>> = {},
+  opts: Partial<Pick<MyBeach, 'home' | 'left' | 'right' | 'pierSite' | 'pier'>> = {},
 ): MyBeach {
   return {
     id,
@@ -20,6 +20,8 @@ function makeBeach(
     items: {},
     left: opts.left ?? null,
     right: opts.right ?? null,
+    pierSite: opts.pierSite,
+    pier: opts.pier,
   };
 }
 
@@ -74,5 +76,37 @@ describe('shoreConnect', () => {
     expect(ownBeachLabel({ name: 'Bondi', home: false })).toBe('Bondi');
     expect(ownBeachLabel({ name: '', home: true })).toBe('Home');
     expect(ownBeachLabel({ name: '', home: false })).toBe('A beach');
+  });
+
+  it('flags a spare pier with no site (two unlinked beaches, one pier in the bag)', () => {
+    // The reported bug: two beaches can never form a trio, so a bought pier
+    // has nowhere to go and the panel has to say so.
+    const a = makeBeach('a', 'AAA111', 'Home', { home: true });
+    const b = makeBeach('b', 'BBB222', 'Bondi');
+    expect(hasSparePierWithoutSite([a, b], { owned: 1, placed: 0 })).toBe(true);
+  });
+
+  it('does not flag a spare pier when a beach already qualifies as a site', () => {
+    const a = makeBeach('a', 'AAA111', 'Home', { home: true });
+    const b = makeBeach('b', 'BBB222', 'Bondi', { pierSite: true });
+    expect(hasSparePierWithoutSite([a, b], { owned: 1, placed: 0 })).toBe(false);
+  });
+
+  it('flags a spare pier when the only site already has a pier on it', () => {
+    // One trio, its middle beach already holds a pier, and a second pier in
+    // the bag: the site offers no place for the spare, so the hint must show.
+    const a = makeBeach('a', 'AAA111', 'Home', { home: true });
+    const b = makeBeach('b', 'BBB222', 'Bondi', { pierSite: true, pier: 'active' });
+    expect(hasSparePierWithoutSite([a, b], { owned: 2, placed: 1 })).toBe(true);
+    // A paused pier on the site still occupies it.
+    const c = makeBeach('c', 'CCC333', 'Brighton', { pierSite: true, pier: 'paused' });
+    expect(hasSparePierWithoutSite([a, c], { owned: 2, placed: 1 })).toBe(true);
+  });
+
+  it('does not flag when no pier is spare', () => {
+    const a = makeBeach('a', 'AAA111', 'Home', { home: true });
+    const b = makeBeach('b', 'BBB222', 'Bondi');
+    expect(hasSparePierWithoutSite([a, b], { owned: 0, placed: 0 })).toBe(false);
+    expect(hasSparePierWithoutSite([a, b], { owned: 1, placed: 1 })).toBe(false);
   });
 });

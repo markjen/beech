@@ -27,7 +27,10 @@ Shoreline  ├──────────────┼───────
 - In **Your beaches on the shore**, the eligible beach offers **Buy pier**
   or **Place pier** when the player already has a spare. An attached pier
   offers **Remove pier**. A dormant pier has the status **Pier paused**
-  and can still be removed. Put the unlock rule in the player guide.
+  and can still be removed. With a pier in the bag but no eligible beach
+  (e.g. only two beaches, which can never form a trio), the section shows
+  the pier in the bag and the unlock rule instead of hiding it. Put the
+  unlock rule in the player guide.
 - The pier is a shop offer (`item_pier`, **30 sand bucks**, the $2.99
   tier; see [SAND_BUCKS.md](SAND_BUCKS.md)) that adds one `pier` to the
   bag. It's bought like any other offer (`POST /store/buy`, one statement),
