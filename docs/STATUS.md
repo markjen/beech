@@ -172,6 +172,10 @@ and vending prize cards can be closed while keeping the prize in the bag.
   in docs/GCP.md, and the workflow is gated on `vars.GCP_ENABLED`.
   This replaced the earlier Cloudflare Worker + D1 draft, at the owner's
   request.
+- **Sign-in button (2026-11-26):** signed out, a green **Sign in** pill sits in
+  the lower-left corner of the title screen and the beach (`hud-sign-in`,
+  `src/main.ts`); it opens the account sheet and hides once signed in. The guide
+  coach, walk bar and place bar move up by `--sign-in-space` on phones to clear it.
 - **`server/`:** Node 22 + Hono + `pg`, with PGlite for local dev and tests.
   It covers Google/Apple ID-token sign-in, hashed bearer sessions, save/load
   beach, delete account, and neighbors (codes, left/right slots, reading a

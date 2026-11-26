@@ -926,6 +926,13 @@ body.ambient-idle .shore-home {
   transition: opacity 1.2s ease, visibility 0s linear 1.2s;
 }
 
+body.ambient-idle .hud-sign-in {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 1.2s ease, visibility 0s linear 1.2s;
+}
+
 .hud-help dt {
   font-weight: 600;
 }
