@@ -294,11 +294,9 @@ CREATE INDEX pet_feed_log_beach_time ON pet_feed_log (beach_id, fed_at DESC);
     Bondi"*). Respect quiet hours (no pings between 22:00 and 08:00 local time).
   - Limitation: if a visitor feeds your pet while your app is closed, the local
     schedule won't know until you open the app — acceptable for 3a.
-- **Phase 3b — Remote push (optional follow-up):**
-  - APNs / FCM / Web Push via a small `push_tokens` table, enabling real-time
-    *"Gus fed your crab!"* notifications and cancelling hunger alerts when a
-    visitor already fed it. (Also shares infra with the existing backlog item
-    "Push for neighbor requests".)
+- **Phase 3b — Remote push (built):** APNs / FCM / Web Push, reusing the
+  inbox push infra (docs/INBOX_NOTIFICATIONS.md): a visitor feeding your pet
+  writes a `pet_fed` inbox row, which pushes as *"Gus fed your pet"*.
 
 ---
 
@@ -320,7 +318,8 @@ Each milestone keeps the app playable, tested, and within `perf/budget.json`.
   neighbors' beaches, local hunger notifications on iOS/Android.
 - **A4 — Visitor feeding & activity (Phase 3b):** Visitors can feed a beach's
   pet (`POST /api/beaches/:code/pet/feed` — 1 free/day per beach, or spend own
-  food anytime), owner "X fed your pet" cue, optional remote push later.
+  food anytime); the owner hears about it as a `pet_fed` inbox row with a push
+  (docs/INBOX_NOTIFICATIONS.md), not a cue over the beach.
 - **A5 — Second species (later):** Add a water animal (e.g. dolphin offshore) or
   sky/shore animal (seagull) using the same species interface.
 

@@ -923,6 +923,20 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX pet_bag_user ON pet_bag (user_id);
   `,
+
+  // 36: away events in the inbox (docs/INBOX_NOTIFICATIONS.md): the sea's
+  // catch-up ('tide', one row per beach per UTC day) and a visitor feeding
+  // a pet ('pet_fed') write inbox rows instead of a card when the owner
+  // next opens the beach. Both push under a new 'beach' notify pref (on
+  // by default); the unpushed index gains the two kinds.
+  `
+  ALTER TABLE inbox DROP CONSTRAINT inbox_kind_check;
+  ALTER TABLE inbox ADD CONSTRAINT inbox_kind_check CHECK (kind IN ('visit', 'gift', 'neighbor_request', 'neighbor_linked', 'star', 'rating', 'invite_joined', 'invite_settled', 'system', 'copied', 'tide', 'pet_fed'));
+  ALTER TABLE notify_prefs ADD COLUMN beach BOOLEAN NOT NULL DEFAULT true;
+  DROP INDEX inbox_unpushed;
+  CREATE INDEX inbox_unpushed ON inbox (user_id)
+    WHERE pushed_at IS NULL AND kind IN ('visit', 'gift', 'neighbor_request', 'neighbor_linked', 'invite_settled', 'tide', 'pet_fed');
+  `,
 ];
 
 /** Apply migrations up to `upTo` (default: all). Tests use `upTo` to check a migration on older data. */

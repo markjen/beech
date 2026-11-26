@@ -122,6 +122,17 @@ describe('what a push says', () => {
     expect(pushMessage([{ kind: 'gift', name: 'Ben' }, { kind: 'visit', name: 'Cat' }]).body).toBe('Ben and 1 other left you something');
   });
 
+  it('says what the sea did, and who fed the pet, without naming what was taken', () => {
+    expect(pushMessage([{ kind: 'tide', name: null }]).body).toBe('The sea changed your beach while you were away');
+    expect(pushMessage([{ kind: 'pet_fed', name: 'Ben' }]).body).toBe('Ben fed your pet');
+    expect(
+      pushMessage([
+        { kind: 'tide', name: null },
+        { kind: 'tide', name: null },
+      ]).body,
+    ).toBe('The sea worked on your beach while you were away');
+  });
+
   it('keeps quiet from 22:00 to 08:00 on the device clock', () => {
     const at = Date.UTC(2026, 10, 25, 23); // 23:00 UTC
     expect(localHour('UTC', at)).toBe(23);
@@ -210,6 +221,39 @@ describe('the push routes', () => {
     expect(await db.query('SELECT 1 FROM push_subscriptions WHERE endpoint = $1', [phone.endpoint])).toHaveLength(0);
   });
 
+  it('a tide row and a pet feeding reach the device once; the beach pref mutes them', async () => {
+    const ana = await player('ana');
+    const ben = await player('ben');
+    const phone = web();
+    expect((await req('/push/subscribe', json('POST', phone), ana.token)).status).toBe(204);
+    // what the sea's catch-up and a visitor's pet feed write (liveBeach.ts, animals.ts)
+    await db.query(
+      `INSERT INTO inbox (user_id, kind, actor_id, beach_id, payload, created_at) VALUES ($1, 'tide', NULL, $1, $2::jsonb, $3), ($1, 'pet_fed', $4, $1, $5::jsonb, $3)`,
+      [ana.user.id, JSON.stringify({ tides: 4, lost: 1, brought: 2 }), clock.now, ben.user.id, JSON.stringify({ pet: 'Shelly' })],
+    );
+    sent.length = 0;
+    await pushTick(db, async (t, m) => (sent.push({ target: t, msg: m }), 'sent'), () => clock.now);
+    const toAna = sent.filter((s) => s.target.endpoint === phone.endpoint);
+    expect(toAna).toHaveLength(1);
+    expect(toAna[0].msg.url).toBe('/?inbox=1');
+    // nothing new: nothing sent
+    sent.length = 0;
+    clock.now += PUSH_EVERY_MS;
+    await pushTick(db, async (t, m) => (sent.push({ target: t, msg: m }), 'sent'), () => clock.now);
+    expect(sent.filter((s) => s.target.endpoint === phone.endpoint)).toHaveLength(0);
+    // muting "your beaches" stops both, without touching gifts
+    expect((await req('/notify-prefs', json('PUT', { beach: false }), ana.token)).status).toBe(200);
+    await db.query(`INSERT INTO inbox (user_id, kind, actor_id, beach_id, payload, created_at) VALUES ($1, 'tide', NULL, $1, $2::jsonb, $3)`, [
+      ana.user.id,
+      JSON.stringify({ tides: 1, lost: 0, brought: 0 }),
+      clock.now,
+    ]);
+    clock.now += PUSH_EVERY_MS;
+    sent.length = 0;
+    await pushTick(db, async (t, m) => (sent.push({ target: t, msg: m }), 'sent'), () => clock.now);
+    expect(sent.filter((s) => s.target.endpoint === phone.endpoint)).toHaveLength(0);
+  });
+
   it('a gone device is forgotten; unsubscribe and prefs', async () => {
     const ana = await player('ana');
     const ben = await player('ben');
@@ -221,8 +265,8 @@ describe('the push routes', () => {
     expect(r.gone).toBeGreaterThanOrEqual(1);
     expect(await db.query('SELECT 1 FROM push_subscriptions WHERE endpoint = $1', [dead.endpoint])).toHaveLength(0);
 
-    expect(await (await req('/notify-prefs', {}, ana.token)).json()).toEqual({ gifts: true, neighbors: true, invites: true });
-    expect(await (await req('/notify-prefs', json('PUT', { gifts: false }), ana.token)).json()).toEqual({ gifts: false, neighbors: true, invites: true });
+    expect(await (await req('/notify-prefs', {}, ana.token)).json()).toEqual({ gifts: true, neighbors: true, invites: true, beach: true });
+    expect(await (await req('/notify-prefs', json('PUT', { gifts: false }), ana.token)).json()).toEqual({ gifts: false, neighbors: true, invites: true, beach: true });
     expect((await req('/notify-prefs', json('PUT', { gifts: 'no' }), ana.token)).status).toBe(400);
     const phone = web();
     await req('/push/subscribe', json('POST', phone), ana.token);

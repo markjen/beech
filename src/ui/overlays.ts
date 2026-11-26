@@ -95,7 +95,7 @@ export function showActionToast(parent: HTMLElement, text: string, label: string
   return hide;
 }
 
-/** A note with several buttons (the "while you were away" card); any button closes it. */
+/** A note with several buttons; any button closes it. */
 export function showChoiceToast(parent: HTMLElement, text: string, buttons: { label: string; onClick?: () => void }[], ms = 30000): () => void {
   const { el, hide } = showNote(parent, ms);
   el.classList.add('with-action', 'choice');

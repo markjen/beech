@@ -289,6 +289,43 @@ describe('while you were away', () => {
     expect(objectsOf(b.bytes).some((o) => o.item === 'nautilus')).toBe(true);
   });
 
+  it('the sea writes one inbox row per beach per day instead of a card', async () => {
+    const { token, user } = await signIn('Mara');
+    await req(app, '/dev/grant', json('POST', { item: 'nautilus' }), token);
+    // start of a UTC day, so both catch-ups below fall on the same one
+    t = Math.ceil(t / 86400000) * 86400000;
+    await save(token, beach([{ id: 1, kind: 'nautilus', item: 'nautilus', x: 20, y: 12 }]), { nautilus: 1 });
+    const inbox = async () =>
+      (
+        (await (await req(app, '/inbox', {}, token)).json()) as {
+          unread: number;
+          entries: { kind: string; count: number; payload: Record<string, unknown>; beach: { code: string } | null }[];
+        }
+      ).entries;
+    // 13 h away: a catch-up with a "Before the tide" (gap over 12 h)
+    t += 13 * H;
+    await load(token);
+    let rows = (await inbox()).filter((e) => e.kind === 'tide');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].count).toBe(1);
+    expect(rows[0].payload.tides).toBeGreaterThanOrEqual(1);
+    expect(rows[0].payload.lost).toBe(1);
+    expect(rows[0].payload.brought).toBeGreaterThan(0);
+    const cp = (await db.query<{ id: string }>("SELECT id FROM checkpoints WHERE from_beach = $1 AND kind = 'tide'", [user.id]))[0];
+    expect(rows[0].payload.checkpoint).toBe(cp.id);
+    // a second catch-up later the same UTC day folds into the same row
+    const ev1 = (await events(user.id)).length;
+    t += 6 * H;
+    await load(token);
+    expect((await events(user.id)).length).toBe(ev1 + 1);
+    rows = (await inbox()).filter((e) => e.kind === 'tide');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].count).toBe(2);
+    expect(Number(rows[0].payload.tides)).toBeGreaterThanOrEqual(1);
+    expect(rows[0].payload.lost).toBe(1); // the nautilus is already back in the bag
+    expect(rows[0].payload.checkpoint).toBe(cp.id); // still the original pre-away beach
+  });
+
   it('repeated visitor reads while you are away keep the original "Before the tide" until you return', async () => {
     const { token, user } = await signIn('Kit');
     const { token: visitor } = await signIn('Lou');

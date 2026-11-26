@@ -11,14 +11,22 @@ export function awayFor(ms: number): string {
 }
 
 /**
- * The "while you were away" card (docs/LIVE_SIM.md, section 6): a summary,
- * counting rather than naming what the sea took.
+ * What the sea did, counting rather than naming: the "while you were away"
+ * card and the inbox tide row share the wording (docs/LIVE_SIM.md).
  */
-export function awayText(a: AwaySummary): string {
-  const parts = [`While you were away (${awayFor(a.to - a.from)})`];
+export function awayCounts(a: { highTides: number; lost: number; broughtIn: number }): string[] {
+  const parts: string[] = [];
   if (a.highTides > 0) parts.push(`${a.highTides} high tide${a.highTides === 1 ? '' : 's'}`);
   if (a.lost > 0) parts.push(`the sea took ${a.lost} thing${a.lost === 1 ? '' : 's'} (back in your bag)`);
   else if (a.broughtIn > 0) parts.push(`the sea washed up ${a.broughtIn} thing${a.broughtIn === 1 ? '' : 's'}`);
   else parts.push('the sea smoothed your sand');
-  return parts.join(' · ');
+  return parts;
+}
+
+/**
+ * The "while you were away" card (docs/LIVE_SIM.md, section 6): a summary,
+ * counting rather than naming what the sea took.
+ */
+export function awayText(a: AwaySummary): string {
+  return [`While you were away (${awayFor(a.to - a.from)})`, ...awayCounts(a)].join(' · ');
 }

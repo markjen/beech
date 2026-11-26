@@ -264,5 +264,23 @@ describe('visitor pet feeding (A4)', () => {
     const ownerData = (await ownerPet.json()) as { recentFeeders: { name: string; at: number }[] };
     expect(ownerData.recentFeeders.length).toBeGreaterThan(0);
     expect(ownerData.recentFeeders[0].name).toBe('FriendlyVisitor');
+
+    // …and in the inbox: one row per feed (free and paid), naming the pet.
+    // That row — not a toast when the owner next opens the beach — is how
+    // the owner hears about it (with a push).
+    const inbox = (await (await req('/inbox', {}, owner.token)).json()) as {
+      entries: { kind: string; count: number; payload: Record<string, unknown>; beach: { code: string } | null }[];
+    };
+    const fed = inbox.entries.filter((e) => e.kind === 'pet_fed');
+    expect(fed).toHaveLength(2);
+    for (const row of fed) {
+      expect(row.payload.pet).toBe('Shelly');
+      expect(row.beach?.code).toBe(code);
+    }
+    // The owner feeding their own pet writes no row
+    expect((await req('/dev/grant', json('POST', { item: TREAT_ITEM_ID, quantity: 1 }), owner.token)).status).toBe(204);
+    expect((await req('/animals/feed', { method: 'POST' }, owner.token)).status).toBe(200);
+    const again = (await (await req('/inbox', {}, owner.token)).json()) as { entries: { kind: string }[] };
+    expect(again.entries.filter((e) => e.kind === 'pet_fed')).toHaveLength(2);
   });
 });

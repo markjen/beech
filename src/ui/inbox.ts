@@ -198,6 +198,16 @@ export class InboxPanel {
       this.close();
       this.host.visit(from);
     }));
+    // away events are about your own beach: tapping one goes to it (the
+    // "Before the tide" checkpoint is in Manage → Checkpoints if the sea
+    // changed more than you like)
+    if ((e.kind === 'tide' || e.kind === 'pet_fed') && e.beach?.code) {
+      const code = e.beach.code;
+      acts.appendChild(this.action('view beach', `beach-${e.id}`, () => {
+        this.close();
+        this.host.visit(code);
+      }));
+    }
     if (e.note && !e.note.removed) {
       const noteId = e.note.id;
       acts.appendChild(
@@ -310,4 +320,6 @@ const KIND_ICON: Partial<Record<InboxEntry['kind'], IconName>> = {
   rating: 'shell',
   invite_joined: 'gift',
   invite_settled: 'gift',
+  tide: 'wave',
+  pet_fed: 'pet-crab',
 };

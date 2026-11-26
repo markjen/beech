@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { InboxEntry } from '../src/net/account';
 import { NOTE_MAX } from '../server/src/inbox';
 import { NOTE_MAX_CHARS } from '../src/config';
-import { aPrize, ago, announce, describeEntry } from '../src/ui/inboxText';
+import { ANNOUNCE, aPrize, ago, announce, describeEntry } from '../src/ui/inboxText';
 
 const entry = (e: Partial<InboxEntry>): InboxEntry => ({
   id: 1,
@@ -49,6 +49,33 @@ describe('inbox wording', () => {
   it('says who copied your beach (docs/COPY_BEACH.md)', () => {
     expect(describeEntry(entry({ kind: 'copied' })).title).toMatch(/^Ben copied /);
     expect(announce('copied', 'Ben')).toBe('Ben copied your beach');
+  });
+
+  it('says what the sea did while you were away, and who fed your pet', () => {
+    // a tide row: one per beach per day, the payload adds up what the sea did
+    expect(describeEntry(entry({ kind: 'tide', from: null, beach: { code: 'ANA123', name: 'Moat Bay' }, payload: { tides: 4, lost: 3, brought: 0 } }))).toEqual({
+      title: 'The sea worked on Moat Bay',
+      detail: ['4 high tides', 'the sea took 3 things (back in your bag)'],
+    });
+    expect(
+      describeEntry(entry({ kind: 'tide', from: null, payload: { tides: 1, lost: 0, brought: 5, checkpoint: 'ck-1' } })).detail,
+    ).toEqual(['1 high tide', 'the sea washed up 5 things', 'kept as it was before the tide']);
+    expect(describeEntry(entry({ kind: 'tide', from: null, payload: { tides: 0, lost: 0, brought: 0 } })).detail).toEqual(['the sea smoothed your sand']);
+    // a pet feeding names the feeder and the pet
+    expect(describeEntry(entry({ kind: 'pet_fed', beach: { code: 'ANA123', name: 'Moat Bay' }, payload: { pet: 'Shelly' } })).title).toBe(
+      'Ben fed Shelly on Moat Bay',
+    );
+    expect(describeEntry(entry({ kind: 'pet_fed', payload: {} })).title).toBe('Ben fed your sand crab on your beach');
+  });
+
+  it('away events wait in the inbox: no note over the beach for them', () => {
+    // tide and pet_fed are deliberately outside ANNOUNCE (inboxText.ts):
+    // they happened while the owner was away, so they must not pop up when
+    // the beach opens — the badge and the push carry them instead
+    expect(ANNOUNCE.has('tide')).toBe(false);
+    expect(ANNOUNCE.has('pet_fed')).toBe(false);
+    expect(announce('tide', null)).toBe('Something new in your inbox');
+    expect(announce('pet_fed', 'Ben')).toBe('Something new in your inbox');
   });
 
   it('articles, times and announcements', () => {

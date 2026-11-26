@@ -244,7 +244,8 @@ sim and the catch-up alike:
 - The live app shows a summary toast, counting rather than naming (owner's
   decision 4): "The sea took 2 things. They're back in your bag." Losses
   within a few seconds share one toast.
-- Catch-up losses go into `beach_events` and show in "while you were away".
+- Catch-up losses go into `beach_events` and, in the same statement, into
+  the owner's inbox as a `tide` row (docs/INBOX_NOTIFICATIONS.md).
 - Undo doesn't bring a lost item back (it isn't a stroke); the bag does.
 
 `wild` strays keep their own rule (the oldest goes when there are more than
@@ -269,16 +270,14 @@ CREATE TABLE beach_events (
 CREATE INDEX beach_events_beach ON beach_events (beach_id, created_at);
 ```
 
-Kept for 30 days (pruned on write). When the owner opens a beach whose
-events they haven't seen, the app shows a small card:
-
-> **While you were away** (2 days)
-> 8 high tides · the sea took 3 things (back in your bag)
-> [Put it back as it was]  [Keep]
-
-A summary, not a list of items (owner's decision 4). Unseen events of the
-same beach are merged into one card. "Last seen" is a per-beach
-`owner_seen_at` column, set when the owner opens it.
+Kept for 30 days (pruned on write). The owner hears about them in the
+inbox, not on the beach: the catch-up writes one `tide` row per beach per
+UTC day (repeated catch-ups fold into it, adding up the tides, what the sea
+took and what it washed up), and the row pushes like any other inbox row.
+Opening the beach shows no card for it — just the beach. A summary, not a
+list of items (owner's decision 4). "Last seen" is a per-beach
+`owner_seen_at` column, set when the owner opens it; the "Before the tide"
+checkpoint is restored from Manage → Checkpoints.
 
 **"Before the tide" checkpoint** (owner's decision 2). Before a catch-up of a
 gap over `CATCHUP.tideCheckpointGapH` (12 h, configurable like the cap), the
@@ -376,7 +375,7 @@ Endpoints:
 | `DELETE /api/beaches/mine/:id/lease` | Give it up (app to background) |
 | `GET /api/beach/:code/sand?since=` | Viewers' poll; 304 when unchanged |
 | `GET /api/beach/:code/live` | SSE stream of saves (L5) |
-| `GET /api/beaches/mine/:id/away` | Unseen `beach_events`; `POST …/away/seen` sets `owner_seen_at` |
+| `GET /api/beaches/mine/:id/away` | Unseen `beach_events` (kept for the API; the app no longer shows the card); `POST …/away/seen` sets `owner_seen_at` |
 
 ## Performance and cost
 
@@ -408,8 +407,8 @@ Endpoints:
   the cap read from `CATCHUP_MAX_GAP_DAYS`.
 - E2e `npm run e2e:live`: Ana builds a castle at the waterline and leaves;
   the test clock moves 2 days; Ben visits and sees it eroded; Ana opens her
-  beach, sees "while you were away", and her nautilus is back in her bag.
-  She taps "Put it back as it was" and the castle (and nautilus) return.
+  beach, finds the tide row in her inbox, and her nautilus is back in her bag.
+  She restores "Before the tide" from her checkpoints and the castle (and nautilus) return.
   A second part: Ana online, Ben watching, Ana digs, Ben sees it within 6 s.
 
 ## Milestones
@@ -419,7 +418,7 @@ Endpoints:
 | **L1** ✅ | **Lost to the sea, live.** Owned floaters and rollers can leave by the offshore edge; the worker reports `lost`; toast; the save drops them so they're back in the bag | sim tests; a bottle pushed out to sea ends up back in the bag after a save |
 | **L2** ✅ | **The catch-up model.** `src/sim/catchup.ts`, `CATCHUP` constants, fitted against the live sim; perf line | `tests/catchup.test.ts` passes; `catchup14d` within budget |
 | **L3** ✅ | **Server catch-up on read.** Bundle into the server, migrations (`simulated_until`, `beach_events`, `owner_seen_at`, `tide` checkpoints), configurable cap, lock + CAS + epoch, "Before the tide" checkpoint, background queue for the shore, items recount | server tests; e2e: 2 days on the test clock erodes a waterline castle and leaves a "Before the tide" checkpoint |
-| **L4** ✅ | **While you were away.** The summary card, `/away` endpoints, "Put it back as it was" | e2e sees the card once, then not again; putting it back restores the castle |
+| **L4** ✅ | **While you were away.** The tide inbox row, `/away` endpoints, "Before the tide" in Checkpoints | e2e finds the tide row in the inbox and no card over the beach; restoring the checkpoint brings the castle back |
 | **L5** ✅ (polling) | **Live viewers.** Lease, faster saves while watched, viewer polling with blend, then SSE with `LISTEN/NOTIFY` | e2e: a viewer sees the owner's dig within 6 s; two owner tabs never both save |
 
 L1–L4 are useful on their own (the sea works while you're away) and don't

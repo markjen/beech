@@ -17,6 +17,8 @@ export const INBOX_KINDS = [
   'invite_settled',
   'system',
   'copied', // someone copied your beach (once per person per beach)
+  'tide', // the sea worked on your beach while you were away (one row per beach per UTC day)
+  'pet_fed', // a visitor fed your beach's pet
 ] as const;
 export type InboxKind = (typeof INBOX_KINDS)[number];
 

@@ -15,6 +15,7 @@ import { catchUpSaved as catchUpRaw, CATCHUP_DEFAULTS } from './generated/catchu
 import { BadBlob, inspectBlob } from './checkpoints.js';
 import type { Db } from './db.js';
 import { toBytes } from './db.js';
+import { utcDay } from './inbox.js';
 
 export interface SavedCatchUp {
   bytes: Uint8Array;
@@ -124,8 +125,14 @@ export function createLiveBeaches(db: Db, now: () => number, cfg: LiveConfig = l
     }
     const keepBefore = t - since > cfg.tideCheckpointGapMs;
     const seenAt = Number(row.owner_seen_at ?? 0);
-    // one statement: the beach, its "Before the tide" checkpoint and the event
-    // all land together, and only if nobody changed the beach meanwhile.
+    // one statement: the beach, its "Before the tide" checkpoint, the event
+    // and the owner's inbox row all land together, and only if nobody
+    // changed the beach meanwhile. The inbox row is one per beach per UTC
+    // day (like stars): repeated catch-ups fold into it, adding up what the
+    // sea did and keeping the newest "Before the tide" checkpoint, so a
+    // popular beach doesn't flood the inbox. It is the owner's notice that
+    // the sea worked while they were away — opening the beach shows no card
+    // for it any more (docs/INBOX_NOTIFICATIONS.md).
     // Don't overwrite a "Before the tide" kept earlier during this same away
     // period (created after owner_seen_at), or repeated visitor reads would
     // replace the owner's original pre-away beach with an already-eroded one.
@@ -150,6 +157,19 @@ export function createLiveBeaches(db: Db, now: () => number, cfg: LiveConfig = l
          INSERT INTO beach_events (beach_id, from_at, to_at, tides, sand_moved, lost, brought, checkpoint, created_at)
          SELECT $1, $20, $7, $21, $22, $23, $24, (SELECT id FROM snap), $7
           WHERE EXISTS (SELECT 1 FROM upd)
+         RETURNING id
+       ),
+       inb AS (
+         INSERT INTO inbox (user_id, kind, actor_id, beach_id, day, payload, created_at)
+         SELECT $9, 'tide', NULL, $1, $26, jsonb_build_object('tides', $21, 'lost', $23, 'brought', $24, 'checkpoint', (SELECT id FROM snap)), $7
+          WHERE EXISTS (SELECT 1 FROM upd)
+         ON CONFLICT (user_id, kind, beach_id, day) WHERE day IS NOT NULL
+         DO UPDATE SET id = EXCLUDED.id, count = inbox.count + 1, created_at = EXCLUDED.created_at, read_at = NULL,
+           payload = jsonb_build_object(
+             'tides', COALESCE((inbox.payload->>'tides')::int, 0) + COALESCE((EXCLUDED.payload->>'tides')::int, 0),
+             'lost', COALESCE((inbox.payload->>'lost')::int, 0) + COALESCE((EXCLUDED.payload->>'lost')::int, 0),
+             'brought', COALESCE((inbox.payload->>'brought')::int, 0) + COALESCE((EXCLUDED.payload->>'brought')::int, 0),
+             'checkpoint', COALESCE(EXCLUDED.payload->>'checkpoint', inbox.payload->>'checkpoint'))
          RETURNING id
        )
        SELECT version, (SELECT COUNT(*) FROM ev) AS ev FROM upd`,
@@ -179,6 +199,7 @@ export function createLiveBeaches(db: Db, now: () => number, cfg: LiveConfig = l
         res.lost.length,
         res.broughtIn,
         seenAt,
+        utcDay(t),
       ],
     );
     if (!rows[0]) return 'raced';
