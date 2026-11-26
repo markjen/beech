@@ -232,6 +232,9 @@ accepted the repo's default branch, so the deploy job ran only there.
   shape and turn) and a tap on something already there picks it back up.
   Both are undoable. Shop, mystery box and claw machine tiles show as
   "coming soon".
+- **Signed out** (accounts build), the bag shows "You’re not signed in" with a
+  sign-in button at the top (`InventoryTray.setSignIn`); the sandbox build
+  doesn't.
 - **Rocks** raise the non-erodible `bottom` floor (and the sand) under an
   ellipse slightly inside the drawn rock. Water flows around them, sand scours
   beside them and settles in their lee, and they can't be dug. Removing one

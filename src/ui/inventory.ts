@@ -19,6 +19,8 @@ export class InventoryTray {
   private readonly modal: HTMLDivElement;
   private readonly tray: HTMLDivElement;
   private machines: BagMachine[] = [];
+  /** signed out (accounts build): a sign-in notice at the top of the bag */
+  private signIn: (() => void) | null = null;
   private selected: string | null = null;
   private open = false;
   /** how many of each non-free item you own, and how many are on the beach */
@@ -74,6 +76,13 @@ export class InventoryTray {
   /** The tiles at the top of the bag (signed-in builds: the claw and capsule machines). */
   setMachines(m: BagMachine[]): void {
     this.machines = m;
+    this.render();
+  }
+
+  /** Show the sign-in notice (signed out) or hide it (null: signed in, or no accounts). */
+  setSignIn(fn: (() => void) | null): void {
+    if (fn === this.signIn) return;
+    this.signIn = fn;
     this.render();
   }
 
@@ -216,6 +225,23 @@ export class InventoryTray {
     x.textContent = '×';
     x.addEventListener('click', () => this.setOpen(false));
     this.tray.append(h, x);
+    const signIn = this.signIn;
+    if (signIn) {
+      const n = document.createElement('div');
+      n.className = 'inv-signin';
+      n.innerHTML = '<span>You’re not signed in</span>';
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'action';
+      b.dataset.act = 'sign-in';
+      b.textContent = 'sign in';
+      b.addEventListener('click', () => {
+        this.setOpen(false);
+        signIn();
+      });
+      n.appendChild(b);
+      this.tray.appendChild(n);
+    }
     if (this.machines.length) {
       const row = document.createElement('div');
       row.className = 'inv-machines';
