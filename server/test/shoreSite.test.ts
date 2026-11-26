@@ -533,4 +533,43 @@ describe('piers on the shore site (docs/PIERS.md)', () => {
     expect(await db.query('SELECT 1 FROM beach_piers WHERE beach_id = $1', [ana.beachId])).toHaveLength(1);
     await db.query('DELETE FROM beach_piers WHERE beach_id = $1', [ana.beachId]);
   });
+
+  it('navigation groups beaches, items and account cleanly with active states and section tabs', async () => {
+    const headerNav = (html: string) => html.match(/<header class="top">([\s\S]*?)<\/header>/)?.[1] ?? '';
+    const mobNav = (html: string) => html.match(/<nav class="mob-nav"[^>]*>([\s\S]*?)<\/nav>/)?.[1] ?? '';
+
+    const home = await (await root.request('/', shoreHost)).text();
+    const h = headerNav(home);
+    expect(h).toContain('href="/top">Beaches</a>');
+    expect(h).toContain('href="/items">Items</a>');
+    expect(h).not.toContain('Surprise me');
+    expect(h).toContain('class="acct-link" href="/account"');
+    expect(h.indexOf('Beaches')).toBeLessThan(h.indexOf('Items'));
+    expect(h.indexOf('Items')).toBeLessThan(h.indexOf('Account'));
+    expect(mobNav(home)).toContain('href="/account"');
+
+    for (const p of ['/top', '/rising', '/new', '/at/waikiki', '/find', `/${people.Ana.code}`]) {
+      const page = await (await root.request(p, shoreHost)).text();
+      expect(headerNav(page), p).toContain('href="/top" aria-current="page">Beaches</a>');
+    }
+
+    const top = await (await root.request('/top', shoreHost)).text();
+    expect(top).toContain('<a href="/random" rel="nofollow">Surprise me</a>');
+
+    const items = await (await root.request('/items', shoreHost)).text();
+    expect(headerNav(items)).toContain('href="/items" aria-current="page">Items</a>');
+    expect(items).toContain('<div class="tabs"><a href="/items" aria-current="page">All items</a><a href="/submit">Submit an item</a><a href="/submit/spec">Asset spec</a></div>');
+
+    const submit = await (await root.request('/submit', shoreHost)).text();
+    expect(headerNav(submit)).toContain('href="/items" aria-current="page">Items</a>');
+    expect(submit).toContain('<a href="/submit" aria-current="page">Submit an item</a><a href="/submit/spec">Asset spec</a>');
+
+    const spec = await (await root.request('/submit/spec', shoreHost)).text();
+    expect(headerNav(spec)).toContain('href="/items" aria-current="page">Items</a>');
+    expect(spec).toContain('<a href="/submit/spec" aria-current="page">Asset spec</a>');
+
+    const account = await (await root.request('/account', shoreHost)).text();
+    expect(headerNav(account)).toContain('class="acct-link" href="/account" aria-current="page"');
+    expect(mobNav(account)).toContain('href="/account" aria-current="page"');
+  });
 });

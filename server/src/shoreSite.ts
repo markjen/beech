@@ -89,7 +89,7 @@ const CARD = { width: 1200, height: 630 };
 const THUMB = { width: 480, height: 300 };
 
 type Sort = 'top' | 'rising' | 'new';
-type NavKey = 'home' | 'top' | 'rising' | 'new' | 'items' | 'submit' | 'account' | 'other';
+type NavKey = 'home' | 'beaches' | 'items' | 'account' | 'other';
 interface ListRow extends NodeRow {
   stars: string | number;
   recent: string | number;
@@ -354,15 +354,10 @@ export function createShoreSite(db: Db, cfg: ShoreSiteConfig): Hono<any, any, an
     image: string;
     imageAlt: string;
   }
-  const navLinks = (active: NavKey) =>
+  const browseLinks = (active: NavKey) =>
     [
-      `<a href="${href('/top')}"${active === 'top' ? ' aria-current="page"' : ''}>Most loved</a>`,
-      `<a href="${href('/submit')}"${active === 'submit' ? ' aria-current="page"' : ''}>Submit an item</a>`,
-      `<a href="${href('/rising')}"${active === 'rising' ? ' aria-current="page"' : ''}>Rising</a>`,
-      `<a href="${href('/new')}"${active === 'new' ? ' aria-current="page"' : ''}>Just built</a>`,
+      `<a href="${href('/top')}"${active === 'beaches' ? ' aria-current="page"' : ''}>Beaches</a>`,
       `<a href="${href('/items')}"${active === 'items' ? ' aria-current="page"' : ''}>Items</a>`,
-      `<a href="${href('/random')}" rel="nofollow">Surprise me</a>`,
-      `<a href="${href('/account')}"${active === 'account' ? ' aria-current="page"' : ''} rel="nofollow">Account</a>`,
     ].join('');
 
   const layout = (
@@ -371,7 +366,8 @@ export function createShoreSite(db: Db, cfg: ShoreSiteConfig): Hono<any, any, an
     opts: { share?: { url: string; text: string; title: string }; active?: NavKey; query?: string; imageWidth?: number; imageHeight?: number } = {},
   ) => {
     const active = opts.active ?? 'other';
-    const links = navLinks(active);
+    const browse = browseLinks(active);
+    const mobLinks = `${browse}<a href="${href('/account')}"${active === 'account' ? ' aria-current="page"' : ''} rel="nofollow">Account</a>`;
     const imgW = opts.imageWidth ?? CARD.width;
     const imgH = opts.imageHeight ?? CARD.height;
     return `<!doctype html>
@@ -408,14 +404,15 @@ export function createShoreSite(db: Db, cfg: ShoreSiteConfig): Hono<any, any, an
 <div class="top-wrap">
   <header class="top">
     <a class="brand" href="${href('/')}" aria-label="beechshore home">${WAVE_SVG}<span>beech<b>shore</b></span></a>
-    <nav aria-label="Browse the shore">${links}</nav>
+    <nav aria-label="Browse the shore">${browse}</nav>
     <form class="find" action="${href('/find')}" method="get" role="search">
       ${ICONS.search}
       <input type="search" name="q" value="${esc(opts.query ?? '')}" placeholder="Code or name…" aria-label="Find a beach by code or name" autocomplete="off" spellcheck="false">
     </form>
+    <a class="acct-link" href="${href('/account')}"${active === 'account' ? ' aria-current="page"' : ''} rel="nofollow">${ICONS.user} Account</a>
     <a class="btn small" href="${esc(game)}/">Build a beach</a>
   </header>
-  <nav class="mob-nav" aria-label="Browse the shore">${links}</nav>
+  <nav class="mob-nav" aria-label="Browse the shore">${mobLinks}</nav>
 </div>
 <main>
 ${main}
@@ -423,7 +420,6 @@ ${main}
 <footer>
   <p><b>beech</b> is a calm sand-and-waves toy: dig, build, and watch the sea rework it. Every beach here is someone’s, built in the game and set on the shore.</p>
   <div class="flinks">
-    <a href="${esc(game)}/">Play beech</a>
     <a href="${href('/top')}">Most loved</a>
     <a href="${href('/rising')}">Rising</a>
     <a href="${href('/new')}">Just built</a>
@@ -431,6 +427,7 @@ ${main}
     <a href="${href('/items')}">Item catalog</a>
     <a href="${href('/submit')}">Submit an item</a>
     <a href="${href('/account')}" rel="nofollow">Your account</a>
+    <a href="${esc(game)}/">Play beech</a>
     <a href="${esc(DISCORD_INVITE_URL)}">Discord</a>${
       opts.share
         ? ` <button type="button" class="linkish" data-share data-url="${esc(opts.share.url)}" data-text="${esc(opts.share.text)}" data-title="${esc(opts.share.title)}">Share this page</button>`
@@ -578,7 +575,7 @@ ${places ? `<section><div class="sec-head"><h2>By real beach</h2></div><div clas
 <section class="head">
   <h1>${esc(L.title)}</h1>
   <p>${esc(L.blurb)}</p>
-  <div class="tabs">${(['top', 'rising', 'new'] as const).map((s) => `<a href="${href(`/${s}`)}"${s === sort ? ' aria-current="page"' : ''}>${LISTS[s].title}</a>`).join('')}</div>
+  <div class="tabs">${(['top', 'rising', 'new'] as const).map((s) => `<a href="${href(`/${s}`)}"${s === sort ? ' aria-current="page"' : ''}>${LISTS[s].title}</a>`).join('')}<a href="${href('/random')}" rel="nofollow">Surprise me</a></div>
 </section>
 <section>${bs.length ? grid(bs, sort !== 'new', (page - 1) * PAGE) : `<p class="empty">Nothing here yet.</p>`}
 <nav class="pager">${page > 1 ? `<a class="btn ghost" href="${href(`/${sort}${page > 2 ? `?page=${page - 1}` : ''}`)}">← newer</a>` : ''}${
@@ -595,7 +592,7 @@ ${places ? `<section><div class="sec-head"><h2>By real beach</h2></div><div clas
             imageAlt: 'A beach from above',
           },
           main,
-          { share: { url, text: `${L.title} on beechshore 🏖️`, title: L.title }, active: sort },
+          { share: { url, text: `${L.title} on beechshore 🏖️`, title: L.title }, active: 'beaches' },
         ),
         page > 1 && !bs.length ? 404 : 200,
       );
@@ -646,7 +643,7 @@ ${
           imageAlt: 'Find a beach on beechshore',
         },
         main,
-        { query: raw },
+        { query: raw, active: 'beaches' },
       ),
     );
   });
@@ -661,6 +658,7 @@ ${
     const url = abs(c, `/at/${p.id}${page > 1 ? `?page=${page}` : ''}`);
     const main = `
 <section class="head">
+  <p class="hint"><a href="${href('/top')}">← All beaches</a></p>
   <h1>${esc(p.name)}</h1>
   <p>Beaches built at ${esc(p.name)}, ${esc(p.place)}. In the game they get the real sun, moon and tides there.</p>
 </section>
@@ -679,7 +677,7 @@ ${
           imageAlt: p.name,
         },
         main,
-        { share: { url, text: `Beaches built at ${p.name} 🏖️`, title: p.name } },
+        { share: { url, text: `Beaches built at ${p.name} 🏖️`, title: p.name }, active: 'beaches' },
       ),
       page > 1 && !bs.length ? 404 : 200,
     );
@@ -718,7 +716,7 @@ ${
     url: abs(c, path),
     image: abs(c, '/img/shore.png'),
     imageAlt: 'An untouched beach',
-  }, main, { active: 'submit' });
+  }, main, { active: 'items' });
 
   app.get('/submit', (c) => {
     const bridge = cfg.publicUrl ? `${game}/shore/submit/connect?destination=shore` : null;
@@ -1110,7 +1108,7 @@ ${
           imageAlt: `${title}, seen from above`,
         },
         main,
-        { share: { url, text, title } },
+        { share: { url, text, title }, active: 'beaches' },
       ),
     );
   });

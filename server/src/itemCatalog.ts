@@ -318,6 +318,7 @@ export function catalogIndexHtml(items: { group: (typeof CATALOG_GROUPS)[number]
 <section class="head items-head">
   <h1>Every item in beech</h1>
   <p>${total} things to set on the sand, grouped by how you get them. Open one to see its picture, size and price — and vote for the ones you love.</p>
+  <div class="tabs"><a href="${esc(links.href('/items'))}" aria-current="page">All items</a><a href="${esc(links.href('/submit'))}">Submit an item</a><a href="${esc(links.href('/submit/spec'))}">Asset spec</a></div>
 </section>
 ${items
   .map(
