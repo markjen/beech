@@ -363,12 +363,12 @@ export class SettingsSheet {
         b.classList.toggle('on', b.dataset.v === v);
       }
     }
-    this.places?.setCurrent(this.settings.beach);
+    this.places.setCurrent(this.settings.beach);
     // the pinned light waits in the background while local weather is on
     this.el.querySelector('.chips[data-key="palette"]')?.classList.toggle('standby', this.settings.localWeather);
   }
 
-  /** Highlight a specific real-world place chip (e.g. for the beach selected in settings). */
+  /** Show a specific real-world place in the picker (e.g. for the beach selected in settings). */
   setBeachLocation(id: string): void {
     this.places.setCurrent(id);
   }
@@ -428,6 +428,7 @@ export class SettingsSheet {
   }
 
   show(tab?: SettingsTab): void {
+    this.places.refresh();
     if (tab) this.setTab(tab);
     this.open = true;
     this.el.classList.add('open');

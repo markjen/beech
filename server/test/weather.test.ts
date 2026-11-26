@@ -85,6 +85,38 @@ describe('weather', () => {
     expect(await w.get()).toBeNull();
   });
 
+  it('uses the customer hosts and the key on a paid plan', async () => {
+    const calls: string[] = [];
+    const w = createWeather({ places: PLACES, apiKey: 'k&1', fetch: fakeFetch(calls, (u) => (u.includes('marine') ? marine : forecast(3))) });
+    await w.get();
+    expect(calls[0]).toMatch(/^https:\/\/customer-api\.open-meteo\.com\//);
+    expect(calls[1]).toMatch(/^https:\/\/customer-marine-api\.open-meteo\.com\//);
+    for (const c of calls) expect(c).toContain('apikey=k%261');
+    const free: string[] = [];
+    await createWeather({ places: PLACES, fetch: fakeFetch(free, (u) => (u.includes('marine') ? marine : forecast(3))) }).get();
+    for (const c of free) expect(c).not.toContain('apikey');
+  });
+
+  it('backs off and logs when the answer has nothing usable', async () => {
+    let t = 0;
+    const calls: string[] = [];
+    const logged: string[] = [];
+    const w = createWeather({
+      places: PLACES,
+      now: () => t,
+      log: (e) => logged.push(e.event),
+      fetch: fakeFetch(calls, () => ({ error: true })),
+    });
+    expect(await w.get()).toBeNull();
+    expect(logged).toEqual(['weather_fetch_failed']);
+    t += 30_000;
+    await w.get();
+    expect(calls).toHaveLength(2); // no retry within a minute
+    t += 31_000;
+    await w.get();
+    expect(calls).toHaveLength(4);
+  });
+
   it('knows every place in the game', () => {
     const ids = placeCoords().map((p) => p.id);
     expect(ids).toContain('bondi');

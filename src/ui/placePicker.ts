@@ -71,7 +71,7 @@ export class PlacePicker {
           <button type="button" class="action near" data-act="near">near me</button>
         </div>
         <div class="beach-map pp-map"></div>
-        <div class="pp-list" role="listbox" aria-label="Places"></div>
+        <div class="pp-list" role="group" aria-label="Places"></div>
         <div class="status pp-empty" hidden>no places match</div>
       </div>`;
     this.summary = this.el.querySelector('.pp-summary')!;
@@ -84,8 +84,9 @@ export class PlacePicker {
     this.search.addEventListener('input', () => this.filter());
     this.search.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
-        const first = searchPlaces(this.beaches, this.search.value)[0];
-        if (first) this.choose(first.id);
+        // the first row on screen (the list is in region order)
+        const first = this.list.querySelector<HTMLButtonElement>('button:not([hidden])');
+        if (first?.dataset.v) this.choose(first.dataset.v);
       }
     });
     this.el.querySelector<HTMLButtonElement>('[data-act="near"]')!.addEventListener('click', () => {
@@ -115,7 +116,7 @@ export class PlacePicker {
     for (const [bid, row] of this.rows) {
       const on = bid === this.current;
       row.classList.toggle('on', on);
-      row.setAttribute('aria-selected', String(on));
+      row.setAttribute('aria-pressed', String(on));
     }
     for (const [bid, g] of this.markers) g.classList.toggle('here', bid === this.current);
     this.refreshSummary();
@@ -220,7 +221,6 @@ export class PlacePicker {
       for (const b of beaches) {
         const row = document.createElement('button');
         row.type = 'button';
-        row.setAttribute('role', 'option');
         row.dataset.v = b.id;
         row.innerHTML = `<span class="pp-name"><b></b><span></span></span><span class="pp-wx"></span><span class="pp-time"></span>`;
         row.querySelector('b')!.textContent = b.name;

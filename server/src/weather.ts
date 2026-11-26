@@ -5,7 +5,9 @@
 // player, so the upstream load doesn't grow with players, and the app never
 // talks to a third party: no player's location or IP leaves our server.
 //
-// Open-Meteo: https://open-meteo.com (free, no key, CC-BY 4.0 data).
+// Open-Meteo: https://open-meteo.com (CC-BY 4.0 data). Its free API is for
+// non-commercial use; with OPEN_METEO_API_KEY set (a paid plan), requests go
+// to the customer endpoints with the key instead.
 import { placeCoords } from './generated/catchup.js';
 
 /** One place's weather (the same shape as PlaceWeather in src/world/weather.ts). */
@@ -34,10 +36,16 @@ export interface WeatherOptions {
   /** wait at most this long for Open-Meteo (ms) */
   timeoutMs?: number;
   places?: { id: string; lat: number; lon: number }[];
+  /** Open-Meteo API key (paid plan): uses the customer-* hosts */
+  apiKey?: string;
+  /** told about each failed fetch */
+  log?: (event: { event: string; error: string }) => void;
 }
 
-const FORECAST = 'https://api.open-meteo.com/v1/forecast';
-const MARINE = 'https://marine-api.open-meteo.com/v1/marine';
+const hosts = (apiKey: string | undefined) =>
+  apiKey
+    ? { forecast: 'https://customer-api.open-meteo.com/v1/forecast', marine: 'https://customer-marine-api.open-meteo.com/v1/marine' }
+    : { forecast: 'https://api.open-meteo.com/v1/forecast', marine: 'https://marine-api.open-meteo.com/v1/marine' };
 const FORECAST_FIELDS = 'temperature_2m,weather_code,cloud_cover,precipitation,wind_speed_10m,wind_direction_10m';
 
 type Current = Record<string, number | null | undefined>;
@@ -84,6 +92,8 @@ export function createWeather(opts: WeatherOptions = {}) {
   const stale = opts.staleMs ?? 3 * 60 * 60 * 1000;
   const timeout = opts.timeoutMs ?? 8000;
   const places = opts.places ?? placeCoords();
+  const { forecast: FORECAST, marine: MARINE } = hosts(opts.apiKey);
+  const key = opts.apiKey ? `&apikey=${encodeURIComponent(opts.apiKey)}` : '';
   let report: WeatherReport | null = null;
   let inFlight: Promise<WeatherReport | null> | null = null;
   let failedAt = -Infinity;
@@ -97,7 +107,7 @@ export function createWeather(opts: WeatherOptions = {}) {
   const refresh = async (): Promise<WeatherReport | null> => {
     const lat = places.map((p) => p.lat).join(',');
     const lon = places.map((p) => p.lon).join(',');
-    const q = `latitude=${lat}&longitude=${lon}&timezone=GMT`;
+    const q = `latitude=${lat}&longitude=${lon}&timezone=GMT${key}`;
     try {
       const [forecast, marine] = await Promise.all([
         getJson(`${FORECAST}?${q}&current=${FORECAST_FIELDS}`),
@@ -105,10 +115,12 @@ export function createWeather(opts: WeatherOptions = {}) {
         getJson(`${MARINE}?${q}&current=wave_height`).catch(() => null),
       ]);
       const r = buildReport(places, forecast, marine, now());
-      if (Object.keys(r.places).length) report = r;
+      if (!Object.keys(r.places).length) throw new Error('no usable places in the answer');
+      report = r;
       return report;
-    } catch {
+    } catch (e) {
       failedAt = now();
+      opts.log?.({ event: 'weather_fetch_failed', error: String(e) });
       return report;
     }
   };

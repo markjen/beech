@@ -1398,7 +1398,9 @@ body.ambient-idle .hud-sign-in {
 
 .pp-map .marker .dot {
   stroke-width: 1;
-  transition: opacity 0.15s;
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: opacity 0.15s, transform 0.15s;
 }
 
 .pp-map .marker.dim {
@@ -1407,7 +1409,7 @@ body.ambient-idle .hud-sign-in {
 
 .pp-map .marker.here .dot,
 .pp-map .marker.hover .dot {
-  r: 5.5;
+  transform: scale(1.5);
   stroke: var(--ui-fg);
   stroke-width: 2;
 }

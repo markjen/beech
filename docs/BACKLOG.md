@@ -14,6 +14,15 @@ The single list of what's left to do, for the owner and for agents.
 
 ## Owner: things only you can do
 
+- [ ] **Open-Meteo plan for real weather** (2026-11-26): Open-Meteo's free
+  API is for non-commercial use only, and beech sells things, so production
+  needs a paid plan (the smallest is plenty: the server makes two requests
+  every 15 minutes per instance). Put the key in Secret Manager as
+  `beech-open-meteo-api-key` and add
+  `OPEN_METEO_API_KEY=beech-open-meteo-api-key:latest` to the API service's
+  `--set-secrets` in `.github/workflows/deploy-gcp.yml`. With the key set,
+  the server uses the `customer-*` hosts. Until then it uses the free API.
+
 - [ ] **Sand-buck packs in the stores** (docs/SAND_BUCKS.md, "Owner tasks"):
   create the consumable products `bucks_10`, `bucks_30`, `bucks_50`,
   `bucks_100`, `bucks_200` ($0.99 / $2.99 / $4.99 / $9.99 / $19.99) in App

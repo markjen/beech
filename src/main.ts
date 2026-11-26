@@ -2233,7 +2233,8 @@ async function boot() {
     // cloud hides the sun, the moon and the stars
     const skyOpen = 1 - Math.min(1, look.overcast * 0.9 + look.fog * 0.6);
     const sunDisc = fixed ? undefined : skyDisc(sk.sun.dir, sk.sun.elevation);
-    cloudDrift += dt * (0.004 + 0.02 * look.wind);
+    // slow on purpose: the sky texture redraws each time the clouds move a pixel
+    cloudDrift += dt * (0.002 + 0.006 * look.wind);
     sky.update(
       palette,
       {

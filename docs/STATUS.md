@@ -185,7 +185,11 @@ and vending prize cards can be closed while keeping the prize in the bag.
   all players, with one fetch at a time. When Open-Meteo is down, the last
   report is served for up to 3 hours, then 503. No player data goes
   upstream. Place coordinates come from the catch-up bundle
-  (`placeCoords()` in `src/world/catchupBeach.ts`).
+  (`placeCoords()` in `src/world/catchupBeach.ts`). Failed fetches are
+  logged (`weather_fetch_failed`) and retried after a minute.
+- Licence: Open-Meteo's free API is non-commercial only. `OPEN_METEO_API_KEY`
+  (a paid plan) switches the server to the `customer-*` hosts with the key;
+  setting it up is an owner task in BACKLOG.md.
 - The app (production builds only, `src/net/weather.ts`) fetches it at
   start and every 15 minutes, and keeps the last report in `localStorage`
   so the first frame is already right. The sandbox has no weather unless
