@@ -472,6 +472,7 @@ export async function pushTick(db: Db, send: PushSender, clock: () => number = D
         AND NOT EXISTS (SELECT 1 FROM push_state ps WHERE ps.user_id = p.user_id AND ps.last_push_at > $3)
       LIMIT $4`,
     [PUSHED, now, now - PUSH_EVERY_MS, limit],
+    'push.tick',
   );
   for (const p of players) {
     out.players++;
