@@ -11,6 +11,11 @@ import { isSteam, steamBridge } from '../platform/runtime';
 import { appInfo, formatAppVersion, syncAppInfo } from '../platform/version';
 import { unlockSteamAchievement } from '../platform/steamFeatures';
 import { nativeProviders, nativeSignIn, SignInCancelled, type NativeProvider } from '../net/nativeAuth';
+import {
+  formatSignInDiagnostics,
+  signInDiagnosticsOf,
+  type SignInDiagnostics,
+} from '../net/signinDiagnostics';
 import { reportError, reportEvent } from '../net/telemetry';
 import type { BeachSync, SyncState } from '../net/beachSync';
 import type { NeighborView } from '../render/neighbors';
@@ -56,6 +61,8 @@ export interface MineCallbacks {
 /** Account, beach settings, shore connections, and checkpoints rendered across the settings sheet's tabs. */
 export class AccountPanel {
   private error = '';
+  /** diagnostics of the last failed native sign-in, for the on-screen readout (null otherwise) */
+  private signInDiagnostics: SignInDiagnostics | null = null;
   private confirmDelete = 0;
   /** The beach currently selected *in settings* (independent of which beach you're editing in 3D). */
   private selectedId: string | null = null;
@@ -788,6 +795,8 @@ export class AccountPanel {
     }
     const err = this.errorBanner();
     if (err) box.appendChild(err);
+    const diag = this.signInDiagnosticsBlock();
+    if (diag) box.appendChild(diag);
 
     const community = document.createElement('div');
     community.className = 'status';
@@ -915,8 +924,39 @@ export class AccountPanel {
     return b;
   }
 
+  /**
+   * The last failed native sign-in, as a copyable readout: provider, error
+   * code, app version/build, app id, client id, and the installed APK's
+   * signing fingerprints. Only ever shown with a sign-in failure, never
+   * as a permanent banner.
+   */
+  private signInDiagnosticsBlock(): HTMLElement | null {
+    const d = this.signInDiagnostics;
+    if (!d) return null;
+    const wrap = document.createElement('div');
+    wrap.className = 'diag';
+    const pre = document.createElement('pre');
+    pre.textContent = formatSignInDiagnostics(d);
+    const copy = document.createElement('button');
+    copy.type = 'button';
+    copy.className = 'action';
+    copy.dataset.act = 'copy-diag';
+    copy.textContent = 'copy diagnostics';
+    copy.addEventListener('click', () => {
+      void copyText(formatSignInDiagnostics(d)).then((ok) => {
+        copy.textContent = ok ? 'copied' : 'copy failed';
+        window.setTimeout(() => {
+          copy.textContent = 'copy diagnostics';
+        }, 2000);
+      });
+    });
+    wrap.append(pre, copy);
+    return wrap;
+  }
+
   private async signIn(fn: () => Promise<unknown>, method: string): Promise<void> {
     this.error = '';
+    this.signInDiagnostics = null;
     try {
       await fn();
       reportEvent('auth_success', { method });
@@ -928,6 +968,7 @@ export class AccountPanel {
       }
       reportError('auth', e, { source: `accountPanel:${method}`, meta: { method } });
       this.error = (e as Error).message;
+      this.signInDiagnostics = signInDiagnosticsOf(e);
       this.render();
     }
   }
