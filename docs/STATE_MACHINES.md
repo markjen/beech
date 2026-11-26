@@ -16,7 +16,7 @@ rest of `npm test` in `server/`. No E2E, no rendering.
 | Editing beaches | `BeachEditing.tla` | `editing.test.ts` | a fenced device overwriting the editor, more placed than owned, a restore overwritten |
 | Neighbor links | `Neighbors.tla` | `neighbors.test.ts` | one-sided links, two neighbors on one side, two beaches linked on both sides |
 | Copying a beach | `BeachCopy.tla` | `copy.test.ts` | more placed than owned, more beaches than the allowance, a copy of a beach just taken off the shore, a different version than previewed |
-| Sand bucks and trade-ins | `SandBucks.tla` | `bucks.test.ts` | a trade-in of a thing on a beach, the last one traded in twice, bucks lost or minted by spending, trading in or a refund |
+| Beech bucks and trade-ins | `SandBucks.tla` | `bucks.test.ts` | a trade-in of a thing on a beach, the last one traded in twice, bucks lost or minted by spending, trading in or a refund |
 | Piers | `Piers.tla` | `piers.test.ts` | a pier landed after an unlink, two on one beach, a placed pier traded in or given away |
 | Push notifications | `Push.tla` | `push.test.ts` | a push sent twice, two in an hour, a push after unsubscribing, signing out, blocking or muting |
 
@@ -129,9 +129,9 @@ Invariants: `WithinBag`, `WithinAllowance`, `CopiedWhatSeen`,
 `NoCopyOffShore`, `NothingOffBeach`. The three-statement form breaks the
 first, second and fourth; the design (one transaction) passes.
 
-## Sand bucks and trade-ins (`SandBucks.tla`)
+## Beech bucks and trade-ins (`SandBucks.tla`)
 
-[SAND_BUCKS.md](SAND_BUCKS.md). State: the balance and debt, the bag's units
+[BEECH_BUCKS.md](BEECH_BUCKS.md). State: the balance and debt, the bag's units
 by trade-in value, what's on the beaches, packs bought, and each trade-in's
 step.
 
@@ -168,7 +168,7 @@ devices at once and random-walks `invitesModel.ts`.
 
 [Piers](PIERS.md). State: the beaches and their direct links, how many
 piers the player owns, and how many attachments each beach holds. The pier
-is a bag unit bought with sand bucks (`Buy`); attachments are counted
+is a bag unit bought with beech bucks (`Buy`); attachments are counted
 against what's owned.
 
 | Action | Route | Atomic step |

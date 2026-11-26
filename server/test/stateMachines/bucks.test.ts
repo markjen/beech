@@ -1,4 +1,4 @@
-// Sand bucks and trade-ins, against specs/tla/SandBucks.tla (docs/SAND_BUCKS.md,
+// Beech bucks and trade-ins, against specs/tla/SandBucks.tla (docs/BEECH_BUCKS.md,
 // docs/STATE_MACHINES.md). Fast: the real server in-process, no rendering.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { revokeStorePurchase } from '../../src/store.js';
@@ -12,7 +12,7 @@ beforeAll(async () => {
 });
 afterAll(() => s.close());
 
-const ITEM = 'parasol'; // 10 sand bucks
+const ITEM = 'parasol'; // 10 beech bucks
 
 interface Who {
   token: string;
@@ -30,7 +30,7 @@ async function person(label = 'Bucks'): Promise<Who> {
 }
 
 let tx = 0;
-/** a sand-buck pack through the pretend store; returns its transaction id */
+/** a beech-buck pack through the pretend store; returns its transaction id */
 async function buyPack(w: Who, product = 'bucks_10') {
   const token = `t-${++tx}`;
   const r = await s.post('/store/purchase', w.token, { platform: 'dev', productId: product, token });
@@ -80,7 +80,7 @@ async function answer(r: Response): Promise<BucksAnswer> {
   return why === 'short' ? { status: 409, why } : { status: 409 };
 }
 
-describe('sand bucks: one transition at a time', () => {
+describe('beech bucks: one transition at a time', () => {
   it('a pack fills the balance; spending moves it into the bag; trading in gives exactly that back', async () => {
     const w = await person();
     await buyPack(w, 'bucks_30');
@@ -180,7 +180,7 @@ describe('sand bucks: one transition at a time', () => {
   });
 });
 
-describe('sand bucks: TLC counterexamples, replayed against the server', () => {
+describe('beech bucks: TLC counterexamples, replayed against the server', () => {
   // SandBucks.cfg, NoPhantomUnits: TradeCheck(r1), TradeCheck(r2), TradeWrite(r1), TradeWrite(r2).
   it('two trade-ins of the last one at once credit it once', async () => {
     const w = await person();
@@ -209,7 +209,7 @@ describe('sand bucks: TLC counterexamples, replayed against the server', () => {
   });
 });
 
-describe('sand bucks: random walks, server vs model', () => {
+describe('beech bucks: random walks, server vs model', () => {
   type Action = 'pack' | 'refund' | 'spend' | 'promo' | 'free' | 'gift' | 'save' | 'trade';
   const actions: Action[] = ['pack', 'pack', 'refund', 'spend', 'spend', 'promo', 'free', 'gift', 'save', 'save', 'trade', 'trade', 'trade'];
 

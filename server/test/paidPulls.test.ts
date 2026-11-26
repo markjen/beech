@@ -33,7 +33,7 @@ describe('paid-try pricing', () => {
     expect(clawExtraGoEV()).toBeLessThan(drawEV);
   });
 
-  it('both machines price at 10 sand bucks (Mark, Nov 26) — above EV on both', () => {
+  it('both machines price at 10 beech bucks (Mark, Nov 26) — above EV on both', () => {
     expect(VENDING_EXTRA_BALL_BUCKS).toBe(10);
     expect(CLAW_EXTRA_GO_BUCKS).toBe(10);
     // the vending edge is thin (~18%), the claw's is ~71%
@@ -136,7 +136,7 @@ describe('paid tries', () => {
     const { token, user } = await signIn('paid-broke');
     const r = await paid('vending', token);
     expect(r.status).toBe(402);
-    expect(((await r.json()) as { error: string }).error).toMatch(/not enough sand bucks: 10 needed, 0 in your balance/);
+    expect(((await r.json()) as { error: string }).error).toMatch(/not enough beech bucks: 10 needed, 0 in your balance/);
     expect(await balance(user.id)).toBe(0);
     expect(await pullsLogged(user.id, 'vending')).toBe(0);
     const ledger = await db.query('SELECT * FROM credit_ledger WHERE user_id = $1', [user.id]);

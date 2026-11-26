@@ -3,7 +3,7 @@
 // Ana saves her beach. Ben opens a link to it in a fresh browser, signed out,
 // and sees it straight away. He taps "leave something", which asks him to
 // sign in; after signing in the card opens (and the link counts as Ana's
-// invite: S$ 50; he's given a parasol). He leaves 4 shells, a quick note and the
+// invite: bb 50; he's given a parasol). He leaves 4 shells, a quick note and the
 // parasol. Ana's mailbox shows it; she opens the inbox, says thanks, reports
 // the note and blocks Ben; Ben's next visit doesn't go through.
 //   node scripts/inbox-e2e.mjs [screenshot-dir]
@@ -61,9 +61,9 @@ await pb.evaluate((n) => window.__beech.account().signInDev(n), ben);
 await pb.waitForSelector('.visitor.open .visitor-shell', { timeout: 60000 });
 check(true, 'after signing in, the visitor card opens');
 await pb.evaluate(() => window.__beech.sheet.hide());
-// the link counted as Ana's invite: S$ 50 for Ben (docs/INVITES_GUIDE.md)
+// the link counted as Ana's invite: bb 50 for Ben (docs/INVITES_GUIDE.md)
 await pb.waitForFunction(async () => (await (await window.__beech.account().fetch('/api/credit')).json()).bucks === 50, null, { timeout: 60000 });
-check(true, 'the visit link counted as an invite: Ben has S$ 50');
+check(true, 'the visit link counted as an invite: Ben has bb 50');
 // and a parasol in his bag to leave her
 await pb.evaluate(() => window.__beech.account().fetch('/api/dev/grant', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ item: 'parasol' }) }));
 await pb.evaluate(() => window.__beech.refreshOwned?.());

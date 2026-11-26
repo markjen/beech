@@ -1482,7 +1482,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       odds: Record<Rarity, number>;
       items: Record<Rarity, string[]>;
       free: boolean;
-      /** one more try for sand bucks, when the free go is gone */
+      /** one more try for beech bucks, when the free go is gone */
       paidTry?: { bucks: number };
       nextCooldown: number;
       /** the range the rest is drawn from (claw only): short after a miss, long after a win */
@@ -1538,7 +1538,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     return c.json({
       pools,
       nextFree: daily && daily.at > now ? daily.at : now,
-      /** your sand bucks, so the machines can show the price against your balance */
+      /** your beech bucks, so the machines can show the price against your balance */
       bucks: centsToBucks(Number(me_?.credit_cents ?? 0)),
     });
   });
@@ -1648,7 +1648,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     return c.json({ missed: false, item: got.item, rarity: got.rarity, nextFree: st?.at ?? now + wait });
   });
 
-  // your paid go: one more try for sand bucks, when the free go is gone (or
+  // your paid go: one more try for beech bucks, when the free go is gone (or
   // before it — the price is the same either way, and the machine only
   // offers it when the free go is gone). The server draws, deducts the price
   // and grants the prize in one step; a broke player gets a 402 and nothing
@@ -1691,7 +1691,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       await unique.release();
       const [bal] = await db.query<{ credit_cents: number }>('SELECT credit_cents FROM users WHERE id = $1', [me]);
       const have = centsToBucks(Number(bal?.credit_cents ?? 0));
-      return c.json({ error: `not enough sand bucks: ${price} needed, ${have} in your balance`, bucks: have, price }, 402);
+      return c.json({ error: `not enough beech bucks: ${price} needed, ${have} in your balance`, bucks: have, price }, 402);
     }
     // the free go is untouched by a paid try: its next time is unchanged
     const st = (await freeAt(me)).get(poolId);
@@ -2077,7 +2077,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
 
   // ---------------------------------------------------------------- piers
   // docs/PIERS.md, specs/tla/Piers.tla. A pier is a bag item ('pier', bought
-  // with sand bucks); a beach_piers row lands one on a beach. Rows count as
+  // with beech bucks); a beach_piers row lands one on a beach. Rows count as
   // placed against what's owned, so the bag, trade-ins and gifts see them.
   /** piers you own, and how many are on beaches (active or paused) */
   const pierCounts = async (user: string, q: Db = db): Promise<{ owned: number; placed: number }> => {
@@ -2659,7 +2659,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     });
   });
 
-  /** what each offer costs now, in sand bucks (null: not for sale) */
+  /** what each offer costs now, in beech bucks (null: not for sale) */
   const offerPrices = async (q: Db = db): Promise<Map<string, number | null>> => {
     const out = new Map<string, number | null>();
     for (const p of PRODUCTS) {
@@ -2669,8 +2669,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     return out;
   };
 
-  // The shop for apps that know sand bucks (docs/SAND_BUCKS.md): packs for
-  // real money, offers for sand bucks. (/store/products stays as it was for
+  // The shop for apps that know beech bucks (docs/BEECH_BUCKS.md): packs for
+  // real money, offers for beech bucks. (/store/products stays as it was for
   // the app versions already in the stores.)
   app.get('/store/catalog', async (c) => {
     const prices = await offerPrices();
@@ -2709,7 +2709,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     // the app ties each purchase to the account that made it
     if (v!.account && v!.account !== me) fail(403, 'that purchase belongs to another account');
     const now = clock();
-    // Record it once, then grant (a pack's sand bucks, or an old app's
+    // Record it once, then grant (a pack's beech bucks, or an old app's
     // things) and any creator credit in the same transaction.
     const rows = await db.withTransaction(async (tx) => {
       const granted = await tx.query<{ purchase_id: string }>(
@@ -2820,8 +2820,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       if (!packById(productId ?? '')) fail(400, 'only sand-dollar packs are sold here');
       returnUrl = mount === 'game' ? new URL('/shore/account', cfg.xsolla?.returnUrl ?? 'https://play.beech.games/').toString() : `${(cfg.shoreUrl ?? 'https://beechshore.com').replace(/\/$/, '')}/account`;
     }
-    // the web sells sand-buck packs (docs/SAND_BUCKS.md); item products stay
-    // accepted for a page loaded before the sand-bucks release
+    // the web sells beech-buck packs (docs/BEECH_BUCKS.md); item products stay
+    // accepted for a page loaded before the beech-bucks release
     const product = realMoneyProductById(productId ?? '');
     if (!product) fail(404, 'no such product');
     if (rawCountry !== undefined && (typeof rawCountry !== 'string' || !/^[A-Za-z]{2}$/.test(rawCountry))) {
@@ -2953,7 +2953,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       }
       if (currency && currency !== 'USD') log('local_currency', { currency });
       const now = clock();
-      // Record the payment once, mark the order paid, and grant (sand bucks) and credit atomically.
+      // Record the payment once, mark the order paid, and grant (beech bucks) and credit atomically.
       // A retried webhook hits the purchases unique key and changes nothing.
       // An order Xsolla already canceled is not revived by a late payment.
       const granted = await db.withTransaction(async (tx) => {
@@ -3026,7 +3026,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const me = c.get('user').id;
     if (!checkoutLimiter(me)) return c.json({ error: 'slow down' }, 429);
     const { productId } = await body<{ productId?: string }>(c);
-    // Steam sells sand-buck packs (docs/SAND_BUCKS.md); the item products stay
+    // Steam sells beech-buck packs (docs/BEECH_BUCKS.md); the item products stay
     // on sale here for the Steam builds already out (PR #118 review)
     const product = realMoneyProductById(productId ?? '');
     if (!product) fail(404, 'no such product');
@@ -3181,7 +3181,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     if (known.status !== 'active') fail(409, known.status === 'redeemed' ? 'that card was already used' : 'that card is disabled');
     if (known.expires_at !== null && Number(known.expires_at) <= now) fail(409, 'that card has expired');
     // one transaction: claim the card (only if still active and unexpired —
-    // a second redeem racing this one claims nothing), then its sand bucks
+    // a second redeem racing this one claims nothing), then its beech bucks
     // in (10 cents a buck, a part buck rounded up), paying off any debt first
     const result = await db.withTransaction(async (tx) => {
       const [claimed] = await tx.query<{ id: string; amount_cents: number }>(
@@ -3210,7 +3210,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     return c.json({ creditCents: cents, bucks: centsToBucks(cents), debt: centsToBucks(Number(rows[0]?.creator_credit_debt_cents ?? 0)) });
   });
 
-  /** An offer's price in cents of sand bucks (whole bucks): a community item's approved price, rounded; else its bucks price. */
+  /** An offer's price in cents of beech bucks (whole bucks): a community item's approved price, rounded; else its bucks price. */
   const offerCents = (product: Product, offer: Awaited<ReturnType<typeof creatorOffer>>): number | null => {
     if (!offer) return bucksToCents(product.bucks);
     const cents = salePriceCents(product, offer);
@@ -3219,8 +3219,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   /** a promo's discount, in whole bucks (never more than the price) */
   const bucksDiscount = (promo: Promo, priceCents: number) => Math.floor(discountCents(promo, priceCents) / BUCK) * BUCK;
 
-  // What a product costs in sand bucks with a promo code, before buying
-  // (validates the code but doesn't use it). docs/SAND_BUCKS.md.
+  // What a product costs in beech bucks with a promo code, before buying
+  // (validates the code but doesn't use it). docs/BEECH_BUCKS.md.
   app.post('/store/quote', requireUser, async (c) => {
     const me = c.get('user').id;
     if (!creditLimiter(me)) return c.json({ error: 'slow down' }, 429);
@@ -3249,7 +3249,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   });
 
   /**
-   * Buy with sand bucks (Spend in specs/tla/SandBucks.tla): one offer, or a
+   * Buy with beech bucks (Spend in specs/tla/SandBucks.tla): one offer, or a
    * basket of them ("buy what's missing", docs/COPY_BEACH.md). The debit, the
    * promo, the grant (each unit with its trade-in value: the price paid,
    * shared out) and any creator credit commit together. A repeated request ID
@@ -3307,7 +3307,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       for (const l of priced) if (l.offer) await lockCreditUsers(tx, me, l.offer);
       const available = await balance();
       if (available < paid) throw new HTTPException(402, {
-        message: `not enough sand bucks: ${centsToBucks(paid)} needed, ${centsToBucks(available)} in your balance`,
+        message: `not enough beech bucks: ${centsToBucks(paid)} needed, ${centsToBucks(available)} in your balance`,
       });
       // every unit's trade-in value: what was paid, shared out by list value
       const perLine = priced.map((l) => Array.from({ length: l.quantity }, () => unitsOf(l.product.grants)).flat());
@@ -3392,7 +3392,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   });
 
   // ---------------------------------------------------------------- trade-ins
-  // What each thing in your bag trades in for (docs/SAND_BUCKS.md): how many
+  // What each thing in your bag trades in for (docs/BEECH_BUCKS.md): how many
   // you own, how many are on your beaches, and the value of each unit,
   // newest first (the order a trade-in takes them).
   app.get('/bag', requireUser, async (c) => {
@@ -3424,7 +3424,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     });
   });
 
-  // Trade a thing in for its sand bucks (TradeAtomic in specs/tla/SandBucks.tla):
+  // Trade a thing in for its beech bucks (TradeAtomic in specs/tla/SandBucks.tla):
   // one transaction holding the player's lock (the one saves, restores,
   // copies and gifts take), so a save placing it, or a second trade-in of the
   // same last one, can't land in between. Only what isn't on a beach.
@@ -3535,7 +3535,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
          -- the gift keeps the purchase it came from, so a refund of that
          -- purchase takes it back from the recipient too (otherwise: buy,
          -- gift it to a second account, get a refund, keep the item)
-         -- and its trade-in value (docs/SAND_BUCKS.md), so a discount can't be cashed out by gifting
+         -- and its trade-in value (docs/BEECH_BUCKS.md), so a discount can't be cashed out by gifting
          -- and the creator royalty it earned, so trading the gift in takes that back
          INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at, expires_at, purchase_id, unit_cents, royalty_ref)
          SELECT $4, item_id, 1, 'gift', $3, expires_at, purchase_id, unit_cents,
@@ -3600,7 +3600,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   const REWARD_ROW = `INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at)`;
 
   /**
-   * If `invitee` came through an invite before the sand-buck bonus (a legacy
+   * If `invitee` came through an invite before the beech-buck bonus (a legacy
    * referral, bonus_bucks NULL) and has now done enough of the guide, mark
    * them settled in and give their inviter the next rung of the old ladder.
    * The rank is unique per inviter: two friends settling at the same moment
@@ -3759,9 +3759,9 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       name: r.name?.trim() || 'Someone',
       joinedAt: Number(r.created_at),
       settled: r.qualified_at !== null,
-      /** an old ladder reward (before the sand-buck bonus) */
+      /** an old ladder reward (before the beech-buck bonus) */
       reward: r.reward_item,
-      /** sand bucks this friend earned you (0 past the cap, or a legacy referral) */
+      /** beech bucks this friend earned you (0 past the cap, or a legacy referral) */
       bucks: r.bonus_bucks !== null && r.reward_rank !== null ? Number(r.bonus_bucks) : 0,
     }));
     return {
@@ -3782,7 +3782,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   app.get('/referrals', requireUser, async (c) => c.json(await referralsOf(c.get('user').id)));
 
   // ---------------------------------------------------------------- your account on beechshore
-  // docs/SAND_BUCKS.md, "Your account on beechshore". The shore site's
+  // docs/BEECH_BUCKS.md, "Your account on beechshore". The shore site's
   // account page (shoreSite.ts, /account) connects with the same short-lived
   // token as item submissions (itemSubmissions.ts) and forwards its calls
   // here. Only these routes take that token: it can read your balance and

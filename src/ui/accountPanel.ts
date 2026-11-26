@@ -4,7 +4,9 @@ import { MAX_OBJECTS } from '../sim/sandCodec';
 import { renderBeachMap, sortBeachesWestToEast } from './beachMap';
 import { buildOwnStretches, connectableBeaches, hasSparePierWithoutSite, ownBeachLabel } from './shoreConnect';
 import { DEV_AUTH, googleSignInAvailable, renderGoogleButton, type Account, type MyBeach, type Neighbors, type Side } from '../net/account';
-import { beachShareText, shareUrl, shoreBeachUrl } from '../net/share';
+import { beachShareText, shareUrl, shoreAccountUrl, shoreBeachUrl } from '../net/share';
+import { codesAllowed } from '../net/shop';
+import { bucksIcon } from './inventory';
 import { DISCORD_INVITE_URL } from '../../server/src/community';
 import { copyText, shareLink } from './shareSheet';
 import { isSteam, steamBridge } from '../platform/runtime';
@@ -58,7 +60,7 @@ export interface MineCallbacks {
   onSelect?: (beach: MyBeach | undefined) => void;
   /** Fired when auth state transitions so the sheet can switch to Account/Beach tab. */
   onAuthChange?: (signedIn: boolean) => void;
-  /** Piers (docs/PIERS.md): buy one for sand bucks (resolves once it's in the bag). */
+  /** Piers (docs/PIERS.md): buy one for beech bucks (resolves once it's in the bag). */
   buyPier?: () => Promise<void>;
   /** Show the pier on this beach with "place pier" and "cancel". */
   previewPier?: (beach: MyBeach) => void;
@@ -633,7 +635,7 @@ export class AccountPanel {
     } else if (a.piers.owned > a.piers.placed) {
       if (this.mine?.previewPier) button('place pier', 'pier-place', async () => this.mine?.previewPier?.(b));
     } else if (this.mine?.buyPier) {
-      button('buy pier · S$ 30', 'pier-buy', async () => {
+      button('buy pier · bb 30', 'pier-buy', async () => {
         await this.mine!.buyPier!();
         await a.loadBeaches();
         this.mine?.previewPier?.(b);
@@ -798,6 +800,7 @@ export class AccountPanel {
         </div>`;
       if (u.name) box.querySelector('b')!.textContent = u.name;
       box.appendChild(this.linkSection());
+      box.appendChild(this.topUpSection());
       box.querySelector('[data-act="signout"]')!.addEventListener('click', () => void this.account.signOut());
       const del = box.querySelector<HTMLButtonElement>('[data-act="delete"]')!;
       del.addEventListener('click', async () => {
@@ -966,6 +969,33 @@ export class AccountPanel {
         await this.account.loadBeaches();
       }, 'link_code');
     });
+    return wrap;
+  }
+
+  /** Your Beechshore account (balance, top-ups, history): signed in only,
+   * like the rest of Settings' account features. On the native apps the page
+   * opens with ?from=app, which hides its top-up and gift-card sections. */
+  private topUpSection(): HTMLElement {
+    const wrap = document.createElement('div');
+    wrap.className = 'status';
+    const link = document.createElement('a');
+    link.href = shoreAccountUrl(codesAllowed() ? {} : { from: 'app' }, 'balance');
+    link.target = '_blank';
+    link.rel = 'noopener';
+    link.textContent = 'Top up your balance ↗';
+    const steam = steamBridge();
+    if (steam) {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        steam.openExternal(link.href);
+      });
+    }
+    wrap.append(
+      bucksIcon(),
+      document.createTextNode(' '),
+      link,
+      document.createTextNode(' — your Beechshore account: top-ups and history'),
+    );
     return wrap;
   }
 

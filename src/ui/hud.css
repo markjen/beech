@@ -737,7 +737,7 @@
   cursor: default;
 }
 
-/* an extra go or ball for sand bucks: a quiet outline button under the
+/* an extra go or ball for beech bucks: a quiet outline button under the
    free one, so the free go stays the obvious first choice */
 .claw-paid,
 .vending-paid {
@@ -1462,9 +1462,18 @@
   box-shadow: inset 0 0 0 2px var(--ui-fg);
 }
 
-/* sand bucks (docs/SAND_BUCKS.md): the balance up top, packs in their own list */
+/* beech bucks (docs/BEECH_BUCKS.md): the balance up top, packs in their own list */
 .shop-bucks {
   font-size: 15px;
+}
+
+/* the beech-buck coin next to a balance (public/icons/beech-bucks.webp) */
+.bucks-icon {
+  width: 18px;
+  height: 18px;
+  margin-right: 4px;
+  vertical-align: -4px;
+  border-radius: 4px;
 }
 .shop-offers,
 .shop-packs {

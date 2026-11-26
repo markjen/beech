@@ -29,9 +29,9 @@ export interface CopyHost {
   /** save a beach of yours before it's replaced */
   flush(id: string): Promise<void>;
   /** buy one of a product. 'away': the page is leaving for a checkout */
-  /** buy the basket with sand bucks, in one go (docs/SAND_BUCKS.md) */
+  /** buy the basket with beech bucks, in one go (docs/BEECH_BUCKS.md) */
   buyBasket(lines: { product: string; quantity: number }[]): Promise<void>;
-  /** not enough sand bucks: open the shop at the packs, remembering the copy to come back to */
+  /** not enough beech bucks: open the shop at the packs, remembering the copy to come back to */
   getBucks(p: { code: string; target: CopyTarget; mode: CopyMode }): void;
   /** it's copied: go there, reload what changed, offer Undo */
   copied(done: CopyDone, target: CopyTarget, fit: CopyFit): Promise<void>;
@@ -41,7 +41,7 @@ export interface CopyHost {
 }
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
-const bucks = (n: number) => `S$ ${n}`;
+const bucks = (n: number) => `bb ${n}`;
 const isFree = (id: string) => itemById(id)?.unlimited === true;
 const beachLabel = (b: MyBeach) => b.name || (b.home ? 'Home' : 'Beach');
 
@@ -323,7 +323,7 @@ export class CopySheet {
   private async buy(): Promise<void> {
     const f = this.current();
     if (!f) return;
-    // not enough sand bucks: get some first, then come back here
+    // not enough beech bucks: get some first, then come back here
     if (f.bucks < f.basket.bucks) {
       this.host.getBucks({ code: this.code, target: this.target, mode: 'strict' });
       return;

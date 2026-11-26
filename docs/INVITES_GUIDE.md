@@ -2,13 +2,13 @@
 
 Status: **built** (2026-11-23; updated 2026-11-24, 2026-11-26). Viral sharing that also teaches the game.
 
-**Updated 2026-11-26 (owner): invites give sand bucks, and live on
-beechshore.** A friend who makes an account through your link gets **S$ 50**
-at once, and you get **S$ 50** too, at the same moment, for your first 10
+**Updated 2026-11-26 (owner): invites give beech bucks, and live on
+beechshore.** A friend who makes an account through your link gets **bb 50**
+at once, and you get **bb 50** too, at the same moment, for your first 10
 friends (no waiting for them to settle in). The invite panel moved out of
-the game to your account page on beechshore (`/account#invite`, docs/SAND_BUCKS.md);
-"invite friends" and the guide's invite step open it. Sand bucks are
-spendable in the apps now (SAND_BUCKS.md), so the reason below for items no
+the game to your account page on beechshore (`/account#invite`, docs/BEECH_BUCKS.md);
+"invite friends" and the guide's invite step open it. Beech bucks are
+spendable in the apps now (BEECH_BUCKS.md), so the reason below for items no
 longer holds. State machine: [`specs/tla/Invites.tla`](../specs/tla/Invites.tla)
 (see [State machine](#state-machine)). Referrals from before (migration 37's
 `bonus_bucks` NULL) still finish on the ladder below when the friend settles

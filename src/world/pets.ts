@@ -9,7 +9,7 @@ export interface PetKind {
   species: PetSpecies;
   name: string;
   habitat: Habitat;
-  /** shop price in sand bucks */
+  /** shop price in beech bucks */
   bucks: number;
   /** snacks (1 buck each) to befriend a wild one: a quarter of the price */
   feeds: number;

@@ -60,7 +60,7 @@ describe('pet catalog', () => {
     expect(pack.bucks / pack.grants[0].quantity).toBe(SNACK_BUCKS);
   });
 
-  it('every pet is sold for sand bucks at its price, never for real money (but the old crab listing), and none trade in', () => {
+  it('every pet is sold for beech bucks at its price, never for real money (but the old crab listing), and none trade in', () => {
     for (const p of PETS) {
       const prod = PRODUCTS.find((x) => x.id === p.product);
       expect(prod, p.species).toMatchObject({ bucks: p.bucks, grants: [{ item: p.item, quantity: 1 }] });
@@ -72,7 +72,7 @@ describe('pet catalog', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it('new pets are in the sand-bucks shop, and refused by every real-money checkout', async () => {
+  it('new pets are in the beech-bucks shop, and refused by every real-money checkout', async () => {
     const o = await owner();
     const catalog = (await (await s.req('/store/catalog')).json()) as { offers: { id: string; bucks: number }[] };
     expect(catalog.offers.find((x) => x.id === 'pet_dolphin')).toMatchObject({ bucks: 80 });
@@ -81,7 +81,7 @@ describe('pet catalog', () => {
     expect((await s.post('/store/purchase', o.token, { platform: 'dev', productId: 'pet_dolphin', token: 'x' })).status).toBe(404);
   });
 
-  it('the pier is sand bucks only too', () => {
+  it('the pier is beech bucks only too', () => {
     expect(realMoneyProductById('item_pier')).toBeUndefined();
     expect(PRODUCTS.find((p) => p.id === 'item_pier')).toMatchObject({ bucksOnly: true, bucks: 30 });
   });

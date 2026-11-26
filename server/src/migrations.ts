@@ -814,8 +814,8 @@ const MIGRATIONS: string[] = [
   ALTER TABLE inbox DROP CONSTRAINT inbox_kind_check;
   ALTER TABLE inbox ADD CONSTRAINT inbox_kind_check CHECK (kind IN ('visit', 'gift', 'neighbor_request', 'neighbor_linked', 'star', 'rating', 'invite_joined', 'invite_settled', 'system', 'copied'));
   `,
-  // 31: sand bucks and trade-ins (docs/SAND_BUCKS.md). The balance stays in
-  // users.credit_cents at 10 cents a sand buck, always a whole number of
+  // 31: beech bucks and trade-ins (docs/BEECH_BUCKS.md). The balance stays in
+  // users.credit_cents at 10 cents a beech buck, always a whole number of
   // bucks: balances round up to the next buck, debt down. Each bag row can
   // carry its trade-in value per unit (unit_cents; NULL = its list value).
   // creator_credit_debt_cents is now the debt of any clawback (a refunded
@@ -938,7 +938,7 @@ const MIGRATIONS: string[] = [
     WHERE pushed_at IS NULL AND kind IN ('visit', 'gift', 'neighbor_request', 'neighbor_linked', 'invite_settled', 'tide', 'pet_fed');
   `,
 
-  // 37: invite bonuses in sand bucks (docs/INVITES_GUIDE.md, specs/tla/Invites.tla).
+  // 37: invite bonuses in beech bucks (docs/INVITES_GUIDE.md, specs/tla/Invites.tla).
   // A claim gives the friend and the inviter INVITE_BONUS bucks each, in the
   // claim's own transaction; the referral's reward_rank (unique per inviter)
   // keeps the inviter's bonuses to the cap. bonus_bucks NULL: a referral from

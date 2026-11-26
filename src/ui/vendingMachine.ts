@@ -20,7 +20,7 @@ type Phase = 'idle' | 'dispense' | 'open' | 'done';
  * odds are in the guide on the website, GUIDE_URL#vending); the machine is
  * the fun part. Press the button, a ball
  * drops into the tray, and it opens to show what's inside. When today's
- * ball is gone, one more ball costs sand bucks — the price comes from the
+ * ball is gone, one more ball costs beech bucks — the price comes from the
  * server, and the odds are on the guide link below, before the price.
  */
 export class VendingMachine {
@@ -129,19 +129,19 @@ export class VendingMachine {
   private renderInfo(): void {
     const free = !!this.pool?.free;
     this.btn.disabled = !free || this.phase !== 'idle';
-    // an extra ball for sand bucks, once today's free ball is gone — the
+    // an extra ball for beech bucks, once today's free ball is gone — the
     // odds are on the guide link below, before the price
     const price = this.pool?.paidTry?.bucks;
     const showPaid = !free && price !== undefined;
     this.paidBtn.hidden = !showPaid;
     if (showPaid) {
-      this.paidBtn.textContent = `Buy another ball · ${price} sand bucks`;
+      this.paidBtn.textContent = `Buy another ball · ${price} beech bucks`;
       this.paidBtn.disabled = (this.phase !== 'idle' && this.phase !== 'done') || this.balance < price;
     }
-    // status only: an error, too few sand bucks for an extra ball, or when the next ball is ready
+    // status only: an error, too few beech bucks for an extra ball, or when the next ball is ready
     this.note.textContent =
       this.error ||
-      (showPaid && this.balance < price ? `Not enough sand bucks — you have ${this.balance}.` : this.pool && !free ? `Your next ball is in ${until(this.nextFree)}.` : '');
+      (showPaid && this.balance < price ? `Not enough beech bucks — you have ${this.balance}.` : this.pool && !free ? `Your next ball is in ${until(this.nextFree)}.` : '');
   }
 
   private dispense(paid: boolean): void {

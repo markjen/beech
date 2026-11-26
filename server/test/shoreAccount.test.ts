@@ -1,6 +1,6 @@
 // Your account on beechshore (/account): balance, history, top-ups, gift
 // cards, gifts and invites, through the shore site's forwarded
-// /account/api/* calls (docs/SAND_BUCKS.md, "Your account on beechshore").
+// /account/api/* calls (docs/BEECH_BUCKS.md, "Your account on beechshore").
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createApp } from '../src/app.js';

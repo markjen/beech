@@ -23,12 +23,12 @@ export interface ShopProduct {
   price?: string;
 }
 
-/** A sand-buck pack: what real money buys (docs/SAND_BUCKS.md). */
+/** A beech-buck pack: what real money buys (docs/BEECH_BUCKS.md). */
 export interface ShopPack {
   id: string;
   name: string;
   usd: number;
-  /** sand bucks it gives */
+  /** beech bucks it gives */
   bucks: number;
   blurb: string;
   featured: boolean;
@@ -36,12 +36,12 @@ export interface ShopPack {
   price?: string;
 }
 
-/** Something the shop sells for sand bucks. */
+/** Something the shop sells for beech bucks. */
 export interface ShopOffer {
   id: string;
   name: string;
   grants: { item: string; quantity: number }[];
-  /** price in sand bucks (0: free) */
+  /** price in beech bucks (0: free) */
   bucks: number;
   blurb: string;
   featured: boolean;
@@ -193,8 +193,8 @@ export class ShopApi {
   constructor(private readonly account: Account) {}
 
   /**
-   * The shop (docs/SAND_BUCKS.md): sand-buck packs for real money, with the
-   * store's local prices in the apps, and what sand bucks buy.
+   * The shop (docs/BEECH_BUCKS.md): beech-buck packs for real money, with the
+   * store's local prices in the apps, and what beech bucks buy.
    * `storePacksAvailable` is false in the apps when the store offers none of
    * the packs (they aren't created there yet) — the packs list is empty
    * then, and the UI says so instead of showing a bare heading.
@@ -225,16 +225,16 @@ export class ShopApi {
     return { packs, offers: data.offers, storePacksAvailable };
   }
 
-  /** Your sand bucks (and any owed after a refund). */
+  /** Your beech bucks (and any owed after a refund). */
   async bucks(): Promise<{ bucks: number; debt: number }> {
     const res = await this.account.fetch('/api/credit');
-    if (!res.ok) throw new Error('could not read your sand bucks');
+    if (!res.ok) throw new Error('could not read your beech bucks');
     const d = (await res.json()) as { bucks?: number; debt?: number };
     return { bucks: d.bucks ?? 0, debt: d.debt ?? 0 };
   }
 
   /**
-   * Buy a basket of offers with sand bucks, in one go ("buy what's missing").
+   * Buy a basket of offers with beech bucks, in one go ("buy what's missing").
    * The request ID is kept for that basket until a receipt comes back or the
    * server says no: if the answer is lost (offline, a timeout, a 5xx), trying
    * again sends the same ID, and the server answers with the first receipt
@@ -260,7 +260,7 @@ export class ShopApi {
       body: JSON.stringify({ basket: lines, requestId }),
     });
     if (!res.ok) {
-      // a definite no (not enough sand bucks, gone from the shop, a bad basket): a new try is a new purchase
+      // a definite no (not enough beech bucks, gone from the shop, a bad basket): a new try is a new purchase
       if (res.status < 500 && res.status !== 429) clearRequest();
       const msg = ((await res.json().catch(() => ({}))) as { error?: string }).error;
       throw new Error(msg ?? 'that did not go through');
@@ -277,7 +277,7 @@ export class ShopApi {
     return ((await res.json()) as { items: BagEntry[] }).items;
   }
 
-  /** Trade one (or more) of a thing in for its sand bucks. */
+  /** Trade one (or more) of a thing in for its beech bucks. */
   async tradeIn(item: string, quantity = 1): Promise<{ credited: number; bucks: number }> {
     const res = await this.account.fetch('/api/bag/trade-in', {
       method: 'POST',
@@ -291,7 +291,7 @@ export class ShopApi {
     return (await res.json()) as { credited: number; bucks: number };
   }
 
-  /** The products, with the store's local prices in the apps (the shop before sand bucks). */
+  /** The products, with the store's local prices in the apps (the shop before beech bucks). */
   async products(): Promise<ShopProduct[]> {
     const res = await this.account.fetch('/api/store/products');
     if (!res.ok) throw new Error('the shop is closed right now');

@@ -1,6 +1,6 @@
-// The reference model for sand bucks and trade-ins: specs/tla/SandBucks.tla
+// The reference model for beech bucks and trade-ins: specs/tla/SandBucks.tla
 // with Fixed = TRUE, one action at a time, for one bag item (a parasol, 10
-// sand bucks) on one beach (docs/SAND_BUCKS.md, docs/STATE_MACHINES.md). Each
+// beech bucks) on one beach (docs/BEECH_BUCKS.md, docs/STATE_MACHINES.md). Each
 // method returns what the server should answer.
 export type BucksAnswer = { status: number; why?: string };
 

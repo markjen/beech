@@ -1,4 +1,4 @@
-// Sand bucks in the database (docs/SAND_BUCKS.md, specs/tla/SandBucks.tla).
+// Beech bucks in the database (docs/BEECH_BUCKS.md, specs/tla/SandBucks.tla).
 // The balance is users.credit_cents (10 cents a buck); what a clawback can't
 // take becomes debt (users.creator_credit_debt_cents), paid off by the next
 // bucks in. Every movement is logged in credit_ledger.
@@ -49,7 +49,7 @@ export async function clawBack(db: Db, user: string, cents: number, kind: string
 }
 
 /**
- * What a recorded real-money purchase grants (BuyPack): a pack's sand bucks
+ * What a recorded real-money purchase grants (BuyPack): a pack's beech bucks
  * to the balance; an old app version's offer, its things to the bag (at
  * their list value for a later trade-in). Run in the same transaction that
  * recorded the purchase row.

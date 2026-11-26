@@ -57,7 +57,7 @@ const site = await a.evaluate((id) => window.__beech.account().mine(id), home.id
 check(site?.pierSite === true && !site.pier, 'the middle beach is a pier site with no pier');
 check((await drawn(a)) === 0, 'no pier drawn yet');
 
-// buy it from the shore tab: no sand bucks yet, so the shop opens at the packs
+// buy it from the shore tab: no beech bucks yet, so the shop opens at the packs
 const buyPier = async () => {
   await a.evaluate(() => window.__beech.sheet.show('shore'));
   await a.waitForSelector(`[data-pier-beach="${home.id}"] [data-act="pier-buy"]`, { state: 'attached', timeout: 10000 });
@@ -65,7 +65,7 @@ const buyPier = async () => {
 };
 await buyPier();
 await a.waitForSelector('.shop.open .shop-packs button[data-product="bucks_30"]', { timeout: 60000 });
-check(true, 'short of sand bucks: the shop opens at the packs');
+check(true, 'short of beech bucks: the shop opens at the packs');
 await a.click('.shop.open .shop-packs button[data-product="bucks_30"]');
 await a.waitForFunction(async () => (await (await window.__beech.account().fetch('/api/credit')).json()).bucks === 30, null, { timeout: 30000 });
 await a.evaluate(() => window.__beech.shop()?.close());

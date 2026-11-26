@@ -172,7 +172,7 @@ it('credits only completed credit orders, including a discounted order retried c
   const attempts = await Promise.all([json('/store/credit-purchase', buy, buyer.token), json('/store/credit-purchase', buy, buyer.token)]);
   for (const res of attempts) {
     expect(res.status, await res.clone().text()).toBe(200);
-    // sand bucks (docs/SAND_BUCKS.md): 25 bucks, half off rounds the discount down to 12
+    // beech bucks (docs/BEECH_BUCKS.md): 25 bucks, half off rounds the discount down to 12
     expect(await res.json()).toMatchObject({ paidCents: 130, discountCents: 120, creditCents: 870 });
   }
   expect(await credit(creator.token)).toBe(40);
@@ -341,7 +341,7 @@ it('honors the amount recorded at Steam and Xsolla checkout after an admin chang
 
   expect((await json('/store/steam/finalize', { orderId }, buyer.token)).status).toBe(200);
   expect(await (await json('/store/steam/finalize', { orderId }, buyer.token)).json()).toMatchObject({ already: true });
-  // 30% of $1.80, as whole sand bucks (docs/SAND_BUCKS.md): 5
+  // 30% of $1.80, as whole beech bucks (docs/BEECH_BUCKS.md): 5
   expect(await credit(creator.token)).toBe(50);
   const payload = JSON.stringify({
     notification_type: 'order_paid', items: [{ sku: productId, quantity: 1 }],
@@ -355,7 +355,7 @@ it('honors the amount recorded at Steam and Xsolla checkout after an admin chang
   expect(await credit(creator.token)).toBe(100);
 });
 
-it('pays a community item\'s creator from sand bucks spent, at the price when it was bought', async () => {
+it('pays a community item\'s creator from beech bucks spent, at the price when it was bought', async () => {
   const creator = await user('Bucks creator');
   const buyer = await user('Bucks buyer');
   const id = await submit(creator.scoped);
@@ -365,7 +365,7 @@ it('pays a community item\'s creator from sand bucks spent, at the price when it
   expect(bought.status, await bought.clone().text()).toBe(200);
   now += 1;
   await approve(id, 'lifeguardtower', '330');
-  // 18 sand bucks paid, 30% is 5.4: rounds to 5
+  // 18 beech bucks paid, 30% is 5.4: rounds to 5
   expect(await credit(creator.token)).toBe(50);
   expect(await credit(buyer.token)).toBe(820);
 });

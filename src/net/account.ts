@@ -588,7 +588,7 @@ export interface CopyFit {
     bucks: number;
     notForSale: { item: string; missing: number }[];
   };
-  /** your sand bucks (docs/SAND_BUCKS.md) */
+  /** your beech bucks (docs/BEECH_BUCKS.md) */
   bucks: number;
 }
 
@@ -897,7 +897,7 @@ export interface PullPool {
   grab?: Record<'common' | 'rare' | 'legendary', number>;
   /** a free go is ready now */
   free: boolean;
-  /** one more try for sand bucks, when the free go is gone */
+  /** one more try for beech bucks, when the free go is gone */
   paidTry?: { bucks: number };
   /** the longest the machine can rest after your next go (ms) */
   nextCooldown: number;
@@ -955,9 +955,9 @@ export class PullApi {
     return res.json();
   }
 
-  /** One more try for sand bucks: the same draw as a free go (the claw can
+  /** One more try for beech bucks: the same draw as a free go (the claw can
    *  still drop the ball), and `bucks` is your balance after paying. A 402
-   *  means not enough sand bucks — nothing was deducted or granted. */
+   *  means not enough beech bucks — nothing was deducted or granted. */
   async pullPaid(pool: string): Promise<{
     item: string | null;
     rarity: string | null;
@@ -1007,9 +1007,9 @@ export interface Referrals {
   code: string;
   joined: number;
   settled: number;
-  /** reward: an old referral's ladder gift; bucks: the S$ this friend earned you */
+  /** reward: an old referral's ladder gift; bucks: the bb this friend earned you */
   friends: { name: string; joinedAt: number; settled: boolean; reward: string | null; bucks: number }[];
-  /** S$ earned from invites, and the bonus each side gets */
+  /** bb earned from invites, and the bonus each side gets */
   earned: number;
   bonus: number;
   cap: number;
@@ -1026,7 +1026,7 @@ export class ReferralApi {
     return res.json();
   }
 
-  /** A new player claims the invite they came through: S$ for them and the inviter. */
+  /** A new player claims the invite they came through: bb for them and the inviter. */
   async claim(code: string): Promise<{ inviter: { name: string; code: string }; bucks: number }> {
     const res = await this.account.fetch('/api/referrals/claim', {
       method: 'POST',

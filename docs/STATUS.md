@@ -330,20 +330,23 @@ accepted the repo's default branch, so the deploy job ran only there.
   `GET /api/inventory` for owned, unexpired non-free items. Nothing writes to
   it yet.
 
-## Your account on beechshore, S$, bag trade-ins, invite bonuses (2026-11-26)
+## Your account on beechshore, bb, bag trade-ins, invite bonuses (2026-11-26)
 
-Owner request. Details in [SAND_BUCKS.md](SAND_BUCKS.md) ("App", "Your
+Owner request. Details in [BEECH_BUCKS.md](BEECH_BUCKS.md) ("App", "Your
 account on beechshore", "Invite bonuses") and
 [INVITES_GUIDE.md](INVITES_GUIDE.md).
 
-- **S$:** sand bucks are written S$ in the shop, copy sheet, pier button and
-  bag; the shop's balance reads "N sand dollars (S$)" (the owner's wording).
-  Product names in the stores still say "sand bucks".
+- **bb:** beech bucks are written bb in the shop, copy sheet, pier button and
+  bag; the shop's balance reads "N beech bucks (bb)" (the owner's wording).
+  Product names in the stores still say "sand bucks" (update them in App
+  Store Connect and the Play Console — owner task).
 - **beechshore.com/account:** connect (the submission popup), then balance,
   history (every `credit_ledger` row, labelled by `server/src/ledger.ts`),
   card top-ups through Xsolla (returns to the page), gift cards, gifting a
   thing by beach code, and the invite link with who joined. Forwarded to the
   game API's `/shore-account/*` routes, which take only the shore token.
+  Settings → Account links to it too (signed in only; the apps open it with
+  `?from=app`, so no top-up or gift card there).
 - **Moved out of the game:** gift card redeem (shop), gifting (place bar)
   and the invite panel (`src/ui/invite.ts`, deleted). The web shop links to
   the account page; the apps don't link to it from the shop, and open it
@@ -351,12 +354,12 @@ account on beechshore", "Invite bonuses") and
   and "invite friends".
 - **Bag:** "long press item to trade in" under the title (a note in the game
   at the owner's request, an exception to the no-notes rule). Long press or
-  right click opens a dialog: how many, "you get S$ X", trade in, gift.
+  right click opens a dialog: how many, "you get bb X", trade in, gift.
   The place bar has no trade/gift buttons any more.
-- **Invites:** S$ 50 to the friend and to the inviter (first 10 friends) in
+- **Invites:** bb 50 to the friend and to the inviter (first 10 friends) in
   the claim's transaction (`specs/tla/Invites.tla`, migration 37). Legacy
   referrals keep the item ladder. The inviter hears "Fran joined through
-  your invite: +S$ 50" on their next sign-in.
+  your invite: +bb 50" on their next sign-in.
 - **Follow-ups:** watch invite-bonus farming (each throwaway account needs
   its own Google/Apple sign-in; the bonus is now instant, not after three
   guide steps). Apple review: the account page sells packs by card, so the
@@ -442,12 +445,12 @@ account on beechshore", "Invite bonuses") and
 hold a timber pier (18 m deck from dry sand out over the water, paired
 pilings, rails, a wider end platform). Decorative only.
 
-- **Bought with sand bucks**, not as its own real-money purchase (the design
-  said $2.99): `item_pier`, 30 sand bucks, a `pier` in the bag. Differs from
-  the design because the shop moved to sand bucks; a pier is counted
+- **Bought with beech bucks**, not as its own real-money purchase (the design
+  said $2.99): `item_pier`, 30 beech bucks, a `pier` in the bag. Differs from
+  the design because the shop moved to beech bucks; a pier is counted
   against what's owned rather than tied to one order.
 - Manage → Beaches lists each site under your stretches: **buy pier · 30
-  sand bucks** (short of bucks: the shop at the packs), **place pier** with
+  beech bucks** (short of bucks: the shop at the packs), **place pier** with
   a spare in the bag, **remove pier**, and **pier paused** when a side link
   is gone. Placing shows the pier on the beach first with **place pier** /
   **cancel**.
@@ -1389,7 +1392,7 @@ the HUD layout in the section above.
   is saved in settings (`statusPane`). There is no weather data, so
   "weather" is the sky (☀ ◒ ☾), the local time and a swell word from the
   live wave scale. The mockup's credit, stars and finds chips were left
-  out; they would need extra requests. The credit (sand bucks) chip is
+  out; they would need extra requests. The credit (beech bucks) chip is
   out on purpose: the balance is only useful in the shop, where it
   already shows (Mark, 2026-11-26). The "also in view" list
   (`ShoreInfo`) and floating neighbor name-tag pills (`tagPlace`) are
@@ -1573,10 +1576,10 @@ changes. New gameplay and features follow the model-first workflow
   checkout per product); the app shows the server's basket rather than
   computing its own; a new beach takes the original's place.
 
-## Sand bucks and trade-ins (2026-11-26, docs/SAND_BUCKS.md)
+## Beech bucks and trade-ins (2026-11-26, docs/BEECH_BUCKS.md)
 
-- Everything in the shop is priced in sand bucks (whole numbers, 10¢ a
-  buck, same prices as before). Real money only buys sand-buck packs (App
+- Everything in the shop is priced in beech bucks (whole numbers, 10¢ a
+  buck, same prices as before). Real money only buys beech-buck packs (App
   Store, Play, Steam, Xsolla, gift cards). The balance stays in
   `users.credit_cents`, always a whole number of bucks.
 - Trade-ins: anything placeable that isn't on a beach, and unused extra
@@ -1589,7 +1592,7 @@ changes. New gameplay and features follow the model-first workflow
   back on a trade-in.
 - Old app versions keep `/store/products` and their item receipts; new apps
   use `/store/catalog`. The copy sheet's "Buy what's missing" is now one
-  sand-buck purchase (a pack first when the balance is short).
+  beech-buck purchase (a pack first when the balance is short).
 - Differs from the design: none so far. Owner tasks (store products) in
   BACKLOG.md.
 
@@ -1617,7 +1620,7 @@ Five findings, all fixed with a test each:
   `src/world/pets.ts`), kept in step by `server/test/stateMachines/pets.test.ts`.
   Befriending takes `feeds` snacks (1 buck each) = a quarter of the shop
   price (20/28/40/48/60/80 bucks: 5/7/10/12/15/20 snacks); tests hold that
-  rule. Products `pet_<species>` are built from the table, sand bucks only
+  rule. Products `pet_<species>` are built from the table, beech bucks only
   (`Product.bucksOnly`: not in `/store/products`, refused by every
   real-money checkout via `realMoneyProductById`; only `pet_crab` keeps its
   old listing for old apps); none trade in.
@@ -1647,6 +1650,6 @@ Five findings, all fixed with a test each:
   every species; `__beech.animals.setPet(species)` shows one on this device.
 - Not done: E2E for carrying a pet (no browser E2E run here); pet names for
   new adoptions still come from rename only.
-- New offers are sand bucks only (`Product.bucksOnly`): the five new pets and
+- New offers are beech bucks only (`Product.bucksOnly`): the five new pets and
   the pier (its Steam id 1019 was never set up and is dropped). Real money
-  only buys sand-buck packs, plus the old item products for old app versions.
+  only buys beech-buck packs, plus the old item products for old app versions.

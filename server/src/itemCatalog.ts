@@ -127,8 +127,8 @@ export function catalogProduct(item: CatalogItem): Product | undefined {
   return item.product ? productById(item.product) : undefined;
 }
 
-/** a price in sand bucks (docs/SAND_BUCKS.md) */
-const bucks = (n: number) => `${n} sand bucks`;
+/** a price in beech bucks (docs/BEECH_BUCKS.md) */
+const bucks = (n: number) => `${n} beech buck${n === 1 ? '' : 's'}`;
 const pct = (v: number) => `${Math.round(v * 1000) / 10}%`;
 
 /** Plain-words lines saying how you get this item. */

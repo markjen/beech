@@ -201,7 +201,7 @@ export async function googleVoided(
 
 /**
  * A refund, from any store: the purchase is marked, what it granted
- * expires now, and a pack's sand bucks (or a traded-in thing's) come back out. Shared by the Apple/Google notification handlers (via
+ * expires now, and a pack's beech bucks (or a traded-in thing's) come back out. Shared by the Apple/Google notification handlers (via
  * `refund()` in app.ts) and the Steam `GetReport/v5` sync
  * (`syncSteamRefunds` in steamStore.ts) so every store revokes the same way.
  */
@@ -219,7 +219,7 @@ export async function revokeStorePurchase(
     if (!purchase) return;
     await tx.query('UPDATE inventory SET expires_at = $2 WHERE purchase_id = $1', [purchase.id, now]);
     await reverseCreatorCredit(tx, purchase.id, now);
-    // sand bucks (docs/SAND_BUCKS.md): a pack's bucks come back out, and so
+    // beech bucks (docs/BEECH_BUCKS.md): a pack's bucks come back out, and so
     // do the bucks of any of its things that were traded in
     await revokeGrant(tx, { purchaseId: purchase.id, userId: purchase.user_id, product: storeProductById(purchase.product_id), now });
   });

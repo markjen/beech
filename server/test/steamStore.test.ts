@@ -111,7 +111,7 @@ describe('Steam Wallet microtransaction routes', () => {
     return (await r.json()) as { token: string; user: { id: string } };
   };
 
-  it('initializes, finalizes once, and grants a sand-buck pack idempotently', async () => {
+  it('initializes, finalizes once, and grants a beech-buck pack idempotently', async () => {
     const { token } = await signInSteam('10');
 
     const initRes = await post('/store/steam/init', { productId: 'bucks_100' }, token);
@@ -127,7 +127,7 @@ describe('Steam Wallet microtransaction routes', () => {
     expect(fin2.status).toBe(200);
     expect(await fin2.json()).toEqual(expect.objectContaining({ ok: true, already: true }));
 
-    // Steam sells sand-buck packs (docs/SAND_BUCKS.md): 130 to the balance, once
+    // Steam sells beech-buck packs (docs/BEECH_BUCKS.md): 130 to the balance, once
     const credit = (await (await app.request('/credit', { headers: { Authorization: `Bearer ${token}` } })).json()) as { bucks: number };
     expect(credit.bucks).toBe(130);
     // the Steam builds already out still buy things directly (PR #118 review)
@@ -153,7 +153,7 @@ describe('Steam Wallet microtransaction routes', () => {
     failFinalize = false;
   });
 
-  it('takes the sand bucks back when syncSteamRefunds reports a refund', async () => {
+  it('takes the beech bucks back when syncSteamRefunds reports a refund', async () => {
     const { token } = await signInSteam('12');
     const { orderId } = (await (await post('/store/steam/init', { productId: 'bucks_30' }, token)).json()) as { orderId: string };
     expect((await post('/store/steam/finalize', { orderId }, token)).status).toBe(200);

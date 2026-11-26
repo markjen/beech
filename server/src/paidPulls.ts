@@ -1,11 +1,11 @@
 // Paid extra tries on the claw and vending machines (docs/PRICING.md): when
-// the free go is gone, one more try for sand bucks.
+// the free go is gone, one more try for beech bucks.
 //
-// The price is 10 sand bucks on both machines (Mark's call, Nov 26, 2026):
+// The price is 10 beech bucks on both machines (Mark's call, Nov 26, 2026):
 // the vending ball's EV is 8.5 (~18% edge) and the claw go's is 5.84
 // (~71% edge). Both prices sit above what a try is worth on average, so a
 // try can never be farmed for trade-ins: buying tries to trade the prizes
-// back in loses sand bucks. A won item is valued at its trade-in value
+// back in loses beech bucks. A won item is valued at its trade-in value
 // (RARITY_BUCKS), the codebase's own "what a pull item is worth in bucks"
 // — except unique, a one-of-a-kind item with no trade-in value, where the
 // EV assumes 40, one step above legendary's 30.
@@ -21,7 +21,7 @@ import { RARITY_BUCKS, centsToBucks } from './bucks.js';
 import { GRAB_CHANCE, POOLS, pullDay, type Rarity } from './pulls.js';
 import { VENDING_ODDS } from './vending.js';
 
-/** what a won item of each rarity is worth, in sand bucks (see above) */
+/** what a won item of each rarity is worth, in beech bucks (see above) */
 export const PAID_PULL_VALUE_BUCKS: Record<Rarity, number> = {
   common: RARITY_BUCKS.common,
   uncommon: RARITY_BUCKS.uncommon,
@@ -32,7 +32,7 @@ export const PAID_PULL_VALUE_BUCKS: Record<Rarity, number> = {
 };
 
 /**
- * Expected sand bucks of one draw: over rarities, odds × value — times the
+ * Expected beech bucks of one draw: over rarities, odds × value — times the
  * hold-on chance where given (a ball the claw drops wins nothing).
  */
 export function expectedBucks(
@@ -49,15 +49,15 @@ export function expectedBucks(
   return ev;
 }
 
-/** expected sand bucks of one extra ball from the current vending odds */
+/** expected beech bucks of one extra ball from the current vending odds */
 export const vendingExtraBallEV = (): number => expectedBucks(VENDING_ODDS, PAID_PULL_VALUE_BUCKS);
 
-/** expected sand bucks of one extra go on the claw (a miss wins nothing) */
+/** expected beech bucks of one extra go on the claw (a miss wins nothing) */
 export const clawExtraGoEV = (): number => expectedBucks(POOLS.daily.odds, PAID_PULL_VALUE_BUCKS, GRAB_CHANCE);
 
-/** one extra ball from the vending machine, in sand bucks (EV 8.5) */
+/** one extra ball from the vending machine, in beech bucks (EV 8.5) */
 export const VENDING_EXTRA_BALL_BUCKS = 10;
-/** one extra go on the claw machine, in sand bucks (EV 5.84) */
+/** one extra go on the claw machine, in beech bucks (EV 5.84) */
 export const CLAW_EXTRA_GO_BUCKS = 10;
 
 /** the price of one extra try on a machine, or null when it has none */
@@ -68,7 +68,7 @@ export const paidTryPrice = (poolId: string): number | null =>
  * A paid try, as one statement: debit the price (only if the balance covers
  * it), log the spend, record the pull and grant the prize — all or nothing.
  * A miss deducts and logs, and grants nothing (the go is spent, same as a
- * free miss). Returns the new balance in sand bucks, or null when the
+ * free miss). Returns the new balance in beech bucks, or null when the
  * balance didn't cover the price — in which case nothing changed: no bucks
  * debited, no prize granted, no pull logged. Mirrors claimCreditPurchase
  * (server/src/giftCards.ts).
@@ -78,7 +78,7 @@ export async function claimPaidPull(
   args: {
     userId: string;
     pool: string;
-    /** what the try costs, in cents of sand bucks (whole bucks) */
+    /** what the try costs, in cents of beech bucks (whole bucks) */
     priceCents: number;
     /** null: the claw dropped the ball — the try is spent, nothing is won */
     item: string | null;

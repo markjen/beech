@@ -81,8 +81,8 @@ function testAccount(): Account {
         return new Response(
           JSON.stringify({
             packs: [
-              { id: 'bucks_100', name: '130 sand bucks', blurb: '', usd: 9.99, bucks: 130, featured: false },
-              { id: 'bucks_30', name: '33 sand bucks', blurb: '', usd: 2.99, bucks: 33, featured: false },
+              { id: 'bucks_100', name: '130 beech bucks', blurb: '', usd: 9.99, bucks: 130, featured: false },
+              { id: 'bucks_30', name: '33 beech bucks', blurb: '', usd: 2.99, bucks: 33, featured: false },
             ],
             offers: [],
           }),
