@@ -3,6 +3,8 @@ import { paletteAlong, paletteByName, tint, type Palette } from '../palette';
 import { moonIllumination, moonPosition, sunPosition, type SkyPosition } from './astro';
 import type { Beach } from './locations';
 import { nextExtremes, tideHeight, tideRange, type TideExtreme } from './tides';
+import { WEATHER } from '../config';
+import { applyWeather, CLEAR_LOOK, mixLook, weatherFor, weatherLook, weatherWaves, type PlaceWeather, type WeatherLook } from './weather';
 
 const RAD = Math.PI / 180;
 
@@ -26,6 +28,10 @@ export interface LiveState {
   rising: boolean;
   next: TideExtreme[];
   localTime: string;
+  /** real weather at the place, when the server has it */
+  weather?: PlaceWeather;
+  /** how that weather looks right now (eased toward each new report) */
+  look: WeatherLook;
 }
 
 /**
@@ -109,12 +115,29 @@ export function formatLocalTime(date: Date, timeZone: string): string {
 export class LiveConditions {
   private extremesFor = 0;
   private extremes: TideExtreme[] = [];
+  /** the shown weather look and when it was last stepped (eases to each new report) */
+  private look: WeatherLook | null = null;
+  private lookAt = 0;
+  private lookHadWeather = false;
 
   constructor(public beach: Beach) {}
 
   setBeach(b: Beach): void {
     this.beach = b;
     this.extremesFor = 0;
+    this.look = null;
+    this.lookHadWeather = false;
+  }
+
+  private easeLook(target: WeatherLook, hasWeather: boolean, nowMs: number): WeatherLook {
+    const dt = Math.abs(nowMs - this.lookAt) / 1000;
+    this.lookAt = nowMs;
+    const first = hasWeather && !this.lookHadWeather;
+    this.lookHadWeather = hasWeather;
+    // first sight of a place or of its weather, or a jump in time: show it as it is
+    if (!this.look || first || dt > 120) return (this.look = target);
+    const k = 1 - Math.exp(-WEATHER.easePerSecond * dt);
+    return (this.look = mixLook(this.look, target, k));
   }
 
   /** `fixed` = a palette name chosen in settings instead of the live sky. */
@@ -150,6 +173,10 @@ export class LiveConditions {
       const moonGain = moonUp ? 0.6 + 0.4 * illum.fraction : 0.55;
       p.sun = tint(p.sun, [p.sun[0] * moonGain, p.sun[1] * moonGain, p.sun[2] * moonGain], night);
     }
+    // real weather: grey skies, flat light, fog (a chosen palette stays as chosen)
+    const weather = weatherFor(b.id, now.getTime());
+    const look = fixed ? CLEAR_LOOK : this.easeLook(weatherLook(weather, b.facing), !!weather, now.getTime());
+    p = applyWeather(p, look, night);
     // the beach's own sand and water, shifted by the current mood (the
     // ratio of this palette's colour to the daytime one)
     const day = paletteByName('day');
@@ -176,10 +203,12 @@ export class LiveConditions {
       },
       tide,
       simTide: diorama(tide),
-      waves: tideWaveScale(b.waves, tide, tideRange(b.tide)),
+      waves: tideWaveScale(weatherWaves(b.waves, weather, b.facing), tide, tideRange(b.tide)),
       rising: soon > tide,
       next: this.extremes.filter((e) => e.time.getTime() > now.getTime()),
       localTime: formatLocalTime(now, b.timeZone),
+      weather,
+      look,
     };
   }
 

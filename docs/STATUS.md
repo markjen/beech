@@ -163,6 +163,56 @@ and vending prize cards can be closed while keeping the prize in the bag.
   (nothing leaves the device).
 - Tulum was dropped: its nearest coastal gauge is 94 km away, and its main
   tide constant (7 mm) is implausible.
+- 2026-11-26: 21 more beaches (34 in all), each with a `region` for the
+  picker. `scripts/extract-tides.mjs` now reads the ids and coordinates
+  straight from `locations.ts`. The 70 km gauge rule (`tests/live.test.ts`)
+  dropped 21 candidates, among them Reynisfjara (164 km), Lofoten (107),
+  Navagio (314), Bora Bora (78), Tamarindo (116), Grace Bay (270), Durban
+  (685) and Tel Aviv (469). Matira/Bora Bora's tiny tide is probably right,
+  but its gauge is past the rule. `server/src/beachImage.ts` keeps its copy
+  of the list in step (`tests/beachImage.test.ts`).
+- **Place picker** (`src/ui/placePicker.ts`), replacing the row of chips:
+  one row showing the place, its local time and weather; open, a search box
+  (accents and case ignored, every word must match name, town or region),
+  near me, a world map with every place as a tappable dot, and the places
+  grouped by region, west to east.
+
+## Real weather (2026-11-26)
+
+- `GET /api/weather` (public, `server/src/weather.ts`): one Open-Meteo
+  forecast request and one marine request cover every place (they take
+  lists of coordinates). The report is cached for 15 minutes and shared by
+  all players, with one fetch at a time. When Open-Meteo is down, the last
+  report is served for up to 3 hours, then 503. No player data goes
+  upstream. Place coordinates come from the catch-up bundle
+  (`placeCoords()` in `src/world/catchupBeach.ts`). Failed fetches are
+  logged (`weather_fetch_failed`) and retried after a minute.
+- Licence: Open-Meteo's free API is non-commercial only. `OPEN_METEO_API_KEY`
+  (a paid plan) switches the server to the `customer-*` hosts with the key.
+  The deploy passes it once the `OPEN_METEO_ENABLED` variable is set (the
+  same optional-secret pattern as push); setting it up is an owner task in
+  BACKLOG.md.
+- The app (production builds only, `src/net/weather.ts`) fetches it at
+  start and every 15 minutes, and keeps the last report in `localStorage`
+  so the first frame is already right. The sandbox has no weather unless
+  `?wx=<WMO code>` is in the URL (the same made-up weather everywhere, for
+  screenshots).
+- `src/world/weather.ts` turns a place's weather into a look (overcast,
+  fog, rain or snow, storm, wind across the beach, cloud puffs).
+  `LiveConditions` eases toward each new report (`WEATHER.easePerSecond`),
+  but the first report, or a jump in time, shows at once. The look greys
+  the sky, flattens the sunlight and greys the sea; fog closes in the
+  horizon. A light picked in settings keeps a clear sky.
+- The swell follows the measured offshore wave height:
+  `0.35 + 0.45 √Hs`, blended 75 % with the beach's usual swell, plus up to
+  0.12 for an onshore wind, clamped to 0.4..1.15 (the sim's tuned range,
+  so no physics change). The tide still scales it as before.
+- The sky backdrop draws drifting cloud puffs (redrawn when they've moved a
+  whole texture pixel) and hides the sun, moon and stars behind cloud.
+  Rain and snow are a 2D canvas over the scene (`src/render/precip.ts`),
+  up to 260 strokes, off in battery saver. The status pane's first line
+  reads e.g. "☂ 8:12 am · rain 14°C · gentle swell" (°F for US locales).
+- Data credits (CC-BY 4.0: TICON-3 and Open-Meteo) are in the guide.
 
 ## Accounts, saved beaches and neighbors (built; production waits on GCP setup)
 

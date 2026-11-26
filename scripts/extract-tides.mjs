@@ -3,25 +3,15 @@
 //   https://doi.org/10.1594/PANGAEA.951610
 // Download TICON_3.zip from there, unzip, then:
 //   node scripts/extract-tides.mjs /path/to/TICON_3.txt
-// For each beach in BEACHES below it picks the nearest *coastal* gauge and
+// For each beach in src/world/locations.ts it picks the nearest *coastal* gauge and
 // keeps the constituents the prediction engine (src/world/tides.ts) knows.
 import fs from 'node:fs';
 
-const BEACHES = {
-  bondi: [-33.8915, 151.2767],
-  waikiki: [21.2766, -157.8278],
-  santamonica: [34.0095, -118.497],
-  southbeach: [25.7826, -80.13],
-  copacabana: [-22.9711, -43.1822],
-  brighton: [50.8197, -0.1372],
-  biarritz: [43.4832, -1.5586],
-  campsbay: [-33.951, 18.377],
-  patong: [7.8961, 98.296],
-  kuta: [-8.718, 115.1686],
-  nice: [43.6947, 7.265],
-  kamakura: [35.3106, 139.543],
-  piha: [-36.954, 174.468],
-};
+// The beaches (id, lat, lon) come straight from src/world/locations.ts.
+const BEACHES = {};
+for (const m of fs.readFileSync('src/world/locations.ts', 'utf8').matchAll(/id: '([a-z]+)'.*?lat: (-?[\d.]+), lon: (-?[\d.]+)/g)) {
+  BEACHES[m[1]] = [+m[2], +m[3]];
+}
 
 const KNOWN = new Set([
   'M2', 'S2', 'N2', 'K2', 'K1', 'O1', 'P1', 'Q1', '2N2', 'MU2', 'NU2', 'L2', 'T2', 'J1',

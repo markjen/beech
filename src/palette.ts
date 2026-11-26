@@ -314,3 +314,23 @@ export const ANIMAL_COLORS = {
   },
 };
 
+
+/** Real weather (src/world/weather.ts): what the sky and light lean toward. */
+export const WEATHER_COLORS = {
+  /** a grey, overcast sky (day) */
+  overcastSky: hex('#b9bec4'),
+  /** the horizon under cloud */
+  overcastHorizon: hex('#cfd2d4'),
+  /** storm clouds */
+  stormSky: hex('#6b7179'),
+  /** sea fog */
+  fog: hex('#dfe2e3'),
+  /** grey-green water under cloud */
+  greySea: hex('#5d7c80'),
+  /** cloud puffs drawn on the sky backdrop */
+  cloud: hex('#f4f5f6'),
+  cloudShade: hex('#9aa1a8'),
+  /** rain streaks and snowflakes */
+  rain: hex('#dde6ee'),
+  snow: hex('#ffffff'),
+} as const;

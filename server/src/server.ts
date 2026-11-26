@@ -167,6 +167,7 @@ const api = createApp(db, {
   androidPackage: env.ANDROID_PACKAGE || undefined,
   googleRtdn: env.GOOGLE_RTDN_AUDIENCE && env.GOOGLE_RTDN_SERVICE_ACCOUNT ? { audience: env.GOOGLE_RTDN_AUDIENCE, email: env.GOOGLE_RTDN_SERVICE_ACCOUNT } : undefined,
   codePepper,
+  weatherApiKey: env.OPEN_METEO_API_KEY || undefined,
   xsolla: xsolla.cfg ?? undefined,
 });
 

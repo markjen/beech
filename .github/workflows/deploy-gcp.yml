@@ -33,6 +33,7 @@ name: Deploy production (Google Cloud Run)
 #   vars.FCM_PROJECT_ID                         Android app push (the service's own identity sends)
 #   vars.PUSH_TICK_SERVICE_ACCOUNT              Cloud Scheduler's account for POST /api/push/tick
 #   vars.PUSH_TICK_AUDIENCE                     its OIDC audience (the tick URL)
+#   vars.OPEN_METEO_ENABLED=1                   real weather on Open-Meteo's paid plan (+ secret beech-open-meteo-api-key)
 # Secret Manager: beech-db-password, beech-admin-token (admin service only),
 #   beech-gift-code-pepper (both: the game redeems, the admin service issues),
 #   beech-xsolla-api-key and beech-xsolla-webhook-secret (game service only,
@@ -92,6 +93,7 @@ jobs:
           FCM_PROJECT_ID: ${{ vars.FCM_PROJECT_ID }}
           PUSH_TICK_SERVICE_ACCOUNT: ${{ vars.PUSH_TICK_SERVICE_ACCOUNT }}
           PUSH_TICK_AUDIENCE: ${{ vars.PUSH_TICK_AUDIENCE }}
+          OPEN_METEO_ENABLED: ${{ vars.OPEN_METEO_ENABLED }}
         run: |
           PUSH_ENV=""
           PUSH_SECRETS=""
@@ -104,6 +106,8 @@ jobs:
             PUSH_SECRETS="$PUSH_SECRETS,APNS_KEY=beech-apns-key:latest"
           fi
           if [ -n "$FCM_PROJECT_ID" ]; then PUSH_ENV="$PUSH_ENV;FCM_PROJECT_ID=$FCM_PROJECT_ID"; fi
+          # real weather: Open-Meteo's free API is non-commercial only (server/src/weather.ts)
+          if [ -n "$OPEN_METEO_ENABLED" ]; then PUSH_SECRETS="$PUSH_SECRETS,OPEN_METEO_API_KEY=beech-open-meteo-api-key:latest"; fi
           if [ -n "$PUSH_TICK_SERVICE_ACCOUNT" ]; then
             PUSH_ENV="$PUSH_ENV;PUSH_TICK_SERVICE_ACCOUNT=$PUSH_TICK_SERVICE_ACCOUNT;PUSH_TICK_AUDIENCE=$PUSH_TICK_AUDIENCE"
           fi

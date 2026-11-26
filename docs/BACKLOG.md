@@ -14,6 +14,15 @@ The single list of what's left to do, for the owner and for agents.
 
 ## Owner: things only you can do
 
+- [ ] **Open-Meteo plan for real weather** (2026-11-26): Open-Meteo's free
+  API is for non-commercial use only, and beech sells things, so production
+  needs a paid plan (the smallest is plenty: the server makes two requests
+  every 15 minutes per instance). Put the key in Secret Manager as
+  `beech-open-meteo-api-key` (readable by the game service's account), then
+  set the Actions variable `OPEN_METEO_ENABLED=1`: the next deploy passes it
+  as `OPEN_METEO_API_KEY` and the server uses the `customer-*` hosts. Until
+  then it uses the free API.
+
 - [ ] **Sand-buck packs in the stores** (docs/SAND_BUCKS.md, "Owner tasks"):
   create the consumable products `bucks_10`, `bucks_30`, `bucks_50`,
   `bucks_100`, `bucks_200` ($0.99 / $2.99 / $4.99 / $9.99 / $19.99) in App
@@ -111,8 +120,7 @@ picked up.
 - [ ] **Inland beach sections (model first)**: add up to four inland rows
   per beach, with editable sand and automatic joins between matching rows
   on linked beaches. See [INLAND_SECTIONS.md](INLAND_SECTIONS.md).
-- [ ] **Palm-first UI, follow-ups**: real weather (temperature, sky) for
-  the status pane's first line; stars and finds-today chips in
+- [ ] **Palm-first UI, follow-ups**: stars and finds-today chips in
   the expanded pane (they need their own requests; no credit/sand-bucks
   chip: Mark, 2026-11-26, the balance is only useful in the shop); decide whether the
   palm should also fade after idle outside ambient mode (the mockup's open
@@ -206,14 +214,23 @@ picked up.
   (`src/world/checkpointFit.ts`), item-size and beach-capacity limits,
   referral ladder rewards. See [VERIFICATION.md](VERIFICATION.md).
 - [ ] Sand-castle bucket stamps as a fourth tool.
-- [ ] More real beaches (Reynisfjara, Whitehaven, Navagio…), maybe with
-  per-beach slope and sand-grain colour.
-- [ ] Weather: overcast, drizzle and wind, from a live forecast for the beach.
+- [ ] Per-beach slope and sand-grain colour for the real beaches.
+- [ ] More real beaches where a tide gauge is near enough. Reynisfjara,
+  Lofoten, Navagio and Bora Bora were left out by the 70 km gauge rule:
+  they need another tide source (e.g. FES2014 model constants).
+- [ ] Weather, next: lightning flashes in a storm, wet-sand darkening after
+  rain, and wind-blown sand or spray; the forecast's sunrise/sunset glow.
 - [ ] A WebGPU compute path for the simulation on high-end devices.
 - [ ] Seasonal sky (sun height already follows the date), and a meteor
   shower night.
 
 ## Done (recent)
+
+- [x] **More real beaches, a place picker, and real weather** (2026-11-26):
+  21 new beaches (34 in all), a searchable place picker with a map and
+  regions, and live weather per place from Open-Meteo through
+  `GET /api/weather` (sky, light, cloud, fog, rain or snow, and the swell).
+  See STATUS.md, "Real weather".
 
 - [x] **Copy a beach** onto one of your own (2026-11-26): shore bar,
   beechshore.com and duplicate; buy what's missing or copy without them;

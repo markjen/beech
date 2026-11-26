@@ -4,6 +4,7 @@
 //   POST   /api/auth/apple       { identityToken, name? }  -> { token, user }
 //   POST   /api/auth/dev         { name }                  -> { token, user }   (DEV_AUTH only)
 //   POST   /api/auth/logout                                -> 204
+//   GET    /api/weather                                    -> { at, places: { [placeId]: weather } }  (public, cached)
 //   GET    /api/me                                         -> { user }
 //   GET    /api/beach                                      -> sand bytes + X-Beach-* headers | 404
 //   PUT    /api/beach            sand bytes, X-Beach-Location/Nx/Ny -> { version, updatedAt } (+ largeEdit / largeEditCheckpoint when the save reshaped the beach)
@@ -41,6 +42,7 @@ import { Hono, type Context } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 
 import { PACKS, PRODUCTS, copyBasket, productById, storeProductById, type Product } from './products.js';
+import { createWeather } from './weather.js';
 import { creditBalance, grantPurchase } from './bucksDb.js';
 import { BUCK, bucksToCents, centsToBucks, listBucks, roundToBuck, shareOut, tradeable, unitsOf } from './bucks.js';
 import { issueSubmissionSession, UUID_PATTERN } from './itemSubmissions.js';
@@ -156,6 +158,10 @@ export interface AppConfig {
   rateLimit?: { perMinute?: number; signInsPerMinute?: number };
   /** the clock (tests move it forward) */
   now?: () => number;
+  /** real weather at every place (GET /weather); tests pass one with a fake fetch */
+  weather?: ReturnType<typeof createWeather>;
+  /** Open-Meteo API key (OPEN_METEO_API_KEY, a paid plan: its free API is non-commercial only) */
+  weatherApiKey?: string;
   /** live beaches (docs/LIVE_SIM.md); default from the environment (CATCHUP_MAX_GAP_DAYS) */
   live?: LiveConfig;
   /** the dice (tests force a miss) */
@@ -371,6 +377,17 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
 
   // ---------------------------------------------------------------- auth
   app.get('/health', (c) => c.json({ ok: true }));
+
+  // ---------------------------------------------------------------- weather
+  // The same for everyone and public: the weather at every place, cached on
+  // the server for 15 minutes (server/src/weather.ts).
+  const weather =
+    cfg.weather ?? createWeather({ apiKey: cfg.weatherApiKey, log: (e) => logEvent(e.event, e, 'WARNING') });
+  app.get('/weather', async (c) => {
+    const r = await weather.get();
+    if (!r) return c.json({ error: 'weather unavailable' }, 503);
+    return c.json(r);
+  });
 
   // ---------------------------------------------------------------- client events
   // Web and native apps report unhandled + caught errors, load timing, and
