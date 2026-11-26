@@ -1124,6 +1124,24 @@
   accent-color: var(--ui-fg);
 }
 
+.place-bar .pb-tobag {
+  flex: none;
+  padding: 6px 10px;
+  border: 1.5px solid currentColor;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.place-bar .pb-tobag[hidden] {
+  display: none;
+}
+
 .place-bar .pb-close {
   width: 36px;
   height: 36px;

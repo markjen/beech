@@ -203,7 +203,6 @@ export class InventoryTray {
     this.press = null;
   }
 
-  /** How many of this item you own (for the gift button in the place bar). */
   /** what you own, and what's on your other beaches (for beach files and checkpoints) */
   ownedItems(): ReadonlyMap<string, number> {
     return this.owned;

@@ -151,4 +151,16 @@ describe('the account page', () => {
     expect(w.status).toBe(200);
     expect(((await w.json()) as { order: { status: string } }).order.status).toBe('created');
   });
+
+  it('labels paid extra tries on the claw and vending machines in history', async () => {
+    const a = await user();
+    await db.query('UPDATE users SET credit_cents = 500 WHERE id = $1', [a.id]);
+    expect((await post('/pulls/daily/paid', {}, a.token)).status).toBe(200);
+    expect((await post('/pulls/vending/paid', {}, a.token)).status).toBe(200);
+    const s = (await (await account('/summary', a.scoped)).json()) as Summary;
+    expect(s.ledger.map((l) => l.what)).toEqual([
+      'Extra ball from the vending machine',
+      'Extra go on the claw machine',
+    ]);
+  });
 });

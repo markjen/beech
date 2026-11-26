@@ -3726,8 +3726,11 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
             [me, them!.owner_id, them!.code, now, REWARD_CAP, INVITE_BONUS],
           );
           if (!r) return null;
-          await creditBalance(tx, me, bonus, 'invite_bonus', `invited_by:${them!.owner_id}`, now);
-          if (r.reward_rank !== null) await creditBalance(tx, them!.owner_id, bonus, 'invite_bonus', `invited:${me}`, now);
+          // credit in user-id order so two players claiming each other's invite at once can't deadlock
+          const credits: [string, string][] = [[me, `invited_by:${them!.owner_id}`]];
+          if (r.reward_rank !== null) credits.push([them!.owner_id, `invited:${me}`]);
+          credits.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+          for (const [uid, ref] of credits) await creditBalance(tx, uid, bonus, 'invite_bonus', ref, now);
           // the inviter's guide (a friend joined) and inbox
           await tx.query(`INSERT INTO guide_steps (user_id, step, done_at) VALUES ($1, 'invite', $2) ON CONFLICT DO NOTHING`, [them!.owner_id, now]);
           await tx.query(`INSERT INTO inbox (user_id, kind, actor_id, created_at) VALUES ($1, 'invite_joined', $2, $3)`, [them!.owner_id, me, now]);

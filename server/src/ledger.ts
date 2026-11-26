@@ -41,6 +41,9 @@ export function ledgerLabel(r: { kind: string; ref: string; product_id?: string 
       return r.product_id ? `Refund: ${productName(r.product_id)}` : 'Refund of sand dollars';
     case 'spend':
       if (r.ref.startsWith('basket:')) return 'Bought what a copied beach needed';
+      if (r.ref === 'pull:daily') return 'Extra go on the claw machine';
+      if (r.ref === 'pull:vending') return 'Extra ball from the vending machine';
+      if (r.ref.startsWith('pull:')) return 'Extra try on a machine';
       return `Bought ${productById(r.ref)?.name ?? displayName(r.ref)}`;
     case 'trade_in': {
       const n = Number(r.traded ?? 0);

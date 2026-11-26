@@ -354,7 +354,7 @@ account on beechshore", "Invite bonuses") and
   right click opens a dialog: how many, "you get S$ X", trade in, gift.
   The place bar has no trade/gift buttons any more.
 - **Invites:** S$ 50 to the friend and to the inviter (first 10 friends) in
-  the claim's transaction (`specs/tla/Invites.tla`, migration 35). Legacy
+  the claim's transaction (`specs/tla/Invites.tla`, migration 37). Legacy
   referrals keep the item ladder. The inviter hears "Fran joined through
   your invite: +S$ 50" on their next sign-in.
 - **Follow-ups:** watch invite-bonus farming (each throwaway account needs

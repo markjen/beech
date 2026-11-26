@@ -10,7 +10,7 @@ the game to your account page on beechshore (`/account#invite`, docs/SAND_BUCKS.
 "invite friends" and the guide's invite step open it. Sand bucks are
 spendable in the apps now (SAND_BUCKS.md), so the reason below for items no
 longer holds. State machine: [`specs/tla/Invites.tla`](../specs/tla/Invites.tla)
-(see [State machine](#state-machine)). Referrals from before (migration 35's
+(see [State machine](#state-machine)). Referrals from before (migration 37's
 `bonus_bucks` NULL) still finish on the ladder below when the friend settles
 in.
 
