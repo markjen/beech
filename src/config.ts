@@ -385,6 +385,16 @@ export const WEATHER = {
  * (the still-water shoreline is at PROFILE.shoreline, 16.5 m); heights are
  * metres above still water.
  */
+/** Inland beach sections (docs/INLAND_SECTIONS.md, src/render/sections.ts). */
+export const SECTION = {
+  /** each row's depth, inland (its width is the beach's) */
+  depth: 12,
+  /** the ground's height: the beach's own back edge (PROFILE.backHeight) */
+  ground: 0.85,
+  /** how far down the slab's sides go (the beach's own slab bottom) */
+  bottom: -2.6,
+};
+
 export const PIER = {
   /** where the ramp meets the sand (dry, landward of the shoreline) */
   landY: 21,

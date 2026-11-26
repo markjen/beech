@@ -288,6 +288,8 @@ export class Account {
   allowance = 1;
   /** piers you own, and how many are on beaches (docs/PIERS.md) */
   piers = { owned: 0, placed: 0 };
+  /** inland sections you own and have placed, per type (docs/INLAND_SECTIONS.md) */
+  sections: SectionCounts = { owned: {}, placed: {} };
   private beachListeners: ((beaches: MyBeach[]) => void)[] = [];
 
   get extraBeachesInUse(): number {
@@ -314,12 +316,13 @@ export class Account {
     const who = this.user?.id;
     const res = await this.call('/api/beaches/mine');
     if (!res.ok) throw await errorOf(res, 'could not load your beaches');
-    const data = (await res.json()) as { allowance: number; beaches: MyBeach[]; piers?: { owned: number; placed: number } };
+    const data = (await res.json()) as { allowance: number; beaches: MyBeach[]; piers?: { owned: number; placed: number }; sections?: SectionCounts };
     // someone else signed in meanwhile: this list isn't theirs
     if (this.user?.id !== who) return this.beaches;
     this.beaches = data.beaches;
     this.allowance = data.allowance;
     this.piers = data.piers ?? { owned: 0, placed: 0 };
+    this.sections = data.sections ?? { owned: {}, placed: {} };
     for (const fn of this.beachListeners) fn(this.beaches);
     return this.beaches;
   }
@@ -363,6 +366,25 @@ export class Account {
   async removePier(id: string): Promise<void> {
     const res = await this.call(`/api/beaches/mine/${id}/pier`, { method: 'DELETE', headers: { ...this.editHeaders() } });
     if (!res.ok && res.status !== 404) throw await errorOf(res, 'could not remove the pier');
+    await this.loadBeaches();
+  }
+
+  /**
+   * Replace the rows behind this beach (docs/INLAND_SECTIONS.md), made from
+   * the layout at `rev`. A 409 means the beach changed meanwhile (or the bag
+   * is short): reload and look again.
+   */
+  async setSections(id: string, rows: string[], rev: number): Promise<void> {
+    const res = await this.call(`/api/beaches/mine/${id}/sections`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...this.editHeaders() },
+      body: JSON.stringify({ rows, rev }),
+    });
+    if (!res.ok) {
+      const err = await errorOf(res, 'could not change the sections');
+      await this.loadBeaches().catch(() => {});
+      throw err;
+    }
     await this.loadBeaches();
   }
 
@@ -698,6 +720,15 @@ export interface MyBeach {
   pierSite?: boolean;
   /** its pier: showing, waiting for the site to come back, or none */
   pier?: 'active' | 'paused' | null;
+  /** its inland sections, front row first, and the layout's revision (docs/INLAND_SECTIONS.md) */
+  sections?: string[];
+  sectionsRev?: number;
+}
+
+/** inland sections per type: how many you own, and how many are on your beaches */
+export interface SectionCounts {
+  owned: Record<string, number>;
+  placed: Record<string, number>;
 }
 
 export interface Neighbor {
@@ -904,6 +935,8 @@ export interface ShoreBeach {
   linked?: boolean;
   /** it shows a pier (docs/PIERS.md) */
   pier?: boolean;
+  /** its inland sections, front row first (docs/INLAND_SECTIONS.md) */
+  sections?: string[];
 }
 
 export interface Shore {

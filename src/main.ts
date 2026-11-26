@@ -4,7 +4,7 @@ import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { Scene } from '@babylonjs/core/scene';
 
 import { Ambience } from './audio/ambience';
-import { ANIMALS, BEACH_CAP, BEACH_STORE, GRID_TIERS, SIM_HZ, WAVES, WORLD_SIZE_X, type QualityTier } from './config';
+import { ANIMALS, BEACH_CAP, BEACH_STORE, GRID_TIERS, SECTION, SIM_HZ, WAVES, WORLD_SIZE_X, WORLD_SIZE_Z, type QualityTier } from './config';
 import { CameraController } from './input/cameraController';
 import { Gestures, HOLD_SLOP_PX, LONG_PRESS_MS } from './input/gestures';
 import { SandPicker } from './input/sandPicker';
@@ -64,6 +64,8 @@ import { idbSnapshotCache } from './net/snapshotCache';
 import { snapshotBeforeBigEdit } from './net/bigEditSnapshot';
 import { AccountPanel } from './ui/accountPanel';
 import { PierPreview } from './ui/pierPreview';
+import { sectionById } from './world/sections';
+import type { SectionsEditor } from './ui/sectionsEditor';
 import { ownBeachLabel } from './ui/shoreConnect';
 import { Leaderboard } from './ui/leaderboard';
 import { NeighborView } from './render/neighbors';
@@ -2950,6 +2952,7 @@ async function boot() {
     // go to one of your beaches: glide if it's on this shore, else lay the shore out around it
     // (the waves follow the view there: nothing is switched)
     let pierPreview: PierPreview | null = null;
+    let sectionsEditor: SectionsEditor | null = null;
     const openMine = async (id: string) => {
       const idx = nv.indexOfBeach(id);
       if (idx !== null && !nv.visiting) {
@@ -3034,6 +3037,51 @@ async function boot() {
             throw e;
           }
           void refreshOwned();
+        },
+        // inland sections (docs/INLAND_SECTIONS.md): the rows behind a beach,
+        // shown as you change them until "save" or "cancel"
+        editSections: async (b) => {
+          sectionsEditor ??= new (await import('./ui/sectionsEditor')).SectionsEditor(uiRoot);
+          const editor = sectionsEditor;
+          sheet.hide();
+          void openMine(b.id);
+          const rev = b.sectionsRev ?? 0;
+          // look inland while the rows change, and back when done
+          const fromZ = cam.focusZ;
+          const show = (rows: string[]) => {
+            nv.previewSections(b.id, rows);
+            if (rows.length) cam.goToZ(WORLD_SIZE_Z / 2 + SECTION.depth * Math.min(rows.length, 2) * 0.6);
+          };
+          editor.show(ownBeachLabel(b), b.sections ?? [], acct.sections, {
+            preview: show,
+            save: async (rows) => {
+              await acct.setSections(b.id, rows, rev);
+              await nv.refresh();
+              nv.previewSections(null);
+            },
+            buy: async (type) => {
+              const product = sectionById(type)?.product;
+              if (!product) throw new Error('not for sale');
+              try {
+                await new ShopApi(acct).buyBasket([{ product, quantity: 1 }]);
+              } catch (e) {
+                if (/not enough beech bucks/.test((e as Error).message)) {
+                  editor.hide();
+                  nv.previewSections(null);
+                  void shopDialog?.open('packs');
+                }
+                throw e;
+              }
+              void refreshOwned();
+              await acct.loadBeaches();
+              return acct.sections;
+            },
+            cancel: () => {
+              nv.previewSections(null);
+              cam.goToZ(fromZ);
+            },
+          });
+          show(b.sections ?? []);
         },
         previewPier: (b) => {
           pierPreview ??= new PierPreview(uiRoot);

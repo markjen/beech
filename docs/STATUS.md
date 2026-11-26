@@ -439,6 +439,25 @@ account on beechshore", "Invite bonuses") and
   beach in view per device. Needs DEV_AUTH for
   `/api/dev/grant`.
 
+## Inland sections (built 2026-11-26)
+
+[Inland sections](INLAND_SECTIONS.md): up to four 32 × 12 m rows behind
+each beach, from eight types, as scenery. Differences from the design are
+listed in INLAND_SECTIONS.md (beech bucks, counted rather than per-copy
+IDs, no editable sand yet).
+
+- Server: `beach_sections` and `beach.sections_rev` (migration 38),
+  `PUT /beaches/mine/:id/sections {rows, rev}`, `sections` and
+  `sectionsRev` per beach and `sections {owned, placed}` in
+  `/beaches/mine`, `sections` on beaches in shore data (signed in and
+  public). Placed rows count as placed for the bag, trade-ins and gifts.
+  Catalog in `server/src/sections.ts`, mirrored by `src/world/sections.ts`.
+- Client: the editor (`src/ui/sectionsEditor.ts`) from Manage → Beaches;
+  `SectionLayer` (`src/render/sections.ts`) drawn by `NeighborView`, with
+  joins derived from the shore; the camera pans inland over them.
+- Tests: `server/test/stateMachines/sections.test.ts` (transitions,
+  replays, random walk), `tests/sections.test.ts`, `npm run e2e:sections`.
+
 ## Piers (built 2026-11-26)
 
 [Piers](PIERS.md): the middle of three of your own beaches side by side can

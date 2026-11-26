@@ -31,6 +31,8 @@ export interface NodeRow {
   saved: boolean;
   /** a pier is attached and its beach qualifies, so it shows (docs/PIERS.md) */
   pier: boolean;
+  /** its inland sections' types, front row first, comma-separated (docs/INLAND_SECTIONS.md); null: none */
+  sections: string | null;
 }
 /**
  * A beach of `b`'s owner is linked on `b`'s `side` (docs/PIERS.md): the
@@ -45,7 +47,9 @@ export const PIER_SITE = `(${OWN_SIDE('left')} AND ${OWN_SIDE('right')})`;
 /** `b` shows a pier: one is attached, and the beach still qualifies (a dormant one doesn't show) */
 export const PIER_SHOWN = `(EXISTS (SELECT 1 FROM beach_piers bp WHERE bp.beach_id = b.id) AND ${PIER_SITE})`;
 /** a beach and its owner's first name (select list, with `BEACH` as the FROM) */
-export const NODE = `b.id, u.name, b.name AS beach_name, b.owner_id, b.code, b.created_at, b.location, b.updated_at, b.on_shore, (b.sand IS NOT NULL) AS saved, ${PIER_SHOWN} AS pier`;
+/** `b`'s inland sections, front row first (docs/INLAND_SECTIONS.md). Rows are kept packed from 0. */
+export const SECTIONS_OF = `(SELECT string_agg(bs.item_id, ',' ORDER BY bs.row) FROM beach_sections bs WHERE bs.beach_id = b.id)`;
+export const NODE = `b.id, u.name, b.name AS beach_name, b.owner_id, b.code, b.created_at, b.location, b.updated_at, b.on_shore, (b.sand IS NOT NULL) AS saved, ${PIER_SHOWN} AS pier, ${SECTIONS_OF} AS sections`;
 export const BEACH = `beach b JOIN users u ON u.id = b.owner_id`;
 
 export const beachJson = (r: NodeRow) => ({
@@ -59,6 +63,8 @@ export const beachJson = (r: NodeRow) => ({
   updatedAt: r.updated_at === null ? null : Number(r.updated_at),
   /** it shows a pier (left out when it doesn't) */
   ...(r.pier ? { pier: true as const } : {}),
+  /** its inland sections' types, front row first (left out when it has none) */
+  ...(r.sections ? { sections: r.sections.split(',') } : {}),
 });
 export type BeachJson = ReturnType<typeof beachJson>;
 export type Step = BeachJson & { linked: boolean };
