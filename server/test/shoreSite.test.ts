@@ -94,6 +94,7 @@ describe('the shore site', () => {
     expect(own).toContain('<link rel="canonical" href="https://beechshore.com/">');
     expect(own).toContain(`href="/${people.Ana.code}"`);
     const under = await (await root.request('/shore')).text();
+    expect(under).toContain('<link rel="canonical" href="https://beechshore.com/">');
     expect(under).toContain(`href="/shore/${people.Ana.code}"`);
   });
 
@@ -295,10 +296,41 @@ describe('the shore site', () => {
     expect(rnd.status).toBe(302);
     expect(rnd.headers.get('Location')).toMatch(/^\/[A-Z0-9]{6}$/);
     expect([people.Ana.code, people.Dee.code, people['<b>Eve</b>'].code]).toContain(rnd.headers.get('Location')!.slice(1));
-    expect(await (await root.request('/robots.txt', shoreHost)).text()).toContain('Sitemap: https://beechshore.com/sitemap.xml');
-    const map = await (await root.request('/sitemap.xml', shoreHost)).text();
+    const robots = await (await root.request('/robots.txt', shoreHost)).text();
+    expect(robots).toContain('Sitemap: https://beechshore.com/sitemap.xml');
+    expect(robots).not.toContain('Disallow: /find');
+    const response = await root.request('/sitemap.xml', shoreHost);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Content-Type')).toContain('application/xml');
+    const map = await response.text();
+    expect(await (await root.request('/shore/sitemap.xml')).text()).toBe(map);
     expect(map).toContain(`<loc>https://beechshore.com/${people.Ana.code}</loc>`);
+    expect(map).toContain('<loc>https://beechshore.com/submit/spec</loc>');
+    expect(map).not.toContain('/submit/connect');
     expect(map).not.toContain(people.Bob.code);
+    expect(map).not.toContain(people.Cy.code);
+    expect((await root.request('/shore/submit/connect')).headers.get('X-Robots-Tag')).toBe('noindex');
+  });
+
+  it('gives populated listing pages their own canonical URL and returns 404 past the end', async () => {
+    await db.query(`
+      INSERT INTO beach (id, owner_id, code, location, sand, created_at)
+      SELECT gen_random_uuid(), owner_id, 'TST' || LPAD(n::text, 3, '0'), location, sand, created_at
+      FROM beach CROSS JOIN generate_series(1, 24) AS n
+      WHERE id = $1
+    `, [people.Ana.beachId]);
+    try {
+      for (const path of ['/top', '/at/waikiki']) {
+        for (const [prefix, init] of [['', shoreHost], ['/shore', {}]] as const) {
+          const r = await root.request(`${prefix}${path}?page=2&utm_source=test`, init);
+          expect(r.status).toBe(200);
+          expect(await r.text()).toContain(`<link rel="canonical" href="https://beechshore.com${path}?page=2">`);
+          expect((await root.request(`${prefix}${path}?page=3`, init)).status).toBe(404);
+        }
+      }
+    } finally {
+      await db.query("DELETE FROM beach WHERE code ~ '^TST0(0[1-9]|1[0-9]|2[0-4])$'");
+    }
   });
 
   it('rate-limits uncached image draws per IP while keeping cache hits free', async () => {
@@ -414,6 +446,7 @@ describe('the shore site', () => {
 
     // name search finds public beaches only
     const byName = await root.request('/find?q=ana', shoreHost);
+    expect(byName.headers.get('X-Robots-Tag')).toBe('noindex');
     expect(byName.status).toBe(200);
     const anaHtml = await byName.text();
     expect(anaHtml).toContain(people.Ana.code);
