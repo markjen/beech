@@ -83,11 +83,11 @@ with their TLA+ spec ([STATE_MACHINES.md](STATE_MACHINES.md#model-first-workflow
 CLAUDE.md "Model first"). Gameplay ideas below get the same once they're
 picked up.
 
-- [ ] **Copy a beach** onto one of your own, from the shore bar and
-  beechshore.com; when short, buy what's missing or copy without them
-  **(model first: `specs/tla/BeachCopy.tla`, written and checked)**.
-  Phases K1 to K4 in [COPY_BEACH.md](COPY_BEACH.md); owner decisions
-  taken (no allow-copies setting; copy counts and owner notifications on).
+- [ ] **Copy a beach, follow-ups** ([COPY_BEACH.md](COPY_BEACH.md)): one
+  web order holding every product "Buy what's missing" needs (Xsolla's
+  token takes several items; `web_orders` would need lines, and the
+  webhook would grant them all) instead of one card checkout each; a place
+  picker for a new beach on the copy sheet.
 - [ ] **Palm-first UI, follow-ups**: real weather (temperature, sky) for
   the status pane's first line; credit, stars and finds-today chips in
   the expanded pane (they need their own requests); decide whether the
@@ -187,6 +187,11 @@ picked up.
   shower night.
 
 ## Done (recent)
+
+- [x] **Copy a beach** onto one of your own (2026-11-26): shore bar,
+  beechshore.com and duplicate; buy what's missing or copy without them;
+  copy counts and owner notifications. [COPY_BEACH.md](COPY_BEACH.md),
+  `specs/tla/BeachCopy.tla`.
 
 - [x] **Beach store, next** (2026-11-25): other people's beaches kept on
   the device (IndexedDB, by id, checked against the shore's save time) so

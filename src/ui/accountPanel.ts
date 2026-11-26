@@ -47,6 +47,8 @@ export interface MineCallbacks {
   location: () => string;
   changed: () => void;
   shop?: () => void;
+  /** Copy this beach onto another of yours, or a new one (docs/COPY_BEACH.md). */
+  duplicate?: (beach: MyBeach) => void;
   /** Fired whenever the beach selected *for settings* changes. */
   onSelect?: (beach: MyBeach | undefined) => void;
   /** Fired when auth state transitions so the sheet can switch to Account/Beach tab. */
@@ -306,6 +308,10 @@ export class AccountPanel {
       if (this.checkpoints && sel.updatedAt) {
         const cps = this.checkpoints;
         acts.appendChild(act('checkpoint', `checkpoint-${sel.id}`, () => cps.saveOf(sel.id), 'Save a checkpoint of this beach'));
+      }
+      if (mine.duplicate && sel.updatedAt) {
+        const dup = mine.duplicate;
+        acts.appendChild(act('duplicate', `duplicate-${sel.id}`, async () => dup(sel), 'Copy this beach'));
       }
       if (!sel.home) {
         acts.appendChild(

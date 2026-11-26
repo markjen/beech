@@ -40,7 +40,7 @@
 import { Hono, type Context } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 
-import { PRODUCTS, productById } from './products.js';
+import { PRODUCTS, copyBasket, productById } from './products.js';
 import { issueSubmissionSession, UUID_PATTERN } from './itemSubmissions.js';
 import { awardCheckoutCreatorCredit, awardCreatorCredit, creatorOffer, creatorOffers, lockCreditUsers, nativeSalePrice, salePriceCents } from './creatorCredit.js';
 import {
@@ -190,6 +190,13 @@ type Env = { Variables: { user: User; tokenHash: string } };
 
 /** most beaches one person can have */
 export const BEACH_CAP = 8;
+
+/** A strict copy that's short: thrown inside the transaction so a new beach made for it rolls back too. */
+class CopyShort extends Error {
+  constructor(readonly short: unknown[]) {
+    super('short');
+  }
+}
 const BEACH_HEADERS = ['X-Beach-Location', 'X-Beach-Nx', 'X-Beach-Ny', 'X-Beach-Version', 'X-Beach-Updated', 'X-Beach-Epoch', 'X-Beach-Simulated-Until'];
 /** request-only headers the app sends cross-origin (the phone apps) */
 const REQUEST_HEADERS = ['X-Beach-Items', 'X-Beach-Max', 'X-Checkpoint-Name', 'X-App-Build', 'X-Edit-Token'];
@@ -1016,8 +1023,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   app.post('/beach/away/seen', requireUser, async (c) => seen(c, await homeOf(c.get('user').id)));
 
   /** how many beaches you may have: one, plus each extra beach you own */
-  const allowance = async (user: string): Promise<number> => {
-    const rows = await db.query<{ n: string | null }>(
+  const allowance = async (user: string, q: Db = db): Promise<number> => {
+    const rows = await q.query<{ n: string | null }>(
       `SELECT SUM(quantity) AS n FROM inventory WHERE user_id = $1 AND item_id = 'beach' AND (expires_at IS NULL OR expires_at > $2)`,
       [user, Date.now()],
     );
@@ -1941,7 +1948,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     id: string;
     name: string;
     kind: 'named' | 'auto' | 'tide';
-    source: 'beach' | 'import';
+    source: 'beach' | 'import' | 'copy';
     from_beach: string | null;
     from_name: string;
     beach_name: string | null;
@@ -2170,6 +2177,69 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     return c.json({ ok: fit.short.length === 0, ...fit });
   });
 
+  /**
+   * Put a saved beach's bytes onto one of your beaches, inside asEditor's
+   * transaction: what was there becomes the beach's automatic "Before ..."
+   * checkpoint (skipped if it had no save), and the epoch goes up so other
+   * devices reload instead of saving over it. Shared by a restore and a
+   * copy, so the two can't drift.
+   */
+  const writeOnto = async (
+    tx: Db,
+    target: string,
+    bytes: Uint8Array,
+    info: { nx: number; ny: number },
+    placed: Record<string, number>,
+    beforeName: string,
+    copied?: { from: string; code: string; version: number },
+  ) => {
+    const current = (await tx.query<{ sand: unknown }>('SELECT sand FROM beach WHERE id = $1 AND sand IS NOT NULL', [target]))[0];
+    let before: { items: Record<string, number>; objects: number } = { items: {}, objects: 0 };
+    if (current) {
+      try {
+        before = inspectBlob(toBytes(current.sand));
+      } catch {
+        /* an unreadable old save: keep it, uncounted */
+      }
+    }
+    const now = clock();
+    const rows = await tx.query<{ version: number; epoch: number; undo: string | null }>(
+      `WITH snap AS (
+         INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at)
+         SELECT $1, owner_id, $2, 'auto', 'beach', id, name, location, nx, ny, sand, octet_length(sand), $3, $4, $5
+           FROM beach WHERE id = $6 AND sand IS NOT NULL
+         ON CONFLICT (from_beach) WHERE kind = 'auto' DO UPDATE SET
+           name = EXCLUDED.name, from_name = EXCLUDED.from_name, location = EXCLUDED.location, nx = EXCLUDED.nx, ny = EXCLUDED.ny,
+           sand = EXCLUDED.sand, bytes = EXCLUDED.bytes, items = EXCLUDED.items, objects = EXCLUDED.objects, created_at = EXCLUDED.created_at
+         RETURNING id
+       )
+       UPDATE beach SET sand = $7, nx = $8, ny = $9, items = $10, version = version + 1, updated_at = $5, epoch = epoch + 1,
+              simulated_until = $5,
+              copied_from = CASE WHEN $11::boolean THEN $12::uuid ELSE copied_from END,
+              copied_from_code = CASE WHEN $11::boolean THEN $13 ELSE copied_from_code END,
+              copied_version = CASE WHEN $11::boolean THEN $14::integer ELSE copied_version END
+        WHERE id = $6
+       RETURNING version, epoch, (SELECT id FROM snap) AS undo`,
+      [
+        crypto.randomUUID(),
+        beforeName.slice(0, 80),
+        JSON.stringify(before.items),
+        before.objects,
+        now,
+        target,
+        bytes,
+        info.nx,
+        info.ny,
+        JSON.stringify(placed),
+        !!copied,
+        copied?.from ?? null,
+        copied?.code ?? null,
+        copied?.version ?? null,
+      ],
+    );
+    return { version: rows[0].version, epoch: Number(rows[0].epoch), updatedAt: now, undo: rows[0].undo };
+  };
+
   // put a checkpoint on one of your beaches; what was there becomes its
   // "before restoring" checkpoint, so it can be undone
   app.post('/beaches/mine/:id/restore', requireUser, async (c) => {
@@ -2191,46 +2261,165 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
         ({ bytes, dropped } = dropMissing(bytes, fit.short));
       }
       const placed = dropped ? inspect(bytes) : info;
-      // what's there now becomes the beach's "before restoring" checkpoint
-      const current = (await tx.query<{ sand: unknown }>('SELECT sand FROM beach WHERE id = $1 AND sand IS NOT NULL', [target]))[0];
-      let before: { items: Record<string, number>; objects: number } = { items: {}, objects: 0 };
-      if (current) {
-        try {
-          before = inspectBlob(toBytes(current.sand));
-        } catch {
-          /* an unreadable old save: keep it, uncounted */
+      const done = await writeOnto(tx, target, bytes, info, placed.items, `Before restoring “${cp.name}”`);
+      return c.json({ ...done, dropped });
+    }));
+  });
+
+  // ---------------------------------------------------------------- copying a beach
+  // Copy a beach on the shore (or one of your own) onto one of your beaches,
+  // or a new one (docs/COPY_BEACH.md). Like a restore, with someone else's
+  // save as the source. specs/tla/BeachCopy.tla: the read of the source
+  // (public, the version you previewed), the bag and allowance checks and
+  // the write are one transaction holding your player lock, with the
+  // source row read FOR SHARE, so its owner's save or hide waits for it.
+  const copyLimiter = createRateLimiter(20, 3600000);
+  const NO_BEACH = '00000000-0000-0000-0000-000000000000';
+  interface CopySource {
+    id: string;
+    owner_id: string;
+    code: string;
+    name: string;
+    owner_name: string | null;
+    location: string | null;
+    version: number;
+    updated_at: string | null;
+    on_shore: boolean;
+    sand: unknown;
+  }
+  /** a beach you may copy: public (on the shore and saved), or yours and saved; else 404 */
+  const copySource = async (q: Db, code: string | undefined, me: string, lock = false): Promise<CopySource> => {
+    const rows = await q.query<CopySource>(
+      `SELECT b.id, b.owner_id, b.code, b.name, u.name AS owner_name, b.location, b.version, b.updated_at, b.on_shore, b.sand
+         FROM beach b JOIN users u ON u.id = b.owner_id
+        WHERE b.code = $1${lock ? ' FOR SHARE OF b' : ''}`,
+      [normalizeCode(code ?? '')],
+    );
+    const r = rows[0];
+    if (!r || r.sand === null || (r.owner_id !== me && !r.on_shore)) fail(404, 'no beach to copy with that code');
+    return r!;
+  };
+  /** the copy's target: one of your beaches, or 'new' (null) */
+  const copyTarget = async (c: Context<Env>, raw: unknown): Promise<string | null> => {
+    if (raw === 'new') return null;
+    if (typeof raw !== 'string') return fail(400, "target is one of your beaches, or 'new'");
+    return mine(c, raw);
+  };
+  const beachCount = async (me: string, q: Db = db) =>
+    Number((await q.query<{ n: string }>('SELECT COUNT(*) AS n FROM beach WHERE owner_id = $1', [me]))[0]?.n ?? 0);
+
+  // would it fit? what's short, and what to buy so it does
+  app.get('/beaches/:code/copy-fit', requireUser, async (c) => {
+    const me = c.get('user').id;
+    const src = await copySource(db, c.req.param('code'), me);
+    const target = await copyTarget(c, c.req.query('target') ?? 'new');
+    const info = inspect(toBytes(src.sand));
+    const fit = await fitOf(me, info.items, target ?? NO_BEACH);
+    const [allowed, count] = await Promise.all([allowance(me), beachCount(me)]);
+    const room = target !== null || count < allowed;
+    const price = await creatorOffers(db);
+    const basket = copyBasket(fit.short, !room && count < BEACH_CAP, price);
+    return c.json({
+      code: src.code,
+      name: src.name,
+      owner: src.owner_name?.trim() || null,
+      yours: src.owner_id === me,
+      location: src.location,
+      version: Number(src.version),
+      updatedAt: src.updated_at === null ? null : Number(src.updated_at),
+      nx: info.nx,
+      ny: info.ny,
+      objects: info.objects,
+      ...fit,
+      room,
+      allowance: allowed,
+      beaches: count,
+      basket,
+    });
+  });
+
+  // copy it: onto one of your beaches (replacing it, undoable) or a new one
+  app.post('/beaches/mine/copy', requireUser, async (c) => {
+    const me = c.get('user').id;
+    const p = await body<{ from?: string; version?: number; target?: string; mode?: 'strict' | 'drop-missing'; name?: string; location?: string }>(c);
+    const mode = p.mode ?? 'strict';
+    if (mode !== 'strict' && mode !== 'drop-missing') fail(400, 'mode must be strict or drop-missing');
+    if (!Number.isSafeInteger(p.version)) fail(400, 'version is the one you previewed');
+    if (p.location !== undefined && !/^[a-z0-9-]{1,40}$/.test(p.location)) fail(400, 'bad location');
+    const target = await copyTarget(c, p.target);
+    await requireEditToken(c);
+    if (!copyLimiter(me)) fail(429, 'too many copies: try again later');
+    return oneAtATime(me, () => asEditor(c, async (tx) => {
+      const src = await copySource(tx, p.from, me, true);
+      if (Number(src.version) !== p.version) return c.json({ error: 'changed', version: Number(src.version) }, 409);
+      let bytes = toBytes(src.sand);
+      const info = inspect(bytes);
+      let beach = target;
+      if (beach === null) {
+        // a new beach: only if you're under your allowance (we hold your lock)
+        const allowed = await allowance(me, tx);
+        if ((await beachCount(me, tx)) >= allowed) return c.json({ error: 'room' }, 409);
+        const name = (p.name ?? `${src.name || 'Beach'} (copy)`).trim().slice(0, 30);
+        const location = p.location ?? src.location ?? null;
+        const made = await tx.query<{ id: string }>(
+          `INSERT INTO beach (id, owner_id, code, name, home, location, created_at) VALUES ($1, $2, $3, $4, false, $5, $6) RETURNING id`,
+          [crypto.randomUUID(), me, newNeighborCode(), name, location, clock()],
+        );
+        beach = made[0].id;
+      }
+      if (beach === src.id) fail(400, 'that is the beach you are copying');
+      const fit = await fitOf(me, info.items, beach, tx);
+      let dropped = 0;
+      if (fit.short.length) {
+        if (mode === 'strict') {
+          // nothing written: the new beach (if any) goes with the rollback
+          throw new CopyShort(fit.short);
+        }
+        ({ bytes, dropped } = dropMissing(bytes, fit.short));
+      }
+      const placed = dropped ? inspect(bytes) : info;
+      const done = await writeOnto(tx, beach, bytes, info, placed.items, `Before copying “${src.name || src.code}”`, {
+        from: src.id,
+        code: src.code,
+        version: Number(src.version),
+      });
+      if (src.owner_id !== me) {
+        // counted once per person; the owner hears about it the first time
+        const first = await tx.query('INSERT INTO beach_copies (source_beach, copier, first_at) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING RETURNING 1', [
+          src.id,
+          me,
+          clock(),
+        ]);
+        if (first.length) {
+          await tx.query(`INSERT INTO inbox (user_id, kind, actor_id, beach_id, created_at) VALUES ($1, 'copied', $2, $3, $4)`, [src.owner_id, me, src.id, clock()]);
         }
       }
-      const now = clock();
-      const rows = await tx.query<{ version: number; epoch: number; undo: string | null }>(
-        `WITH snap AS (
-           INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at)
-           SELECT $1, owner_id, $2, 'auto', 'beach', id, name, location, nx, ny, sand, octet_length(sand), $3, $4, $5
-             FROM beach WHERE id = $6 AND sand IS NOT NULL
-           ON CONFLICT (from_beach) WHERE kind = 'auto' DO UPDATE SET
-             name = EXCLUDED.name, from_name = EXCLUDED.from_name, location = EXCLUDED.location, nx = EXCLUDED.nx, ny = EXCLUDED.ny,
-             sand = EXCLUDED.sand, bytes = EXCLUDED.bytes, items = EXCLUDED.items, objects = EXCLUDED.objects, created_at = EXCLUDED.created_at
-           RETURNING id
-         )
-         UPDATE beach SET sand = $7, nx = $8, ny = $9, items = $10, version = version + 1, updated_at = $5, epoch = epoch + 1,
-                simulated_until = $5
-          WHERE id = $6
-         RETURNING version, epoch, (SELECT id FROM snap) AS undo`,
-        [
-          crypto.randomUUID(),
-          `Before restoring “${cp.name}”`.slice(0, 80),
-          JSON.stringify(before.items),
-          before.objects,
-          now,
-          target,
-          bytes,
-          info.nx,
-          info.ny,
-          JSON.stringify(placed.items),
-        ],
-      );
-      return c.json({ version: rows[0].version, epoch: Number(rows[0].epoch), updatedAt: now, undo: rows[0].undo, dropped });
-    }));
+      logEvent('beach_copy', { mode, dropped, fresh: target === null, own: src.owner_id === me });
+      return c.json({ beach, code: (await tx.query<{ code: string }>('SELECT code FROM beach WHERE id = $1', [beach]))[0].code, ...done, dropped });
+    })).catch((e) => {
+      if (e instanceof CopyShort) return c.json({ error: 'short', short: e.short }, 409);
+      throw e;
+    });
+  });
+
+  // keep a copy as a checkpoint: nothing is placed, so the bag isn't checked
+  app.post('/checkpoints/copy', requireUser, async (c) => {
+    const me = c.get('user').id;
+    const p = await body<{ from?: string; version?: number }>(c);
+    if (!makeLimiter(me)) fail(429, 'too many checkpoints at once: try again later');
+    const src = await copySource(db, p.from, me);
+    if (p.version !== undefined && Number(src.version) !== p.version) return c.json({ error: 'changed', version: Number(src.version) }, 409);
+    const bytes = toBytes(src.sand);
+    const info = inspect(bytes);
+    await checkRoom(me, bytes.byteLength);
+    const id = crypto.randomUUID();
+    const label = (src.name || src.code).slice(0, CHECKPOINT_NAME_MAX);
+    await db.query(
+      `INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at)
+       VALUES ($1, $2, $3, 'named', 'copy', NULL, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+      [id, me, label, `${src.owner_name?.trim() || 'Someone'} · ${src.code}`, src.location, info.nx, info.ny, bytes, bytes.byteLength, JSON.stringify(info.items), info.objects, clock()],
+    );
+    return c.json({ checkpoint: checkpointJson((await myCheckpoint(c, id)) as CheckpointRow) }, 201);
   });
 
   // ---------------------------------------------------------------- the shop

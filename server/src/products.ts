@@ -61,3 +61,48 @@ export const PRODUCTS: Product[] = [
 ];
 
 export const productById = (id: string): Product | undefined => PRODUCTS.find((p) => p.id === id);
+
+/** One line of a "buy what's missing" basket (docs/COPY_BEACH.md). */
+export interface BasketLine {
+  product: string;
+  /** how many times to buy it */
+  quantity: number;
+  /** the item it covers */
+  item: string;
+  /** price of one, in cents */
+  cents: number;
+}
+
+/**
+ * What to buy so a copy fits (docs/COPY_BEACH.md, "Buy what's missing").
+ * For each short item: the single-item product that grants it (the smallest
+ * grant, so the basket buys no more than it needs), bought
+ * ceil(missing / grant) times. Packs are never suggested. Items no product
+ * sells (claw, vending, dig finds) come back in `notForSale`. `beach`: the
+ * copy goes onto a new beach and there's no room for one. `priceOf` is the
+ * shop's price in cents, or null when a product is off sale.
+ */
+export function copyBasket(
+  short: { item: string; need: number; have: number }[],
+  beach: boolean,
+  priceOf: (p: Product) => number | null = (p) => Math.round(p.usd * 100),
+  products: Product[] = PRODUCTS,
+): { lines: BasketLine[]; cents: number; notForSale: { item: string; missing: number }[] } {
+  const wants = short.map((s) => ({ item: s.item, missing: Math.max(0, s.need - s.have) })).filter((w) => w.missing > 0);
+  if (beach) wants.unshift({ item: 'beach', missing: 1 });
+  const lines: BasketLine[] = [];
+  const notForSale: { item: string; missing: number }[] = [];
+  for (const w of wants) {
+    const best = products
+      .filter((p) => p.grants.length === 1 && p.grants[0].item === w.item && p.grants[0].quantity > 0)
+      .map((p) => ({ p, cents: priceOf(p) }))
+      .filter((o): o is { p: Product; cents: number } => o.cents !== null)
+      .sort((a, b) => a.p.grants[0].quantity - b.p.grants[0].quantity || a.cents - b.cents)[0];
+    if (!best) {
+      notForSale.push(w);
+      continue;
+    }
+    lines.push({ product: best.p.id, quantity: Math.ceil(w.missing / best.p.grants[0].quantity), item: w.item, cents: best.cents });
+  }
+  return { lines, cents: lines.reduce((t, l) => t + l.cents * l.quantity, 0), notForSale };
+}

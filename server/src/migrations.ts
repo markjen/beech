@@ -789,6 +789,26 @@ const MIGRATIONS: string[] = [
   ALTER TABLE item_submissions ADD COLUMN for_sale BOOLEAN NOT NULL DEFAULT true;
   UPDATE item_submissions SET for_sale = false WHERE approved_price_cents IS NULL OR approved_price_cents = 0;
   `,
+
+  // 29: copying a beach on the shore onto one of your own (docs/COPY_BEACH.md).
+  // A copy remembers where it came from; beach_copies counts each person
+  // once per source ("copied N times") and is the key for the owner's one
+  // inbox row per copier. A copy kept as a checkpoint has source 'copy'.
+  `
+  ALTER TABLE beach ADD COLUMN copied_from UUID REFERENCES beach (id) ON DELETE SET NULL;
+  ALTER TABLE beach ADD COLUMN copied_from_code TEXT;
+  ALTER TABLE beach ADD COLUMN copied_version INTEGER;
+  CREATE TABLE beach_copies (
+    source_beach UUID NOT NULL REFERENCES beach (id) ON DELETE CASCADE,
+    copier UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    first_at BIGINT NOT NULL,
+    PRIMARY KEY (source_beach, copier)
+  );
+  ALTER TABLE checkpoints DROP CONSTRAINT checkpoints_source_check;
+  ALTER TABLE checkpoints ADD CONSTRAINT checkpoints_source_check CHECK (source IN ('beach', 'import', 'copy'));
+  ALTER TABLE inbox DROP CONSTRAINT inbox_kind_check;
+  ALTER TABLE inbox ADD CONSTRAINT inbox_kind_check CHECK (kind IN ('visit', 'gift', 'neighbor_request', 'neighbor_linked', 'star', 'rating', 'invite_joined', 'invite_settled', 'system', 'copied'));
+  `,
 ];
 
 /** Apply migrations up to `upTo` (default: all). Tests use `upTo` to check a migration on older data. */

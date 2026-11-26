@@ -837,12 +837,14 @@ body.ambient-idle {
 
 .shore-bar .sb-fav[hidden],
 .shore-bar .sb-pet[hidden],
+.shore-bar .sb-copy[hidden],
 .shore-bar .sb-leave[hidden],
 .shore-bar .sb-ask[hidden] {
   display: none;
 }
 
 .shore-bar .sb-pet,
+.shore-bar .sb-copy,
 .shore-bar .sb-leave,
 .shore-bar .sb-ask {
   border: 1.5px solid currentColor;

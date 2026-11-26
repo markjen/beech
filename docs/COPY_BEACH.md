@@ -1,6 +1,10 @@
 # Copying a beach (design)
 
-Status: **designed, not built** (2026-11-25). State machine:
+Status: **built** (2026-11-26, phases K1–K4). Built as designed, except
+(see [As built](#as-built)): the basket buys one product at a time through
+the existing purchase paths, the basket is worked out on the server only,
+and a new beach takes the original's place with no picker on the sheet.
+State machine:
 [`specs/tla/BeachCopy.tla`](../specs/tla/BeachCopy.tla), checked with TLC
 (see [State machine](#state-machine)).
 
@@ -140,19 +144,18 @@ quantity(i) = ceil(short(i) / grant(i))        e.g. 3 tiki torches short, sold i
 - The basket is worked out on the **server**
   (`GET /api/beaches/:code/copy-fit` returns it with prices), so the app,
   the store list and the price tiers can't drift. A pure
-  `copyBasket(short, products)` lives in `server/src/products.ts`, with the
-  app's copy in `src/world/checkpointFit.ts` and one fixture file
-  (`tests/fixtures/copy-basket.json`) run in both suites, as with
-  `checkpoint-fit.json`.
+  `copyBasket(short, beach, priceOf)` lives in `server/src/products.ts`
+  (tests: `server/test/copyBasket.test.ts`). The app has no copy of it: it
+  shows what the server sends.
 
 How the purchase works, by where you are:
 
 | Where | How | Notes |
 |---|---|---|
-| **Shop credit** (gift cards) | one request, `POST /api/store/credit-purchase { items: [{ product, quantity }] }`, one transaction | The best path: one tap, no store sheet. Promo codes apply as today. |
-| **Web** (Xsolla) | one order with several lines: `POST /api/store/web-checkout { items: [...] }`. The token call already takes `purchase.items[]` with quantities. `web_orders` gains lines. | The page leaves for Pay Station. Before it goes, the app saves the pending copy (`{ code, version, target, mode }`) in localStorage. On `?web_order=` return, once the order is paid, it reopens the sheet. |
-| **iPhone / Android** | one store sheet per product, in turn ("1 of 2"). StoreKit and Play Billing have no basket. A quantity above 1 is bought as repeat purchases (the products are consumables). | Cancelling part-way keeps what was bought. The sheet re-fits and shows what's still short. |
-| **Steam** | `InitTxn` with several line items | Same as the web return. |
+| **Shop credit** (gift cards, web) | `POST /api/store/credit-purchase` for each product, when the credit covers it | No store sheet. |
+| **Web** (Xsolla) | one card checkout per product, in turn (one order with several lines is a follow-up) | The page leaves for Pay Station. Before it goes, the app saves the pending copy (`{ code, target, mode }`) in localStorage. On `?web_order=` return, once the order is paid, it reopens the sheet and the next "Buy what's missing" covers what's left. |
+| **iPhone / Android** | one store sheet per product, in turn. StoreKit and Play Billing have no basket. A quantity above 1 is bought as repeat purchases (the products are consumables). | Cancelling part-way keeps what was bought. The sheet re-fits and shows what's still short. |
+| **Steam** | one Steam purchase per product, in turn | |
 
 **After buying**, the sheet re-fits and the main button becomes **Copy**
 once nothing buyable is short. The copy is **never applied
@@ -279,7 +282,6 @@ New routes, all behind `requireUser`:
 | `GET /api/beaches/:code/copy-fit?target=<id>\|new` | `{ version, name, owner, location, nx, ny, items, need, owned, elsewhere, short: [{ item, short, buy?: { product, quantity, usd } }], room, basket: { items, usd } }`. 404 if not public (unless it's yours). |
 | `POST /api/beaches/mine/copy { from: code, version, target: id \| 'new', mode: 'strict' \| 'drop-missing', name?, location? }` | 200 `{ beach, version, epoch, updatedAt, undo, dropped }`. 409 `{ error: 'short', short }` (strict), 409 `{ error: 'changed', version }` (the source has a newer save: the app re-previews), 409 `{ error: 'room' }`, 404 gone, 429. |
 | `POST /api/checkpoints/copy { from: code, version }` | "keep as a checkpoint": a checkpoint with `source = 'copy'`, `from_name` = the source's name. No bag check (a checkpoint holds things, it doesn't place them). Counts toward the checkpoint limits. |
-| `POST /api/store/credit-purchase`, `POST /api/store/web-checkout` | accept `items: [{ product, quantity }]` as well as the single product they take today |
 
 Building it:
 
@@ -343,10 +345,46 @@ Each one leaves the app playable.
 
 | | Phase | Done when |
 |---|---|---|
-| **K1** | Server copy | `writeOnto` shared with restore; `copy-fit`, `copy`, checkpoint copy; migration; state-machine tests green; TLC in CI. No UI. |
-| **K2** | Copy in the game | Shore-bar button, the sheet, Copy / Copy without them / keep as a checkpoint, new beach, Undo toast, guide. |
-| **K3** | Buy what's missing | Basket in `copy-fit`; credit and web basket purchases; native one-by-one; pending copy across the web checkout return. |
-| **K4** | Shore site and credit | "Copy to my beach" on beechshore.com, `?copy=1`, duplicate in your beaches, "copied N times", inbox message, "copied from". |
+| **K1** ✅ | Server copy | `writeOnto` shared with restore; `copy-fit`, `copy`, checkpoint copy; migration; state-machine tests green; TLC in CI. No UI. |
+| **K2** ✅ | Copy in the game | Shore-bar button, the sheet, Copy / Copy without them / keep as a checkpoint, new beach, Undo toast, guide. |
+| **K3** ✅ | Buy what's missing | Basket in `copy-fit`; bought one product at a time (credit, web, the stores); pending copy across the web checkout return. |
+| **K4** ✅ | Shore site and credit | "Copy to my beach" on beechshore.com, `?copy=1`, duplicate in your beaches, "copied N times", inbox message, "copied from". |
+
+## As built
+
+- **Server** (`server/src/app.ts`, "copying a beach"): `GET
+  /beaches/:code/copy-fit`, `POST /beaches/mine/copy`, `POST
+  /checkpoints/copy`. The restore's write is `writeOnto`, shared by both
+  routes. A strict copy that's short throws inside the transaction, so a
+  new beach made for it rolls back too. Migration 29 adds
+  `beach.copied_from`, `copied_from_code`, `copied_version`,
+  `beach_copies`, the checkpoint source `copy` and the inbox kind
+  `copied`.
+- **Buying** goes one product at a time through the paths the shop already
+  uses: credit when it covers the price (web), the card checkout (web;
+  the page leaves, and the sheet reopens when the payment comes back),
+  the App Store or Play (one sheet each), or Steam. No new payment
+  endpoints. One web order holding several products is a follow-up in
+  BACKLOG.md.
+- **`changed`**: the sea catching up on a viewed beach bumps its version
+  too, so the app checks again and, if your bag would be asked for the
+  same things, copies at once. Otherwise it shows "This beach just
+  changed".
+- **A new beach** takes the original's place (Bondi stays Bondi). Move it
+  afterwards in Manage → Beaches.
+- **App**: `src/ui/copyBeach.ts` (the sheet, and the pending copy kept in
+  localStorage for a day), `CopyApi` in `src/net/account.ts`, the shore
+  bar's `copy` and `?visit=CODE&copy=1` in `src/main.ts`, "duplicate" in
+  `src/ui/accountPanel.ts`. Undo after a copy onto an existing beach
+  restores its "Before copying" checkpoint. Undo after a copy onto a new
+  beach removes that beach.
+- **beechshore.com** (`server/src/shoreSite.ts`): "Copy to my beach →",
+  "copied N times", and "Copied from …" while the original is public.
+- **Tests**: `server/test/stateMachines/copy.test.ts` and `copyModel.ts`
+  (transitions, the three replays, six random walks),
+  `server/test/copyBasket.test.ts`, a beach-page case in
+  `shoreSite.test.ts`, `tests/copyBeach.test.ts`, and the browser run
+  `scripts/copy-e2e.mjs` (`npm run e2e:copy`).
 
 ## Decisions (owner, 2026-11-25)
 

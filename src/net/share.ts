@@ -18,10 +18,16 @@ export function visitCodeFromUrl(search: string): string | null {
   return code.length === 6 ? code : null;
 }
 
+/** `?visit=CODE&copy=1` (beechshore.com's "Copy to my beach"): open the copy sheet once there. */
+export function copyRequested(search: string): boolean {
+  return visitCodeFromUrl(search) !== null && new URLSearchParams(search).get('copy') === '1';
+}
+
 /** The query string with `visit` removed ("" when nothing is left). */
 export function withoutVisitParam(search: string): string {
   const q = new URLSearchParams(search);
   q.delete('visit');
+  q.delete('copy');
   const s = q.toString();
   return s ? `?${s}` : '';
 }

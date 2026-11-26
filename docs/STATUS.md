@@ -1392,15 +1392,20 @@ spec's fixed form in the `Specs` workflow when `specs/` or `server/src/`
 changes. New gameplay and features follow the model-first workflow
 (CLAUDE.md ground rule, the `model-first` skill, STATE_MACHINES.md).
 
-## Copying a beach (designed, not built, 2026-11-25)
+## Copying a beach (built 2026-11-26, docs/COPY_BEACH.md)
 
-- Design in docs/COPY_BEACH.md: copy a public beach (or duplicate one of
-  your own) onto one of your beaches or a new one. It works like a checkpoint
-  restore with another person's save as the source. When you're short of bag
-  things: buy exactly what's missing (a basket worked out on the server), or
-  copy without them (`drop-missing`), or keep it as a checkpoint. It lives
-  in the shore bar, on the beechshore.com beach page (`?visit=CODE&copy=1`)
-  and in your beaches (duplicate).
-- `specs/tla/BeachCopy.tla` is written and checked. TLC shows the copy must
-  be one transaction (player lock, source row `FOR SHARE`). Phases K1 to K4
-  are in BACKLOG.md.
+- Copy a public beach (or duplicate one of your own) onto one of your
+  beaches or a new one: `copy` in the shore bar, "Copy to my beach" on
+  beechshore.com (`?visit=CODE&copy=1`), "duplicate" in your beaches. When
+  the bag is short: buy what's missing (the server works out the basket;
+  bought one product at a time through the existing purchase paths), copy
+  without them (`drop-missing`), or keep it as a checkpoint. Undo after
+  every copy.
+- One transaction per copy (player lock, source row `FOR SHARE`), as
+  `specs/tla/BeachCopy.tla` requires; the restore route shares its write
+  (`writeOnto`). Migration 29. Copies counted once per person
+  (`beach_copies`), the owner gets an inbox row the first time, and the
+  beach page shows "copied N times" and "Copied from".
+- Differs from the design: no multi-product web order yet (one card
+  checkout per product); the app shows the server's basket rather than
+  computing its own; a new beach takes the original's place.

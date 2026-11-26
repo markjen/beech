@@ -219,6 +219,7 @@ const NAV_SECTIONS: [string, string][] = [
   ['beach-guide', 'Beach guide'],
   ['invites', 'Invites'],
   ['checkpoints', 'Checkpoints'],
+  ['copying', 'Copying a beach'],
   ['files', 'Beach files'],
   ['shop', 'Shop'],
   ['item-catalog', 'Item catalog'],
@@ -351,6 +352,16 @@ ${GUIDE_STEPS.map((st) => `<tr><td>${esc(st.title)}</td><td>${esc(st.how)}</td><
 
 <h2 id="checkpoints">Checkpoints</h2>
 <p>A checkpoint keeps a beach as it is now — its sand and its things — to come back to later or to put on another of your beaches. Up to ${CHECKPOINTS_PER_BEACH} per beach. Restoring needs your bag to cover the things on it; if it can’t, you can restore without them. The beach as it was is kept as a “before restoring” checkpoint, and Undo brings it back. Other devices showing that beach reload. Once a day, your beach is auto-saved as a checkpoint too, so you can always go back to yesterday’s beach — it sits in the same list, marked “auto-saved daily”. Starting a big clear-out with the bulldozer, flatten or vacuum — or any save that reshapes a tenth of the beach — keeps the beach as it was first, in the same auto slot, so you can always go back to before the big edit.</p>
+
+<h2 id="copying">Copying a beach</h2>
+<p>Like a beach on the shore? Make one of yours just like it. Visiting it, tap <b>copy</b> in the bar at the top (or <b>Copy to my beach</b> on its beechshore.com page). To copy one of your own beaches, use “duplicate” in Manage → <b>Beaches</b>. Every beach on the shore can be copied; one kept off the shore can’t.</p>
+<p>The copy sheet shows the beach, where it goes (one of your beaches, or a new one if you have room), and the things from your bag it needs. The sand and the free things — rocks, driftwood, shells, sea glass, flags — always come along. Bag things need to be in your bag and not already on another of your beaches. If something is short you choose:</p>
+<ul>
+<li><b>Buy what’s missing</b>: exactly the things you’re short of, from the shop, one at a time (and an extra beach, if you picked a new one and have no room). Things from the claw machine, the vending machine or digging aren’t sold, so they stay short; buying the rest still helps. Once you’ve bought them, tap the copy button.</li>
+<li><b>Copy without them</b>: everything else comes, and the things you’re short of are left out.</li>
+</ul>
+<p>You can also <b>keep it as a checkpoint</b>, which needs nothing from your bag, and restore it later.</p>
+<p>A copy keeps the place of the beach it goes onto (a new beach starts at the original’s place). It doesn’t bring the original’s name, stars, neighbors, notes or pet. Copying over one of your beaches keeps it first as a “before copying” checkpoint, and Undo brings it back. If the beach changes while you’re looking at it, you get the latest version. The owner hears the first time you copy their beach, and its beechshore.com page shows how many people have copied it.</p>
 
 <h2 id="files">Beach files</h2>
 <p>Manage → <b>Beaches</b> → “export beach” saves your beach as a <code>.beach.json</code> file; “import beach” opens one. Before importing you see a preview: a map, the things on it, anything that was fixed while reading, and anything your bag can’t cover (import without them, or get them in the shop). Importing replaces the beach you’re on; when signed in the old one is kept as a “Before import” checkpoint, and Undo brings it back. Without an account, only free things come in.</p>

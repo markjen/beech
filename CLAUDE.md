@@ -14,10 +14,10 @@ Read these first:
 5. Feature designs not built yet, e.g. [docs/MULTI_BEACH.md](docs/MULTI_BEACH.md),
    [docs/INBOX_NOTIFICATIONS.md](docs/INBOX_NOTIFICATIONS.md) (push not built yet),
    [docs/LIVE_SIM.md](docs/LIVE_SIM.md) (the sea works while you're away,
-   live viewers), [docs/COPY_BEACH.md](docs/COPY_BEACH.md) (copy a beach
-   on the shore onto one of yours), and
+   live viewers), and
    [docs/BEACH_FILE.md](docs/BEACH_FILE.md) (export/import file spec).
    The public shore site (beechshore.com) is in [docs/SHORE_SITE.md](docs/SHORE_SITE.md).
+   Copying a beach onto one of yours is in [docs/COPY_BEACH.md](docs/COPY_BEACH.md).
 6. [docs/AGENT_TOKENS.md](docs/AGENT_TOKENS.md): how to keep tool output
    small. Cloud sessions install [rtk](https://github.com/rtk-ai/rtk), and a
    Bash hook in `.claude/settings.json` routes commands through it; treat its
@@ -90,10 +90,10 @@ Read these first:
   `server/`, which runs on Cloud Run, see docs/GCP.md). Keep anything that needs the network behind `ACCOUNTS_ENABLED`.
 - Server changes: `cd server && npm run typecheck && npm test` (PGlite; set
   `TEST_DATABASE_URL` to also run against real Postgres), then
-  `npm run server:dev` with `npm run e2e` (runs all 9 server E2E scripts in
+  `npm run server:dev` with `npm run e2e` (runs all 10 server E2E scripts in
   parallel; individual scripts are `e2e:accounts`, `e2e:neighbors`, `e2e:shore`,
   `e2e:beaches`, `e2e:leaderboard`, `e2e:checkpoints`, `e2e:invites`,
-  `e2e:inbox`, `e2e:live`).
+  `e2e:inbox`, `e2e:live`, `e2e:copy`).
   Schema changes are new entries appended to `server/src/migrations.ts`, never
   edits to applied ones. Never enable `DEV_AUTH` outside local development.
 - Android builds here need an SDK: install the command-line tools to a scratch

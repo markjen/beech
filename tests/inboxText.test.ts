@@ -46,6 +46,11 @@ describe('inbox wording', () => {
     expect(describeEntry(entry({ kind: 'invite_settled', item: 'beach' })).title).toBe('Ben settled in: you got an extra beach');
   });
 
+  it('says who copied your beach (docs/COPY_BEACH.md)', () => {
+    expect(describeEntry(entry({ kind: 'copied' })).title).toMatch(/^Ben copied /);
+    expect(announce('copied', 'Ben')).toBe('Ben copied your beach');
+  });
+
   it('articles, times and announcements', () => {
     expect(aPrize('parasol')).toBe('a parasol');
     expect(aPrize('beach')).toBe('an extra beach');

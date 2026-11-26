@@ -14,7 +14,7 @@ rest of `npm test` in `server/`. No E2E, no rendering.
 | Beach snacks and pets | `Snacks.tla` | `snacks.test.ts` | snacks lost or duplicated, a crab befriended for less, extra free feeds |
 | Editing beaches | `BeachEditing.tla` | `editing.test.ts` | a fenced device overwriting the editor, more placed than owned, a restore overwritten |
 | Neighbor links | `Neighbors.tla` | `neighbors.test.ts` | one-sided links, two neighbors on one side, two beaches linked on both sides |
-| Copying a beach (designed, not built) | `BeachCopy.tla` | `copy.test.ts` (to write) | more placed than owned, more beaches than the allowance, a copy of a beach just taken off the shore, a different version than previewed |
+| Copying a beach | `BeachCopy.tla` | `copy.test.ts` | more placed than owned, more beaches than the allowance, a copy of a beach just taken off the shore, a different version than previewed |
 
 ## How it fits together
 
@@ -29,8 +29,8 @@ rest of `npm test` in `server/`. No E2E, no rendering.
    finds its bug. Model sizes are small (2 or 3 players, devices or beaches,
    thresholds of 2), which is enough for these races, and each run takes
    seconds to minutes.
-3. **Reference models.** `snacksModel.ts`, `editingModel.ts` and
-   `neighborsModel.ts` are the specs in TypeScript, `Fixed = TRUE`, one
+3. **Reference models.** `snacksModel.ts`, `editingModel.ts`,
+   `neighborsModel.ts` and `copyModel.ts` are the specs in TypeScript, `Fixed = TRUE`, one
    action at a time. Each method is one TLA+ action and returns the HTTP
    answer the server should give.
 4. **Tests**, in three layers per machine:
@@ -109,7 +109,7 @@ neighbors on both sides of each other), `NoSelf`.
 
 ## Copying a beach (`BeachCopy.tla`)
 
-Designed, not built: [COPY_BEACH.md](COPY_BEACH.md). State: the copier's
+[COPY_BEACH.md](COPY_BEACH.md). State: the copier's
 bag and beaches, the source's version, whether it's public and what it
 holds, and each copy request's step, target, mode and pinned version.
 

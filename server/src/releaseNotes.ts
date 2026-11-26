@@ -16,6 +16,14 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    date: '2026-11-26',
+    title: 'Copy a beach',
+    changes: [
+      'Copy any beach on the shore onto one of your own: tap “copy” while visiting it, or “Copy to my beach” on its beechshore.com page. If your bag is short of something it needs, buy just what’s missing or copy it without them. You can also duplicate your own beaches, and keep a copy as a checkpoint for later.',
+      'You’ll hear when someone copies your beach, and its beechshore.com page shows how many people have.',
+    ],
+  },
+  {
     date: '2026-11-25',
     title: 'Live beaches, visitors, your inbox, new controls, and sandcastle molds',
     changes: [
