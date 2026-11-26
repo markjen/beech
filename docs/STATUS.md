@@ -181,7 +181,7 @@ and vending prize cards can be closed while keeping the prize in the bag.
 
 - `GET /api/weather` (public, `server/src/weather.ts`): one Open-Meteo
   forecast request and one marine request cover every place (they take
-  lists of coordinates). The report is cached for 15 minutes and shared by
+  lists of coordinates). The report is cached for an hour and shared by
   all players, with one fetch at a time. When Open-Meteo is down, the last
   report is served for up to 3 hours, then 503. No player data goes
   upstream. Place coordinates come from the catch-up bundle
