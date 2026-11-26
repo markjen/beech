@@ -4,4 +4,5 @@
     <string name="title_activity_main">beech</string>
     <string name="package_name">app.beech.beach</string>
     <string name="custom_url_scheme">app.beech.beach</string>
+    <string name="update_webview">Update Android System WebView, then reopen beech.</string>
 </resources>

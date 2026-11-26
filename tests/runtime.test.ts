@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import { getRuntime, isMobileApp, isPackagedApp, isSteam, steamBridge, type BeechSteamBridge } from '../src/platform/runtime';
+import { Capacitor } from '@capacitor/core';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { getRuntime, isMobileApp, isPackagedApp, isSteam, steamBridge, usesHostedClient, type BeechSteamBridge } from '../src/platform/runtime';
 
 const fakeBridge: BeechSteamBridge = {
   platform: 'linux',
@@ -18,6 +19,8 @@ const fakeBridge: BeechSteamBridge = {
 
 afterEach(() => {
   delete (globalThis as { window?: { beechSteam?: BeechSteamBridge } }).window;
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe('runtime detection', () => {
@@ -27,6 +30,19 @@ describe('runtime detection', () => {
     expect(isSteam()).toBe(false);
     expect(isMobileApp()).toBe(false);
     expect(isPackagedApp()).toBe(false);
+    expect(usesHostedClient()).toBe(true);
+  });
+
+  it('keeps native Android features while allowing the hosted game to reload for updates', () => {
+    vi.spyOn(Capacitor, 'isNativePlatform').mockReturnValue(true);
+    vi.spyOn(Capacitor, 'getPlatform').mockReturnValue('android');
+    vi.stubGlobal('location', new URL('https://play.beech.games/'));
+    expect(isMobileApp()).toBe(true);
+    expect(isPackagedApp()).toBe(true);
+    expect(usesHostedClient()).toBe(true);
+
+    vi.stubGlobal('location', new URL('https://localhost/'));
+    expect(usesHostedClient()).toBe(false);
   });
 
   it('detects Steam when window.beechSteam is injected by Electron preload', () => {
@@ -36,5 +52,6 @@ describe('runtime detection', () => {
     expect(isSteam()).toBe(true);
     expect(isMobileApp()).toBe(false);
     expect(isPackagedApp()).toBe(true);
+    expect(usesHostedClient()).toBe(false);
   });
 });

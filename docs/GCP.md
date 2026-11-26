@@ -19,10 +19,10 @@ GitHub Actions with Workload Identity Federation (no keys stored anywhere).
 
 Why this setup:
 
-- **One service for web and mobile.** The website gets the app and API from
-  the same origin, so there's no CORS or cookie setup. The Capacitor apps call
-  the same `/api` with a bearer token, and their origins
-  (`capacitor://localhost`, `https://localhost`) are allowed.
+- **One service for web and mobile.** The website and the hosted Android
+  WebView use the same origin for the app and API. Bundled mobile clients
+  call `/api` with a bearer token from their allowed origins
+  (`capacitor://localhost`, `https://localhost`).
 - **Postgres for the social features.** Neighbors are already relational
   (who sits beside whom, who has you next door). Friends, visits, guestbooks
   and shared beaches will be too. SQL with foreign keys (`ON DELETE CASCADE`
@@ -174,11 +174,9 @@ gated on `var.admin_custom_domain`). Order of operations:
    JavaScript origins, next to `https://beech.games` — Google sign-in on
    the admin console will not work until this is done.
 
-**Phone apps:** build with `VITE_ACCOUNTS=1 VITE_API_URL=https://beech.markjen.com`.
-(The apps still call the legacy host for now — it stays live. Moving the
-apps' API base to `https://play.beech.games` is a follow-up: edit
-`VITE_API_URL` in `.github/workflows/mobile.yml` and `release-mobile.yml`,
-then rebuild.)
+**Phone apps.** Android loads `https://play.beech.games` and calls its API on
+the same origin. The bundled iOS app still builds with
+`VITE_ACCOUNTS=1 VITE_API_URL=https://beech.markjen.com`.
 
 ## Running it locally
 

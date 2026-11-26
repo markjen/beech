@@ -10,6 +10,7 @@ import { Gestures, HOLD_SLOP_PX, LONG_PRESS_MS } from './input/gestures';
 import { SandPicker } from './input/sandPicker';
 import { rgbToCss, type Palette } from './palette';
 import { Haptics } from './platform/haptics';
+import { nearbyCoordinates } from './platform/location';
 import { registerServiceWorker } from './platform/pwa';
 import { tierFromBench } from './platform/quality';
 import { BeachRenderer, ORIGIN_X, ORIGIN_Z } from './render/beachRenderer';
@@ -66,9 +67,9 @@ import { loadSettings, saveSettings, type Settings, type WaveStrength } from './
 import { initTelemetry, reportError, reportEvent } from './net/telemetry';
 import { LocalCheckpointsSection } from './ui/localCheckpoints';
 import { watchForNewVersion } from './platform/version';
-import { isPackagedApp, isSteam, steamBridge } from './platform/runtime';
+import { isSteam, steamBridge, usesHostedClient } from './platform/runtime';
 import { unlockSteamAchievement, updateSteamRichPresence } from './platform/steamFeatures';
-import { schedulePetHungerReminder } from './platform/petNotify';
+import { canSchedulePetReminders, requestPetReminderPermission, setPetHungerReminder } from './platform/petNotify';
 import { GamepadController } from './input/gamepad';
 import { BeachFileDialog, beachFileName, pickFile, saveText, type BeachFileHost } from './ui/beachFileDialog';
 import { parseBeachFile, writeBeachFile } from './world/beachFile';
@@ -307,17 +308,17 @@ async function boot() {
 
   // ---------------------------------------------------------------- new versions
   // A tab left open across a deploy runs old code (and an old app's saves can
-  // be refused, 426): offer a reload, once. The phone apps update through the
-  // stores, so there it says to update instead.
+  // be refused, 426): offer a reload for hosted clients and a store update
+  // for clients whose game code ships with the native app.
   let reloadOffered = false;
   const offerReload = () => {
     if (reloadOffered) return;
     reloadOffered = true;
     if (isSteam()) showToast(uiRoot, 'A newer beech is out: update it on Steam to keep saving.');
-    else if (isPackagedApp()) showToast(uiRoot, 'A newer beech is out: update it from the store to keep saving.');
+    else if (!usesHostedClient()) showToast(uiRoot, 'A newer beech is out: update it from the store to keep saving.');
     else showActionToast(uiRoot, 'A new version of beech is ready.', 'Reload', () => location.reload(), 24 * 3600 * 1000);
   };
-  if (!isPackagedApp()) watchForNewVersion(offerReload);
+  if (usesHostedClient()) watchForNewVersion(offerReload);
 
   // ---------------------------------------------------------------- sim frames
   let info: FrameInfo = {
@@ -840,6 +841,11 @@ async function boot() {
   // The beach selected *for settings* (set by AccountPanel in production builds).
   let settingsBeachId: () => string | null = () => null;
   let applyPlaceToBeach = (b: Beach) => setBeach(b);
+  let petForReminder: Pick<PetDto, 'name' | 'lastFedAt'> | null = null;
+  const updatePetReminder = () => {
+    const reminder = settings.petReminders && petForReminder ? { ...petForReminder, beachName: beach.name } : null;
+    setPetHungerReminder(reminder);
+  };
   let smoothSelectedBeach = () => {
     if (!sync.id) return;
     markDirty(1500);
@@ -852,15 +858,11 @@ async function boot() {
     settings,
     {
       nearMe: () => {
-        if (!('geolocation' in navigator)) return;
-        navigator.geolocation.getCurrentPosition(
-          (pos) => applyPlaceToBeach(nearestBeach(pos.coords.latitude, pos.coords.longitude)),
-          () => {
-            /* denied or unavailable: keep the current beach */
-          },
-          { maximumAge: 3600000, timeout: 10000 },
-        );
+        void nearbyCoordinates()
+          .then(({ latitude, longitude }) => applyPlaceToBeach(nearestBeach(latitude, longitude)))
+          .catch(() => { /* denied or unavailable: keep the current beach */ });
       },
+      enablePetReminders: account && canSchedulePetReminders() ? requestPetReminderPermission : undefined,
       change: (s, key) => {
         if (key === 'beach') {
           const b = beachById(s.beach);
@@ -869,6 +871,7 @@ async function boot() {
         }
         settings = s;
         saveSettings(settings);
+        if (key === 'petReminders') updatePetReminder();
         if (key === 'sound') audio.setSound(s.sound);
         if (key === 'music') audio.setMusic(s.music);
         if (key === 'haptics') haptics.enabled = s.haptics;
@@ -908,7 +911,12 @@ async function boot() {
   placeWrap.innerHTML = `
     <div class="sp-card">
       <div class="sp-head">
-        <button type="button" class="place" aria-expanded="false" aria-controls="sp-more"></button>
+        <div class="place">
+          <a class="sp-shore-link" target="_blank" rel="noopener" hidden></a>
+          <button type="button" class="sp-summary" aria-expanded="false" aria-controls="sp-more">
+            <b></b><span></span>
+          </button>
+        </div>
         <button type="button" class="sp-btn sp-toggle" aria-controls="sp-more">${icon('down')}</button>
         <button type="button" class="sp-btn sp-close" aria-label="Close the status pane" title="Close the status pane">${icon('close')}</button>
       </div>
@@ -918,11 +926,15 @@ async function boot() {
       </div>
     </div>
     <button type="button" class="sp-open" aria-label="Show the status pane" title="Show the status pane"><i>i</i></button>`;
-  const place = placeWrap.querySelector<HTMLButtonElement>('.place')!;
+  const place = placeWrap.querySelector<HTMLElement>('.place')!;
+  const spSummary = place.querySelector<HTMLButtonElement>('.sp-summary')!;
+  const spTitle = spSummary.querySelector('b')!;
+  const spWeather = spSummary.querySelector('span')!;
   const spToggle = placeWrap.querySelector<HTMLButtonElement>('.sp-toggle')!;
   const spMore = placeWrap.querySelector<HTMLElement>('.sp-more')!;
   const spDetail = placeWrap.querySelector<HTMLElement>('.sp-detail')!;
   const spChips = placeWrap.querySelector<HTMLElement>('.sp-chips')!;
+  const spShoreLink = placeWrap.querySelector<HTMLAnchorElement>('.sp-shore-link')!;
   uiRoot.appendChild(placeWrap);
   type PaneState = 'default' | 'expanded' | 'closed';
   let paneState: PaneState = settings.statusPane ?? 'default';
@@ -930,32 +942,32 @@ async function boot() {
     paneState = state;
     placeWrap.dataset.state = state;
     const expanded = state === 'expanded';
-    place.setAttribute('aria-expanded', String(expanded));
+    spSummary.setAttribute('aria-expanded', String(expanded));
     spToggle.setAttribute('aria-expanded', String(expanded));
     spToggle.innerHTML = icon(expanded ? 'up' : 'down');
     const label = expanded ? 'Show less' : 'Show more';
     spToggle.setAttribute('aria-label', label);
     spToggle.title = label;
-    place.setAttribute('aria-label', `${label}: beach status`);
+    spSummary.setAttribute('aria-label', `${label}: beach status`);
     if (settings.statusPane !== state) {
       settings = { ...settings, statusPane: state };
       saveSettings(settings);
     }
     updatePlace(true);
   };
-  /** Tried to dig on someone else's beach: expand the pane (holds the way home) and pulse the header. */
+  /** Tried to dig on someone else's beach: expand the pane and pulse the header. */
   const nudgePane = () => {
     setPane('expanded');
     place.classList.remove('nudge');
     void place.offsetWidth;
     place.classList.add('nudge');
   };
-  place.addEventListener('click', () => setPane(paneState === 'expanded' ? 'default' : 'expanded'));
+  spSummary.addEventListener('click', () => setPane(paneState === 'expanded' ? 'default' : 'expanded'));
   spToggle.addEventListener('click', () => setPane(paneState === 'expanded' ? 'default' : 'expanded'));
   placeWrap.querySelector('.sp-close')!.addEventListener('click', () => setPane('closed'));
   placeWrap.querySelector('.sp-open')!.addEventListener('click', () => setPane('default'));
-  /** whose beach is under the view: filled in by the account layer (null: yours) */
-  let paneOwner: () => { title: string; away: boolean } = () => ({ title: `Your beach · ${beach.name}`, away: false });
+  /** Whose beach is under the view, with a page link for visiting. */
+  let paneOwner: () => { title: string; shoreCode?: string } = () => ({ title: `Your beach · ${beach.name}` });
   /** extra status chips (saved, visiting…): filled in by the account layer */
   let paneChips: () => string[] = () => [];
   const SKY: [number, string][] = [
@@ -977,16 +989,25 @@ async function boot() {
     const owner = paneOwner();
     const sun = viewState.sky.sun.elevation;
     const glyph = SKY.find(([e]) => sun < e)![1];
-    const text = `<b>${esc(owner.title)}</b><span>${glyph} ${viewState.localTime} · ${swellWord()}</span>`;
+    const weather = `${glyph} ${viewState.localTime} · ${swellWord()}`;
     const detail = viewConditions.describe(viewState).split(' · ').slice(1).join(' · ');
     const chips = [`wave · ${waveStrength()}`, ...paneChips()];
-    const key = text + detail + chips.join('|') + owner.away;
+    const key = JSON.stringify([owner.title, owner.shoreCode, weather, detail, chips]);
     if (key !== placeText) {
       placeText = key;
-      place.innerHTML = text;
+      spTitle.hidden = !!owner.shoreCode;
+      spTitle.textContent = owner.title;
+      spShoreLink.hidden = !owner.shoreCode;
+      if (owner.shoreCode) {
+        spShoreLink.href = shoreBeachUrl(owner.shoreCode);
+        spShoreLink.textContent = owner.title;
+      } else {
+        spShoreLink.removeAttribute('href');
+        spShoreLink.textContent = '';
+      }
+      spWeather.textContent = weather;
       spDetail.textContent = detail;
       spChips.innerHTML = chips.map((c) => `<span>${esc(c)}</span>`).join('');
-      placeWrap.classList.toggle('away', owner.away);
     }
   };
   updatePlace(true);
@@ -1336,10 +1357,10 @@ async function boot() {
   guide.button.addEventListener('click', () => sheet.hide());
 
   // the shore bar: actions for the beach you're looking at when away from
-  // home (leave something, ask to be neighbors, feed pet, star, way home)
+  // home (leave something, ask to be neighbors, feed pet, star)
   const shoreBar = document.createElement('div');
   shoreBar.className = 'shore-bar';
-  shoreBar.innerHTML = `<span class="sb-where"></span><button type="button" class="sb-leave" hidden>leave something</button><button type="button" class="sb-ask" hidden>ask to be neighbors</button><button type="button" class="sb-pet" hidden>Feed pet</button><button type="button" class="sb-fav"></button><button type="button" class="sb-copy" hidden>copy</button><button type="button" class="sb-home" data-act="home">⌂ <span>my beach</span></button>`;
+  shoreBar.innerHTML = `<span class="sb-where"></span><button type="button" class="sb-leave" hidden>leave something</button><button type="button" class="sb-ask" hidden>ask to be neighbors</button><button type="button" class="sb-pet" hidden>Feed pet</button><button type="button" class="sb-fav"></button><button type="button" class="sb-copy" hidden>copy</button>`;
   spMore.appendChild(shoreBar);
   const sbWhere = shoreBar.querySelector<HTMLElement>('.sb-where')!;
   const sbLeave = shoreBar.querySelector<HTMLButtonElement>('.sb-leave')!;
@@ -1370,11 +1391,19 @@ async function boot() {
     }
     haptics.impact('light');
   };
-  shoreBar.querySelector('.sb-home')!.addEventListener('click', () => void goHome());
   sbCopy.addEventListener('click', () => {
     const b = beachHere();
     if (b) copyBeach?.(b.code);
   });
+  const homeButton = document.createElement('button');
+  homeButton.type = 'button';
+  homeButton.className = 'shore-home';
+  homeButton.dataset.act = 'home';
+  homeButton.hidden = true;
+  hud.setLabel(homeButton, 'Return to my beach');
+  hud.setIcon(homeButton, 'home');
+  homeButton.addEventListener('click', () => void goHome());
+  uiRoot.appendChild(homeButton);
   sbLeave.addEventListener('click', () => {
     const b = beachHere();
     if (b) leaveBeach?.(b);
@@ -1523,6 +1552,7 @@ async function boot() {
     if (key === shoreKey) return;
     shoreKey = key;
     shoreBar.classList.toggle('shown', away);
+    homeButton.hidden = !away;
     if (b) guide.mark('visit');
     guide.render();
     const placeBeach = b?.location ? beachById(b.location) : undefined;
@@ -1577,17 +1607,17 @@ async function boot() {
     if (away && here) {
       const loc = here.location ? beachById(here.location) : undefined;
       const whose = here.beachName || `${here.name || 'Someone'}’s beach`;
-      return { title: `${whose}${loc ? ` · ${loc.name}` : ''}`, away: true };
+      return { title: `${whose}${loc ? ` · ${loc.name}` : ''}`, shoreCode: here.code };
     }
-    if (away) return { title: 'Down the shore', away: true };
+    if (away) return { title: 'Down the shore' };
     const own = here ? neighbors?.ownedBeach(here) : undefined;
     if (own) {
       const locId = own.location || here?.location;
       const loc = locId ? beachById(locId) : undefined;
-      return { title: `${own.name || 'Your beach'}${loc ? ` · ${loc.name}` : ''}`, away: false };
+      return { title: `${own.name || 'Your beach'}${loc ? ` · ${loc.name}` : ''}` };
     }
     const mine = account?.mine(sync.id)?.name;
-    return { title: `${mine || 'Your beach'} · ${beach.name}`, away: false };
+    return { title: `${mine || 'Your beach'} · ${beach.name}` };
   };
 
   // chair: hold ‹ or › to walk the chair along the beach (and over to the neighbors)
@@ -2244,22 +2274,25 @@ async function boot() {
     const applyPet = (pet: { species: 'crab'; name: string; mood: 'happy' | 'peckish' | 'hungry' | 'sleepy'; lastFedAt: number } | null) => {
       syncAnimalObstacles();
       animals.setPet(pet ? { species: pet.species, name: pet.name, mood: pet.mood } : null, animalEnv);
-      if (pet) void schedulePetHungerReminder(pet.name, beach.name, pet.lastFedAt);
+      petForReminder = pet && { name: pet.name, lastFedAt: pet.lastFedAt };
+      if (settings.petReminders) updatePetReminder();
     };
     const refreshPet = () => {
-      if (!animalsApi?.signedIn) {
-        animals.setPet(null);
+      const userId = account.user?.id;
+      if (!animalsApi?.signedIn || !userId) {
+        applyPet(null);
         return;
       }
       // the pet of the live beach (the beach of yours in front of you)
       const bId = sync.id && sync.id !== LOCAL_BEACH ? sync.id : undefined;
       if (!bId) {
-        animals.setPet(null);
+        applyPet(null);
         return;
       }
       void animalsApi
         .getPet(bId)
         .then((r) => {
+          if (account.user?.id !== userId || sync.id !== bId) return;
           applyPet(r.pet);
           const latest = r.recentFeeders?.[0];
           if (r.pet && latest) {

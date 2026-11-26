@@ -129,6 +129,7 @@ function showNote(parent: HTMLElement, ms: number): { el: HTMLDivElement; hide: 
 
 export interface SettingsHandlers {
   change(s: Settings, key: keyof Settings): void;
+  enablePetReminders?(): Promise<boolean>;
   /** "near me": ask for the device location and pick the closest beach */
   nearMe(): void;
   smooth(): void;
@@ -217,6 +218,7 @@ export class SettingsSheet {
           <div class="row"><span>sound</span>${this.toggle('sound')}</div>
           <div class="row"><span>music</span>${this.toggle('music')}</div>
           <div class="row"><span>haptics</span>${this.toggle('haptics')}</div>
+          ${this.h.enablePetReminders ? `<div class="row"><span>pet reminders</span>${this.toggle('petReminders', 'Pet reminders')}</div>` : ''}
           <div class="row"><span>battery saver</span>${this.toggle('batterySaver')}</div>
           <div class="row"><span>ambient (for a TV)</span>${this.toggle('ambient')}</div>
           <div class="row"><span>local weather</span>${this.toggle('localWeather')}</div>
@@ -263,9 +265,16 @@ export class SettingsSheet {
     this.el.querySelector('.sheet-scrim')!.addEventListener('pointerdown', () => this.hide());
     this.el.querySelector('.sheet-close')!.addEventListener('click', () => this.hide());
     for (const input of this.el.querySelectorAll<HTMLInputElement>('input[data-key]')) {
-      input.addEventListener('change', () => {
-        const key = input.dataset.key as 'sound' | 'music' | 'haptics' | 'batterySaver' | 'ambient' | 'localWeather';
-        this.settings = { ...this.settings, [key]: input.checked };
+      input.addEventListener('change', async () => {
+        const key = input.dataset.key as 'sound' | 'music' | 'haptics' | 'batterySaver' | 'ambient' | 'localWeather' | 'petReminders';
+        let checked = input.checked;
+        if (key === 'petReminders' && checked && this.h.enablePetReminders) {
+          input.disabled = true;
+          checked = await this.h.enablePetReminders();
+          input.disabled = false;
+          input.checked = checked;
+        }
+        this.settings = { ...this.settings, [key]: checked };
         this.sync();
         this.h.change(this.settings, key);
       });
@@ -329,8 +338,8 @@ export class SettingsSheet {
     this.sync();
   }
 
-  private toggle(key: keyof Settings): string {
-    return `<label class="switch"><input type="checkbox" data-key="${key}" ${this.settings[key] ? 'checked' : ''}/><i></i></label>`;
+  private toggle(key: keyof Settings, label?: string): string {
+    return `<label class="switch"><input type="checkbox" data-key="${key}" ${label ? `aria-label="${label}"` : ''} ${this.settings[key] ? 'checked' : ''}/><i></i></label>`;
   }
 
   private sync(): void {

@@ -1223,16 +1223,19 @@ the HUD layout in the section above.
   `CameraController.faceShore()` eases the diorama 180° to look back from
   the sea; `reversed` reports it. A label names the view for 1.8 s.
 - **Status pane** (top left, the old place header): whose beach + the
-  time and swell by default. Expanded adds the tide line, chips (wave
+  time and swell by default. While visiting, the beach title opens its
+  Beechshore page in a new tab. Expanded adds the tide line, chips (wave
   strength, saving state, "look only" while viewing), and the shore bar
   while away (leave something, ask to be neighbors when a side is free,
-  feed pet, star, and the way home). Closed leaves a lone *i*. The state
+  feed pet and star). Closed leaves a lone *i*. The state
   is saved in settings (`statusPane`). There is no weather data, so
   "weather" is the sky (☀ ◒ ☾), the local time and a swell word from the
   live wave scale. The mockup's credit, stars and finds chips were left
   out; they would need extra requests. The "also in view" list
   (`ShoreInfo`) and floating neighbor name-tag pills (`tagPlace`) are
   removed — the top-left card already shows whose beach you're looking at.
+- **The home icon** appears in the top right while away, including when the
+  toolbar and status pane are closed.
 - **Inbox hub** (`src/ui/socialHub.ts`): one tab strip on four dialogs,
   swapped in place: Inbox (`InboxPanel`), Leaderboard (`Leaderboard`),
   Starred (`StarredDialog`, from `nv.favorites`) and Visit by code

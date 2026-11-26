@@ -3,6 +3,7 @@ import './hud.css';
 const ICONS = {
   edit: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 17 9-9a5 5 0 0 1 6-5l-3 3 2 2 3-3a5 5 0 0 1-5 6l-9 9a2.1 2.1 0 0 1-3-3Z"/></svg>`,
   help: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8a4 4 0 1 1 6 3.5c-1.5 1-2 1.7-2 3.5M12 19h.01"/></svg>`,
+  home: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 11 9-7 9 7M5.5 9v11h13V9M10 20v-6h4v6"/></svg>`,
   profile: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3"/><path d="M5 20v-2a7 5 0 0 1 14 0v2"/></svg>`,
   castleRound: `<svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="6" rx="6" ry="2.5"/><path d="M6 6v12a6 2.5 0 0 0 12 0V6"/></svg>`,
   castleSquare: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 7 7-3 7 3-7 3zM5 7v11l7 3 7-3V7M12 10v11"/></svg>`,

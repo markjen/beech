@@ -27,6 +27,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     date: '2026-11-25',
     title: 'Live beaches, visitors, your inbox, new controls, and sandcastle molds',
     changes: [
+      'When you visit another beach, click its name in the status pane to open its Beechshore page in a new tab. Tap the home icon at the top right to return to your beach, even with the toolbar closed.',
       'Zoomed out on the shore, beaches no longer pop in and out at the edges of the screen as you scroll, and the next ones along are ready before you reach them.',
       'Beaches along the shore you’ve already seen show up right away after a reload, and when the sea comes alive on another of your beaches it now settles in smoothly instead of jumping.',
       'Fixed some rare timing problems: a crab could be befriended for one snack less if you picked up your last snack at the same moment, a visitor could get two free pet feeds in a day, a save from a device that had just lost editing could still go through, and two beaches could end up as each other’s neighbors on both sides.',
