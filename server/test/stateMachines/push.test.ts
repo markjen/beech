@@ -2,6 +2,7 @@
 // each action on its own, the races TLC found in the unlocked form replayed
 // on the real server, and a seeded random walk against PushModel.
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
+import type { Db } from '../../src/db.js';
 import { PUSH_EVERY_MS, pushTick, type PushTarget, type SendResult } from '../../src/push.js';
 import { T0, rng, startServer, type Server } from './harness.js';
 import { ACTORS, DEVICES, KINDS, PREFS, PushModel, type Actor, type Device, type Kind } from './pushModel.js';
@@ -62,6 +63,12 @@ async function world() {
       if (st === 204) delete tokens[d];
       return st;
     },
+    async expireSession(d: Device) {
+      await s.db.query('UPDATE sessions SET expires_at = $1 WHERE token_hash = (SELECT session_hash FROM push_subscriptions WHERE endpoint = $2)', [
+        s.clock.now,
+        endpoint(d),
+      ]);
+    },
     async arrive(a: Actor, kind: Kind) {
       const r = await s.db.query<{ id: string }>('INSERT INTO inbox (user_id, kind, actor_id, created_at) VALUES ($1, $2, $3, $4) RETURNING id', [
         ana.id,
@@ -74,7 +81,7 @@ async function world() {
     read: async (upTo: number) => (await s.post('/inbox/read', ana.token, { upTo })).status,
     block: async (a: Actor, on: boolean) => (await s.req(`/blocks/${codes[a]}`, { method: on ? 'PUT' : 'DELETE' }, ana.token)).status,
     pref: async (p: string, on: boolean) => (await json('PUT', ana.token, '/notify-prefs', { [p]: on })).status,
-    tick: () => pushTick(s.db, svc.send, s.clock.now),
+    tick: () => pushTick(s.db, svc.send, () => s.clock.now),
   };
   const names = { ben: actors.ben.name, cat: actors.cat.name };
   return { s, svc, api, names, ana };
@@ -239,6 +246,75 @@ describe('Push: the races TLC found, replayed', () => {
     w.s.clock.now += PUSH_EVERY_MS;
     await w.api.tick();
     expect(w.svc.delivered).toHaveLength(1);
+  });
+
+  it('skips elapsed sessions whose subscriptions have not been cleaned up', async () => {
+    const w = await world();
+    s = w.s;
+    for (const d of DEVICES) {
+      await w.api.signIn(d);
+      await w.api.subscribe(d);
+    }
+    await w.api.expireSession('d1');
+    await w.api.arrive('ben', 'gift');
+    await w.api.tick();
+    expect(w.svc.delivered).toEqual([`d2: ${w.names.ben} gave you a gift`]);
+    expect((await snapshot(w.s, w.ana.id)).subs).toEqual(['d1', 'd2']);
+  });
+
+  it('rechecks mutes after the claim commits and before delivery', async () => {
+    const w = await world();
+    s = w.s;
+    await w.api.signIn('d1');
+    await w.api.subscribe('d1');
+    await w.api.arrive('ben', 'gift');
+    let transactions = 0;
+    const db = {
+      ...w.s.db,
+      withTransaction: async <T>(fn: (tx: Db) => Promise<T>) => {
+        if (++transactions === 2) expect(await w.api.pref('gifts', false)).toBe(200);
+        return w.s.db.withTransaction(fn);
+      },
+    };
+    await pushTick(db, w.svc.send, () => w.s.clock.now);
+    expect(w.svc.delivered).toEqual([]);
+  });
+
+  it('does not replay an accepted push when the delivery transaction rolls back', async () => {
+    const w = await world();
+    s = w.s;
+    await w.api.signIn('d1');
+    await w.api.subscribe('d1');
+    await w.api.arrive('ben', 'gift');
+    const db = {
+      ...w.s.db,
+      withTransaction: <T>(fn: (tx: Db) => Promise<T>) =>
+        w.s.db.withTransaction(async (tx) => {
+          const result = await fn(tx);
+          if (w.svc.delivered.length) throw new Error('delivery transaction lost');
+          return result;
+        }),
+    };
+    await expect(pushTick(db, w.svc.send, () => w.s.clock.now)).rejects.toThrow('delivery transaction lost');
+    w.s.clock.now += PUSH_EVERY_MS;
+    await w.api.tick();
+    expect(w.svc.delivered).toEqual([`d1: ${w.names.ben} gave you a gift`]);
+  });
+
+  it('keeps both changes when two requests edit different preferences', async () => {
+    const w = await world();
+    s = w.s;
+    const gate = w.s.gate.pauseBefore(/INSERT INTO notify_prefs/, { orTransaction: true });
+    const gifts = w.api.pref('gifts', false);
+    await gate.reached;
+    try {
+      expect(await w.api.pref('neighbors', false)).toBe(200);
+    } finally {
+      gate.release();
+    }
+    expect(await gifts).toBe(200);
+    const prefs = await w.s.req('/notify-prefs', {}, w.ana.token);
+    expect(await prefs.json()).toEqual({ gifts: false, neighbors: false, invites: true });
   });
 });
 

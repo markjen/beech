@@ -15,9 +15,10 @@
 // only subscribes the device and reacts to taps.
 import { getRuntime, steamBridge } from './runtime';
 import type { Account } from '../net/account';
+import { PUSH_KINDS, type NotifyPref } from '../../server/src/notifyKinds';
 
 export type NotifyChannel = 'web' | 'native' | 'steam';
-export type NotifyPrefs = { gifts: boolean; neighbors: boolean; invites: boolean };
+export type NotifyPrefs = Record<NotifyPref, boolean>;
 
 /** this device's choice: notifications on or off (absent: never asked) */
 const DEVICE_KEY = 'beech.notify.v1';
@@ -49,14 +50,7 @@ const tz = () => {
   }
 };
 
-/** the pushed kinds, and the setting each falls under (server/src/push.ts PUSH_KINDS) */
-export const PUSHED_KINDS: Record<string, keyof NotifyPrefs> = {
-  visit: 'gifts',
-  gift: 'gifts',
-  neighbor_request: 'neighbors',
-  neighbor_linked: 'neighbors',
-  invite_settled: 'invites',
-};
+const pushedKinds: Readonly<Partial<Record<string, NotifyPref>>> = PUSH_KINDS;
 
 function b64uToBytes(s: string): Uint8Array<ArrayBuffer> {
   const b = atob(s.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (s.length % 4)) % 4));
@@ -259,7 +253,7 @@ export class Notifier {
     const steam = steamBridge();
     if (!steam?.notify || !this.on) return;
     if (typeof document !== 'undefined' && document.hasFocus() && !document.hidden) return;
-    const pref = PUSHED_KINDS[kind];
+    const pref = pushedKinds[kind];
     if (!pref) return;
     const prefs = await this.prefs();
     if (prefs && !prefs[pref]) return;

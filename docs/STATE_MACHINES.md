@@ -180,14 +180,16 @@ or Cloud Scheduler and the server's own timer).
 | Action | Route or job | Code |
 | --- | --- | --- |
 | `Arrive` | every route that writes an inbox row | the row's own statement (unchanged); `pushed_at` starts empty |
-| `Read` | `POST /inbox/read` | one `UPDATE`; needs no lock (a read row is only skipped) |
+| `Read` | `POST /inbox/read` | one `UPDATE` that waits if delivery has locked the inbox row |
 | `Block` | `PUT /blocks/:code` | one transaction: `lockPush` (the `push_state` row `FOR UPDATE`), then the insert |
-| `Mute`, `Unmute` | `PUT /notify-prefs` | one transaction: `lockPush`, then the upsert |
+| `Mute`, `Unmute` | `PUT /notify-prefs` | take `lockPush` before reading preferences and applying the requested fields |
 | `Subscribe` | `POST /push/subscribe` | one upsert on the endpoint; needs no lock |
-| `Unsubscribe` | `DELETE /push/subscribe` | one `DELETE`; waits for a sender's `FOR SHARE` on the row |
-| `SignOut` | `POST /auth/logout` | the session's `DELETE` cascades to its subscription, which waits the same way |
+| `Unsubscribe` | `DELETE /push/subscribe` | one `DELETE` that waits for the sender's subscription row lock |
+| `SignOut` | `POST /auth/logout`, or session expiry | logout cascades to the subscription and waits for its row lock. An elapsed session is ineligible even while its row still exists. |
 | `Expire` | the push service | — (the next send answers 404/410) |
-| `Claim`, `Deliver`, `Finish` | `pushTick` (`POST /push/tick`, and the timer in `server.ts`) | `pushPlayer`: one transaction holding `lockPush` and the subscriptions `FOR SHARE` from the claim to the end of the sends; the claim marks every due row `pushed_at` and the hour used, the sends run inside it, a 404/410 deletes that subscription |
+| `Claim` | `pushTick` (`POST /push/tick` or the timer) | `pushPlayer` marks due rows and reserves the hour under `lockPush`, then commits before contacting providers |
+| `BeginSend`, `Deliver`, `Finish` | the same tick | a second transaction retakes the push lock, locks subscription and inbox rows, and rechecks eligibility before sending. A 404/410 deletes that subscription. |
+| `Crash` | worker exit or send transaction rollback | discard the in-memory batch. The committed claim survives and subsequent ticks skip it. |
 
 Invariants: `AtMostOnce` (a row reaches each device at most once),
 `OnePerHour`, `NotAfterGone` (nothing after an unsubscribe or sign-out has
@@ -197,13 +199,11 @@ returned), `NeverBlocked`, `NeverMuted`, `OnlyPushKinds` (never a star),
 The unlocked form (read what's due, send, then write it down; nothing
 waits) breaks the first five: two senders push the same rows twice in one
 hour, and an unsubscribe, sign-out, block or mute that lands mid-send
-returns before a push it should have stopped. The design holds over 5.8
-million states (about a minute). The tests replay each race by holding a
-send open at a fake push service: on the built code the second request
-waits for the send. Checked once against the unlocked form (sends moved
-after the commit): the four narrowing replays fail there. The cost is that
-a player's push holds a database connection for up to one send timeout
-(5 s); sends for one player run in parallel.
+returns before a push it should have stopped. The fixed model uses symmetry
+reduction for the interchangeable actors, devices, and workers. The tests hold
+sends open at a fake provider to replay those races and inject a rollback after provider
+acceptance to verify that later ticks skip the committed claim. A crash after
+claiming can drop the notification. The inbox entry remains available.
 
 ## Bugs found (2026-11-25), all fixed
 

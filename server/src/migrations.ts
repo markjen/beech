@@ -852,9 +852,9 @@ const MIGRATIONS: string[] = [
   // is specs/tla/Push.tla). push_subscriptions: one per device, tied to the
   // session that made it, so signing out (or the session expiring) takes it
   // with it. push_state: one row per player, the push lock (the sender holds
-  // it FOR UPDATE from the claim to the end of its sends) and the hour of
-  // the last push. notify_prefs: which kinds may be pushed (all on without a
-  // row). inbox.pushed_at: the row has been through a push claim (sent,
+  // it FOR UPDATE when claiming and again when sending) and the time of
+  // the last push claim. notify_prefs: which kinds may be pushed (all on
+  // without a row). inbox.pushed_at: the row has been through a push claim (sent,
   // folded into one, or skipped); rows from before push are marked done.
   `
   CREATE TABLE push_subscriptions (

@@ -196,14 +196,14 @@ describe('the push routes', () => {
     await db.query(`INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at) VALUES ($1, 'starfish', 1, 'pull', $2)`, [ben.user.id, clock.now]);
     expect((await req(`/beaches/${ana.code}/visit`, json('POST', { note: 'Lovely moat', item: 'starfish' }), ben.token)).status).toBe(200);
     sent.length = 0;
-    await pushTick(db, async (t, m) => (sent.push({ target: t, msg: m }), 'sent'), clock.now);
+    await pushTick(db, async (t, m) => (sent.push({ target: t, msg: m }), 'sent'), () => clock.now);
     const toAna = sent.filter((s) => s.target.endpoint === phone.endpoint);
     expect(toAna).toHaveLength(1);
     expect(toAna[0].msg.body).toMatch(/^ben\d+ left you something$/);
     // nothing new: nothing sent
     sent.length = 0;
     clock.now += PUSH_EVERY_MS;
-    await pushTick(db, async (t, m) => (sent.push({ target: t, msg: m }), 'sent'), clock.now);
+    await pushTick(db, async (t, m) => (sent.push({ target: t, msg: m }), 'sent'), () => clock.now);
     expect(sent.filter((s) => s.target.endpoint === phone.endpoint)).toHaveLength(0);
     // sign out: the subscription goes too
     expect((await req('/auth/logout', { method: 'POST' }, ana.token)).status).toBe(204);
@@ -217,7 +217,7 @@ describe('the push routes', () => {
     expect((await req('/push/subscribe', json('POST', dead), ana.token)).status).toBe(204);
     await req(`/beaches/${ana.code}/visit`, json('POST', { note: 'Hello there' }), ben.token);
     clock.now += PUSH_EVERY_MS;
-    const r = await pushTick(db, async (t) => (t.endpoint.endsWith('/gone') ? 'gone' : 'sent'), clock.now);
+    const r = await pushTick(db, async (t) => (t.endpoint.endsWith('/gone') ? 'gone' : 'sent'), () => clock.now);
     expect(r.gone).toBeGreaterThanOrEqual(1);
     expect(await db.query('SELECT 1 FROM push_subscriptions WHERE endpoint = $1', [dead.endpoint])).toHaveLength(0);
 
@@ -229,7 +229,7 @@ describe('the push routes', () => {
     await req(`/beaches/${ana.code}/visit`, json('POST', { note: 'Hello again' }), ben.token);
     clock.now += PUSH_EVERY_MS;
     sent.length = 0;
-    await pushTick(db, async (t, m) => (sent.push({ target: t, msg: m }), 'sent'), clock.now);
+    await pushTick(db, async (t, m) => (sent.push({ target: t, msg: m }), 'sent'), () => clock.now);
     expect(sent.filter((s) => s.target.endpoint === phone.endpoint)).toHaveLength(0); // muted
     expect((await req('/push/subscribe', json('DELETE', { endpoint: phone.endpoint }), ana.token)).status).toBe(204);
     expect(await db.query('SELECT 1 FROM push_subscriptions WHERE endpoint = $1', [phone.endpoint])).toHaveLength(0);

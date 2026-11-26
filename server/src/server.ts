@@ -143,7 +143,7 @@ if (pushConfig.web || pushConfig.apns || pushConfig.fcm) {
   const pushTimer = setInterval(() => {
     if (ticking) return;
     ticking = true;
-    void pushTick(db, pushSend, Date.now())
+    void pushTick(db, pushSend)
       .then((r) => r.pushes && logEvent('push_tick', { ...r }))
       .catch((e) => logEvent('push_tick_error', { message: (e as Error).message }, 'WARNING'))
       .finally(() => (ticking = false));

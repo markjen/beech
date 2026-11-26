@@ -13,18 +13,11 @@
 import { createCipheriv, createECDH, createPrivateKey, createSign, generateKeyPairSync, hkdfSync, randomBytes, type KeyObject } from 'node:crypto';
 import { connect as http2Connect, type ClientHttp2Session } from 'node:http2';
 import type { Db } from './db.js';
+import { PUSH_KINDS, type NotifyPref } from './notifyKinds.js';
 
 // ------------------------------------------------------------------ rules
 
-/** the inbox kinds that are pushed, and the setting each one falls under */
-export const PUSH_KINDS = {
-  visit: 'gifts',
-  gift: 'gifts',
-  neighbor_request: 'neighbors',
-  neighbor_linked: 'neighbors',
-  invite_settled: 'invites',
-} as const satisfies Record<string, NotifyPref>;
-export type NotifyPref = 'gifts' | 'neighbors' | 'invites';
+export { PUSH_KINDS, type NotifyPref } from './notifyKinds.js';
 export const NOTIFY_PREFS: readonly NotifyPref[] = ['gifts', 'neighbors', 'invites'];
 const PUSHED = Object.keys(PUSH_KINDS);
 
@@ -379,68 +372,107 @@ export interface TickResult {
   failed: number;
 }
 
-/**
- * Push.tla's Claim, Deliver and Finish for one player, as one transaction
- * holding their push lock (and their subscriptions FOR SHARE, so an
- * unsubscribe or a sign-out waits for the sends to finish).
- */
-export async function pushPlayer(db: Db, user: string, send: PushSender, now: number, out: TickResult): Promise<void> {
-  await db.withTransaction(async (tx) => {
+interface InboxPushRow {
+  id: string;
+  kind: string;
+  name: string | null;
+  actor_id: string | null;
+  read_at: string | null;
+  created_at: string;
+}
+
+function pushSubscriptions(tx: Db, user: string, now: number) {
+  return tx.query<PushTarget & { tz: string; expires_at: string }>(
+    `SELECT p.id::text AS id, p.platform, p.endpoint, p.p256dh, p.auth, p.tz, s.expires_at
+       FROM push_subscriptions p JOIN sessions s ON s.token_hash = p.session_hash AND s.user_id = p.user_id
+      WHERE p.user_id = $1 AND s.expires_at > $2
+      ORDER BY p.id FOR NO KEY UPDATE OF p`,
+    [user, now],
+  );
+}
+
+function pushRows(tx: Db, user: string, ids?: string[]): Promise<InboxPushRow[]> {
+  const rows = ids ? 'i.id = ANY($2::bigint[])' : 'i.pushed_at IS NULL AND i.kind = ANY($2::text[])';
+  return tx.query<InboxPushRow>(
+    `SELECT i.id, i.kind, u.name, i.actor_id, i.read_at, i.created_at
+       FROM inbox i LEFT JOIN users u ON u.id = i.actor_id
+      WHERE i.user_id = $1 AND ${rows}
+      ORDER BY i.id FOR UPDATE OF i`,
+    [user, ids ?? PUSHED],
+  );
+}
+
+async function visiblePushRows(tx: Db, user: string, rows: InboxPushRow[], clock: () => number): Promise<InboxPushRow[]> {
+  const prefs = (await tx.query<Record<NotifyPref, boolean>>('SELECT gifts, neighbors, invites FROM notify_prefs WHERE user_id = $1', [user]))[0];
+  const blockedIds = new Set(
+    (await tx.query<{ blocked_id: string }>('SELECT blocked_id FROM blocks WHERE blocker_id = $1', [user])).map((r) => r.blocked_id),
+  );
+  const now = clock();
+  return rows.filter(
+    (r) =>
+      r.read_at === null &&
+      now - Number(r.created_at) < PUSH_FRESH_MS &&
+      !(r.actor_id && blockedIds.has(r.actor_id)) &&
+      prefs?.[PUSH_KINDS[r.kind as keyof typeof PUSH_KINDS]] !== false,
+  );
+}
+
+/** Commit the claim before sending, then recheck eligibility under the row locks. */
+export async function pushPlayer(db: Db, user: string, send: PushSender, clock: () => number, out: TickResult): Promise<void> {
+  const claim = await db.withTransaction(async (tx) => {
     const { last_push_at } = await lockPush(tx, user);
-    const subs = await tx.query<PushTarget & { tz: string }>(
-      `SELECT id::text AS id, platform, endpoint, p256dh, auth, tz FROM push_subscriptions WHERE user_id = $1 ORDER BY id FOR SHARE`,
-      [user],
-    );
-    if (!subs.length) return;
-    if (now - last_push_at < PUSH_EVERY_MS) return;
-    // the newest device's clock decides the quiet hours
-    if (isQuiet(subs[subs.length - 1].tz, now)) return;
-    const due = await tx.query<{ id: string; kind: string; name: string | null; actor_id: string | null; read_at: string | null; created_at: string }>(
-      `SELECT i.id, i.kind, u.name, i.actor_id, i.read_at, i.created_at
-         FROM inbox i LEFT JOIN users u ON u.id = i.actor_id
-        WHERE i.user_id = $1 AND i.pushed_at IS NULL AND i.kind = ANY($2::text[])
-        ORDER BY i.id
-        FOR UPDATE OF i`,
-      [user, PUSHED],
-    );
+    if (clock() - last_push_at < PUSH_EVERY_MS) return;
+    const subs = await pushSubscriptions(tx, user, clock());
+    const at = clock();
+    const newest = subs.filter((sub) => Number(sub.expires_at) > at).at(-1);
+    if (!newest || isQuiet(newest.tz, at)) return;
+    const due = await pushRows(tx, user);
     if (!due.length) return;
-    // every due row is through the claim now, shown or not
-    await tx.query('UPDATE inbox SET pushed_at = $2 WHERE id = ANY($1::bigint[])', [due.map((r) => r.id), now]);
-    const prefs = (await tx.query<Record<NotifyPref, boolean>>('SELECT gifts, neighbors, invites FROM notify_prefs WHERE user_id = $1', [user]))[0];
-    const blockedIds = new Set(
-      (await tx.query<{ blocked_id: string }>('SELECT blocked_id FROM blocks WHERE blocker_id = $1', [user])).map((r) => r.blocked_id),
-    );
-    const shown = due.filter(
-      (r) =>
-        r.read_at === null &&
-        now - Number(r.created_at) < PUSH_FRESH_MS &&
-        !(r.actor_id && blockedIds.has(r.actor_id)) &&
-        (prefs ? prefs[PUSH_KINDS[r.kind as keyof typeof PUSH_KINDS]] !== false : true),
-    );
+    const shown = await visiblePushRows(tx, user, due, clock);
+    // Mark skipped rows too. A later tick must never replay a committed claim.
+    await tx.query('UPDATE inbox SET pushed_at = $2 WHERE id = ANY($1::bigint[])', [due.map((r) => r.id), at]);
     if (!shown.length) return;
-    await tx.query('UPDATE push_state SET last_push_at = $2 WHERE user_id = $1', [user, now]);
+    await tx.query('UPDATE push_state SET last_push_at = $2 WHERE user_id = $1', [user, at]);
+    return { at, ids: shown.map((r) => r.id) };
+  });
+  if (!claim) return;
+
+  await db.withTransaction(async (tx) => {
+    const [state] = await tx.query<{ last_push_at: string }>('SELECT last_push_at FROM push_state WHERE user_id = $1 FOR UPDATE', [user]);
+    if (Number(state?.last_push_at) !== claim.at) return;
+    const subs = await pushSubscriptions(tx, user, clock());
+    if (!subs.length) return;
+    const rows = await pushRows(tx, user, claim.ids);
+    const shown = await visiblePushRows(tx, user, rows, clock);
+    const now = clock();
+    const active = subs.filter((sub) => Number(sub.expires_at) > now);
+    const newest = active.at(-1);
+    if (!shown.length || !newest || isQuiet(newest.tz, now) || now - claim.at >= PUSH_EVERY_MS) return;
     out.pushes++;
     const msg = pushMessage(shown.map((r) => ({ kind: r.kind, name: r.name })));
-    const results = await Promise.all(subs.map((s) => send(s, msg).catch((): SendResult => 'failed')));
-    const gone = subs.filter((_, i) => results[i] === 'gone').map((s) => s.id);
+    const results = await Promise.all(active.map((s) => send(s, msg).catch((): SendResult => 'failed')));
+    const gone = active.filter((_, i) => results[i] === 'gone').map((s) => s.id);
     for (const r of results) out[r === 'sent' ? 'sent' : r === 'gone' ? 'gone' : 'failed']++;
     if (gone.length) await tx.query('DELETE FROM push_subscriptions WHERE id = ANY($1::bigint[])', [gone]);
   });
 }
 
 /** One tick: every player with a subscription and something due. Safe to run twice at once. */
-export async function pushTick(db: Db, send: PushSender, now: number, limit = 500): Promise<TickResult> {
+export async function pushTick(db: Db, send: PushSender, clock: () => number = Date.now, limit = 500): Promise<TickResult> {
+  const now = clock();
   const out: TickResult = { players: 0, pushes: 0, sent: 0, gone: 0, failed: 0 };
   const players = await db.query<{ user_id: string }>(
-    `SELECT DISTINCT s.user_id FROM push_subscriptions s
-      WHERE EXISTS (SELECT 1 FROM inbox i WHERE i.user_id = s.user_id AND i.pushed_at IS NULL AND i.kind = ANY($1::text[]))
-        AND NOT EXISTS (SELECT 1 FROM push_state p WHERE p.user_id = s.user_id AND p.last_push_at > $2)
-      LIMIT $3`,
-    [PUSHED, now - PUSH_EVERY_MS, limit],
+    `SELECT DISTINCT p.user_id
+       FROM push_subscriptions p JOIN sessions s ON s.token_hash = p.session_hash AND s.user_id = p.user_id
+      WHERE s.expires_at > $2
+        AND EXISTS (SELECT 1 FROM inbox i WHERE i.user_id = p.user_id AND i.pushed_at IS NULL AND i.kind = ANY($1::text[]))
+        AND NOT EXISTS (SELECT 1 FROM push_state ps WHERE ps.user_id = p.user_id AND ps.last_push_at > $3)
+      LIMIT $4`,
+    [PUSHED, now, now - PUSH_EVERY_MS, limit],
   );
   for (const p of players) {
     out.players++;
-    await pushPlayer(db, p.user_id, send, now, out);
+    await pushPlayer(db, p.user_id, send, clock, out);
   }
   return out;
 }

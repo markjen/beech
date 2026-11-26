@@ -14,10 +14,11 @@ forgotten by the push service; blocks, muted kinds and reads; and two push
 senders at once. Its rules: a row reaches each device at most once, one
 push an hour, nothing in quiet hours, never a star, and nothing reaches a
 device after an unsubscribe, sign-out, block or mute has returned. The
-design that holds: a player's push runs in one transaction holding their
-push lock (`push_state`, `FOR UPDATE`) and their subscriptions (`FOR
-SHARE`) from the claim to the end of the sends, and block and mute take the
-same lock. Tests: `server/test/stateMachines/push.test.ts`.
+sender commits its claim under the player's push lock (`push_state`,
+`FOR UPDATE`), then retakes that lock and locks the subscription rows to
+recheck eligibility and send. Block and mute take the same push lock.
+A crash after the claim can drop the notification. The inbox entry stays
+available, and a later tick skips the claim. Tests: `server/test/stateMachines/push.test.ts`.
 
 ### Push: as built (2026-11-26)
 
@@ -51,8 +52,9 @@ same lock. Tests: `server/test/stateMachines/push.test.ts`.
   listener, or Electron's click).
 - **Quiet hours** use the newest subscribed device's time zone.
 - **Subscriptions belong to the session** that made them
-  (`session_hash … ON DELETE CASCADE`), so signing out, a session expiring
-  or deleting the account removes them; at most 10 devices per player.
+  (`session_hash … ON DELETE CASCADE`). Sign-out and account deletion remove
+  them. Expired sessions are immediately ineligible for sends, even before
+  cleanup removes their rows. The limit is 10 devices per player.
   Signing back in re-sends this device's subscription if its switch is on.
   Web endpoints must be a known push service (the server posts to them).
 - **Asking:** once, a few seconds after the first pushable thing arrives

@@ -3883,8 +3883,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     return c.body(null, 204);
   });
 
-  const prefsOf = async (user: string) => {
-    const r = (await db.query<Record<NotifyPref, boolean>>('SELECT gifts, neighbors, invites FROM notify_prefs WHERE user_id = $1', [user]))[0];
+  const prefsOf = async (user: string, conn = db) => {
+    const r = (await conn.query<Record<NotifyPref, boolean>>('SELECT gifts, neighbors, invites FROM notify_prefs WHERE user_id = $1', [user]))[0];
     return { gifts: r?.gifts ?? true, neighbors: r?.neighbors ?? true, invites: r?.invites ?? true };
   };
   app.get('/notify-prefs', requireUser, async (c) => c.json(await prefsOf(c.get('user').id)));
@@ -3893,18 +3893,22 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   app.put('/notify-prefs', requireUser, async (c) => {
     const b = await body<Partial<Record<NotifyPref, unknown>>>(c);
     const me = c.get('user').id;
-    const next = await prefsOf(me);
-    for (const k of NOTIFY_PREFS) if (b[k] !== undefined) {
-      if (typeof b[k] !== 'boolean') fail(400, `${k} is true or false`);
-      next[k] = b[k] as boolean;
+    const patch: Partial<Record<NotifyPref, boolean>> = {};
+    for (const k of NOTIFY_PREFS) {
+      const value = b[k];
+      if (value === undefined) continue;
+      if (typeof value !== 'boolean') fail(400, `${k} is true or false`);
+      patch[k] = value as boolean;
     }
-    await db.withTransaction(async (tx) => {
+    const next = await db.withTransaction(async (tx) => {
       await lockPush(tx, me);
+      const prefs = { ...(await prefsOf(me, tx)), ...patch };
       await tx.query(
         `INSERT INTO notify_prefs (user_id, gifts, neighbors, invites) VALUES ($1, $2, $3, $4)
          ON CONFLICT (user_id) DO UPDATE SET gifts = EXCLUDED.gifts, neighbors = EXCLUDED.neighbors, invites = EXCLUDED.invites`,
-        [me, next.gifts, next.neighbors, next.invites],
+        [me, prefs.gifts, prefs.neighbors, prefs.invites],
       );
+      return prefs;
     });
     return c.json(next);
   });
@@ -3917,7 +3921,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     } catch {
       fail(401, 'not allowed');
     }
-    const r = await pushTick(db, pushSend, clock());
+    const r = await pushTick(db, pushSend, clock);
     if (r.pushes) logEvent('push_tick', { ...r });
     return c.json(r);
   });

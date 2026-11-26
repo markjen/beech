@@ -16,17 +16,19 @@
 (* long) claims the player's due rows, then sends one push to each device, *)
 (* one HTTP request at a time, then finishes.                              *)
 (*                                                                         *)
-(* Fixed = TRUE is the design being built: the sender holds the player's  *)
-(* push lock (their push_state row, FOR UPDATE, with the subscriptions     *)
-(* FOR SHARE) from the claim to the end of the sends; marking the rows     *)
-(* pushed and the hour's push happen in the claim; and every request that  *)
-(* narrows who or what may reach a device (unsubscribe, sign out, block,   *)
-(* mute) waits for that lock. Fixed = FALSE is the obvious first version:  *)
-(* read what's due, send, then write it down, with no lock.                *)
+(* Fixed = TRUE: commit the claim before contacting any provider. Retake   *)
+(* the push lock, recheck subscriptions and rows, and hold the locks      *)
+(* through delivery. A crash may lose a push but cannot replay a claim.    *)
+(* Fixed = FALSE: read what's due, send, then write it down, with no lock.  *)
 (***************************************************************************)
-EXTENDS Integers, FiniteSets, Sequences
+EXTENDS Integers, FiniteSets, Sequences, TLC
 
 CONSTANTS Actors, Devices, Workers, MaxRows, MaxTime, Fixed
+
+Symmetry ==
+    { [x \in Actors \cup Devices \cup Workers |->
+        CASE x \in Actors -> a[x] [] x \in Devices -> d[x] [] OTHER -> w[x]] :
+        a \in Permutations(Actors), d \in Permutations(Devices), w \in Permutations(Workers) }
 
 PushKinds == {"gift", "neighbor"}       \* pushed (notes and visits count as "gift" here)
 Kinds == PushKinds \cup {"star"}         \* a star is never pushed
@@ -43,7 +45,7 @@ VARIABLES
     now,        \* the hour
     lastPush,   \* push_state.last_push_at: the hour of the last push (-1: never)
     lock,       \* who holds the player's push lock (a worker, or None)
-    wk,         \* [Workers -> [pc, batch, shown, todo]]: a sender part way through
+    wk,         \* [Workers -> [pc, batch, shown, todo, claimedAt]]
     got,        \* ghost: [Devices -> [1..MaxRows -> times that row reached the device]]
     pushesAt,   \* ghost: [0..MaxTime -> pushes the player got in that hour]
     bad         \* ghost: the rules a delivery broke ("gone", "blocked", "muted", "star", "quiet")
@@ -51,7 +53,7 @@ VARIABLES
 vars == <<rows, blocked, muted, signedIn, subs, expired, now, lastPush, lock, wk, got, pushesAt, bad>>
 
 Ids == 1..MaxRows
-Idle == [pc |-> "idle", batch |-> {}, shown |-> {}, todo |-> {}]
+Idle == [pc |-> "idle", batch |-> {}, shown |-> {}, todo |-> {}, claimedAt |-> -1]
 
 Init ==
     /\ rows = << >>
@@ -79,6 +81,7 @@ Arrive(a, k) ==
 (* POST /inbox/read { upTo } *)
 Read(i) ==
     /\ i \in DOMAIN rows /\ ~rows[i].read
+    /\ IF Fixed /\ ~Free THEN i \notin wk[lock].shown ELSE TRUE
     /\ rows' = [rows EXCEPT ![i].read = TRUE]
     /\ UNCHANGED <<blocked, muted, signedIn, subs, expired, now, lastPush, lock, wk, got, pushesAt, bad>>
 
@@ -94,13 +97,13 @@ Unblock(a) ==
     /\ blocked' = blocked \ {a}
     /\ UNCHANGED <<rows, muted, signedIn, subs, expired, now, lastPush, lock, wk, got, pushesAt, bad>>
 
-(* PUT /notify-prefs: turning a kind off waits for the lock; on doesn't *)
+(* PUT /notify-prefs: read and update the specified kinds under the lock. *)
 Mute(k) ==
     /\ k \notin muted /\ Narrowing
     /\ muted' = muted \cup {k}
     /\ UNCHANGED <<rows, blocked, signedIn, subs, expired, now, lastPush, lock, wk, got, pushesAt, bad>>
 Unmute(k) ==
-    /\ k \in muted
+    /\ k \in muted /\ Narrowing
     /\ muted' = muted \ {k}
     /\ UNCHANGED <<rows, blocked, signedIn, subs, expired, now, lastPush, lock, wk, got, pushesAt, bad>>
 
@@ -116,13 +119,13 @@ Subscribe(d) ==
     /\ expired' = expired \ {d}
     /\ UNCHANGED <<rows, blocked, muted, signedIn, now, lastPush, lock, wk, got, pushesAt, bad>>
 
-(* DELETE /push/subscribe: the delete waits for the sender's FOR SHARE (Fixed) *)
+(* DELETE /push/subscribe: the delete waits for the sender's subscription lock. *)
 Unsubscribe(d) ==
     /\ d \in subs /\ Narrowing
     /\ subs' = subs \ {d}
     /\ UNCHANGED <<rows, blocked, muted, signedIn, expired, now, lastPush, lock, wk, got, pushesAt, bad>>
 
-(* POST /auth/logout: the session goes, and its subscription with it (ON DELETE CASCADE) *)
+(* POST /auth/logout or session expiry: the device stops being eligible. *)
 SignOut(d) ==
     /\ d \in signedIn
     /\ d \in subs => Narrowing
@@ -150,9 +153,7 @@ Tick ==
 Due == {i \in DOMAIN rows : ~rows[i].pushed /\ rows[i].kind \in PushKinds}
 Shown(batch) == {i \in batch : ~rows[i].read /\ rows[i].actor \notin blocked /\ rows[i].kind \notin muted}
 
-(* Claim: the rows that are due, who may see them, and the devices to send to.
-   Fixed: one transaction, under the lock, that also marks the rows pushed and
-   the hour used, and keeps the lock for the sends. Not fixed: a read. *)
+(* Claim reserves the rows and hour durably before external delivery. *)
 Claim(w) ==
     /\ wk[w].pc = "idle"
     /\ (Fixed => Free)
@@ -163,17 +164,36 @@ Claim(w) ==
     /\ LET batch == Due
            shown == Shown(batch)
            go    == shown # {}
-       IN /\ wk' = [wk EXCEPT ![w] = [pc |-> IF go THEN "sending" ELSE "done",
-                                       batch |-> batch, shown |-> shown,
-                                       todo |-> IF go THEN subs ELSE {}]]
+       IN /\ wk' = [wk EXCEPT ![w] =
+                IF Fixed
+                    THEN IF go THEN [Idle EXCEPT !.pc = "claimed", !.shown = shown, !.claimedAt = now] ELSE Idle
+                    ELSE [Idle EXCEPT !.pc = IF go THEN "sending" ELSE "done", !.batch = batch,
+                                      !.shown = shown, !.todo = IF go THEN subs ELSE {}]]
           /\ pushesAt' = IF go THEN [pushesAt EXCEPT ![now] = @ + 1] ELSE pushesAt
           /\ bad' = IF go /\ Quiet(now) THEN bad \cup {"quiet"} ELSE bad
           /\ IF Fixed
                THEN /\ rows' = [i \in DOMAIN rows |-> IF i \in batch THEN [rows[i] EXCEPT !.pushed = TRUE] ELSE rows[i]]
                     /\ lastPush' = IF go THEN now ELSE lastPush
-                    /\ lock' = w
+                    /\ UNCHANGED lock
                ELSE UNCHANGED <<rows, lastPush, lock>>
     /\ UNCHANGED <<blocked, muted, signedIn, subs, expired, now, got>>
+
+(* Recheck after the claim commits. Hold the lock until the sends finish. *)
+BeginSend(w) ==
+    /\ Fixed /\ Free /\ wk[w].pc = "claimed"
+    /\ LET shown == Shown(wk[w].shown)
+           go == wk[w].claimedAt = now /\ lastPush = now /\ ~Quiet(now) /\ shown # {} /\ subs # {}
+       IN /\ wk' = [wk EXCEPT ![w] = IF go THEN [Idle EXCEPT !.pc = "sending", !.shown = shown, !.todo = subs] ELSE Idle]
+          /\ lock' = IF go THEN w ELSE None
+    /\ UNCHANGED <<rows, blocked, muted, signedIn, subs, expired, now, lastPush, got, pushesAt, bad>>
+
+(* Losing the worker drops only its in-memory work. The claim and any
+   external deliveries survive, including when the send transaction rolls back. *)
+Crash(w) ==
+    /\ wk[w].pc \in {"claimed", "sending"}
+    /\ wk' = [wk EXCEPT ![w] = Idle]
+    /\ lock' = IF lock = w THEN None ELSE lock
+    /\ UNCHANGED <<rows, blocked, muted, signedIn, subs, expired, now, lastPush, got, pushesAt, bad>>
 
 (* One HTTP request to the push service for device d. An expired subscription
    answers 410 and the sender deletes it; anything else is delivered. *)
@@ -213,7 +233,7 @@ Next ==
     \/ \E k \in PushKinds : Mute(k) \/ Unmute(k)
     \/ \E d \in Devices : SignIn(d) \/ Subscribe(d) \/ Unsubscribe(d) \/ SignOut(d) \/ Expire(d)
     \/ Tick
-    \/ \E w \in Workers : Claim(w) \/ Finish(w) \/ \E d \in Devices : Deliver(w, d)
+    \/ \E w \in Workers : Claim(w) \/ BeginSend(w) \/ Crash(w) \/ Finish(w) \/ \E d \in Devices : Deliver(w, d)
 
 Spec == Init /\ [][Next]_vars
 

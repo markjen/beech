@@ -1,6 +1,6 @@
 // specs/tla/Push.tla in TypeScript (the design built: Fixed = TRUE), one
-// player and their devices, one action at a time. With the lock held from
-// the claim to the end of the sends, a whole push is one step here.
+// player and their devices, one action at a time. The random walk runs each
+// claim and delivery together. The race tests can interleave the two steps.
 // Where the spec abstracts (an hour, quiet hours, a row's freshness), this
 // follows the code's numbers (server/src/push.ts).
 import { PUSH_EVERY_MS, PUSH_FRESH_MS, PUSH_KINDS, isQuiet, pushMessage, type NotifyPref } from '../../src/push.js';
@@ -77,20 +77,27 @@ export class PushModel {
     if (this.subs.has(d)) this.expired.add(d);
   }
 
-  /** Claim, Deliver (each device), Finish: what one tick does for the player */
-  push(): string[] {
-    const out: string[] = [];
-    if (!this.subs.size) return out;
-    if (this.now - this.lastPush < PUSH_EVERY_MS) return out;
-    if (isQuiet('UTC', this.now)) return out;
-    const due = this.rows.filter((r) => !r.pushed && r.kind in PUSH_KINDS);
-    if (!due.length) return out;
-    for (const r of due) r.pushed = true;
-    const shown = due.filter(
+  private visible(rows: Row[]): Row[] {
+    return rows.filter(
       (r) => !r.read && this.now - r.at < PUSH_FRESH_MS && !this.blocked.has(r.actor) && !this.muted.has(PUSH_KINDS[r.kind as keyof typeof PUSH_KINDS]),
     );
-    if (!shown.length) return out;
+  }
+
+  claim(): { at: number; shown: Row[] } | undefined {
+    if (!this.subs.size || this.now - this.lastPush < PUSH_EVERY_MS || isQuiet('UTC', this.now)) return;
+    const due = this.rows.filter((r) => !r.pushed && r.kind in PUSH_KINDS);
+    for (const r of due) r.pushed = true;
+    const shown = this.visible(due);
+    if (!shown.length) return;
     this.lastPush = this.now;
+    return { at: this.now, shown };
+  }
+
+  deliver(claim: { at: number; shown: Row[] }): string[] {
+    if (claim.at !== this.lastPush || this.now - claim.at >= PUSH_EVERY_MS || isQuiet('UTC', this.now)) return [];
+    const shown = this.visible(claim.shown);
+    if (!shown.length) return [];
+    const out: string[] = [];
     const body = pushMessage(shown.map((r) => ({ kind: r.kind, name: this.names[r.actor] }))).body;
     for (const d of [...this.subs].sort()) {
       if (this.expired.has(d)) {
@@ -100,5 +107,10 @@ export class PushModel {
     }
     this.delivered.push(...out);
     return out;
+  }
+
+  push(): string[] {
+    const claim = this.claim();
+    return claim ? this.deliver(claim) : [];
   }
 }

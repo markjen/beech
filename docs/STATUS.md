@@ -492,8 +492,11 @@ notifications) is built too (2026-11-26) and waits on the owner's keys
   and on Steam the running game shows OS notifications from the poll
   (Electron `Notification`; Steam has no push service). Migration 33
   (`push_subscriptions` tied to the session, `push_state` as the push
-  lock, `notify_prefs`, `inbox.pushed_at`). One push an hour, none
-  22:00–08:00 on the device clock, never stars or ratings, never a note's
+  lock, `notify_prefs`, `inbox.pushed_at`). The sender commits its claim
+  before sending, then rechecks device sessions and preferences under lock.
+  Preference edits on different devices preserve each other's changes.
+  One push an hour, none from 22:00 to 08:00 on the device clock, never
+  stars or ratings, never a note's
   text. The game asks once, after the first pushable thing arrives; the
   switch and three kinds are in Settings. Each platform is on once its
   settings exist (the deploy adds them only when their GitHub variables

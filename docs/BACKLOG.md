@@ -165,7 +165,9 @@ picked up.
   [CHROME_TV_CAST.md](CHROME_TV_CAST.md)).
 - [x] **Push notifications (inbox V5, V6), and Steam** (2026-11-26):
   web push, APNs, FCM and Steam's own OS notifications, modelled in
-  `specs/tla/Push.tla`; neighbor requests and accepts are pushed.
+  `specs/tla/Push.tla`; neighbor requests and accepts are pushed. Claims
+  survive send rollbacks, expired sessions are skipped, and preference
+  edits are serialized per player.
   [INBOX_NOTIFICATIONS.md](INBOX_NOTIFICATIONS.md), "Push: as built".
 - [ ] **Push follow-ups**: try a real device on each platform once the
   owner setup is done (headless Chromium can't subscribe, so delivery is
