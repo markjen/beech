@@ -19,6 +19,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     date: '2026-11-26',
     title: 'Sand bucks, trade-ins, copying a beach, and smoother live beaches',
     changes: [
+      'When you aren’t signed in, a Sign in button sits in the lower-left corner of the title screen and your beach, so signing in is one tap away.',
       'Sand bucks: everything in the shop is now priced in sand bucks (1 sand buck is 10¢; prices are the same as before). Buy sand bucks in packs, from the App Store, Google Play, Steam or by card on the web, then spend them on anything, on any device. Gift cards add sand bucks.',
       'Trade-ins: anything in your bag that isn’t on a beach can be traded back in for what you paid, so you can try a build and change your mind for free. Pick it up from your bag and tap “trade in”. Things you got for free trade in at their shop price. An extra beach you aren’t using can be traded in too.',
       'Copy any beach on the shore onto one of your own: tap “copy” while visiting it, or “Copy to my beach” on its beechshore.com page. If your bag is short of something it needs, buy just what’s missing or copy it without them. You can also duplicate your own beaches, and keep a copy as a checkpoint for later.',
