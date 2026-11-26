@@ -40,6 +40,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       'The checkpoint list can be filtered by the beach it came from, or by imported files. Checkpoints from removed beaches keep their own place in the filter.',
       'Typing in a visitor note — or picking from a dropdown — no longer triggers game keys: spaces and letters go into what you’re typing instead of moving the camera.',
       'The “a new version is ready” prompt now sits above any open panel, so its Reload button is always reachable.',
+      'Used up your free go on the claw or vending machine? Extra tries are 10 sand bucks each.',
     ],
   },
   {
