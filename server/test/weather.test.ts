@@ -56,9 +56,12 @@ describe('weather', () => {
     t += 10 * 60 * 1000;
     await w.get();
     expect(calls).toHaveLength(2); // still fresh
-    t += 6 * 60 * 1000;
+    t += 49 * 60 * 1000;
     await w.get();
-    expect(calls).toHaveLength(4); // 16 minutes: refetched
+    expect(calls).toHaveLength(2); // 59 minutes: still fresh
+    t += 2 * 60 * 1000;
+    await w.get();
+    expect(calls).toHaveLength(4); // 61 minutes: refetched
   });
 
   it('shares one fetch between requests arriving together', async () => {

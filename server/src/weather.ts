@@ -1,7 +1,7 @@
 // Real weather at every place a beach can sit at (src/world/locations.ts),
 // for GET /api/weather. One request to Open-Meteo's forecast API and one to
 // its marine API cover all the places at once (they take lists of
-// coordinates). The answer is kept for 15 minutes and shared by every
+// coordinates). The answer is kept for an hour and shared by every
 // player, so the upstream load doesn't grow with players, and the app never
 // talks to a third party: no player's location or IP leaves our server.
 //
@@ -88,7 +88,7 @@ export function buildReport(
 export function createWeather(opts: WeatherOptions = {}) {
   const doFetch = opts.fetch ?? fetch;
   const now = opts.now ?? Date.now;
-  const ttl = opts.ttlMs ?? 15 * 60 * 1000;
+  const ttl = opts.ttlMs ?? 60 * 60 * 1000;
   const stale = opts.staleMs ?? 3 * 60 * 60 * 1000;
   const timeout = opts.timeoutMs ?? 8000;
   const places = opts.places ?? placeCoords();

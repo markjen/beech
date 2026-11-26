@@ -17,7 +17,7 @@ The single list of what's left to do, for the owner and for agents.
 - [ ] **Open-Meteo plan for real weather** (2026-11-26): Open-Meteo's free
   API is for non-commercial use only, and beech sells things, so production
   needs a paid plan (the smallest is plenty: the server makes two requests
-  every 15 minutes per instance). Put the key in Secret Manager as
+  every hour per instance). Put the key in Secret Manager as
   `beech-open-meteo-api-key` (readable by the game service's account), then
   set the Actions variable `OPEN_METEO_ENABLED=1`: the next deploy passes it
   as `OPEN_METEO_API_KEY` and the server uses the `customer-*` hosts. Until
