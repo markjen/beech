@@ -24,13 +24,13 @@ reasoning for each price.
 ## Paid extra tries on the machines (2026-11-26)
 
 When the free go is gone, one more try costs sand bucks: an extra ball
-from the vending machine is **15 sand bucks**, an extra go on the claw
-machine is **10**. The price is set from the expected value of one try —
-**1.5× EV, rounded up to the next 5 sand bucks** — so both machines carry
-the same house edge (about 70%), and a try can never be farmed for
-trade-ins: the price sits above what a try is worth on average, so buying
-tries to trade the prizes back in loses sand bucks. A won item is valued at
-its trade-in value (`RARITY_BUCKS` in `server/src/bucks.ts`), except the
+from the vending machine is **10 sand bucks**, an extra go on the claw
+machine is **10**. Both prices sit above the expected value of one try —
+so a try can never be farmed for trade-ins: the price is above what a try
+is worth on average, so buying tries to trade the prizes back in loses
+sand bucks. (Mark's call, Nov 26, 2026: 10 on both, a thinner edge on the
+vending machine than the 1.5× EV the code first proposed.) A won item is
+valued at its trade-in value (`RARITY_BUCKS` in `server/src/bucks.ts`), except the
 vending machine's unique item — a one-of-a-kind item with no trade-in
 value — where the EV assumes 40, one step above legendary's 30. The
 derivation lives in `server/src/paidPulls.ts` and is covered by tests, so
@@ -38,7 +38,7 @@ the numbers below can't drift from the code.
 
 | Machine | Expected value of one try | Price | House edge |
 |---|---|---|---|
-| Vending machine | **8.5** — 60% common (5) + 25% uncommon (10) + 12% rare (15) + 3% unique (40) | **15** | ~76% |
+| Vending machine | **8.5** — 60% common (5) + 25% uncommon (10) + 12% rare (15) + 3% unique (40) | **10** | ~18% |
 | Claw machine | **5.84** — 70% common × 80% held (5) + 25% rare × 65% held (15) + 5% legendary × 40% held (30); about 1 go in 4 comes up empty | **10** | ~71% |
 
 A paid try is exactly one draw, same as a free one: the vending ball never

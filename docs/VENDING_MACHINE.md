@@ -15,7 +15,7 @@ different pool.
 - **The ball.** One free ball a day, resetting at UTC midnight. A daily ball means seven
   chances at each week's set.
 - **Paid balls.** When today's ball is gone, one more ball from this
-  week's set costs **15 sand bucks** — the same set, the same odds, and
+  week's set costs **10 sand bucks** — the same set, the same odds, and
   tomorrow's free ball is still free. The price is set from the expected
   value of a ball (8.5 sand bucks; see docs/PRICING.md) and comes from the
   server (`GET /pulls` publishes it), so the machine never hardcodes it. A
@@ -111,7 +111,7 @@ all new.
 
 ## Follow-ups
 
-- **Paid balls are in** (15 sand bucks, `server/src/paidPulls.ts`) — the
+- **Paid balls are in** (10 sand bucks, `server/src/paidPulls.ts`) — the
   claw's paid goes too (10 sand bucks). Paid random items carry extra store
   rules: the odds are shown in the machine and the guide before buying,
   but a country check for markets that restrict paid random items is still

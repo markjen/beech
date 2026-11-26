@@ -9,8 +9,6 @@ import {
   clawExtraGoEV,
   expectedBucks,
   paidTryPrice,
-  priceFromEV,
-  roundUp5,
   vendingExtraBallEV,
 } from '../src/paidPulls.js';
 import { GRAB_CHANCE, POOLS } from '../src/pulls.js';
@@ -35,17 +33,11 @@ describe('paid-try pricing', () => {
     expect(clawExtraGoEV()).toBeLessThan(drawEV);
   });
 
-  it('prices are 1.5x EV, rounded up to the next 5 — the same house edge on both', () => {
-    expect(roundUp5(12.75)).toBe(15);
-    expect(roundUp5(8.76)).toBe(10);
-    expect(roundUp5(10)).toBe(10); // already on a 5: stays
-    expect(roundUp5(0)).toBe(0);
-    expect(priceFromEV(8.5)).toBe(15);
-    expect(priceFromEV(5.8375)).toBe(10);
-    expect(VENDING_EXTRA_BALL_BUCKS).toBe(15);
+  it('both machines price at 10 sand bucks (Mark, Nov 26) — above EV on both', () => {
+    expect(VENDING_EXTRA_BALL_BUCKS).toBe(10);
     expect(CLAW_EXTRA_GO_BUCKS).toBe(10);
-    // the edge is the same on both machines (about 70%)
-    expect((VENDING_EXTRA_BALL_BUCKS - vendingExtraBallEV()) / vendingExtraBallEV()).toBeCloseTo(0.76, 1);
+    // the vending edge is thin (~18%), the claw's is ~71%
+    expect((VENDING_EXTRA_BALL_BUCKS - vendingExtraBallEV()) / vendingExtraBallEV()).toBeCloseTo(0.18, 1);
     expect((CLAW_EXTRA_GO_BUCKS - clawExtraGoEV()) / clawExtraGoEV()).toBeCloseTo(0.71, 1);
     // and the price is above EV, so a try can't be farmed for trade-ins
     expect(VENDING_EXTRA_BALL_BUCKS).toBeGreaterThan(vendingExtraBallEV());
@@ -137,14 +129,14 @@ describe('paid tries', () => {
     };
     expect(body.bucks).toBe(100);
     expect(body.pools.find((p) => p.id === 'daily')?.paidTry).toEqual({ bucks: 10 });
-    expect(body.pools.find((p) => p.id === 'vending')?.paidTry).toEqual({ bucks: 15 });
+    expect(body.pools.find((p) => p.id === 'vending')?.paidTry).toEqual({ bucks: 10 });
   });
 
   it('broke: a 402, and nothing is deducted or granted', async () => {
     const { token, user } = await signIn('paid-broke');
     const r = await paid('vending', token);
     expect(r.status).toBe(402);
-    expect(((await r.json()) as { error: string }).error).toMatch(/not enough sand bucks: 15 needed, 0 in your balance/);
+    expect(((await r.json()) as { error: string }).error).toMatch(/not enough sand bucks: 10 needed, 0 in your balance/);
     expect(await balance(user.id)).toBe(0);
     expect(await pullsLogged(user.id, 'vending')).toBe(0);
     const ledger = await db.query('SELECT * FROM credit_ledger WHERE user_id = $1', [user.id]);
@@ -163,8 +155,8 @@ describe('paid tries', () => {
       const r = await paid('vending', token);
       expect(r.status).toBe(200);
       const body = (await r.json()) as { missed: boolean; item: string; rarity: string; bucks: number; paid: boolean };
-      expect(body).toMatchObject({ missed: false, item: 'blue-seaglass', rarity: 'common', bucks: 85, paid: true });
-      expect(await balance(user.id)).toBe(85);
+      expect(body).toMatchObject({ missed: false, item: 'blue-seaglass', rarity: 'common', bucks: 90, paid: true });
+      expect(await balance(user.id)).toBe(90);
       expect(await owned(token, 'blue-seaglass')).toBe(1);
       expect(await pullsLogged(user.id, 'vending')).toBe(1);
       // pull_state untouched: no free go claimed, no rest started
@@ -191,7 +183,7 @@ describe('paid tries', () => {
       expect(r.status).toBe(200);
       expect(((await r.json()) as { item: string; rarity: string }).item).toBe('nautilus');
       expect(await owned(token, 'nautilus')).toBe(1);
-      expect(await balance(user.id)).toBe(85);
+      expect(await balance(user.id)).toBe(90);
     } finally {
       forcedRand = null;
     }
@@ -265,7 +257,7 @@ describe('paid tries', () => {
     try {
       expect((await paid('vending', token)).status).toBe(200);
       expect((await paid('vending', token)).status).toBe(200);
-      expect(await balance(user.id)).toBe(70);
+      expect(await balance(user.id)).toBe(80);
       expect(await owned(token, 'blue-seaglass')).toBe(2);
       expect(await pullsLogged(user.id, 'vending')).toBe(2);
     } finally {

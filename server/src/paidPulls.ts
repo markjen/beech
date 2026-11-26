@@ -1,10 +1,10 @@
 // Paid extra tries on the claw and vending machines (docs/PRICING.md): when
 // the free go is gone, one more try for sand bucks.
 //
-// The price is set from the expected value of one try — 1.5x EV, rounded up
-// to the next 5 sand bucks — so both machines carry the same house edge
-// (about 70%) and a try can never be farmed for trade-ins: the price sits
-// above what a try is worth on average, so buying tries to trade the prizes
+// The price is 10 sand bucks on both machines (Mark's call, Nov 26, 2026):
+// the vending ball's EV is 8.5 (~18% edge) and the claw go's is 5.84
+// (~71% edge). Both prices sit above what a try is worth on average, so a
+// try can never be farmed for trade-ins: buying tries to trade the prizes
 // back in loses sand bucks. A won item is valued at its trade-in value
 // (RARITY_BUCKS), the codebase's own "what a pull item is worth in bucks"
 // — except unique, a one-of-a-kind item with no trade-in value, where the
@@ -55,16 +55,10 @@ export const vendingExtraBallEV = (): number => expectedBucks(VENDING_ODDS, PAID
 /** expected sand bucks of one extra go on the claw (a miss wins nothing) */
 export const clawExtraGoEV = (): number => expectedBucks(POOLS.daily.odds, PAID_PULL_VALUE_BUCKS, GRAB_CHANCE);
 
-/** round a price up to the next multiple of 5 (a price already on a 5 stays) */
-export const roundUp5 = (n: number): number => Math.ceil(n / 5) * 5;
-
-/** 1.5x EV, rounded up to the next 5 sand bucks */
-export const priceFromEV = (ev: number): number => roundUp5(ev * 1.5);
-
 /** one extra ball from the vending machine, in sand bucks (EV 8.5) */
-export const VENDING_EXTRA_BALL_BUCKS = priceFromEV(vendingExtraBallEV());
+export const VENDING_EXTRA_BALL_BUCKS = 10;
 /** one extra go on the claw machine, in sand bucks (EV 5.84) */
-export const CLAW_EXTRA_GO_BUCKS = priceFromEV(clawExtraGoEV());
+export const CLAW_EXTRA_GO_BUCKS = 10;
 
 /** the price of one extra try on a machine, or null when it has none */
 export const paidTryPrice = (poolId: string): number | null =>
