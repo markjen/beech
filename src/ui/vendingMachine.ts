@@ -19,17 +19,21 @@ type Phase = 'idle' | 'dispense' | 'open' | 'done';
  * changes every week. The ball is drawn on the server (this week's set and
  * odds are in the guide on the website, GUIDE_URL#vending); the machine is
  * the fun part. Press the button, a ball
- * drops into the tray, and it opens to show what's inside.
+ * drops into the tray, and it opens to show what's inside. When today's
+ * ball is gone, one more ball costs sand bucks — the price comes from the
+ * server, and the odds are on the guide link below, before the price.
  */
 export class VendingMachine {
   private readonly root: HTMLDivElement;
   private readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
   private readonly btn: HTMLButtonElement;
+  private readonly paidBtn: HTMLButtonElement;
   private readonly note: HTMLParagraphElement;
   private readonly reveal: HTMLDivElement;
   private pool: PullPool | null = null;
   private nextFree = 0;
+  private balance = 0;
   private phase: Phase = 'idle';
   private t = 0;
   private prize: { item: string; rarity: string } | null = null;
@@ -56,6 +60,7 @@ export class VendingMachine {
         <h2>Vending machine</h2>
         <canvas width="300" height="300"></canvas>
         <button type="button" class="vending-go">Get a ball</button>
+        <button type="button" class="vending-paid" hidden></button>
         <p class="vending-note"></p>
         <a class="guide-link" href="${GUIDE_URL}#vending" target="_blank" rel="noopener">this week’s set and odds</a>
         <div class="vending-reveal" hidden></div>
@@ -64,6 +69,7 @@ export class VendingMachine {
     this.canvas = this.root.querySelector('canvas')!;
     this.ctx = this.canvas.getContext('2d')!;
     this.btn = this.root.querySelector('.vending-go')!;
+    this.paidBtn = this.root.querySelector('.vending-paid')!;
     this.note = this.root.querySelector('.vending-note')!;
     this.reveal = this.root.querySelector('.vending-reveal')!;
     this.root.querySelector('.vending-close')!.addEventListener('click', () => this.close());
@@ -73,7 +79,8 @@ export class VendingMachine {
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && this.isOpen) this.close();
     });
-    this.btn.addEventListener('click', () => this.dispense());
+    this.btn.addEventListener('click', () => this.dispense(false));
+    this.paidBtn.addEventListener('click', () => this.dispense(true));
     // the balls behind the glass: colours weighted by the published odds
     const r = mulberry(11);
     const odds = { common: 0.6, uncommon: 0.25, rare: 0.12, unique: 0.03 };
@@ -98,6 +105,7 @@ export class VendingMachine {
       const s = await this.api.status();
       this.pool = s.pools.find((p) => p.id === 'vending') ?? null;
       this.nextFree = this.pool?.nextFree ?? s.nextFree;
+      this.balance = s.bucks;
       this.error = '';
     } catch (e) {
       this.error = (e as Error).message;
@@ -121,33 +129,50 @@ export class VendingMachine {
   private renderInfo(): void {
     const free = !!this.pool?.free;
     this.btn.disabled = !free || this.phase !== 'idle';
-    // status only: an error, or when the next ball is ready
-    this.note.textContent = this.error || (this.pool && !free ? `Your next ball is in ${until(this.nextFree)}.` : '');
+    // an extra ball for sand bucks, once today's free ball is gone — the
+    // odds are on the guide link below, before the price
+    const price = this.pool?.paidTry?.bucks;
+    const showPaid = !free && price !== undefined;
+    this.paidBtn.hidden = !showPaid;
+    if (showPaid) {
+      this.paidBtn.textContent = `Buy another ball · ${price} sand bucks`;
+      this.paidBtn.disabled = (this.phase !== 'idle' && this.phase !== 'done') || this.balance < price;
+    }
+    // status only: an error, too few sand bucks for an extra ball, or when the next ball is ready
+    this.note.textContent =
+      this.error ||
+      (showPaid && this.balance < price ? `Not enough sand bucks — you have ${this.balance}.` : this.pool && !free ? `Your next ball is in ${until(this.nextFree)}.` : '');
   }
 
-  private dispense(): void {
-    if (this.phase !== 'idle' || !this.pool?.free) return;
+  private dispense(paid: boolean): void {
+    // a paid ball can follow the free one without closing and reopening
+    if (this.phase !== 'idle' && this.phase !== 'done') return;
+    if (paid ? !this.pool?.paidTry : !this.pool?.free) return;
     this.phase = 'dispense';
     this.t = 0;
+    this.prize = null;
+    this.reveal.hidden = true;
+    this.error = '';
     this.btn.disabled = true;
+    this.paidBtn.disabled = true;
     // ask the server now; the ball takes long enough to cover the wait
-    this.result = this.api.pull('vending').then(
-      (r) => {
-        this.nextFree = r.nextFree;
-        if (this.pool) this.pool.free = false;
-        // the server never drops a vending ball (only the claw misses), but
-        // the response shape allows it: say so rather than show nothing
-        if (r.missed || !r.item || !r.rarity) {
-          this.error = 'The ball got stuck. Try again tomorrow.';
-          return null;
-        }
-        return { item: r.item, rarity: r.rarity };
-      },
-      (e: Error) => {
-        this.error = e.message;
+    const settle = (r: { item: string | null; rarity: string | null; missed: boolean; nextFree: number; bucks?: number }) => {
+      this.nextFree = r.nextFree;
+      if (!paid && this.pool) this.pool.free = false;
+      if (r.bucks !== undefined) this.balance = r.bucks;
+      // the server never drops a vending ball (only the claw misses), but
+      // the response shape allows it: say so rather than show nothing
+      if (r.missed || !r.item || !r.rarity) {
+        this.error = 'The ball got stuck. Try again tomorrow.';
         return null;
-      },
-    );
+      }
+      return { item: r.item, rarity: r.rarity };
+    };
+    const onErr = (e: Error) => {
+      this.error = e.message;
+      return null;
+    };
+    this.result = paid ? this.api.pullPaid('vending').then(settle, onErr) : this.api.pull('vending').then(settle, onErr);
     void this.result.then((p) => (this.prize = p));
   }
 

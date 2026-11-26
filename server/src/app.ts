@@ -60,6 +60,7 @@ import { appleRefund, googleVoided, revokeStorePurchase, verifyAppleTransaction,
 import { NOTIFY_PREFS, PUSH_DEVICES, lockPush, makeSender, pushTick, validEndpoint, validTz, type NotifyPref, type PushConfig, type PushSender } from './push.js';
 import { POOLS, GRAB_CHANCE, COOLDOWN_MAX_MS, COOLDOWN_MIN_MS, cooldownAfter, cryptoRandom, draw, grab, pullDay, starterPrize, STARTER, type Rarity } from './pulls.js';
 import { currentSet, drawVending, nextUtcMidnight } from './vending.js';
+import { CLAW_EXTRA_GO_BUCKS, VENDING_EXTRA_BALL_BUCKS, claimPaidPull, paidTryPrice } from './paidPulls.js';
 import { DIG_FIND_DAILY_CAP, DIG_FIND_ROLL_COOLDOWN_MS, digDraw, qualifiesForFind } from './digFinds.js';
 import {
   adoptPet,
@@ -1476,6 +1477,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       odds: Record<Rarity, number>;
       items: Record<Rarity, string[]>;
       free: boolean;
+      /** one more try for sand bucks, when the free go is gone */
+      paidTry?: { bucks: number };
       nextCooldown: number;
       /** the range the rest is drawn from (claw only): short after a miss, long after a win */
       cooldown?: { min: number; max: number };
@@ -1495,6 +1498,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
         // how often the claw holds on to a ball of each rarity (a miss spends the go)
         grab: GRAB_CHANCE,
         free: !st || st.at <= now,
+        paidTry: { bucks: CLAW_EXTRA_GO_BUCKS },
         // the rest after a go is random (5 min to 3 h); older apps show this
         // one number, so it's the longest it can be
         nextCooldown: COOLDOWN_MAX_MS,
@@ -1519,14 +1523,18 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
         odds: { ...set.odds, legendary: 0 },
         items: { ...set.items, legendary: [] },
         free: !st || st.at <= now,
+        paidTry: { bucks: VENDING_EXTRA_BALL_BUCKS },
         nextCooldown: nextUtcMidnight(now) - now,
         nextFree: st && st.at > now ? st.at : now,
         set: { week: set.week, name: set.name },
       });
     }
+    const [me_] = await db.query<{ credit_cents: number }>('SELECT credit_cents FROM users WHERE id = $1', [c.get('user').id]);
     return c.json({
       pools,
       nextFree: daily && daily.at > now ? daily.at : now,
+      /** your sand bucks, so the machines can show the price against your balance */
+      bucks: centsToBucks(Number(me_?.credit_cents ?? 0)),
     });
   });
 
@@ -1633,6 +1641,58 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       return c.json({ error: set ? 'not yet: your next ball is tomorrow' : 'not yet: the claw is resting', nextFree: st?.at ?? now }, 409);
     if (missed) return c.json({ missed: true, item: null, rarity: null, dropped: { item: got.item, rarity: got.rarity }, nextFree: st?.at ?? now + wait });
     return c.json({ missed: false, item: got.item, rarity: got.rarity, nextFree: st?.at ?? now + wait });
+  });
+
+  // your paid go: one more try for sand bucks, when the free go is gone (or
+  // before it — the price is the same either way, and the machine only
+  // offers it when the free go is gone). The server draws, deducts the price
+  // and grants the prize in one step; a broke player gets a 402 and nothing
+  // is deducted or granted. A paid try never touches the free go: it doesn't
+  // claim pull_state, doesn't reset the rest, and never gets a starter gift
+  // — those are for free play. The claw can still drop the ball, and the
+  // paid go is spent all the same.
+  app.post('/pulls/:pool/paid', requireUser, async (c) => {
+    const id = c.req.param('pool') ?? '';
+    const pool = Object.hasOwn(POOLS, id) ? POOLS[id] : undefined;
+    const set = id === 'vending' ? currentSet(clock()) : null;
+    if (!pool && !set) fail(404, 'no such machine');
+    const poolId = pool?.id ?? 'vending';
+    const price = paidTryPrice(poolId) ?? fail(404, 'no paid tries for this machine');
+    const me = c.get('user').id;
+    const now = clock();
+    // a paid try is exactly one draw, same as a free one — but it never gets
+    // a starter gift, and the claw can still drop the ball (the go is spent)
+    let got: { item: string; rarity: string };
+    let missed = false;
+    if (set) {
+      got = drawVending(set, rand);
+    } else {
+      const drawn = draw(pool!, rand);
+      missed = !grab(drawn.rarity, rand);
+      got = drawn;
+    }
+    // one of a kind: claim it first (someone else has it: a rare instead)
+    const unique = !missed && set ? await claimUnique(me, got, now, rareFrom(set)) : { got, release: async () => {} };
+    got = unique.got;
+    const paid = await claimPaidPull(db, {
+      userId: me,
+      pool: poolId,
+      priceCents: bucksToCents(price),
+      item: missed ? null : got.item,
+      rarity: missed ? null : got.rarity,
+      now,
+    });
+    if (!paid) {
+      await unique.release();
+      const [bal] = await db.query<{ credit_cents: number }>('SELECT credit_cents FROM users WHERE id = $1', [me]);
+      const have = centsToBucks(Number(bal?.credit_cents ?? 0));
+      return c.json({ error: `not enough sand bucks: ${price} needed, ${have} in your balance`, bucks: have, price }, 402);
+    }
+    // the free go is untouched by a paid try: its next time is unchanged
+    const st = (await freeAt(me)).get(poolId);
+    const nextFree = st && st.at > now ? st.at : now;
+    if (missed) return c.json({ missed: true, item: null, rarity: null, dropped: { item: got.item, rarity: got.rarity }, nextFree, bucks: paid.bucks, paid: true });
+    return c.json({ missed: false, item: got.item, rarity: got.rarity, nextFree, bucks: paid.bucks, paid: true });
   });
 
   // ---------------------------------------------------------------- digging finds

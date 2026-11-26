@@ -12,11 +12,18 @@ different pool.
   button, and the odds for this week's set. Press the button and a ball
   drops into the tray, then opens to show what's inside. "Put it on the
   beach" picks the item up in hand; "Keep it" just adds it to the bag.
-- **The ball.** One free ball a day, resetting at UTC midnight. No currency,
-  nothing to buy: the app has no in-app currency, the claw is free on a
-  rest, and the shop is real-money purchases, so the machine mirrors the
-  claw's free economy on a daily cadence instead. A daily ball means seven
+- **The ball.** One free ball a day, resetting at UTC midnight. A daily ball means seven
   chances at each week's set.
+- **Paid balls.** When today's ball is gone, one more ball from this
+  week's set costs **10 sand bucks** — the same set, the same odds, and
+  tomorrow's free ball is still free. The price is set from the expected
+  value of a ball (8.5 sand bucks; see docs/PRICING.md) and comes from the
+  server (`GET /pulls` publishes it), so the machine never hardcodes it. A
+  paid ball is exactly one draw, same as a free one: it never takes a
+  starter gift (the vending machine has none) and never touches the free
+  ball. The server deducts the price and grants the ball in one statement
+  (`claimPaidPull` in `server/src/paidPulls.ts`); without enough sand
+  bucks the machine says so and nothing is deducted or granted.
 - **The draw.** Server-side, in `server/src/vending.ts`, from this week's
   set. The client never rolls. A draw claims the day in `pull_state` and
   grants the item to `inventory` in one SQL statement, so two taps at once
@@ -104,11 +111,11 @@ all new.
 
 ## Follow-ups
 
-- **Paid balls.** Needs a consumable store product and the purchase check
-  in `server/src/store.ts`. Paid random items carry extra store rules: the
-  odds are already shown, but check the paid-random-item policies (and
-  country restrictions) before adding one — see the note in
-  `server/src/pulls.ts`.
+- **Paid balls are in** (10 sand bucks, `server/src/paidPulls.ts`) — the
+  claw's paid goes too (10 sand bucks). Paid random items carry extra store
+  rules: the odds are shown in the machine and the guide before buying,
+  but a country check for markets that restrict paid random items is still
+  open — see docs/PRICING.md.
 - **A ball a day is the only cadence.** More balls (a streak, a second ball
   for visiting a neighbor) would be a `pull_state` change, not a new
   machine.

@@ -897,6 +897,8 @@ export interface PullPool {
   grab?: Record<'common' | 'rare' | 'legendary', number>;
   /** a free go is ready now */
   free: boolean;
+  /** one more try for sand bucks, when the free go is gone */
+  paidTry?: { bucks: number };
   /** the longest the machine can rest after your next go (ms) */
   nextCooldown: number;
   /** the claw's rest is random in this range (ms): shorter after a miss, longer after a win */
@@ -933,7 +935,7 @@ export class GiftApi {
 export class PullApi {
   constructor(private readonly account: Account) {}
 
-  async status(): Promise<{ pools: PullPool[]; nextFree: number }> {
+  async status(): Promise<{ pools: PullPool[]; nextFree: number; bucks: number }> {
     const res = await this.account.fetch('/api/pulls');
     if (!res.ok) throw await errorOf(res, 'The claw machine is out of order');
     return res.json();
@@ -949,6 +951,23 @@ export class PullApi {
     nextFree: number;
   }> {
     const res = await this.account.fetch(`/api/pulls/${encodeURIComponent(pool)}`, { method: 'POST' });
+    if (!res.ok) throw await errorOf(res, 'The claw machine is out of order');
+    return res.json();
+  }
+
+  /** One more try for sand bucks: the same draw as a free go (the claw can
+   *  still drop the ball), and `bucks` is your balance after paying. A 402
+   *  means not enough sand bucks — nothing was deducted or granted. */
+  async pullPaid(pool: string): Promise<{
+    item: string | null;
+    rarity: string | null;
+    missed: boolean;
+    dropped?: { item: string; rarity: string };
+    nextFree: number;
+    bucks: number;
+    paid: boolean;
+  }> {
+    const res = await this.account.fetch(`/api/pulls/${encodeURIComponent(pool)}/paid`, { method: 'POST' });
     if (!res.ok) throw await errorOf(res, 'The claw machine is out of order');
     return res.json();
   }
