@@ -678,12 +678,13 @@ export function createAdminApp(db: Db, cfg: AdminConfig): Hono<Env> {
     const now = clock();
     const rows = await db.query<{ undo: string | null }>(
       `WITH snap AS (
-         INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at)
-         SELECT $1, owner_id, $2, 'auto', 'beach', id, name, location, nx, ny, sand, octet_length(sand), $3, $4, $5
+         INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at, origin_beach_id)
+         SELECT $1, owner_id, $2, 'auto', 'beach', id, name, location, nx, ny, sand, octet_length(sand), $3, $4, $5, id
            FROM beach WHERE id = $6 AND sand IS NOT NULL
          ON CONFLICT (from_beach) WHERE kind = 'auto' DO UPDATE SET
            name = EXCLUDED.name, from_name = EXCLUDED.from_name, location = EXCLUDED.location, nx = EXCLUDED.nx, ny = EXCLUDED.ny,
-           sand = EXCLUDED.sand, bytes = EXCLUDED.bytes, items = EXCLUDED.items, objects = EXCLUDED.objects, created_at = EXCLUDED.created_at
+           sand = EXCLUDED.sand, bytes = EXCLUDED.bytes, items = EXCLUDED.items, objects = EXCLUDED.objects, created_at = EXCLUDED.created_at,
+           origin_beach_id = EXCLUDED.origin_beach_id
          RETURNING id
        )
        UPDATE beach SET sand = NULL, items = '{}', version = version + 1, updated_at = $5, epoch = epoch + 1

@@ -255,6 +255,13 @@ export class AccountPanel {
       bar.appendChild(more);
     }
     wrap.appendChild(bar);
+    const extraBeachesInUse = a.extraBeachesInUse;
+    if (a.allowance > 1 || extraBeachesInUse > 0) {
+      const usage = document.createElement('div');
+      usage.className = 'status';
+      usage.textContent = `${extraBeachesInUse} of ${a.allowance - 1} extra beach slots in use`;
+      wrap.appendChild(usage);
+    }
 
     // World map (clicking a pin selects that beach in settings)
     if (ordered.length > 0) {
@@ -310,7 +317,7 @@ export class AccountPanel {
       if (!sel.home) {
         acts.appendChild(
           act('remove', `remove-beach-${sel.id}`, async () => {
-            if (!window.confirm(`Remove ${sel.name || 'this beach'}? Its sand, things and neighbors go. You can make another in its place.`)) return;
+            if (!window.confirm(`Remove ${sel.name || 'this beach'}? Its sand, placed things and neighbor links will be lost. This frees an extra beach slot.`)) return;
             const homeId = a.beaches.find((x) => x.home)!.id;
             await mine.remove(sel.id);
             this.selectedId = homeId;
