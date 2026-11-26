@@ -367,7 +367,7 @@ pilings, rails, a wider end platform). Decorative only.
   a spare in the bag, **remove pier**, and **pier paused** when a side link
   is gone. Placing shows the pier on the beach first with **place pier** /
   **cancel**.
-- Server: `beach_piers` (migration 33), `PUT`/`DELETE
+- Server: `beach_piers` (migration 34), `PUT`/`DELETE
   /beaches/mine/:id/pier`, `pier` on beaches in shore data (signed in and
   public), `pier`/`pierSite` per beach and `piers {owned, placed}` in
   `/beaches/mine`. Placed piers count as placed for the bag, trade-ins and

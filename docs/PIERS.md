@@ -96,7 +96,7 @@ removing or pausing one gives new pictures ([SHORE_SITE.md](SHORE_SITE.md#the-pi
 
 - Server: `server/src/app.ts` (`PUT`/`DELETE /beaches/mine/:id/pier`,
   `pierCounts`, the pier lines in `itemsElsewhere` and `giveOne`),
-  `server/src/shore.ts` (`PIER_SITE`, `PIER_SHOWN`), migration 33.
+  `server/src/shore.ts` (`PIER_SITE`, `PIER_SHOWN`), migration 34.
 - Tests: `server/test/stateMachines/piers.test.ts` (transitions, both TLC
   replays, a random walk against `piersModel.ts`), `tests/pier.test.ts`
   (the shape against the beach profile), `npm run e2e:piers`.
