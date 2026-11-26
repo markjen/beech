@@ -1,10 +1,10 @@
 // Browser end-to-end test of invites and the beach guide against a local
 // server (npm run server:dev), docs/INVITES_GUIDE.md:
-// Ana signs in and opens her invite panel. Fran opens Ana's invite link in a
-// fresh browser: the start screen says Ana invited her; she signs in, gets the
-// welcome parasol, lands on Ana's beach, asks to be her neighbor, then goes
-// home and does three guide steps (dig, build, undo). Ana comes back: she's
-// told Fran settled in, the parasol is in her bag, and the panel shows Fran.
+// Ana signs in; her invites are on her account page on beechshore. Fran opens
+// Ana's invite link in a fresh browser: the start screen says Ana invited her
+// and S$ 50 is waiting; she signs in, gets S$ 50, lands on Ana's beach, asks
+// to be her neighbor, then goes home and does three guide steps (dig, build,
+// undo). Ana comes back: she's told Fran joined, and she has S$ 50 too.
 //   node scripts/invites-e2e.mjs [screenshot-dir]
 import { e2eUrl, openApp, openBrowser } from './lib/e2e.mjs';
 
@@ -34,6 +34,7 @@ const signIn = (page, name) =>
   }, name);
 const owned = (page, item) =>
   page.evaluate(async (i) => (await window.__beech.account().inventory()).filter((x) => x.item === i).reduce((s, x) => s + x.quantity, 0), item);
+const bucks = (page) => page.evaluate(async () => (await (await window.__beech.account().fetch('/api/credit')).json()).bucks);
 const hints = (page) => page.$$eval('.hint', (els) => els.map((e) => e.textContent ?? ''));
 
 const tag = `iv${Date.now() % 10000}${process.pid % 100}`;
@@ -45,16 +46,16 @@ const pa = await open('nointro&fixedres&seed=1&nofinds');
 await signIn(pa, ana);
 await pa.waitForFunction(() => window.__beech.sync().state === 'saved', null, { timeout: 30000 });
 const anaCode = await pa.evaluate(() => window.__beech.neighbors().api.get().then((n) => n.code));
-await pa.evaluate(() => window.__beech.invites().open());
-await pa.waitForSelector('.invite.open .invite-link input', { timeout: 30000 });
-const link = await pa.$eval('.invite-link input', (i) => i.value);
-check(link.endsWith(`?invite=${anaCode}`), `Ana's invite link carries her code (${link})`);
-check((await pa.$eval('.invite-empty', (e) => e.textContent)).includes('nobody yet'), 'nobody has joined yet');
+const accountUrl = await pa.evaluate(() => window.__beech.inviteUrl());
+check(/\/account#invite$/.test(accountUrl), `"invite" goes to her account page on beechshore (${accountUrl})`);
+const mine0 = await pa.evaluate(async () => (await window.__beech.account().fetch('/api/referrals')).json());
+check(mine0.code === anaCode && mine0.joined === 0, 'her invite code is her beach code, and nobody has joined yet');
 
 // ---- Fran: opens the link in a fresh browser
 const pf = await open(`invite=${anaCode}&fixedres&seed=1&nofinds`, { width: 390, height: 844 });
 await pf.waitForSelector('.start-invite', { timeout: 60000 });
-check((await pf.$eval('.start-invite', (e) => e.textContent)).includes(`${ana} invited you`), 'the start screen says who invited her');
+const startText = await pf.$eval('.start-invite', (e) => e.textContent);
+check(startText.includes(`${ana} invited you`) && startText.includes('S$ 50'), `the start screen says who invited her, and S$ 50 is waiting (${startText})`);
 check(!(await pf.evaluate(() => location.search.includes('invite'))), 'the invite is taken out of the URL');
 if (shots) await pf.screenshot({ path: `${shots}/invite-start.png` });
 await pf.click('.start');
@@ -74,9 +75,9 @@ const welcome = await pf.waitForFunction(
   { timeout: 60000 },
 );
 const w = await welcome.jsonValue();
-check(w.text.includes(`A welcome gift from ${ana}`), 'Fran is told about her welcome gift');
+check(w.text.includes(`A welcome gift from ${ana}`) && w.text.includes('S$ 50'), 'Fran is told about her S$ 50');
 check(w.asked, 'the welcome note has a "be her neighbor" button');
-check((await owned(pf, 'parasol')) === 1, 'the parasol is in her bag');
+check((await bucks(pf)) === 50, 'S$ 50 is in her balance');
 await pf.waitForFunction((c) => window.__beech.neighbors().visiting?.code === c, anaCode, { timeout: 60000 });
 check(true, "she lands on Ana's beach");
 if (shots) await pf.screenshot({ path: `${shots}/invite-welcome.png` });
@@ -141,25 +142,22 @@ if (shots) await pf.screenshot({ path: `${shots}/guide-panel.png` });
 // ---- Ana comes back
 await signIn(pa, `${ana}-other`);
 await signIn(pa, ana);
-await pa.waitForFunction(() => [...document.querySelectorAll('.hint')].some((h) => h.textContent.includes('settled in')), null, { timeout: 60000 });
-check((await hints(pa)).some((h) => h.includes(`${fran} settled in`) && h.includes('parasol')), 'Ana is told Fran settled in, and what she got');
-check((await owned(pa, 'parasol')) === 1, "Ana's parasol is in her bag");
+await pa.waitForFunction(() => [...document.querySelectorAll('.hint')].some((h) => h.textContent.includes('joined through your invite')), null, { timeout: 60000 });
+check((await hints(pa)).some((h) => h.includes(`${fran} joined through your invite`) && h.includes('S$ 50')), 'Ana is told Fran joined, and the S$ she got');
+check((await bucks(pa)) === 50, 'S$ 50 is in her balance');
 const asks = await pa.evaluate(() => window.__beech.neighbors().api.get().then((n) => n.requests.map((r) => r.name)));
 check(asks.includes(fran), 'Fran has asked to be her neighbor');
 check(await pa.evaluate(() => window.__beech.guide.done.has('invite')), "Ana's guide has its invite step done");
-await pa.evaluate(() => window.__beech.invites().open());
-await pa.waitForSelector('.invite.open .invite-friends li b', { timeout: 60000 });
-const friends = await pa.$$eval('.invite-friends li', (lis) => lis.map((l) => l.textContent));
-check(friends.some((f) => f.includes(fran) && f.includes('settled in')), 'the panel lists Fran as settled in');
-check((await pa.$$('.invite-rung.done')).length === 1, 'the first rung is ticked');
-if (shots) await pa.screenshot({ path: `${shots}/invite-panel.png` });
+const mine = await pa.evaluate(async () => (await window.__beech.account().fetch('/api/referrals')).json());
+check(mine.joined === 1 && mine.earned === 50 && mine.friends[0]?.name === fran, 'her invites list Fran, with S$ 50 earned');
+if (shots) await pa.screenshot({ path: `${shots}/invite-joined.png` });
 
 // a second sign-in doesn't tell her again
 await pa.evaluate(() => document.querySelectorAll('.hint').forEach((h) => h.remove()));
 await signIn(pa, `${ana}-other2`);
 await signIn(pa, ana);
 await pa.waitForTimeout(800);
-const told = (await hints(pa)).filter((h) => h.includes('settled in')).length;
+const told = (await hints(pa)).filter((h) => h.includes('joined through your invite')).length;
 check(told <= 1, 'she is told once');
 
 check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join(' | ')}` : ''}`);

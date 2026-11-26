@@ -92,8 +92,8 @@ await pb.evaluate((n) => window.__beech.account().signInDev(n), `ben${tag}`);
 await pb.waitForSelector('.copybeach.open [data-act="copy-drop"]', { timeout: 60000 });
 check(true, 'after signing in, the copy sheet opens');
 const sheetText = await pb.textContent('.copybeach.open');
-check(/Lighthouse × 1/.test(sheetText) && /1 short/.test(sheetText) && /30 sand bucks/.test(sheetText), 'it lists the lighthouse as short, with its price in sand bucks');
-check((await pb.textContent('.copybeach [data-act="copy-buy"]')).includes('Buy what’s missing · 30 sand bucks'), 'buy what’s missing: exactly the lighthouse');
+check(/Lighthouse × 1/.test(sheetText) && /1 short/.test(sheetText) && /S\$ 30/.test(sheetText), 'it lists the lighthouse as short, with its price in sand bucks');
+check((await pb.textContent('.copybeach [data-act="copy-buy"]')).includes('Buy what’s missing · S$ 30'), 'buy what’s missing: exactly the lighthouse');
 check((await pb.textContent('.copybeach [data-act="copy-drop"]')).includes('Copy without them (1 left out)'), 'or copy without it');
 check(!!(await pb.$('.copybeach .beach-pill.on')) && (await pb.textContent('.copybeach .beach-pill.on')).includes('⌂'), 'no room for a new beach: it goes onto his home');
 if (shots) await pb.screenshot({ path: `${shots}/copy-sheet.png` });
@@ -117,17 +117,21 @@ if (undo) {
 }
 void before;
 
-// ---- buy what's missing: no sand bucks yet, so a pack first (docs/SAND_BUCKS.md), then back to the copy
+// ---- buy what's missing: not enough sand bucks, so a pack first (docs/SAND_BUCKS.md), then back to the copy.
+// Ben came in through Ana's beach link, which counts as an invite: S$ 50 to start. Spend it first.
+check((await api(pb, '/api/credit')).body?.bucks === 50, 'Ana’s link was an invite: Ben starts with S$ 50');
+const spent = await api(pb, '/api/store/buy', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ basket: [{ product: 'item_parasol', quantity: 5 }], requestId: crypto.randomUUID() }) });
+check(spent.body?.bucks === 0, 'he spends it on five parasols');
 await pb.evaluate((c) => window.__beech.copyBeach(c), anaCode);
 await pb.waitForSelector('.copybeach.open [data-act="copy-buy"]', { timeout: 60000 });
 await pb.click('.copybeach [data-act="copy-buy"]');
 await pb.waitForSelector('.shop.open .shop-packs button[data-product="bucks_30"]', { timeout: 60000 });
 check(true, 'short of sand bucks: the shop opens at the packs');
-check((await pb.textContent('.shop.open .shop-bucks')).includes('0 sand bucks'), 'the shop shows the balance');
+check((await pb.textContent('.shop.open .shop-bucks')).includes('0 sand dollars (S$)'), 'the shop shows the balance');
 if (shots) await pb.screenshot({ path: `${shots}/shop-packs.png` });
 await pb.click('.shop.open .shop-packs button[data-product="bucks_30"]');
 await pb.waitForSelector('.copybeach.open [data-act="copy-buy"]', { timeout: 60000 });
-check((await pb.textContent('.copybeach.open')).includes('30 sand bucks'), 'with a pack bought, the copy sheet is back');
+check((await pb.textContent('.copybeach.open')).includes('S$ 30'), 'with a pack bought, the copy sheet is back');
 await pb.click('.copybeach [data-act="copy-buy"]');
 await pb.waitForSelector('.copybeach.open [data-act="copy-go"]', { timeout: 60000 });
 check((await pb.textContent('.copybeach [data-act="copy-go"]')).startsWith('Replace'), 'after buying, the button copies the whole beach');
@@ -135,22 +139,45 @@ if (shots) await pb.screenshot({ path: `${shots}/copy-bought.png` });
 await pb.click('.copybeach [data-act="copy-go"]');
 await pb.waitForFunction(() => window.__beech.info().objects.some((o) => o.item === 'lighthouse'), null, { timeout: 60000 });
 check(true, 'the lighthouse is on his beach');
-check((await api(pb, '/api/credit')).body?.bucks === 0, 'one purchase of 30 sand bucks paid for it');
+const left = (await api(pb, '/api/credit')).body?.bucks;
+check(left === 3, `the pack (S$ 33) paid for it: S$ 30 spent, ${left} left`);
 
-// ---- trade a thing in from the bag (the bar that shows while it's in hand)
-await api(pb, '/api/dev/grant', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ item: 'parasol' }) });
+// ---- trade a thing in from the bag: long press it, pick how many, see the S$
+await api(pb, '/api/dev/grant', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ item: 'parasol', quantity: 2 }) });
 await pb.evaluate(() => window.__beech.refreshOwned?.());
 await pb.waitForFunction(() => window.__beech.inventory.tradeValue('parasol') === 10, null, { timeout: 30000 });
 await pb.evaluate(() => window.__beech.setRail(true)); // the HUD starts as just the palm
-await pb.evaluate(() => window.__beech.inventory.select('parasol'));
-await pb.waitForSelector('.place-bar.shown .pb-trade:not([hidden])', { timeout: 30000 });
-check((await pb.textContent('.place-bar .pb-trade')) === 'trade in · 10', 'the parasol in hand offers "trade in · 10"');
-await pb.click('.place-bar .pb-trade');
-check((await pb.textContent('.place-bar .pb-trade')) === 'sure? · 10', 'the first tap asks');
+await pb.evaluate(() => window.__beech.inventory.setOpen(true));
+await pb.waitForSelector('.inv-tray.open', { timeout: 10000 });
+check((await pb.textContent('.inv-tray .inv-tip')) === 'long press item to trade in', 'the bag says to long press to trade in');
+const tile = pb.locator('.inv-grid .inv-item', { hasText: 'Parasol' }).first();
+await pb.waitForTimeout(1500); // let the bag settle (it re-renders as the bag loads)
+await tile.scrollIntoViewIfNeeded();
+const box = await tile.boundingBox();
+await pb.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+await pb.mouse.down();
+// hold until it opens, as a finger would (a slow software-rendered page runs the timer late)
+await pb.waitForSelector('.trade-dlg:not([hidden])', { timeout: 20000 });
+await pb.mouse.up();
+await pb.waitForTimeout(300);
+check(await pb.isVisible('.trade-dlg:not([hidden])'), 'a long press opens the trade-in dialog, and letting go keeps it open');
+check(!(await pb.evaluate(() => window.__beech.inventory.current)), 'a long press opens the dialog without picking the parasol up');
+check((await pb.textContent('.trade-dlg .trade-go')) === 'trade in · S$ 10', 'one parasol: trade in · S$ 10');
+await pb.click('.trade-dlg [data-act="trade-more"]');
+check((await pb.textContent('.trade-dlg .trade-value')) === 'you get S$ 20', 'two: you get S$ 20');
+check(await pb.isVisible('.trade-dlg [data-act="trade-gift"]'), 'the dialog has a gift button');
 if (shots) await pb.screenshot({ path: `${shots}/trade-in.png` });
-await pb.click('.place-bar .pb-trade');
-await pb.waitForFunction(() => document.querySelector('.place-bar .pb-status')?.textContent === '+10 sand bucks', null, { timeout: 30000 });
-check((await api(pb, '/api/credit')).body?.bucks === 10, 'traded in: 10 sand bucks back');
+await pb.click('.trade-dlg .trade-go');
+await pb.waitForFunction(() => document.querySelector('.trade-dlg .trade-status')?.textContent === '+S$ 20', null, { timeout: 30000 });
+check((await api(pb, '/api/credit')).body?.bucks === left + 20, 'traded in: S$ 20 back');
+await pb.keyboard.press('Escape');
+// with a thing in hand, the bar has no trade-in or gift
+await api(pb, '/api/dev/grant', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ item: 'parasol' }) });
+await pb.evaluate(() => window.__beech.refreshOwned?.());
+await pb.waitForFunction(() => window.__beech.inventory.ownedCount('parasol') > 0, null, { timeout: 30000 });
+await pb.evaluate(() => window.__beech.inventory.select('parasol'));
+await pb.waitForSelector('.place-bar.shown', { timeout: 30000 });
+check((await pb.$$('.place-bar .pb-trade, .place-bar .pb-gift')).length === 0, 'the bar for the thing in hand has no trade-in or gift');
 
 // ---- Ana hears about it once, and the shore page counts it
 const pa2 = await open('nointro&fixedres&seed=1&nofinds', { width: 390, height: 844 });

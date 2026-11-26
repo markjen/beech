@@ -41,7 +41,9 @@
 import { Hono, type Context } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 
-import { PACKS, PRODUCTS, copyBasket, productById, realMoneyProductById, storeProductById, type Product } from './products.js';
+import { PACKS, PRODUCTS, copyBasket, packById, productById, realMoneyProductById, storeProductById, type Product } from './products.js';
+import { ledgerOf } from './ledger.js';
+import { displayName } from './prizeNames.js';
 import { createWeather } from './weather.js';
 import { creditBalance, grantPurchase } from './bucksDb.js';
 import { BUCK, bucksToCents, centsToBucks, listBucks, roundToBuck, shareOut, tradeable, unitsOf } from './bucks.js';
@@ -132,6 +134,7 @@ import {
   CLAIM_WINDOW_MS,
   GUIDE_BONUS,
   GUIDE_STEPS,
+  INVITE_BONUS,
   REWARD_CAP,
   SETTLE_STEPS,
   WELCOME_GIFT,
@@ -202,6 +205,8 @@ export interface AppConfig {
    * and who may call POST /push/tick (Cloud Scheduler's OIDC token).
    */
   push?: { config: PushConfig; send?: PushSender; tick?: { audience: string; email: string } };
+  /** the shore site's public origin (SHORE_URL): where a top-up from your account page comes back to */
+  shoreUrl?: string;
 }
 
 export interface User {
@@ -209,7 +214,7 @@ export interface User {
   name: string;
 }
 
-type Env = { Variables: { user: User; tokenHash: string } };
+type Env = { Variables: { user: User; tokenHash: string; shore: boolean } };
 
 /** most beaches one person can have */
 export const BEACH_CAP = 8;
@@ -2803,11 +2808,18 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   };
   const isUuid = (s: string) => UUID_PATTERN.test(s);
 
-  app.post('/store/web-checkout', requireUser, async (c) => {
+  const webCheckout = async (c: Context<Env>) => {
     if (!cfg.xsolla) fail(404, 'buying on the web is not open yet: buy in the beech app');
     const me = c.get('user').id;
     if (!checkoutLimiter(me)) return c.json({ error: 'slow down' }, 429);
-    const { productId, promoCode, country: rawCountry } = await body<{ productId?: string; promoCode?: string; country?: unknown }>(c);
+    const { productId, promoCode, country: rawCountry, mount } = await body<{ productId?: string; promoCode?: string; country?: unknown; mount?: unknown }>(c);
+    // from your account page on beechshore: Pay Station comes back there, to
+    // one of two fixed places (never a URL from the request)
+    let returnUrl: string | undefined;
+    if (c.get('shore')) {
+      if (!packById(productId ?? '')) fail(400, 'only sand-dollar packs are sold here');
+      returnUrl = mount === 'game' ? new URL('/shore/account', cfg.xsolla?.returnUrl ?? 'https://play.beech.games/').toString() : `${(cfg.shoreUrl ?? 'https://beechshore.com').replace(/\/$/, '')}/account`;
+    }
     // the web sells sand-buck packs (docs/SAND_BUCKS.md); item products stay
     // accepted for a page loaded before the sand-bucks release
     const product = realMoneyProductById(productId ?? '');
@@ -2836,6 +2848,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
         userId: me,
         sku: product!.id,
         webOrderId: id,
+        returnUrl,
         country,
         ip: (c.req.header('x-forwarded-for') ?? '').split(',')[0]?.trim() || undefined,
       });
@@ -2848,15 +2861,17 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     await db.query('UPDATE web_orders SET provider_order_id = $2 WHERE id = $1', [id, t!.orderId]);
     logEvent('web_checkout', { product: product!.id, order: id, sandbox: cfg.xsolla!.sandbox });
     return c.json({ order: id, url: payStationUrl(t!.token, cfg.xsolla!.sandbox) });
-  });
+  };
+  app.post('/store/web-checkout', requireUser, webCheckout);
 
-  app.get('/store/web-orders/:id', requireUser, async (c) => {
+  const webOrder = async (c: Context<Env>) => {
     const id = c.req.param('id') ?? '';
     if (!isUuid(id)) fail(404, 'no such order');
     const rows = await db.query<WebOrderRow>('SELECT * FROM web_orders WHERE id = $1 AND user_id = $2', [id, c.get('user').id]);
     if (!rows[0]) fail(404, 'no such order');
     return c.json({ order: orderView(rows[0]) });
-  });
+  };
+  app.get('/store/web-orders/:id', requireUser, webOrder);
 
   /**
    * Xsolla's webhooks. Not session-authenticated: the signature is the
@@ -3152,7 +3167,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   };
 
   // --- players: redeem a gift card, see credit, buy with credit ---
-  app.post('/gift-cards/redeem', requireUser, async (c) => {
+  const redeemGiftCard = async (c: Context<Env>) => {
     const me = c.get('user').id;
     if (!redeemLimiter(me)) return c.json({ error: 'slow down' }, 429);
     const { code } = await body<{ code?: string }>(c);
@@ -3183,7 +3198,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     });
     if (!result) fail(409, 'that card was just used');
     return c.json({ ...result!, credited: result!.creditedCents / BUCK, bucks: result!.creditCents / BUCK });
-  });
+  };
+  app.post('/gift-cards/redeem', requireUser, redeemGiftCard);
 
   app.get('/credit', requireUser, async (c) => {
     const rows = await db.query<{ credit_cents: number; creator_credit_debt_cents: number }>(
@@ -3547,7 +3563,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   const giftsThisHour = async (tx: Db, me: string, now: number) =>
     Number((await tx.query<{ n: string }>('SELECT COUNT(*) AS n FROM gifts WHERE from_id = $1 AND created_at > $2', [me, now - 3600000]))[0].n);
 
-  app.post('/gifts', requireUser, async (c) => {
+  const sendGift = async (c: Context<Env>) => {
     const { code, item } = await body<{ code?: string; item?: string }>(c);
     if (normalizeCode(code ?? '').length !== 6) fail(400, 'neighbor codes are 6 letters and numbers');
     if (!item || typeof item !== 'string' || item.length > 40) fail(400, 'say which item to give');
@@ -3565,7 +3581,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       if (!(await giveOne(tx, me, item!, them!.owner_id, them!.id, now))) fail(409, "you don't have one of those to give");
     });
     return c.json({ item, to: { name: them!.name, code: them!.code } });
-  });
+  };
+  app.post('/gifts', requireUser, sendGift);
 
   // ---------------------------------------------------------------- the beach guide
   // A checklist that teaches the game one mechanic at a time (docs/INVITES_GUIDE.md).
@@ -3583,8 +3600,9 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   const REWARD_ROW = `INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at)`;
 
   /**
-   * If `invitee` came through an invite and has now done enough of the guide,
-   * mark them settled in and give their inviter the next rung of the ladder.
+   * If `invitee` came through an invite before the sand-buck bonus (a legacy
+   * referral, bonus_bucks NULL) and has now done enough of the guide, mark
+   * them settled in and give their inviter the next rung of the old ladder.
    * The rank is unique per inviter: two friends settling at the same moment
    * can't take the same rung (the loser's statement fails and it retries).
    */
@@ -3592,7 +3610,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const r = (
       await db.query<{ inviter_id: string; n: string }>(
         `SELECT inviter_id, (SELECT COUNT(*) FROM guide_steps WHERE user_id = $1 AND ${COUNTED}) AS n
-           FROM referrals WHERE invitee_id = $1 AND qualified_at IS NULL`,
+           FROM referrals WHERE invitee_id = $1 AND qualified_at IS NULL AND bonus_bucks IS NULL`,
         [invitee],
       )
     )[0];
@@ -3605,7 +3623,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
         await db.query(
           `WITH q AS (
              UPDATE referrals SET qualified_at = $2, reward_rank = $3, reward_item = $4
-              WHERE invitee_id = $1 AND qualified_at IS NULL
+              WHERE invitee_id = $1 AND qualified_at IS NULL AND bonus_bucks IS NULL
              RETURNING inviter_id
            ), g AS (
              ${REWARD_ROW} SELECT inviter_id, $4, 1, 'reward', $2 FROM q WHERE $4::text IS NOT NULL RETURNING 1
@@ -3677,11 +3695,14 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     if (!inviteLookups(ip)) return c.json({ error: 'slow down' }, 429);
     const them = await nodeByCode(c.req.param('code') ?? '');
     if (!them) return c.json({ error: 'no beach has that code' }, 404);
-    return c.json({ name: them.name?.trim() || 'Someone', welcomeGift: WELCOME_GIFT });
+    return c.json({ name: them.name?.trim() || 'Someone', welcomeBucks: INVITE_BONUS });
   });
 
-  // A new player who came through a link claims it once: they get the welcome
-  // gift now; the inviter's reward waits until they settle in (settle()).
+  // A new player who came through a link claims it once (ClaimAtomic in
+  // specs/tla/Invites.tla): one transaction writes the referral (unique per
+  // invitee, so a second device's claim finds it and gets nothing), its rank
+  // (unique per inviter, so two friends can't both take the last of the
+  // cap's ranks: the loser retries) and both bonuses.
   app.post('/referrals/claim', requireUser, async (c) => {
     const { code } = await body<{ code?: string }>(c);
     if (normalizeCode(code ?? '').length !== 6) fail(400, 'invite codes are 6 letters and numbers');
@@ -3692,34 +3713,41 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const now = clock();
     const created = Number((await db.query<{ created_at: string }>('SELECT created_at FROM users WHERE id = $1', [me]))[0]?.created_at ?? 0);
     if (now - created > CLAIM_WINDOW_MS) fail(409, 'invites are for new players');
-    const rows = await db.query<{ n: string }>(
-      `WITH r AS (
-         INSERT INTO referrals (invitee_id, inviter_id, code, created_at) VALUES ($1, $2, $3, $4)
-         ON CONFLICT (invitee_id) DO NOTHING RETURNING inviter_id
-       ), g AS (
-         ${REWARD_ROW} SELECT $1, $5, 1, 'reward', $4 FROM r RETURNING 1
-       ), s AS (
-         -- the inviter's guide: a friend joined
-         INSERT INTO guide_steps (user_id, step, done_at) SELECT inviter_id, 'invite', $4 FROM r
-         ON CONFLICT DO NOTHING RETURNING 1
-       ), told AS (
-         INSERT INTO inbox (user_id, kind, actor_id, created_at) SELECT inviter_id, 'invite_joined', $1, $4 FROM r RETURNING 1
-       )
-       SELECT (SELECT COUNT(*) FROM r) AS n`,
-      [me, them!.owner_id, them!.code, now, WELCOME_GIFT],
-    );
-    if (Number(rows[0].n) === 0) fail(409, 'you already joined through an invite');
-    // guide steps done before the claim (signed out, then synced) count too
-    await settle(me);
-    return c.json({ inviter: { name: them!.name?.trim() || 'Someone', code: them!.code }, gift: WELCOME_GIFT });
+    const bonus = INVITE_BONUS * BUCK;
+    let claimed: { rank: number | null } | null = null;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        claimed = await db.withTransaction(async (tx) => {
+          const [r] = await tx.query<{ reward_rank: number | null }>(
+            `INSERT INTO referrals (invitee_id, inviter_id, code, created_at, reward_rank, bonus_bucks)
+             SELECT $1, $2, $3, $4, CASE WHEN m < $5 THEN m + 1 END, $6
+               FROM (SELECT COALESCE(MAX(reward_rank), 0) AS m FROM referrals WHERE inviter_id = $2) top
+             ON CONFLICT (invitee_id) DO NOTHING RETURNING reward_rank`,
+            [me, them!.owner_id, them!.code, now, REWARD_CAP, INVITE_BONUS],
+          );
+          if (!r) return null;
+          await creditBalance(tx, me, bonus, 'invite_bonus', `invited_by:${them!.owner_id}`, now);
+          if (r.reward_rank !== null) await creditBalance(tx, them!.owner_id, bonus, 'invite_bonus', `invited:${me}`, now);
+          // the inviter's guide (a friend joined) and inbox
+          await tx.query(`INSERT INTO guide_steps (user_id, step, done_at) VALUES ($1, 'invite', $2) ON CONFLICT DO NOTHING`, [them!.owner_id, now]);
+          await tx.query(`INSERT INTO inbox (user_id, kind, actor_id, created_at) VALUES ($1, 'invite_joined', $2, $3)`, [them!.owner_id, me, now]);
+          return { rank: r.reward_rank === null ? null : Number(r.reward_rank) };
+        });
+        break;
+      } catch (e) {
+        // another friend took that rank at the same moment: try the next
+        if ((e as { code?: string }).code !== '23505' || attempt >= 4) throw e;
+      }
+    }
+    if (!claimed) fail(409, 'you already joined through an invite');
+    return c.json({ inviter: { name: them!.name?.trim() || 'Someone', code: them!.code }, bucks: INVITE_BONUS, inviterRewarded: claimed!.rank !== null });
   });
 
-  // Your invites: your link's code, who joined, who settled in, and the ladder.
-  app.get('/referrals', requireUser, async (c) => {
-    const me = c.get('user').id;
+  /** Your invites: your link's code, who joined, and what each one earned you. */
+  const referralsOf = async (me: string) => {
     const code = (await db.query<{ code: string }>('SELECT code FROM beach WHERE id = $1', [await homeOf(me)]))[0]?.code ?? '';
-    const rows = await db.query<{ name: string; qualified_at: string | null; reward_item: string | null; created_at: string }>(
-      `SELECT u.name, r.qualified_at, r.reward_item, r.created_at
+    const rows = await db.query<{ name: string; qualified_at: string | null; reward_item: string | null; reward_rank: number | null; bonus_bucks: number | null; created_at: string }>(
+      `SELECT u.name, r.qualified_at, r.reward_item, r.reward_rank, r.bonus_bucks, r.created_at
          FROM referrals r JOIN users u ON u.id = r.invitee_id
         WHERE r.inviter_id = $1 ORDER BY r.created_at`,
       [me],
@@ -3728,20 +3756,79 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       name: r.name?.trim() || 'Someone',
       joinedAt: Number(r.created_at),
       settled: r.qualified_at !== null,
+      /** an old ladder reward (before the sand-buck bonus) */
       reward: r.reward_item,
+      /** sand bucks this friend earned you (0 past the cap, or a legacy referral) */
+      bucks: r.bonus_bucks !== null && r.reward_rank !== null ? Number(r.bonus_bucks) : 0,
     }));
-    return c.json({
+    return {
       code,
       joined: friends.length,
       settled: friends.filter((f) => f.settled).length,
+      earned: friends.reduce((t, f) => t + f.bucks, 0),
       friends,
-      ladder: ladder(),
+      bonus: INVITE_BONUS,
       cap: REWARD_CAP,
+      // for old app versions' invite panel
+      ladder: ladder(),
       settleSteps: SETTLE_STEPS,
       welcomeGift: WELCOME_GIFT,
       steps: GUIDE_STEPS.length,
+    };
+  };
+  app.get('/referrals', requireUser, async (c) => c.json(await referralsOf(c.get('user').id)));
+
+  // ---------------------------------------------------------------- your account on beechshore
+  // docs/SAND_BUCKS.md, "Your account on beechshore". The shore site's
+  // account page (shoreSite.ts, /account) connects with the same short-lived
+  // token as item submissions (itemSubmissions.ts) and forwards its calls
+  // here. Only these routes take that token: it can read your balance and
+  // history, top up, redeem a gift card, gift a thing and see your invites,
+  // and nothing else in the game.
+  const requireShoreAccount = async (c: Context<Env>, next: () => Promise<void>) => {
+    c.header('Cache-Control', 'no-store');
+    const m = /^Bearer\s+(\S+)$/.exec(c.req.header('Authorization') ?? '');
+    if (!m) fail(401, 'Connect your Beech account.');
+    const now = Date.now();
+    const [row] = await db.query<User>(
+      `SELECT u.id, u.name FROM item_submission_sessions i JOIN sessions s ON s.token_hash = i.session_hash
+         JOIN users u ON u.id = s.user_id WHERE i.token_hash = $1 AND i.expires_at > $2 AND s.expires_at > $2`,
+      [await hashToken(m![1]), now],
+    );
+    if (!row) fail(401, 'Connect your Beech account again.');
+    c.set('user', { id: row!.id, name: row!.name });
+    c.set('shore', true);
+    await next();
+  };
+  app.get('/shore-account/summary', requireShoreAccount, async (c) => {
+    const me = c.get('user').id;
+    const now = clock();
+    const [[u], ledger, bag, invites] = await Promise.all([
+      db.query<{ credit_cents: number; creator_credit_debt_cents: number }>('SELECT credit_cents, creator_credit_debt_cents FROM users WHERE id = $1', [me]),
+      ledgerOf(db, me),
+      db.query<{ item_id: string; n: string }>(
+        `SELECT item_id, SUM(quantity) AS n FROM inventory
+          WHERE user_id = $1 AND quantity > 0 AND (expires_at IS NULL OR expires_at > $2)
+          GROUP BY item_id ORDER BY item_id`,
+        [me, now],
+      ),
+      referralsOf(me),
+    ]);
+    return c.json({
+      user: { name: c.get('user').name },
+      bucks: centsToBucks(Number(u?.credit_cents ?? 0)),
+      debt: centsToBucks(Number(u?.creator_credit_debt_cents ?? 0)),
+      ledger,
+      bag: bag.filter((r) => r.item_id !== 'beach').map((r) => ({ item: r.item_id, name: displayName(r.item_id), owned: Number(r.n) })),
+      invites,
+      packs: PACKS.map((p) => ({ id: p.id, name: p.name, usd: p.usd, bucks: p.bucks, featured: !!p.featured })),
+      webCheckout: !!cfg.xsolla,
     });
   });
+  app.post('/shore-account/top-up', requireShoreAccount, webCheckout);
+  app.get('/shore-account/web-orders/:id', requireShoreAccount, webOrder);
+  app.post('/shore-account/redeem', requireShoreAccount, redeemGiftCard);
+  app.post('/shore-account/gift', requireShoreAccount, sendGift);
 
 
   // ---------------------------------------------------------------- visitors and the inbox

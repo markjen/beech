@@ -503,6 +503,147 @@
   opacity: 0.5;
 }
 
+/* the bag's one line: long press a thing to trade it in */
+.inv-tip {
+  margin: -4px 2px 10px;
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+.inv-item {
+  -webkit-touch-callout: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* trade in (and gift) a thing from the bag: a card over the bag */
+.trade-dlg {
+  position: fixed;
+  inset: 0;
+  z-index: 21;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(46, 40, 78, 0.45);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.trade-dlg[hidden] {
+  display: none;
+}
+
+.trade-card {
+  position: relative;
+  width: min(320px, 100%);
+  padding: 18px 16px 14px;
+  border-radius: 22px;
+  color: var(--ui-fg);
+  background-color: var(--ui-bg);
+  background-image: linear-gradient(var(--ui-bg), var(--ui-bg));
+  box-shadow: 0 14px 40px var(--ui-shadow);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  text-align: center;
+}
+
+.trade-head {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 0 28px 12px;
+  font-size: 16px;
+}
+
+.trade-icon svg {
+  display: block;
+  width: 30px;
+  height: 30px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.trade-qty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.trade-step {
+  width: 40px;
+  height: 40px;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 20px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.trade-step:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.trade-n {
+  min-width: 2ch;
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.trade-of {
+  font-size: 13px;
+  opacity: 0.75;
+}
+
+.trade-value {
+  margin: 10px 0 12px;
+  font-size: 14px;
+}
+
+.trade-actions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+
+.trade-actions .action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.trade-actions .action[hidden] {
+  display: none;
+}
+
+.trade-actions .action:disabled {
+  opacity: 0.45;
+}
+
+.trade-gift svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.trade-status {
+  min-height: 1.3em;
+  margin: 10px 0 0;
+  font-size: 13px;
+}
+
 /* ---- claw machine ---- */
 .claw {
   position: fixed;
@@ -994,117 +1135,6 @@
   cursor: pointer;
 }
 
-/* gifting: the item in hand, sent to someone by their code */
-.place-bar .pb-gift {
-  width: 36px;
-  height: 36px;
-  border: none;
-  border-radius: 50%;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  flex: none;
-}
-
-.place-bar .pb-gift[hidden] {
-  display: none;
-}
-
-/* trading the thing in hand back in for sand bucks (docs/SAND_BUCKS.md) */
-.place-bar .pb-trade,
-.inv-trade {
-  flex: none;
-  padding: 6px 10px;
-  border: 1.5px solid currentColor;
-  border-radius: 999px;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  font-size: 12px;
-  white-space: nowrap;
-  cursor: pointer;
-  touch-action: manipulation;
-}
-.place-bar .pb-trade[hidden] {
-  display: none;
-}
-.inv-trade {
-  margin-top: 4px;
-  padding: 3px 8px;
-  font-size: 11px;
-}
-
-.place-bar .pb-gift svg {
-  display: block;
-  width: 22px;
-  height: 22px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.6;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.place-bar .pb-gift-row {
-  display: none;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  flex: 1;
-}
-
-.place-bar.gifting .pb-gift-row {
-  display: flex;
-}
-
-/* while gifting, the item itself is obvious: make room for the code. The
-   gift row has its own × (cancel), so the put-away × would be a second,
-   different × right beside it */
-.place-bar.gifting .pb-icon,
-.place-bar.gifting .pb-name,
-.place-bar.gifting .pb-close {
-  display: none;
-}
-
-.place-bar .pb-gift-row input {
-  font: inherit;
-  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-  width: 8.5em;
-  min-width: 0;
-  padding: 6px 8px;
-  border-radius: 10px;
-  border: 1.5px solid currentColor;
-  background: transparent;
-  color: inherit;
-  opacity: 0.85;
-}
-
-.place-bar .pb-send {
-  font: inherit;
-  font-size: 12px;
-  padding: 6px 12px;
-  border-radius: 999px;
-  border: 1.5px solid currentColor;
-  background: var(--ui-fg);
-  color: var(--ui-bg);
-  cursor: pointer;
-  flex: none;
-}
-
-.place-bar .pb-cancel {
-  width: 30px;
-  height: 30px;
-  border: none;
-  border-radius: 50%;
-  background: transparent;
-  color: inherit;
-  font-size: 20px;
-  cursor: pointer;
-  flex: none;
-}
-
 .place-bar .pb-status {
   font-size: 12px;
   opacity: 0.8;
@@ -1374,7 +1404,6 @@
   text-align: center;
 }
 
-.shop-gift,
 .shop-promo {
   display: flex;
   gap: 8px;
@@ -1384,12 +1413,11 @@
 }
 
 /* hidden in the native apps (codesAllowed): display:flex would beat [hidden] */
-.shop-gift[hidden],
-.shop-promo[hidden] {
+.shop-promo[hidden],
+.shop-account[hidden] {
   display: none;
 }
 
-.shop-gift input,
 .shop-promo input {
   flex: 1;
   min-width: 0;
@@ -1400,16 +1428,14 @@
   font: inherit;
 }
 
-.shop-gift button {
-  padding: 8px 12px;
-  border: none;
-  border-radius: 999px;
-  color: var(--ui-bg);
-  background: var(--ui-fg);
-  font: inherit;
+/* your account on beechshore: gift cards, history, top-ups */
+.shop-account {
+  display: block;
+  margin: 12px 0 0;
+  color: inherit;
+  font-size: 13px;
   font-weight: 600;
-  cursor: pointer;
-  touch-action: manipulation;
+  text-align: center;
 }
 
 .shop-credit-buy {
@@ -1840,21 +1866,18 @@
   border: 1.5px solid color-mix(in srgb, currentColor 35%, transparent);
 }
 
-.guide-row.done .guide-mark,
-.invite-rung.done .guide-mark {
+.guide-row.done .guide-mark {
   border-color: #3f8f6a;
   color: #fff;
   background: #3f8f6a;
 }
 
-.guide-row.next,
-.invite-rung.next {
+.guide-row.next {
   border-radius: 12px;
   background: color-mix(in srgb, currentColor 8%, transparent);
 }
 
-.guide-row.next .guide-mark,
-.invite-rung.next .guide-mark {
+.guide-row.next .guide-mark {
   border-color: currentColor;
 }
 
@@ -1872,84 +1895,7 @@
   opacity: 0.7;
 }
 
-.invite-body {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
-}
-
-.invite .board-list {
-  flex: none;
-  overflow: visible;
-}
-
-.invite-blurb {
-  margin-top: 0;
-}
-
-.invite-link {
-  display: flex;
-  gap: 6px;
-  margin: 6px 0 4px;
-}
-
-.invite-link input {
-  flex: 1 1 auto;
-  min-width: 0;
-  padding: 7px 12px;
-  border-radius: 999px;
-  border: 1.5px solid color-mix(in srgb, currentColor 35%, transparent);
-  font: inherit;
-  font-size: 12px;
-  color: inherit;
-  background: color-mix(in srgb, currentColor 6%, transparent);
-}
-
-.invite-link .action {
-  flex: none;
-}
-
-.invite-link .invite-share {
-  opacity: 1;
-  color: var(--ui-bg);
-  background: var(--ui-fg);
-  border-color: var(--ui-fg);
-}
-
-.invite-h {
-  margin: 14px 0 2px;
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-}
-
-.invite-friends {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.invite-friends li {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 7px 2px;
-  font-size: 13px;
-  border-top: 1px solid color-mix(in srgb, currentColor 14%, transparent);
-}
-
-.invite-friends li:first-child {
-  border-top: none;
-}
-
-.invite-friends small,
-.invite-empty {
-  font-size: 12px;
-  opacity: 0.7;
-}
-
+.guide-row.next,
 /* the inbox: the top of the rail (docs/INBOX_NOTIFICATIONS.md) */
 .inbox-btn {
   position: relative;

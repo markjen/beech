@@ -169,6 +169,7 @@ const api = createApp(db, {
   codePepper,
   weatherApiKey: env.OPEN_METEO_API_KEY || undefined,
   xsolla: xsolla.cfg ?? undefined,
+  shoreUrl: env.SHORE_URL || undefined,
 });
 
 const publicDir = path.resolve(env.PUBLIC_DIR ?? path.join(here, '..', '..', 'dist'));

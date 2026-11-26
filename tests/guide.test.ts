@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { GUIDE_BONUS as SERVER_BONUS, GUIDE_STEPS, WELCOME_GIFT, ladder, ladderReward, REWARD_CAP } from '../server/src/referrals';
 import { GUIDE, GUIDE_BONUS, guideSteps, nextStep, progress } from '../src/world/guide';
 import { extraById, itemById } from '../src/world/items';
-import { ladderLines } from '../src/ui/invite';
 
 const known = (id: string) => !!itemById(id) || !!extraById(id);
 
@@ -51,12 +50,5 @@ describe('the invite ladder', () => {
     expect(ladderReward(REWARD_CAP + 1)).toBeNull();
     expect(ladderReward(0)).toBeNull();
     expect(ladder()).toHaveLength(REWARD_CAP);
-  });
-
-  it('folds runs of the same gift into one line', () => {
-    const lines = ladderLines(ladder());
-    expect(lines.slice(0, 5).map((l) => [l.from, l.to])).toEqual([[1, 1], [2, 2], [3, 3], [4, 4], [5, 5]]);
-    expect(lines[5]).toEqual({ from: 6, to: REWARD_CAP, item: 'starfish' });
-    expect(lines).toHaveLength(6);
   });
 });

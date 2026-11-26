@@ -59,6 +59,7 @@ import { BEACH, NODE, imageVersion, isPublic, normalizeCode, shoreGraph, type No
 import { createItemSubmission, creatorSubmissions, limitUpload, multipart, requireSubmissionSession } from './itemSubmissions.js';
 import { assetExample, assetSchema } from './submissionAssets.js';
 import { connectContent, specContent, submissionContent } from './submissionPage.js';
+import { accountContent } from './accountPage.js';
 import { FAVICON, ICONS, SHORE_CSS, SHORE_SCRIPT, WAVE_SVG } from './shoreAssets.js';
 
 export interface ShoreSiteConfig {
@@ -76,6 +77,8 @@ export interface ShoreSiteConfig {
   imageDrawsPerMinute?: number;
   /** optional shared limiter across host/path mounts */
   imageLimiter?: (ip: string) => boolean;
+  /** the game API (createApp): the account page's calls are forwarded to its /shore-account/* routes */
+  api?: { fetch: (req: Request) => Response | Promise<Response> };
   now?: () => number;
 }
 
@@ -86,7 +89,7 @@ const CARD = { width: 1200, height: 630 };
 const THUMB = { width: 480, height: 300 };
 
 type Sort = 'top' | 'rising' | 'new';
-type NavKey = 'home' | 'top' | 'rising' | 'new' | 'items' | 'submit' | 'other';
+type NavKey = 'home' | 'top' | 'rising' | 'new' | 'items' | 'submit' | 'account' | 'other';
 interface ListRow extends NodeRow {
   stars: string | number;
   recent: string | number;
@@ -359,6 +362,7 @@ export function createShoreSite(db: Db, cfg: ShoreSiteConfig): Hono<any, any, an
       `<a href="${href('/new')}"${active === 'new' ? ' aria-current="page"' : ''}>Just built</a>`,
       `<a href="${href('/items')}"${active === 'items' ? ' aria-current="page"' : ''}>Items</a>`,
       `<a href="${href('/random')}" rel="nofollow">Surprise me</a>`,
+      `<a href="${href('/account')}"${active === 'account' ? ' aria-current="page"' : ''} rel="nofollow">Account</a>`,
     ].join('');
 
   const layout = (
@@ -426,6 +430,7 @@ ${main}
     <a href="${href('/find')}">Find a beach</a>
     <a href="${href('/items')}">Item catalog</a>
     <a href="${href('/submit')}">Submit an item</a>
+    <a href="${href('/account')}" rel="nofollow">Your account</a>
     <a href="${esc(DISCORD_INVITE_URL)}">Discord</a>${
       opts.share
         ? ` <button type="button" class="linkish" data-share data-url="${esc(opts.share.url)}" data-text="${esc(opts.share.text)}" data-title="${esc(opts.share.title)}">Share this page</button>`
@@ -734,6 +739,49 @@ ${
       return c.html(submissionLayout(c, 'Connect Beech', '/submit/connect', connectContent(destination ?? null)));
     });
   }
+
+  // ------------------------------------------------------------ your account
+  // Your sand dollars, history, top-ups, gift cards, gifts and invites
+  // (accountPage.ts). Connects like /submit; the page's calls go to
+  // /account/api/*, forwarded to the game API's /shore-account/* routes with
+  // the same token (only those routes take it).
+  app.get('/account', (c) => {
+    c.header('Cache-Control', 'no-store');
+    c.header('X-Frame-Options', 'DENY');
+    c.header('Referrer-Policy', 'no-referrer');
+    c.header('X-Robots-Tag', 'noindex');
+    const connect = cfg.publicUrl ? `${game}/shore/submit/connect?destination=shore` : href('/submit/connect');
+    return c.html(
+      layout(
+        {
+          title: 'Your account · beechshore',
+          description: 'Your sand dollars, history, gifts and invites in beech.',
+          url: abs(c, '/account'),
+          image: abs(c, '/img/shore.png'),
+          imageAlt: 'An untouched beach',
+        },
+        accountContent({ api: href('/account/api'), connect, game }),
+        { active: 'account' },
+      ),
+    );
+  });
+  const ACCOUNT_API = /^\/account\/api\/(summary|top-up|redeem|gift|web-orders\/[0-9a-f-]{36})$/;
+  app.on(['GET', 'POST'], '/account/api/*', async (c) => {
+    const p = c.req.path.slice(base.length);
+    const m = ACCOUNT_API.exec(p);
+    if (!m || !cfg.api) return c.json({ error: 'not found' }, 404);
+    const headers = new Headers();
+    for (const h of ['authorization', 'content-type', 'x-forwarded-for']) {
+      const v = c.req.header(h);
+      if (v) headers.set(h, v);
+    }
+    const method = c.req.method;
+    const res = await cfg.api.fetch(
+      new Request(`http://api.internal/shore-account/${m[1]}`, { method, headers, body: method === 'POST' ? await c.req.arrayBuffer() : undefined }),
+    );
+    const out = new Response(res.body, { status: res.status, headers: { 'Content-Type': res.headers.get('content-type') ?? 'application/json', 'Cache-Control': 'no-store' } });
+    return out;
+  });
 
   const submissionSession = requireSubmissionSession(db);
   const uploads = createRateLimiter(5);

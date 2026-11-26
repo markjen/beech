@@ -32,7 +32,7 @@ VARIABLES
     pc,        \* [Requests -> "idle" | "picked"]: a trade-in between its statements
     pick,      \* [Requests -> Values]: the unit it picked
     \* ghosts
-    freeIn,    \* value of the units that came free (claw, gifts in, rewards)
+    freeIn,    \* value that came free: units (claw, gifts in, rewards) and invite bonuses
     giftOut,   \* value of the units given away
     tradedPlaced \* a trade-in took a unit that was on a beach
 
@@ -94,6 +94,12 @@ FreeGrant(v) ==
     /\ freeIn' = freeIn + v
     /\ UNCHANGED <<bal, debt, placed, packs, pc, pick, giftOut, tradedPlaced>>
 
+(* an invite bonus (POST /referrals/claim, Invites.tla): free bucks in, not a unit *)
+BonusIn ==
+    /\ CreditIn(1)
+    /\ freeIn' = freeIn + 1
+    /\ UNCHANGED <<held, placed, packs, pc, pick, giftOut, tradedPlaced>>
+
 (* POST /gifts: one unit leaves (with its value) *)
 GiftOut(v) ==
     /\ held[v] > 0 /\ Units > placed
@@ -133,7 +139,7 @@ TradeAtomic(v) ==
     /\ UNCHANGED <<placed, packs, pc, pick, freeIn, giftOut, tradedPlaced>>
 
 Next ==
-    \/ BuyPack \/ RefundPack
+    \/ BuyPack \/ RefundPack \/ BonusIn
     \/ \E v \in Values : Spend(v) \/ FreeGrant(v) \/ GiftOut(v) \/ TradeAtomic(v)
     \/ \E k \in 0..MaxUnits : Save(k)
     \/ \E r \in Requests : TradeWrite(r) \/ \E v \in Values : TradeCheck(r, v)

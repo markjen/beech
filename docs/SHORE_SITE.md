@@ -26,6 +26,7 @@ review from the shore.
 | `/submit/spec` | Asset requirements, prompt example, JSON Schema and example file for creators and AI agents. |
 | `/items` | Every item in the game, grouped by how you get it, with vote counts. |
 | `/items/<id>` | One item: its picture, rarity, size, how to get it, price, votes and comments. Sign in (the same Beech account connection as `/submit`) to vote or comment. |
+| `/account` | Your account: connect your Beech account, then your sand dollars (S$) and their history, top up by card, redeem a gift card, gift a thing from your bag, and your invite link. Not cached, not indexed. See [SAND_BUCKS.md](SAND_BUCKS.md), "Your account on beechshore". |
 | `/items/img/<id>.png` | The item's 400×400 render, copied from `docs/items/renders/` into `public/items/` (see `docs/ITEMS.md`). |
 | `/robots.txt`, `/sitemap.xml` | For search engines (up to 5000 beach pages, plus the item pages). |
 

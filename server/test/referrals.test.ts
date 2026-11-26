@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
 import { type Db } from '../src/db.js';
-import { CLAIM_WINDOW_MS, GUIDE_BONUS, GUIDE_STEPS, REWARD_CAP, SETTLE_STEPS, WELCOME_GIFT, ladderReward } from '../src/referrals.js';
+import { CLAIM_WINDOW_MS, GUIDE_BONUS, GUIDE_STEPS, INVITE_BONUS, REWARD_CAP, SETTLE_STEPS, ladderReward } from '../src/referrals.js';
 import { openTestDb } from './testDb.js';
 
 let db: Db;
@@ -103,32 +103,52 @@ describe('the beach guide', () => {
 });
 
 describe('invites', () => {
+  const bucks = async (userId: string) =>
+    Number((await db.query<{ credit_cents: number }>('SELECT credit_cents FROM users WHERE id = $1', [userId]))[0].credit_cents) / 10;
+  const bonusRows = async (userId: string) =>
+    (await db.query<{ amount_cents: number }>(`SELECT amount_cents FROM credit_ledger WHERE user_id = $1 AND kind = 'invite_bonus'`, [userId])).length;
+
   it('looks up who an invite is from without signing in', async () => {
     const a = await signIn('Ana');
     const r = await req(`/invites/${a.code.toLowerCase()}`);
     expect(r.status).toBe(200);
-    expect(await r.json()).toEqual({ name: a.user.name, welcomeGift: WELCOME_GIFT });
+    expect(await r.json()).toEqual({ name: a.user.name, welcomeBucks: INVITE_BONUS });
     expect((await req('/invites/ZZZZZZ')).status).toBe(404);
   });
 
-  it('gives the friend a welcome gift, once', async () => {
+  it('gives the friend and the inviter the bonus, once', async () => {
     const a = await signIn();
     const f = await signIn();
     const r = await claim(f.token, a.code);
     expect(r.status).toBe(200);
-    expect(await r.json()).toEqual({ inviter: { name: a.user.name, code: a.code }, gift: WELCOME_GIFT });
-    expect(await owned(f.token, WELCOME_GIFT)).toBe(1);
-    // a second claim (the same or someone else's): refused, no second gift
+    expect(await r.json()).toEqual({ inviter: { name: a.user.name, code: a.code }, bucks: INVITE_BONUS, inviterRewarded: true });
+    expect(await bucks(f.user.id)).toBe(INVITE_BONUS);
+    expect(await bucks(a.user.id)).toBe(INVITE_BONUS);
+    // a second claim (the same or someone else's): refused, no second bonus
     const other = await signIn();
     expect((await claim(f.token, a.code)).status).toBe(409);
     expect((await claim(f.token, other.code)).status).toBe(409);
-    expect(await owned(f.token, WELCOME_GIFT)).toBe(1);
-    // the inviter sees them, not settled in yet
-    const mine = (await (await req('/referrals', {}, a.token)).json()) as { code: string; joined: number; settled: number; friends: { name: string; settled: boolean }[] };
+    expect(await bucks(f.user.id)).toBe(INVITE_BONUS);
+    expect(await bucks(a.user.id)).toBe(INVITE_BONUS);
+    expect(await bucks(other.user.id)).toBe(0);
+    // no item gifts any more
+    expect(await rewards(f.user.id)).toEqual([]);
+    expect(await rewards(a.user.id)).toEqual([]);
+    const mine = (await (await req('/referrals', {}, a.token)).json()) as { code: string; joined: number; earned: number; friends: { name: string; bucks: number }[] };
     expect(mine.code).toBe(a.code);
     expect(mine.joined).toBe(1);
-    expect(mine.settled).toBe(0);
-    expect(mine.friends).toMatchObject([{ name: f.user.name, settled: false }]);
+    expect(mine.earned).toBe(INVITE_BONUS);
+    expect(mine.friends).toMatchObject([{ name: f.user.name, bucks: INVITE_BONUS }]);
+  });
+
+  it('gives one bonus when two devices claim at once (OneBonusEach)', async () => {
+    const a = await signIn();
+    const f = await signIn();
+    const rs = await Promise.all([claim(f.token, a.code), claim(f.token, a.code)]);
+    expect(rs.map((r) => r.status).sort()).toEqual([200, 409]);
+    expect(await bucks(f.user.id)).toBe(INVITE_BONUS);
+    expect(await bucks(a.user.id)).toBe(INVITE_BONUS);
+    expect(await bonusRows(f.user.id)).toBe(1);
   });
 
   it('refuses bad, unknown and your own codes, and old accounts', async () => {
@@ -143,59 +163,52 @@ describe('invites', () => {
     // a player from before the claim window
     await db.query('UPDATE users SET created_at = $2 WHERE id = $1', [f.user.id, Date.now() - CLAIM_WINDOW_MS - 1000]);
     expect((await claim(f.token, a.code)).status).toBe(409);
-    expect(await owned(f.token, WELCOME_GIFT)).toBe(0);
+    expect(await bucks(f.user.id)).toBe(0);
+    expect(await bucks(a.user.id)).toBe(0);
   });
 
-  it('rewards the inviter once the friend settles in, and only then', async () => {
+  it('stops the inviter’s bonus at the cap; friends past it still get theirs (CapHolds, InviterPaid)', async () => {
     const a = await signIn();
-    const f = await signIn();
-    await claim(f.token, a.code);
-    await settleIn(f.token, SETTLE_STEPS - 1);
-    expect(await rewards(a.user.id)).toEqual([]);
-    await settleIn(f.token, SETTLE_STEPS + 1); // the last one settles them; one more changes nothing
-    expect(await rewards(a.user.id)).toEqual([ladderReward(1)]);
-    const mine = (await (await req('/referrals', {}, a.token)).json()) as { settled: number; friends: { settled: boolean; reward: string }[] };
-    expect(mine.settled).toBe(1);
-    expect(mine.friends[0]).toMatchObject({ settled: true, reward: ladderReward(1) });
-  });
-
-  it('counts guide steps done before the claim', async () => {
-    const a = await signIn();
-    const f = await signIn();
-    await settleIn(f.token);
-    expect((await claim(f.token, a.code)).status).toBe(200);
-    expect(await rewards(a.user.id)).toEqual([ladderReward(1)]);
-  });
-
-  it('climbs the ladder (an extra beach at three) and stops at the cap', async () => {
-    const a = await signIn();
+    const fs = [];
     for (let i = 0; i < REWARD_CAP + 2; i++) {
       const f = await signIn();
-      await claim(f.token, a.code);
-      await settleIn(f.token);
+      fs.push(f);
+      const r = (await (await claim(f.token, a.code)).json()) as { inviterRewarded: boolean };
+      expect(r.inviterRewarded).toBe(i < REWARD_CAP);
     }
-    const got = await rewards(a.user.id);
-    expect(got).toEqual(Array.from({ length: REWARD_CAP }, (_, i) => ladderReward(i + 1)));
-    expect(got[2]).toBe('beach');
-    expect(ladderReward(REWARD_CAP + 1)).toBeNull();
-    // the extra beach is a real allowance: one more beach can be made
-    const aEdit = ((await (await req('/edit-session', { method: 'POST' }, a.token)).json()) as { token: string }).token;
-    expect((await req('/beaches/mine', { ...json('POST', { name: 'Second', location: 'bondi' }), headers: { 'Content-Type': 'application/json', 'X-Edit-Token': aEdit } }, a.token)).status).toBe(200);
-    const mine = (await (await req('/referrals', {}, a.token)).json()) as { joined: number; settled: number };
-    expect(mine).toMatchObject({ joined: REWARD_CAP + 2, settled: REWARD_CAP + 2 });
+    expect(await bucks(a.user.id)).toBe(REWARD_CAP * INVITE_BONUS);
+    for (const f of fs) expect(await bucks(f.user.id)).toBe(INVITE_BONUS);
+    const mine = (await (await req('/referrals', {}, a.token)).json()) as { joined: number; earned: number };
+    expect(mine).toMatchObject({ joined: REWARD_CAP + 2, earned: REWARD_CAP * INVITE_BONUS });
   });
 
-  it('gives friends settling in at the same moment different rungs', async () => {
+  it('gives friends claiming at the same moment different ranks, and holds the cap', async () => {
     const a = await signIn();
-    const fs = [await signIn(), await signIn(), await signIn()];
-    for (const f of fs) {
+    // one rank short of the cap: three friends race for the last one
+    for (let i = 0; i < REWARD_CAP - 1; i++) {
+      const f = await signIn();
       await claim(f.token, a.code);
-      await settleIn(f.token, SETTLE_STEPS - 1);
     }
-    await Promise.all(fs.map((f) => step(f.token, 'place')));
-    expect((await rewards(a.user.id)).sort()).toEqual([ladderReward(1), ladderReward(2), ladderReward(3)].sort());
-    const ranks = await db.query<{ reward_rank: number }>('SELECT reward_rank FROM referrals WHERE inviter_id = $1 ORDER BY reward_rank', [a.user.id]);
-    expect(ranks.map((r) => Number(r.reward_rank))).toEqual([1, 2, 3]);
+    const fs = [await signIn(), await signIn(), await signIn()];
+    const rs = await Promise.all(fs.map((f) => claim(f.token, a.code)));
+    expect(rs.map((r) => r.status)).toEqual([200, 200, 200]);
+    expect(await bucks(a.user.id)).toBe(REWARD_CAP * INVITE_BONUS);
+    for (const f of fs) expect(await bucks(f.user.id)).toBe(INVITE_BONUS);
+    const ranks = await db.query<{ reward_rank: number }>('SELECT reward_rank FROM referrals WHERE inviter_id = $1 AND reward_rank IS NOT NULL ORDER BY reward_rank', [a.user.id]);
+    expect(ranks.map((r) => Number(r.reward_rank))).toEqual(Array.from({ length: REWARD_CAP }, (_, i) => i + 1));
+  });
+
+  it('still settles a referral from before the bonus on the old ladder', async () => {
+    const a = await signIn();
+    const f = await signIn();
+    await db.query('INSERT INTO referrals (invitee_id, inviter_id, code, created_at) VALUES ($1, $2, $3, 0)', [f.user.id, a.user.id, a.code]);
+    await settleIn(f.token);
+    expect(await rewards(a.user.id)).toEqual([ladderReward(1)]);
+    // a new-style referral never settles onto the ladder
+    const g = await signIn();
+    await claim(g.token, a.code);
+    await settleIn(g.token);
+    expect(await rewards(a.user.id)).toEqual([ladderReward(1)]);
   });
 
   it('goes when either account is deleted', async () => {

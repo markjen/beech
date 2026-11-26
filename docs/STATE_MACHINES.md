@@ -144,10 +144,25 @@ step.
 | `GiftOut` | `POST /gifts` | `giveOne` (moves `unit_cents`) |
 | `Save` | `PUT /beaches/mine/:id/sand` | `saveBeach` |
 | `TradeCheck` .. `TradeWrite` / `TradeAtomic` | `POST /bag/trade-in` | one transaction under `withPlayerWriteLock` |
+| `BonusIn` | `POST /referrals/claim` | `creditBalance(..., 'invite_bonus')` in the claim's transaction |
 
 Invariants: `ValueConserved`, `NoPhantomUnits`, `NeverTradePlaced`,
 `NoNegative`. The two-statement trade-in breaks `NoPhantomUnits` and
 `NeverTradePlaced`; both are replayed in `bucks.test.ts`.
+
+## Invite bonuses (`Invites.tla`)
+
+[INVITES_GUIDE.md](INVITES_GUIDE.md). State: who has claimed, the
+inviter's rewarded ranks, each friend's and the inviter's bonus bucks, and
+each claim's step (two devices per friend).
+
+| Action | Route | Code |
+| --- | --- | --- |
+| `ClaimRead` .. `ClaimWrite` / `ClaimAtomic` | `POST /referrals/claim` | one transaction: the referral (unique per invitee), its rank (unique per inviter, MAX + 1 up to the cap, retried on a clash) and both credits |
+
+Invariants: `OneBonusEach`, `CapHolds`, `InviterPaid`. The two-statement
+claim breaks `OneBonusEach` and `CapHolds`; `invites.test.ts` replays two
+devices at once and random-walks `invitesModel.ts`.
 
 ## Piers (`Piers.tla`)
 

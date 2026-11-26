@@ -212,7 +212,7 @@ export function connectContent(destination: string | null) {
   async function connect() {
     if (busy) return;
     if (!window.opener) {
-      status.textContent = 'Open this window from the Beechshore submission page.';
+      status.textContent = 'Open this window from beechshore.';
       return;
     }
     busy = true;

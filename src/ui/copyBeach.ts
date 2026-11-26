@@ -41,7 +41,7 @@ export interface CopyHost {
 }
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
-const bucks = (n: number) => `${n} sand bucks`;
+const bucks = (n: number) => `S$ ${n}`;
 const isFree = (id: string) => itemById(id)?.unlimited === true;
 const beachLabel = (b: MyBeach) => b.name || (b.home ? 'Home' : 'Beach');
 

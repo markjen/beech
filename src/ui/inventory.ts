@@ -37,10 +37,15 @@ export class InventoryTray {
   private elsewhere = new Map<string, number>();
   /** uses an actionable extra from the bag (e.g. tossing a beach snack) */
   onUseExtra: (id: string) => void = () => {};
-  /** what the next one of each thing trades in for (sand bucks), when one can be (docs/SAND_BUCKS.md) */
-  private tradeValues = new Map<string, number>();
-  /** trade one in (an extra beach, from the bag) */
-  onTradeIn: (id: string) => void = () => {};
+  /** what each thing trades in for (docs/SAND_BUCKS.md): how many can be, and each unit's value, newest first */
+  private tradeInfo = new Map<string, TradeInfo>();
+  /** trading in and gifting from the bag (signed in): long press a thing */
+  private bagActions: BagActions | null = null;
+  private readonly dialog: TradeDialog;
+  /** a long press opened the dialog: swallow the click that ends it */
+  private suppressClick = false;
+  /** a press on a tile in progress (long press opens the trade-in dialog) */
+  private press: { timer: number; start: { x: number; y: number } } | null = null;
 
   constructor(
     hudButton: (name: IconName, label: string, cls?: string) => HTMLButtonElement,
@@ -64,6 +69,24 @@ export class InventoryTray {
     this.tray.setAttribute('aria-label', 'Bag');
     this.modal.appendChild(this.tray);
     parent.appendChild(this.modal);
+    this.dialog = new TradeDialog(this.modal, () => this.bagActions);
+    window.addEventListener('pointermove', (e) => {
+      if (this.press && Math.hypot(e.clientX - this.press.start.x, e.clientY - this.press.start.y) > 10) this.endPress();
+    });
+    window.addEventListener('pointerup', () => this.endPress());
+    window.addEventListener('pointercancel', () => this.endPress());
+    // a long press ends in a click (on the tile, or on the backdrop when the
+    // dialog opened under the finger): don't pick the thing up, or close the bag
+    this.modal.addEventListener(
+      'click',
+      (e) => {
+        if (!this.suppressClick) return;
+        this.suppressClick = false;
+        e.stopImmediatePropagation();
+        e.preventDefault();
+      },
+      { capture: true },
+    );
     this.render();
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && this.open) this.setOpen(false);
@@ -116,6 +139,8 @@ export class InventoryTray {
   }
 
   setElsewhere(m: Map<string, number>): void {
+    const key = (x: Map<string, number>) => [...x].sort().join();
+    if (key(m) === key(this.elsewhere)) return;
     this.elsewhere = m;
     this.render();
   }
@@ -124,15 +149,58 @@ export class InventoryTray {
     return this.owned.get(id) ?? 0;
   }
 
-  /** What the next free one of each thing trades in for (from the server's /bag). */
-  setTradeValues(m: Map<string, number>): void {
-    this.tradeValues = m;
+  /** What each thing trades in for (from the server's /bag). */
+  setTradeInfo(m: Map<string, TradeInfo>): void {
+    this.tradeInfo = m;
+    this.dialog.refresh(m);
     this.render();
   }
 
   /** The trade-in value of the next one of this thing, if one can be traded in now. */
   tradeValue(id: string): number | undefined {
-    return this.tradeValues.get(id);
+    const t = this.tradeInfo.get(id);
+    return t && t.free > 0 && t.values.length ? t.values[0] : undefined;
+  }
+
+  /** Turn on long press → trade in / gift (signed in), or off (null). */
+  setBagActions(a: BagActions | null): void {
+    this.bagActions = a;
+    this.render();
+  }
+
+  /** Open the trade-in dialog for a thing in the bag (a long press does this). */
+  openTrade(id: string): void {
+    const name = this.items.find((i) => i.id === id)?.name ?? EXTRAS.find((x) => x.id === id)?.name ?? id;
+    this.dialog.open(id, name, this.tradeInfo.get(id));
+  }
+
+  /** Long press (or right click) on a tile opens the trade-in dialog. */
+  private longPress(el: HTMLElement, id: string): void {
+    if (!this.bagActions || this.signIn) return;
+    // the press is tracked on the bag, not the tile: the bag re-renders its
+    // tiles while you hold, which would lose a per-tile timer's events
+    el.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      this.endPress();
+      this.suppressClick = false;
+      const start = { x: e.clientX, y: e.clientY };
+      const timer = window.setTimeout(() => {
+        this.press = null;
+        this.suppressClick = true;
+        this.openTrade(id);
+      }, LONG_PRESS_MS);
+      this.press = { timer, start };
+    });
+    el.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      this.endPress();
+      this.openTrade(id);
+    });
+  }
+
+  private endPress(): void {
+    if (this.press) window.clearTimeout(this.press.timer);
+    this.press = null;
   }
 
   /** How many of this item you own (for the gift button in the place bar). */
@@ -178,6 +246,7 @@ export class InventoryTray {
     this.tray.classList.toggle('open', on);
     this.modal.inert = !on;
     this.button.setAttribute('aria-expanded', String(on));
+    if (!on) this.dialog.close();
     if (on) this.tray.querySelector<HTMLButtonElement>('.inv-item')?.focus({ preventScroll: true });
   }
 
@@ -226,6 +295,12 @@ export class InventoryTray {
     x.textContent = '×';
     x.addEventListener('click', () => this.setOpen(false));
     this.tray.append(h, x);
+    if (this.bagActions && !this.signIn) {
+      const tip = document.createElement('p');
+      tip.className = 'inv-tip';
+      tip.textContent = 'long press item to trade in';
+      this.tray.appendChild(tip);
+    }
     const signIn = this.signIn;
     if (signIn) {
       const n = document.createElement('div');
@@ -287,6 +362,7 @@ export class InventoryTray {
         this.select(it.id === this.selected ? null : it.id);
         this.setOpen(false);
       });
+      if (!it.unlimited) this.longPress(b, it.id);
       grid.appendChild(b);
     }
     this.tray.appendChild(grid);
@@ -314,20 +390,8 @@ export class InventoryTray {
           ? `${this.extraBeachesInUse} of ${n} in use`
           : `${n} owned`;
         b.innerHTML = `${icon(x.id as IconName)}<b>${x.name}</b><span>${count}</span>`;
-        // an extra beach you aren't using can be traded in
-        const value = this.tradeValues.get(x.id);
-        if (value !== undefined) {
-          const t = document.createElement('button');
-          t.type = 'button';
-          t.className = 'inv-trade';
-          t.dataset.act = `trade-${x.id}`;
-          t.textContent = `trade in · ${value}`;
-          t.addEventListener('click', (e) => {
-            e.stopPropagation();
-            this.onTradeIn(x.id);
-          });
-          b.appendChild(t);
-        }
+        // an extra beach you aren't using can be traded in (long press)
+        if (x.id === 'beach') this.longPress(b, x.id);
         grid.appendChild(b);
       }
     }
@@ -364,50 +428,183 @@ export class InventoryTray {
 const escapeText = (t: string): string =>
   t.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);
 
+/** What a thing in the bag trades in for: how many can be now, and each unit's value (newest first, the order a trade-in takes them). */
+export interface TradeInfo {
+  free: number;
+  values: number[];
+}
+
+/** Trading in and gifting from the bag (docs/SAND_BUCKS.md). */
+export interface BagActions {
+  /** Trade `quantity` in. Resolves with the sand bucks credited; throws with the reason it didn't. */
+  tradeIn: (id: string, quantity: number) => Promise<{ credited: number }>;
+  /** Gift one: opens your account page on beechshore with it picked. */
+  gift: (id: string) => void;
+  /** can this one be gifted? */
+  giftable: (id: string) => boolean;
+}
+
+const LONG_PRESS_MS = 450;
+
+/** S$ and a number: the short form of sand bucks where space is tight. */
+export const sd = (n: number) => `S$ ${n}`;
+
+/**
+ * The trade-in dialog (long press a thing in the bag): how many to trade
+ * in, what that gives back in S$, trade in, and gift. Labels and status only.
+ */
+export class TradeDialog {
+  private readonly root: HTMLDivElement;
+  private id = '';
+  private info: TradeInfo | undefined;
+  private n = 1;
+  private busy = false;
+
+  constructor(
+    parent: HTMLElement,
+    private readonly actions: () => BagActions | null,
+  ) {
+    this.root = document.createElement('div');
+    this.root.className = 'trade-dlg';
+    this.root.setAttribute('role', 'dialog');
+    this.root.setAttribute('aria-modal', 'true');
+    this.root.setAttribute('aria-label', 'Trade in');
+    this.root.hidden = true;
+    this.root.innerHTML = `
+      <div class="trade-card">
+        <button type="button" class="dlg-close" aria-label="Close">×</button>
+        <div class="trade-head"><span class="trade-icon"></span><b class="trade-name"></b></div>
+        <div class="trade-qty">
+          <button type="button" class="trade-step" data-act="trade-less" aria-label="One fewer">−</button>
+          <output class="trade-n" aria-live="polite"></output>
+          <button type="button" class="trade-step" data-act="trade-more" aria-label="One more">+</button>
+          <span class="trade-of"></span>
+        </div>
+        <p class="trade-value"></p>
+        <div class="trade-actions">
+          <button type="button" class="action trade-go" data-act="trade-in"></button>
+          <button type="button" class="action trade-gift" data-act="trade-gift">${icon('gift')}<span>gift</span></button>
+        </div>
+        <p class="trade-status" role="status"></p>
+      </div>`;
+    parent.appendChild(this.root);
+    this.root.querySelector('.dlg-close')!.addEventListener('click', () => this.close());
+    this.root.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (e.target === this.root) this.close();
+    });
+    this.root.querySelector('[data-act="trade-less"]')!.addEventListener('click', () => this.step(-1));
+    this.root.querySelector('[data-act="trade-more"]')!.addEventListener('click', () => this.step(1));
+    this.root.querySelector('.trade-go')!.addEventListener('click', () => void this.trade());
+    this.root.querySelector('.trade-gift')!.addEventListener('click', () => {
+      this.actions()?.gift(this.id);
+      this.close();
+    });
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && this.isOpen) {
+        e.stopImmediatePropagation();
+        this.close();
+      }
+    }, true);
+  }
+
+  get isOpen(): boolean {
+    return !this.root.hidden;
+  }
+
+  open(id: string, name: string, info: TradeInfo | undefined): void {
+    this.id = id;
+    this.info = info;
+    this.n = 1;
+    this.root.querySelector('.trade-icon')!.innerHTML = id === 'beach' ? icon('beach' as IconName) : itemIcon(id);
+    this.root.querySelector('.trade-name')!.textContent = name;
+    this.root.querySelector('.trade-status')!.textContent = '';
+    this.root.hidden = false;
+    this.render();
+    this.root.querySelector<HTMLButtonElement>('.trade-go')?.focus({ preventScroll: true });
+  }
+
+  close(): void {
+    this.root.hidden = true;
+  }
+
+  /** The bag was reloaded: keep the open dialog in step. */
+  refresh(m: Map<string, TradeInfo>): void {
+    if (!this.isOpen) return;
+    this.info = m.get(this.id);
+    this.render();
+  }
+
+  private get max(): number {
+    return Math.min(this.info?.free ?? 0, this.info?.values.length ?? 0);
+  }
+
+  private step(d: number): void {
+    this.n = Math.max(1, Math.min(this.max, this.n + d));
+    this.render();
+  }
+
+  /** what `n` units give back: the newest n */
+  private value(n: number): number {
+    return (this.info?.values ?? []).slice(0, n).reduce((t, v) => t + v, 0);
+  }
+
+  private render(): void {
+    const max = this.max;
+    this.n = Math.max(1, Math.min(max, this.n));
+    const can = max > 0;
+    this.root.querySelector('.trade-n')!.textContent = String(can ? this.n : 0);
+    this.root.querySelector('.trade-of')!.textContent = `of ${max}`;
+    this.root.querySelector<HTMLButtonElement>('[data-act="trade-less"]')!.disabled = !can || this.n <= 1;
+    this.root.querySelector<HTMLButtonElement>('[data-act="trade-more"]')!.disabled = !can || this.n >= max;
+    this.root.querySelector('.trade-value')!.textContent = can ? `you get ${sd(this.value(this.n))}` : this.id === 'beach' ? 'every extra beach is in use' : 'pick it up off your beach first';
+    const go = this.root.querySelector<HTMLButtonElement>('.trade-go')!;
+    go.textContent = can ? `trade in · ${sd(this.value(this.n))}` : 'trade in';
+    go.disabled = !can || this.busy;
+    this.root.querySelector<HTMLButtonElement>('.trade-gift')!.hidden = !this.actions()?.giftable(this.id);
+  }
+
+  private async trade(): Promise<void> {
+    const a = this.actions();
+    if (!a || this.busy || this.max < 1) return;
+    this.busy = true;
+    const status = this.root.querySelector('.trade-status')!;
+    status.textContent = 'trading in…';
+    this.render();
+    try {
+      const r = await a.tradeIn(this.id, this.n);
+      status.textContent = `+${sd(r.credited)}`;
+      this.n = 1;
+    } catch (e) {
+      status.textContent = (e as Error).message;
+    } finally {
+      this.busy = false;
+      this.render();
+    }
+  }
+}
+
 /**
  * Shown while an item is in hand: what it is, a size slider (remembered per
- * item), a button to gift it (owned, non-free items only), and a button to
- * put it away. Gifting asks for their neighbor code right here in the bar.
+ * item), and a button to put it away. Trading in and gifting live in the bag
+ * (long press a thing there), never here.
  */
-export interface PlaceBarGift {
-  /** Is this item one you can give away? (owned, and not a free item) */
-  giftable: (item: Item) => boolean;
-  /** Send it. Resolves with who it went to; throws with the reason it didn't. */
-  sendGift: (item: Item, code: string) => Promise<{ name: string }>;
-}
-
-/** Trading the thing in hand back in for sand bucks (docs/SAND_BUCKS.md). */
-export interface PlaceBarTrade {
-  /** what the next one trades in for, or undefined when none can be (all on a beach, or not tradeable) */
-  value: (item: Item) => number | undefined;
-  /** Trade one in. Resolves with the bucks credited and how many are left to trade; throws with the reason it didn't. */
-  tradeIn: (item: Item) => Promise<{ credited: number; left: number }>;
-}
-
 export class PlaceBar {
   private readonly root: HTMLDivElement;
   private readonly name: HTMLElement;
   private readonly ico: HTMLElement;
   private readonly slider: HTMLInputElement;
   private readonly sizeRow: HTMLElement;
-  private readonly giftBtn: HTMLButtonElement;
-  private readonly giftRow: HTMLElement;
-  private readonly giftInput: HTMLInputElement;
-  private readonly giftStatus: HTMLElement;
-  private readonly tradeBtn: HTMLButtonElement;
   private readonly bagBtn: HTMLButtonElement;
+  private readonly status: HTMLElement;
   private item: Item | null = null;
-  private gifting = false;
-  private trade?: PlaceBarTrade;
-  /** the first tap on "trade in" asks; the second does it */
-  private tradeArmed = false;
+  private petBag: (() => void) | null = null;
 
   constructor(
     parent: HTMLElement,
     private readonly sizes: () => Record<string, number>,
     private readonly setSize: (id: string, v: number) => void,
     private readonly putAway: () => void,
-    private gift?: PlaceBarGift,
   ) {
     this.root = document.createElement('div');
     this.root.className = 'place-bar';
@@ -415,10 +612,7 @@ export class PlaceBar {
       <span class="pb-icon"></span>
       <b class="pb-name"></b>
       <label class="pb-size"><span>small</span><input type="range" min="0" max="1" step="0.01" aria-label="Size"><span>big</span></label>
-      <button type="button" class="pb-gift" aria-label="Gift this to someone">${icon('gift')}</button>
-      <button type="button" class="pb-trade" data-act="trade-in" hidden></button>
-      <button type="button" class="pb-trade pb-tobag" data-act="pet-to-bag" hidden>put in bag</button>
-      <label class="pb-gift-row"><span>gift to</span><input placeholder="their code" maxlength="8" autocomplete="off" aria-label="Neighbor code to gift to"><button type="button" class="pb-send">send</button><button type="button" class="pb-cancel" aria-label="Cancel gifting">×</button></label>
+      <button type="button" class="pb-tobag" data-act="pet-to-bag" hidden>put in bag</button>
       <span class="pb-status" role="status"></span>
       <button type="button" class="pb-close" aria-label="Put it away">×</button>`;
     parent.appendChild(this.root);
@@ -426,92 +620,37 @@ export class PlaceBar {
     this.name = this.root.querySelector('.pb-name')!;
     this.slider = this.root.querySelector('.pb-size input')!;
     this.sizeRow = this.root.querySelector('.pb-size')!;
-    this.giftBtn = this.root.querySelector('.pb-gift')!;
-    this.giftRow = this.root.querySelector('.pb-gift-row')!;
-    this.giftInput = this.giftRow.querySelector('input')!;
-    this.giftStatus = this.root.querySelector('.pb-status')!;
-    this.tradeBtn = this.root.querySelector('.pb-trade')!;
     this.bagBtn = this.root.querySelector('.pb-tobag')!;
+    this.status = this.root.querySelector('.pb-status')!;
     this.bagBtn.addEventListener('click', () => {
       const go = this.petBag;
       this.petBag = null;
       this.bagBtn.hidden = true;
       go?.();
     });
-    this.tradeBtn.addEventListener('click', () => void this.tradeIn());
     this.slider.addEventListener('input', () => {
       if (this.item) this.setSize(this.item.id, Number(this.slider.value));
     });
     dragSlider(this.slider);
     this.root.querySelector('.pb-close')!.addEventListener('click', () => this.putAway());
-    this.giftBtn.addEventListener('click', () => this.setGifting(true));
-    this.giftRow.querySelector('.pb-cancel')!.addEventListener('click', () => this.setGifting(false));
-    const send = () => void this.sendGift();
-    this.giftRow.querySelector('.pb-send')!.addEventListener('click', send);
-    this.giftInput.addEventListener('keydown', (e) => e.key === 'Enter' && send());
   }
 
   show(item: Item | null, size01: number): void {
     this.item = item;
     this.petBag = null;
     this.bagBtn.hidden = true;
-    this.setGifting(false);
+    this.status.textContent = '';
     this.root.classList.toggle('shown', !!item);
     if (!item) return;
     this.ico.innerHTML = itemIcon(item.id);
     this.name.textContent = item.name;
     this.sizeRow.hidden = !!item.fixedSize;
     this.slider.value = String(this.sizes()[item.id] ?? size01);
-    this.giftBtn.hidden = !this.gift || !this.gift.giftable(item);
-    this.showTrade();
-  }
-
-  /** Add the trade-in button's behaviour (once signed in). */
-  setTrade(trade: PlaceBarTrade): void {
-    this.trade = trade;
-    this.showTrade();
-  }
-
-  /** The trade-in values changed (the bag was reloaded). */
-  refreshTrade(): void {
-    this.showTrade();
-  }
-
-  private showTrade(): void {
-    this.tradeArmed = false;
-    const value = this.item && this.trade && !this.gifting ? this.trade.value(this.item) : undefined;
-    this.tradeBtn.hidden = value === undefined;
-    this.tradeBtn.textContent = value === undefined ? '' : `trade in · ${value}`;
-  }
-
-  private async tradeIn(): Promise<void> {
-    if (!this.item || !this.trade) return;
-    const value = this.trade.value(this.item);
-    if (value === undefined) return;
-    if (!this.tradeArmed) {
-      // a second tap confirms
-      this.tradeArmed = true;
-      this.tradeBtn.textContent = `sure? · ${value}`;
-      return;
-    }
-    const item = this.item;
-    this.tradeBtn.disabled = true;
-    this.giftStatus.textContent = '';
-    try {
-      const r = await this.trade.tradeIn(item);
-      this.giftStatus.textContent = `+${r.credited} sand bucks`;
-      if (r.left <= 0) window.setTimeout(() => this.putAway(), 1200);
-    } catch (e) {
-      this.giftStatus.textContent = (e as Error).message;
-    } finally {
-      this.tradeBtn.disabled = false;
-      if (this.item === item) this.showTrade();
-    }
   }
 
   /**
-   * A pet in hand (no size, no gift, no trade-in): its name, and while you're
-   * carrying your beach's pet, a button to put it in the bag.
+   * A pet in hand (no size): its name, and while you're carrying your
+   * beach's pet, a button to put it in the bag.
    */
   showPet(name: string, species: PetSpecies, toBag?: () => void): void {
     this.show(null, 0);
@@ -519,63 +658,19 @@ export class PlaceBar {
     this.ico.innerHTML = icon(petKind(species).item as IconName);
     this.name.textContent = name;
     this.sizeRow.hidden = true;
-    this.giftBtn.hidden = true;
-    this.giftStatus.textContent = '';
+    this.status.textContent = '';
     this.petBag = toBag ?? null;
     this.bagBtn.hidden = !toBag;
   }
 
-  private petBag: (() => void) | null = null;
-
-  /** A beach snack in hand (no size, no gift): its name and how many are left. */
+  /** A beach snack in hand (no size): its name and how many are left. */
   showSnack(name: string, left: number): void {
     this.show(null, 0);
     this.root.classList.add('shown');
     this.ico.innerHTML = icon('crab-treat');
     this.name.textContent = name;
     this.sizeRow.hidden = true;
-    this.giftBtn.hidden = true;
-    this.giftStatus.textContent = `${left} left`;
-  }
-
-  /** Add (or replace) the gifting flow after construction (once signed in). */
-  setGift(gift: PlaceBarGift): void {
-    this.gift = gift;
-    if (this.item) this.giftBtn.hidden = !this.gift.giftable(this.item);
-  }
-
-  /** Show (or hide) the code input for gifting the item in hand. */
-  private setGifting(on: boolean): void {
-    this.gifting = on && !!this.item;
-    this.root.classList.toggle('gifting', this.gifting);
-    this.sizeRow.hidden = this.gifting || !!this.item?.fixedSize;
-    this.giftBtn.hidden = this.gifting || !this.gift || !this.item || !this.gift.giftable(this.item);
-    if (this.gifting) this.tradeBtn.hidden = true;
-    else this.showTrade();
-    this.giftInput.value = '';
-    this.giftStatus.textContent = '';
-    if (this.gifting) this.giftInput.focus({ preventScroll: true });
-  }
-
-  private async sendGift(): Promise<void> {
-    if (!this.item || !this.gift) return;
-    const code = this.giftInput.value.trim();
-    if (!code) {
-      this.giftStatus.textContent = 'type their code first';
-      return;
-    }
-    const item = this.item;
-    this.giftInput.disabled = true;
-    this.giftStatus.textContent = 'sending…';
-    try {
-      const { name } = await this.gift.sendGift(item, code);
-      this.giftStatus.textContent = `Sent to ${name}`;
-      window.setTimeout(() => this.putAway(), 1500);
-    } catch (e) {
-      this.giftStatus.textContent = (e as Error).message;
-      this.giftInput.disabled = false;
-      this.giftInput.focus({ preventScroll: true });
-    }
+    this.status.textContent = `${left} left`;
   }
 }
 

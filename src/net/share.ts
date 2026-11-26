@@ -70,6 +70,12 @@ export function inviteText(name: string): string {
 // send people: they preview with a picture of the beach, open without an
 // account, and carry on into the game with "Visit in beech".
 
+/** Your account page on beechshore (docs/SAND_BUCKS.md): balance, history, top-ups, gifts, invites; `section` is its anchor. */
+export function shoreAccountUrl(query: Record<string, string> = {}, section?: string, shore: string = SHORE_URL): string {
+  const q = new URLSearchParams(query).toString();
+  return `${shore}/account${q ? `?${q}` : ''}${section ? `#${section}` : ''}`;
+}
+
 /** The shore site's origin (VITE_SHORE_URL; the game's server also has it under /shore). */
 export const SHORE_URL = String(import.meta.env.VITE_SHORE_URL || 'https://beechshore.com').replace(/\/+$/, '');
 

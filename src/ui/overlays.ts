@@ -49,11 +49,11 @@ export class StartScreen {
   }
 
   /** Who invited you (an `?invite=` link), under the title. */
-  setInvite(name: string, gift: string): void {
+  setInvite(name: string, bucks: number): void {
     if (this.done) return;
     const p = document.createElement('p');
     p.className = 'start-invite';
-    p.textContent = `${name} invited you · a ${gift} is waiting`;
+    p.textContent = `${name} invited you · S$ ${bucks} is waiting`;
     this.el.querySelector('.start-sub')!.after(p);
   }
 }

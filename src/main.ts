@@ -40,23 +40,22 @@ import { Hud, icon, type DirtDef } from './ui/hud';
 import { SocialHub, StarredDialog, VisitDialog } from './ui/socialHub';
 import { SettingsSheet, StartScreen, showActionToast, showPaneToast, showToast } from './ui/overlays';
 import { CheckpointsSection } from './ui/checkpoints';
-import { InventoryTray, PlaceBar } from './ui/inventory';
+import { InventoryTray, PlaceBar, sd } from './ui/inventory';
 import { ClawMachine } from './ui/clawMachine';
 import { DigFind } from './ui/digFind';
 import { Shop } from './ui/shop';
-import { ShopApi, webOrderFromUrl, withoutWebOrderParams, type BagEntry } from './net/shop';
+import { codesAllowed, ShopApi, webOrderFromUrl, withoutWebOrderParams, type BagEntry } from './net/shop';
 import { CopySheet, rememberCopy, takePendingCopy } from './ui/copyBeach';
 import { VendingMachine } from './ui/vendingMachine';
 import { DEFAULT_SIZE, ITEMS, rollPlacement, type Item } from './world/items';
 import { footprintDrag, footprintFarSide, type FootprintStroke } from './world/footprints';
-import { ACCOUNTS_ENABLED, Account, AnimalsApi, ApiError, CheckpointApi, CopyApi, DigFindApi, GiftApi, GuideApi, InboxApi, PullApi, ReferralApi, type PetDto, type ShoreBeach } from './net/account';
+import { ACCOUNTS_ENABLED, Account, AnimalsApi, ApiError, CheckpointApi, CopyApi, DigFindApi, GuideApi, InboxApi, PullApi, ReferralApi, type PetDto, type ShoreBeach } from './net/account';
 import type { InboxPanel } from './ui/inbox';
 import type { VisitorCard } from './ui/visitorCard';
 import type { IconName } from './ui/hud';
-import { beachShareText, copyRequested, inviteCodeFromUrl, shoreBeachUrl, SHORE_URL, visitCodeFromUrl, withoutInviteParam, withoutVisitParam } from './net/share';
+import { beachShareText, copyRequested, inviteCodeFromUrl, shoreAccountUrl, shoreBeachUrl, SHORE_URL, visitCodeFromUrl, withoutInviteParam, withoutVisitParam } from './net/share';
 import { shareLink } from './ui/shareSheet';
 import { BeachGuide, type GuideHost } from './ui/guide';
-import type { InvitePanel } from './ui/invite';
 import { extraById, itemById, prizeName } from './world/items';
 import { BeachSync, countItems, type SyncState } from './net/beachSync';
 import { BeachStore, LOCAL_BEACH, type BeachRef } from './net/beachStore';
@@ -243,7 +242,6 @@ async function boot() {
   let shopDialog: Shop | null = null;
   let leaderboard: Leaderboard | null = null;
   let vendingMachine: VendingMachine | null = null;
-  let invitePanel: InvitePanel | null = null;
   let inboxUi: InboxPanel | null = null;
   let socialHub: SocialHub | null = null;
   /** neighbor requests waiting: a dot on the Inbox button */
@@ -3194,8 +3192,7 @@ async function boot() {
         // what each thing trades in for (docs/SAND_BUCKS.md): the next one that isn't on a beach
         const bag = await acct.fetch('/api/bag').then((r) => (r.ok ? (r.json() as Promise<{ items: BagEntry[] }>) : null)).catch(() => null);
         if (bag) {
-          inventory.setTradeValues(new Map(bag.items.filter((e) => e.free > 0 && e.values.length).map((e) => [e.item, e.values[0]])));
-          placeBar.refreshTrade();
+          inventory.setTradeInfo(new Map(bag.items.map((e) => [e.item, { free: e.free, values: e.values }])));
         }
         if (extraBeachesChanged) void acct.loadBeaches().catch(() => {});
         // what you've dug up, for the bag's "found" list
@@ -3205,38 +3202,28 @@ async function boot() {
         /* offline: keep what we had */
       }
     };
-    // trading in (docs/SAND_BUCKS.md): the thing in hand, or an extra beach
-    // from the bag, back for its sand bucks. Every beach is saved first, so
-    // the server counts what's on them as it is now.
-    const tradeIn = async (id: string) => {
+    // trading in and gifting from the bag (docs/SAND_BUCKS.md): long press a
+    // thing. Every beach is saved first, so the server counts what's on them
+    // as it is now. Gifting happens on your account page on beechshore.
+    const tradeIn = async (id: string, quantity: number) => {
       await store.flushAll();
       const res = await acct.fetch('/api/bag/trade-in', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ item: id, quantity: 1 }),
+        body: JSON.stringify({ item: id, quantity }),
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string; credited?: number; bucks?: number };
       if (!res.ok) throw new Error(data.error ?? 'that did not go through');
       await loadOwned();
       if (id === 'beach') void acct.loadBeaches().catch(() => {});
-      return { credited: data.credited ?? 0, left: inventory.tradeValue(id) === undefined ? 0 : 1 };
+      return { credited: data.credited ?? 0 };
     };
-    placeBar.setTrade({ value: (item) => inventory.tradeValue(item.id), tradeIn: (item) => tradeIn(item.id) });
-    inventory.onTradeIn = (id) => {
-      const v = inventory.tradeValue(id);
-      if (v === undefined || !window.confirm(`Trade in an extra beach for ${v} sand bucks?`)) return;
-      void tradeIn(id)
-        .then((r) => showToast(uiRoot, `+${r.credited} sand bucks`))
-        .catch((e: unknown) => showToast(uiRoot, (e as Error).message));
-    };
-    // gifting: an item in hand can go to someone else, by their code
-    const giftApi = new GiftApi(acct);
-    placeBar.setGift({
-      giftable: (item) => !item.unlimited && inventory.ownedCount(item.id) > 0,
-      sendGift: async (item, code) => {
-        const res = await giftApi.gift(code, item.id);
-        void loadOwned();
-        return { name: res.to.name };
+    inventory.setBagActions({
+      tradeIn,
+      giftable: (id) => id !== 'beach' && !(ITEMS.find((i) => i.id === id)?.unlimited ?? true) && inventory.ownedCount(id) > 0,
+      gift: (id) => {
+        inventory.setOpen(false);
+        window.open(shoreAccountUrl({ gift: id, ...(codesAllowed() ? {} : { from: 'app' }) }, 'gift'), '_blank', 'noopener');
       },
     });
     const claw = new ClawMachine(
@@ -3397,33 +3384,26 @@ async function boot() {
     // If that fails (a first visit while offline), the game carries on
     // without them; account features need the network anyway.
     const social = await Promise.all([
-      import('./ui/invite'),
       import('./ui/inbox'),
       import('./ui/visitorCard'),
       import('./ui/inboxText'),
       import('./platform/notify'),
       import('./ui/notifySettings'),
     ]).then(
-      ([invite, inbox, visitorCard, inboxText, notify, notifySettings]) => ({ ...invite, ...inbox, ...visitorCard, ...inboxText, ...notify, ...notifySettings }),
+      ([inbox, visitorCard, inboxText, notify, notifySettings]) => ({ ...inbox, ...visitorCard, ...inboxText, ...notify, ...notifySettings }),
       () => null,
     );
     const guideApi = new GuideApi(acct);
     const referralApi = new ReferralApi(acct);
-    const invites = social
-      ? new social.InvitePanel(uiRoot, {
-          signedIn: () => !!acct.user,
-          signIn: () => sheet.show('account'),
-          name: () => acct.user?.name ?? '',
-          load: () => referralApi.status(),
-        })
-      : null;
-    invitePanel = invites;
     guideHost.signedIn = () => !!acct.user;
     guideHost.load = () => guideApi.done();
     guideHost.complete = (step) => guideApi.complete(step);
+    // invites live on your account page on beechshore (your link, who joined, the S$ it earned)
+    const inviteUrl = () => shoreAccountUrl(codesAllowed() ? {} : { from: 'app' }, 'invite');
     guideHost.openInvite = () => {
       sheet.hide();
-      void invites?.open();
+      if (!acct.user) return sheet.show('account');
+      window.open(inviteUrl(), '_blank', 'noopener');
     };
     panel.invite = guideHost.openInvite;
     panel.render();
@@ -3433,7 +3413,7 @@ async function boot() {
         .lookup(inviteCode)
         .then((who) => {
           if (!who) return writeInvite(null);
-          start?.setInvite(who.name, prizeName(who.welcomeGift).toLowerCase());
+          start?.setInvite(who.name, who.welcomeBucks);
           panel.signInNote = `${who.name} invited you`;
           panel.render();
         })
@@ -3448,10 +3428,9 @@ async function boot() {
         writeInvite(null);
         panel.signInNote = '';
         refreshOwned();
-        const gift = prizeName(r.gift).toLowerCase();
         showActionToast(
           uiRoot,
-          `A welcome gift from ${r.inviter.name}: a ${gift} is in your bag.`,
+          `A welcome gift from ${r.inviter.name}: ${sd(r.bucks)}`,
           `Be ${r.inviter.name}’s neighbor`,
           () => void askToBeNeighbors(r.inviter.code, r.inviter.name),
           14000,
@@ -3473,8 +3452,22 @@ async function boot() {
         showToast(uiRoot, (e as Error).message);
       }
     };
-    /** the inviter: say so when a friend has settled in since we last told you */
-    const toldKey = (id: string) => `beech-invite-told-${id}`;
+    /** the inviter: say so when friends have joined (S$) or settled in (an old referral's gift) since we last told you */
+    const toldKey = (id: string, what: string) => `beech-invite-${what}-${id}`;
+    const told = (key: string) => {
+      try {
+        return Number(localStorage.getItem(key) ?? 0) || 0;
+      } catch {
+        return 0; // private mode
+      }
+    };
+    const setTold = (key: string, n: number) => {
+      try {
+        localStorage.setItem(key, String(n));
+      } catch {
+        /* private mode */
+      }
+    };
     const checkReferrals = async () => {
       const me = acct.user;
       if (!me) return;
@@ -3484,25 +3477,29 @@ async function boot() {
       } catch {
         return;
       }
-      let told = 0;
-      try {
-        told = Number(localStorage.getItem(toldKey(me.id)) ?? 0) || 0;
-      } catch {
-        /* private mode */
+      const invite = () => window.open(inviteUrl(), '_blank', 'noopener');
+      // friends who joined since we last said, and the S$ they earned you
+      const paid = r.friends.filter((f) => f.bucks > 0);
+      const bonusKey = toldKey(me.id, 'bonus');
+      const freshPaid = paid.slice(told(bonusKey));
+      setTold(bonusKey, paid.length);
+      if (freshPaid.length) {
+        const f = freshPaid[freshPaid.length - 1];
+        const more = freshPaid.length > 1 ? ` (and ${freshPaid.length - 1} more)` : '';
+        showActionToast(uiRoot, `${f.name} joined through your invite${more}: +${sd(freshPaid.reduce((t, x) => t + x.bucks, 0))}`, 'Invite more', invite, 12000);
+        return;
       }
-      const fresh = r.friends.filter((f) => f.settled).slice(told);
-      try {
-        localStorage.setItem(toldKey(me.id), String(r.settled));
-      } catch {
-        /* private mode */
-      }
+      // a referral from before the S$ bonus, settling in: its ladder gift
+      const settledKey = `beech-invite-told-${me.id}`;
+      const fresh = r.friends.filter((f) => f.settled).slice(told(settledKey));
+      setTold(settledKey, r.settled);
       const gifts = fresh.filter((f) => f.reward);
       if (!gifts.length) return;
       refreshOwned();
       const f = gifts[gifts.length - 1];
       const reward = f.reward === 'beach' ? 'an extra beach is yours' : `a ${prizeName(f.reward!).toLowerCase()} is in your bag`;
       const more = gifts.length > 1 ? ` (and ${gifts.length - 1} more friend${gifts.length > 2 ? 's' : ''})` : '';
-      showActionToast(uiRoot, `${f.name} settled in${more}: ${reward}`, 'Invite more', () => void invites?.open(), 12000);
+      showActionToast(uiRoot, `${f.name} settled in${more}: ${reward}`, 'Invite more', invite, 12000);
     };
     acct.onChange((u) => {
       if (!u) return guide.signedOut();
@@ -3757,7 +3754,8 @@ async function boot() {
     leaderboard: () => leaderboard,
     vending: () => vendingMachine,
     guide,
-    invites: () => invitePanel,
+    /** where "invite" goes: your account page on beechshore */
+    inviteUrl: () => shoreAccountUrl(codesAllowed() ? {} : { from: 'app' }, 'invite'),
     inbox: () => inboxUi,
     visitor: () => visitorUi,
     /** open the copy sheet for a beach code (docs/COPY_BEACH.md) */
