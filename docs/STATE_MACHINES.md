@@ -12,6 +12,7 @@ rest of `npm test` in `server/`. No E2E, no rendering.
 | Machine | Spec | Tests | What can go wrong |
 | --- | --- | --- | --- |
 | Beach snacks and pets | `Snacks.tla` | `snacks.test.ts` | snacks lost or duplicated, a crab befriended for less, extra free feeds |
+| Moving pets | `Pets.tla` | `pets.test.ts` | a pet on two beaches at once, a pet lost when another lands first, a shop pet item spent twice or not at all |
 | Editing beaches | `BeachEditing.tla` | `editing.test.ts` | a fenced device overwriting the editor, more placed than owned, a restore overwritten |
 | Neighbor links | `Neighbors.tla` | `neighbors.test.ts` | one-sided links, two neighbors on one side, two beaches linked on both sides |
 | Copying a beach | `BeachCopy.tla` | `copy.test.ts` | more placed than owned, more beaches than the allowance, a copy of a beach just taken off the shore, a different version than previewed |

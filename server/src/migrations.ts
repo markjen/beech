@@ -901,6 +901,28 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX beach_piers_owner ON beach_piers (owner_id);
   `,
+
+  // 35: pets as things you own and move (docs/PETS.md; specs/tla/Pets.tla).
+  // beach_pets.home_x/z: the pet's spot on its beach (NULL: the default).
+  // pet_bag: pets put away in their owner's bag. hunger_ms is how long since
+  // the pet was fed when it was put away, so it isn't hungrier when placed.
+  `
+  ALTER TABLE beach_pets ADD COLUMN home_x REAL;
+  ALTER TABLE beach_pets ADD COLUMN home_z REAL;
+
+  CREATE TABLE pet_bag (
+    id BIGSERIAL PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    species TEXT NOT NULL,
+    name TEXT NOT NULL DEFAULT '',
+    variant SMALLINT NOT NULL DEFAULT 0,
+    source TEXT NOT NULL CHECK (source IN ('befriended', 'shop')),
+    fed_count INTEGER NOT NULL DEFAULT 0,
+    hunger_ms BIGINT NOT NULL DEFAULT 0 CHECK (hunger_ms >= 0),
+    created_at BIGINT NOT NULL
+  );
+  CREATE INDEX pet_bag_user ON pet_bag (user_id);
+  `,
 ];
 
 /** Apply migrations up to `upTo` (default: all). Tests use `upTo` to check a migration on older data. */

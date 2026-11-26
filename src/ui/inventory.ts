@@ -1,3 +1,4 @@
+import { petKind, type PetSpecies } from '../world/pets';
 import { icon, itemIcon, type IconName } from './hud';
 import { EXTRAS, isAvailable, type Item } from '../world/items';
 
@@ -294,12 +295,12 @@ export class InventoryTray {
     for (const x of EXTRAS) {
       const n = this.ownedOf(x.id);
       if (!n) continue;
-      if (x.id === 'crab-treat' || x.id === 'pet-crab') {
+      if (x.id === 'crab-treat' || x.id.startsWith('pet-')) {
         const b = document.createElement('button');
         b.type = 'button';
         b.className = `inv-item extra rarity-${x.rarity}`;
         b.dataset.extra = x.id;
-        b.innerHTML = `${icon(x.id as IconName)}<b>${x.name}</b><span>${x.id === 'pet-crab' ? 'Tap to adopt' : `${n} left`}</span>`;
+        b.innerHTML = `${icon(x.id as IconName)}<b>${x.name}</b><span>${x.id.startsWith('pet-') ? (n > 1 ? `${n} · place` : 'place') : `${n} left`}</span>`;
         b.addEventListener('click', () => {
           this.setOpen(false);
           this.onUseExtra(x.id);
@@ -330,8 +331,38 @@ export class InventoryTray {
         grid.appendChild(b);
       }
     }
+    // your pets in the bag (docs/PETS.md): tap one, then tap a beach of yours to set it down
+    for (const p of this.bagPets) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      const kind = petKind(p.species);
+      b.className = 'inv-item extra rarity-rare';
+      b.dataset.extra = `bagpet:${p.id}`;
+      b.innerHTML = `${icon(kind.item as IconName)}<b>${escapeText(p.name || kind.name)}</b><span>${p.name ? `${kind.name.toLowerCase()} · place` : 'place'}</span>`;
+      b.addEventListener('click', () => {
+        this.setOpen(false);
+        this.onUseExtra(`bagpet:${p.id}`);
+      });
+      grid.appendChild(b);
+    }
+  }
+
+  /** pets put away in your bag */
+  private bagPets: { id: number; species: PetSpecies; name: string }[] = [];
+
+  setBagPets(pets: { id: number; species: PetSpecies; name: string }[]): void {
+    const same = pets.length === this.bagPets.length && pets.every((p, i) => p.id === this.bagPets[i].id && p.name === this.bagPets[i].name);
+    this.bagPets = pets.map((p) => ({ id: p.id, species: p.species, name: p.name }));
+    if (!same) this.render();
+  }
+
+  bagPet(id: number): { id: number; species: PetSpecies; name: string } | undefined {
+    return this.bagPets.find((p) => p.id === id);
   }
 }
+
+const escapeText = (t: string): string =>
+  t.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);
 
 /**
  * Shown while an item is in hand: what it is, a size slider (remembered per
@@ -364,6 +395,7 @@ export class PlaceBar {
   private readonly giftInput: HTMLInputElement;
   private readonly giftStatus: HTMLElement;
   private readonly tradeBtn: HTMLButtonElement;
+  private readonly bagBtn: HTMLButtonElement;
   private item: Item | null = null;
   private gifting = false;
   private trade?: PlaceBarTrade;
@@ -385,6 +417,7 @@ export class PlaceBar {
       <label class="pb-size"><span>small</span><input type="range" min="0" max="1" step="0.01" aria-label="Size"><span>big</span></label>
       <button type="button" class="pb-gift" aria-label="Gift this to someone">${icon('gift')}</button>
       <button type="button" class="pb-trade" data-act="trade-in" hidden></button>
+      <button type="button" class="pb-trade pb-tobag" data-act="pet-to-bag" hidden>put in bag</button>
       <label class="pb-gift-row"><span>gift to</span><input placeholder="their code" maxlength="8" autocomplete="off" aria-label="Neighbor code to gift to"><button type="button" class="pb-send">send</button><button type="button" class="pb-cancel" aria-label="Cancel gifting">×</button></label>
       <span class="pb-status" role="status"></span>
       <button type="button" class="pb-close" aria-label="Put it away">×</button>`;
@@ -398,6 +431,13 @@ export class PlaceBar {
     this.giftInput = this.giftRow.querySelector('input')!;
     this.giftStatus = this.root.querySelector('.pb-status')!;
     this.tradeBtn = this.root.querySelector('.pb-trade')!;
+    this.bagBtn = this.root.querySelector('.pb-tobag')!;
+    this.bagBtn.addEventListener('click', () => {
+      const go = this.petBag;
+      this.petBag = null;
+      this.bagBtn.hidden = true;
+      go?.();
+    });
     this.tradeBtn.addEventListener('click', () => void this.tradeIn());
     this.slider.addEventListener('input', () => {
       if (this.item) this.setSize(this.item.id, Number(this.slider.value));
@@ -413,6 +453,8 @@ export class PlaceBar {
 
   show(item: Item | null, size01: number): void {
     this.item = item;
+    this.petBag = null;
+    this.bagBtn.hidden = true;
     this.setGifting(false);
     this.root.classList.toggle('shown', !!item);
     if (!item) return;
@@ -466,6 +508,24 @@ export class PlaceBar {
       if (this.item === item) this.showTrade();
     }
   }
+
+  /**
+   * A pet in hand (no size, no gift, no trade-in): its name, and while you're
+   * carrying your beach's pet, a button to put it in the bag.
+   */
+  showPet(name: string, species: PetSpecies, toBag?: () => void): void {
+    this.show(null, 0);
+    this.root.classList.add('shown');
+    this.ico.innerHTML = icon(petKind(species).item as IconName);
+    this.name.textContent = name;
+    this.sizeRow.hidden = true;
+    this.giftBtn.hidden = true;
+    this.giftStatus.textContent = '';
+    this.petBag = toBag ?? null;
+    this.bagBtn.hidden = !toBag;
+  }
+
+  private petBag: (() => void) | null = null;
 
   /** A beach snack in hand (no size, no gift): its name and how many are left. */
   showSnack(name: string, left: number): void {

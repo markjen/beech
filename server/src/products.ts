@@ -14,6 +14,8 @@
 // Item ids must exist in the app's catalog (src/world/items.ts, or EXTRAS
 // for an extra beach); tests/items.test.ts keeps the two in step.
 
+import { PETS } from './petCatalog.js';
+
 export interface Product {
   id: string;
   /** stable integer itemid sent to Steam ISteamMicroTxn/InitTxn */
@@ -65,7 +67,16 @@ export const PRODUCTS: Product[] = [
   { id: 'food_pack_10', steamItemId: 1016, name: 'Beach snacks (10)', grants: [{ item: 'crab-treat', quantity: 10 }], usd: 0.99, bucks: 10, blurb: 'Ten treats to attract and feed beach animals' },
   { id: 'food_pack_35', steamItemId: 1017, name: 'Beach snacks (35)', grants: [{ item: 'crab-treat', quantity: 35 }], usd: 2.99, bucks: 30, blurb: 'Thirty-five treats to attract and feed beach animals' },
   { id: 'item_pier', steamItemId: 1019, name: 'Pier', grants: [{ item: 'pier', quantity: 1 }], usd: 2.99, bucks: 30, blurb: 'A timber pier out over the water, for the middle of three of your beaches side by side' },
-  { id: 'pet_crab', steamItemId: 1018, name: 'Pet sand crab', grants: [{ item: 'pet-crab', quantity: 1 }], usd: 1.99, bucks: 20, blurb: 'Adopt a sand crab to live on your beach permanently' },
+  // pets: one product per species, priced from the pet table (docs/PETS.md)
+  ...PETS.map((p): Product => ({
+    id: p.product,
+    steamItemId: p.steamItemId,
+    name: `Pet ${p.name.toLowerCase()}`,
+    grants: [{ item: p.item, quantity: 1 }],
+    usd: Math.round(p.bucks * 10 - 1) / 100,
+    bucks: p.bucks,
+    blurb: p.blurb,
+  })),
 ];
 
 export const productById = (id: string): Product | undefined => PRODUCTS.find((p) => p.id === id);

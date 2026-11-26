@@ -3,6 +3,7 @@
 // amount here in cents is a whole number of bucks (a multiple of 10).
 
 import { catalogItemById } from './itemCatalog.js';
+import { PET_ITEMS } from './petCatalog.js';
 import { PRODUCTS, type Product } from './products.js';
 
 /** cents in one sand buck */
@@ -16,7 +17,7 @@ export const roundToBuck = (cents: number): number => Math.round(cents / BUCK) *
 export const RARITY_BUCKS: Record<string, number> = { common: 5, uncommon: 10, rare: 15, legendary: 30 };
 
 /** Things that can't be traded in: eaten, adopted, or one of a kind. */
-const NOT_TRADEABLE = new Set(['crab-treat', 'pet-crab', 'bucks']);
+const NOT_TRADEABLE = new Set(['crab-treat', ...PET_ITEMS, 'bucks']);
 
 /**
  * An item's list value in sand bucks: what one costs on its own in the shop

@@ -20,6 +20,7 @@ import { Horizon } from './render/horizon';
 import { Sky, type SkyDisc } from './render/sky';
 import { Precipitation } from './render/precip';
 import { AnimalController, type AnimalEnv, type AnimalObstacle } from './world/animals';
+import { petByItem, petKind, type PetSpecies } from './world/pets';
 import { LiveConditions, type LiveState } from './world/live';
 import { fakeReport, setWeatherReport, shortWeather, usesFahrenheit, weatherFor, weatherGlyph, weatherText } from './world/weather';
 import { startWeather } from './net/weather';
@@ -268,6 +269,7 @@ async function boot() {
     void import('./render/animals').then(({ AnimalView: View }) => {
       animalView = new View(scene, renderer);
       animalView.offsetX = picker.offsetX;
+      animalView.heightAt = (x, z) => animalEnv.heightAt(x, z);
     });
   };
   // the pet of someone else's beach you're looking at (drawn from its snapshot sand)
@@ -500,9 +502,39 @@ async function boot() {
   let feedSpot: string | null = null;
   /** a beach snack in hand (from the bag): a tap on your beach tosses it there */
   let snackInHand = false;
+  /**
+   * a pet in hand (docs/PETS.md): one bought (a pet-<species> item), one from
+   * the bag, or your beach's pet picked up to carry: a tap on your beach sets
+   * it down there
+   */
+  type PetInHand =
+    | { kind: 'item'; species: PetSpecies }
+    | { kind: 'bag'; id: number; species: PetSpecies; name: string }
+    | { kind: 'carry'; beachId: string; species: PetSpecies; name: string };
+  let petInHand: PetInHand | null = null;
+  /** set up with the account layer */
+  let setPetDown: (hit: Hit) => void = () => {};
+  let startCarry: () => void = () => {};
+  let cancelPetHand: () => void = () => {};
+  /** is your pet under this point of your beach? */
+  const petAt = (hit: Hit | null) =>
+    !!hit && isLive(hit.target.beachId) && !awaitingLoad && animals.snapshot().isPet &&
+    animals.animalNear(hit.x - picker.offsetX, hit.z, ANIMALS.petReach);
   /** set up with the account layer: toss the snack in hand where you tapped, or pick the one that's out back up */
   let tossSnack: (hit: Hit) => void = () => {};
   let pickUpSnack: (how: 'hand' | 'vacuum') => void = () => {};
+  /**
+   * can a snack go where the water is this deep? Dry sand (land animals and
+   * amphibians), or water deep enough to float in (sea animals), not the wash
+   * between; `forPet` limits it to where that pet can reach.
+   */
+  const snackSpotOk = (depth: number, forPet: PetSpecies | null = null): boolean => {
+    const dry = depth <= ANIMALS.snackMaxWaterDepth;
+    const sea = depth >= ANIMALS.snackMinSeaDepth && depth <= ANIMALS.snackMaxSeaDepth;
+    if (!forPet) return dry || sea;
+    const h = petKind(forPet).habitat;
+    return h === 'land' ? dry : h === 'sea' ? sea : dry || sea;
+  };
   /** is the snack that's out under this point of your beach? */
   const snackAt = (hit: Hit | null, reach = ANIMALS.snackReach) =>
     !!hit && hit.target.beachId === shownSnackBeach && isLive(hit.target.beachId) && !awaitingLoad &&
@@ -1067,10 +1099,10 @@ async function boot() {
   let collapsed = true;
   /** highlight the active tool: the hand, the bag (an item in hand), or a dirt tool */
   const syncToolUI = () =>
-    hud.setTool(placing || snackInHand ? 'place' : tool === 'sand' ? sandMode : tool === 'clearing' ? clearingMode : tool === 'castle' ? castleShape : tool);
+    hud.setTool(placing || snackInHand || petInHand ? 'place' : tool === 'sand' ? sandMode : tool === 'clearing' ? clearingMode : tool === 'castle' ? castleShape : tool);
   const syncLookOnly = () => {
     gestures.tapToPlace = feedSpot !== null;
-    gestures.lookOnly = !feedSpot && (collapsed || (!placing && !snackInHand && tool === 'look'));
+    gestures.lookOnly = !feedSpot && (collapsed || (!placing && !snackInHand && !petInHand && tool === 'look'));
   };
   const pickTool = (id: string) => {
     if (isSandMode(id)) {
@@ -1091,6 +1123,7 @@ async function boot() {
     placing = null;
     endFeedSpot();
     snackInHand = false;
+    cancelPetHand();
     footprintsStroke = null;
     inventory.deselect();
     placeBar.show(null, DEFAULT_SIZE);
@@ -1111,6 +1144,7 @@ async function boot() {
     placing = item;
     endFeedSpot();
     snackInHand = false;
+    cancelPetHand();
     footprintsStroke = null;
     syncLookOnly();
     syncToolUI();
@@ -1489,6 +1523,7 @@ async function boot() {
     feedSpot = b.code;
     placing = null;
     snackInHand = false;
+    cancelPetHand();
     footprintsStroke = null;
     inventory.deselect();
     placeBar.show(null, DEFAULT_SIZE);
@@ -1510,7 +1545,7 @@ async function boot() {
     const code = b.code;
     const pet = visitedPetCache.get(code);
     if (!hit || !pet || visitPetCode !== code || visitAnimals.snapshot().food.active ||
-        neighbors.waterAtWorld(hit.x, hit.z) > ANIMALS.snackMaxWaterDepth ||
+        !snackSpotOk(neighbors.waterAtWorld(hit.x, hit.z), pet.species) ||
         !visitAnimals.dropFood(visitEnv, { x: hit.x - hit.offsetX, z: hit.z })) return;
     visitorFeeds.add(code);
     endFeedSpot();
@@ -1522,7 +1557,7 @@ async function boot() {
         if (res.usedFood) refreshOwned();
         visitedPetCache.set(code, res.pet);
         if (visitPetCode === code) visitAnimals.setPet(res.pet, visitEnv);
-        showToast(uiRoot, res.pet.name ? `Fed ${res.pet.name}!` : 'Fed their sand crab!');
+        showToast(uiRoot, res.pet.name ? `Fed ${res.pet.name}!` : `Fed their ${petKind(res.pet.species).name.toLowerCase()}!`);
       })
       .catch((err: unknown) => {
         if (visitPetCode === code) {
@@ -1548,7 +1583,7 @@ async function boot() {
       visitPetCode = code;
       if (code && pet && neighbors) {
         visitPetX = neighbors.xFor(neighbors.nearestIndex(cam.focusX));
-        visitAnimals.setPet({ species: pet.species, name: pet.name, mood: pet.mood }, visitEnv);
+        visitAnimals.setPet({ species: pet.species, name: pet.name, mood: pet.mood, home: pet.home ?? null }, visitEnv);
       }
     }
     if (visitPetCode && neighbors) {
@@ -1558,6 +1593,7 @@ async function boot() {
         visitViewLoading = true;
         void import('./render/animals').then(({ AnimalView: View }) => {
           visitView = new View(scene, renderer);
+          visitView.heightAt = (x, z) => visitEnv.heightAt(x, z);
         });
       }
     }
@@ -1702,12 +1738,28 @@ async function boot() {
         return;
       }
       inventory.setOpen(false);
+      if (petInHand) {
+        setPetDown(hit);
+        return;
+      }
       if (snackInHand) {
         tossSnack(hit);
         return;
       }
       if (placing) {
         putDown(hit);
+        return;
+      }
+      // pressing on your pet: hold still to pick it up
+      if (petAt(hit)) {
+        press = {
+          sx,
+          sy,
+          timer: window.setTimeout(() => {
+            press = null;
+            if (petAt(hit)) startCarry();
+          }, LONG_PRESS_MS),
+        };
         return;
       }
       // pressing on the snack that's out: hold still to pick it back up
@@ -1858,6 +1910,10 @@ async function boot() {
     grabAt: (sx, sy) => {
       // look mode: a long-press on a thing picks it up (on any of your visible beaches)
       if (fenced) return false;
+      if (petAt(pickAt(sx, sy))) {
+        startCarry();
+        return false;
+      }
       if (snackAt(pickAt(sx, sy))) {
         pickUpSnack('hand');
         return false;
@@ -1917,6 +1973,10 @@ async function boot() {
       if (fenced) return;
       const hit = pickAt(sx, sy);
       if (!hit) return;
+      if (petInHand) {
+        setPetDown(hit);
+        return;
+      }
       if (snackInHand) {
         tossSnack(hit);
         return;
@@ -2309,9 +2369,10 @@ async function boot() {
   let animalsApi: AnimalsApi | null = null;
   if (account) {
     animalsApi = new AnimalsApi(account);
-    const applyPet = (pet: { species: 'crab'; name: string; mood: 'happy' | 'peckish' | 'hungry' | 'sleepy'; lastFedAt: number } | null) => {
+    const applyPet = (pet: PetDto | null) => {
       syncAnimalObstacles();
-      animals.setPet(pet ? { species: pet.species, name: pet.name, mood: pet.mood } : null, animalEnv);
+      if (!pet && animals.snapshot().isPet) animals.despawnNow();
+      animals.setPet(pet ? { species: pet.species, name: pet.name, mood: pet.mood, home: pet.home ?? null } : null, animalEnv);
       petForReminder = pet && { name: pet.name, lastFedAt: pet.lastFedAt };
       if (settings.petReminders) updatePetReminder();
     };
@@ -2342,13 +2403,131 @@ async function boot() {
               } catch {
                 /* storage unavailable */
               }
-              showToast(uiRoot, `${latest.name} fed ${r.pet.name || 'your sand crab'}!`);
+              showToast(uiRoot, `${latest.name} fed ${r.pet.name || `your ${petKind(r.pet.species).name.toLowerCase()}`}!`);
             }
           }
         })
         .catch(() => {});
     };
-    account.onChange(() => refreshPet());
+    const refreshBagPets = () => {
+      if (!animalsApi?.signedIn) {
+        inventory.setBagPets([]);
+        return;
+      }
+      void animalsApi.bagPets().then((pets) => inventory.setBagPets(pets)).catch(() => {});
+    };
+    account.onChange(() => {
+      refreshPet();
+      refreshBagPets();
+    });
+    refreshBagPets();
+    const takePetInHand = (p: PetInHand) => {
+      endFeedSpot();
+      placing = null;
+      footprintsStroke = null;
+      snackInHand = false;
+      inventory.deselect();
+      petInHand = p;
+      syncLookOnly();
+      syncToolUI();
+      const kind = petKind(p.species);
+      const label = p.kind === 'item' ? kind.name : p.name || kind.name;
+      placeBar.showPet(label, p.species, p.kind === 'carry' ? () => stowCarried() : undefined);
+      haptics.impact('light');
+    };
+    cancelPetHand = () => {
+      const p = petInHand;
+      if (!p) return;
+      petInHand = null;
+      // a carried pet goes back down where it is
+      if (p.kind === 'carry' && animals.snapshot().carried) animals.carry(false, animalEnv);
+      placeBar.show(null, DEFAULT_SIZE);
+    };
+    startCarry = () => {
+      if (!animalsApi?.signedIn || !sync.id || sync.id === LOCAL_BEACH || fenced) return;
+      const snap = animals.snapshot();
+      if (!snap.isPet) return;
+      animals.carry(true);
+      animals.carryTo(animalEnv, snap.x, snap.z);
+      takePetInHand({ kind: 'carry', beachId: sync.id, species: snap.species, name: snap.petName });
+    };
+    const stowCarried = () => {
+      const p = petInHand;
+      if (!p || p.kind !== 'carry' || !animalsApi) return;
+      petInHand = null;
+      placeBar.show(null, DEFAULT_SIZE);
+      syncLookOnly();
+      syncToolUI();
+      void animalsApi
+        .stowPet(p.beachId)
+        .then((r) => {
+          if (isLive(p.beachId)) applyPet(null);
+          inventory.setBagPets(r.bag);
+          haptics.impact('medium');
+          showPaneToast(placeWrap, `${r.pet.name || petKind(r.pet.species).name} is in your bag`);
+        })
+        .catch((err: unknown) => {
+          if (animals.snapshot().carried) animals.carry(false, animalEnv);
+          showToast(uiRoot, err instanceof Error ? err.message : 'Couldn’t put the pet away.');
+        });
+    };
+    let petBusy = false;
+    setPetDown = (hit) => {
+      const p = petInHand;
+      if (!p || petBusy || !animalsApi?.signedIn) return;
+      if (!isLive(hit.target.beachId) || awaitingLoad || !sync.id || sync.id === LOCAL_BEACH) {
+        showToast(uiRoot, 'Head to your beach first.');
+        return;
+      }
+      const beachId = sync.id;
+      const pos = { x: hit.x - picker.offsetX, z: hit.z };
+      if (!animals.canSetDownSpecies(animalEnv, p.species, pos.x, pos.z)) {
+        haptics.impact('light');
+        showToast(uiRoot, petKind(p.species).habitat === 'sea' ? 'Needs deeper water.' : 'Too wet here.');
+        return;
+      }
+      if (p.kind === 'carry') {
+        if (p.beachId !== beachId) return;
+        animals.carryTo(animalEnv, pos.x, pos.z);
+        animals.carry(false, animalEnv);
+        petInHand = null;
+        placeBar.show(null, DEFAULT_SIZE);
+        syncLookOnly();
+        syncToolUI();
+        haptics.impact('light');
+        void animalsApi.movePet(beachId, pos).catch((err: unknown) => {
+          showToast(uiRoot, err instanceof Error ? err.message : 'Couldn’t move the pet.');
+        });
+        return;
+      }
+      if (animals.snapshot().isPet) {
+        showToast(uiRoot, 'This beach has a pet.');
+        return;
+      }
+      petBusy = true;
+      const req =
+        p.kind === 'item'
+          ? animalsApi.adoptPet({ mode: 'shop', species: p.species, beachId, home: pos })
+          : animalsApi.placePet(p.id, beachId, pos);
+      void req
+        .then((pet) => {
+          petInHand = null;
+          placeBar.show(null, DEFAULT_SIZE);
+          syncLookOnly();
+          syncToolUI();
+          if (isLive(beachId)) applyPet(pet);
+          refreshOwned();
+          refreshBagPets();
+          haptics.impact('medium');
+          showToast(uiRoot, `${pet.name || `Your ${petKind(pet.species).name.toLowerCase()}`} moved onto your beach!`);
+        })
+        .catch((err: unknown) => {
+          showToast(uiRoot, err instanceof Error ? err.message : 'Could not place the pet.');
+        })
+        .finally(() => {
+          petBusy = false;
+        });
+    };
     inventory.onUseExtra = (id) => {
       if (!animalsApi?.signedIn) {
         showToast(uiRoot, 'Sign in first.');
@@ -2358,19 +2537,15 @@ async function boot() {
         showToast(uiRoot, 'Head back to your beach first.');
         return;
       }
-      const activeBeachId = sync.id;
-      if (id === 'pet-crab') {
-        void animalsApi
-          .adoptPet({ mode: 'shop', beachId: activeBeachId })
-          .then((pet) => {
-            applyPet(pet);
-            refreshOwned();
-            haptics.impact('medium');
-            showToast(uiRoot, 'A sand crab moved onto your beach!');
-          })
-          .catch((err: unknown) => {
-            showToast(uiRoot, err instanceof Error ? err.message : 'Could not adopt pet.');
-          });
+      // a pet in hand: tap your beach to set it down (one pet per beach)
+      const bought = petByItem(id);
+      if (bought) {
+        takePetInHand({ kind: 'item', species: bought.species });
+        return;
+      }
+      if (id.startsWith('bagpet:')) {
+        const bp = inventory.bagPet(Number(id.slice(7)));
+        if (bp) takePetInHand({ kind: 'bag', id: bp.id, species: bp.species, name: bp.name });
         return;
       }
       if (id !== 'crab-treat') return;
@@ -2398,16 +2573,20 @@ async function boot() {
         return;
       }
       const pos = { x: hit.x - picker.offsetX, z: hit.z };
-      if (animalEnv.waterAt(pos.x, pos.z) > ANIMALS.snackMaxWaterDepth) {
+      const snapNow = animals.snapshot();
+      const petSpecies = snapNow.isPet ? snapNow.species : null;
+      if (!snackSpotOk(animalEnv.waterAt(pos.x, pos.z), petSpecies)) {
         haptics.impact('light');
-        showToast(uiRoot, 'Too wet here.');
+        showToast(uiRoot, animalEnv.waterAt(pos.x, pos.z) > ANIMALS.snackMaxSeaDepth ? 'Too deep here.' : 'Too wet here.');
         return;
       }
+      // who this snack is for: your pet, the wild animal that's out, or the one it will bring
+      const species = petSpecies ?? animals.snackSpecies(animalEnv, pos);
       const beachId = sync.id;
       const expiresAt = Date.now() + ANIMALS.foodDuration * 1000;
       snackBusy = true;
       void animalsApi
-        .feed(beachId)
+        .feed(beachId, species)
         .then((res) => {
           droppedSnacks.set(beachId, { ...pos, expiresAt });
           if (isLive(beachId)) {
@@ -2422,17 +2601,18 @@ async function boot() {
           }
           if (res.pet) {
             if (isLive(beachId)) applyPet(res.pet);
-            showToast(uiRoot, res.pet.name ? `Fed ${res.pet.name}!` : 'Fed your sand crab!');
+            showToast(uiRoot, res.pet.name ? `Fed ${res.pet.name}!` : `Fed your ${petKind(res.pet.species).name.toLowerCase()}!`);
           } else if (res.bond?.ready) {
-            showActionToast(uiRoot, 'A wild sand crab wants to stay on your beach!', 'Adopt', () => {
+            const wild = petKind(res.bond.species);
+            showActionToast(uiRoot, `A wild ${wild.name.toLowerCase()} wants to stay on your beach!`, 'Adopt', () => {
               void animalsApi
-                ?.adoptPet({ mode: 'befriend', beachId })
+                ?.adoptPet({ mode: 'befriend', beachId, species: wild.species })
                 .then((pet) => {
                   droppedSnacks.delete(beachId);
                   if (shownSnackBeach === beachId) hideSnack();
                   if (isLive(beachId)) applyPet(pet);
                   haptics.impact('medium');
-                  showToast(uiRoot, 'Your new sand crab moved in!');
+                  showToast(uiRoot, `Your new ${wild.name.toLowerCase()} moved in!`);
                 })
                 .catch((err: unknown) => showToast(uiRoot, err instanceof Error ? err.message : 'Could not adopt pet.'));
             });
@@ -2532,6 +2712,7 @@ async function boot() {
         fenced = true;
         placing = null;
         snackInHand = false;
+    cancelPetHand();
         footprintsStroke = null;
         showFencedBanner();
       } else if (kind === 'short') {
@@ -3604,9 +3785,16 @@ async function boot() {
     objectView,
     animals: {
       snapshot: () => ({ ...animals.snapshot(), food: { ...animals.snapshot().food } }),
-      spawn: (pos?: { x: number; z: number }, species: 'crab' | 'dolphin' = 'crab') => {
+      spawn: (pos?: { x: number; z: number }, species: PetSpecies = 'crab') => {
         syncAnimalObstacles();
         return animals.spawnNow(animalEnv, pos, species);
+      },
+      /** show a pet on the live beach, on this device only (screenshots, docs/PETS.md) */
+      setPet: (species: PetSpecies | null, home?: { x: number; z: number }) => {
+        syncAnimalObstacles();
+        if (!species) animals.despawnNow();
+        animals.setPet(species ? { species, name: '', mood: 'happy', home: home ?? null } : null, animalEnv);
+        ensureAnimalView();
       },
       dropFood: (pos?: { x: number; z: number }) => {
         syncAnimalObstacles();
@@ -3650,6 +3838,10 @@ async function boot() {
       spawnDolphin: () => {
         syncAnimalObstacles();
         return animals.spawnNow(animalEnv, undefined, 'dolphin');
+      },
+      spawnSpecies: (sp) => {
+        syncAnimalObstacles();
+        return animals.spawnNow(animalEnv, undefined, sp);
       },
       dropFood: () => {
         syncAnimalObstacles();

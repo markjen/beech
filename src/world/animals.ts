@@ -8,9 +8,16 @@
 // to appear sooner (4x faster wait) or draws an active crab over to nibble,
 // extending its visit and calming it around the brush.
 
-import { ANIMALS, PROFILE, WORLD_SIZE_X, WORLD_SIZE_Z } from '../config';
+// Pets (docs/PETS.md): six species, each moving its own way: the crab and the
+// sandpiper on the sand, the octopus in the shallows, the dolphin past the
+// surf, and the seal and the turtle in both (swimming at the surface, then
+// hauling out onto the sand). Sea animals keep their backs above the water so
+// they can always be seen.
 
-export type AnimalSpecies = 'crab' | 'dolphin';
+import { ANIMALS, PROFILE, WORLD_SIZE_X, WORLD_SIZE_Z } from '../config';
+import { canLand, canSwim, petKind, pickWildSpecies, type PetSpecies } from './pets';
+
+export type AnimalSpecies = PetSpecies;
 
 export type PetMood = 'happy' | 'peckish' | 'hungry' | 'sleepy';
 
@@ -25,7 +32,8 @@ export type AnimalPhase =
   | 'sleeping'
   | 'burrowing'
   | 'swimming'
-  | 'breaching';
+  | 'breaching'
+  | 'carried';
 
 export interface AnimalObstacle {
   x: number;
@@ -50,12 +58,16 @@ export interface FoodSnapshot {
   y: number;
   z: number;
   timeLeft: number;
+  /** tossed into the water: it floats, for sea animals */
+  floating: boolean;
 }
 
 export interface ResidentPet {
   species: AnimalSpecies;
   name: string;
   mood: PetMood;
+  /** its spot on the beach (picked up and set down), or none */
+  home?: { x: number; z: number } | null;
 }
 
 export interface AnimalSnapshot {
@@ -95,6 +107,19 @@ export interface AnimalSnapshot {
   calmTimer: number;
   /** currently dropped treat on the sand, if any */
   food: FoodSnapshot;
+  /** swimming (seals and turtles switch; sea animals always are) */
+  inWater: boolean;
+  /** octopus: 0 = its own colour, 1 = blended into the sand */
+  tint: number;
+  /** octopus: seconds left of a puff of ink */
+  ink: number;
+  /** sandpiper: 0 = on the ground, 1 = flying */
+  flap: number;
+  /** picked up by the player and carried to a new spot */
+  carried: boolean;
+  /** turtle flipper tracks on the sand (x, z pairs, oldest first), `trackCount` of them */
+  tracks: Float32Array;
+  trackCount: number;
 }
 
 const HALF_X = WORLD_SIZE_X / 2;
@@ -139,6 +164,15 @@ export class AnimalController {
   private swimDir = 1;
   private breachClock = 0;
   private nextBreachIn = 2.5;
+  /** seals and turtles: seconds left ashore before heading back to sea */
+  private ashoreLeft = 0;
+  /** a swimmer heading ashore (to food or to rest) */
+  private headingAshore = false;
+  /** which species the snack that's out will bring (decided when it's tossed) */
+  private baitSpecies: AnimalSpecies | null = null;
+  private lastTrackX = NaN;
+  private lastTrackZ = NaN;
+  private trackSide = 1;
   /** Optional callback fired whenever a wild animal finishes eating a treat. */
   onWildFed?: (species: AnimalSpecies) => void;
 
@@ -167,8 +201,20 @@ export class AnimalController {
       startles: 0,
       happyTimer: 0,
       calmTimer: 0,
-      food: { active: false, x: 0, y: 0, z: 5, timeLeft: 0 },
+      food: { active: false, x: 0, y: 0, z: 5, timeLeft: 0, floating: false },
+      inWater: false,
+      tint: 0,
+      ink: 0,
+      flap: 0,
+      carried: false,
+      tracks: new Float32Array(ANIMALS.turtleTracks * 2),
+      trackCount: 0,
     };
+  }
+
+  /** The kind of the animal out now (or the pet). */
+  private get kind() {
+    return petKind(this.snap.species);
   }
 
   /** Read-only view of the current animal & food state (reused object — zero allocations per frame). */
@@ -193,10 +239,11 @@ export class AnimalController {
     s.isPet = true;
     s.petName = pet.name;
     s.petMood = pet.mood;
+    if (s.active && s.species !== pet.species) this.despawnNow();
     if (!s.active && env) {
-      this.spawnNow(env, undefined, pet.species);
+      if (!pet.home || !this.spawnNow(env, pet.home, pet.species)) this.spawnNow(env, undefined, pet.species);
     }
-    if (s.active) {
+    if (s.active && (pet.species === 'crab' || pet.species === 'sandpiper' || !s.inWater)) {
       s.species = pet.species;
       if (pet.mood === 'sleepy') {
         s.phase = 'sleeping';
@@ -215,15 +262,19 @@ export class AnimalController {
    * (bait) and draws any nearby active crab over to eat it.
    */
   dropFood(env: AnimalEnv, pos?: { x: number; z: number }): boolean {
-    const spot = pos ? this.validateSpot(pos.x, pos.z, env) : this.pickSpawnSpot(env);
+    const depth = pos ? env.waterAt(pos.x, pos.z) : 0;
+    const floating = !!pos && depth >= ANIMALS.snackMinSeaDepth;
+    const spot = floating ? this.validateSeaSpot(pos.x, pos.z, env) : pos ? this.validateSpot(pos.x, pos.z, env) : this.pickSpawnSpot(env);
     if (!spot) return false;
     const f = this.snap.food;
     f.active = true;
     f.x = spot.x;
     f.y = spot.y;
     f.z = spot.z;
+    f.floating = floating;
     f.timeLeft = ANIMALS.foodDuration;
     this.foodWetTimer = 0;
+    if (!this.snap.active || !this.snap.isPet) this.baitSpecies ??= this.snackSpecies(env, spot);
     // Waking a sleepy resident pet when food is tossed
     if (this.pet && this.snap.phase === 'sleeping') {
       this.pet.mood = 'happy';
@@ -252,7 +303,86 @@ export class AnimalController {
     f.active = false;
     f.timeLeft = 0;
     this.foodWetTimer = 0;
+    this.baitSpecies = null;
     return true;
+  }
+
+  /**
+   * Which species a snack tossed at `pos` feeds: the wild animal that's out,
+   * if it can reach the spot, else the one the snack will bring (decided now,
+   * so the server counts the feed toward the right species).
+   */
+  snackSpecies(env: AnimalEnv, pos: { x: number; z: number }): AnimalSpecies {
+    const s = this.snap;
+    const wet = env.waterAt(pos.x, pos.z) >= ANIMALS.snackMinSeaDepth;
+    if (s.active && (s.isPet || (wet ? canSwim(s.species) : canLand(s.species)))) return s.species;
+    if (this.baitSpecies && (wet ? canSwim(this.baitSpecies) : canLand(this.baitSpecies))) return this.baitSpecies;
+    this.baitSpecies = pickWildSpecies(this.rand, wet);
+    return this.baitSpecies;
+  }
+
+  /** Is the animal out (yours, or wild) within `r` m of (x, z)? */
+  animalNear(x: number, z: number, r: number): boolean {
+    const s = this.snap;
+    return s.active && Math.hypot(s.x - x, s.z - z) <= r + s.size * 0.5;
+  }
+
+  /** Pick the pet up (it follows `carryTo`), or set it down where it is. */
+  carry(on: boolean, env?: AnimalEnv): void {
+    const s = this.snap;
+    if (!s.active) return;
+    s.carried = on;
+    if (on) {
+      s.phase = 'carried';
+      s.speed = 0;
+      s.emerge = 1;
+      return;
+    }
+    if (this.pet) this.pet.home = { x: s.x, z: s.z };
+    if (env) this.settleAfterCarry(env);
+    else this.enterPause(0.6);
+  }
+
+  /** Move a carried pet to (x, z), held a little above the ground or the water. */
+  carryTo(env: AnimalEnv, x: number, z: number): void {
+    const s = this.snap;
+    if (!s.carried) return;
+    s.x = clamp(x, -HALF_X + ANIMALS.edgeMargin, HALF_X - ANIMALS.edgeMargin);
+    s.z = clamp(z, -HALF_Z + ANIMALS.edgeMargin, HALF_Z - ANIMALS.edgeMargin);
+    const h = env.heightAt(s.x, s.z);
+    const w = env.waterAt(s.x, s.z);
+    if (Number.isFinite(h)) s.y = h + Math.max(0, w) + 0.6;
+  }
+
+  /** Can this pet be set down here (sea pets in water, land pets on sand)? */
+  canSetDown(env: AnimalEnv, x: number, z: number): boolean {
+    return this.canSetDownSpecies(env, this.snap.species, x, z);
+  }
+
+  /** Can a pet of this species be set down here? */
+  canSetDownSpecies(env: AnimalEnv, sp: AnimalSpecies, x: number, z: number): boolean {
+    const d = env.waterAt(x, z);
+    if (!Number.isFinite(env.heightAt(x, z))) return false;
+    if (sp === 'dolphin') return d >= ANIMALS.dolphinMinDepth;
+    if (sp === 'octopus') return d >= ANIMALS.octopusMinDepth;
+    if (!canSwim(sp)) return d < ANIMALS.snackMaxWaterDepth + 0.02;
+    return true;
+  }
+
+  private settleAfterCarry(env: AnimalEnv): void {
+    const s = this.snap;
+    const d = env.waterAt(s.x, s.z);
+    const bed = env.heightAt(s.x, s.z);
+    s.inWater = canSwim(s.species) && (!canLand(s.species) || d >= ANIMALS.swimMinDepth);
+    if (s.inWater) {
+      s.phase = 'swimming';
+      s.y = this.surfaceY(bed, d);
+      this.swimDir = this.rand() < 0.5 ? 1 : -1;
+    } else {
+      if (Number.isFinite(bed)) s.y = bed;
+      this.enterPause(0.8);
+      this.ashoreLeft = ANIMALS.ashoreMin + this.rand() * (ANIMALS.ashoreMax - ANIMALS.ashoreMin);
+    }
   }
 
   /** Restore a snack's remaining time (after a pick-up that didn't go through). */
@@ -262,11 +392,21 @@ export class AnimalController {
 
   /** Immediately spawn a wild animal (`'crab'` or `'dolphin'`, used by ?debug=1 and tests). */
   spawnNow(env: AnimalEnv, pos?: { x: number; z: number }, species: AnimalSpecies = 'crab'): boolean {
+    this.resetExtras();
     if (species === 'dolphin') return this.spawnDolphin(env, pos);
+    if (species === 'octopus') return this.spawnOctopus(env, pos);
+    if (species === 'seal' || species === 'turtle') {
+      // amphibians: a pet with a spot on the sand starts there; otherwise in the surf
+      const onSand = pos && env.waterAt(pos.x, pos.z) < ANIMALS.hauloutDepth;
+      if (!onSand && this.spawnSwimmer(env, pos, species)) return true;
+      if (!onSand && !pos) return false;
+    }
     const spot = pos ? this.validateSpot(pos.x, pos.z, env) : this.pickSpawnSpot(env);
     if (!spot) return false;
     const s = this.snap;
-    s.species = 'crab';
+    s.species = species;
+    s.inWater = false;
+    this.ashoreLeft = ANIMALS.ashoreMin + this.rand() * (ANIMALS.ashoreMax - ANIMALS.ashoreMin);
     s.active = true;
     s.phase = this.pet?.mood === 'sleepy' ? 'sleeping' : 'emerging';
     s.x = spot.x;
@@ -279,8 +419,10 @@ export class AnimalController {
     s.scuttlePhase = 0;
     s.emerge = this.pet?.mood === 'sleepy' ? 0.45 : 0;
     s.clawWave = 0;
-    s.size = ANIMALS.crabSize * (0.9 + this.rand() * 0.2);
+    s.size = (species === 'crab' ? ANIMALS.crabSize : this.kind.size) * (0.9 + this.rand() * 0.2);
     s.visitLeft = ANIMALS.visitMin + this.rand() * (ANIMALS.visitMax - ANIMALS.visitMin);
+    // a sandpiper flies in rather than coming up out of the sand
+    if (species === 'sandpiper') s.flap = 1;
     s.nextSpawnIn = 0;
     s.startles = 0;
     s.happyTimer = 0;
@@ -322,6 +464,7 @@ export class AnimalController {
     const s = this.snap;
     s.species = 'dolphin';
     s.active = true;
+    s.inWater = true;
     s.phase = 'swimming';
     s.x = startX;
     s.z = z;
@@ -356,8 +499,21 @@ export class AnimalController {
     s.startles = 0;
     s.happyTimer = 0;
     s.calmTimer = 0;
+    s.carried = false;
+    s.inWater = false;
     this.waitTimer = this.rollWait();
     s.nextSpawnIn = this.waitTimer;
+  }
+
+  private resetExtras(): void {
+    const s = this.snap;
+    s.tint = 0;
+    s.ink = 0;
+    s.flap = 0;
+    s.carried = false;
+    s.trackCount = 0;
+    this.lastTrackX = NaN;
+    this.headingAshore = false;
   }
 
   /** Advance the state machine by `dt` seconds. */
@@ -371,8 +527,11 @@ export class AnimalController {
     if (f.active) {
       f.timeLeft -= step;
       const fh = env.heightAt(f.x, f.z);
-      if (Number.isFinite(fh)) f.y = fh;
-      if (env.waterAt(f.x, f.z) > 0.08) {
+      const fw = env.waterAt(f.x, f.z);
+      if (Number.isFinite(fh)) f.y = f.floating ? fh + Math.max(fw, 0) : fh;
+      if (f.floating) {
+        this.foodWetTimer = 0;
+      } else if (fw > 0.08) {
         this.foodWetTimer += step;
       } else {
         this.foodWetTimer = Math.max(0, this.foodWetTimer - step * 2);
@@ -380,15 +539,22 @@ export class AnimalController {
       if (f.timeLeft <= 0 || this.foodWetTimer >= 1.2) {
         f.active = false;
         f.timeLeft = 0;
+        this.baitSpecies = null;
       }
     }
+    if (s.ink > 0) s.ink = Math.max(0, s.ink - step);
 
     if (s.happyTimer > 0) s.happyTimer = Math.max(0, s.happyTimer - step);
     if (s.calmTimer > 0) s.calmTimer = Math.max(0, s.calmTimer - step);
 
     // Resident pet is always present on the beach
     if (this.pet && s.phase === 'absent') {
-      this.spawnNow(env, undefined, this.pet.species);
+      if (!this.spawnNow(env, this.pet.home ?? undefined, this.pet.species)) this.spawnNow(env, undefined, this.pet.species);
+      return;
+    }
+    if (s.carried) {
+      s.speed = 0;
+      s.scuttlePhase += step * 6;
       return;
     }
 
@@ -399,11 +565,20 @@ export class AnimalController {
       if (this.waitTimer <= 0) {
         const chance = f.active ? Math.min(0.95, ANIMALS.visitChance + 0.25) : ANIMALS.visitChance;
         if (this.rand() < chance) {
-          // Bait on dry sand attracts crabs; unbaited rolls can spawn an offshore dolphin
-          const pickDolphin = !f.active && this.rand() < ANIMALS.dolphinChance;
-          if (pickDolphin && this.spawnNow(env, undefined, 'dolphin')) return;
-          const nearFood = f.active ? this.pickSpotNear(f.x, f.z, 3.5, 7.5, env) : null;
-          if (this.spawnNow(env, nearFood ?? undefined, 'crab')) return;
+          // Bait brings the species decided when it was tossed; unbaited rolls
+          // can bring an offshore dolphin, or any of the others
+          if (f.active) {
+            const sp = this.baitSpecies ?? (f.floating ? 'dolphin' : 'crab');
+            const near = f.floating ? this.pickSeaSpotNear(f.x, f.z, sp, env) : this.pickSpotNear(f.x, f.z, 3.5, 7.5, env);
+            if (this.spawnNow(env, near ?? undefined, sp)) return;
+            if (!f.floating && this.spawnNow(env, near ?? undefined, 'crab')) return;
+          } else {
+            const pickDolphin = this.rand() < ANIMALS.dolphinChance;
+            if (pickDolphin && this.spawnNow(env, undefined, 'dolphin')) return;
+            const sp = pickWildSpecies(this.rand, null);
+            if (sp !== 'dolphin' && sp !== 'crab' && this.spawnNow(env, undefined, sp)) return;
+            if (this.spawnNow(env, undefined, 'crab')) return;
+          }
         }
         // quiet miss — wait another interval so the beach stays empty most of the time
         this.waitTimer = this.rollWait();
@@ -416,6 +591,15 @@ export class AnimalController {
       this.updateDolphin(step, env);
       return;
     }
+    if (s.species === 'octopus') {
+      this.updateOctopus(step, env);
+      return;
+    }
+    if (s.inWater) {
+      this.updateSwimmer(step, env);
+      return;
+    }
+    if (s.flap > 0 && s.phase !== 'burrowing') s.flap = Math.max(0, s.flap - step * 1.6);
 
     if (this.startleCooldown > 0) this.startleCooldown = Math.max(0, this.startleCooldown - step);
 
@@ -492,8 +676,29 @@ export class AnimalController {
       }
     }
 
+    // Seals and turtles ashore: back to sea when the waves reach them, or after a rest
+    if (canSwim(s.species)) {
+      if (s.phase !== 'eating' && s.phase !== 'seeking_food') this.ashoreLeft -= step;
+      const here = env.waterAt(s.x, s.z);
+      // waves up to its body, or back at the water's edge after its rest
+      if (here >= ANIMALS.swimMinDepth || (this.ashoreLeft <= 0 && here >= ANIMALS.hauloutDepth * 1.5)) {
+        this.enterWater(env);
+        return;
+      }
+      if (this.ashoreLeft <= 0 && s.phase !== 'eating' && s.phase !== 'seeking_food') {
+        // crawl down the beach toward the sea
+        if (s.phase !== 'wandering' || this.targetZ > s.z) {
+          s.phase = 'wandering';
+          this.targetX = this.clampX(s.x + (this.rand() - 0.5) * 2);
+          this.targetZ = SHORELINE_Z - 2.5;
+          this.phaseTimer = 30;
+        }
+      }
+    }
+    if (s.species === 'turtle') this.layTrack();
+
     // React to incoming wave wash
-    if (env.waterAt(s.x, s.z) > ANIMALS.crabWetDepth && s.phase !== 'fleeing') {
+    if (!canSwim(s.species) && env.waterAt(s.x, s.z) > ANIMALS.crabWetDepth && s.phase !== 'fleeing') {
       const upslopeZ = this.clampZ(s.z + 2.2 + this.rand() * 1.8);
       const sideX = this.clampX(s.x + (this.rand() - 0.5) * 2.4);
       this.enterFlee(sideX, upslopeZ);
@@ -528,7 +733,7 @@ export class AnimalController {
     }
 
     // Notice dropped food nearby when pausing or wandering
-    if (f.active && (s.phase === 'pausing' || s.phase === 'wandering')) {
+    if (f.active && !f.floating && (s.phase === 'pausing' || s.phase === 'wandering')) {
       const fd = Math.hypot(f.x - s.x, f.z - s.z);
       if (fd <= ANIMALS.foodNoticeRadius) {
         s.phase = 'seeking_food';
@@ -565,12 +770,15 @@ export class AnimalController {
     }
 
     const moodScale = this.pet?.mood === 'hungry' ? 0.55 : this.pet?.mood === 'peckish' ? 0.75 : 1;
+    const walk = this.kind.landSpeed;
     const maxSpeed =
       s.phase === 'fleeing'
-        ? ANIMALS.crabFleeSpeed
+        ? walk * 2
         : s.phase === 'seeking_food'
-          ? ANIMALS.crabSpeed * 1.2
-          : ANIMALS.crabSpeed * moodScale;
+          ? walk * 1.2
+          : walk * moodScale;
+    // a startled sandpiper flutters up as it runs
+    if (s.species === 'sandpiper' && s.phase === 'fleeing') s.flap = Math.min(1, s.flap + step * 4);
     const dx = this.targetX - s.x;
     const dz = this.targetZ - s.z;
     const dist = Math.hypot(dx, dz);
@@ -585,7 +793,7 @@ export class AnimalController {
         this.phaseTimer = EAT_DURATION;
         return;
       }
-      if (s.visitLeft <= 0 && env.waterAt(s.x, s.z) < ANIMALS.crabWetDepth) {
+      if (!this.pet && s.visitLeft <= 0 && env.waterAt(s.x, s.z) < ANIMALS.crabWetDepth && !canSwim(s.species)) {
         this.enterBurrow();
       } else {
         this.enterPause(s.phase === 'fleeing' ? 0.5 + this.rand() * 0.8 : 1.0 + this.rand() * 3.0);
@@ -623,10 +831,17 @@ export class AnimalController {
     const nx = this.clampX(s.x + dirX * moveDist);
     const nz = this.clampZ(s.z + dirZ * moveDist);
 
-    // Don't voluntarily walk into deep water; turn upslope instead
+    // Don't voluntarily walk into deep water; turn upslope instead (seals and turtles swim off)
     const nextWater = env.waterAt(nx, nz);
     const curWater = env.waterAt(s.x, s.z);
-    if (nextWater > ANIMALS.crabWetDepth * 2 && nextWater > curWater) {
+    if (canSwim(s.species) && nextWater >= (this.ashoreLeft <= 0 ? ANIMALS.hauloutDepth * 1.5 : ANIMALS.swimMinDepth)) {
+      s.x = nx;
+      s.z = nz;
+      this.enterWater(env);
+      return;
+    }
+    const wetLimit = canSwim(s.species) ? ANIMALS.swimMinDepth : s.species === 'sandpiper' ? ANIMALS.crabWetDepth * 3 : ANIMALS.crabWetDepth * 2;
+    if (nextWater > wetLimit && nextWater > curWater) {
       this.enterFlee(this.clampX(s.x + (this.rand() - 0.5) * 2.0), this.clampZ(s.z + 2.5));
       return;
     }
@@ -646,9 +861,9 @@ export class AnimalController {
     s.scuttlePhase += (s.speed * step * 26 * 0.32) / Math.max(0.1, s.size);
     s.clawWave = 0;
 
-    // Sideways crab gait: face perpendicular to movement direction
+    // Sideways crab gait: face perpendicular to movement direction; the others walk forwards
     const moveYaw = Math.atan2(dirX, dirZ);
-    const desiredFacing = moveYaw + this.sideSign * (Math.PI * 0.5);
+    const desiredFacing = s.species === 'crab' ? moveYaw + this.sideSign * (Math.PI * 0.5) : moveYaw;
     s.facing = lerpAngle(s.facing, desiredFacing, step * 8);
   }
 
@@ -694,16 +909,28 @@ export class AnimalController {
   private pickWanderTarget(env: AnimalEnv): void {
     const s = this.snap;
     if (this.rand() < 0.35) this.sideSign = -this.sideSign;
+    if (s.species === 'sandpiper' && this.pickSwashTarget(env)) return;
+    if (canSwim(s.species) && this.rand() < 0.6) {
+      // seals and turtles mostly rest when ashore
+      this.enterPause(4 + this.rand() * 8);
+      s.clawWave = 0;
+      return;
+    }
+    const home = this.pet?.home;
     for (let attempt = 0; attempt < 8; attempt++) {
       const angle = this.rand() * Math.PI * 2;
       const dist = 1.1 + this.rand() * 3.2;
-      const tx = this.clampX(s.x + Math.cos(angle) * dist);
-      const tz = this.clampZ(s.z + Math.sin(angle) * dist);
+      // a pet with a spot wanders around it, and drifts back when it strays
+      const away = home ? Math.hypot(s.x - home.x, s.z - home.z) : 0;
+      const ox = home && away > ANIMALS.homeRadius ? home.x : s.x;
+      const oz = home && away > ANIMALS.homeRadius ? home.z : s.z;
+      const tx = this.clampX(ox + Math.cos(angle) * dist);
+      const tz = this.clampZ(oz + Math.sin(angle) * dist);
       if (env.waterAt(tx, tz) < ANIMALS.crabWetDepth && Number.isFinite(env.heightAt(tx, tz))) {
         s.phase = 'wandering';
         this.targetX = tx;
         this.targetZ = tz;
-        this.phaseTimer = dist / ANIMALS.crabSpeed + 1.0;
+        this.phaseTimer = dist / Math.max(0.2, this.kind.landSpeed) + 1.0;
         return;
       }
     }
@@ -788,8 +1015,27 @@ export class AnimalController {
     const depth = env.waterAt(s.x, s.z);
     const surface = Number.isFinite(bed) ? bed + Math.max(depth, 0.4) : 0;
 
+    // A pet dolphin turns round at the ends of its beach and heads for floating snacks
+    const f = s.food;
+    if (this.pet || (f.active && f.floating)) {
+      s.visitLeft = Math.max(s.visitLeft, 4);
+      if (s.x > HALF_X - 2.5) this.swimDir = -1;
+      else if (s.x < -HALF_X + 2.5) this.swimDir = 1;
+      const home = this.pet?.home;
+      if (home && Math.abs(s.x - home.x) > 9) this.swimDir = home.x > s.x ? 1 : -1;
+    }
+    if (f.active && f.floating) {
+      this.swimDir = f.x >= s.x ? 1 : -1;
+      s.z += clamp(f.z - s.z, -1, 1) * step * 1.4;
+      if (Math.abs(f.x - s.x) < 0.8 && Math.abs(f.z - s.z) < 1.2 && s.phase !== 'breaching') {
+        this.eatFloating();
+        s.phase = 'breaching';
+        this.breachClock = 0;
+      }
+    }
+
     // Leave once crossed the beach or visit timer finishes
-    if (Math.abs(s.x) > HALF_X - 1.0 || (s.visitLeft <= 0 && s.phase !== 'breaching')) {
+    if (!this.pet && (Math.abs(s.x) > HALF_X - 1.0 || (s.visitLeft <= 0 && s.phase !== 'breaching'))) {
       this.despawnNow();
       return;
     }
@@ -821,5 +1067,358 @@ export class AnimalController {
 
     s.speed = speed;
     s.facing = this.swimDir > 0 ? Math.PI * 0.5 : -Math.PI * 0.5;
+  }
+
+  // ---------------------------------------------------------------- sea and amphibians (docs/PETS.md)
+
+  /** Water surface at a spot: the sea bed plus the water on it. */
+  private surfaceY(bed: number, depth: number): number {
+    return (Number.isFinite(bed) ? bed : 0) + Math.max(depth, 0);
+  }
+
+  /**
+   * Where a swimmer's origin sits so the top of its body (`kind.top × size`)
+   * stays above the water: what makes sea pets visible from the diorama.
+   */
+  private swimY(bed: number, depth: number): number {
+    const top = this.kind.top * this.snap.size;
+    return this.surfaceY(bed, depth) - top + 0.05 + Math.sin(this.snap.scuttlePhase * 0.5) * 0.02;
+  }
+
+  private validateSeaSpot(x: number, z: number, env: AnimalEnv): { x: number; y: number; z: number } | null {
+    const cx = clamp(x, -HALF_X + ANIMALS.edgeMargin, HALF_X - ANIMALS.edgeMargin);
+    const cz = clamp(z, -HALF_Z + ANIMALS.edgeMargin, HALF_Z - ANIMALS.edgeMargin);
+    const bed = env.heightAt(cx, cz);
+    if (!Number.isFinite(bed)) return null;
+    return { x: cx, y: bed + Math.max(0, env.waterAt(cx, cz)), z: cz };
+  }
+
+  private pickSeaSpotNear(cx: number, cz: number, species: AnimalSpecies, env: AnimalEnv): { x: number; z: number } | null {
+    const min = species === 'dolphin' ? ANIMALS.dolphinMinDepth : species === 'octopus' ? ANIMALS.octopusMinDepth : ANIMALS.swimMinDepth;
+    for (let i = 0; i < 16; i++) {
+      const a = this.rand() * Math.PI * 2;
+      const r = 3 + this.rand() * 5;
+      const x = clamp(cx + Math.cos(a) * r, -HALF_X + 2, HALF_X - 2);
+      const z = clamp(cz + Math.sin(a) * r, -HALF_Z + 2, HALF_Z - 2);
+      if (env.waterAt(x, z) >= min && Number.isFinite(env.heightAt(x, z))) return { x, z };
+    }
+    return null;
+  }
+
+  /** Find a swimming spot in the surf: water deep enough, close to the sand (easy to see). */
+  private pickSurfSpot(env: AnimalEnv, minDepth: number, maxDepth = Infinity, pos?: { x: number; z: number }): { x: number; z: number } | null {
+    if (pos) {
+      const d = env.waterAt(pos.x, pos.z);
+      if (d >= minDepth && Number.isFinite(env.heightAt(pos.x, pos.z))) return { x: this.clampX(pos.x), z: pos.z };
+    }
+    for (let i = 0; i < 24; i++) {
+      const x = pos ? this.clampX(pos.x + (this.rand() - 0.5) * 6) : (this.rand() * 2 - 1) * HALF_X * ANIMALS.spawnSpreadX * 1.4;
+      const z = SHORELINE_Z - 0.5 - this.rand() * (i < 12 ? 5 : 12);
+      const d = env.waterAt(x, z);
+      if (d >= minDepth && d <= maxDepth && Number.isFinite(env.heightAt(x, z))) return { x, z };
+    }
+    return null;
+  }
+
+  private startSwim(species: AnimalSpecies, x: number, z: number, env: AnimalEnv): void {
+    const s = this.snap;
+    s.species = species;
+    s.active = true;
+    s.inWater = true;
+    s.phase = 'swimming';
+    s.x = x;
+    s.z = z;
+    s.pitch = 0;
+    s.speed = 0;
+    s.scuttlePhase = 0;
+    s.emerge = 1;
+    s.clawWave = 0;
+    s.size = this.kind.size * (0.9 + this.rand() * 0.2);
+    s.visitLeft = ANIMALS.visitMin + this.rand() * (ANIMALS.visitMax - ANIMALS.visitMin);
+    s.nextSpawnIn = 0;
+    s.startles = 0;
+    s.happyTimer = 0;
+    s.calmTimer = 0;
+    this.swimDir = this.rand() < 0.5 ? 1 : -1;
+    s.facing = this.swimDir > 0 ? Math.PI * 0.5 : -Math.PI * 0.5;
+    s.y = this.swimY(env.heightAt(x, z), env.waterAt(x, z));
+    this.headingAshore = false;
+    this.phaseTimer = 4 + this.rand() * 6;
+    this.targetX = x;
+    this.targetZ = z;
+  }
+
+  private spawnSwimmer(env: AnimalEnv, pos: { x: number; z: number } | undefined, species: AnimalSpecies): boolean {
+    const spot = this.pickSurfSpot(env, ANIMALS.swimMinDepth, Infinity, pos);
+    if (!spot) return false;
+    this.startSwim(species, spot.x, spot.z, env);
+    return true;
+  }
+
+  private spawnOctopus(env: AnimalEnv, pos?: { x: number; z: number }): boolean {
+    const spot = this.pickSurfSpot(env, ANIMALS.octopusMinDepth, ANIMALS.octopusMaxDepth, pos);
+    if (!spot) return false;
+    this.startSwim('octopus', spot.x, spot.z, env);
+    this.snap.emerge = this.snap.isPet ? 1 : 0;
+    this.snap.tint = 0.6;
+    return true;
+  }
+
+  /** Seals and turtles: slide from the sand into the sea. */
+  private enterWater(env: AnimalEnv): void {
+    const s = this.snap;
+    s.inWater = true;
+    s.phase = 'swimming';
+    s.pitch = 0;
+    this.headingAshore = false;
+    this.phaseTimer = 6 + this.rand() * 10;
+    this.swimDir = this.rand() < 0.5 ? 1 : -1;
+    s.y = this.swimY(env.heightAt(s.x, s.z), env.waterAt(s.x, s.z));
+  }
+
+  /** A swimmer eats the floating snack it reached. */
+  private eatFloating(): void {
+    const s = this.snap;
+    s.food.active = false;
+    s.food.timeLeft = 0;
+    this.baitSpecies = null;
+    s.visitLeft = Math.min(ANIMALS.foodMaxVisit, s.visitLeft + ANIMALS.foodExtendSec);
+    s.happyTimer = 3.0;
+    s.calmTimer = ANIMALS.foodCalmSec;
+    s.startles = 0;
+    if (this.pet) {
+      this.pet.mood = 'happy';
+      s.petMood = 'happy';
+    }
+    this.onWildFed?.(s.species);
+  }
+
+  /** Seals and turtles in the water: swim along the surf at the surface, then haul out. */
+  private updateSwimmer(step: number, env: AnimalEnv): void {
+    const s = this.snap;
+    const f = s.food;
+    s.scuttlePhase += step * 4;
+    if (!this.pet) s.visitLeft = Math.max(0, s.visitLeft - step);
+    if (s.happyTimer > 0) s.pitch = Math.sin(s.happyTimer * 6) * 0.25;
+    else s.pitch = 0;
+
+    // a sleepy pet floats still at the surface
+    if (this.pet?.mood === 'sleepy' && !f.active) {
+      s.phase = 'sleeping';
+      s.speed = 0;
+      s.y = this.swimY(env.heightAt(s.x, s.z), env.waterAt(s.x, s.z));
+      return;
+    }
+    if (s.phase === 'sleeping') s.phase = 'swimming';
+
+    // wild ones swim off when their visit is up
+    if (!this.pet && s.visitLeft <= 0) {
+      this.targetX = s.x + this.swimDir * 4;
+      this.targetZ = -HALF_Z + 1;
+      if (s.z < -HALF_Z + 2.5) {
+        this.despawnNow();
+        return;
+      }
+    } else if (f.active) {
+      // food: floating snacks are eaten in the water; a snack on the sand brings it ashore
+      this.targetX = f.x;
+      this.targetZ = f.floating ? f.z : Math.max(f.z, SHORELINE_Z);
+      this.headingAshore = !f.floating;
+      if (f.floating && Math.hypot(f.x - s.x, f.z - s.z) < 0.6) {
+        this.eatFloating();
+        return;
+      }
+    } else {
+      this.phaseTimer -= step;
+      if (this.phaseTimer <= 0) {
+        this.headingAshore = !this.headingAshore && this.rand() < 0.7;
+        this.phaseTimer = 6 + this.rand() * 10;
+        const home = this.pet?.home;
+        if (this.headingAshore) {
+          this.targetX = home ? home.x : this.clampX(s.x + (this.rand() - 0.5) * 6);
+          this.targetZ = home ? Math.max(home.z, SHORELINE_Z + 1) : SHORELINE_Z + 1.5 + this.rand() * 3;
+        } else {
+          this.swimDir = this.rand() < 0.5 ? 1 : -1;
+          this.targetX = this.clampX((home ? home.x : s.x) + this.swimDir * (3 + this.rand() * 6));
+          this.targetZ = SHORELINE_Z - 1.5 - this.rand() * 4;
+        }
+      }
+    }
+
+    const dx = this.targetX - s.x;
+    const dz = this.targetZ - s.z;
+    const dist = Math.hypot(dx, dz);
+    const speed = this.kind.swimSpeed * (this.pet?.mood === 'hungry' ? 0.6 : 1);
+    if (dist > 0.05) {
+      const mv = Math.min(dist, speed * step);
+      const nx = this.clampX(s.x + (dx / dist) * mv);
+      const nz = clamp(s.z + (dz / dist) * mv, -HALF_Z + 1, HALF_Z - ANIMALS.edgeMargin);
+      if (Number.isFinite(env.heightAt(nx, nz))) {
+        s.x = nx;
+        s.z = nz;
+      }
+      s.speed = mv / step;
+      s.facing = lerpAngle(s.facing, Math.atan2(dx, dz), step * 3);
+    } else {
+      s.speed = 0;
+    }
+
+    const depth = env.waterAt(s.x, s.z);
+    const bed = env.heightAt(s.x, s.z);
+    if (depth < ANIMALS.hauloutDepth && (this.headingAshore || !this.pet)) {
+      // out on the sand: crawl up and rest a while
+      s.inWater = false;
+      if (Number.isFinite(bed)) s.y = bed;
+      this.ashoreLeft = ANIMALS.ashoreMin + this.rand() * (ANIMALS.ashoreMax - ANIMALS.ashoreMin);
+      if (f.active && !f.floating) {
+        s.phase = 'seeking_food';
+        this.targetX = f.x;
+        this.targetZ = f.z;
+        this.phaseTimer = 30;
+      } else {
+        this.enterPause(1.2);
+      }
+      return;
+    }
+    if (depth < ANIMALS.hauloutDepth) {
+      // too shallow and not meaning to land: turn back out
+      this.targetZ = SHORELINE_Z - 3;
+    }
+    s.y = this.swimY(bed, depth);
+  }
+
+  /** The octopus: creeps through the shallows, blends in when still, inks at the brush. */
+  private updateOctopus(step: number, env: AnimalEnv): void {
+    const s = this.snap;
+    const f = s.food;
+    if (!this.pet) s.visitLeft = Math.max(0, s.visitLeft - step);
+    s.emerge = clamp(s.emerge + step * (s.visitLeft <= 0 && !this.pet ? -0.6 : 0.8), 0, 1);
+    if (!this.pet && s.visitLeft <= 0 && s.emerge <= 0) {
+      this.despawnNow();
+      return;
+    }
+    // brush near: a puff of ink, and it jets away seaward
+    if (env.brush?.active && s.calmTimer <= 0 && Math.hypot(env.brush.x - s.x, env.brush.z - s.z) < ANIMALS.octopusInkRadius && s.ink <= 0) {
+      s.ink = 1.6;
+      s.startles++;
+      const away = Math.atan2(s.z - env.brush.z, s.x - env.brush.x);
+      this.targetX = this.clampX(s.x + Math.cos(away) * 3);
+      this.targetZ = Math.min(s.z - 1.5, s.z + Math.sin(away) * 3);
+      s.phase = 'fleeing';
+      this.phaseTimer = 2.5;
+    }
+    if (f.active && f.floating && s.phase !== 'fleeing' && Math.hypot(f.x - s.x, f.z - s.z) < ANIMALS.foodNoticeRadius) {
+      s.phase = 'seeking_food';
+      this.targetX = f.x;
+      this.targetZ = f.z;
+      if (Math.hypot(f.x - s.x, f.z - s.z) < 0.5) {
+        this.eatFloating();
+        s.phase = 'pausing';
+        this.phaseTimer = 2;
+      }
+    }
+    if (this.pet?.mood === 'sleepy' && !f.active) {
+      s.phase = 'sleeping';
+      s.speed = 0;
+    } else if (s.phase === 'sleeping') {
+      s.phase = 'pausing';
+      this.phaseTimer = 1;
+    }
+
+    this.phaseTimer -= step;
+    if ((s.phase === 'pausing' || s.phase === 'swimming' || s.phase === 'wandering') && this.phaseTimer <= 0) {
+      if (s.phase === 'pausing') {
+        // pick a new spot in the shallows, near its home when it has one
+        const home = this.pet?.home;
+        const spot = this.pickSurfSpot(env, ANIMALS.octopusMinDepth, ANIMALS.octopusMaxDepth, home ?? { x: s.x + (this.rand() - 0.5) * 5, z: s.z });
+        this.targetX = spot ? spot.x : s.x;
+        this.targetZ = spot ? spot.z : s.z - 1;
+        s.phase = 'wandering';
+        this.phaseTimer = 6;
+      } else {
+        s.phase = 'pausing';
+        this.phaseTimer = 2.5 + this.rand() * 5;
+      }
+    }
+    if (s.phase === 'fleeing' && this.phaseTimer <= 0) {
+      s.phase = 'pausing';
+      this.phaseTimer = 2;
+    }
+
+    const moving = s.phase === 'wandering' || s.phase === 'fleeing' || s.phase === 'seeking_food';
+    if (moving) {
+      const dx = this.targetX - s.x;
+      const dz = this.targetZ - s.z;
+      const dist = Math.hypot(dx, dz);
+      const speed = this.kind.swimSpeed * (s.phase === 'fleeing' ? 3.5 : 1);
+      if (dist > 0.1) {
+        const mv = Math.min(dist, speed * step);
+        const nx = this.clampX(s.x + (dx / dist) * mv);
+        const nz = clamp(s.z + (dz / dist) * mv, -HALF_Z + 1, SHORELINE_Z + 2);
+        // stays in the water: never creeps out onto the sand
+        if (env.waterAt(nx, nz) >= ANIMALS.octopusMinDepth * 0.7) {
+          s.x = nx;
+          s.z = nz;
+        } else {
+          this.targetZ = s.z - 1.5;
+        }
+        s.speed = mv / step;
+        s.facing = lerpAngle(s.facing, Math.atan2(dx, dz), step * 2.5);
+      } else if (s.phase === 'wandering') {
+        s.phase = 'pausing';
+        this.phaseTimer = 2 + this.rand() * 4;
+      }
+    } else {
+      s.speed = 0;
+    }
+    // the water went out from under it: move seaward
+    if (env.waterAt(s.x, s.z) < ANIMALS.octopusMinDepth && !moving) {
+      s.phase = 'wandering';
+      this.targetX = s.x;
+      this.targetZ = s.z - 2;
+      this.phaseTimer = 6;
+    }
+    s.scuttlePhase += step * (moving ? 5 : 1.2);
+    // blends into the sand when still, shows its colours when it moves or inks
+    s.tint = clamp(s.tint + step * (moving || s.ink > 0 ? -1.5 : 0.35), 0, 1);
+    s.y = this.swimY(env.heightAt(s.x, s.z), env.waterAt(s.x, s.z));
+  }
+
+  /** Turtle flipper prints, left and right, as it crawls over the sand. */
+  private layTrack(): void {
+    const s = this.snap;
+    if (Number.isFinite(this.lastTrackX) && Math.hypot(s.x - this.lastTrackX, s.z - this.lastTrackZ) < 0.35) return;
+    this.lastTrackX = s.x;
+    this.lastTrackZ = s.z;
+    this.trackSide = -this.trackSide;
+    const side = this.trackSide * s.size * 0.32;
+    const px = s.x + Math.cos(s.facing) * side;
+    const pz = s.z - Math.sin(s.facing) * side;
+    const n = ANIMALS.turtleTracks;
+    if (s.trackCount >= n) {
+      s.tracks.copyWithin(0, 2);
+      s.trackCount = n - 1;
+    }
+    s.tracks[s.trackCount * 2] = px;
+    s.tracks[s.trackCount * 2 + 1] = pz;
+    s.trackCount++;
+  }
+
+  /** The sandpiper's favourite spot: just below where the last wave reached, as it pulls back. */
+  private pickSwashTarget(env: AnimalEnv): boolean {
+    const s = this.snap;
+    const x = this.clampX(s.x + (this.rand() - 0.5) * 5);
+    // walk up from the sea to the first dry cell: that's the wave's edge now
+    for (let z = SHORELINE_Z - 1.5; z < HALF_Z - ANIMALS.edgeMargin; z += 0.25) {
+      if (!Number.isFinite(env.heightAt(x, z))) continue;
+      if (env.waterAt(x, z) < ANIMALS.crabWetDepth) {
+        s.phase = 'wandering';
+        this.targetX = x;
+        this.targetZ = this.clampZ(z - 0.2 + this.rand() * 0.6);
+        this.phaseTimer = Math.hypot(x - s.x, this.targetZ - s.z) / this.kind.landSpeed + 0.6;
+        return true;
+      }
+    }
+    return false;
   }
 }

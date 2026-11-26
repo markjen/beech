@@ -111,9 +111,14 @@ export interface Extra {
 
 export const EXTRAS: Extra[] = [
   { id: 'beach', name: 'Extra beach', rarity: 'legendary', note: 'A second beach of your own. Coming soon: set it up next to yours, or anywhere on the shore.' },
-  { id: 'crab-treat', name: 'Beach snacks', rarity: 'common', note: 'Toss a snack on the sand to attract a wild crab or keep one around longer.' },
+  { id: 'crab-treat', name: 'Beach snacks', rarity: 'common', note: 'Toss a snack on the sand or into the water to attract a wild animal, or feed your pet.' },
   { id: 'pet-crab', name: 'Pet sand crab', rarity: 'rare', note: 'Adopt a sand crab to live permanently on your beach.' },
   { id: 'pier', name: 'Pier', rarity: 'legendary', note: 'A timber pier out over the water, for the middle of three of your beaches side by side.' },
+  { id: 'pet-sandpiper', name: 'Pet sandpiper', rarity: 'rare', note: 'A sandpiper that chases the wave edge on your beach.' },
+  { id: 'pet-octopus', name: 'Pet octopus', rarity: 'rare', note: 'An octopus that lives in the shallows off your beach.' },
+  { id: 'pet-seal', name: 'Pet harbor seal', rarity: 'legendary', note: 'A seal that swims the surf and sunbathes on your sand.' },
+  { id: 'pet-turtle', name: 'Pet sea turtle', rarity: 'legendary', note: 'A sea turtle that paddles offshore and crawls up your beach.' },
+  { id: 'pet-dolphin', name: 'Pet dolphin', rarity: 'legendary', note: 'A dolphin that patrols past the surf off your beach.' },
 ];
 
 export const extraById = (id: string): Extra | undefined => EXTRAS.find((e) => e.id === id);

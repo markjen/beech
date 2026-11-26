@@ -4,6 +4,8 @@ import type { FrameInfo, TunableSection, ToWorker } from '../sim/protocol';
 export interface DebugAnimalsHandle {
   spawn: () => boolean;
   spawnDolphin: () => boolean;
+  /** any species (docs/PETS.md) */
+  spawnSpecies?: (species: 'sandpiper' | 'octopus' | 'seal' | 'turtle') => boolean;
   despawn: () => void;
   dropFood: () => boolean;
   status: () => string;
@@ -73,6 +75,9 @@ export async function setupDebug(
     const af = gui.addFolder('ANIMALS');
     af.add({ spawnCrab: () => animals.spawn() }, 'spawnCrab').name('Spawn sand crab');
     af.add({ spawnDolphin: () => animals.spawnDolphin() }, 'spawnDolphin').name('Spawn dolphin');
+    for (const sp of ['sandpiper', 'octopus', 'seal', 'turtle'] as const) {
+      af.add({ go: () => animals.spawnSpecies?.(sp) }, 'go').name(`Spawn ${sp}`);
+    }
     af.add({ dropFood: () => animals.dropFood() }, 'dropFood').name('Drop beach snack');
     af.add({ despawn: () => animals.despawn() }, 'despawn').name('Despawn');
   }

@@ -79,6 +79,11 @@ export const PRIZE_NAMES: Record<string, string> = {
   'crab-treat': 'Beach snacks',
   'pet-crab': 'Pet sand crab',
   pier: 'Pier',
+  'pet-sandpiper': 'Pet sandpiper',
+  'pet-octopus': 'Pet octopus',
+  'pet-seal': 'Pet harbor seal',
+  'pet-turtle': 'Pet sea turtle',
+  'pet-dolphin': 'Pet dolphin',
 };
 
 /** The name as the guide shows it: the table, or the id made readable. */
@@ -109,6 +114,11 @@ export const ITEM_RARITY: Record<string, Rarity> = {
   'crab-treat': 'common',
   'pet-crab': 'rare',
   pier: 'legendary',
+  'pet-sandpiper': 'rare',
+  'pet-octopus': 'rare',
+  'pet-seal': 'legendary',
+  'pet-turtle': 'legendary',
+  'pet-dolphin': 'legendary',
 };
 
 /**

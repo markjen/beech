@@ -76,7 +76,15 @@ import {
   returnSnack,
   renameBeachPet,
   visitorFeedPet,
+  speciesOf,
+  listBagPets,
+  stowPet,
+  stowLocked,
+  placePet,
+  cleanHome,
+  setPetHome,
 } from './animals.js';
+import { PETS } from './petCatalog.js';
 import {
   hashToken,
   newSessionToken,
@@ -1729,7 +1737,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   app.post('/animals/feed', requireUser, async (c) => {
     const user = c.get('user');
     const b = await body<{ beachId?: string; species?: string }>(c).catch(() => ({} as { beachId?: string; species?: string }));
-    const species = b.species === 'crab' || !b.species ? 'crab' : fail(400, 'unknown species');
+    const species = speciesOf(b.species) ?? fail(400, 'unknown species');
     // resolve the beach first, so a foreign or bad beach id never spends a snack
     const beachId = await mine(c, b.beachId ?? c.req.query('beach'));
     const fed = await db.withTransaction(async (tx) => {
@@ -1771,16 +1779,39 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const beachId = await mine(c, c.req.query('beach'));
     const now = clock();
     const pet = await getBeachPet(db, beachId, now);
-    const bond = await getBondProgress(db, beachId, 'crab');
+    const bonds = await Promise.all(PETS.map((p) => getBondProgress(db, beachId, p.species)));
     const recentFeeders = pet ? await recentPetFeeders(db, beachId, me) : [];
-    return c.json({ pet, bond, recentFeeders });
+    return c.json({ pet, bond: bonds[0], bonds, recentFeeders });
+  });
+
+  // ---------------------------------------------------------------- pets as things you own and move (docs/PETS.md)
+  app.get('/pet/bag', requireUser, async (c) => c.json({ pets: await listBagPets(db, c.get('user').id) }));
+
+  app.post('/pet/stow', requireUser, async (c) => {
+    const user = c.get('user');
+    const b = await body<{ beachId?: string }>(c).catch(() => ({} as { beachId?: string }));
+    const beachId = await mine(c, b.beachId ?? c.req.query('beach'));
+    const pet = await stowPet(db, { beachId, userId: user.id, now: clock() });
+    if (!pet) return c.json({ error: 'no pet on this beach' }, 404);
+    return c.json({ pet, bag: await listBagPets(db, user.id) });
+  });
+
+  app.post('/pet/place', requireUser, async (c) => {
+    const user = c.get('user');
+    const b = await body<{ beachId?: string; petId?: number; home?: { x: number; z: number } }>(c);
+    const petId = Number(b.petId);
+    if (!Number.isSafeInteger(petId) || petId <= 0) fail(400, 'expected petId');
+    const beachId = await mine(c, b.beachId ?? c.req.query('beach'));
+    const res = await placePet(db, { petId, beachId, userId: user.id, now: clock(), home: b.home ?? null });
+    if (!res.ok) return c.json({ error: res.error }, res.status);
+    return c.json({ pet: res.pet });
   });
 
   app.post('/pet/adopt', requireUser, async (c) => {
     const user = c.get('user');
-    const b = await body<{ beachId?: string; species?: string; name?: string; mode?: string }>(c);
+    const b = await body<{ beachId?: string; species?: string; name?: string; mode?: string; home?: unknown }>(c);
     const mode = b.mode === 'shop' ? 'shop' : b.mode === 'befriend' ? 'befriend' : fail(400, 'expected mode "befriend" or "shop"');
-    const species = !b.species || b.species === 'crab' ? 'crab' : fail(400, 'unknown species');
+    const species = speciesOf(b.species) ?? fail(400, 'unknown species');
     const beachId = await mine(c, b.beachId ?? c.req.query('beach'));
     const res = await adoptPet(db, {
       beachId,
@@ -1789,14 +1820,20 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       name: cleanPetName(b.name),
       mode,
       now: clock(),
+      home: cleanHome(b.home),
     });
     if (!res.ok) return c.json({ error: res.error }, res.status);
     return c.json({ pet: res.pet });
   });
 
   app.patch('/pet', requireUser, async (c) => {
-    const b = await body<{ beachId?: string; name?: string }>(c);
+    const b = await body<{ beachId?: string; name?: string; home?: { x: number; z: number } | null }>(c);
     const beachId = await mine(c, b.beachId ?? c.req.query('beach'));
+    if (b.home !== undefined && b.name === undefined) {
+      const moved = await setPetHome(db, beachId, cleanHome(b.home), clock());
+      if (!moved) return c.json({ error: 'no pet on this beach' }, 404);
+      return c.json({ pet: moved });
+    }
     const pet = await renameBeachPet(db, beachId, cleanPetName(b.name), clock());
     if (!pet) return c.json({ error: 'no pet on this beach' }, 404);
     return c.json({ pet });
@@ -1961,8 +1998,14 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   app.delete('/beaches/mine/:id', requireUser, async (c) => {
     const id = await mine(c, c.req.param('id'));
     await requireEditToken(c);
-    // links, requests and favorites go with it (ON DELETE CASCADE)
-    const rows = await db.query('DELETE FROM beach WHERE id = $1 AND NOT home RETURNING id', [id]);
+    // links, requests and favorites go with it (ON DELETE CASCADE); its pet goes in the bag
+    const me = c.get('user').id;
+    const rows = await db.withTransaction(async (tx) => {
+      await tx.query('SELECT id FROM beach WHERE id = $1 FOR NO KEY UPDATE', [id]);
+      const del = await tx.query<{ id: string }>('SELECT id FROM beach WHERE id = $1 AND NOT home', [id]);
+      if (del.length) await stowLocked(tx, id, me, clock());
+      return del.length ? tx.query('DELETE FROM beach WHERE id = $1 AND NOT home RETURNING id', [id]) : [];
+    });
     if (!rows.length) fail(400, "your home beach can't be removed (make another one home first)");
     return c.body(null, 204);
   });
