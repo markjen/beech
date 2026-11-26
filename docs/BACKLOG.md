@@ -105,9 +105,7 @@ picked up.
   token takes several items; `web_orders` would need lines, and the
   webhook would grant them all) instead of one card checkout each; a place
   picker for a new beach on the copy sheet.
-- [ ] **Piers, follow-ups** ([PIERS.md](PIERS.md)): draw piers in the
-  server-drawn pictures (`server/src/beachImage.ts`: beechshore.com
-  images, postcards); check the deck against big real tides and storm
+- [ ] **Piers, follow-ups** ([PIERS.md](PIERS.md)): check the deck against big real tides and storm
   waves (it's 1.35 m above still water); a ghostly look for the preview
   so it reads as not placed yet.
 - [ ] **Inland beach sections (model first)**: add up to four inland rows

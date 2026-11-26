@@ -374,8 +374,10 @@ pilings, rails, a wider end platform). Decorative only.
   gifts.
 - Drawn by `NeighborView` for every beach in view, yours or anyone's, at
   the beach's centre (`src/render/pier.ts`, `PIER` in config).
-- Not yet: piers in the server-drawn pictures (beechshore.com images,
-  postcards); tuning the deck height against big real tides (1.35 m above
+- beechshore.com draws it too: the card, the thumbnail and both 3D views
+  (`server/src/beachImage.ts`), with the pier in each picture URL's `?v=`
+  so a placed, removed or paused pier shows at once (SHORE_SITE.md).
+- Not yet: tuning the deck height against big real tides (1.35 m above
   still water now).
 - Tests: `server/test/stateMachines/piers.test.ts`, `tests/pier.test.ts`,
   `npm run e2e:piers`.

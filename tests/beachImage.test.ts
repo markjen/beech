@@ -5,9 +5,9 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-import { DAY, PLACES, PROFILE as SERVER_PROFILE, beachPng, decodeSavedBeach, renderBeach, restHeight as serverRest } from '../server/src/beachImage';
-import { PROFILE, WORLD_SIZE_X, WORLD_SIZE_Z } from '../src/config';
-import { paletteByName } from '../src/palette';
+import { DAY, PIER as SERVER_PIER, PIER_COLORS, PLACES, PROFILE as SERVER_PROFILE, beachPng, decodeSavedBeach, renderBeach, restHeight as serverRest } from '../server/src/beachImage';
+import { PIER, PROFILE, WORLD_SIZE_X, WORLD_SIZE_Z } from '../src/config';
+import { PROP_COLORS, paletteByName } from '../src/palette';
 import { restHeight } from '../src/sim/profile';
 import { encodeSand } from '../src/sim/sandCodec';
 import { parseBeachFile } from '../src/world/beachFile';
@@ -22,6 +22,11 @@ describe('server beach pictures stay in step with the app', () => {
     for (const k of ['shoreline', 'offshoreDepth', 'swashSlope', 'bermHeight', 'backHeight', 'cuspAmp', 'cuspLength'] as const)
       expect(SERVER_PROFILE[k], k).toBe(PROFILE[k]);
     for (let x = 0; x <= 32; x += 0.37) for (let y = 0; y <= 32; y += 0.53) expect(serverRest(x, y)).toBe(restHeight(x, y));
+  });
+
+  it('has the same pier (docs/PIERS.md)', () => {
+    expect(SERVER_PIER).toEqual(PIER);
+    expect(PIER_COLORS).toEqual({ deck: hex(PROP_COLORS.pierDeck), piling: hex(PROP_COLORS.pierPiling), rail: hex(PROP_COLORS.pierRail) });
   });
 
   it('has the same day palette', () => {

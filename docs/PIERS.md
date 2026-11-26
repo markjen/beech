@@ -86,8 +86,10 @@ SHARE`), so an unlink or a deletion of a supporting beach waits for it
 (`PlacementWasEligible`). Trade-ins and gifts count placed piers under the
 same player lock (`PaidAttachment`). The `pier` flag in owner and visitor
 shore data is derived in SQL (`PIER_SHOWN` in `server/src/shore.ts`), so
-there's nothing to invalidate; the server-drawn pictures (beachImage.ts)
-don't draw piers yet. The route mapping is in
+there's nothing stored to invalidate. The beechshore.com pictures draw the
+pier (top-down and both 3D views, `server/src/beachImage.ts`), and their
+cached-for-good URLs carry it in `?v=` (`imageVersion`), so placing,
+removing or pausing one gives new pictures ([SHORE_SITE.md](SHORE_SITE.md#the-pictures)). The route mapping is in
 [State machines](STATE_MACHINES.md#piers-pierstla).
 
 ## Code

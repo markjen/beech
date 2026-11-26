@@ -63,6 +63,15 @@ export const beachJson = (r: NodeRow) => ({
 export type BeachJson = ReturnType<typeof beachJson>;
 export type Step = BeachJson & { linked: boolean };
 
+/**
+ * The version a beach's pictures carry (`?v=`): its save time, and whether
+ * its pier shows, since placing, removing or pausing one changes the
+ * pictures without a save (docs/PIERS.md). Picture URLs are cached for
+ * good, so anything drawn has to be in here.
+ */
+export const imageVersion = (updatedAt: number | string | null | undefined, pier: boolean | undefined): string =>
+  `${updatedAt ?? 0}${pier ? 'p' : ''}`;
+
 /** Can anyone, signed in or not, see this beach (beechshore.com)? On the shore and saved. */
 export const isPublic = (r: Pick<NodeRow, 'on_shore' | 'saved'>): boolean => !!r.on_shore && !!r.saved;
 

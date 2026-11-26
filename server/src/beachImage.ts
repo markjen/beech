@@ -281,6 +281,8 @@ export interface ImageOptions {
   width: number;
   height: number;
   location?: string | null;
+  /** the beach shows a pier (docs/PIERS.md) */
+  pier?: boolean;
 }
 
 /** A saved beach's sand deltas with buried-rock cover lifted over the rocks (BCH3), as the pictures use them. Returns a copy; the input is untouched. */
@@ -579,6 +581,7 @@ export function renderBeach(sand: SavedSand | null, opts: ImageOptions): Uint8Ar
       : sand.things;
     drawThings(out, W, H, visible, look, (x, y) => [cx - (x - WORLD / 2) * scaleX, (y - VIEW_Y0) * scaleY], scaleY);
   }
+  if (opts.pier) drawPierTop(out, W, H, (x, y) => [cx - (x - WORLD / 2) * scaleX, (y - VIEW_Y0) * scaleY], scaleY);
   return out;
 }
 
@@ -972,6 +975,8 @@ export interface IsoPanel {
   location?: string | null;
   /** a real neighbour of the beach before it along the shore */
   linked: boolean;
+  /** it shows a pier (docs/PIERS.md) */
+  pier?: boolean;
 }
 
 /** which side the isometric camera sits on */
@@ -1036,6 +1041,7 @@ interface Panel {
   look: Look;
   start: number;
   things: Thing[];
+  pier?: boolean;
 }
 
 const deltaAt = (delta: Float32Array, nx: number, ny: number, dx: number, dy: number, x: number, y: number): number => {
@@ -1134,10 +1140,10 @@ export function renderIsoBeach(
   dir: IsoDir,
 ): Uint8Array {
   const { width: W, height: H } = opts;
-  const panels: Panel[] = [toPanel(center.sand, center.location, 0)];
+  const panels: Panel[] = [{ ...toPanel(center.sand, center.location, 0), pier: center.pier }];
   // facing the sea, left is world +x (the game, and the top-down card)
-  if (left) panels.push(toPanel(left.sand, left.location, left.linked ? WORLD : WORLD + ISO_GAP));
-  if (right) panels.push(toPanel(right.sand, right.location, right.linked ? -WORLD : -(WORLD + ISO_GAP)));
+  if (left) panels.push({ ...toPanel(left.sand, left.location, left.linked ? WORLD : WORLD + ISO_GAP), pier: left.pier });
+  if (right) panels.push({ ...toPanel(right.sand, right.location, right.linked ? -WORLD : -(WORLD + ISO_GAP)), pier: right.pier });
   const fx0 = Math.min(...panels.map((p) => p.start));
   const fx1 = Math.max(...panels.map((p) => p.start + WORLD));
   const cam = isoCam(W, H, fx0, fx1, dir);
@@ -1203,6 +1209,17 @@ export function renderIsoBeach(
       const i = Math.min(cols - 1, Math.max(0, Math.floor((gx - fx0) / ISO_CELL)));
       const j = Math.min(rows - 1, Math.max(0, Math.floor(t.y / ISO_CELL)));
       byCell[j * cols + i].push({ t, bx, by, look: p.look });
+    }
+  }
+
+  // piers, cut into the same cells so they paint in the same order
+  const piers = new Map<number, { piece: PierPiece; shift: number }[]>();
+  for (const p of panels) {
+    if (!p.pier) continue;
+    for (const [k, list] of pierPieces(p.start, fx0, cols, rows, (x, y) => sampleAt(x, y).h)) {
+      const at = piers.get(k) ?? [];
+      for (const piece of list) at.push({ piece, shift: p.start });
+      piers.set(k, at);
     }
   }
 
@@ -1313,6 +1330,8 @@ export function renderIsoBeach(
       }
       fillQuad(out, W, H, pts, to8(r), to8(g), to8(b));
       for (const pl of byCell[j * cols + i]) drawIsoThing(out, W, H, pl, bs);
+      const pp = piers.get(j * cols + i);
+      if (pp) for (const { piece, shift } of pp) drawPierPiece(out, W, H, cam, piece, shift);
     }
   }
   return out;
@@ -1498,13 +1517,13 @@ function drawIsoThing(img: Uint8Array, W: number, H: number, pl: { t: Thing; bx:
 
 /** One beach's saved bytes (or null: untouched) plus its neighbours → an isometric PNG. */
 export function beachIsoPng(
-  center: { bytes: Uint8Array | null; location?: string | null },
-  left: { bytes: Uint8Array | null; location?: string | null; linked: boolean } | null,
-  right: { bytes: Uint8Array | null; location?: string | null; linked: boolean } | null,
+  center: { bytes: Uint8Array | null; location?: string | null; pier?: boolean },
+  left: { bytes: Uint8Array | null; location?: string | null; linked: boolean; pier?: boolean } | null,
+  right: { bytes: Uint8Array | null; location?: string | null; linked: boolean; pier?: boolean } | null,
   opts: ImageOptions,
   dir: IsoDir,
 ): Buffer {
-  const dec = (b: { bytes: Uint8Array | null; location?: string | null; linked?: boolean } | null): IsoPanel | null => {
+  const dec = (b: { bytes: Uint8Array | null; location?: string | null; linked?: boolean; pier?: boolean } | null): IsoPanel | null => {
     if (!b) return null;
     let sand: SavedSand | null = null;
     if (b.bytes) {
@@ -1514,7 +1533,7 @@ export function beachIsoPng(
         sand = null;
       }
     }
-    return { sand, location: b.location, linked: b.linked ?? false };
+    return { sand, location: b.location, linked: b.linked ?? false, pier: b.pier };
   };
   const c = dec(center);
   return encodePng(renderIsoBeach(c ?? { sand: null, linked: false }, dec(left), dec(right), opts, dir), opts.width, opts.height);
@@ -1613,4 +1632,200 @@ export function beachPng(bytes: Uint8Array | null, opts: ImageOptions): Buffer {
     }
   }
   return encodePng(renderBeach(sand, opts), opts.width, opts.height);
+}
+
+// ---------------------------------------------------------------- the pier (docs/PIERS.md)
+// A copy of the app's PIER (src/config.ts) and its colours (src/palette.ts);
+// tests/beachImage.test.ts keeps them in step. Drawn on a beach whose pier
+// shows (the `pier` flag in shore data): from above on the card and the
+// thumbnail, and as boxes in the isometric views.
+
+export const PIER = {
+  landY: 21,
+  rampTopY: 18,
+  endY: 3,
+  platformY: 6.5,
+  width: 2.5,
+  platformWidth: 4,
+  deckHeight: 1.35,
+  footHeight: 0.36,
+  deckThickness: 0.14,
+  pilingStep: 3,
+  pilingDepth: -2.7,
+  pilingSize: 0.22,
+  railHeight: 0.9,
+};
+export const PIER_COLORS = { deck: '#a8927a', piling: '#6f6052', rail: '#c9b89f' };
+
+/**
+ * One box of the pier, in a beach's own frame: x alongshore (0..32), y
+ * from the offshore edge, heights above still water. Top and bottom may
+ * slope along y (the ramp): t0/b0 at y0, t1/b1 at y1. `layer` orders the
+ * boxes that share a spot: pilings, then the deck, then the rails.
+ */
+export interface PierBox {
+  x0: number;
+  x1: number;
+  y0: number;
+  y1: number;
+  b0: number;
+  b1: number;
+  t0: number;
+  t1: number;
+  color: RGB;
+  layer: number;
+}
+
+/** The pier as boxes, centred on the beach (pure; the pictures draw these). */
+export function pierBoxes(): PierBox[] {
+  const p = PIER;
+  const deck = hex(PIER_COLORS.deck);
+  const piling = hex(PIER_COLORS.piling);
+  const rail = hex(PIER_COLORS.rail);
+  const mid = WORLD / 2;
+  const top = p.deckHeight;
+  const under = top - p.deckThickness;
+  const out: PierBox[] = [];
+  const flat = (x0: number, x1: number, y0: number, y1: number, b: number, t: number, color: RGB, layer: number) =>
+    out.push({ x0: Math.min(x0, x1), x1: Math.max(x0, x1), y0: Math.min(y0, y1), y1: Math.max(y0, y1), b0: b, b1: b, t0: t, t1: t, color, layer });
+  const hw = p.width / 2;
+  const pw = p.platformWidth / 2;
+  // pilings first: the pictures clip them at the water or the sand
+  const pile = (x: number, y: number) => {
+    const s = p.pilingSize / 2;
+    flat(x - s, x + s, y - s, y + s, p.pilingDepth, under, piling, 0);
+  };
+  for (let y = p.rampTopY; y > p.platformY; y -= p.pilingStep) {
+    pile(mid - hw + 0.15, y);
+    pile(mid + hw - 0.15, y);
+  }
+  for (const y of [p.platformY - 0.2, p.endY + 0.2]) {
+    pile(mid - pw + 0.15, y);
+    pile(mid + pw - 0.15, y);
+  }
+  // the deck, the end platform, and the ramp down to the sand
+  flat(mid - hw, mid + hw, p.platformY, p.rampTopY, under, top, deck, 1);
+  flat(mid - pw, mid + pw, p.endY, p.platformY, under, top, deck, 1);
+  out.push({ x0: mid - hw, x1: mid + hw, y0: p.rampTopY, y1: p.landY, b0: under, b1: p.footHeight - p.deckThickness, t0: top, t1: p.footHeight, color: deck, layer: 1 });
+  // rails along both sides and round the end (a little thicker than the
+  // app's, so they still read at a few pixels per metre)
+  const rt = top + p.railHeight;
+  const rw = 0.12;
+  for (const s of [-1, 1]) {
+    const x = mid + s * (hw - 0.06);
+    flat(x - rw / 2, x + rw / 2, p.platformY, p.rampTopY, rt - rw, rt, rail, 2);
+    for (let y = p.rampTopY; y > p.platformY; y -= p.pilingStep / 2) flat(x - rw / 2, x + rw / 2, y - rw / 2, y + rw / 2, top, rt, rail, 2);
+    out.push({ x0: x - rw / 2, x1: x + rw / 2, y0: p.rampTopY, y1: p.landY, b0: rt - rw, b1: p.footHeight + p.railHeight - rw, t0: rt, t1: p.footHeight + p.railHeight, color: rail, layer: 2 });
+    const px = mid + s * (pw - 0.06);
+    flat(px - rw / 2, px + rw / 2, p.endY, p.platformY, rt - rw, rt, rail, 2);
+    for (const y of [p.platformY, (p.platformY + p.endY) / 2, p.endY + rw / 2]) flat(px - rw / 2, px + rw / 2, y - rw / 2, y + rw / 2, top, rt, rail, 2);
+    flat(mid + s * hw, mid + s * pw, p.platformY - rw / 2, p.platformY + rw / 2, rt - rw, rt, rail, 2);
+  }
+  flat(mid - pw, mid + pw, p.endY, p.endY + rw, rt - rw, rt, rail, 2);
+  return out;
+}
+
+/** The pier seen from above (the card and the thumbnail): its shadow, then the deck, then the rails. */
+function drawPierTop(img: Uint8Array, W: number, H: number, at: (x: number, y: number) => Pt, s: number) {
+  const boxes = pierBoxes().filter((b) => b.layer > 0);
+  // light from the top left of the picture: shadows fall down and to the right
+  const lift = (h: number): Pt => [h * s * 0.5, h * s * 0.55];
+  const quad = (b: PierBox, h0: number, h1: number, off: boolean): Pt[] => {
+    const [a0, c0] = off ? lift(h0) : [0, 0];
+    const [a1, c1] = off ? lift(h1) : [0, 0];
+    const p = (x: number, y: number, a: number, c: number): Pt => {
+      const [px, py] = at(x, y);
+      return [px + a, py + c];
+    };
+    return [p(b.x0, b.y0, a0, c0), p(b.x1, b.y0, a0, c0), p(b.x1, b.y1, a1, c1), p(b.x0, b.y1, a1, c1)];
+  };
+  // (the deck's shadow only: the rails' thin ones read as stray lines at this size)
+  for (const b of boxes) if (b.layer === 1) fillPoly(img, W, H, quad(b, b.t0, b.t1, true), ISO_SHADOW, 0.28);
+  for (const b of boxes.sort((a, c) => a.layer - c.layer)) {
+    // the ramp's slope reads a shade darker than the flat deck
+    const c = b.t0 !== b.t1 && b.layer === 1 ? lighten(b.color, -0.08) : b.color;
+    fillPoly(img, W, H, quad(b, 0, 0, false), c, 1);
+  }
+  // planks across the deck
+  const plank = lighten(hex(PIER_COLORS.deck), -0.12);
+  for (const b of boxes.filter((x) => x.layer === 1)) {
+    for (let y = b.y0 + 0.6; y < b.y1 - 0.1; y += 0.6) {
+      const [ax, ay] = at(b.x0 + 0.05, y);
+      const [bx] = at(b.x1 - 0.05, y);
+      fillPoly(img, W, H, [[ax, ay - 0.35], [bx, ay - 0.35], [bx, ay + 0.35], [ax, ay + 0.35]], plank, 0.55);
+    }
+  }
+}
+
+/**
+ * The pier's boxes cut into the isometric grid's cells, so each piece
+ * paints with its cell, back to front. Only the outer faces of each box are
+ * kept (the cuts don't show), pilings stop at the water or the sand, and
+ * `x0` shifts the pier onto its beach in the strip.
+ */
+interface PierPiece {
+  box: PierBox;
+  xa: number;
+  xb: number;
+  ya: number;
+  yb: number;
+  /** the bottom here (a piling: where it meets the water or the sand) */
+  floor: number | null;
+}
+function pierPieces(start: number, fx0: number, cols: number, rows: number, ground: (x: number, y: number) => number): Map<number, PierPiece[]> {
+  const out = new Map<number, PierPiece[]>();
+  for (const box of pierBoxes()) {
+    const gx0 = start + box.x0;
+    const gx1 = start + box.x1;
+    const i0 = Math.max(0, Math.floor((gx0 - fx0) / ISO_CELL));
+    const i1 = Math.min(cols - 1, Math.floor((gx1 - fx0 - 1e-9) / ISO_CELL));
+    const j0 = Math.max(0, Math.floor(box.y0 / ISO_CELL));
+    const j1 = Math.min(rows - 1, Math.floor((box.y1 - 1e-9) / ISO_CELL));
+    for (let j = j0; j <= j1; j++) {
+      for (let i = i0; i <= i1; i++) {
+        const xa = Math.max(gx0, fx0 + i * ISO_CELL);
+        const xb = Math.min(gx1, fx0 + (i + 1) * ISO_CELL);
+        const ya = Math.max(box.y0, j * ISO_CELL);
+        const yb = Math.min(box.y1, (j + 1) * ISO_CELL);
+        if (xb <= xa || yb <= ya) continue;
+        const floor = box.layer === 0 ? Math.max(0, ground((xa + xb) / 2, (ya + yb) / 2)) : null;
+        const k = j * cols + i;
+        const list = out.get(k) ?? [];
+        list.push({ box, xa, xb, ya, yb, floor });
+        out.set(k, list);
+      }
+    }
+  }
+  for (const list of out.values()) list.sort((a, b) => a.box.layer - b.box.layer);
+  return out;
+}
+
+/** Paint one piece of the pier: the faces turned toward the camera, then its top. */
+function drawPierPiece(img: Uint8Array, W: number, H: number, cam: IsoCam, pc: PierPiece, shift: number) {
+  const { box: b, xa, xb, ya, yb } = pc;
+  const along = (y: number, a: number, c: number) => (b.y1 === b.y0 ? a : a + ((y - b.y0) / (b.y1 - b.y0)) * (c - a));
+  const ta = along(ya, b.t0, b.t1);
+  const tb = along(yb, b.t0, b.t1);
+  const ba = pc.floor ?? along(ya, b.b0, b.b1);
+  const bb = pc.floor ?? along(yb, b.b0, b.b1);
+  if (ta <= ba && tb <= bb) return; // a piling wholly under the sand
+  const P = (x: number, y: number, h: number) => isoPt(cam, x, y, h);
+  const face = (pts: Pt[], k: number) => {
+    const c = b.color;
+    fillQuad(img, W, H, pts, to8(c[0] * k), to8(c[1] * k), to8(c[2] * k));
+  };
+  // toward the camera: from the sea, -y and +x; from the land, +y and -x
+  const ocean = cam.sgn > 0;
+  const gx0 = b.x0 + shift;
+  const gx1 = b.x1 + shift;
+  const yEdge = ocean ? b.y0 : b.y1;
+  const yFace = ocean ? ya : yb;
+  if (yFace === yEdge) {
+    const t = ocean ? ta : tb;
+    const f = ocean ? ba : bb;
+    face([P(xa, yFace, f), P(xb, yFace, f), P(xb, yFace, t), P(xa, yFace, t)], 0.84);
+  }
+  const xFace = ocean ? xb : xa;
+  if (Math.abs(xFace - (ocean ? gx1 : gx0)) < 1e-6) face([P(xFace, ya, ba), P(xFace, yb, bb), P(xFace, yb, tb), P(xFace, ya, ta)], 0.7);
+  face([P(xa, ya, ta), P(xb, ya, ta), P(xb, yb, tb), P(xa, yb, tb)], 1);
 }

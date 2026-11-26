@@ -4,6 +4,7 @@ import { deflateSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 
 import {
+  PIER,
   beachIsoPng,
   decodeSavedBeach,
   isoScreenPoint,
@@ -280,5 +281,41 @@ describe('renderBeach without shoulders', () => {
     const rightRock = renderBeach(rockAt(0.5), { width: W, height: H, location: 'bondi' });
     expect(patchDiff(rightRock, bare, 1181, 384)).toBeGreaterThan(30);
     expect(patchDiff(rightRock, bare, 1076, 384)).toBe(0);
+  });
+});
+
+describe('piers in the pictures (docs/PIERS.md)', () => {
+  const deck: [number, number, number] = [0xa8, 0x92, 0x7a];
+  const near = (c: [number, number, number], want: [number, number, number], tol: number) =>
+    Math.abs(c[0] - want[0]) + Math.abs(c[1] - want[1]) + Math.abs(c[2] - want[2]) <= tol;
+
+  it('the card shows the deck from above, over the water, only when the pier shows', () => {
+    const plain = renderBeach(null, { width: W, height: H, location: 'bondi' });
+    const pier = renderBeach(null, { width: W, height: H, location: 'bondi', pier: true });
+    // the card spans y = 11.5..32 down the picture, the beach edge to edge across it
+    const at = (y: number) => Math.round(((y - 11.5) / 20.5) * H);
+    expect(near(px(pier, W / 2, at(14)), deck, 30)).toBe(true);
+    expect(near(px(plain, W / 2, at(14)), deck, 30)).toBe(false);
+    // away from it, nothing changes
+    expect(px(pier, 100, at(14))).toEqual(px(plain, 100, at(14)));
+  });
+
+  it.each(['ocean', 'land'] as IsoDir[])('the 3D view stands the deck above the water, on its own beach (%s)', (dir) => {
+    const one = (c: boolean, l: boolean) =>
+      renderIsoBeach({ ...centerPanel, pier: c }, { ...leftFlat, pier: l }, null, { width: W, height: H, location: 'bondi' }, dir);
+    const plain = one(false, false);
+    const pier = one(true, false);
+    const [x, y] = isoScreenPoint(W, H, dir, 16, 12, PIER.deckHeight, 0, 64).map(Math.round);
+    expect(patchDiff(pier, plain, x, y, 2)).toBeGreaterThan(60);
+    const [sx, sy] = isoScreenPoint(W, H, dir, 16, 12, 0, 0, 64).map(Math.round);
+    // the water under the middle of the deck isn't covered by it
+    expect(px(pier, sx, sy + (dir === 'ocean' ? 6 : 6))).toEqual(px(plain, sx, sy + 6));
+    // the neighbour's pier stands on the neighbour (32 m along), not here
+    const theirs = one(false, true);
+    expect(patchDiff(theirs, plain, x, y, 2)).toBe(0);
+    const [nx, ny] = isoScreenPoint(W, H, dir, 48, 12, PIER.deckHeight, 0, 64);
+    const d = maxDiff(theirs, plain);
+    expect(d.d).toBeGreaterThan(0);
+    expect(Math.hypot(d.x - nx, d.y - ny)).toBeLessThan(Math.hypot(d.x - x, d.y - y));
   });
 });
