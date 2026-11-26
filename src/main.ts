@@ -4,7 +4,7 @@ import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { Scene } from '@babylonjs/core/scene';
 
 import { Ambience } from './audio/ambience';
-import { ANIMALS, BEACH_STORE, GRID_TIERS, SIM_HZ, WAVES, WORLD_SIZE_X, type QualityTier } from './config';
+import { ANIMALS, BEACH_CAP, BEACH_STORE, GRID_TIERS, SIM_HZ, WAVES, WORLD_SIZE_X, type QualityTier } from './config';
 import { CameraController } from './input/cameraController';
 import { Gestures, HOLD_SLOP_PX, LONG_PRESS_MS } from './input/gestures';
 import { SandPicker } from './input/sandPicker';
@@ -41,15 +41,16 @@ import { InventoryTray, PlaceBar } from './ui/inventory';
 import { ClawMachine } from './ui/clawMachine';
 import { DigFind } from './ui/digFind';
 import { Shop } from './ui/shop';
-import { ShopApi, webOrderFromUrl, withoutWebOrderParams } from './net/shop';
+import { ShopApi, webOrderFromUrl, withoutWebOrderParams, type BagEntry } from './net/shop';
+import { CopySheet, rememberCopy, takePendingCopy } from './ui/copyBeach';
 import { VendingMachine } from './ui/vendingMachine';
 import { DEFAULT_SIZE, ITEMS, rollPlacement, type Item } from './world/items';
 import { footprintDrag, footprintFarSide, type FootprintStroke } from './world/footprints';
-import { ACCOUNTS_ENABLED, Account, AnimalsApi, ApiError, CheckpointApi, DigFindApi, GiftApi, GuideApi, InboxApi, PullApi, ReferralApi, type PetDto, type ShoreBeach } from './net/account';
+import { ACCOUNTS_ENABLED, Account, AnimalsApi, ApiError, CheckpointApi, CopyApi, DigFindApi, GiftApi, GuideApi, InboxApi, PullApi, ReferralApi, type PetDto, type ShoreBeach } from './net/account';
 import type { InboxPanel } from './ui/inbox';
 import type { VisitorCard } from './ui/visitorCard';
 import type { IconName } from './ui/hud';
-import { beachShareText, inviteCodeFromUrl, shoreBeachUrl, SHORE_URL, visitCodeFromUrl, withoutInviteParam, withoutVisitParam } from './net/share';
+import { beachShareText, copyRequested, inviteCodeFromUrl, shoreBeachUrl, SHORE_URL, visitCodeFromUrl, withoutInviteParam, withoutVisitParam } from './net/share';
 import { shareLink } from './ui/shareSheet';
 import { BeachGuide, type GuideHost } from './ui/guide';
 import type { InvitePanel } from './ui/invite';
@@ -82,6 +83,8 @@ if (ACCOUNTS_ENABLED) initTelemetry();
 const params = new URLSearchParams(location.search);
 /** a share link (?visit=CODE) opens that person's beach once signed in */
 const visitCode = visitCodeFromUrl(location.search);
+/** beechshore.com's "Copy to my beach" (?visit=CODE&copy=1): the copy sheet opens once there */
+const copyOnVisit = copyRequested(location.search);
 /**
  * An invite link (?invite=CODE, docs/INVITES_GUIDE.md). Kept on the device
  * until it's claimed: it has to survive the Google / Apple sign-in.
@@ -1357,13 +1360,16 @@ async function boot() {
   // home (leave something, ask to be neighbors, feed pet, star)
   const shoreBar = document.createElement('div');
   shoreBar.className = 'shore-bar';
-  shoreBar.innerHTML = `<span class="sb-where"></span><button type="button" class="sb-leave" hidden>leave something</button><button type="button" class="sb-ask" hidden>ask to be neighbors</button><button type="button" class="sb-pet" hidden>Feed pet</button><button type="button" class="sb-fav"></button>`;
+  shoreBar.innerHTML = `<span class="sb-where"></span><button type="button" class="sb-leave" hidden>leave something</button><button type="button" class="sb-ask" hidden>ask to be neighbors</button><button type="button" class="sb-pet" hidden>Feed pet</button><button type="button" class="sb-fav"></button><button type="button" class="sb-copy" hidden>copy</button>`;
   spMore.appendChild(shoreBar);
   const sbWhere = shoreBar.querySelector<HTMLElement>('.sb-where')!;
   const sbLeave = shoreBar.querySelector<HTMLButtonElement>('.sb-leave')!;
   const sbAsk = shoreBar.querySelector<HTMLButtonElement>('.sb-ask')!;
   const sbPet = shoreBar.querySelector<HTMLButtonElement>('.sb-pet')!;
   const sbFav = shoreBar.querySelector<HTMLButtonElement>('.sb-fav')!;
+  const sbCopy = shoreBar.querySelector<HTMLButtonElement>('.sb-copy')!;
+  /** opens the copy sheet for a beach (docs/COPY_BEACH.md; filled in once the account layer loads) */
+  let copyBeach: ((code: string) => void) | null = null;
   let shoreKey = '';
   /** opens the visitor card for another beach (filled in once the account layer loads) */
   let leaveBeach: ((b: ShoreBeach) => void) | null = null;
@@ -1385,6 +1391,10 @@ async function boot() {
     }
     haptics.impact('light');
   };
+  sbCopy.addEventListener('click', () => {
+    const b = beachHere();
+    if (b) copyBeach?.(b.code);
+  });
   const homeButton = document.createElement('button');
   homeButton.type = 'button';
   homeButton.className = 'shore-home';
@@ -1538,7 +1548,7 @@ async function boot() {
     const canLeave = !!b && !!leaveBeach && !isMine;
     const askSide = b && neighbors ? neighbors.askSideAt(idx) : null;
     if (feedSpot && (!signedIn || b?.code !== feedSpot)) endFeedSpot();
-    const key = `${away}|${here?.code}|${here?.name}|${fav}|${!!neighbors?.visiting}|${signedIn}|${canLeave}|${askSide}|${askingCode === b?.code}|${feedSpot}`;
+    const key = `${away}|${here?.code}|${here?.name}|${fav}|${!!neighbors?.visiting}|${signedIn}|${canLeave}|${!!copyBeach}|${askSide}|${askingCode === b?.code}|${feedSpot}`;
     if (key === shoreKey) return;
     shoreKey = key;
     shoreBar.classList.toggle('shown', away);
@@ -1558,6 +1568,8 @@ async function boot() {
       sbAsk.title = `Ask ${b?.name || 'them'} to move in on your ${askSide}`;
     }
     sbFav.hidden = !b || !signedIn || !!neighbors?.ownedBeach(b);
+    sbCopy.hidden = !b || !copyBeach || isMine;
+    if (b) sbCopy.dataset.act = `copy-${b.code}`;
     sbFav.textContent = fav ? '★' : '☆';
     sbFav.classList.toggle('on', fav);
     sbFav.setAttribute('aria-label', fav ? 'Remove from favorites' : 'Add to favorites');
@@ -2503,10 +2515,16 @@ async function boot() {
       try {
         await nv.visit(code);
         cam.goTo(0, true);
+        if (copyAfterVisit === code) {
+          copyAfterVisit = null;
+          copyBeach?.(code);
+        }
       } catch {
         showToast(uiRoot, 'No beach has that code');
       }
     };
+    /** ?visit=CODE&copy=1: the copy sheet, once that beach is in view */
+    let copyAfterVisit: string | null = null;
     // a device remembers which beach of yours was in front of it (a view bookmark, not a "current" beach)
     const VIEW_KEY = 'beech.view.v1';
     const readView = (user: string): string | null => {
@@ -2731,6 +2749,39 @@ async function boot() {
         void checkpoints.load();
       })();
     });
+    // go to one of your beaches: glide if it's on this shore, else lay the shore out around it
+    // (the waves follow the view there: nothing is switched)
+    const openMine = async (id: string) => {
+      const idx = nv.indexOfBeach(id);
+      if (idx !== null && !nv.visiting) {
+        cam.goTo(nv.xFor(idx));
+        sheet.hide();
+        return;
+      }
+      const b = acct.mine(id);
+      if (!b) return;
+      await nv.anchorAt(b.home ? null : b.code);
+      cam.goTo(0, true);
+      sheet.hide();
+    };
+    const removeMine = async (id: string) => {
+      releasing.add(id);
+      try {
+        if (isLive(id)) {
+          const home = acct.home;
+          await sync.bind(home && home.id !== id ? { id: home.id, code: home.code, owned: true } : null);
+        }
+        await acct.removeBeach(id);
+        void checkpoints.load();
+        store.forget(id);
+        if (nv.indexOfBeach(id) !== null) {
+          await nv.anchorAt(null);
+          cam.goTo(0, true);
+        }
+      } finally {
+        releasing.delete(id);
+      }
+    };
     panel = new AccountPanel(
       {
         beach: sheet.beachSlot,
@@ -2748,40 +2799,11 @@ async function boot() {
         sheet.hide();
       },
       {
-        // go to one of your beaches: glide if it's on this shore, else lay the shore out around it
-        // (the waves follow the view there: nothing is switched)
-        open: async (id) => {
-          const idx = nv.indexOfBeach(id);
-          if (idx !== null && !nv.visiting) {
-            cam.goTo(nv.xFor(idx));
-            sheet.hide();
-            return;
-          }
-          const b = acct.mine(id);
-          if (!b) return;
-          await nv.anchorAt(b.home ? null : b.code);
-          cam.goTo(0, true);
-          sheet.hide();
-        },
+        open: openMine,
         inView: () => (sync.id && sync.id !== LOCAL_BEACH ? sync.id : null),
-        remove: async (id) => {
-          releasing.add(id);
-          try {
-            if (isLive(id)) {
-              const home = acct.home;
-              await sync.bind(home && home.id !== id ? { id: home.id, code: home.code, owned: true } : null);
-            }
-            await acct.removeBeach(id);
-            void checkpoints.load();
-            store.forget(id);
-            if (nv.indexOfBeach(id) !== null) {
-              await nv.anchorAt(null);
-              cam.goTo(0, true);
-            }
-          } finally {
-            releasing.delete(id);
-          }
-        },
+        remove: removeMine,
+        // duplicate one of yours: the copy sheet, with it as the source (docs/COPY_BEACH.md)
+        duplicate: (b) => copyBeach?.(b.code),
         // a new beach starts at the real beach you're looking at now
         location: () => beach.id,
         shop: () => {
@@ -2936,6 +2958,12 @@ async function boot() {
         if (acct.user !== user) return;
         const extraBeachesChanged = (owned.get('beach') ?? 0) !== inventory.ownedCount('beach');
         inventory.setOwned(owned, foundBy);
+        // what each thing trades in for (docs/SAND_BUCKS.md): the next one that isn't on a beach
+        const bag = await acct.fetch('/api/bag').then((r) => (r.ok ? (r.json() as Promise<{ items: BagEntry[] }>) : null)).catch(() => null);
+        if (bag) {
+          inventory.setTradeValues(new Map(bag.items.filter((e) => e.free > 0 && e.values.length).map((e) => [e.item, e.values[0]])));
+          placeBar.refreshTrade();
+        }
         if (extraBeachesChanged) void acct.loadBeaches().catch(() => {});
         // what you've dug up, for the bag's "found" list
         const dug = await new DigFindApi(acct).list().catch(() => null);
@@ -2943,6 +2971,30 @@ async function boot() {
       } catch {
         /* offline: keep what we had */
       }
+    };
+    // trading in (docs/SAND_BUCKS.md): the thing in hand, or an extra beach
+    // from the bag, back for its sand bucks. Every beach is saved first, so
+    // the server counts what's on them as it is now.
+    const tradeIn = async (id: string) => {
+      await store.flushAll();
+      const res = await acct.fetch('/api/bag/trade-in', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ item: id, quantity: 1 }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string; credited?: number; bucks?: number };
+      if (!res.ok) throw new Error(data.error ?? 'that did not go through');
+      await loadOwned();
+      if (id === 'beach') void acct.loadBeaches().catch(() => {});
+      return { credited: data.credited ?? 0, left: inventory.tradeValue(id) === undefined ? 0 : 1 };
+    };
+    placeBar.setTrade({ value: (item) => inventory.tradeValue(item.id), tradeIn: (item) => tradeIn(item.id) });
+    inventory.onTradeIn = (id) => {
+      const v = inventory.tradeValue(id);
+      if (v === undefined || !window.confirm(`Trade in an extra beach for ${v} sand bucks?`)) return;
+      void tradeIn(id)
+        .then((r) => showToast(uiRoot, `+${r.credited} sand bucks`))
+        .catch((e: unknown) => showToast(uiRoot, (e as Error).message));
     };
     // gifting: an item in hand can go to someone else, by their code
     const giftApi = new GiftApi(acct);
@@ -2969,9 +3021,17 @@ async function boot() {
     claw.onClosed = () => guide.mark('claw');
     // the shop: paid through Apple / Google in the apps (src/net/shop.ts)
     const shopApi = new ShopApi(acct);
-    const shop = new Shop(uiRoot, shopApi, () => {
+    const shop = new Shop(uiRoot, shopApi, (id) => {
       void loadOwned();
       void acct.loadBeaches().catch(() => {});
+      // a pack bought for a copy (docs/SAND_BUCKS.md): back to the copy
+      if (id.startsWith('bucks_')) {
+        const p = takePendingCopy();
+        if (p) {
+          shop.close();
+          void copySheet.open(p.code, p.target);
+        }
+      }
     });
     shopDialog = shop;
     // back from web checkout (Pay Station adds ?web_order=…): once signed
@@ -2988,12 +3048,87 @@ async function boot() {
         showToast(uiRoot, 'Paid: it\'s in your bag. Thank you!');
         void loadOwned();
         void acct.loadBeaches().catch(() => {});
+        // a copy was waiting on this payment: back to it
+        const p = takePendingCopy();
+        if (p) void copySheet.open(p.code, p.target);
       } else if (o?.status === 'created') {
         showToast(uiRoot, 'Your payment is still being confirmed. It will be in your bag as soon as it is.');
       } else if (o) {
         showToast(uiRoot, 'That payment didn\'t go through: you weren\'t charged for it.');
       }
     };
+    // copying a beach (docs/COPY_BEACH.md): from the shore bar, beechshore.com
+    // (?visit=CODE&copy=1) or "duplicate" on one of your beaches
+    const copyApi = new CopyApi(acct);
+    const copySheet = new CopySheet(uiRoot, {
+      api: copyApi,
+      beaches: () => acct.beaches,
+      cap: BEACH_CAP,
+      allowance: () => acct.allowance,
+      here: () => (sync.id && sync.id !== LOCAL_BEACH ? sync.id : null),
+      sand: async (code) => {
+        const res = await acct.fetch(`/api/beaches/${encodeURIComponent(code)}`);
+        return res.ok ? new Uint8Array(await res.arrayBuffer()) : null;
+      },
+      flush: (id) => store.flush(id),
+      buyBasket: async (lines) => {
+        await shopApi.buyBasket(lines);
+        await loadOwned();
+      },
+      // not enough sand bucks: the shop's packs; the copy reopens once a pack is in (or after a web checkout)
+      getBucks: (p) => {
+        rememberCopy(p);
+        copySheet.close();
+        void shopDialog?.open('packs');
+      },
+      copied: async (done, target, fit) => {
+        await acct.loadBeaches().catch(() => {});
+        await loadOwned();
+        updateElsewhere();
+        if (target !== 'new') await store.reload({ id: done.beach, code: done.code, owned: true }, true);
+        await openMine(done.beach);
+        void nv.refresh();
+        void checkpoints.load();
+        const name = acct.mine(done.beach)?.name || 'your beach';
+        const left = done.dropped ? ` · ${done.dropped} left out` : '';
+        const undo = done.undo
+          ? () => void checkpoints.putBack(done.undo!, done.beach)
+          : target === 'new'
+            ? () => void removeMine(done.beach).then(() => acct.loadBeaches().catch(() => {}))
+            : null;
+        const text = `Copied ${fit.yours ? '' : `${fit.owner ?? 'their'}’s beach `}onto ${name}${left}`;
+        if (undo) showActionToast(uiRoot, text, 'Undo', undo);
+        else showToast(uiRoot, text);
+      },
+      kept: async (name) => {
+        await checkpoints.load();
+        showToast(uiRoot, `Kept “${name}” as a checkpoint`);
+      },
+      toast: (t) => showToast(uiRoot, t),
+    });
+    // signed out, "copy" signs in first, then opens the sheet
+    let copyAfterSignIn: string | null = null;
+    copyBeach = (code) => {
+      if (!acct.user) {
+        copyAfterSignIn = code;
+        sheet.show('account');
+        return;
+      }
+      sheet.hide();
+      void acct
+        .loadBeaches()
+        .catch(() => {})
+        .then(() => copySheet.open(code));
+    };
+    acct.onChange((u) => {
+      if (u && copyAfterSignIn) {
+        const code = copyAfterSignIn;
+        copyAfterSignIn = null;
+        copyBeach?.(code);
+      }
+    });
+    if (copyOnVisit && visitCode) copyAfterVisit = visitCode;
+    shoreKey = '';
     void settleReturnedOrder();
     acct.onChange((u) => {
       // anything paid for but not yet confirmed by the server: hand it over again
@@ -3336,6 +3471,10 @@ async function boot() {
     invites: () => invitePanel,
     inbox: () => inboxUi,
     visitor: () => visitorUi,
+    /** open the copy sheet for a beach code (docs/COPY_BEACH.md) */
+    copyBeach: (code: string) => copyBeach?.(code),
+    /** reload what you own (sand bucks e2e, docs/SAND_BUCKS.md) */
+    refreshOwned: () => refreshOwned(),
     objectView,
     animals: {
       snapshot: () => ({ ...animals.snapshot(), food: { ...animals.snapshot().food } }),

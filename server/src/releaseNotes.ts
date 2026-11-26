@@ -17,8 +17,12 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: '2026-11-26',
-    title: 'Smoother live beaches',
+    title: 'Sand bucks, trade-ins, copying a beach, and smoother live beaches',
     changes: [
+      'Sand bucks: everything in the shop is now priced in sand bucks (1 sand buck is 10¢; prices are the same as before). Buy sand bucks in packs, from the App Store, Google Play, Steam or by card on the web, then spend them on anything, on any device. Gift cards add sand bucks.',
+      'Trade-ins: anything in your bag that isn’t on a beach can be traded back in for what you paid, so you can try a build and change your mind for free. Pick it up from your bag and tap “trade in”. Things you got for free trade in at their shop price. An extra beach you aren’t using can be traded in too.',
+      'Copy any beach on the shore onto one of your own: tap “copy” while visiting it, or “Copy to my beach” on its beechshore.com page. If your bag is short of something it needs, buy just what’s missing or copy it without them. You can also duplicate your own beaches, and keep a copy as a checkpoint for later.',
+      'You’ll hear when someone copies your beach, and its beechshore.com page shows how many people have.',
       'Watching someone else’s beach while they play, their changes to the sand now flow in smoothly instead of popping, and things they move slide to their new spot.',
       'Your bag and the Beaches tab show how many of your extra beach slots are in use, and removing a beach frees its slot.',
       'The checkpoint list can be filtered by the beach it came from, or by imported files. Checkpoints from removed beaches keep their own place in the filter.',

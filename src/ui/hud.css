@@ -939,6 +939,30 @@
   display: none;
 }
 
+/* trading the thing in hand back in for sand bucks (docs/SAND_BUCKS.md) */
+.place-bar .pb-trade,
+.inv-trade {
+  flex: none;
+  padding: 6px 10px;
+  border: 1.5px solid currentColor;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.place-bar .pb-trade[hidden] {
+  display: none;
+}
+.inv-trade {
+  margin-top: 4px;
+  padding: 3px 8px;
+  font-size: 11px;
+}
+
 .place-bar .pb-gift svg {
   display: block;
   width: 22px;
@@ -1310,6 +1334,31 @@
   background: transparent;
   color: var(--ui-fg);
   box-shadow: inset 0 0 0 2px var(--ui-fg);
+}
+
+/* sand bucks (docs/SAND_BUCKS.md): the balance up top, packs in their own list */
+.shop-bucks {
+  font-size: 15px;
+}
+.shop-offers,
+.shop-packs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.shop-packs {
+  margin-top: 14px;
+}
+.shop-packs h3 {
+  margin: 0;
+  font-size: 14px;
+  text-align: center;
+}
+.shop-buy.short {
+  background: transparent;
+  color: var(--ui-fg);
+  box-shadow: inset 0 0 0 2px var(--ui-fg);
+  opacity: 0.6;
 }
 
 /* ---- leaderboard: the most-starred beaches ---- */
@@ -2137,6 +2186,57 @@
 .beachfile-keep {
   display: block;
   margin: 10px auto 0;
+}
+
+/* copying a beach (docs/COPY_BEACH.md) */
+.copybeach .beachfile-map[hidden] {
+  display: none;
+}
+.copybeach .beachfile-actions {
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+.copy-onto {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 6px 0 10px;
+  font-size: 12px;
+}
+.copy-onto > span {
+  opacity: 0.75;
+}
+.copy-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 13px;
+  text-align: left;
+}
+.copy-items li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 2px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+.copy-items li > span:last-child {
+  white-space: nowrap;
+  opacity: 0.85;
+}
+.copy-items li.short > span:last-child {
+  color: #b3264f;
+  opacity: 1;
+}
+.copy-items li.free {
+  opacity: 0.75;
+}
+.copy-status {
+  margin: 8px 0 0;
+  font-size: 12px;
+  text-align: center;
 }
 
 /* beechshore.com, at the foot of the leaderboard */

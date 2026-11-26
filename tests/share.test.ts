@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SHORE_URL, beachShareText, inviteCodeFromUrl, inviteText, inviteUrl, shareUrl, shoreBeachUrl, visitCodeFromUrl, withoutInviteParam, withoutVisitParam } from '../src/net/share';
+import { SHORE_URL, beachShareText, copyRequested, inviteCodeFromUrl, inviteText, inviteUrl, shareUrl, shoreBeachUrl, visitCodeFromUrl, withoutInviteParam, withoutVisitParam } from '../src/net/share';
 
 describe('share links', () => {
   it('builds a link with the beach code on any host and path', () => {
@@ -23,6 +23,11 @@ describe('share links', () => {
     expect(withoutVisitParam('?visit=K7F2QX&seed=1')).toBe('?seed=1');
     expect(withoutVisitParam('?seed=1')).toBe('?seed=1');
     expect(withoutVisitParam('')).toBe('');
+    // beechshore.com's "Copy to my beach"
+    expect(withoutVisitParam('?visit=K7F2QX&copy=1&seed=1')).toBe('?seed=1');
+    expect(copyRequested('?visit=K7F2QX&copy=1')).toBe(true);
+    expect(copyRequested('?visit=K7F2QX')).toBe(false);
+    expect(copyRequested('?copy=1')).toBe(false);
   });
 
   it('builds and reads invite links', () => {

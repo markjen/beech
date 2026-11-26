@@ -88,7 +88,8 @@ export async function awardCreatorCredit(db: Db, args: {
   // keep paying out; and a creator buying their own item would get 30%
   // back on every purchase, including ones paid for with credit.
   if (offer.status !== 'approved' || buyer === offer.submitter_user_id) return;
-  const cents = Math.round(paidCents * 0.3);
+  // 30%, as whole sand bucks (docs/SAND_BUCKS.md)
+  const cents = Math.round((paidCents * 0.3) / 10) * 10;
   const [royalty] = await db.query<{ id: string }>(
     `INSERT INTO creator_royalties
        (submission_id, creator_user_id, buyer_user_id, product_id, purchase_ref, store_purchase_id, sale_price_cents, credit_cents, created_at)
@@ -116,9 +117,18 @@ export async function awardCreatorCredit(db: Db, args: {
 }
 
 export async function reverseCreatorCredit(db: Db, purchaseId: string, now: number) {
+  return reverseRoyalty(db, 'store_purchase_id = $1', purchaseId, now);
+}
+
+/** A traded-in unit (docs/SAND_BUCKS.md): its royalty, keyed `credit:<inventory id>`, goes back. */
+export async function reverseCreatorCreditByRef(db: Db, purchaseRef: string, now: number) {
+  return reverseRoyalty(db, 'purchase_ref = $1', purchaseRef, now);
+}
+
+async function reverseRoyalty(db: Db, where: string, key: string, now: number) {
   const [royalty] = await db.query<{ id: string; submission_id: string; creator_user_id: string; credit_cents: number }>(
-    `UPDATE creator_royalties SET refunded_at = $2 WHERE store_purchase_id = $1 AND refunded_at IS NULL
-     RETURNING id, submission_id, creator_user_id, credit_cents`, [purchaseId, now],
+    `UPDATE creator_royalties SET refunded_at = $2 WHERE ${where} AND refunded_at IS NULL
+     RETURNING id, submission_id, creator_user_id, credit_cents`, [key, now],
   );
   if (!royalty) return;
   // Use the same submission-then-user lock order as purchase grants.

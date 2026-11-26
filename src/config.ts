@@ -17,6 +17,9 @@ export type QualityTier = 'low' | 'medium' | 'high';
  * Until 2026-11 it was 32 x 24: the extra 8 m are sea, added on the offshore
  * side (older saves are padded on load, see sandCodec.fitWorld).
  */
+/** the most beaches one person can have (server/src/app.ts BEACH_CAP) */
+export const BEACH_CAP = 8;
+
 export const WORLD_SIZE_X = 32;
 export const WORLD_SIZE_Z = 32;
 /** how much further out the sea goes than in the first (32 x 24) world */

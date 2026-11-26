@@ -431,7 +431,7 @@ export interface Checkpoint {
   /** auto: the beach as it was before a restore replaced it */
   /** auto: kept before a restore or import; tide: kept before the sea's catch-up (docs/LIVE_SIM.md) */
   kind: 'named' | 'auto' | 'tide';
-  source: 'beach' | 'import';
+  source: 'beach' | 'import' | 'copy';
   fromBeach: { id: string; name: string } | null;
   /** Source beach ID, retained when the beach is removed. */
   originBeachId?: string | null;
@@ -542,6 +542,96 @@ export class CheckpointApi {
     }
     if (!res.ok) throw await errorOf(res, 'could not restore');
     return (await res.json()) as { undo: string | null; dropped: number; epoch: number };
+  }
+}
+
+/** What copying a beach would take (GET /api/beaches/:code/copy-fit, docs/COPY_BEACH.md). */
+export interface CopyFit {
+  code: string;
+  name: string;
+  owner: string | null;
+  yours: boolean;
+  location: string | null;
+  version: number;
+  updatedAt: number | null;
+  nx: number;
+  ny: number;
+  objects: number;
+  need: Record<string, number>;
+  owned: Record<string, number>;
+  elsewhere: Record<string, number>;
+  short: Short[];
+  /** a new beach has room in your allowance (always true for one of yours) */
+  room: boolean;
+  allowance: number;
+  beaches: number;
+  basket: {
+    lines: { product: string; quantity: number; item: string; bucks: number }[];
+    bucks: number;
+    notForSale: { item: string; missing: number }[];
+  };
+  /** your sand bucks (docs/SAND_BUCKS.md) */
+  bucks: number;
+}
+
+export interface CopyDone {
+  beach: string;
+  code: string;
+  undo: string | null;
+  dropped: number;
+  epoch: number;
+}
+
+/** The source has a newer save than the one previewed (409 changed). */
+export class CopyChangedError extends ApiError {
+  constructor(readonly version: number) {
+    super(409, 'This beach just changed');
+  }
+}
+
+export class CopyApi {
+  constructor(private readonly account: Account) {}
+
+  async fit(code: string, target: string | 'new'): Promise<CopyFit> {
+    const res = await this.account.fetch(`/api/beaches/${encodeURIComponent(code)}/copy-fit?target=${encodeURIComponent(target)}`);
+    if (res.status === 404) throw new ApiError(404, 'This beach can’t be copied');
+    if (!res.ok) throw await errorOf(res, 'could not look at that beach');
+    return (await res.json()) as CopyFit;
+  }
+
+  /** Copy it onto one of your beaches (replacing it) or a new one. Strict mode throws ShortError when short. */
+  async copy(p: { from: string; version: number; target: string | 'new'; mode: 'strict' | 'drop-missing'; location?: string }): Promise<CopyDone> {
+    const res = await this.account.fetch('/api/beaches/mine/copy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...this.account.editHeaders() },
+      body: JSON.stringify(p),
+    });
+    if (res.status === 409) {
+      const data = (await res.json().catch(() => ({}))) as { error?: string; short?: Short[]; version?: number };
+      if (data.error === 'fenced') throw new ApiError(409, 'Another tab or device is editing your beaches — take over editing there first.');
+      if (data.error === 'changed') throw new CopyChangedError(data.version ?? 0);
+      if (data.error === 'room') throw new ApiError(409, 'No room for another beach');
+      if (data.short) throw new ShortError(data.short);
+      throw new ApiError(409, data.error ?? 'could not copy');
+    }
+    if (res.status === 404) throw new ApiError(404, 'This beach can’t be copied');
+    if (!res.ok) throw await errorOf(res, 'could not copy');
+    return (await res.json()) as CopyDone;
+  }
+
+  /** Keep it as a checkpoint (nothing placed, so no bag needed). */
+  async keep(from: string, version: number): Promise<Checkpoint> {
+    const res = await this.account.fetch('/api/checkpoints/copy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from, version }),
+    });
+    if (res.status === 409) {
+      const data = (await res.json().catch(() => ({}))) as { error?: string; version?: number };
+      if (data.error === 'changed') throw new CopyChangedError(data.version ?? 0);
+    }
+    if (!res.ok) throw await errorOf(res, 'could not keep it as a checkpoint');
+    return ((await res.json()) as { checkpoint: Checkpoint }).checkpoint;
   }
 }
 
@@ -913,7 +1003,7 @@ export class ReferralApi {
 // ------------------------------------------------------------------ visitors and the inbox
 // docs/INBOX_NOTIFICATIONS.md
 
-export type InboxKind = 'visit' | 'gift' | 'neighbor_request' | 'neighbor_linked' | 'star' | 'rating' | 'invite_joined' | 'invite_settled' | 'system';
+export type InboxKind = 'visit' | 'gift' | 'neighbor_request' | 'neighbor_linked' | 'star' | 'rating' | 'invite_joined' | 'invite_settled' | 'system' | 'copied';
 
 export interface InboxEntry {
   id: number;

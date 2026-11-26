@@ -34,6 +34,10 @@ export class InventoryTray {
   private elsewhere = new Map<string, number>();
   /** uses an actionable extra from the bag (e.g. tossing a beach snack) */
   onUseExtra: (id: string) => void = () => {};
+  /** what the next one of each thing trades in for (sand bucks), when one can be (docs/SAND_BUCKS.md) */
+  private tradeValues = new Map<string, number>();
+  /** trade one in (an extra beach, from the bag) */
+  onTradeIn: (id: string) => void = () => {};
 
   constructor(
     hudButton: (name: IconName, label: string, cls?: string) => HTMLButtonElement,
@@ -108,6 +112,17 @@ export class InventoryTray {
 
   private ownedOf(id: string): number {
     return this.owned.get(id) ?? 0;
+  }
+
+  /** What the next free one of each thing trades in for (from the server's /bag). */
+  setTradeValues(m: Map<string, number>): void {
+    this.tradeValues = m;
+    this.render();
+  }
+
+  /** The trade-in value of the next one of this thing, if one can be traded in now. */
+  tradeValue(id: string): number | undefined {
+    return this.tradeValues.get(id);
   }
 
   /** How many of this item you own (for the gift button in the place bar). */
@@ -272,6 +287,20 @@ export class InventoryTray {
           ? `${this.extraBeachesInUse} of ${n} in use`
           : `${n} owned`;
         b.innerHTML = `${icon(x.id as IconName)}<b>${x.name}</b><span>${count}</span>`;
+        // an extra beach you aren't using can be traded in
+        const value = this.tradeValues.get(x.id);
+        if (value !== undefined) {
+          const t = document.createElement('button');
+          t.type = 'button';
+          t.className = 'inv-trade';
+          t.dataset.act = `trade-${x.id}`;
+          t.textContent = `trade in · ${value}`;
+          t.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.onTradeIn(x.id);
+          });
+          b.appendChild(t);
+        }
         grid.appendChild(b);
       }
     }
@@ -290,6 +319,14 @@ export interface PlaceBarGift {
   sendGift: (item: Item, code: string) => Promise<{ name: string }>;
 }
 
+/** Trading the thing in hand back in for sand bucks (docs/SAND_BUCKS.md). */
+export interface PlaceBarTrade {
+  /** what the next one trades in for, or undefined when none can be (all on a beach, or not tradeable) */
+  value: (item: Item) => number | undefined;
+  /** Trade one in. Resolves with the bucks credited and how many are left to trade; throws with the reason it didn't. */
+  tradeIn: (item: Item) => Promise<{ credited: number; left: number }>;
+}
+
 export class PlaceBar {
   private readonly root: HTMLDivElement;
   private readonly name: HTMLElement;
@@ -300,8 +337,12 @@ export class PlaceBar {
   private readonly giftRow: HTMLElement;
   private readonly giftInput: HTMLInputElement;
   private readonly giftStatus: HTMLElement;
+  private readonly tradeBtn: HTMLButtonElement;
   private item: Item | null = null;
   private gifting = false;
+  private trade?: PlaceBarTrade;
+  /** the first tap on "trade in" asks; the second does it */
+  private tradeArmed = false;
 
   constructor(
     parent: HTMLElement,
@@ -317,6 +358,7 @@ export class PlaceBar {
       <b class="pb-name"></b>
       <label class="pb-size"><span>small</span><input type="range" min="0" max="1" step="0.01" aria-label="Size"><span>big</span></label>
       <button type="button" class="pb-gift" aria-label="Gift this to someone">${icon('gift')}</button>
+      <button type="button" class="pb-trade" data-act="trade-in" hidden></button>
       <label class="pb-gift-row"><span>gift to</span><input placeholder="their code" maxlength="8" autocomplete="off" aria-label="Neighbor code to gift to"><button type="button" class="pb-send">send</button><button type="button" class="pb-cancel" aria-label="Cancel gifting">×</button></label>
       <span class="pb-status" role="status"></span>
       <button type="button" class="pb-close" aria-label="Put it away">×</button>`;
@@ -329,6 +371,8 @@ export class PlaceBar {
     this.giftRow = this.root.querySelector('.pb-gift-row')!;
     this.giftInput = this.giftRow.querySelector('input')!;
     this.giftStatus = this.root.querySelector('.pb-status')!;
+    this.tradeBtn = this.root.querySelector('.pb-trade')!;
+    this.tradeBtn.addEventListener('click', () => void this.tradeIn());
     this.slider.addEventListener('input', () => {
       if (this.item) this.setSize(this.item.id, Number(this.slider.value));
     });
@@ -351,6 +395,50 @@ export class PlaceBar {
     this.sizeRow.hidden = !!item.fixedSize;
     this.slider.value = String(this.sizes()[item.id] ?? size01);
     this.giftBtn.hidden = !this.gift || !this.gift.giftable(item);
+    this.showTrade();
+  }
+
+  /** Add the trade-in button's behaviour (once signed in). */
+  setTrade(trade: PlaceBarTrade): void {
+    this.trade = trade;
+    this.showTrade();
+  }
+
+  /** The trade-in values changed (the bag was reloaded). */
+  refreshTrade(): void {
+    this.showTrade();
+  }
+
+  private showTrade(): void {
+    this.tradeArmed = false;
+    const value = this.item && this.trade && !this.gifting ? this.trade.value(this.item) : undefined;
+    this.tradeBtn.hidden = value === undefined;
+    this.tradeBtn.textContent = value === undefined ? '' : `trade in · ${value}`;
+  }
+
+  private async tradeIn(): Promise<void> {
+    if (!this.item || !this.trade) return;
+    const value = this.trade.value(this.item);
+    if (value === undefined) return;
+    if (!this.tradeArmed) {
+      // a second tap confirms
+      this.tradeArmed = true;
+      this.tradeBtn.textContent = `sure? · ${value}`;
+      return;
+    }
+    const item = this.item;
+    this.tradeBtn.disabled = true;
+    this.giftStatus.textContent = '';
+    try {
+      const r = await this.trade.tradeIn(item);
+      this.giftStatus.textContent = `+${r.credited} sand bucks`;
+      if (r.left <= 0) window.setTimeout(() => this.putAway(), 1200);
+    } catch (e) {
+      this.giftStatus.textContent = (e as Error).message;
+    } finally {
+      this.tradeBtn.disabled = false;
+      if (this.item === item) this.showTrade();
+    }
   }
 
   /** A beach snack in hand (no size, no gift): its name and how many are left. */
@@ -376,6 +464,8 @@ export class PlaceBar {
     this.root.classList.toggle('gifting', this.gifting);
     this.sizeRow.hidden = this.gifting || !!this.item?.fixedSize;
     this.giftBtn.hidden = this.gifting || !this.gift || !this.item || !this.gift.giftable(this.item);
+    if (this.gifting) this.tradeBtn.hidden = true;
+    else this.showTrade();
     this.giftInput.value = '';
     this.giftStatus.textContent = '';
     if (this.gifting) this.giftInput.focus({ preventScroll: true });

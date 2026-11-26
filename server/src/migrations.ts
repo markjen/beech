@@ -795,6 +795,57 @@ const MIGRATIONS: string[] = [
   ALTER TABLE checkpoints ADD COLUMN origin_beach_id UUID;
   UPDATE checkpoints SET origin_beach_id = from_beach WHERE from_beach IS NOT NULL;
   `,
+  // 30: copying a beach on the shore onto one of your own (docs/COPY_BEACH.md).
+  // A copy remembers where it came from; beach_copies counts each person
+  // once per source ("copied N times") and is the key for the owner's one
+  // inbox row per copier. A copy kept as a checkpoint has source 'copy'.
+  `
+  ALTER TABLE beach ADD COLUMN copied_from UUID REFERENCES beach (id) ON DELETE SET NULL;
+  ALTER TABLE beach ADD COLUMN copied_from_code TEXT;
+  ALTER TABLE beach ADD COLUMN copied_version INTEGER;
+  CREATE TABLE beach_copies (
+    source_beach UUID NOT NULL REFERENCES beach (id) ON DELETE CASCADE,
+    copier UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    first_at BIGINT NOT NULL,
+    PRIMARY KEY (source_beach, copier)
+  );
+  ALTER TABLE checkpoints DROP CONSTRAINT checkpoints_source_check;
+  ALTER TABLE checkpoints ADD CONSTRAINT checkpoints_source_check CHECK (source IN ('beach', 'import', 'copy'));
+  ALTER TABLE inbox DROP CONSTRAINT inbox_kind_check;
+  ALTER TABLE inbox ADD CONSTRAINT inbox_kind_check CHECK (kind IN ('visit', 'gift', 'neighbor_request', 'neighbor_linked', 'star', 'rating', 'invite_joined', 'invite_settled', 'system', 'copied'));
+  `,
+  // 31: sand bucks and trade-ins (docs/SAND_BUCKS.md). The balance stays in
+  // users.credit_cents at 10 cents a sand buck, always a whole number of
+  // bucks: balances round up to the next buck, debt down. Each bag row can
+  // carry its trade-in value per unit (unit_cents; NULL = its list value).
+  // creator_credit_debt_cents is now the debt of any clawback (a refunded
+  // pack whose bucks were spent), not only creator royalties.
+  `
+  UPDATE users SET credit_cents = ((credit_cents + 9) / 10) * 10 WHERE credit_cents % 10 <> 0;
+  UPDATE users SET creator_credit_debt_cents = (creator_credit_debt_cents / 10) * 10 WHERE creator_credit_debt_cents % 10 <> 0;
+  ALTER TABLE inventory ADD COLUMN unit_cents INTEGER CHECK (unit_cents IS NULL OR unit_cents >= 0);
+  CREATE TABLE trade_ins (
+    id BIGSERIAL PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    inventory_id BIGINT REFERENCES inventory (id) ON DELETE SET NULL,
+    item_id TEXT NOT NULL,
+    quantity INTEGER NOT NULL CHECK (quantity > 0),
+    value_cents INTEGER NOT NULL CHECK (value_cents >= 0),
+    created_at BIGINT NOT NULL
+  );
+  CREATE INDEX trade_ins_user ON trade_ins (user_id, created_at DESC);
+  CREATE INDEX trade_ins_inventory ON trade_ins (inventory_id);
+  ALTER TABLE credit_ledger DROP CONSTRAINT credit_ledger_kind_check;
+  ALTER TABLE credit_ledger ADD CONSTRAINT credit_ledger_kind_check
+    CHECK (kind IN ('gift_card', 'spend', 'creator_royalty', 'creator_royalty_refund', 'pack', 'pack_refund', 'trade_in', 'trade_in_refund'));
+  `,
+
+  // 32: the creator royalty a bag row's unit earned, carried with it when
+  // it's gifted, so trading the gift in takes the right royalty back
+  // (PR #118 review). NULL: the row's own ('credit:<id>', or 'store:<purchase>').
+  `
+  ALTER TABLE inventory ADD COLUMN royalty_ref TEXT;
+  `,
 ];
 
 /** Apply migrations up to `upTo` (default: all). Tests use `upTo` to check a migration on older data. */

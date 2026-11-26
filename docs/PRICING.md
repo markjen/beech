@@ -7,6 +7,18 @@ claw machine. The shop sells **space** (more beaches) and **centrepieces**
 yours on every device. There are no subscriptions, no timers to pay past, no
 ads and no paid random draws.
 
+## Sand bucks (2026-11-26)
+
+Everything below is now sold for **sand bucks** at **10¢ a buck**, the same
+prices rounded to the buck ($2.99 → 30). Real money only buys sand-buck
+packs: 10 for $0.99, 30 for $2.99, 50 for $4.99, 100 for $9.99, 200 for
+$19.99 (`bucks_10` … `bucks_200` in `server/src/products.ts`). Anything in the
+bag can be traded back in at what it cost, so trying things is free. This
+replaces "no in-app currency" (owner decision); the design, the trade-in
+rules and the store tasks are in [SAND_BUCKS.md](SAND_BUCKS.md). The table
+below keeps the US prices the old app versions still sell at, and the
+reasoning for each price.
+
 ## The price list
 
 US prices. Each one is a standard App Store / Google Play price point, and

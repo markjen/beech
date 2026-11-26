@@ -16,6 +16,7 @@ export const INBOX_KINDS = [
   'invite_joined',
   'invite_settled',
   'system',
+  'copied', // someone copied your beach (once per person per beach)
 ] as const;
 export type InboxKind = (typeof INBOX_KINDS)[number];
 

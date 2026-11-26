@@ -14,6 +14,8 @@ rest of `npm test` in `server/`. No E2E, no rendering.
 | Beach snacks and pets | `Snacks.tla` | `snacks.test.ts` | snacks lost or duplicated, a crab befriended for less, extra free feeds |
 | Editing beaches | `BeachEditing.tla` | `editing.test.ts` | a fenced device overwriting the editor, more placed than owned, a restore overwritten |
 | Neighbor links | `Neighbors.tla` | `neighbors.test.ts` | one-sided links, two neighbors on one side, two beaches linked on both sides |
+| Copying a beach | `BeachCopy.tla` | `copy.test.ts` | more placed than owned, more beaches than the allowance, a copy of a beach just taken off the shore, a different version than previewed |
+| Sand bucks and trade-ins | `SandBucks.tla` | `bucks.test.ts` | a trade-in of a thing on a beach, the last one traded in twice, bucks lost or minted by spending, trading in or a refund |
 | Piers (designed) | `Piers.tla` | Planned | a pier landed after an unlink, duplicate attachments, an attachment surviving a refund |
 
 ## How it fits together
@@ -29,8 +31,8 @@ rest of `npm test` in `server/`. No E2E, no rendering.
    finds its bug. Model sizes are small (2 or 3 players, devices or beaches,
    thresholds of 2), which is enough for these races, and each run takes
    seconds to minutes.
-3. **Reference models.** `snacksModel.ts`, `editingModel.ts` and
-   `neighborsModel.ts` are the specs in TypeScript, `Fixed = TRUE`, one
+3. **Reference models.** `snacksModel.ts`, `editingModel.ts`,
+   `neighborsModel.ts`, `copyModel.ts` and `bucksModel.ts` are the specs in TypeScript, `Fixed = TRUE`, one
    action at a time. Each method is one TLA+ action and returns the HTTP
    answer the server should give.
 4. **Tests**, in three layers per machine:
@@ -106,6 +108,44 @@ State: link rows `<<beach, side, neighbor>>` and requests `<<from, side, to>>`.
 
 Invariants: `Mutual`, `OnePerSide`, `LinkedOnce` (two beaches are never
 neighbors on both sides of each other), `NoSelf`.
+
+## Copying a beach (`BeachCopy.tla`)
+
+[COPY_BEACH.md](COPY_BEACH.md). State: the copier's
+bag and beaches, the source's version, whether it's public and what it
+holds, and each copy request's step, target, mode and pinned version.
+
+| Action | Route | Code |
+| --- | --- | --- |
+| `CopyStart` | `GET /beaches/:code/copy-fit`, then Copy | the app pins the previewed `version` |
+| `CopyRead` .. `CopyWrite` / `CopyAtomic` | `POST /beaches/mine/copy` | `oneAtATime` + `asEditor`; both beach rows locked in id order (target `FOR NO KEY UPDATE`, source `FOR SHARE`); `fitOf`, the allowance, `dropMissing`, then `writeOnto` (shared with restore) |
+| `SourceEdit`, `SourceShore` | the owner's save, `PATCH ... { onShore }`, an admin hide | |
+| `Buy` | a store grant | |
+| `Save` | the copier's other device saving | `saveBeach` |
+
+Invariants: `WithinBag`, `WithinAllowance`, `CopiedWhatSeen`,
+`NoCopyOffShore`, `NothingOffBeach`. The three-statement form breaks the
+first, second and fourth; the design (one transaction) passes.
+
+## Sand bucks and trade-ins (`SandBucks.tla`)
+
+[SAND_BUCKS.md](SAND_BUCKS.md). State: the balance and debt, the bag's units
+by trade-in value, what's on the beaches, packs bought, and each trade-in's
+step.
+
+| Action | Route | Code |
+| --- | --- | --- |
+| `BuyPack` | `POST /store/purchase`, the Xsolla webhook, `POST /store/steam/finalize`, gift card redeem | `grantPurchase` / `creditBalance` (`server/src/bucksDb.ts`) |
+| `RefundPack` | store refund notifications, the Steam refund sync | `revokeStorePurchase` → `revokeGrant` / `clawBack` |
+| `Spend` | `POST /store/buy`, `POST /store/credit-purchase` | `buyWithBucks`: one `claimCreditPurchase` statement |
+| `FreeGrant` | claw, vending, dig finds, rewards, gifts in | the existing grants (`unit_cents` NULL = list value) |
+| `GiftOut` | `POST /gifts` | `giveOne` (moves `unit_cents`) |
+| `Save` | `PUT /beaches/mine/:id/sand` | `saveBeach` |
+| `TradeCheck` .. `TradeWrite` / `TradeAtomic` | `POST /bag/trade-in` | one transaction under `withPlayerWriteLock` |
+
+Invariants: `ValueConserved`, `NoPhantomUnits`, `NeverTradePlaced`,
+`NoNegative`. The two-statement trade-in breaks `NoPhantomUnits` and
+`NeverTradePlaced`; both are replayed in `bucks.test.ts`.
 
 ## Piers (`Piers.tla`)
 

@@ -124,6 +124,8 @@ export class CheckpointsSection {
 
   private checkpointSource(cp: Checkpoint): { key: string; label: string } {
     if (cp.source === 'import') return { key: 'import', label: 'Imported files' };
+    // a beach on the shore kept as a checkpoint (docs/COPY_BEACH.md)
+    if (cp.source === 'copy') return { key: 'copy', label: 'Copied beaches' };
     const id = cp.originBeachId ?? cp.fromBeach?.id;
     const beach = this.account.mine(cp.fromBeach?.id);
     const name = beach ? ownBeachLabel(beach) : cp.fromBeach?.name || cp.fromName || 'A beach';
@@ -341,7 +343,7 @@ export class CheckpointsSection {
             ? 'kept before an import'
             : 'kept before a restore'
         : cp.kind === 'tide' ? 'kept before the tide came in' : '';
-    const from = cp.source === 'import' ? 'imported' : `from ${sourceLabel}`;
+    const from = cp.source === 'import' ? 'imported' : cp.source === 'copy' ? `copied from ${cp.fromName}` : `from ${sourceLabel}`;
     meta.textContent = [kind, from, ago(cp.createdAt)].filter(Boolean).join(' · ');
     title.append(name, meta);
     row.appendChild(title);

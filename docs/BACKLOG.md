@@ -14,6 +14,16 @@ The single list of what's left to do, for the owner and for agents.
 
 ## Owner: things only you can do
 
+- [ ] **Sand-buck packs in the stores** (docs/SAND_BUCKS.md, "Owner tasks"):
+  create the consumable products `bucks_10`, `bucks_30`, `bucks_50`,
+  `bucks_100`, `bucks_200` ($0.99 / $2.99 / $4.99 / $9.99 / $19.99) in App
+  Store Connect and the Play Console, the same SKUs in Xsolla's catalog, and
+  Steam item ids 1101–1105. Update the store listings' in-app purchase
+  wording. Once the new app is live, take the old item products off sale.
+- [ ] **Watch the trade-in economy**: free claw, vending and dig finds trade
+  in at full value (your call, 2026-11-26). Check the `trade_ins` and
+  `credit_ledger` totals after the first weeks.
+
 - [ ] **Store products and payouts**: the Paid Apps agreement and banking on
   Apple, the payments profile on Google, then create the products and
   notification URLs. Step by step in MOBILE.md, "In-app purchases".
@@ -78,11 +88,20 @@ _(nothing right now)_
 
 ## Up next (engineering)
 
+- [ ] **Sand bucks, follow-ups** ([SAND_BUCKS.md](SAND_BUCKS.md)): show the
+  balance on the HUD (not only in the shop and the copy sheet); trade in
+  several at once from the bag; an admin view of trade-ins and debts.
+
 Items marked **(model first)** change state the server keeps: they start
 with their TLA+ spec ([STATE_MACHINES.md](STATE_MACHINES.md#model-first-workflow),
 CLAUDE.md "Model first"). Gameplay ideas below get the same once they're
 picked up.
 
+- [ ] **Copy a beach, follow-ups** ([COPY_BEACH.md](COPY_BEACH.md)): one
+  web order holding every product "Buy what's missing" needs (Xsolla's
+  token takes several items; `web_orders` would need lines, and the
+  webhook would grant them all) instead of one card checkout each; a place
+  picker for a new beach on the copy sheet.
 - [ ] **Piers (model first)**: sell a timber pier to land on the middle
   of three consecutive owned beaches. The [design](PIERS.md) and
   [checked state machine](STATE_MACHINES.md#piers-pierstla) are ready.
@@ -188,6 +207,10 @@ picked up.
 
 ## Done (recent)
 
+- [x] **Copy a beach** onto one of your own (2026-11-26): shore bar,
+  beechshore.com and duplicate; buy what's missing or copy without them;
+  copy counts and owner notifications. [COPY_BEACH.md](COPY_BEACH.md),
+  `specs/tla/BeachCopy.tla`.
 - [x] **Viewers' sand eases to each new save** (2026-11-26): someone
   else's beach in front of you blends from the drawn snapshot to the new
   save over 1 s instead of swapping, and things moved on a snapshot beach

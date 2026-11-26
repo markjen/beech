@@ -100,7 +100,7 @@ describe('item catalog pages', () => {
     const html = await res.text();
     expect(html).toContain('Lighthouse');
     expect(html).toContain('Legendary');
-    expect(html).toContain('$2.99');
+    expect(html).toContain('30 sand bucks');
     expect(html).toContain('Fixed size');
     expect(html).toContain('Buy in the shop');
     expect(html).toContain('Vote for this item');
