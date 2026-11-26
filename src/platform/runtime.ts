@@ -58,7 +58,13 @@ export function isMobileApp(): boolean {
   return r === 'ios' || r === 'android';
 }
 
-/** True for any store-packaged build (iOS, Android, or Steam) that ships its own dist/. */
+/** True for clients installed from a store, including the hosted Android shell. */
 export function isPackagedApp(): boolean {
   return getRuntime() !== 'web';
+}
+
+/** Hosted clients can pick up a deployment by reloading the page. */
+export function usesHostedClient(): boolean {
+  const runtime = getRuntime();
+  return runtime === 'web' || (runtime === 'android' && globalThis.location?.origin === 'https://play.beech.games');
 }

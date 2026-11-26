@@ -67,7 +67,7 @@ https://doi.org/10.1594/PANGAEA.951610, CC-BY 4.0.
 | `npm run e2e:accounts` | Browser test of sign-in → dig → save → reload → restored → delete |
 | `npm run smoke` | Headless browser smoke test of the built app, including offline start (needs Playwright + Chromium) |
 | `npm run icons` | Regenerate PWA icons and native icon/splash sources from code |
-| `npm run cap:android` / `npm run cap:ios` | Build, sync and open the native project |
+| `npm run cap:android` / `npm run cap:ios` | Sync and open the Android shell or build, sync and open the iOS app |
 | `node scripts/set-version.mjs 1.2.0 7` | Set the version name and build number everywhere |
 
 URL parameters for development: `?quality=low|medium|high`, `?seed=N`,

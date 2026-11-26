@@ -107,9 +107,7 @@ export function isNewer(latest: string | null, mine = APP_BUILD): boolean {
 
 /**
  * Check for a newer build now and then (every `everyMs`, and whenever the tab
- * comes back to the front), and call `onNew` once when there is one. The
- * phone apps carry their web code inside, so they don't watch: their updates
- * come through the stores.
+ * comes back to the front), and call `onNew` once when there is one.
  */
 export function watchForNewVersion(onNew: () => void, everyMs = 10 * 60 * 1000): () => void {
   let told = false;

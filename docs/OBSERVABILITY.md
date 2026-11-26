@@ -78,10 +78,9 @@ Labels are string literals in code, so they stay low-cardinality.
 `src/net/telemetry.ts`, hooked in first thing in `src/main.ts` (production
 builds only, gated on `ACCOUNTS_ENABLED`):
 
-- Posts to `${VITE_API_URL}/api/client-events` via `fetch(..., { keepalive: true })`
-  so both the website and the native Android/iOS Capacitor shells (running
-  under `https://localhost` / `capacitor://localhost`) reach the API cleanly
-  through CORS.
+- Posts to `${VITE_API_URL}/api/client-events` via `fetch(..., { keepalive: true })`.
+  The website and hosted Android WebView use the same-origin API. Bundled
+  mobile clients use their configured API host through CORS.
 - Every payload carries `platform` (`web` | `android` | `ios`), `version`
   (`package.json` semver) and `build` (`__APP_BUILD__`).
 - **Errors (`kind: "error"` → `client_error`, severity `WARNING`):**
