@@ -3,8 +3,10 @@
 //   node scripts/live-e2e.mjs        (npm run e2e:live)
 // Ana leaves a castle at the waterline and a nautilus in the sea; two days
 // pass (/api/dev/age-beach); she opens her beach: the sea has worn the castle
-// down, taken the nautilus (back in her bag) and washed things up. "While you
-// were away" says so once, and "Put it back as it was" brings it all back.
+// down, taken the nautilus (back in her bag) and washed things up. Nothing
+// pops up over the beach for it any more: the sea's work is in her inbox
+// (one 'tide' row for the day), and "Before the tide" in Manage →
+// Checkpoints puts it all back.
 import { deflateSync } from 'node:zlib';
 import { e2eUrl, openApp, openBrowser, reloadApp } from './lib/e2e.mjs';
 
@@ -81,10 +83,15 @@ const castleTop = () =>
 const things = () => page.evaluate(() => window.__beech.info().objects.filter((o) => !o.wild).map((o) => o.item).sort().join());
 const strays = () => page.evaluate(() => window.__beech.info().objects.filter((o) => o.wild).length);
 
-await page.waitForSelector('.hint.choice', { timeout: 15000 }).catch(() => {});
-const card = await page.evaluate(() => document.querySelector('.hint.choice')?.textContent ?? '');
-check(card.startsWith('While you were away (2 days)'), `"while you were away" (${card})`);
-check(card.includes('the sea took 1 thing (back in your bag)'), 'it counts what the sea took');
+await page.waitForTimeout(3000);
+check(!(await page.$('.hint.choice')), 'no "while you were away" card pops up over the beach any more');
+// the sea's work is in the inbox instead: one tide row for the day
+const inbox = (await api('/inbox', {}, token)).body;
+const tide = inbox.entries.find((e) => e.kind === 'tide');
+check(!!tide, 'the inbox has the tide row');
+check(tide?.payload.tides >= 3, `it counts the tides (${tide?.payload.tides})`);
+check(tide?.payload.lost === 1, `it counts what the sea took (${tide?.payload.lost})`);
+check(tide?.payload.brought > 0, `it counts what washed up (${tide?.payload.brought})`);
 const top = await castleTop();
 check(top < 0.3, `the castle is worn down (${top.toFixed(2)} m of 0.5)`);
 check(!(await things()).includes('nautilus'), `the nautilus is gone from the beach (${await things()})`);
@@ -92,14 +99,12 @@ check((await strays()) > 0, `the sea washed things up (${await strays()})`);
 const mine = await api('/beaches/mine', {}, token);
 check(!(mine.body.beaches[0].items?.nautilus > 0), 'the server counts no nautilus placed: it is back in the bag');
 
-// put it back as it was (slow here: a restore, then the beach reloads)
-await page.click('.hint.choice button.hint-action');
-await page
-  .waitForFunction(() => [...document.querySelectorAll('.hint')].some((h) => /before the tide/.test(h.textContent ?? '')), null, { timeout: 45000 })
-  .catch(() => {});
-const toast = await page.evaluate(() => [...document.querySelectorAll('.hint')].map((h) => h.textContent).join(' | '));
-// (the toast is gone after 10 s, which can be before this slow page looks: the server is the check)
-console.log(`info "Put it back as it was" toast: ${toast || '(missed)'}`);
+// put it back as it was: the "Before the tide" checkpoint restores it
+// (the same restore the checkpoints panel runs; slow here: a restore, then
+// the beach reloads)
+const beachId = mine.body.beaches[0].id;
+const restoredRes = await api(`/beaches/mine/${beachId}/restore`, json('POST', { checkpoint: tide.payload.checkpoint, mode: 'strict' }), token);
+check(restoredRes.status === 200, `restoring "Before the tide" works (${restoredRes.status})`);
 const restored = (await api('/checkpoints', {}, token)).body.checkpoints.some((c) => c.kind === 'auto' && /Before the tide/.test(c.name));
 check(restored, 'the beach was restored from "Before the tide" (its own "Before restoring" copy is there for Undo)');
 await page.waitForFunction(() => window.__beech.info().objects.some((o) => o.item === 'nautilus'), null, { timeout: 20000 }).catch(() => {});
@@ -108,11 +113,11 @@ const back = await castleTop();
 // it's back at the waterline, so the live sea starts on it again at once
 check(back > 0.25, `and the castle (${back.toFixed(2)} m, from 0.5)`);
 
-// only once
+// only once: no card on the next visit either (there never is one now)
 await reloadApp(page);
 await page.waitForFunction(() => window.__beech.beachId() && window.__beech.sync().state === 'saved', null, { timeout: 45000 });
 await page.waitForTimeout(3000);
-check(!(await page.$('.hint.choice')), 'the card shows once, not again on the next visit');
+check(!(await page.$('.hint.choice')), 'no card on the next visit either');
 
 // ------------------------------------------------------------------ live viewers (L5)
 // Ana is on her beach; Ben visits it; Ana digs; Ben sees it within seconds

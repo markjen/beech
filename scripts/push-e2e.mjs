@@ -92,6 +92,8 @@ if (shots) await pa.screenshot({ path: `${shots}/push-settings-device.png` });
 if (sub?.status() === 204) {
   check(await pa.$eval('input[data-n="device"]', (i) => i.checked), '…and it is on');
   await pa.waitForSelector('input[data-n="gifts"]');
+  await pa.waitForSelector('input[data-n="beach"]');
+  check(true, 'settings has the "your beaches" row (sea and pet feedings)');
   const put = pa.waitForResponse((r) => r.url().includes('/api/notify-prefs') && r.request().method() === 'PUT');
   await pa.click('label:has(input[data-n="gifts"])');
   check((await (await put).json()).gifts === false, 'gifts and notes off is stored on the server');

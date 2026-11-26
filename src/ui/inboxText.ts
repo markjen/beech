@@ -4,6 +4,7 @@
 // (CLAUDE.md); how the inbox works is in the web guide.
 
 import type { InboxEntry } from '../net/account';
+import { awayCounts } from './away';
 import { prizeName } from '../world/items';
 
 /** "a starfish", "an extra beach" */
@@ -43,6 +44,17 @@ export function describeEntry(e: InboxEntry): { title: string; detail: string[] 
       return { title: `${who} settled in${e.item ? `: you got ${aPrize(e.item)}` : ''}`, detail };
     case 'copied':
       return { title: `${who} copied ${where}`, detail };
+    case 'tide': {
+      // one row per beach per UTC day: the payload adds up what the sea did
+      const p = e.payload;
+      const tideDetail = awayCounts({ highTides: p.tides ?? 0, lost: p.lost ?? 0, broughtIn: p.brought ?? 0 });
+      if (p.checkpoint) tideDetail.push('kept as it was before the tide');
+      return { title: `The sea worked on ${where}`, detail: tideDetail };
+    }
+    case 'pet_fed': {
+      const pet = e.payload.pet ?? 'your sand crab';
+      return { title: `${who} fed ${pet} on ${where}`, detail };
+    }
     default:
       return { title: String((e.payload as { text?: string }).text ?? 'News from beech'), detail };
   }
@@ -60,6 +72,9 @@ export function ago(at: number, now = Date.now()): string {
 
 /** the kinds worth a note over the beach when they arrive (the rest wait in the inbox) */
 export const ANNOUNCE = new Set(['visit', 'gift', 'neighbor_request', 'neighbor_linked', 'invite_settled', 'copied']);
+// Away events ('tide', 'pet_fed') are deliberately not here: they happened
+// while the owner was away, so they wait in the inbox (with a push) instead
+// of popping up over the beach when it opens.
 
 /** The note over the beach for a new row: "Ben left you something". */
 export function announce(kind: string, name: string | null): string {

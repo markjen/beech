@@ -1027,7 +1027,7 @@ export class ReferralApi {
 // ------------------------------------------------------------------ visitors and the inbox
 // docs/INBOX_NOTIFICATIONS.md
 
-export type InboxKind = 'visit' | 'gift' | 'neighbor_request' | 'neighbor_linked' | 'star' | 'rating' | 'invite_joined' | 'invite_settled' | 'system' | 'copied';
+export type InboxKind = 'visit' | 'gift' | 'neighbor_request' | 'neighbor_linked' | 'star' | 'rating' | 'invite_joined' | 'invite_settled' | 'system' | 'copied' | 'tide' | 'pet_fed';
 
 export interface InboxEntry {
   id: number;
@@ -1041,7 +1041,8 @@ export interface InboxEntry {
   /** batched rows (stars, ratings): how many that day */
   count: number;
   rating?: { count: number; average: number | null };
-  payload: { code?: string; side?: Side; beach?: string };
+  /** tide rows: what the sea did that day, and the "Before the tide" checkpoint; pet_fed rows: the pet's name */
+  payload: { code?: string; side?: Side; beach?: string; tides?: number; lost?: number; brought?: number; checkpoint?: string | null; pet?: string };
   at: number;
   read: boolean;
 }

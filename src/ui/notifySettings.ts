@@ -8,6 +8,7 @@ const KIND_ROWS: [keyof NotifyPrefs, string][] = [
   ['gifts', 'gifts and notes'],
   ['neighbors', 'neighbors'],
   ['invites', 'invites'],
+  ['beach', 'your beaches'],
 ];
 
 const sw = (key: string, on: boolean, label: string) =>

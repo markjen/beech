@@ -352,10 +352,24 @@ async function visitLocked(db: Db, opts: VisitOpts): Promise<VisitResult> {
   const existing = await getBeachPet(db, opts.beachId, opts.now);
   if (!existing) return { ok: false, status: 404, error: 'no pet on this beach' };
 
+  // the owner's inbox row for the feed, in the same transaction as the feed
+  // itself: a row exists exactly when a visitor fed the pet. The owner
+  // feeding their own pet writes none. The row is the owner's notice (and
+  // push) instead of a toast when they next open the beach.
+  const ownerId = (await db.query<{ owner_id: string }>('SELECT owner_id FROM beach WHERE id = $1', [opts.beachId]))[0]?.owner_id ?? null;
+  const tellOwner = async (pet: PetDto) => {
+    if (!ownerId || ownerId === opts.visitorId) return;
+    await db.query(
+      `INSERT INTO inbox (user_id, kind, actor_id, beach_id, payload, created_at) VALUES ($1, 'pet_fed', $2, $3, $4::jsonb, $5)`,
+      [ownerId, opts.visitorId, opts.beachId, JSON.stringify({ pet: pet.name }), opts.now],
+    );
+  };
+
   const alreadyFree = await hasVisitorFedToday(db, opts.beachId, opts.visitorId, opts.now);
   if (!alreadyFree && !opts.useFood) {
     const pet = await feedBeachPet(db, opts.beachId, opts.visitorId, opts.visitorName, opts.now);
     if (!pet) return { ok: false, status: 404, error: 'no pet on this beach' };
+    await tellOwner(pet);
     return { ok: true, pet, usedFood: false, freeUsedToday: true };
   }
 
@@ -371,6 +385,7 @@ async function visitLocked(db: Db, opts: VisitOpts): Promise<VisitResult> {
   }
   const pet = await feedBeachPet(db, opts.beachId, opts.visitorId, opts.visitorName, opts.now);
   if (!pet) return { ok: false, status: 404, error: 'no pet on this beach' };
+  await tellOwner(pet);
   return { ok: true, pet, usedFood: true, remaining: consumed.remaining, freeUsedToday: true };
 }
 

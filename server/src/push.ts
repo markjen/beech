@@ -18,7 +18,7 @@ import { PUSH_KINDS, type NotifyPref } from './notifyKinds.js';
 // ------------------------------------------------------------------ rules
 
 export { PUSH_KINDS, type NotifyPref } from './notifyKinds.js';
-export const NOTIFY_PREFS: readonly NotifyPref[] = ['gifts', 'neighbors', 'invites'];
+export const NOTIFY_PREFS: readonly NotifyPref[] = ['gifts', 'neighbors', 'invites', 'beach'];
 const PUSHED = Object.keys(PUSH_KINDS);
 
 /** at most one push an hour per player; more in the hour folds into the next */
@@ -94,9 +94,12 @@ export function pushMessage(rows: PushRow[]): PushMessage {
       neighbor_request: `${who} wants to be your neighbor`,
       neighbor_linked: `You and ${who} are neighbors`,
       invite_settled: `${who} settled in`,
+      tide: 'The sea changed your beach while you were away',
+      pet_fed: `${who} fed your pet`,
     }[rows[0].kind] ?? 'Something new in your inbox';
     return { ...base, body };
   }
+  if (rows.every((r) => r.kind === 'tide')) return { ...base, body: 'The sea worked on your beach while you were away' };
   if (names.length === 1) return { ...base, body: `${names[0]} left you ${rows.length} things` };
   const others = names.length - 1;
   return { ...base, body: `${names[0]} and ${others} other${others === 1 ? '' : 's'} left you something` };

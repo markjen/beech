@@ -38,8 +38,7 @@ import { restHeight } from './sim/profile';
 import { Ambient, toggleFullscreen } from './ui/ambient';
 import { Hud, icon, type DirtDef } from './ui/hud';
 import { SocialHub, StarredDialog, VisitDialog } from './ui/socialHub';
-import { SettingsSheet, StartScreen, showActionToast, showChoiceToast, showPaneToast, showToast } from './ui/overlays';
-import { awayText } from './ui/away';
+import { SettingsSheet, StartScreen, showActionToast, showPaneToast, showToast } from './ui/overlays';
 import { CheckpointsSection } from './ui/checkpoints';
 import { InventoryTray, PlaceBar } from './ui/inventory';
 import { ClawMachine } from './ui/clawMachine';
@@ -2393,19 +2392,9 @@ async function boot() {
         .then((r) => {
           if (account.user?.id !== userId || sync.id !== bId) return;
           applyPet(r.pet);
-          const latest = r.recentFeeders?.[0];
-          if (r.pet && latest) {
-            const key = `beech.petFeedSeen.${r.pet.beachId}`;
-            const prev = Number(localStorage.getItem(key) ?? 0);
-            if (latest.at > prev) {
-              try {
-                localStorage.setItem(key, String(latest.at));
-              } catch {
-                /* storage unavailable */
-              }
-              showToast(uiRoot, `${latest.name} fed ${r.pet.name || `your ${petKind(r.pet.species).name.toLowerCase()}`}!`);
-            }
-          }
+          // no toast here for a visitor feeding the pet: that is an away
+          // event, and it lands in the inbox (with a push) instead of
+          // popping up over the beach
         })
         .catch(() => {});
     };
@@ -2949,23 +2938,14 @@ async function boot() {
     store.onState((st) => {
       if (st === 'saved') bigEditSnapshotAttempted = false;
     });
-    // "while you were away" (docs/LIVE_SIM.md): each time a beach of yours
-    // loads here, what the sea did to it since you last looked, once
+    // "while you were away" (docs/LIVE_SIM.md): what the sea did to a beach
+    // of yours, and visitors feeding its pet, land in the inbox (with a
+    // push) instead of a card here, so opening a beach just shows the
+    // beach. Still mark it seen, silently: that is what keeps the "Before
+    // the tide" checkpoint from being replaced by the next gap, and the
+    // restore itself lives in Manage → Checkpoints.
     s.onLoaded((here) => {
-      void (async () => {
-        const away = await acct.away(here).catch(() => null);
-        if (!away) return;
-        void acct.awaySeen(here).catch(() => {});
-        const cp = away.checkpoint;
-        showChoiceToast(
-          uiRoot,
-          awayText(away),
-          cp && here
-            ? [{ label: 'Put it back as it was', onClick: () => void checkpoints.putBack(cp, here) }, { label: 'Keep' }]
-            : [{ label: 'OK' }],
-        );
-        void checkpoints.load();
-      })();
+      void acct.awaySeen(here).catch(() => {});
     });
     // go to one of your beaches: glide if it's on this shore, else lay the shore out around it
     // (the waves follow the view there: nothing is switched)

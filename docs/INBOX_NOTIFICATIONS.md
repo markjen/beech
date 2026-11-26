@@ -44,10 +44,12 @@ available, and a later tick skips the claim. Tests: `server/test/stateMachines/p
   requests. Two at once are safe (the model).
 - **What a push says:** "Ben gave you a gift", "Ben left you something",
   "Ben wants to be your neighbor", "You and Ben are neighbors", "Ben settled
-  in"; several in an hour: "Ben left you 3 things" or "Ben and 2 others left
+  in", "The sea changed your beach while you were away", "Ben fed your pet";
+  several in an hour: "Ben left you 3 things" or "Ben and 2 others left
   you something". Never a note's text (lock screens). Pushed kinds: `visit`
   and `gift` (setting "gifts and notes"), `neighbor_request` and
-  `neighbor_linked` ("neighbors"), `invite_settled` ("invites"). A tap opens
+  `neighbor_linked` ("neighbors"), `invite_settled` ("invites"), `tide` and
+  `pet_fed` ("your beaches"). A tap opens
   the inbox (`?inbox=1`, the service worker's message, the Capacitor action
   listener, or Electron's click).
 - **Quiet hours** use the newest subscribed device's time zone.
@@ -59,8 +61,10 @@ available, and a later tick skips the claim. Tests: `server/test/stateMachines/p
   Web endpoints must be a known push service (the server posts to them).
 - **Asking:** once, a few seconds after the first pushable thing arrives
   while playing (after its own note over the beach), never at start-up.
+  Away events never get that note: a tide or pet row waits in the inbox
+  (with its push) instead of popping up over the beach.
   Settings → Settings has the **notifications** switch (per device) and,
-  under it, **gifts and notes / neighbors / invites** (per player, on the
+  under it, **gifts and notes / neighbors / invites / your beaches** (per player, on the
   server). If the OS has notifications off, the row says so.
 - **Native builds opt in.** The Android app runs the hosted web build, so
   a build flag can't say whether that app was built with Firebase; instead
@@ -195,6 +199,8 @@ shell). It opens one card for everything a visitor can leave:
 | `rating` | ratings with no note (batched) | "Moat Beach got 4 new ratings: 4.5 average" |
 | `invite_joined`, `invite_settled` | invites | "Fran joined through your link", "Fran settled in: a parasol is in your bag" |
 | `system` | the admin console | "Welcome to week 2's vending set" (rare, audited) |
+| `tide` | the sea worked on your beach while you were away (batched, below) | "The sea worked on Moat Beach: 4 high tides, the sea took 1 thing (back in your bag)" |
+| `pet_fed` | a visitor fed your beach's pet | "Ben fed Shelly on Moat Beach" |
 
 ### Rules
 
@@ -205,6 +211,18 @@ shell). It opens one card for everything a visitor can leave:
 - **Batching.** Stars and note-less ratings fold into one row per beach per
   UTC day (`UPDATE … SET count = count + 1` on a key of
   `(user, kind, beach, day)`), so a popular beach doesn't flood anyone.
+  Tide rows batch the same way: one row per beach per day, adding up the
+  tides, what the sea took and what it washed up, and keeping the newest
+  "Before the tide" checkpoint. A pet feeding is one row per feed (like a
+  visit): each one names the feeder.
+- **Away events live here, not on the beach.** The sea working on your beach
+  and visitors feeding your pet used to pop up as a card (or a toast) when
+  you next opened the beach; now they land here, and as a push (below).
+  Opening your beach just shows the beach. Tapping a tide or pet row takes
+  you to that beach; a tide row's "Before the tide" checkpoint is in
+  Manage → Checkpoints if the sea changed more than you like. Tide and pet
+  rows are never announced over the beach while you're playing (`ANNOUNCE`
+  in `src/ui/inboxText.ts` leaves them out).
 - **Read state.** Each row has `read_at`. Opening the inbox marks what was
   shown as read. The unread count is the badge.
 - **Actions in place.** Neighbor requests can be accepted or declined from
@@ -243,7 +261,8 @@ Each one is a phase.
 ### What gets pushed, and how often
 
 - **Pushed:** gifts, notes, neighbor requests and accepts, invite
-  settled. **Never pushed:** stars, ratings, visits without a note. Those
+  settled, the sea working on your beach (`tide`) and a visitor feeding
+  your pet (`pet_fed`). **Never pushed:** stars, ratings, visits without a note. Those
   stay in the inbox.
 - **At most one push per hour per person**; anything more in that hour is
   folded into the next push ("Ben and 2 others left you something").
@@ -251,8 +270,9 @@ Each one is a phase.
   zone (taken from the device when they subscribe); waiting pushes go at
   08:00.
 - **Per-kind settings** in the settings sheet (gifts and notes / neighbors
-  / invites), stored server-side (`notify_prefs`), all on by default once
-  push is allowed.
+  / invites / your beaches), stored server-side (`notify_prefs`), all on by default once
+  push is allowed. "Your beaches" covers the sea (`tide`) and pet feedings
+  (`pet_fed`).
 - Sending is a small job on the server: when an inbox row of a pushed kind
   is written, a row goes into `push_queue` in the same statement. A Cloud
   Scheduler tick each minute (or Cloud Tasks) sends what's due and applies
