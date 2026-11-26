@@ -29,7 +29,16 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
+      # native push (docs/INBOX_NOTIFICATIONS.md): set the NATIVE_PUSH variable
+      # to 1 once the Firebase app and the GOOGLE_SERVICES_JSON secret exist
+      - name: Firebase config for push
+        if: ${{ vars.NATIVE_PUSH == '1' }}
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: echo "$GOOGLE_SERVICES_JSON" | base64 -d > android/app/google-services.json
       - run: npm ci && npm test && npm run cap:sync:android
+        env:
+          BEECH_NATIVE_PUSH: ${{ vars.NATIVE_PUSH }}
       - name: Signed release bundle
         working-directory: android
         env:
@@ -60,9 +69,14 @@ jobs:
           cache: npm
       - run: npm ci && npm test && npm run build && npx cap sync ios
         env:
+          BEECH_NATIVE_PUSH: ${{ vars.NATIVE_PUSH }}
           VITE_ACCOUNTS: '1'
           VITE_API_URL: https://beech.markjen.com
           VITE_GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+      # the push entitlement, once Push Notifications is on for the App ID
+      - name: Push entitlement
+        if: ${{ vars.NATIVE_PUSH == '1' }}
+        run: /usr/libexec/PlistBuddy -c "Add :aps-environment string production" ios/App/App/App.entitlements
       - name: Archive and upload to App Store Connect
         env:
           API_KEY_ID: ${{ secrets.APPSTORE_API_KEY_ID }}

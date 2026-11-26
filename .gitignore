@@ -33,3 +33,7 @@ specs/tla/states/
 specs/tla/_*.cfg
 specs/tla/*_TTrace_*.tla
 specs/tla/*.bin
+
+# Firebase config for native push (docs/INBOX_NOTIFICATIONS.md): from a CI secret, never committed
+google-services.json
+GoogleService-Info.plist

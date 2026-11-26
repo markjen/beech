@@ -17,6 +17,7 @@ rest of `npm test` in `server/`. No E2E, no rendering.
 | Copying a beach | `BeachCopy.tla` | `copy.test.ts` | more placed than owned, more beaches than the allowance, a copy of a beach just taken off the shore, a different version than previewed |
 | Sand bucks and trade-ins | `SandBucks.tla` | `bucks.test.ts` | a trade-in of a thing on a beach, the last one traded in twice, bucks lost or minted by spending, trading in or a refund |
 | Piers (designed) | `Piers.tla` | Planned | a pier landed after an unlink, duplicate attachments, an attachment surviving a refund |
+| Push notifications | `Push.tla` | `push.test.ts` | a push sent twice, two in an hour, a push after unsubscribing, signing out, blocking or muting |
 
 ## How it fits together
 
@@ -165,6 +166,44 @@ finds a stale placement after a supporting link is removed between
 `LandCheck` and `Land`. Check and write under the same lock to enforce
 `PlacementWasEligible`. The model also checks `PaidAttachment` and
 `OnePerBeach`. Run `specs/tla/check.sh --bugs Piers` to reproduce both runs.
+
+## Push notifications (`Push.tla`)
+
+One player, their devices and the push tick
+([INBOX_NOTIFICATIONS.md](INBOX_NOTIFICATIONS.md), "Push";
+`server/src/push.ts`). State: the inbox rows (pushed or not, read or not),
+blocks, muted kinds, sessions and subscriptions, subscriptions the push
+service has forgotten, the hour and the hour of the last push, and the
+player's push lock. Two senders can run at once (two Cloud Run instances,
+or Cloud Scheduler and the server's own timer).
+
+| Action | Route or job | Code |
+| --- | --- | --- |
+| `Arrive` | every route that writes an inbox row | the row's own statement (unchanged); `pushed_at` starts empty |
+| `Read` | `POST /inbox/read` | one `UPDATE` that waits if delivery has locked the inbox row |
+| `Block` | `PUT /blocks/:code` | one transaction: `lockPush` (the `push_state` row `FOR UPDATE`), then the insert |
+| `Mute`, `Unmute` | `PUT /notify-prefs` | take `lockPush` before reading preferences and applying the requested fields |
+| `Subscribe` | `POST /push/subscribe` | one upsert on the endpoint; needs no lock |
+| `Unsubscribe` | `DELETE /push/subscribe` | one `DELETE` that waits for the sender's subscription row lock |
+| `SignOut` | `POST /auth/logout`, or session expiry | logout cascades to the subscription and waits for its row lock. An elapsed session is ineligible even while its row still exists. |
+| `Expire` | the push service | — (the next send answers 404/410) |
+| `Claim` | `pushTick` (`POST /push/tick` or the timer) | `pushPlayer` marks due rows and reserves the hour under `lockPush`, then commits before contacting providers |
+| `BeginSend`, `Deliver`, `Finish` | the same tick | a second transaction retakes the push lock, locks subscription and inbox rows, and rechecks eligibility before sending. A 404/410 deletes that subscription. |
+| `Crash` | worker exit or send transaction rollback | discard the in-memory batch. The committed claim survives and subsequent ticks skip it. |
+
+Invariants: `AtMostOnce` (a row reaches each device at most once),
+`OnePerHour`, `NotAfterGone` (nothing after an unsubscribe or sign-out has
+returned), `NeverBlocked`, `NeverMuted`, `OnlyPushKinds` (never a star),
+`NotInQuietHours`, `SubsHaveSessions`.
+
+The unlocked form (read what's due, send, then write it down; nothing
+waits) breaks the first five: two senders push the same rows twice in one
+hour, and an unsubscribe, sign-out, block or mute that lands mid-send
+returns before a push it should have stopped. The fixed model uses symmetry
+reduction for the interchangeable actors, devices, and workers. The tests hold
+sends open at a fake provider to replay those races and inject a rollback after provider
+acceptance to verify that later ticks skip the committed claim. A crash after
+claiming can drop the notification. The inbox entry remains available.
 
 ## Bugs found (2026-11-25), all fixed
 

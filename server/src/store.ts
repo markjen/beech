@@ -170,6 +170,20 @@ export async function verifyGooglePurchase(packageName: string, productId: strin
 const GOOGLE_JWKS = createRemoteJWKSet(new URL('https://www.googleapis.com/oauth2/v3/certs'));
 
 /**
+ * A request from a Google service account (Pub/Sub push, Cloud Scheduler):
+ * a Google-signed OIDC token for our audience, from that account.
+ */
+export async function verifyGoogleOidc(authorization: string | undefined, expect: { audience: string; email: string }): Promise<void> {
+  const m = /^Bearer\s+(\S+)$/.exec(authorization ?? '');
+  if (!m) throw new Error('missing push token');
+  const { payload } = await jwtVerify(m[1], GOOGLE_JWKS, {
+    issuer: ['https://accounts.google.com', 'accounts.google.com'],
+    audience: expect.audience,
+  });
+  if (payload.email !== expect.email || payload.email_verified !== true) throw new Error('unexpected push sender');
+}
+
+/**
  * Google Play real-time developer notification, pushed by Pub/Sub. Returns
  * the voided (refunded) order id, if this is one. The push must carry a
  * Google-signed OIDC token for our audience and push service account.
@@ -179,13 +193,7 @@ export async function googleVoided(
   body: { message?: { data?: string } },
   expect: { audience: string; email: string },
 ): Promise<string | null> {
-  const m = /^Bearer\s+(\S+)$/.exec(authorization ?? '');
-  if (!m) throw new Error('missing push token');
-  const { payload } = await jwtVerify(m[1], GOOGLE_JWKS, {
-    issuer: ['https://accounts.google.com', 'accounts.google.com'],
-    audience: expect.audience,
-  });
-  if (payload.email !== expect.email || payload.email_verified !== true) throw new Error('unexpected push sender');
+  await verifyGoogleOidc(authorization, expect);
   const data = body.message?.data ? JSON.parse(Buffer.from(body.message.data, 'base64').toString('utf8')) : null;
   const v = data?.voidedPurchaseNotification as { orderId?: string; purchaseToken?: string } | undefined;
   return v?.orderId ?? null;

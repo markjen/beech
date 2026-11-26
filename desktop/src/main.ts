@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, net, protocol, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, net, Notification, protocol, shell } from 'electron';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -156,6 +156,23 @@ app.whenReady().then(() => {
   });
   ipcMain.handle('window:isFullscreen', () => mainWindow?.isFullScreen() ?? false);
   ipcMain.on('app:quit', () => app.quit());
+  // inbox notifications (docs/INBOX_NOTIFICATIONS.md): Steam has no push
+  // service, so the game shows its own while it runs; a click brings the
+  // window to the front and opens the inbox
+  let shown: Notification | null = null;
+  ipcMain.on('notify:show', (_ev, title: unknown, body: unknown) => {
+    if (typeof title !== 'string' || typeof body !== 'string' || !Notification.isSupported()) return;
+    shown?.close();
+    shown = new Notification({ title: title.slice(0, 64), body: body.slice(0, 200), silent: false });
+    shown.on('click', () => {
+      if (!mainWindow) return;
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+      mainWindow.webContents.send('notify:clicked');
+    });
+    shown.show();
+  });
 
   ipcMain.handle('file:saveBeach', async (_ev, suggestedName: unknown, text: unknown) => {
     if (typeof suggestedName !== 'string' || typeof text !== 'string') return false;

@@ -17,7 +17,7 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: '2026-11-26',
-    title: 'Sand bucks, trade-ins, copying a beach, and smoother live beaches',
+    title: 'Sand bucks, trade-ins, copying a beach, notifications, and smoother live beaches',
     changes: [
       'The shop opens again in the Android and iPhone apps (it was stuck on “Opening the shop…”).',
       'When you aren’t signed in, a Sign in button sits in the lower-left corner of the title screen and your beach, so signing in is one tap away.',
@@ -25,6 +25,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       'Trade-ins: anything in your bag that isn’t on a beach can be traded back in for what you paid, so you can try a build and change your mind for free. Pick it up from your bag and tap “trade in”. Things you got for free trade in at their shop price. An extra beach you aren’t using can be traded in too.',
       'Copy any beach on the shore onto one of your own: tap “copy” while visiting it, or “Copy to my beach” on its beechshore.com page. If your bag is short of something it needs, buy just what’s missing or copy it without them. You can also duplicate your own beaches, and keep a copy as a checkpoint for later.',
       'You’ll hear when someone copies your beach, and its beechshore.com page shows how many people have.',
+      'Notifications: find out when someone leaves you something, gives you a gift, wants to be your neighbor, or a friend settles in, on the phone apps, in your browser, and on Steam while the game is running. Turn them on when the game asks, or in Settings, and pick what you hear about. At most one an hour, and none at night.',
       'Watching someone else’s beach while they play, their changes to the sand now flow in smoothly instead of popping, and things they move slide to their new spot.',
       'Your bag and the Beaches tab show how many of your extra beach slots are in use, and removing a beach frees its slot.',
       'Signed out, your bag now has a sign-in button at the top.',

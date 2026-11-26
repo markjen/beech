@@ -28,6 +28,10 @@ export interface BeechSteamBridge {
   isFullscreen(): Promise<boolean>;
   quit(): void;
   saveBeachFile(suggestedName: string, text: string): Promise<boolean>;
+  /** an OS notification (Steam has no push service; the running app shows its own). Older builds lack it. */
+  notify?(title: string, body: string): void;
+  /** a click on one of those notifications (the window is brought to the front first) */
+  onNotifyClick?(cb: () => void): () => void;
 }
 
 declare global {

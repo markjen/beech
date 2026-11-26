@@ -38,6 +38,14 @@ const bridge = {
   isFullscreen: () => ipcRenderer.invoke('window:isFullscreen'),
   quit: () => ipcRenderer.send('app:quit'),
   saveBeachFile: (suggestedName: string, text: string) => ipcRenderer.invoke('file:saveBeach', suggestedName, text),
+  notify: (title: string, body: string) => ipcRenderer.send('notify:show', title, body),
+  onNotifyClick: (cb: () => void) => {
+    const handler = () => cb();
+    ipcRenderer.on('notify:clicked', handler);
+    return () => {
+      ipcRenderer.removeListener('notify:clicked', handler);
+    };
+  },
 };
 
 void ipcRenderer.invoke('steam:info').then((res: typeof info) => {

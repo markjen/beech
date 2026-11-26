@@ -54,7 +54,8 @@ import {
   promoBlocked,
   type Promo,
 } from './giftCards.js';
-import { appleRefund, googleVoided, revokeStorePurchase, verifyAppleTransaction, verifyGooglePurchase, type VerifiedPurchase } from './store.js';
+import { appleRefund, googleVoided, revokeStorePurchase, verifyAppleTransaction, verifyGoogleOidc, verifyGooglePurchase, type VerifiedPurchase } from './store.js';
+import { NOTIFY_PREFS, PUSH_DEVICES, lockPush, makeSender, pushTick, validEndpoint, validTz, type NotifyPref, type PushConfig, type PushSender } from './push.js';
 import { POOLS, GRAB_CHANCE, COOLDOWN_MAX_MS, COOLDOWN_MIN_MS, cooldownAfter, cryptoRandom, draw, grab, pullDay, starterPrize, STARTER, type Rarity } from './pulls.js';
 import { currentSet, drawVending, nextUtcMidnight } from './vending.js';
 import { DIG_FIND_DAILY_CAP, DIG_FIND_ROLL_COOLDOWN_MS, digDraw, qualifiesForFind } from './digFinds.js';
@@ -180,6 +181,12 @@ export interface AppConfig {
   xsolla?: XsollaConfig;
   /** injectable for tests: how a Pay Station payment token is made */
   xsollaToken?: CreateToken;
+  /**
+   * Push notifications (docs/INBOX_NOTIFICATIONS.md, server/src/push.ts):
+   * which platforms are set up, how a push is sent (tests pass their own),
+   * and who may call POST /push/tick (Cloud Scheduler's OIDC token).
+   */
+  push?: { config: PushConfig; send?: PushSender; tick?: { audience: string; email: string } };
 }
 
 export interface User {
@@ -3803,11 +3810,16 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const them = await nodeByCode(c.req.param('code') ?? '');
     if (!them) fail(404, 'no beach has that code');
     if (them!.owner_id === c.get('user').id) fail(400, "that's you");
-    await db.query('INSERT INTO blocks (blocker_id, blocked_id, created_at) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING', [
-      c.get('user').id,
-      them!.owner_id,
-      clock(),
-    ]);
+    // under the push lock, so a push being sent now finishes first and none
+    // after this returns carries them (specs/tla/Push.tla, Block)
+    await db.withTransaction(async (tx) => {
+      await lockPush(tx, c.get('user').id);
+      await tx.query('INSERT INTO blocks (blocker_id, blocked_id, created_at) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING', [
+        c.get('user').id,
+        them!.owner_id,
+        clock(),
+      ]);
+    });
     // their pending requests to you go too
     await db.query(
       `DELETE FROM neighbor_requests r USING beach f, beach t
@@ -3820,6 +3832,98 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const them = await nodeByCode(c.req.param('code') ?? '');
     if (them) await db.query('DELETE FROM blocks WHERE blocker_id = $1 AND blocked_id = $2', [c.get('user').id, them.owner_id]);
     return c.body(null, 204);
+  });
+
+  // ---------------------------------------------------------------- push notifications
+  // docs/INBOX_NOTIFICATIONS.md ("Push"), specs/tla/Push.tla. A device
+  // subscribes; the tick (Cloud Scheduler, or the server's own timer) sends
+  // what's due under the player's push lock. Steam has no push service: the
+  // running app shows OS notifications from the poll instead.
+  const pushCfg = cfg.push?.config ?? {};
+  const pushSend: PushSender = cfg.push?.send ?? makeSender(pushCfg, fetch, clock);
+  const pushOn = (platform: string) =>
+    platform === 'web' ? !!pushCfg.web : platform === 'ios' ? !!pushCfg.apns : platform === 'android' ? !!pushCfg.fcm : false;
+
+  // GET /push/config: what this server can push to (the web key is public)
+  app.get('/push/config', (c) =>
+    c.json({ web: pushCfg.web?.publicKey ?? null, ios: !!pushCfg.apns, android: !!pushCfg.fcm }),
+  );
+
+  // POST /push/subscribe { platform, endpoint, keys?: { p256dh, auth }, tz }
+  app.post('/push/subscribe', requireUser, async (c) => {
+    const b = await body<{ platform?: string; endpoint?: unknown; keys?: { p256dh?: unknown; auth?: unknown }; tz?: unknown }>(c);
+    const platform = String(b.platform ?? '');
+    if (!['web', 'ios', 'android'].includes(platform)) fail(400, 'platform is web, ios or android');
+    if (!pushOn(platform)) fail(404, 'push is not set up for that platform');
+    if (!validEndpoint(platform, b.endpoint)) fail(400, 'that is not a push subscription');
+    const keyOk = (k: unknown, n: number) => typeof k === 'string' && /^[A-Za-z0-9_-]+={0,2}$/.test(k) && Buffer.from(k, 'base64url').length === n;
+    if (platform === 'web' && !(keyOk(b.keys?.p256dh, 65) && keyOk(b.keys?.auth, 16))) fail(400, 'that is not a push subscription');
+    const tz = validTz(b.tz) ? b.tz : 'UTC';
+    const me = c.get('user').id;
+    // one row per endpoint: a device that signs in as someone else moves to them
+    await db.query(
+      `INSERT INTO push_subscriptions (user_id, session_hash, platform, endpoint, p256dh, auth, tz, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       ON CONFLICT (endpoint) DO UPDATE SET user_id = EXCLUDED.user_id, session_hash = EXCLUDED.session_hash,
+         platform = EXCLUDED.platform, p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth, tz = EXCLUDED.tz, created_at = EXCLUDED.created_at`,
+      [me, c.get('tokenHash'), platform, b.endpoint, platform === 'web' ? b.keys!.p256dh : null, platform === 'web' ? b.keys!.auth : null, tz, clock()],
+    );
+    await db.query(
+      `DELETE FROM push_subscriptions WHERE user_id = $1 AND id NOT IN (SELECT id FROM push_subscriptions WHERE user_id = $1 ORDER BY created_at DESC, id DESC LIMIT $2)`,
+      [me, PUSH_DEVICES],
+    );
+    return c.body(null, 204);
+  });
+
+  // DELETE /push/subscribe { endpoint }: this device stops (waits for a send in progress)
+  app.delete('/push/subscribe', requireUser, async (c) => {
+    const { endpoint } = await body<{ endpoint?: unknown }>(c);
+    if (typeof endpoint !== 'string') fail(400, 'which endpoint?');
+    await db.query('DELETE FROM push_subscriptions WHERE user_id = $1 AND endpoint = $2', [c.get('user').id, endpoint]);
+    return c.body(null, 204);
+  });
+
+  const prefsOf = async (user: string, conn = db) => {
+    const r = (await conn.query<Record<NotifyPref, boolean>>('SELECT gifts, neighbors, invites FROM notify_prefs WHERE user_id = $1', [user]))[0];
+    return { gifts: r?.gifts ?? true, neighbors: r?.neighbors ?? true, invites: r?.invites ?? true };
+  };
+  app.get('/notify-prefs', requireUser, async (c) => c.json(await prefsOf(c.get('user').id)));
+
+  // PUT /notify-prefs { gifts?, neighbors?, invites? }: under the push lock (Push.tla, Mute)
+  app.put('/notify-prefs', requireUser, async (c) => {
+    const b = await body<Partial<Record<NotifyPref, unknown>>>(c);
+    const me = c.get('user').id;
+    const patch: Partial<Record<NotifyPref, boolean>> = {};
+    for (const k of NOTIFY_PREFS) {
+      const value = b[k];
+      if (value === undefined) continue;
+      if (typeof value !== 'boolean') fail(400, `${k} is true or false`);
+      patch[k] = value as boolean;
+    }
+    const next = await db.withTransaction(async (tx) => {
+      await lockPush(tx, me);
+      const prefs = { ...(await prefsOf(me, tx)), ...patch };
+      await tx.query(
+        `INSERT INTO notify_prefs (user_id, gifts, neighbors, invites) VALUES ($1, $2, $3, $4)
+         ON CONFLICT (user_id) DO UPDATE SET gifts = EXCLUDED.gifts, neighbors = EXCLUDED.neighbors, invites = EXCLUDED.invites`,
+        [me, prefs.gifts, prefs.neighbors, prefs.invites],
+      );
+      return prefs;
+    });
+    return c.json(next);
+  });
+
+  // POST /push/tick: Cloud Scheduler, once a minute, with an OIDC token
+  app.post('/push/tick', async (c) => {
+    if (!cfg.push?.tick) fail(404, 'not set up');
+    try {
+      await verifyGoogleOidc(c.req.header('Authorization'), cfg.push!.tick!);
+    } catch {
+      fail(401, 'not allowed');
+    }
+    const r = await pushTick(db, pushSend, clock);
+    if (r.pushes) logEvent('push_tick', { ...r });
+    return c.json(r);
   });
 
   return app;

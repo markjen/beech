@@ -75,12 +75,16 @@ The single list of what's left to do, for the owner and for agents.
   owner"; also keep or drop the beach guide's coach card under the
   no-notes rule (it shows only the next step's name now).
 
-- [ ] **Push notifications: keys and consoles** (2026-11-24): VAPID keys
-  in Secret Manager and two Actions variables (web), Firebase on
-  `beech-prod`, the APNs key uploaded to Firebase, the iOS capability and
-  the FCM role (apps). Step by step in
+- [ ] **Push notifications: keys and consoles** (updated 2026-11-26; the
+  code is built and switches on per platform as each part is done): web
+  (VAPID key in Secret Manager, two variables, the Cloud Scheduler tick),
+  iOS (the APNs `.p8` in Secret Manager, two variables, the capability),
+  Android (Firebase on `beech-prod`, the `GOOGLE_SERVICES_JSON` secret, the
+  FCM role, a variable), then `NATIVE_PUSH=1` and a store release, and the
+  Play Data safety form. The gcloud parts are one command each
+  (`scripts/setup-push.sh web | ios | android`). Step by step in
   [INBOX_NOTIFICATIONS.md](INBOX_NOTIFICATIONS.md), "Turning on push:
-  owner steps". Then an agent builds V5 / V6.
+  owner steps". Steam needs nothing.
 
 ## In progress
 
@@ -159,13 +163,17 @@ picked up.
   (an in-app cast button needs a custom Cast receiver app — $5 console
   registration; tab casting from Chrome works today, see
   [CHROME_TV_CAST.md](CHROME_TV_CAST.md)).
-- [ ] **Push for neighbor requests**: today you see them the next time the
-  app polls (30 s) or opens.
-- [ ] **Push notifications (inbox V5, V6)**: web push (VAPID keys in
-  Secret Manager, `push_subscriptions`, a send job with the hourly limit
-  and quiet hours), then native push (APNs key, Firebase project,
-  `@capacitor/push-notifications`). [INBOX_NOTIFICATIONS.md](INBOX_NOTIFICATIONS.md),
-  section 3. Owner setup first.
+- [x] **Push notifications (inbox V5, V6), and Steam** (2026-11-26):
+  web push, APNs, FCM and Steam's own OS notifications, modelled in
+  `specs/tla/Push.tla`; neighbor requests and accepts are pushed. Claims
+  survive send rollbacks, expired sessions are skipped, and preference
+  edits are serialized per player.
+  [INBOX_NOTIFICATIONS.md](INBOX_NOTIFICATIONS.md), "Push: as built".
+- [ ] **Push follow-ups**: try a real device on each platform once the
+  owner setup is done (headless Chromium can't subscribe, so delivery is
+  tested against a fake push service only); a monitoring alert on
+  `push_tick_error` and on a high `failed` count; an admin `system` push
+  ("week 2's vending set"), which needs its own pref and rate.
 - [ ] **Ratings on name tags**: the shore walk's JSON carries each beach's
   average, shown on the name tags along the shore (today: in the visitor card).
 - [ ] **Admin: suspend a sender's notes** after repeated reports (today

@@ -2,19 +2,79 @@
 
 Status: **phases V1–V4 built** (2026-11-24): the inbox, the visitor card
 (ratings, notes, gifts), filter / report / block with the admin Reports tab,
-and signed-out visits. **V5–V6 (web and native push) are not built**: they
-need keys and console setup from the owner. Owner decisions are at the end.
+and signed-out visits. **V5–V6 (web and native push) and Steam
+notifications built** (2026-11-26); each platform switches on when the
+owner's setup for it is done ("Turning on push: owner steps", below).
 
-### State machine (before building V5–V6)
+### State machine
 
-Push isn't modelled yet. Per the model-first workflow
-([STATE_MACHINES.md](STATE_MACHINES.md#model-first-workflow)), write
-`specs/tla/Push.tla` before the code: a device's subscription (subscribe,
-refresh, unsubscribe, expired by the push service), an inbox row being
-sent (queued, sent, failed, retried), and the rules to hold, e.g. "a row is
-pushed at most once per device", "nothing is pushed to a device after it
-unsubscribes or signs out", "a muted or blocked sender never reaches a
-device". Then map each action to its route or job, and derive the tests.
+`specs/tla/Push.tla` ([STATE_MACHINES.md](STATE_MACHINES.md#push-notifications-pushtla)):
+a player's devices subscribing, unsubscribing, signing out and being
+forgotten by the push service; blocks, muted kinds and reads; and two push
+senders at once. Its rules: a row reaches each device at most once, one
+push an hour, nothing in quiet hours, never a star, and nothing reaches a
+device after an unsubscribe, sign-out, block or mute has returned. The
+sender commits its claim under the player's push lock (`push_state`,
+`FOR UPDATE`), then retakes that lock and locks the subscription rows to
+recheck eligibility and send. Block and mute take the same push lock.
+A crash after the claim can drop the notification. The inbox entry stays
+available, and a later tick skips the claim. Tests: `server/test/stateMachines/push.test.ts`.
+
+### Push: as built (2026-11-26)
+
+- **Three ways in, one server.** Web push (VAPID, RFC 8291 encryption done
+  with `node:crypto`, no new dependency) for browsers and Home Screen web
+  apps; **APNs directly** for the iOS app (a `.p8` key in Secret Manager,
+  HTTP/2 from the server: simpler than routing iOS through Firebase, and no
+  Firebase SDK in the iOS app); **FCM HTTP v1** for the Android app, sent
+  with the Cloud Run service's own identity. Code: `server/src/push.ts`.
+- **Steam has no push service for games.** The Steam build shows an OS
+  notification itself (Electron `Notification`, through
+  `window.beechSteam.notify`) when the 30 s poll brings something pushable
+  while the game isn't the window in front, minimised included. Nothing
+  reaches a player whose game is closed; the guide says so.
+- **The queue is a column**, not a table: `inbox.pushed_at` (migration 33).
+  A row is due while it's empty; a push claim marks every due row, sent or
+  folded or skipped (read, blocked, muted, older than a day). Rows from
+  before push were marked done by the migration. Marking per row, not a
+  cursor, means a row committed late with a lower id is never skipped.
+- **The tick** runs every minute in the server (like the Steam refund sync)
+  and, once set up, from Cloud Scheduler (`POST /api/push/tick` with an
+  OIDC token), because Cloud Run can idle an instance's CPU between
+  requests. Two at once are safe (the model).
+- **What a push says:** "Ben gave you a gift", "Ben left you something",
+  "Ben wants to be your neighbor", "You and Ben are neighbors", "Ben settled
+  in"; several in an hour: "Ben left you 3 things" or "Ben and 2 others left
+  you something". Never a note's text (lock screens). Pushed kinds: `visit`
+  and `gift` (setting "gifts and notes"), `neighbor_request` and
+  `neighbor_linked` ("neighbors"), `invite_settled` ("invites"). A tap opens
+  the inbox (`?inbox=1`, the service worker's message, the Capacitor action
+  listener, or Electron's click).
+- **Quiet hours** use the newest subscribed device's time zone.
+- **Subscriptions belong to the session** that made them
+  (`session_hash … ON DELETE CASCADE`). Sign-out and account deletion remove
+  them. Expired sessions are immediately ineligible for sends, even before
+  cleanup removes their rows. The limit is 10 devices per player.
+  Signing back in re-sends this device's subscription if its switch is on.
+  Web endpoints must be a known push service (the server posts to them).
+- **Asking:** once, a few seconds after the first pushable thing arrives
+  while playing (after its own note over the beach), never at start-up.
+  Settings → Settings has the **notifications** switch (per device) and,
+  under it, **gifts and notes / neighbors / invites** (per player, on the
+  server). If the OS has notifications off, the row says so.
+- **Native builds opt in.** The Android app runs the hosted web build, so
+  a build flag can't say whether that app was built with Firebase; instead
+  an app built with push set up adds `BeechPush/1` to its user agent
+  (`capacitor.config.ts`, `BEECH_NATIVE_PUSH=1`, set by the release
+  workflow when the `NATIVE_PUSH` variable is 1). Without it the app never
+  calls the native push plugin, so a build without Firebase can't crash.
+  iOS includes the push plugin, and the release workflow adds the
+  `aps-environment` entitlement, only then too.
+- **Local development:** `npm run server:dev` makes throwaway VAPID keys;
+  `npm run e2e:push` checks the question, the settings rows and the routes.
+  Headless Chromium refuses push subscriptions, so the e2e notes that and
+  leaves delivery to the server tests (which decrypt a real RFC 8291
+  payload).
 
 ### As built (where it differs from the design below)
 
@@ -202,90 +262,116 @@ Each one is a phase.
 ### Turning on push: owner steps
 
 Push needs keys and console setup that only the owner can do. None of it
-goes in the repo. Do these, then hand back to an agent to build V5/V6 (the
-engineering side is in BACKLOG.md). Everything here is free.
+goes in the repo. The code is built (2026-11-26); each platform switches on
+by itself once its part below is done, and the deploy only adds a part's
+settings once its GitHub variable exists. Everything here is free.
 
-**The plan:** web push uses VAPID keys (a key pair we make ourselves; the
-browsers' push services need no account). The iOS and Android apps both go
-through **Firebase Cloud Messaging (FCM)**, added to the existing
-`beech-prod` project: Apple's push key is uploaded to Firebase, and the
-server sends with its own Cloud Run identity, so no Firebase key file
-exists anywhere.
+**Quick way:** `scripts/setup-push.sh web`, `scripts/setup-push.sh ios
+<AuthKey_KEYID.p8> <TEAM_ID>` and `scripts/setup-push.sh android` do every
+Google Cloud step below (run them where gcloud is signed in to
+`beech-prod`; they're safe to re-run and never print a secret), then print
+the GitHub variables to set. The Apple and Firebase console steps (B1, B4,
+C1, C2) and the GitHub variables and secrets stay by hand.
 
-**A. Web push (V5)**
+By hand, with the same shell variables as GCP.md, "One-time setup":
+
+```bash
+PROJECT=beech-prod; REGION=us-central1
+RUN_SA=beech-run@$PROJECT.iam.gserviceaccount.com
+```
+
+**A. Web push**
 
 1. Make the key pair (on your machine, not in the repo):
    ```bash
    npx web-push generate-vapid-keys --json > /tmp/vapid.json
    ```
-2. Keep the private key in Secret Manager, readable by the game server
-   (same pattern as GCP.md, "One-time setup"):
+2. Keep the private key in Secret Manager, readable by the game server:
    ```bash
-   PROJECT=beech-prod; REGION=us-central1
-   RUN_SA=beech-run@$PROJECT.iam.gserviceaccount.com
    node -e "process.stdout.write(require('/tmp/vapid.json').privateKey)" \
      | gcloud secrets create beech-vapid-private-key --data-file=-
    gcloud secrets add-iam-policy-binding beech-vapid-private-key \
      --member=serviceAccount:$RUN_SA --role=roles/secretmanager.secretAccessor
-   rm /tmp/vapid.json   # after copying the public key (next step)
+   node -e "console.log(require('/tmp/vapid.json').publicKey)"   # copy this
+   rm /tmp/vapid.json
    ```
 3. GitHub → Settings → Secrets and variables → Actions → **Variables**:
-   `VAPID_PUBLIC_KEY` = the public key (it's public: the web app needs it
-   to subscribe), and `VAPID_SUBJECT` = `mailto:` plus an address the push
-   services can write to (a support address, not a personal one).
-4. A once-a-minute tick for the send queue (hourly limit, quiet hours):
+   `VAPID_PUBLIC_KEY` = the public key (it's public), and `VAPID_SUBJECT` =
+   `mailto:` plus a support address the push services can write to. The
+   next deploy turns web push on (`push_config` in the logs says
+   `web: true`).
+4. A once-a-minute tick (the server ticks itself too, but Cloud Run may
+   idle its CPU between requests):
    ```bash
    gcloud services enable cloudscheduler.googleapis.com
    gcloud iam service-accounts create beech-scheduler
    SCHED_SA=beech-scheduler@$PROJECT.iam.gserviceaccount.com
+   URL=$(gcloud run services describe beech --region=$REGION --format='value(status.url)')
    gcloud run services add-iam-policy-binding beech --region=$REGION \
      --member=serviceAccount:$SCHED_SA --role=roles/run.invoker
+   gcloud scheduler jobs create http beech-push-tick --location=$REGION \
+     --schedule='* * * * *' --http-method=POST --uri="$URL/api/push/tick" \
+     --oidc-service-account-email=$SCHED_SA --oidc-token-audience="$URL/api/push/tick"
    ```
-   (The job itself, `gcloud scheduler jobs create http beech-push-tick …`,
-   comes with the V5 change, because it needs the endpoint to exist first.)
+   Then the variables `PUSH_TICK_SERVICE_ACCOUNT` = `$SCHED_SA` and
+   `PUSH_TICK_AUDIENCE` = `$URL/api/push/tick`. Until the next deploy the
+   job gets 404s; that's fine.
 
 Note: on iPhone, web push only works once the site is **added to the Home
-Screen** (iOS 16.4 and later). The app store apps use native push (B).
+Screen** (iOS 16.4 and later). The store apps use native push (B, C).
 
-**B. Native push in the apps (V6)**
+**B. iOS app (APNs, no Firebase)**
 
-1. **Firebase on the existing project.** https://console.firebase.google.com
-   → Add project → pick **beech-prod** (not a new project), so billing and
-   IAM stay in one place. Analytics can be off.
-2. **Android app in Firebase:** package `app.beech.beach`. Download
-   `google-services.json`. Don't commit it: add it as a GitHub Actions
-   **secret** `GOOGLE_SERVICES_JSON` (base64: `base64 -w0 google-services.json`)
-   for the mobile CI, and put it at `android/app/google-services.json`
-   for local builds (the Android build already applies the plugin when the
-   file is there).
-3. **iOS app in Firebase:** bundle ID `app.beech.beach`. Download
-   `GoogleService-Info.plist` and add it as the secret
-   `GOOGLE_SERVICE_INFO_PLIST` (base64), the same way.
-4. **Apple push key.** developer.apple.com → Certificates, IDs & Profiles →
+1. **Apple push key.** developer.apple.com → Certificates, IDs & Profiles →
    **Keys** → + → tick **Apple Push Notifications service (APNs)** →
    download the `.p8` (Apple lets you download it **once**; keep it in your
    password manager). Note its **Key ID** and your **Team ID**.
-5. **Give the key to Firebase:** Firebase → Project settings → Cloud
-   Messaging → Apple app configuration → APNs Authentication Key → upload
-   the `.p8` with the Key ID and Team ID. (It lives in Firebase, not in our
-   Secret Manager or the repo.)
-6. **Turn on the capability:** developer.apple.com → Identifiers →
+2. **Into Secret Manager:**
+   ```bash
+   gcloud secrets create beech-apns-key --data-file=AuthKey_XXXXXXXXXX.p8
+   gcloud secrets add-iam-policy-binding beech-apns-key \
+     --member=serviceAccount:$RUN_SA --role=roles/secretmanager.secretAccessor
+   ```
+3. **Variables** `APNS_KEY_ID` and `APNS_TEAM_ID`. The next deploy turns
+   iOS push on in the server (it sends to `app.beech.beach`; TestFlight and
+   App Store builds both use the production APNs host).
+4. **Turn on the capability:** developer.apple.com → Identifiers →
    `app.beech.beach` → **Push Notifications** on. If you use manual
    provisioning profiles, regenerate them.
-7. **Let the server send:**
+
+**C. Android app (FCM)**
+
+1. **Firebase on the existing project.** https://console.firebase.google.com
+   → Add project → pick **beech-prod** (not a new project). Analytics can
+   be off.
+2. **Android app in Firebase:** package `app.beech.beach`. Download
+   `google-services.json`. Don't commit it: add it as the GitHub Actions
+   **secret** `GOOGLE_SERVICES_JSON` (base64: `base64 -w0 google-services.json`),
+   and for local builds put it at `android/app/google-services.json` (the
+   build applies the plugin when the file is there; it's git-ignored).
+3. **Let the server send:**
    ```bash
    gcloud services enable fcm.googleapis.com
    gcloud projects add-iam-policy-binding $PROJECT \
      --member=serviceAccount:$RUN_SA --role=roles/firebasecloudmessaging.admin
    ```
-8. **Store forms** (MOBILE.md, "Store forms"): Play's Data safety form gains
-   "Device or other IDs: collected, for app functionality, not shared"
-   (the push token). Apple's privacy label needs no new data type for push
-   tokens, but the review notes should say push is opt-in and only for
-   gifts, notes, neighbors and invites.
+   and the variable `FCM_PROJECT_ID` = `beech-prod`.
 
-When both are done, tell the agent which of A and B is ready; each phase
-ships on its own.
+**D. App builds with push (after B and/or C)**
+
+Set the variable `NATIVE_PUSH` = `1`, then run "Release to stores". That
+build writes `google-services.json` from the secret, adds the push
+entitlement on iOS, and marks the apps as push-capable (`BeechPush/1` in
+the user agent). Older app builds keep working without push. Do B4 before
+an iOS release with `NATIVE_PUSH` on, or signing fails.
+
+**E. Store forms** (MOBILE.md, "Store forms"): Play's Data safety form gains
+"Device or other IDs: collected, for app functionality, not shared" (the
+push token). Apple's privacy label needs no new data type for push tokens;
+the review notes should say push is opt-in and only for gifts, notes,
+neighbors and invites. `public/privacy.html` already covers push.
+
+**Steam** needs nothing: the game shows its own notifications while it runs.
 
 ## 4. Safety (user-generated content)
 
@@ -354,8 +440,8 @@ GET/PUT /api/notify-prefs
 | V2 | Visitor card: notes (with filter, report, block, admin Reports tab), gift with a note | the word list; the report contact address for the stores |
 | V3 | Ratings (shells), the name-tag average, batched star/rating rows | decision 2 |
 | V4 | Signed-out visits (public beach endpoint) and sign-in from the card; visit-link sign-ups count as invites | decisions 3, 4 |
-| V5 | Web push | VAPID secrets |
-| V6 | Native push | APNs key, Firebase project, store privacy forms |
+| V5 | Web push (built 2026-11-26) | VAPID secrets (A) |
+| V6 | Native push, and Steam's own notifications (built 2026-11-26) | APNs key (B), Firebase (C), `NATIVE_PUSH` (D), store forms (E) |
 
 Each phase ships on its own and keeps the app playable. V2 must not ship
 to the stores without the filter, report and block in the same release.

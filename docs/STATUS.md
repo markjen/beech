@@ -495,7 +495,30 @@ Gameplay implementation is on the backlog.
 ## Visitors and the inbox (2026-11-24)
 
 Design, as-built notes and decisions in [INBOX_NOTIFICATIONS.md](INBOX_NOTIFICATIONS.md).
-Phases V1–V4 are built; push (V5 web, V6 native) is not.
+Phases V1–V4 are built; push (V5 web, V6 native, and Steam's own
+notifications) is built too (2026-11-26) and waits on the owner's keys
+(below).
+
+- **Notifications (2026-11-26).** Modelled first (`specs/tla/Push.tla`,
+  STATE_MACHINES.md). Web push (VAPID + RFC 8291 in `server/src/push.ts`,
+  no new server dependency), APNs straight from the server for the iOS app
+  (not through Firebase, unlike the earlier plan), FCM for the Android app,
+  and on Steam the running game shows OS notifications from the poll
+  (Electron `Notification`; Steam has no push service). Migration 33
+  (`push_subscriptions` tied to the session, `push_state` as the push
+  lock, `notify_prefs`, `inbox.pushed_at`). The sender commits its claim
+  before sending, then rechecks device sessions and preferences under lock.
+  Preference edits on different devices preserve each other's changes.
+  One push an hour, none from 22:00 to 08:00 on the device clock, never
+  stars or ratings, never a note's
+  text. The game asks once, after the first pushable thing arrives; the
+  switch and three kinds are in Settings. Each platform is on once its
+  settings exist (the deploy adds them only when their GitHub variables
+  are set); native app builds opt in with `NATIVE_PUSH=1`. Tests:
+  `server/test/push.test.ts`, `server/test/stateMachines/push.test.ts`,
+  `tests/notify.test.ts`, `npm run e2e:push` (the dev server makes
+  throwaway VAPID keys). Not yet tried on a real phone or browser push
+  service: headless Chromium refuses push subscriptions.
 
 - **Signed-out visits** use main's read-only 3D visits (the beechshore
   follow-ups: `/api/public/…`, strictly `isPublic`). On top of that, an

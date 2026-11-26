@@ -25,6 +25,7 @@ The Steam release bundles the Vite web build (`dist/`) in an **Electron + `steam
   - `openExternal(url)` → opens `beech.games/guide`, Discord, and `beechshore.com` in the Steam Overlay browser (or OS browser) without navigating the game window away
   - `toggleFullscreen()`, `isFullscreen()`, `quit()`
   - `saveBeachFile(suggestedName, text)` → native OS Save dialog
+  - `notify(title, body)` / `onNotifyClick(cb)` → inbox notifications as OS notifications while the game runs (Steam has no push service for games; docs/INBOX_NOTIFICATIONS.md)
 - **Windowing:** Launches borderless fullscreen on Steam Deck (`SteamDeck=1` or `isSteamRunningOnSteamDeck()`). `F11` / `Alt+Enter` toggles fullscreen; Settings gains a **Quit** button on Steam. (Window size/position is not persisted yet.)
 
 ### Client runtime abstraction (`src/platform/runtime.ts`)

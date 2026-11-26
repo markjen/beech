@@ -846,6 +846,48 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE inventory ADD COLUMN royalty_ref TEXT;
   `,
+
+
+  // 33: push notifications (docs/INBOX_NOTIFICATIONS.md, "Push"; the model
+  // is specs/tla/Push.tla). push_subscriptions: one per device, tied to the
+  // session that made it, so signing out (or the session expiring) takes it
+  // with it. push_state: one row per player, the push lock (the sender holds
+  // it FOR UPDATE when claiming and again when sending) and the time of
+  // the last push claim. notify_prefs: which kinds may be pushed (all on
+  // without a row). inbox.pushed_at: the row has been through a push claim (sent,
+  // folded into one, or skipped); rows from before push are marked done.
+  `
+  CREATE TABLE push_subscriptions (
+    id BIGSERIAL PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    session_hash TEXT NOT NULL REFERENCES sessions (token_hash) ON DELETE CASCADE,
+    platform TEXT NOT NULL CHECK (platform IN ('web', 'ios', 'android')),
+    endpoint TEXT NOT NULL UNIQUE,      -- web: the push service URL; ios/android: the device token
+    p256dh TEXT,                        -- web only: the browser's key and auth secret
+    auth TEXT,
+    tz TEXT NOT NULL DEFAULT 'UTC',     -- the device's time zone, for quiet hours
+    created_at BIGINT NOT NULL
+  );
+  CREATE INDEX push_subscriptions_user ON push_subscriptions (user_id);
+  CREATE INDEX push_subscriptions_session ON push_subscriptions (session_hash);
+
+  CREATE TABLE push_state (
+    user_id UUID PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,
+    last_push_at BIGINT NOT NULL DEFAULT 0
+  );
+
+  CREATE TABLE notify_prefs (
+    user_id UUID PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,
+    gifts BOOLEAN NOT NULL DEFAULT true,
+    neighbors BOOLEAN NOT NULL DEFAULT true,
+    invites BOOLEAN NOT NULL DEFAULT true
+  );
+
+  ALTER TABLE inbox ADD COLUMN pushed_at BIGINT;
+  UPDATE inbox SET pushed_at = created_at;
+  CREATE INDEX inbox_unpushed ON inbox (user_id)
+    WHERE pushed_at IS NULL AND kind IN ('visit', 'gift', 'neighbor_request', 'neighbor_linked', 'invite_settled');
+  `,
 ];
 
 /** Apply migrations up to `upTo` (default: all). Tests use `upTo` to check a migration on older data. */

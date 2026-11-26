@@ -74,7 +74,7 @@ function gated(db: Db): { db: Db; gate: Gate } {
 /** Noon UTC on a fixed day, so "today" never crosses midnight by accident. */
 export const T0 = Date.UTC(2026, 10, 25, 12);
 
-export async function startServer(opts: { rand?: () => number } = {}) {
+export async function startServer(opts: { rand?: () => number; push?: Parameters<typeof createApp>[1]["push"] } = {}) {
   const raw = await openTestDb();
   const { db, gate } = gated(raw);
   const clock = { now: T0 };
@@ -85,6 +85,7 @@ export async function startServer(opts: { rand?: () => number } = {}) {
     devAuth: true,
     now: () => clock.now,
     rand: opts.rand ?? (() => 0.5),
+    push: opts.push,
   });
 
   const req = (path: string, init: RequestInit = {}, token?: string) =>
