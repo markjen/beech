@@ -12,7 +12,7 @@ import {
 import { buildRestProfile } from './profile';
 import { makeSwell, swellAt, swellEnvelope, tideAt, type Swell } from './waves';
 import { UndoStack, type UndoEntry, type UndoHistory } from './undoStack';
-import { BeachObjects, type PlacedObject } from './objects';
+import { BeachObjects, sandWashDepth, type PlacedObject } from './objects';
 
 /** dig, build up, smooth, or bulldoze (flatten back to the untouched beach) */
 export type CastleShape = 'round' | 'square';
@@ -272,7 +272,7 @@ export class BeachSim {
       if (!this.flags.closed) this.force(h);
       this.flow(h);
     }
-    this.objects.step(dt, this.flags.waves);
+    this.objects.step(dt, this.flags.waves, this.flags.erosion);
     if (this.flags.seep) this.seep(dt);
     if (this.flags.erosion) this.erode(dt);
     this.slump();
@@ -560,7 +560,7 @@ export class BeachSim {
     const KsDt = EROSION.dissolve * dt;
     const KdDt = EROSION.deposit * dt;
     const minS = EROSION.minSlope;
-    const dry = WATER.dryDepth * 2;
+    const dry = sandWashDepth();
     const inv2dx = 1 / (2 * dx);
     const inv005 = 20; // 1 / 0.05
     const inv06 = 1 / 0.6;

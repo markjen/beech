@@ -129,7 +129,7 @@ export const KIND_OVERRIDES: Record<string, string> = {
 export const GLOW_ITEMS: ReadonlySet<string> = new Set(['gold-sanddollar']);
 
 /** How the sea treats a kind: `rock` raises the floor, `float` rides the water, `tumble` rolls in the swash, `fixed` stays put (BEHAVIOUR in src/sim/objects.ts). */
-export type ItemBehaviour = 'rock' | 'float' | 'tumble' | 'fixed';
+export type ItemBehaviour = 'rock' | 'float' | 'tumble' | 'fixed' | 'wash';
 const KIND_BEHAVIOUR: Record<string, ItemBehaviour> = {
   rock: 'rock',
   driftwood: 'float',
@@ -160,8 +160,7 @@ const KIND_BEHAVIOUR: Record<string, ItemBehaviour> = {
   bonfire: 'fixed',
   hammock: 'fixed',
   towel: 'fixed',
-  // footprints (PR #81, not merged yet): a trail pressed into the sand, staying put
-  footprints: 'fixed',
+  footprints: 'wash',
 };
 
 /** How the sea treats this kind, if the catalog knows it. */

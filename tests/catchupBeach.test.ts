@@ -7,6 +7,19 @@ const DAY = 86400000;
 const T0 = Date.UTC(2026, 10, 1);
 
 describe('catching up a saved beach (docs/LIVE_SIM.md)', () => {
+  it('saves washed-away footprints even when no sand moved and no strays came in', async () => {
+    const delta = new Float32Array(g.nx * g.ny);
+    const wet = { id: 1, kind: 'footprints' as const, item: 'footprints', x: 10, y: SHORE - 3, angle: 0, size: 1, variant: 1 };
+    const dry = { ...wet, id: 2, y: 29 };
+    const bytes = await encodeSand(delta, g.nx, g.ny, [wet, dry]);
+    const out = (await catchUpSaved(bytes, 'brighton', T0, T0 + 60_000))!;
+    expect(out.changed).toBe(true);
+    expect(out.sandMoved).toBe(0);
+    expect(out.broughtIn).toBe(0);
+    expect(out.lost).toEqual([]);
+    expect((await decodeSand(out.bytes)).objects).toEqual([dry]);
+  });
+
   it('wears down a waterline castle at its real place and keeps buried rocks’ cover', async () => {
     const delta = new Float32Array(g.nx * g.ny);
     castle(delta, 10, SHORE + 0.5);

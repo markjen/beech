@@ -22,7 +22,7 @@
 // it: they leave the beach and so are back in your bag (the bag counts what's
 // placed). Fixed things and rocks never move, so they're never lost.
 
-import { LOST_TO_SEA } from '../config';
+import { LOST_TO_SEA, WATER } from '../config';
 
 //  beachball  Light and round: it floats like driftwood, bobbing on
 //             the water, and the swash rolls it up the beach.
@@ -39,8 +39,7 @@ import { LOST_TO_SEA } from '../config';
 //  bonfire,   cabin and a ramp, a stone-ringed fire, a slung cloth
 //  hammock,   between two posts, and a striped towel lying flat.
 //  towel
-//  footprints  A trail of prints pressed into the sand: it stays
-//             where you put it, even when the water comes up.
+//  footprints  A trail of prints pressed into the sand until water washes it away.
 export type ObjectKind =
   | 'rock'
   | 'driftwood'
@@ -80,7 +79,7 @@ export const OBJECT_KINDS: ObjectKind[] = [
   'footprints',
 ];
 
-export type Behaviour = 'rock' | 'float' | 'tumble' | 'fixed';
+export type Behaviour = 'rock' | 'float' | 'tumble' | 'fixed' | 'wash';
 export const BEHAVIOUR: Record<ObjectKind, Behaviour> = {
   rock: 'rock',
   driftwood: 'float',
@@ -122,9 +121,11 @@ export const BEHAVIOUR: Record<ObjectKind, Behaviour> = {
   bonfire: 'fixed',
   hammock: 'fixed',
   towel: 'fixed',
-  // a trail of prints pressed into the sand: it stays where you put it
-  footprints: 'fixed',
+  footprints: 'wash',
 };
+
+/** Mobile sediment and footprints need water above the thin film left by flow. */
+export const sandWashDepth = () => WATER.dryDepth * 2;
 
 /** What is saved with a beach. Coordinates are sim metres (x alongshore, y from the offshore edge). */
 export interface PlacedObject {
@@ -228,6 +229,7 @@ export class BeachObjects {
   private readonly floor0: Float32Array;
   /** owned things the sea took since the last `takeLost()` */
   private lost: PlacedObject[] = [];
+  private washedFootprints = false;
 
   constructor(
     private readonly h: ObjectHost,
@@ -377,6 +379,7 @@ export class BeachObjects {
   clear(): void {
     this.h.bottom.set(this.floor0);
     this.live.clear();
+    this.washedFootprints = false;
     this.version++;
   }
 
@@ -676,8 +679,15 @@ export class BeachObjects {
     return out;
   }
 
-  /** `sea`: waves are running, so the sea may bring things in. */
-  step(dt: number, sea = false): void {
+  /** Whether footprints have washed away since the last call. */
+  takeWashedFootprints(): boolean {
+    const washed = this.washedFootprints;
+    this.washedFootprints = false;
+    return washed;
+  }
+
+  /** `sea` enables wash-ins. `erosion` enables washing away sand impressions. */
+  step(dt: number, sea = false, erosion = false): void {
     const { nx, ny, dx, water, vx, vy } = this.h;
     const W = nx * dx;
     const Hh = ny * dx;
@@ -700,7 +710,12 @@ export class BeachObjects {
         l.z = l.rock!.base;
         continue;
       }
-      if (b === 'fixed') {
+      if (b === 'fixed' || b === 'wash') {
+        if (b === 'wash' && erosion && this.sampleField(water, o.x, o.y) >= sandWashDepth()) {
+          this.remove(o.id);
+          this.washedFootprints = true;
+          continue;
+        }
         l.z = this.sandAt(o.x, o.y);
         continue;
       }

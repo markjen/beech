@@ -79,6 +79,7 @@ const BEHAVIOUR_WORDS: Record<ItemBehaviour, string> = {
   float: 'Floats on the water, and strands when it drains.',
   tumble: 'Moves in fast water, then settles on the sand.',
   fixed: 'Stays where you put it.',
+  wash: 'Washes away when the water reaches it.',
 };
 
 const byName = (a: string, b: string) => displayName(a).localeCompare(displayName(b));

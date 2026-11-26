@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BeachSim } from '../src/sim/beachSim';
-import { GRID_TIERS } from '../src/config';
+import { GRID_TIERS, PROFILE, SIM_HZ } from '../src/config';
 import {
   footprintDrag,
   footprintFarSide,
@@ -136,9 +136,24 @@ describe('footprintDrag', () => {
   });
 });
 
-describe('grouped placement undo', () => {
-  const footprints = (x: number, y: number) => ({ kind: 'footprints' as const, item: 'footprints', x, y, angle: 0, size: 1, variant: 1 });
+const footprints = (x: number, y: number) => ({ kind: 'footprints' as const, item: 'footprints', x, y, angle: 0, size: 1, variant: 1 });
 
+describe('footprint washout', () => {
+  it('washes away trails reached by swash and keeps the dry ones from the same stroke', () => {
+    const sim = new BeachSim(g, 1, { tide: false });
+    const atShore = sim.placeObject(footprints(10, PROFILE.shoreline), 'footprints-1');
+    const inland = sim.placeObject(footprints(10, 29), 'footprints-1');
+    for (let i = 0; i < 20 * SIM_HZ && sim.objects.persisted().some((o) => o.id === atShore.id); i++) {
+      sim.step(1 / SIM_HZ);
+    }
+    expect(sim.objects.persisted().filter((o) => o.kind === 'footprints')).toEqual([inland]);
+    expect(sim.objects.takeWashedFootprints()).toBe(true);
+    expect(sim.objects.takeWashedFootprints()).toBe(false);
+    expect(sim.objects.takeLost()).toEqual([]);
+  });
+});
+
+describe('grouped placement undo', () => {
   it('one drag stroke undoes and redoes as one step', () => {
     const sim = new BeachSim(g, 1);
     const base = sim.undo.undoCount;
