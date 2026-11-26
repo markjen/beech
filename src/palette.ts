@@ -312,6 +312,35 @@ export const ANIMAL_COLORS = {
     fin: hex('#4a6e8f'),
     eyes: hex('#1e2228'),
   },
+  sandpiper: {
+    back: hex('#9a8466'),
+    belly: hex('#f4efe4'),
+    wing: hex('#7d6a50'),
+    beak: hex('#2b2622'),
+    legs: hex('#3a332c'),
+  },
+  octopus: {
+    body: hex('#d9603f'),
+    arms: hex('#e2775a'),
+    /** what it blends to when still (sandy shallows) */
+    camo: hex('#c9b48c'),
+    eyes: hex('#231e24'),
+    ink: hex('#2a2433'),
+  },
+  seal: {
+    back: hex('#8d8a86'),
+    belly: hex('#c9c3b8'),
+    spots: hex('#5f5c5a'),
+    eyes: hex('#1c1a1a'),
+  },
+  turtle: {
+    shell: hex('#6f7f43'),
+    scutes: hex('#8c9a52'),
+    skin: hex('#a89b6a'),
+    belly: hex('#e3d7a5'),
+    eyes: hex('#1d1d18'),
+    track: hex('#b89f74'),
+  },
 };
 
 

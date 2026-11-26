@@ -329,6 +329,27 @@ export const ANIMALS = {
   dolphinMinDepth: 0.6,
   /** peak height (m) of a dolphin breach arc above the water surface */
   dolphinBreachHeight: 1.15,
+  /** water (m) a snack must be tossed into to float for sea animals; shallower is too wet to toss */
+  snackMinSeaDepth: 0.3,
+  /** deepest water (m) a snack can be tossed into */
+  snackMaxSeaDepth: 1.5,
+  /** octopus: the shallows it creeps through (water depth, m) */
+  octopusMinDepth: 0.15,
+  octopusMaxDepth: 1.3,
+  /** distance (m) at which a brush makes the octopus ink and jet away */
+  octopusInkRadius: 3,
+  /** seals and turtles: water (m) deep enough to swim in, and shallow enough to crawl out of */
+  swimMinDepth: 0.25,
+  hauloutDepth: 0.08,
+  /** seals and turtles: seconds ashore before heading back to sea (min, max) */
+  ashoreMin: 25,
+  ashoreMax: 70,
+  /** a resident pet wanders within this radius (m) of its spot */
+  homeRadius: 4,
+  /** turtle flipper tracks kept on the sand */
+  turtleTracks: 32,
+  /** reach (m) of a long-press on your pet, to pick it up */
+  petReach: 1.2,
 };
 
 /** Real weather at each place (src/world/weather.ts, server/src/weather.ts). */

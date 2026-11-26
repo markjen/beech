@@ -1,3 +1,4 @@
+import type { PetSpecies } from '../world/pets';
 import { isPackagedApp } from '../platform/runtime';
 import { nativeSignOut } from './nativeAuth';
 import { MAX_OBJECTS } from '../sim/sandCodec';
@@ -1207,13 +1208,25 @@ export async function renderGoogleButton(el: HTMLElement, onCredential: (credent
 
 export interface PetDto {
   beachId: string;
-  species: 'crab';
+  species: PetSpecies;
   name: string;
   variant: number;
   source: 'befriended' | 'shop';
   lastFedAt: number;
   fedCount: number;
   mood: 'happy' | 'peckish' | 'hungry' | 'sleepy';
+  /** its spot on the beach (null: the default) */
+  home?: { x: number; z: number } | null;
+}
+
+/** A pet put away in your bag (docs/PETS.md). */
+export interface BagPetDto {
+  id: number;
+  species: PetSpecies;
+  name: string;
+  variant: number;
+  source: 'befriended' | 'shop';
+  fedCount: number;
 }
 
 export interface BondDto {
@@ -1236,11 +1249,11 @@ export class AnimalsApi {
     return this.account.user !== null;
   }
 
-  async feed(beachId?: string): Promise<{ ok: boolean; remaining: number; pet?: PetDto | null; bond?: BondDto }> {
+  async feed(beachId?: string, species?: PetSpecies): Promise<{ ok: boolean; remaining: number; pet?: PetDto | null; bond?: BondDto }> {
     const res = await this.account.fetch('/api/animals/feed', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(beachId ? { beachId } : {}),
+      body: JSON.stringify({ ...(beachId ? { beachId } : {}), ...(species ? { species } : {}) }),
     });
     if (!res.ok) throw await errorOf(res, 'no beach snacks left');
     return (await res.json()) as { ok: boolean; remaining: number; pet?: PetDto | null; bond?: BondDto };
@@ -1283,7 +1296,7 @@ export class AnimalsApi {
     return (await res.json()) as { pet: PetDto; usedFood: boolean; remaining?: number; freeUsedToday: boolean };
   }
 
-  async adoptPet(opts: { mode: 'befriend' | 'shop'; name?: string; beachId?: string }): Promise<PetDto> {
+  async adoptPet(opts: { mode: 'befriend' | 'shop'; name?: string; beachId?: string; species?: PetSpecies; home?: { x: number; z: number } }): Promise<PetDto> {
     const res = await this.account.fetch('/api/pet/adopt', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1292,6 +1305,46 @@ export class AnimalsApi {
     if (!res.ok) throw await errorOf(res, 'could not adopt pet');
     const data = (await res.json()) as { pet: PetDto };
     return data.pet;
+  }
+
+  /** Your pets in the bag. */
+  async bagPets(): Promise<BagPetDto[]> {
+    const res = await this.account.fetch('/api/pet/bag');
+    if (!res.ok) throw await errorOf(res, 'could not load your pets');
+    return ((await res.json()) as { pets: BagPetDto[] }).pets;
+  }
+
+  /** Put the beach's pet in your bag. */
+  async stowPet(beachId: string): Promise<{ pet: BagPetDto; bag: BagPetDto[] }> {
+    const res = await this.account.fetch('/api/pet/stow', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ beachId }),
+    });
+    if (!res.ok) throw await errorOf(res, 'could not put the pet away');
+    return (await res.json()) as { pet: BagPetDto; bag: BagPetDto[] };
+  }
+
+  /** Put a pet from your bag on one of your beaches, at a spot. */
+  async placePet(petId: number, beachId: string, home?: { x: number; z: number }): Promise<PetDto> {
+    const res = await this.account.fetch('/api/pet/place', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ petId, beachId, ...(home ? { home } : {}) }),
+    });
+    if (!res.ok) throw await errorOf(res, 'could not place the pet');
+    return ((await res.json()) as { pet: PetDto }).pet;
+  }
+
+  /** Move the pet to a new spot on its beach. */
+  async movePet(beachId: string, home: { x: number; z: number }): Promise<PetDto> {
+    const res = await this.account.fetch('/api/pet', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ beachId, home }),
+    });
+    if (!res.ok) throw await errorOf(res, 'could not move the pet');
+    return ((await res.json()) as { pet: PetDto }).pet;
   }
 
   async renamePet(name: string, beachId?: string): Promise<PetDto> {

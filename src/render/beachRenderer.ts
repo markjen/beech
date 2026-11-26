@@ -315,9 +315,11 @@ export class BeachRenderer {
   createAnimalMaterial(shine = 0.25): ShaderMaterial {
     const m = this.material('beachAnimal', {
       attributes: ['position', 'normal', 'color', 'uv'],
-      uniforms: ['sunDir', 'sunCol', 'ambCol', 'shadowCol', 'cameraDir', 'scuttlePhase', 'scuttleAmp', 'clawWave', 'shine'],
+      uniforms: ['sunDir', 'sunCol', 'ambCol', 'shadowCol', 'cameraDir', 'scuttlePhase', 'scuttleAmp', 'clawWave', 'shine', 'tint', 'tintCol'],
       samplers: [],
     });
+    m.setFloat('tint', 0);
+    m.setColor3('tintCol', new Color3(0, 0, 0));
     m.setFloat('scuttlePhase', 0);
     m.setFloat('scuttleAmp', 0);
     m.setFloat('clawWave', 0);

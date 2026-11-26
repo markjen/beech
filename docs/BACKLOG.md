@@ -232,6 +232,10 @@ picked up.
   `GET /api/weather` (sky, light, cloud, fog, rain or snow, and the swell).
   See STATUS.md, "Real weather".
 
+- [x] **Pets: six species, movable** (2026-11-26): sand crab, sandpiper,
+  octopus, harbor seal, sea turtle, dolphin; befriend for a quarter of the
+  price in snacks; sold for sand bucks only (no store items); snacks float in the water; pets carried, put in the bag
+  and placed on any of your beaches. [PETS.md](PETS.md), `specs/tla/Pets.tla`.
 - [x] **Copy a beach** onto one of your own (2026-11-26): shore bar,
   beechshore.com and duplicate; buy what's missing or copy without them;
   copy counts and owner notifications. [COPY_BEACH.md](COPY_BEACH.md),

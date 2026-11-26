@@ -44,6 +44,7 @@ list).
 | `item_parasol` | Parasol | $0.99 | Rare, and the entry point. |
 | `item_towel` | Beach towel | $0.99 | Rare. |
 | `item_deckchair` | Deckchair | $0.99 | Rare. Also everyone's second claw-machine gift, a taste of the shop. |
+| `pet_crab` … `pet_dolphin` | A pet: crab 20, sandpiper 28, octopus 40, seal 48, turtle 60, dolphin 80 bucks | sand bucks only (crab: $1.99 in old apps) | Befriending one in snacks costs a quarter; bigger, rarer animals that do more cost more. No store items: [PETS.md](PETS.md). |
 
 What you buy counts toward "N of M left": you can put down as many of an
 item as you own, across all your beaches. Buying another adds one.

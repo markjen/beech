@@ -771,7 +771,8 @@ void main() {
  * Single-draw-call flat-shaded animal mesh with per-vertex colours and
  * lightweight GPU animation packed into `uv`:
  *   uv.x: leg gait group (-1 or +1 for alternating legs, 0 for body/claws)
- *   uv.y: claw wave weight (1 on claws, 0 elsewhere)
+ *   uv.y: claw wave weight (1 on claws, 0 elsewhere; a sandpiper's wings)
+ * and an optional colour change (`tint` toward `tintCol`, masked by colour alpha).
  */
 export const animalVertex = /* glsl */ `
 precision highp float;
@@ -784,6 +785,8 @@ uniform mat4 viewProjection;
 uniform float scuttlePhase;
 uniform float scuttleAmp;
 uniform float clawWave;
+uniform float tint;
+uniform vec3 tintCol;
 varying vec3 vNormal;
 varying vec3 vWorld;
 varying vec3 vColor;
@@ -803,7 +806,8 @@ void main() {
   vec4 wp = world * vec4(pos, 1.0);
   vWorld = wp.xyz;
   vNormal = normalize(mat3(world) * normal);
-  vColor = color.rgb;
+  // colour change (the octopus blending into the sand): colour alpha masks it (eyes, snacks: 0)
+  vColor = mix(color.rgb, tintCol, clamp(tint, 0.0, 1.0) * color.a);
   gl_Position = viewProjection * wp;
 }
 `;

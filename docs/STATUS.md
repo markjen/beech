@@ -1576,3 +1576,43 @@ Five findings, all fixed with a test each:
 - a gifted community item now carries its creator royalty, so trading the
   gift in takes back the right one (migration 32, `inventory.royalty_ref`).
 
+## Pets: six species, movable (2026-11-26, docs/PETS.md)
+
+- Six species, wild first: sand crab, sandpiper, octopus, harbor seal, sea
+  turtle, dolphin. One table on each side (`server/src/petCatalog.ts`,
+  `src/world/pets.ts`), kept in step by `server/test/stateMachines/pets.test.ts`.
+  Befriending takes `feeds` snacks (1 buck each) = a quarter of the shop
+  price (20/28/40/48/60/80 bucks: 5/7/10/12/15/20 snacks); tests hold that
+  rule. Products `pet_<species>` are built from the table, sand bucks only
+  (`Product.bucksOnly`: not in `/store/products`, refused by every
+  real-money checkout via `realMoneyProductById`; only `pet_crab` keeps its
+  old listing for old apps); none trade in.
+- `AnimalController` (`src/world/animals.ts`) moves each its own way: crab as
+  before; sandpiper walks forwards and targets the wave edge, flies in and
+  flutters from the brush; octopus creeps in 0.15–1.3 m of water, tints to
+  the sand when still (`tint` uniform in the animal shader, masked by colour
+  alpha), inks at the brush; seal and turtle swim at the surface and haul out
+  (turtle lays flipper tracks: one updatable mesh, 1 draw call); a pet dolphin
+  turns round at the ends instead of leaving. Sea pets' origins sit so their
+  top (`PetKind.top × size`) is above the water: a test checks every frame
+  (`tests/pets.test.ts`).
+- Snacks can go in water ≥ 0.3 m (and ≤ 1.5 m): they float and bring sea or
+  amphibious animals. The species a snack feeds is decided when it's tossed
+  (`snackSpecies`) and sent to `POST /animals/feed {species}`; bonds are per
+  species.
+- Pets are things you own and move: migration 35 (`beach_pets.home_x/z`,
+  `pet_bag`), `POST /pet/stow`, `POST /pet/place`, `PATCH /pet {home}`,
+  `GET /pet/bag`; shop adopt takes a `home`. Removing a beach puts its pet in
+  the bag. Long-press your pet to carry it (`AnimalController.carry`), tap to
+  set it down, or "put in bag" in the place bar; bag pets and pet items are
+  placed with a tap. `specs/tla/Pets.tla`: place is one transaction under the
+  player and beach locks (TLC finds a pet on two beaches, or lost, in three
+  steps); replays in `pets.test.ts`.
+- `AnimalView` builds a species' mesh on first use; one enabled at a time
+  (0 draws when empty, +1 for ink or tracks while shown). `?debug=1` spawns
+  every species; `__beech.animals.setPet(species)` shows one on this device.
+- Not done: E2E for carrying a pet (no browser E2E run here); pet names for
+  new adoptions still come from rename only.
+- New offers are sand bucks only (`Product.bucksOnly`): the five new pets and
+  the pier (its Steam id 1019 was never set up and is dropped). Real money
+  only buys sand-buck packs, plus the old item products for old app versions.

@@ -2,13 +2,21 @@
 // (docs/ANIMALS.md, Phases 2 & 3).
 
 import type { Db } from './db.js';
+import { petSpec, PETS, type PetSpecies } from './petCatalog.js';
 
 export const TREAT_ITEM_ID = 'crab-treat';
 export const PET_CRAB_ITEM_ID = 'pet-crab';
 /** Chance to receive a bonus free beach snack alongside a digging find. */
 export const FREE_TREAT_CHANCE = 0.25;
-/** How many times feeding wild visitors on a beach unlocks befriending one as a pet. */
-export const BEFRIEND_FEED_THRESHOLD = 10;
+/** How many times feeding wild crabs on a beach unlocks befriending one (each species: its `feeds`, a quarter of its price). */
+export const BEFRIEND_FEED_THRESHOLD = PETS[0].feeds;
+/** Snacks it takes to befriend a wild one of this species (docs/PETS.md: a quarter of its shop price). */
+export const befriendThreshold = (species: string): number => petSpec(species)?.feeds ?? BEFRIEND_FEED_THRESHOLD;
+/** A known species, or undefined (default: crab). */
+export function speciesOf(raw: unknown): PetSpecies | undefined {
+  if (raw === undefined || raw === null || raw === '') return 'crab';
+  return petSpec(raw)?.species;
+}
 export const PET_NAME_MAX = 24;
 
 export type PetMood = 'happy' | 'peckish' | 'hungry' | 'sleepy';
@@ -37,6 +45,18 @@ export interface PetDto {
   lastFedAt: number;
   fedCount: number;
   mood: PetMood;
+  /** where on its beach the pet hangs out (beach frame), or null for its default spot */
+  home: { x: number; z: number } | null;
+}
+
+/** A pet in its owner's bag (docs/PETS.md). */
+export interface BagPetDto {
+  id: number;
+  species: string;
+  name: string;
+  variant: number;
+  source: 'befriended' | 'shop';
+  fedCount: number;
 }
 
 export interface BondDto {
@@ -54,7 +74,11 @@ interface PetRow {
   source: 'befriended' | 'shop';
   last_fed_at: string;
   fed_count: number;
+  home_x: number | null;
+  home_z: number | null;
 }
+
+const PET_COLS = 'beach_id, species, name, variant, source, last_fed_at, fed_count, home_x, home_z';
 
 function toPetDto(r: PetRow, now: number): PetDto {
   const lastFedAt = Number(r.last_fed_at);
@@ -67,6 +91,7 @@ function toPetDto(r: PetRow, now: number): PetDto {
     lastFedAt,
     fedCount: Number(r.fed_count),
     mood: petMood(lastFedAt, now),
+    home: r.home_x === null || r.home_x === undefined || r.home_z === null ? null : { x: Number(r.home_x), z: Number(r.home_z) },
   };
 }
 
@@ -132,8 +157,7 @@ export async function maybeGrantBonusTreat(
 
 export async function getBeachPet(db: Db, beachId: string, now: number): Promise<PetDto | null> {
   const rows = await db.query<PetRow>(
-    `SELECT beach_id, species, name, variant, source, last_fed_at, fed_count
-       FROM beach_pets WHERE beach_id = $1`,
+    `SELECT ${PET_COLS} FROM beach_pets WHERE beach_id = $1`,
     [beachId],
   );
   return rows[0] ? toPetDto(rows[0], now) : null;
@@ -145,12 +169,8 @@ export async function getBondProgress(db: Db, beachId: string, species = 'crab')
     [beachId, species],
   );
   const feedCount = Number(rows[0]?.feed_count ?? 0);
-  return {
-    species,
-    feedCount,
-    threshold: BEFRIEND_FEED_THRESHOLD,
-    ready: feedCount >= BEFRIEND_FEED_THRESHOLD,
-  };
+  const threshold = befriendThreshold(species);
+  return { species, feedCount, threshold, ready: feedCount >= threshold };
 }
 
 export async function recordWildFeed(db: Db, beachId: string, species: string, now: number): Promise<BondDto> {
@@ -164,12 +184,8 @@ export async function recordWildFeed(db: Db, beachId: string, species: string, n
     [beachId, species, now],
   );
   const feedCount = Number(rows[0]?.feed_count ?? 1);
-  return {
-    species,
-    feedCount,
-    threshold: BEFRIEND_FEED_THRESHOLD,
-    ready: feedCount >= BEFRIEND_FEED_THRESHOLD,
-  };
+  const threshold = befriendThreshold(species);
+  return { species, feedCount, threshold, ready: feedCount >= threshold };
 }
 
 export async function feedBeachPet(
@@ -183,7 +199,7 @@ export async function feedBeachPet(
     `UPDATE beach_pets
         SET last_fed_at = $2, last_fed_by = $3, fed_count = fed_count + 1
       WHERE beach_id = $1
-      RETURNING beach_id, species, name, variant, source, last_fed_at, fed_count`,
+      RETURNING ${PET_COLS}`,
     [beachId, now, feederId],
   );
   if (!rows[0]) return null;
@@ -195,11 +211,11 @@ export async function feedBeachPet(
   return toPetDto(rows[0], now);
 }
 
-type AdoptOpts = { beachId: string; userId: string; species: string; name: string; mode: 'befriend' | 'shop'; now: number };
+type AdoptOpts = { beachId: string; userId: string; species: string; name: string; mode: 'befriend' | 'shop'; now: number; home?: { x: number; z: number } | null };
 type AdoptResult = { ok: true; pet: PetDto } | { ok: false; status: 409; error: string };
 
 /**
- * Adopt a pet via either befriending wild visitors or consuming a shop `pet-crab`.
+ * Adopt a pet via either befriending wild visitors or consuming a shop `pet-<species>` item.
  * One transaction holding the beach lock, like a toss and a pickup: otherwise
  * a snack picked up between reading the bond and inserting the pet would
  * leave a crab befriended for one feed less, with the snack back in the bag
@@ -229,7 +245,7 @@ async function adoptLocked(db: Db, opts: AdoptOpts): Promise<AdoptResult> {
       `INSERT INTO beach_pets (beach_id, species, name, variant, source, last_fed_at, last_fed_by, fed_count, created_at)
        VALUES ($1, $2, $3, 0, 'befriended', $4, $5, 1, $4)
        ON CONFLICT (beach_id) DO NOTHING
-       RETURNING beach_id, species, name, variant, source, last_fed_at, fed_count`,
+       RETURNING ${PET_COLS}`,
       [opts.beachId, opts.species, opts.name, opts.now, opts.userId],
     );
     if (!rows[0]) return { ok: false, status: 409, error: 'this beach already has a pet' };
@@ -239,23 +255,25 @@ async function adoptLocked(db: Db, opts: AdoptOpts): Promise<AdoptResult> {
     return { ok: true, pet: toPetDto(rows[0], opts.now) };
   }
 
-  // Shop path: consume 1 pet-crab atomically
-  const consumed = await consumeItem(db, opts.userId, PET_CRAB_ITEM_ID, opts.now);
-  if (!consumed.ok) return { ok: false, status: 409, error: 'no pet sand crab in your bag' };
+  // Shop path: consume 1 pet-<species> atomically
+  const spec = petSpec(opts.species);
+  const itemId = spec?.item ?? PET_CRAB_ITEM_ID;
+  const consumed = await consumeItem(db, opts.userId, itemId, opts.now);
+  if (!consumed.ok) return { ok: false, status: 409, error: `no pet ${(spec?.name ?? 'sand crab').toLowerCase()} in your bag` };
 
   const rows = await db.query<PetRow>(
-    `INSERT INTO beach_pets (beach_id, species, name, variant, source, last_fed_at, last_fed_by, fed_count, created_at)
-     VALUES ($1, $2, $3, 0, 'shop', $4, $5, 1, $4)
+    `INSERT INTO beach_pets (beach_id, species, name, variant, source, last_fed_at, last_fed_by, fed_count, created_at, home_x, home_z)
+     VALUES ($1, $2, $3, 0, 'shop', $4, $5, 1, $4, $6, $7)
      ON CONFLICT (beach_id) DO NOTHING
-     RETURNING beach_id, species, name, variant, source, last_fed_at, fed_count`,
-    [opts.beachId, opts.species, opts.name, opts.now, opts.userId],
+     RETURNING ${PET_COLS}`,
+    [opts.beachId, opts.species, opts.name, opts.now, opts.userId, opts.home?.x ?? null, opts.home?.z ?? null],
   );
   if (!rows[0]) {
     // Refund the consumed item if a concurrent adopt won the race
     await db.query(
       `INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at, expires_at)
        VALUES ($1, $2, 1, 'shop', $3, NULL)`,
-      [opts.userId, PET_CRAB_ITEM_ID, opts.now],
+      [opts.userId, itemId, opts.now],
     );
     return { ok: false, status: 409, error: 'this beach already has a pet' };
   }
@@ -265,7 +283,7 @@ async function adoptLocked(db: Db, opts: AdoptOpts): Promise<AdoptResult> {
 export async function renameBeachPet(db: Db, beachId: string, name: string, now: number): Promise<PetDto | null> {
   const rows = await db.query<PetRow>(
     `UPDATE beach_pets SET name = $2 WHERE beach_id = $1
-     RETURNING beach_id, species, name, variant, source, last_fed_at, fed_count`,
+     RETURNING ${PET_COLS}`,
     [beachId, name],
   );
   return rows[0] ? toPetDto(rows[0], now) : null;
@@ -425,4 +443,115 @@ export async function returnSnack(
     pet: await getBeachPet(db, beachId, now),
     bond: await getBondProgress(db, beachId, r.wild_species ?? 'crab'),
   };
+}
+
+
+// ---------------------------------------------------------------- pets as things you own and move (docs/PETS.md)
+
+/** Your pets in the bag, oldest first. */
+export async function listBagPets(db: Db, userId: string): Promise<BagPetDto[]> {
+  const rows = await db.query<{ id: string; species: string; name: string; variant: number; source: 'befriended' | 'shop'; fed_count: number }>(
+    `SELECT id, species, name, variant, source, fed_count FROM pet_bag WHERE user_id = $1 ORDER BY created_at, id`,
+    [userId],
+  );
+  return rows.map((r) => ({
+    id: Number(r.id),
+    species: r.species,
+    name: r.name,
+    variant: Number(r.variant),
+    source: r.source,
+    fedCount: Number(r.fed_count),
+  }));
+}
+
+/**
+ * Put a beach's pet in its owner's bag (the caller holds the beach lock).
+ * It keeps its name and feeds, and how hungry it was: it doesn't get
+ * hungrier in the bag.
+ */
+export async function stowLocked(db: Db, beachId: string, userId: string, now: number): Promise<BagPetDto | null> {
+  const rows = await db.query<PetRow & { created_at: string }>(
+    `DELETE FROM beach_pets WHERE beach_id = $1 RETURNING ${PET_COLS}, created_at`,
+    [beachId],
+  );
+  const r = rows[0];
+  if (!r) return null;
+  const hunger = Math.max(0, now - Number(r.last_fed_at));
+  const bag = await db.query<{ id: string }>(
+    `INSERT INTO pet_bag (user_id, species, name, variant, source, fed_count, hunger_ms, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+    [userId, r.species, r.name, r.variant, r.source, r.fed_count, hunger, now],
+  );
+  // a snack out for this pet can't be taken back from a pet that's gone
+  await db.query(`DELETE FROM beach_snacks WHERE beach_id = $1 AND pet_prev_fed_at IS NOT NULL`, [beachId]);
+  return {
+    id: Number(bag[0].id),
+    species: r.species,
+    name: r.name,
+    variant: Number(r.variant),
+    source: r.source,
+    fedCount: Number(r.fed_count),
+  };
+}
+
+/** POST /pet/stow: one transaction holding the beach lock (specs/tla/Pets.tla, Stow). */
+export function stowPet(db: Db, opts: { beachId: string; userId: string; now: number }): Promise<BagPetDto | null> {
+  return db.withTransaction(async (tx) => {
+    await tx.query('SELECT id FROM beach WHERE id = $1 FOR NO KEY UPDATE', [opts.beachId]);
+    return stowLocked(tx, opts.beachId, opts.userId, opts.now);
+  });
+}
+
+type PlaceResult = { ok: true; pet: PetDto } | { ok: false; status: 404 | 409; error: string };
+
+/**
+ * Put a pet from the bag on one of your beaches. One transaction holding the
+ * player lock and the beach lock: in steps, two devices could put one pet on
+ * two beaches, or lose it when another pet got there first
+ * (specs/tla/Pets.tla: NeverTwice, NeverLost).
+ */
+export function placePet(
+  db: Db,
+  opts: { petId: number; beachId: string; userId: string; now: number; home?: { x: number; z: number } | null },
+): Promise<PlaceResult> {
+  return db.withTransaction(async (tx) => {
+    await tx.query('SELECT id FROM users WHERE id = $1 FOR NO KEY UPDATE', [opts.userId]);
+    await tx.query('SELECT id FROM beach WHERE id = $1 FOR NO KEY UPDATE', [opts.beachId]);
+    if (await getBeachPet(tx, opts.beachId, opts.now)) return { ok: false, status: 409, error: 'this beach already has a pet' };
+    const rows = await tx.query<{ species: string; name: string; variant: number; source: string; fed_count: number; hunger_ms: string }>(
+      `DELETE FROM pet_bag WHERE id = $1 AND user_id = $2
+       RETURNING species, name, variant, source, fed_count, hunger_ms`,
+      [opts.petId, opts.userId],
+    );
+    const b = rows[0];
+    if (!b) return { ok: false, status: 404, error: 'that pet isn’t in your bag' };
+    const home = cleanHome(opts.home);
+    const ins = await tx.query<PetRow>(
+      `INSERT INTO beach_pets (beach_id, species, name, variant, source, last_fed_at, last_fed_by, fed_count, created_at, home_x, home_z)
+       VALUES ($1, $2, $3, $4, $5, $6, NULL, $7, $8, $9, $10)
+       RETURNING ${PET_COLS}`,
+      [opts.beachId, b.species, b.name, b.variant, b.source, opts.now - Number(b.hunger_ms), b.fed_count, opts.now, home?.x ?? null, home?.z ?? null],
+    );
+    return { ok: true, pet: toPetDto(ins[0], opts.now) };
+  });
+}
+
+/** Half the slab (32 m) less a margin: a pet's spot stays on its beach. */
+const HOME_LIMIT = 14.5;
+
+export function cleanHome(raw: unknown): { x: number; z: number } | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const { x, z } = raw as { x?: unknown; z?: unknown };
+  if (typeof x !== 'number' || typeof z !== 'number' || !Number.isFinite(x) || !Number.isFinite(z)) return null;
+  const c = (v: number) => Math.max(-HOME_LIMIT, Math.min(HOME_LIMIT, v));
+  return { x: Math.round(c(x) * 100) / 100, z: Math.round(c(z) * 100) / 100 };
+}
+
+/** Move a pet to a new spot on its beach (picked up and set down). */
+export async function setPetHome(db: Db, beachId: string, home: { x: number; z: number } | null, now: number): Promise<PetDto | null> {
+  const rows = await db.query<PetRow>(
+    `UPDATE beach_pets SET home_x = $2, home_z = $3 WHERE beach_id = $1 RETURNING ${PET_COLS}`,
+    [beachId, home?.x ?? null, home?.z ?? null],
+  );
+  return rows[0] ? toPetDto(rows[0], now) : null;
 }
