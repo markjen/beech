@@ -86,6 +86,9 @@ picked up.
 - [ ] **Piers (model first)**: sell a timber pier to land on the middle
   of three consecutive owned beaches. The [design](PIERS.md) and
   [checked state machine](STATE_MACHINES.md#piers-pierstla) are ready.
+- [ ] **Inland beach sections (model first)**: add up to four inland rows
+  per beach, with editable sand and automatic joins between matching rows
+  on linked beaches. See [INLAND_SECTIONS.md](INLAND_SECTIONS.md).
 - [ ] **Palm-first UI, follow-ups**: real weather (temperature, sky) for
   the status pane's first line; credit, stars and finds-today chips in
   the expanded pane (they need their own requests); decide whether the
