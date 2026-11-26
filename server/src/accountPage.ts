@@ -44,6 +44,11 @@ export function accountContent(config: { api: string; connect: string; game: str
   <p class="account-balance" id="account-bucks"></p>
   <p class="muted" id="account-debt" hidden></p>
 </section>
+<section class="submission-panel" id="sign-ins">
+  <h2>Connected sign-ins</h2>
+  <p id="account-signins">Loading…</p>
+  <p class="muted">Link another sign-in in the game’s Settings, under “connected sign-ins” — the same beaches follow you everywhere.</p>
+</section>
 <section class="submission-panel" id="top-up">
   <h2>Top up</h2>
   <p class="muted" id="account-topup-note"></p>
@@ -214,6 +219,15 @@ export function accountContent(config: { api: string; connect: string; game: str
     $('connect-panel').hidden = true;
     $('body').hidden = false;
     render();
+    try {
+      const ids = await call('/identities');
+      const names = { google: 'Google', apple: 'Apple', steam: 'Steam' };
+      $('signins').textContent = ids.identities.length
+        ? 'Signed in with ' + ids.identities.map((p) => names[p] || p).join(' · ') + '.'
+        : 'No sign-in linked yet.';
+    } catch {
+      document.getElementById('sign-ins').hidden = true;
+    }
     if (location.hash) document.getElementById(location.hash.slice(1))?.scrollIntoView({ block: 'start' });
   }
 

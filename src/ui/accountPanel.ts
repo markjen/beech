@@ -3,7 +3,7 @@ import { shoreRowOrder } from '../render/shoreSpacing';
 import { MAX_OBJECTS } from '../sim/sandCodec';
 import { renderBeachMap, sortBeachesWestToEast } from './beachMap';
 import { buildOwnStretches, connectableBeaches, hasSparePierWithoutSite, ownBeachLabel } from './shoreConnect';
-import { DEV_AUTH, googleSignInAvailable, renderGoogleButton, type Account, type MyBeach, type Neighbors, type Side } from '../net/account';
+import { DEV_AUTH, googleSignInAvailable, renderGoogleButton, type Account, type LinkedProvider, type MyBeach, type Neighbors, type Side } from '../net/account';
 import { beachShareText, shareUrl, shoreAccountUrl, shoreBeachUrl } from '../net/share';
 import { codesAllowed } from '../net/shop';
 import { bucksIcon } from './inventory';
@@ -800,6 +800,7 @@ export class AccountPanel {
         </div>`;
       if (u.name) box.querySelector('b')!.textContent = u.name;
       box.appendChild(this.linkSection());
+      box.appendChild(this.identitiesSection());
       box.appendChild(this.topUpSection());
       box.querySelector('[data-act="signout"]')!.addEventListener('click', () => void this.account.signOut());
       const del = box.querySelector<HTMLButtonElement>('[data-act="delete"]')!;
@@ -969,6 +970,120 @@ export class AccountPanel {
         await this.account.loadBeaches();
       }, 'link_code');
     });
+    return wrap;
+  }
+
+  /**
+   * Which sign-ins are attached to this account, and a way to attach another
+   * one while signed in — so the same beaches follow you across Google,
+   * Apple and Steam. Attaching never moves data: the identity is verified
+   * first, and if it already belongs to another account the server refuses
+   * it (409) and this account is unchanged. The link-code flow above stays
+   * as the cross-device fallback for a fresh account.
+   */
+  private identitiesSection(): HTMLElement {
+    const wrap = document.createElement('div');
+    wrap.className = 'neighbors';
+    const label = (p: string) => (p === 'google' ? 'Google' : p === 'apple' ? 'Apple' : 'Steam');
+    const status = document.createElement('div');
+    status.className = 'status';
+    status.textContent = 'connected sign-ins…';
+    wrap.appendChild(status);
+    const refresh = async () => {
+      let linked: string[];
+      try {
+        linked = await this.account.identities();
+      } catch {
+        status.textContent = 'could not load connected sign-ins';
+        return;
+      }
+      wrap.innerHTML = '';
+      const head = document.createElement('div');
+      head.className = 'code-row';
+      const title = document.createElement('span');
+      title.textContent = 'connected sign-ins';
+      head.appendChild(title);
+      wrap.appendChild(head);
+      const list = document.createElement('div');
+      list.className = 'status';
+      list.textContent = linked.length ? linked.map(label).join(' · ') : 'none yet';
+      wrap.appendChild(list);
+      const note = document.createElement('div');
+      note.className = 'status';
+      note.textContent = 'Link another sign-in here and the same beaches follow you everywhere.';
+      wrap.appendChild(note);
+      const attach = (provider: LinkedProvider, get: () => Promise<{ credential: string; name?: string }>) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'action';
+        b.dataset.act = `link-${provider}`;
+        b.textContent = `link ${label(provider)}`;
+        b.addEventListener('click', () =>
+          void this.guard(async () => {
+            let cred: { credential: string; name?: string };
+            try {
+              cred = await get();
+            } catch (e) {
+              if (e instanceof SignInCancelled) return;
+              throw e;
+            }
+            await this.account.attachIdentity(provider, cred.credential, cred.name ?? '');
+            await refresh();
+          }),
+        );
+        return b;
+      };
+      const row = document.createElement('div');
+      row.className = 'buttons';
+      let offered = false;
+      for (const p of nativeProviders()) {
+        if (linked.includes(p)) continue;
+        offered = true;
+        row.appendChild(
+          attach(p, async () => {
+            const who = await nativeSignIn(p);
+            return { credential: who.idToken, name: who.name };
+          }),
+        );
+      }
+      if (isSteam() && !linked.includes('steam')) {
+        offered = true;
+        row.appendChild(
+          attach('steam', async () => {
+            const steam = steamBridge();
+            if (!steam) throw new Error('Steam is not running');
+            const t = await steam.getAuthTicket();
+            return { credential: t.ticketHex, name: t.personaName };
+          }),
+        );
+      }
+      if (row.children.length) wrap.appendChild(row);
+      if (!offered && !nativeProviders().length && googleSignInAvailable() && !linked.includes('google')) {
+        // web: Google's own button, as on the sign-in screen
+        const gis = document.createElement('div');
+        gis.className = 'gis';
+        wrap.appendChild(gis);
+        renderGoogleButton(gis, (credential) =>
+          void this.guard(async () => {
+            await this.account.attachIdentity('google', credential);
+            await refresh();
+          }),
+        ).catch(() => {
+          const fail = document.createElement('div');
+          fail.className = 'status';
+          fail.textContent = 'Google sign-in could not load. Check your connection.';
+          wrap.appendChild(fail);
+        });
+      }
+      if (!offered && linked.includes('google')) {
+        // nothing left to offer on this device
+        const done = document.createElement('div');
+        done.className = 'status';
+        done.textContent = 'Every sign-in this device offers is linked.';
+        wrap.appendChild(done);
+      }
+    };
+    void refresh();
     return wrap;
   }
 
