@@ -17,8 +17,9 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: '2026-11-26',
-    title: 'Sand bucks, trade-ins, copying a beach, notifications, and smoother live beaches',
+    title: 'Sand bucks, trade-ins, copying a beach, piers, notifications, and smoother live beaches',
     changes: [
+      'Piers: snap three of your beaches side by side and the middle one can hold a timber pier that runs from the sand out over the water. Buy one in Manage → Beaches (30 sand bucks), look at it on your beach, then place it. Everyone visiting sees it too.',
       'The shop opens again in the Android and iPhone apps (it was stuck on “Opening the shop…”).',
       'When you aren’t signed in, a Sign in button sits in the lower-left corner of the title screen and your beach, so signing in is one tap away.',
       'Sand bucks: everything in the shop is now priced in sand bucks (1 sand buck is 10¢; prices are the same as before). Buy sand bucks in packs, from the App Store, Google Play, Steam or by card on the web, then spend them on anything, on any device. Gift cards add sand bucks.',

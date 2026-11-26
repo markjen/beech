@@ -259,6 +259,8 @@ export class Account {
   /** your beaches, as last loaded */
   beaches: MyBeach[] = [];
   allowance = 1;
+  /** piers you own, and how many are on beaches (docs/PIERS.md) */
+  piers = { owned: 0, placed: 0 };
   private beachListeners: ((beaches: MyBeach[]) => void)[] = [];
 
   get extraBeachesInUse(): number {
@@ -285,11 +287,12 @@ export class Account {
     const who = this.user?.id;
     const res = await this.call('/api/beaches/mine');
     if (!res.ok) throw await errorOf(res, 'could not load your beaches');
-    const data = (await res.json()) as { allowance: number; beaches: MyBeach[] };
+    const data = (await res.json()) as { allowance: number; beaches: MyBeach[]; piers?: { owned: number; placed: number } };
     // someone else signed in meanwhile: this list isn't theirs
     if (this.user?.id !== who) return this.beaches;
     this.beaches = data.beaches;
     this.allowance = data.allowance;
+    this.piers = data.piers ?? { owned: 0, placed: 0 };
     for (const fn of this.beachListeners) fn(this.beaches);
     return this.beaches;
   }
@@ -319,6 +322,20 @@ export class Account {
   async removeBeach(id: string): Promise<void> {
     const res = await this.call(`/api/beaches/mine/${id}`, { method: 'DELETE', headers: { ...this.editHeaders() } });
     if (!res.ok) throw await errorOf(res, 'could not remove that beach');
+    await this.loadBeaches();
+  }
+
+  /** a pier from your bag onto this beach (the middle of three of yours, docs/PIERS.md) */
+  async placePier(id: string): Promise<void> {
+    const res = await this.call(`/api/beaches/mine/${id}/pier`, { method: 'PUT', headers: { ...this.editHeaders() } });
+    if (!res.ok) throw await errorOf(res, 'could not place the pier');
+    await this.loadBeaches();
+  }
+
+  /** this beach's pier back into your bag */
+  async removePier(id: string): Promise<void> {
+    const res = await this.call(`/api/beaches/mine/${id}/pier`, { method: 'DELETE', headers: { ...this.editHeaders() } });
+    if (!res.ok && res.status !== 404) throw await errorOf(res, 'could not remove the pier');
     await this.loadBeaches();
   }
 
@@ -650,6 +667,10 @@ export interface MyBeach {
   items: Record<string, number>;
   left: (Neighbor & { yours: boolean }) | null;
   right: (Neighbor & { yours: boolean }) | null;
+  /** it sits between two of your beaches, so it can hold a pier (docs/PIERS.md) */
+  pierSite?: boolean;
+  /** its pier: showing, waiting for the site to come back, or none */
+  pier?: 'active' | 'paused' | null;
 }
 
 export interface Neighbor {
@@ -854,6 +875,8 @@ export interface ShoreBeach {
   beachName?: string;
   /** a real (mutual) neighbor of the beach before it along the shore */
   linked?: boolean;
+  /** it shows a pier (docs/PIERS.md) */
+  pier?: boolean;
 }
 
 export interface Shore {

@@ -847,7 +847,6 @@ const MIGRATIONS: string[] = [
   ALTER TABLE inventory ADD COLUMN royalty_ref TEXT;
   `,
 
-
   // 33: push notifications (docs/INBOX_NOTIFICATIONS.md, "Push"; the model
   // is specs/tla/Push.tla). push_subscriptions: one per device, tied to the
   // session that made it, so signing out (or the session expiring) takes it
@@ -887,6 +886,20 @@ const MIGRATIONS: string[] = [
   UPDATE inbox SET pushed_at = created_at;
   CREATE INDEX inbox_unpushed ON inbox (user_id)
     WHERE pushed_at IS NULL AND kind IN ('visit', 'gift', 'neighbor_request', 'neighbor_linked', 'invite_settled');
+  `,
+
+  // 34: piers (docs/PIERS.md, specs/tla/Piers.tla). One row per placed pier,
+  // at most one per beach. The pier itself is a bag item ('pier'); a row
+  // counts as one placed, so the bag shows owned minus these. Whether it
+  // shows is derived from the beach's links, never stored. Deleting the
+  // beach deletes the row, which puts the pier back in the bag.
+  `
+  CREATE TABLE beach_piers (
+    beach_id UUID PRIMARY KEY REFERENCES beach (id) ON DELETE CASCADE,
+    owner_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    placed_at BIGINT NOT NULL
+  );
+  CREATE INDEX beach_piers_owner ON beach_piers (owner_id);
   `,
 ];
 

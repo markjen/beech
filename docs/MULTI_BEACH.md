@@ -30,7 +30,7 @@ they can lay them out. This doc is the plan for using them.
   prize you own once can be on one of your beaches at a time (see "Items
   across beaches").
 
-The proposed [pier feature](PIERS.md) uses existing shore links. Three
+The [pier feature](PIERS.md) uses existing shore links. Three
 consecutive beaches under one owner unlock a pier site on the middle beach.
 
 ## How people get beaches

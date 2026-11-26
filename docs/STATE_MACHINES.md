@@ -16,7 +16,7 @@ rest of `npm test` in `server/`. No E2E, no rendering.
 | Neighbor links | `Neighbors.tla` | `neighbors.test.ts` | one-sided links, two neighbors on one side, two beaches linked on both sides |
 | Copying a beach | `BeachCopy.tla` | `copy.test.ts` | more placed than owned, more beaches than the allowance, a copy of a beach just taken off the shore, a different version than previewed |
 | Sand bucks and trade-ins | `SandBucks.tla` | `bucks.test.ts` | a trade-in of a thing on a beach, the last one traded in twice, bucks lost or minted by spending, trading in or a refund |
-| Piers (designed) | `Piers.tla` | Planned | a pier landed after an unlink, duplicate attachments, an attachment surviving a refund |
+| Piers | `Piers.tla` | `piers.test.ts` | a pier landed after an unlink, two on one beach, a placed pier traded in or given away |
 | Push notifications | `Push.tla` | `push.test.ts` | a push sent twice, two in an hour, a push after unsubscribing, signing out, blocking or muting |
 
 ## How it fits together
@@ -150,22 +150,26 @@ Invariants: `ValueConserved`, `NoPhantomUnits`, `NeverTradePlaced`,
 
 ## Piers (`Piers.tla`)
 
-Proposed routes for [Piers](PIERS.md). State includes direct links, the
-phase of each purchase and the beach each purchase is attached to.
+[Piers](PIERS.md). State: the beaches and their direct links, how many
+piers the player owns, and how many attachments each beach holds. The pier
+is a bag unit bought with sand bucks (`Buy`); attachments are counted
+against what's owned.
 
-| Action | Route | Proposed atomic step |
+| Action | Route | Atomic step |
 | --- | --- | --- |
-| `Begin` | `POST /beaches/mine/:id/pier/checkout` | Under the beach owner's account lock, check that the site qualifies and is vacant, then issue an account-bound checkout authorization. Start the provider flow after the transaction. |
-| `Settle`, `Close` | Existing store confirmation, cancellation and refund routes | Deduplicate by provider order or receipt. Under the buyer's account lock, grant the entitlement once or close it and clear its attachment. An authoritative refund or cancellation is terminal even if a confirmation arrives later. |
-| `Land` | `PUT /beaches/mine/:id/pier` | Use `asEditor` to hold the owner's account lock while checking links, site vacancy and entitlement, then insert the attachment. Unique keys on beach and entitlement prevent double placement. |
-| `Lift` | `DELETE /beaches/mine/:id/pier` | Use `asEditor` to remove the specified attachment and free the entitlement. |
-| `Link`, `Unlink`, `DeleteBeach` | Existing neighbor link, unlink and beach deletion routes, including admin writes | Hold the affected owner account locks before changing the graph, taking multiple account locks in ID order and before beach row locks. Derive pier visibility from the new graph. Beach deletion removes the attachment and leaves the entitlement in the bag. |
+| `Buy` | `POST /store/buy`, `POST /store/credit-purchase` (`item_pier`) | `buyWithBucks`, as in `SandBucks` |
+| `GiveAway` | `POST /bag/trade-in`, `POST /gifts`, visitor gifts | one transaction under the player's lock; `itemsElsewhere` counts `beach_piers` rows as placed, and `giveOne` refuses a pier unless one is free |
+| `Land` | `PUT /beaches/mine/:id/pier` | `asEditor` (the player's lock and the edit token), then the beach row `FOR NO KEY UPDATE` and its links and their beaches `FOR SHARE`, the vacancy and bag checks, and the insert. The primary key on `beach_id` keeps one per beach |
+| `Lift` | `DELETE /beaches/mine/:id/pier` | `asEditor`, one `DELETE` |
+| `Link`, `Unlink`, `DeleteBeach` | the existing neighbor routes and `DELETE /beaches/mine/:id` | unchanged: an unlink or a deletion of a beach next to the one being placed waits on `Land`'s `FOR SHARE` row locks. Deleting a beach cascades its attachment (the pier is back in the bag). Visibility is derived (`PIER_SHOWN`), never stored |
 
-The selected model explores 6,012 distinct states. The alternate model
-finds a stale placement after a supporting link is removed between
-`LandCheck` and `Land`. Check and write under the same lock to enforce
-`PlacementWasEligible`. The model also checks `PaidAttachment` and
-`OnePerBeach`. Run `specs/tla/check.sh --bugs Piers` to reproduce both runs.
+The design passes with 1,532 distinct states (`PaidAttachment`,
+`OnePerBeach`, `NoOrphan`, `PlacementWasEligible`). The other form, which
+checks eligibility before the write's transaction and lets a pier leave
+the bag without counting placed ones, breaks `PlacementWasEligible` (an
+unlink between `LandCheck` and `Land`) and `PaidAttachment` (a trade-in of
+the placed pier). Both are replayed in `piers.test.ts` and fail against
+that form. Run `specs/tla/check.sh --bugs Piers` to see them.
 
 ## Push notifications (`Push.tla`)
 

@@ -22,6 +22,7 @@ const ALL = [
   'live-e2e',
   'copy-e2e',
   'push-e2e',
+  'piers-e2e',
 ];
 
 let jobCount = process.env.E2E_JOBS ?? '3';

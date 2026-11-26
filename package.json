@@ -29,6 +29,7 @@
     "e2e:neighbors": "node scripts/neighbors-e2e.mjs",
     "e2e:shore": "node scripts/shore-e2e.mjs",
     "e2e:beaches": "node scripts/beaches-e2e.mjs",
+    "e2e:piers": "node scripts/piers-e2e.mjs",
     "e2e:leaderboard": "node scripts/leaderboard-e2e.mjs",
     "e2e:checkpoints": "node scripts/checkpoints-e2e.mjs",
     "e2e:live": "node scripts/live-e2e.mjs",

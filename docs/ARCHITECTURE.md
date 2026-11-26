@@ -61,6 +61,7 @@ simulated one.
 | `src/ui/checkpoints.ts` | Settings → checkpoints: save, list, restore here / onto another beach, undo, export, import (`CheckpointApi` in `src/net/account.ts`, the fit check in `src/world/checkpointFit.ts`) |
 | `src/ui/shop.ts`, `server/src/bucks.ts`, `server/src/bucksDb.ts` | Sand bucks: the shop (balance, packs for real money, everything for sand bucks), trade-ins from the place bar and the bag (`src/ui/inventory.ts`); on the server the value rules (list values, sharing a price out) and the balance (credit with debt first, clawbacks, purchase grants and refunds). SAND_BUCKS.md |
 | `src/ui/copyBeach.ts` | Copying a beach: the copy sheet (where it goes, what the bag lacks, buy what's missing, copy without them, keep as a checkpoint) and the copy waiting on a web checkout (`CopyApi` in `src/net/account.ts`; server: "copying a beach" in `server/src/app.ts`, `copyBasket` in `server/src/products.ts`). COPY_BEACH.md |
+| `src/ui/pierPreview.ts` | The pier preview's "place pier" / "cancel" bar (the buy/place/remove rows are in `accountPanel.ts`; server: "piers" in `server/src/app.ts`, `PIER_SHOWN` in `server/src/shore.ts`). PIERS.md |
 | `server/src/guide.ts`, `releaseNotes.ts` | The user guide, help and release notes at `/guide` and `/guide/releases` (`/help`, `/releases` redirect), rendered per request from the server's own constants (odds, grab chances, the claw's rest, this week's vending set). The game shows no explanatory notes; it links here (`GUIDE_URL` in `src/config.ts`) |
 | `server/src/landingSite.ts`, `rootApp.ts` | The beech.games landing page: Host-header routing in `rootApp.ts` (`beech.games` + `www`, which 301s to the apex; no game API on those hosts), previewable under `/landing` on every other host. Numbers from the server's constants; "What's new" from `releaseNotes.ts`. See docs/LANDING_PAGE.md |
 | `src/world/catchupBeach.ts` | A saved beach caught up at its place (decode, `catchUp` at the real tide, encode). Bundled for the server by `scripts/bundle-server.mjs` into `server/src/generated/catchup.ts` |
@@ -84,6 +85,7 @@ simulated one.
 | `src/ui/socialHub.ts` | The Inbox hub: one tab strip over the inbox, leaderboard, starred and visit-by-code dialogs |
 | `src/ui/leaderboard.ts` | The leaderboard panel (most-starred beaches: all time and rising), with visit and star on each row |
 | `src/render/neighbors.ts` | The shore: beaches down the chain of neighbor links as snapshot dioramas (drawn near the view), visiting by code, favorites |
+| `src/render/pier.ts` | The pier on the middle of three of a player's beaches (docs/PIERS.md): its geometry and the layer `NeighborView` keeps in step with the shore |
 | `Dockerfile` | Production image: web app (accounts on) + API server |
 | `src/audio/ambience.ts` | Procedural Web Audio soundscape |
 | `src/platform/*` | Runtime detection (`runtime.ts` for web/iOS/Android/Steam), haptics (Capacitor or vibrate), PWA registration, quality tier from benchmark, inbox notifications (`notify.ts`: web push, native push, Steam OS notifications) |
