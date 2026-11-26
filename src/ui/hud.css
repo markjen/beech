@@ -1314,11 +1314,137 @@
 }
 
 .shop > .shop-card {
-  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  width: min(500px, 100%);
+  max-height: min(700px, 100%);
+  padding: 0;
+  overflow: hidden;
+  /* two layers of the translucent panel colour: the list must read over the sea */
+  background-color: var(--ui-bg);
+  background-image: linear-gradient(var(--ui-bg), var(--ui-bg));
 }
 
 .shop-card h2 {
   text-align: center;
+}
+
+.shop-head {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.shop-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.shop-top h2 {
+  flex: none;
+  margin: 0;
+  font-size: 18px;
+  text-align: left;
+}
+
+.shop-balance {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+}
+
+.shop-top .shop-bucks {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.shop-get-bucks {
+  flex: none;
+  padding: 4px 10px;
+  border: 1.5px solid currentColor;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.shop-get-bucks:hover {
+  background: var(--ui-fg);
+  color: var(--ui-bg);
+}
+
+.shop-get-bucks[hidden] {
+  display: none;
+}
+
+.shop-top .claw-close {
+  position: static;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  margin-right: -6px;
+}
+
+.shop-tabs {
+  display: flex;
+  flex: none;
+  min-width: 0;
+  gap: 2px;
+  padding: 3px;
+  overflow-x: auto;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  scrollbar-width: none;
+}
+
+.shop-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.shop-tabs button {
+  flex: 1 1 auto;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.shop-tabs button.on {
+  color: var(--ui-bg);
+  background: var(--ui-fg);
+}
+
+.shop-tabs button:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
 }
 
 .shop-note {
@@ -1327,19 +1453,58 @@
   text-align: center;
 }
 
+.shop-head .shop-note {
+  margin: 0;
+  text-align: left;
+  font-weight: 500;
+}
+
+.shop-head .shop-note:empty {
+  display: none;
+}
+
+.shop-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 12px 16px 16px;
+  touch-action: pan-y;
+}
+
 .shop-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
+.shop-group-title {
+  margin: 12px 4px 2px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.6;
+  text-align: left;
+}
+
+.shop-offers > .shop-group-title:first-child,
+.shop-packs > .shop-group-title:first-child {
+  margin-top: 2px;
+}
+
 .shop-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px;
+  gap: 12px;
+  padding: 10px 12px;
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.3);
+  background: color-mix(in srgb, currentColor 6%, transparent);
+  transition: background 0.15s ease;
+}
+
+.shop-item:hover {
+  background: color-mix(in srgb, currentColor 10%, transparent);
 }
 
 .shop-item.featured {
@@ -1347,9 +1512,19 @@
   box-shadow: inset 0 0 0 2px rgba(255, 207, 90, 0.8);
 }
 
+.shop-icon {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: color-mix(in srgb, currentColor 7%, transparent);
+}
+
 .shop-icon svg {
-  width: 40px;
-  height: 40px;
+  width: 30px;
+  height: 30px;
   fill: none;
   stroke: currentColor;
   stroke-width: 1.5;
@@ -1367,29 +1542,40 @@
 
 .shop-text b {
   font-size: 14px;
+  line-height: 1.25;
 }
 
 .shop-blurb,
 .shop-what {
   font-size: 12px;
+  line-height: 1.35;
   opacity: 0.8;
 }
 
 .shop-what {
-  opacity: 0.6;
+  opacity: 0.62;
 }
 
 .shop-buy {
-  min-width: 70px;
-  padding: 10px 12px;
+  flex: none;
+  min-width: 72px;
+  padding: 9px 14px;
   border: none;
   border-radius: 999px;
   color: var(--ui-bg);
   background: var(--ui-fg);
   font: inherit;
+  font-size: 13px;
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
   cursor: pointer;
   touch-action: manipulation;
+  transition: transform 0.12s ease, opacity 0.15s ease;
+}
+
+.shop-buy:active:not(:disabled) {
+  transform: scale(0.96);
 }
 
 .shop-buy:disabled {
@@ -1414,12 +1600,17 @@
   justify-content: flex-end;
 }
 
-
 .shop-credit {
   margin: 0 0 8px;
   font-size: 13px;
   font-weight: 600;
   text-align: center;
+}
+
+.shop-foot {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid color-mix(in srgb, currentColor 12%, transparent);
 }
 
 .shop-promo {
@@ -1432,7 +1623,8 @@
 
 /* hidden in the native apps (codesAllowed): display:flex would beat [hidden] */
 .shop-promo[hidden],
-.shop-account[hidden] {
+.shop-account[hidden],
+.shop-foot[hidden] {
   display: none;
 }
 
@@ -1440,16 +1632,17 @@
   flex: 1;
   min-width: 0;
   padding: 8px 10px;
-  border: 1px solid rgba(0, 0, 0, 0.2);
+  border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.5);
+  background: color-mix(in srgb, currentColor 6%, transparent);
+  color: inherit;
   font: inherit;
 }
 
 /* your account on beechshore: gift cards, history, top-ups */
 .shop-account {
   display: block;
-  margin: 12px 0 0;
+  margin: 0;
   color: inherit;
   font-size: 13px;
   font-weight: 600;
@@ -1481,19 +1674,14 @@
   flex-direction: column;
   gap: 8px;
 }
-.shop-packs {
-  margin-top: 14px;
-}
-.shop-packs h3 {
-  margin: 0;
-  font-size: 14px;
-  text-align: center;
+.shop-offers + .shop-packs {
+  margin-top: 10px;
 }
 .shop-buy.short {
   background: transparent;
   color: var(--ui-fg);
   box-shadow: inset 0 0 0 2px var(--ui-fg);
-  opacity: 0.6;
+  opacity: 0.72;
 }
 
 /* ---- leaderboard: the most-starred beaches ---- */
