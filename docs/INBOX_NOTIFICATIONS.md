@@ -320,8 +320,10 @@ RUN_SA=beech-run@$PROJECT.iam.gserviceaccount.com
    `mailto:` plus a support address the push services can write to. The
    next deploy turns web push on (`push_config` in the logs says
    `web: true`).
-4. A once-a-minute tick (the server ticks itself too, but Cloud Run may
-   idle its CPU between requests):
+4. A once-a-minute tick from Cloud Scheduler (the server only ticks
+   itself when Scheduler isn't configured — local dev — because on
+   Cloud Run an idle instance's CPU is throttled and its timer's query
+   looked slow, ~1 s, tripping the slow-query alert):
    ```bash
    gcloud services enable cloudscheduler.googleapis.com
    gcloud iam service-accounts create beech-scheduler

@@ -128,17 +128,25 @@ if (steamStore) {
 }
 
 // Push notifications (docs/INBOX_NOTIFICATIONS.md): each platform is on
-// once its settings are there. The send queue is ticked once a minute here
-// and, when it's set up, by Cloud Scheduler (POST /api/push/tick), since
-// Cloud Run may idle this instance's CPU between requests. Two ticks at once
-// are safe: each player's push runs under their push lock (specs/tla/Push.tla).
+// once its settings are there. The send queue is ticked once a minute by
+// Cloud Scheduler (POST /api/push/tick) — the in-process timer below only
+// runs when Scheduler isn't configured (local dev), because on Cloud Run an
+// instance's CPU is throttled between requests and the timer's query looked
+// slow (~1 s wall-clock on an idle instance). Two ticks at once are safe:
+// each player's push runs under their push lock (specs/tla/Push.tla).
 const pushConfig = pushFromEnv(env);
+// The Scheduler tick, when its variables are set (see deploy-gcp.yml);
+// without them the endpoint 404s and the in-process timer below takes over.
+const schedulerTick =
+  env.PUSH_TICK_AUDIENCE && env.PUSH_TICK_SERVICE_ACCOUNT
+    ? { audience: env.PUSH_TICK_AUDIENCE, email: env.PUSH_TICK_SERVICE_ACCOUNT }
+    : undefined;
 // local development: throwaway VAPID keys, so web push can be tried (and
 // npm run e2e:push runs) without setting anything up
 if (devAuth && !pushConfig.web) pushConfig.web = { ...devVapidKeys(), subject: 'mailto:dev@localhost' };
 const pushSend = makeSender(pushConfig);
 logEvent('push_config', { web: !!pushConfig.web, ios: !!pushConfig.apns, android: !!pushConfig.fcm });
-if (pushConfig.web || pushConfig.apns || pushConfig.fcm) {
+if ((pushConfig.web || pushConfig.apns || pushConfig.fcm) && !schedulerTick) {
   let ticking = false;
   const pushTimer = setInterval(() => {
     if (ticking) return;
@@ -155,7 +163,7 @@ const api = createApp(db, {
   push: {
     config: pushConfig,
     send: pushSend,
-    tick: env.PUSH_TICK_AUDIENCE && env.PUSH_TICK_SERVICE_ACCOUNT ? { audience: env.PUSH_TICK_AUDIENCE, email: env.PUSH_TICK_SERVICE_ACCOUNT } : undefined,
+    tick: schedulerTick,
   },
   googleClientIds: list(env.GOOGLE_CLIENT_IDS),
   appleClientIds: list(env.APPLE_CLIENT_IDS),
