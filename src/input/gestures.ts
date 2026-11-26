@@ -82,6 +82,25 @@ export function letTouchThrough(target: EventTarget | null): boolean {
   return !!(target as Element | null)?.closest?.(TOUCH_UI);
 }
 
+/**
+ * True when keyboard input belongs to a form control, not the game: typing in
+ * a text field, textarea, select, or contenteditable element must not trigger
+ * game shortcuts (e.g. Space panning the camera while typing a visitor note).
+ * Tag-based so it works on any element, with no DOM globals required.
+ */
+export function isEditableTarget(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null;
+  if (!el || typeof el.tagName !== 'string') return false;
+  switch (el.tagName.toLowerCase()) {
+    case 'input':
+    case 'textarea':
+    case 'select':
+      return true;
+    default:
+      return !!el.isContentEditable;
+  }
+}
+
 export class Gestures {
   private mode: Mode = 'idle';
   private pointers = new Map<number, { x: number; y: number }>();
@@ -355,7 +374,7 @@ export class Gestures {
   };
 
   private onKeyDown = (e: KeyboardEvent) => {
-    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+    if (isEditableTarget(e.target)) return;
     this.h.interacted();
     const k = e.key.toLowerCase();
     if ((e.ctrlKey || e.metaKey) && k === 'z') {
