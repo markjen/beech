@@ -26,8 +26,9 @@ most of the catalog, while Xsolla charges a percentage only.
 - The price comes from `server/src/products.ts`, mirrored as SKUs in the
   Xsolla catalog. The client never supplies a price, and the server checks
   what Xsolla charged against its own list before granting.
-- **Promo codes don't discount card payments yet** (see "Promo codes").
-  They keep working with "Buy with credit".
+- **Promo codes never discount a card payment** (see "Promo codes").
+  A code loaded on the account applies automatically as bonus bb when a
+  bb pack grants, whichever store the pack came from.
 - The native apps are unchanged: StoreKit / Play Billing only, and they
   never link or steer to web checkout (App Store anti-steering, Play
   payments policy). `shopMode()` is `'web'` only in a browser production
@@ -216,12 +217,12 @@ granted, because the player paid.
 Xsolla charges its catalog price for a SKU; the In-Game Store token has no
 price override (the older merchant `/token` call that accepts a custom
 amount opens Pay Station for subscriptions only). So a beech promo can't
-discount a card payment without also existing in Xsolla. v1 refuses a
-promo at web checkout with a clear message, and promos keep working with
-credit. To add them: create the same codes in Xsolla's promo campaigns,
-pass `promo_code` on the token call, and on `order_paid` accept
-`order.promocodes[].code` plus the discounted amount, counting the use in
-`promo_uses` in the grant statement.
+discount a card payment. It doesn't need to: promo codes are percent-only
+bonus bb on bb packs (docs/GIFT_CARDS_PROMOS.md), and the loaded code
+applies automatically when the pack grants through the webhook — the same
+grant an App Store or Play purchase gives. A `promoCode` sent to web
+checkout is refused with a clear message telling the player to load the
+code on their account first.
 
 ## Turning it on
 
@@ -279,8 +280,9 @@ What changed from the plan in PR 21, and why:
   token charges the catalog price by SKU, and the custom-amount token only
   opens Pay Station for subscriptions, so web prices live in the Xsolla
   catalog (mirroring `products.ts`) and the webhook checks them.
-- **Promos deferred** for the same reason (see "Promo codes"); the
-  reservation scheme in the draft isn't needed yet.
+- **Promos are account-loaded bonus bb, not a price override** (see "Promo codes");
+  the reservation scheme in the draft isn't needed: the loaded code applies
+  at grant time, after Xsolla charges its catalog price.
 - **Schema fixes.** `users.id` is a UUID, not TEXT (the draft's foreign
   key wouldn't have applied); `purchases.store` has a CHECK that rejected
   `'xsolla'`, so migration 15 widens it.

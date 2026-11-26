@@ -1007,6 +1007,13 @@ const MIGRATIONS: string[] = [
       'pack', 'pack_refund', 'trade_in', 'trade_in_refund', 'invite_bonus',
       'merge', 'promo_bonus', 'promo_bonus_refund', 'admin_adjustment', 'admin_refund'
     ));
+
+  -- Promo codes are percent-only now: tighten the kind check created with
+  -- the promo_codes table (migration 12). No fixed code exists in
+  -- production (the only fixture is percent LAUNCH20), so no existing row
+  -- can violate it.
+  ALTER TABLE promo_codes DROP CONSTRAINT promo_codes_kind_check;
+  ALTER TABLE promo_codes ADD CONSTRAINT promo_codes_kind_check CHECK (kind = 'percent');
   `,
 ];
 

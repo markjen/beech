@@ -15,7 +15,7 @@ export type AccountPromoStatus = 'ready' | 'used' | 'expired' | 'disabled' | 'ex
 
 export interface AccountPromo {
   code: string;
-  kind: 'percent' | 'fixed';
+  kind: 'percent';
   value: number;
   appliesTo: string | null;
   status: AccountPromoStatus;
@@ -27,14 +27,12 @@ export interface AccountPromo {
 
 /**
  * Extra bonus beech bucks a promo code adds on top of a pack's normal grant.
- * - 'percent': ceil(packBucks * value / 100), so any positive percent promo
- *   always grants at least +1 bonus bb.
- * - 'fixed': `value` extra beech bucks.
+ * Promo codes are percent-only: ceil(packBucks * value / 100), so any
+ * positive percent promo always grants at least +1 bonus bb.
  */
-export function promoBonusBucks(promo: { kind: 'percent' | 'fixed'; value: number }, packBucks: number): number {
+export function promoBonusBucks(promo: { kind: 'percent'; value: number }, packBucks: number): number {
   if (packBucks <= 0 || promo.value <= 0) return 0;
-  if (promo.kind === 'percent') return Math.ceil((packBucks * Math.min(100, promo.value)) / 100);
-  return Math.floor(promo.value);
+  return Math.ceil((packBucks * Math.min(100, promo.value)) / 100);
 }
 
 interface JoinedPromoRow {
@@ -62,7 +60,7 @@ function rowStatus(r: JoinedPromoRow, now: number): AccountPromoStatus {
 function toAccountPromo(r: JoinedPromoRow, now: number): AccountPromo {
   return {
     code: r.code,
-    kind: r.kind as 'percent' | 'fixed',
+    kind: r.kind as 'percent',
     value: Number(r.value),
     appliesTo: r.applies_to,
     status: rowStatus(r, now),
@@ -165,7 +163,7 @@ export async function loadAccountPromo(
     ok: true,
     promo: {
       code: p.code,
-      kind: p.kind as 'percent' | 'fixed',
+      kind: p.kind as 'percent',
       value: Number(p.value),
       appliesTo: p.applies_to,
       status: 'ready',
@@ -215,7 +213,7 @@ export async function claimBestPromoForPack(
     )
     .map((r) => ({
       code: r.code,
-      bonus: promoBonusBucks({ kind: r.kind as 'percent' | 'fixed', value: Number(r.value) }, baseBucks),
+      bonus: promoBonusBucks({ kind: r.kind as 'percent', value: Number(r.value) }, baseBucks),
       expiresAt: r.expires_at === null ? Infinity : Number(r.expires_at),
       loadedAt: Number(r.loaded_at),
     }))

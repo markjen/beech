@@ -32,7 +32,7 @@ Example prompt for an agent:
 
 ## Credit and accounting
 
-A completed purchase for an approved, linked item adds 30% to the creator’s Beech account, rounded to the nearest cent. Web and Steam use the USD price recorded at checkout. Apple and Google use the approved USD price in effect at the verified purchase time. Credit purchases use the amount paid after a promo. Fully discounted purchases, gifts, prizes, and sandbox transactions do not earn creator credit.
+A completed purchase for an approved, linked item adds 30% to the creator’s Beech account, rounded to the nearest cent. Web and Steam use the USD price recorded at checkout. Apple and Google use the approved USD price in effect at the verified purchase time. Credit purchases are always full price (promo codes add bonus bb to packs instead). Gifts, prizes, and sandbox transactions do not earn creator credit.
 
 Purchase grants and creator credit commit together. Repeat store receipts and retried web credit requests use their existing transaction or order ID. Store refunds reverse sales and their credit once. If the creator already spent some of that credit, future creator earnings recover the shortfall.
 

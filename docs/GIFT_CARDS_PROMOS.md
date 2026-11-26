@@ -13,28 +13,22 @@ Instead they work on **account credit**, which the server owns end to end.
   expire or be disabled.
 - **Account credit** — a balance on the player, in cents. Every movement is
   a row in `credit_ledger`, so a balance can always be explained.
-- **Credit purchase** — `POST /api/store/credit-purchase { productId,
-  promoCode? }`. The server prices the product from its own list
-  (`server/src/products.ts`), applies a validated promo code, checks the
-  credit balance, and — in one SQL statement — deducts the credit, claims
-  the promo use, logs the movement and grants the product. A client-supplied
-  price is never trusted; there is no price field to supply.
+- **Credit purchase** — `POST /api/store/credit-purchase { productId }`.
+  The server prices the product from its own list
+  (`server/src/products.ts`), checks the credit balance, and — in one SQL
+  statement — deducts the credit, logs the movement and grants the product.
+  A client-supplied price is never trusted; there is no price field to
+  supply. Credit purchases are always full price: promo codes never
+  discount them.
 - **Promo code** — a public code (`LAUNCH20`) that a player loads onto
   their account (`POST /promo-codes/load`); it then adds bonus beech bucks
   to bb pack purchases. When a pack is bought (Apple, Google, Steam, Xsolla
   or dev), the loaded code that gives the biggest extra bonus applies
   automatically, at most once per account, claimed atomically with the
-  purchase so it can't be spent twice or after expiring. A code is percent
-  (1–100, of the pack's bb, rounded up) or a fixed amount of bonus bb,
-  optionally for one pack, with an optional usage cap and expiry.
-  Fixed `value` means bonus bb on this path. The older credit-purchase
-  discount path still exists (`/store/quote` + `/store/credit-purchase`
-  with `promoCode?`): there a fixed `value` means cents off the price, and
-  that path has no per-account check — so a code scoped to no product
-  (`applies_to = NULL`) can be used once as a pack bonus and also as a
-  credit-purchase discount. No fixed-cents code exists in production today
-  (the only fixture is percent `LAUNCH20`); a fixed code created for packs
-  must not be assumed to mean cents anywhere else. Bonus rows also write
+  purchase so it can't be spent twice or after expiring. A code is a
+  percent bonus (1–100, of the pack's bb, rounded up), optionally for one
+  pack, with an optional usage cap and expiry. There is no fixed-value
+  kind: `promo_codes.kind` is always `'percent'`. Bonus rows also write
   the bonus (in cents) into `promo_uses.discount_cents` alongside
   `bonus_bucks`; nothing sums that column, and the admin redemption display
   keys off `bonus_bucks`.
@@ -138,8 +132,8 @@ the console as its own process locally, point both at one Postgres with
 | `GET /api/credit` | session | Current credit in cents. |
 | `POST /api/promo-codes/load { code }` | session | Loads a promo code onto the account (active, unexpired, under its cap); the biggest-bonus loaded code then applies automatically to pack purchases. Unknown code: 404; used/disabled/expired/exhausted: 409. |
 | `GET /api/promo-codes/mine` | session | The account's loaded codes with their per-pack bonuses. |
-| `POST /api/store/quote { productId, promoCode? }` | session | Price, discount and final price, without spending anything. Legacy credit-purchase discount path (fixed `value` means cents here). |
-| `POST /api/store/credit-purchase { productId, promoCode? }` | session | The purchase. 402 when the credit doesn't cover it. Legacy credit-purchase discount path (fixed `value` means cents here). |
+| `POST /api/store/quote { productId }` | session | Price and final price, without spending anything. Promo codes never discount a credit purchase. |
+| `POST /api/store/credit-purchase { productId }` | session | The purchase, at full price. 402 when the credit doesn't cover it. A `promoCode` in the body is refused (400): promo codes are for bb pack bonuses, loaded onto the account. |
 
 The shop dialog shows the credit balance, a gift card redeem box, a promo
 code field that loads a code onto the account (its bonus then shows on

@@ -416,9 +416,9 @@ export function createAdminApp(db: Db, cfg: AdminConfig): Hono<Env> {
     }>(c);
     const clean = normalizePromoCode(code ?? '');
     if (!isPromoCodeShape(code ?? '')) fail(400, 'codes are 3-32 letters and numbers');
-    if (kind !== 'percent' && kind !== 'fixed') fail(400, 'kind must be percent or fixed');
+    if (kind !== 'percent') fail(400, 'kind must be percent: promo codes are a percentage bonus on bb packs');
     const v = Math.floor(Number(value ?? NaN));
-    if (!Number.isInteger(v) || v <= 0 || (kind === 'percent' && v > 100)) fail(400, 'percent is 1-100; fixed is bonus bb');
+    if (!Number.isInteger(v) || v <= 0 || v > 100) fail(400, 'percent is 1-100');
     const applies = appliesTo ? String(appliesTo) : null;
     if (applies && !packById(applies) && !productById(applies)) fail(400, 'no such pack or product');
     const max = maxUses == null ? null : Math.floor(Number(maxUses));

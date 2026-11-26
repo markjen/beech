@@ -253,7 +253,7 @@ describe('gift cards', () => {
 });
 
 describe('promo codes and credit purchases', () => {
-  it('creates a promo, quotes it, and spends credit with it', async () => {
+  it('creates a percent promo, rejects fixed kind and bad values, and credit purchases charge full price', async () => {
     const c = await areq('/api/promo-codes', json('POST', { code: 'launch20', kind: 'percent', value: 20 }), adminToken);
     expect(c.status).toBe(200);
     expect((await c.json()) as { promo: { code: string } }).toEqual(
@@ -261,22 +261,23 @@ describe('promo codes and credit purchases', () => {
     );
     // a duplicate code is refused
     expect((await areq('/api/promo-codes', json('POST', { code: 'LAUNCH20', kind: 'percent', value: 10 }), adminToken)).status).toBe(409);
-    // bad definitions are refused
+    // bad definitions are refused: promo codes are percent-only
     expect((await areq('/api/promo-codes', json('POST', { code: 'X', kind: 'percent', value: 10 }), adminToken)).status).toBe(400);
     expect((await areq('/api/promo-codes', json('POST', { code: 'BADPCT', kind: 'percent', value: 101 }), adminToken)).status).toBe(400);
-    expect((await areq('/api/promo-codes', json('POST', { code: 'BADPROD', kind: 'fixed', value: 100, appliesTo: 'nope' }), adminToken)).status).toBe(400);
+    expect((await areq('/api/promo-codes', json('POST', { code: 'BADKIND', kind: 'fixed', value: 100 }), adminToken)).status).toBe(400);
+    expect((await areq('/api/promo-codes', json('POST', { code: 'BADPROD', kind: 'percent', value: 100, appliesTo: 'nope' }), adminToken)).status).toBe(400);
 
-    const q = await req('/store/quote', json('POST', { productId: 'beach_1', promoCode: 'launch20' }), playerToken);
+    // quoting is full price: promo codes never discount a credit purchase
+    const q = await req('/store/quote', json('POST', { productId: 'beach_1' }), playerToken);
     expect(q.status).toBe(200);
-    // 30 beech bucks, 20% off: 6 off (docs/BEECH_BUCKS.md)
-    expect(await q.json()).toEqual({ product: 'beach_1', priceCents: 300, discountCents: 60, finalCents: 240, price: 30, final: 24, promo: 'LAUNCH20' });
+    expect(await q.json()).toEqual({ product: 'beach_1', priceCents: 300, discountCents: 0, finalCents: 300, price: 30, final: 30 });
 
-    const buy = await req('/store/credit-purchase', json('POST', { productId: 'beach_1', promoCode: 'LAUNCH20' }), playerToken);
+    const buy = await req('/store/credit-purchase', json('POST', { productId: 'beach_1' }), playerToken);
     expect(buy.status).toBe(200);
     const bought = (await buy.json()) as { paidCents: number; discountCents: number; creditCents: number };
-    expect(bought.paidCents).toBe(240);
-    expect(bought.discountCents).toBe(60);
-    expect(bought.creditCents).toBe(1000 - 240);
+    expect(bought.paidCents).toBe(300);
+    expect(bought.discountCents).toBe(0);
+    expect(bought.creditCents).toBe(1000 - 300);
     // the product was granted
     const inv = await req('/inventory', {}, playerToken);
     const items = ((await inv.json()) as { items: { item: string; quantity: number; source: string }[] }).items;
@@ -291,46 +292,42 @@ describe('promo codes and credit purchases', () => {
     expect(r.status).toBe(402);
   });
 
-  it('a one-use promo is spent after one purchase', async () => {
+  it('a promo code sent to quote or credit-purchase is refused, never consumed', async () => {
     await areq('/api/promo-codes', json('POST', { code: 'FREEPARA', kind: 'percent', value: 100, maxUses: 1 }), adminToken);
-    const first = await req('/store/credit-purchase', json('POST', { productId: 'item_parasol', promoCode: 'FREEPARA' }), playerToken);
-    expect(first.status).toBe(200);
-    expect(((await first.json()) as { paidCents: number }).paidCents).toBe(0);
-    const second = await req('/store/quote', json('POST', { productId: 'item_parasol', promoCode: 'FREEPARA' }), playerToken);
-    expect(second.status).toBe(400);
+    expect((await req('/store/quote', json('POST', { productId: 'item_parasol', promoCode: 'FREEPARA' }), playerToken)).status).toBe(400);
+    expect((await req('/store/credit-purchase', json('POST', { productId: 'item_parasol', promoCode: 'FREEPARA' }), playerToken)).status).toBe(400);
     const list = await areq('/api/promo-codes', {}, adminToken);
     const promos = ((await list.json()) as { promos: { code: string; uses: number }[] }).promos;
-    expect(promos.find((p) => p.code === 'FREEPARA')?.uses).toBe(1);
+    expect(promos.find((p) => p.code === 'FREEPARA')?.uses).toBe(0);
   });
 
-  it('refuses expired and wrong-product promos', async () => {
+  it('expired and disabled promos cannot be loaded onto an account', async () => {
     await areq('/api/promo-codes',
-      json('POST', { code: 'SHORTLIVED', kind: 'fixed', value: 100, expiresAt: Date.now() + 60_000 }),
+      json('POST', { code: 'SHORTLIVED', kind: 'percent', value: 100, expiresAt: Date.now() + 60_000 }),
       adminToken,
     );
     await areq('/api/promo-codes', json('POST', { code: 'LIGHTONLY', kind: 'percent', value: 50, appliesTo: 'item_lighthouse' }), adminToken);
+    const late = await signInDev('player-late');
     skew = 120_000;
     try {
-      expect((await req('/store/quote', json('POST', { productId: 'beach_1', promoCode: 'SHORTLIVED' }), playerToken)).status).toBe(400);
+      expect((await req('/promo-codes/load', json('POST', { code: 'SHORTLIVED' }), late)).status).toBe(400);
     } finally {
       skew = 0;
     }
-    expect((await req('/store/quote', json('POST', { productId: 'beach_1', promoCode: 'LIGHTONLY' }), playerToken)).status).toBe(400);
-    expect((await req('/store/quote', json('POST', { productId: 'beach_1', promoCode: 'NOSUCHCODE' }), playerToken)).status).toBe(404);
     // a disabled promo is refused too
     const dis = await areq('/api/promo-codes/LIGHTONLY/disable', json('POST', {}), adminToken);
     expect(dis.status).toBe(200);
-    expect((await req('/store/quote', json('POST', { productId: 'item_lighthouse', promoCode: 'LIGHTONLY' }), playerToken)).status).toBe(400);
+    expect((await req('/promo-codes/load', json('POST', { code: 'LIGHTONLY' }), late)).status).toBe(400);
   });
 
   it('the CLI token can create promos and read redemptions', async () => {
-    const c = await areq('/api/promo-codes', json('POST', { code: 'CLICODE', kind: 'fixed', value: 100 }), CLI_TOKEN);
+    const c = await areq('/api/promo-codes', json('POST', { code: 'CLICODE', kind: 'percent', value: 100 }), CLI_TOKEN);
     expect(c.status).toBe(200);
     const red = await areq('/api/redemptions', {}, CLI_TOKEN);
     expect(red.status).toBe(200);
     const body = (await red.json()) as { giftCards: { id: string }[]; promoUses: { code: string }[]; credit: { kind: string }[] };
     expect(body.giftCards.some((g) => g.id === issuedId)).toBe(true);
-    expect(body.promoUses.some((p) => p.code === 'LAUNCH20')).toBe(true);
+    expect(Array.isArray(body.promoUses)).toBe(true);
     expect(body.credit.some((l) => l.kind === 'gift_card')).toBe(true);
     expect(body.credit.some((l) => l.kind === 'spend')).toBe(true);
   });
@@ -344,39 +341,31 @@ describe('promo codes and credit purchases', () => {
     for (const r of rows) expect(r.detail).not.toContain(issuedCode);
   });
 
-  it('a failed purchase burns no promo use: two concurrent buys, one credit', async () => {
-    // beach_1 is $2.99; LAUNCH20 takes 20% off, so the final price is $2.40.
-    // Give a fresh player exactly that, then fire two buys at once: the
-    // loser's credit is gone by the time its payment runs, so it must fail
-    // without burning a promo use or taking any more credit.
+  it('two concurrent buys on one credit grant exactly once', async () => {
+    // beach_1 is $2.99. Give a fresh player exactly that, then fire two buys
+    // at once: the loser's credit is gone by the time its payment runs, so it
+    // must fail without taking any more credit.
     const racer = await signInDev('player-race-one');
-    const issue = await areq('/api/gift-cards', json('POST', { amountCents: 240 }), adminToken);
+    const issue = await areq('/api/gift-cards', json('POST', { amountCents: 300 }), adminToken);
     expect(issue.status).toBe(200);
     const card = (await issue.json()) as { code: string };
     expect((await req('/gift-cards/redeem', json('POST', { code: card.code }), racer)).status).toBe(200);
-    const promoList = async () =>
-      ((await (await areq('/api/promo-codes', {}, adminToken)).json()) as { promos: { code: string; uses: number }[] }).promos;
-    const before = (await promoList()).find((p) => p.code === 'LAUNCH20')?.uses;
     const [r1, r2] = await Promise.all([
-      req('/store/credit-purchase', json('POST', { productId: 'beach_1', promoCode: 'LAUNCH20' }), racer),
-      req('/store/credit-purchase', json('POST', { productId: 'beach_1', promoCode: 'LAUNCH20' }), racer),
+      req('/store/credit-purchase', json('POST', { productId: 'beach_1' }), racer),
+      req('/store/credit-purchase', json('POST', { productId: 'beach_1' }), racer),
     ]);
     // Exactly one buy goes through; the loser is refused (402 if its
     // pre-check runs after the winner's debit, 409 if it reaches the
-    // statement) — either way it burns no promo use and takes no credit.
+    // statement) — either way it takes no credit.
     const statuses = [r1.status, r2.status].sort();
     expect(statuses[0]).toBe(200);
     expect(statuses[1]).not.toBe(200);
-    expect((await promoList()).find((p) => p.code === 'LAUNCH20')?.uses).toBe(before! + 1);
     expect(((await (await req('/credit', {}, racer)).json()) as { creditCents: number }).creditCents).toBe(0);
     const items = ((await (await req('/inventory', {}, racer)).json()) as { items: { item: string; quantity: number }[] }).items;
     expect(items.find((i) => i.item === 'beach')?.quantity).toBe(1);
   });
 
-  it('a one-use promo is claimed by exactly one of two concurrent buyers', async () => {
-    // The reverse race: the promo runs out between the payment check and
-    // the claim. The loser must keep its credit and get nothing.
-    await areq('/api/promo-codes', json('POST', { code: 'ONCEONLY', kind: 'percent', value: 50, maxUses: 1 }), adminToken);
+  it('two concurrent buyers each pay full price and each get the item', async () => {
     const fund = async (name: string) => {
       const t = await signInDev(name);
       const issue = await areq('/api/gift-cards', json('POST', { amountCents: 500 }), adminToken);
@@ -388,38 +377,26 @@ describe('promo codes and credit purchases', () => {
     const buyerA = await fund('player-race-two-a');
     const buyerB = await fund('player-race-two-b');
     const [r1, r2] = await Promise.all([
-      req('/store/credit-purchase', json('POST', { productId: 'beach_1', promoCode: 'ONCEONLY' }), buyerA),
-      req('/store/credit-purchase', json('POST', { productId: 'beach_1', promoCode: 'ONCEONLY' }), buyerB),
+      req('/store/credit-purchase', json('POST', { productId: 'beach_1' }), buyerA),
+      req('/store/credit-purchase', json('POST', { productId: 'beach_1' }), buyerB),
     ]);
-    // Exactly one buy goes through; the loser is refused (400 if its
-    // pre-check sees the spent promo, 409 if it reaches the statement) —
-    // either way it keeps its credit and gets nothing.
-    const statuses = [r1.status, r2.status].sort();
-    expect(statuses[0]).toBe(200);
-    expect(statuses[1]).not.toBe(200);
-    const promos = ((await (await areq('/api/promo-codes', {}, adminToken)).json()) as { promos: { code: string; uses: number }[] }).promos;
-    expect(promos.find((p) => p.code === 'ONCEONLY')?.uses).toBe(1);
-    // beach_1 at 50% off is $1.50; the winner paid it, the loser paid nothing
+    expect(r1.status).toBe(200);
+    expect(r2.status).toBe(200);
     const creditOf = async (t: string) => ((await (await req('/credit', {}, t)).json()) as { creditCents: number }).creditCents;
-    expect((await creditOf(buyerA)) + (await creditOf(buyerB))).toBe(500 + 500 - 150);
+    // beach_1 is $2.99 full price for both; no promo involved
+    expect((await creditOf(buyerA)) + (await creditOf(buyerB))).toBe(500 + 500 - 300 - 300);
     const beaches = async (t: string) =>
       ((await (await req('/inventory', {}, t)).json()) as { items: { item: string; quantity: number }[] }).items.find((i) => i.item === 'beach')?.quantity ?? 0;
-    expect((await beaches(buyerA)) + (await beaches(buyerB))).toBe(1);
-    // exactly one promo_uses row was recorded
-    const uses = await db.query<{ n: string }>("SELECT COUNT(*) AS n FROM promo_uses WHERE code = 'ONCEONLY'");
-    expect(Number(uses[0].n)).toBe(1);
+    expect((await beaches(buyerA)) + (await beaches(buyerB))).toBe(2);
   });
 });
 
 describe('credit purchase statement', () => {
   // The endpoint tests above can refuse the loser at the pre-checks
-  // (402/400) before the statement ever runs. These call the statement
+  // (402/409) before the statement ever runs. These call the statement
   // directly, so both claims genuinely race — the loser reaches the
-  // statement and must still change nothing. Under the old promo-first
-  // statement the loser burned a promo use even though its payment failed.
+  // statement and must still change nothing.
   const userIdOf = async (name: string) => (await db.query<{ id: string }>('SELECT id FROM users WHERE name = $1', [name]))[0].id;
-  const promoUses = async (code: string) =>
-    Number((await db.query<{ uses: number }>('SELECT uses FROM promo_codes WHERE code = $1', [code]))[0].uses);
   const creditOfId = async (id: string) =>
     Number((await db.query<{ credit_cents: number }>('SELECT credit_cents FROM users WHERE id = $1', [id]))[0].credit_cents);
   const beachesOfId = async (id: string) =>
@@ -428,34 +405,26 @@ describe('credit purchase statement', () => {
         .q,
     );
 
-  it('two concurrent claims on one credit grant exactly once, burning one promo use', async () => {
+  it('two concurrent claims on one credit grant exactly once', async () => {
     await signInDev('player-race-stmt');
     const id = await userIdOf('player-race-stmt');
-    await db.query('UPDATE users SET credit_cents = 240 WHERE id = $1', [id]);
-    const before = await promoUses('LAUNCH20');
+    await db.query('UPDATE users SET credit_cents = 300 WHERE id = $1', [id]);
     const args = {
       userId: id,
       productId: 'beach_1',
-      promoCode: 'LAUNCH20',
-      finalCents: 240,
-      discountCents: 59,
+      finalCents: 300,
       items: ['beach'],
       quantities: [1],
-      unitCents: [240],
+      unitCents: [300],
       now: Date.now(),
     };
     const [a, b] = await Promise.all([claimCreditPurchase(db, args), claimCreditPurchase(db, args)]);
     expect([a.length, b.length].sort()).toEqual([0, 1]);
-    expect(await promoUses('LAUNCH20')).toBe(before + 1);
     expect(await creditOfId(id)).toBe(0);
     expect(await beachesOfId(id)).toBe(1);
   });
 
-  it('two concurrent claims on a one-use promo debit exactly once', async () => {
-    await db.query(
-      "INSERT INTO promo_codes (code, kind, value, max_uses, uses, active, created_at) VALUES ('ONCESTMT', 'percent', 50, 1, 0, true, $1)",
-      [Date.now()],
-    );
+  it('two concurrent claims by different users each grant once', async () => {
     await signInDev('player-race-stmt-a');
     await signInDev('player-race-stmt-b');
     const aId = await userIdOf('player-race-stmt-a');
@@ -464,21 +433,17 @@ describe('credit purchase statement', () => {
     const argsFor = (userId: string) => ({
       userId,
       productId: 'beach_1',
-      promoCode: 'ONCESTMT',
-      finalCents: 150,
-      discountCents: 149,
+      finalCents: 300,
       items: ['beach'],
       quantities: [1],
-      unitCents: [240],
+      unitCents: [300],
       now: Date.now(),
     });
     const [a, b] = await Promise.all([claimCreditPurchase(db, argsFor(aId)), claimCreditPurchase(db, argsFor(bId))]);
-    expect([a.length, b.length].sort()).toEqual([0, 1]);
-    expect(await promoUses('ONCESTMT')).toBe(1);
-    expect((await creditOfId(aId)) + (await creditOfId(bId))).toBe(500 + 500 - 150);
-    expect((await beachesOfId(aId)) + (await beachesOfId(bId))).toBe(1);
-    const uses = await db.query<{ n: string }>("SELECT COUNT(*) AS n FROM promo_uses WHERE code = 'ONCESTMT'");
-    expect(Number(uses[0].n)).toBe(1);
+    expect(a.length).toBe(1);
+    expect(b.length).toBe(1);
+    expect((await creditOfId(aId)) + (await creditOfId(bId))).toBe(500 + 500 - 300 - 300);
+    expect((await beachesOfId(aId)) + (await beachesOfId(bId))).toBe(2);
   });
 });
 

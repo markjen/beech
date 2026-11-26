@@ -229,8 +229,8 @@ export function adminConsoleHtml(opts: { nonce: string; email: string; appUrl: s
       <p class="muted">Players load promo codes onto their account (at most once per account). Pack prices stay the same; buying a matching bb pack automatically applies the loaded code that gives the largest extra bonus bb.</p>
       <form id="promo-form">
         <label><span>Code</span><input name="code" type="text" required minlength="3" maxlength="32" placeholder="LAUNCH20"></label>
-        <label><span>Kind</span><select name="kind"><option value="percent">Bonus percent (+% bb)</option><option value="fixed">Bonus beech bucks (+bb)</option></select></label>
-        <label><span>Value</span><input name="value" type="number" min="1" step="1" required placeholder="20 = +20% bb, or 15 = +15 bb"></label>
+        <label><span>Kind</span><select name="kind"><option value="percent">Bonus percent (+% bb)</option></select></label>
+        <label><span>Value</span><input name="value" type="number" min="1" max="100" step="1" required placeholder="20 = +20% bb"></label>
         <label><span>Pack</span><select name="appliesTo"><option value="">Any bb pack</option></select></label>
         <label><span>Max uses</span><input name="maxUses" type="number" min="1" step="1" placeholder="unlimited"></label>
         <label><span>Expires</span><input name="expires" type="date"></label>
@@ -671,7 +671,7 @@ async function loadPromos() {
   const el = $('promo-list');
   if (!list.length) { el.innerHTML = '<p class="muted">No promo codes yet.</p>'; return; }
   el.innerHTML = '<table><tr><th>Code</th><th>Bonus</th><th>Pack</th><th>Uses</th><th>Active</th><th>Expires</th><th></th></tr>' +
-    list.map((p) => '<tr><td><b>' + esc(p.code) + '</b></td><td>' + (p.kind === 'percent' ? '+' + p.value + '% bb' : '+bb ' + p.value) + '</td><td>' + esc(p.appliesTo || 'any pack') + '</td><td>' + p.uses + (p.maxUses ? ' / ' + p.maxUses : '') + '</td><td>' + (p.active ? 'yes' : 'no') + '</td><td>' + when(p.expiresAt) + '</td>' +
+    list.map((p) => '<tr><td><b>' + esc(p.code) + '</b></td><td>+' + p.value + '% bb</td><td>' + esc(p.appliesTo || 'any pack') + '</td><td>' + p.uses + (p.maxUses ? ' / ' + p.maxUses : '') + '</td><td>' + (p.active ? 'yes' : 'no') + '</td><td>' + when(p.expiresAt) + '</td>' +
       (p.active ? '<td><button type="button" data-disable-promo="' + esc(p.code) + '">Disable</button></td>' : '<td></td>') + '</tr>').join('') + '</table>';
   el.querySelectorAll('[data-disable-promo]').forEach((b) => b.addEventListener('click', async () => {
     try { await post('/promo-codes/' + encodeURIComponent(b.dataset.disablePromo) + '/disable'); say('Promo code disabled.', true); await loadPromos(); }

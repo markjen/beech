@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createHmac } from 'node:crypto';
 import {
-  discountCents,
   formatCents,
   hashesEqual,
   hashGiftCode,
@@ -11,21 +10,7 @@ import {
   newGiftCardCode,
   normalizeGiftCode,
   normalizePromoCode,
-  promoBlocked,
-  type Promo,
 } from '../src/giftCards.js';
-
-const promo = (over: Partial<Promo> = {}): Promo => ({
-  code: 'LAUNCH20',
-  kind: 'percent',
-  value: 20,
-  appliesTo: null,
-  maxUses: null,
-  uses: 0,
-  active: true,
-  expiresAt: null,
-  ...over,
-});
 
 describe('gift card codes', () => {
   it('generates 16 characters from the no-confusion alphabet, unique', () => {
@@ -63,26 +48,6 @@ describe('promo codes', () => {
     expect(isPromoCodeShape('LAUNCH20')).toBe(true);
     expect(isPromoCodeShape('ab')).toBe(false);
     expect(isPromoCodeShape('x'.repeat(33))).toBe(false);
-  });
-
-  it('blocks inactive, expired, used-up and wrong-product codes', () => {
-    const now = 1_000_000;
-    expect(promoBlocked(promo(), 'beach_1', now)).toBeNull();
-    expect(promoBlocked(promo({ active: false }), 'beach_1', now)).toMatch(/no longer active/);
-    expect(promoBlocked(promo({ expiresAt: now }), 'beach_1', now)).toMatch(/expired/);
-    expect(promoBlocked(promo({ maxUses: 2, uses: 2 }), 'beach_1', now)).toMatch(/used up/);
-    expect(promoBlocked(promo({ maxUses: 2, uses: 1 }), 'beach_1', now)).toBeNull();
-    expect(promoBlocked(promo({ appliesTo: 'item_lighthouse' }), 'beach_1', now)).toMatch(/not for this product/);
-    expect(promoBlocked(promo({ appliesTo: 'item_lighthouse' }), 'item_lighthouse', now)).toBeNull();
-  });
-
-  it('discounts: percent rounds down, fixed never goes below zero', () => {
-    expect(discountCents(promo({ kind: 'percent', value: 20 }), 299)).toBe(59); // floor(299 * 0.2)
-    expect(discountCents(promo({ kind: 'percent', value: 100 }), 299)).toBe(299);
-    expect(discountCents(promo({ kind: 'percent', value: 150 }), 299)).toBe(299); // capped at 100%
-    expect(discountCents(promo({ kind: 'fixed', value: 200 }), 299)).toBe(200);
-    expect(discountCents(promo({ kind: 'fixed', value: 500 }), 299)).toBe(299);
-    expect(discountCents(promo({ kind: 'fixed', value: 0 }), 299)).toBe(0);
   });
 });
 

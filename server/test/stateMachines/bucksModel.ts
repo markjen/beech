@@ -37,7 +37,7 @@ export class BucksModel {
     return n;
   }
 
-  /** Spend: buy one parasol for `price` (after any promo) */
+  /** Spend: buy one parasol for `price` (full price: promo codes never discount a credit purchase) */
   spend(price: number): BucksAnswer {
     if (this.bal < price) return { status: 402 };
     this.bal -= price;
