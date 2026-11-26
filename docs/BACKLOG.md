@@ -89,8 +89,7 @@ picked up.
   palm should also fade after idle outside ambient mode (the mockup's open
   question; for now it never does). Tap-the-sand-to-close was left out:
   a tap is also how you stop a glide.
-- [ ] **Live beaches, next**: ease a viewer's sand to each new save instead
-  of swapping it; SSE instead of polling if the 5 s polls show up in
+- [ ] **Live beaches, next**: SSE instead of polling if the 5 s polls show up in
   Cloud Run costs; catch up the beechshore.com page pictures too; one
   saving device per owner (a lease) if two devices fighting shows up
   **(model first: extend `specs/tla/BeachEditing.tla`)**. See
@@ -182,6 +181,11 @@ picked up.
   shower night.
 
 ## Done (recent)
+
+- [x] **Viewers' sand eases to each new save** (2026-11-26): someone
+  else's beach in front of you blends from the drawn snapshot to the new
+  save over 1 s instead of swapping, and things moved on a snapshot beach
+  glide there (they used to stay put until the beach was rebuilt).
 
 - [x] **Beach store, next** (2026-11-25): other people's beaches kept on
   the device (IndexedDB, by id, checked against the shore's save time) so

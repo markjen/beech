@@ -258,6 +258,8 @@ export const BEACH_STORE = {
   liveSwitchM: 10,
   /** when the waves move onto a beach, ease from its snapshot's water to the simulation's over this long (ms) */
   liveEaseMs: 1200,
+  /** a viewer's copy of someone else's beach eases to each new save over this long (ms) */
+  viewerEaseMs: 1000,
 };
 
 /** The sky over the shore: each beach shows its own real place's light. */

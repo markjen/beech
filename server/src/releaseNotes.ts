@@ -16,6 +16,13 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    date: '2026-11-26',
+    title: 'Smoother live beaches',
+    changes: [
+      'Watching someone else’s beach while they play, their changes to the sand now flow in smoothly instead of popping, and things they move slide to their new spot.',
+    ],
+  },
+  {
     date: '2026-11-25',
     title: 'Live beaches, visitors, your inbox, new controls, and sandcastle molds',
     changes: [

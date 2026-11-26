@@ -2,12 +2,12 @@ import type { Ray } from '@babylonjs/core/Culling/ray';
 import type { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import type { Scene } from '@babylonjs/core/scene';
 
-import { SIM_HZ, WORLD_SIZE_X, WORLD_SIZE_Z, type GridSpec } from '../config';
+import { BEACH_STORE, SIM_HZ, WORLD_SIZE_X, WORLD_SIZE_Z, type GridSpec } from '../config';
 import type { CameraController } from '../input/cameraController';
 import { pickHeightfield } from '../input/sandPicker';
 import type { Account, MyBeach, Neighbors, ShoreBeach, Side } from '../net/account';
 import { NeighborApi } from '../net/account';
-import { LOCAL_BEACH, type BeachRef, type BeachStore } from '../net/beachStore';
+import { LOCAL_BEACH, type BeachRef, type BeachState, type BeachStore } from '../net/beachStore';
 import type { Palette } from '../palette';
 import type { BrushMode, CastleShape } from '../sim/beachSim';
 import type { PlacedObject } from '../sim/objects';
@@ -58,6 +58,8 @@ interface Slot {
   /** the snapshot drawing (null while the wave worker draws this beach) */
   renderer: BeachRenderer | null;
   objects: ObjectView | null;
+  /** save identity of the snapshot currently drawn */
+  snapshot?: Pick<BeachState, 'updatedAt' | 'version'>;
 }
 
 /**
@@ -653,6 +655,7 @@ export class NeighborView {
       s.renderer.dispose();
       s.renderer = null;
       s.objects = null;
+      s.snapshot = undefined;
     } else if (!live && !s.renderer) {
       const x = this.xFor(e.index);
       s.renderer = new BeachRenderer(this.scene, this.grid, this.rest, this.swell, x);
@@ -728,7 +731,14 @@ export class NeighborView {
     const objs = preview ? base.map((o) => (o.id === preview.id ? { ...o, x: preview.x, y: preview.y } : o)) : base;
     const display = d.display;
     s.objects.setStatic(objs, (x, y) => this.heightAt(display, x, y) + (preview && Math.abs(x - preview.x) < 1e-4 && Math.abs(y - preview.y) < 1e-4 ? 0.12 : 0));
-    this.paint(s.renderer, display);
+    const previous = s.snapshot;
+    const newerSave =
+      previous && !d.owned && !d.fresh &&
+      (previous.version !== undefined && d.version !== undefined
+        ? d.version > previous.version
+        : d.updatedAt !== null && (previous.updatedAt === null || d.updatedAt > previous.updatedAt));
+    this.paint(s.renderer, display, newerSave ? BEACH_STORE.viewerEaseMs : 0);
+    s.snapshot = { version: d.version, updatedAt: d.updatedAt };
   }
 
   private entryOf(beachId: string): Entry | null {
@@ -970,7 +980,7 @@ export class NeighborView {
   }
 
   /** Pack their sand with still water at the current tide into a field frame. */
-  private paint(r: BeachRenderer, delta: Float32Array): void {
+  private paint(r: BeachRenderer, delta: Float32Array, easeMs = 0): void {
     const n = this.grid.nx * this.grid.ny;
     if (!this.paintBuf || this.paintBuf.length !== n * 4) this.paintBuf = new Float32Array(n * 4);
     const buf = this.paintBuf;
@@ -982,13 +992,13 @@ export class NeighborView {
       buf[o + 2] = water > 0.004 ? 1 : Math.max(0, Math.min(0.8, 1 - (sand - this.tide) / 0.35));
       buf[o + 3] = 0;
     }
-    r.showStatic(buf);
+    if (easeMs > 0) r.easeStatic(buf, easeMs);
+    else r.showStatic(buf);
   }
 
   /** Per frame: which beaches to draw, shared lighting/sea, animated neighbor waves. */
-  update(p: Palette, camForward: Vector3, time: number, simTime: number, tide: number, amp: number): void {
+  update(p: Palette, camForward: Vector3, time: number, simTime: number, tide: number, amp: number, now = performance.now()): void {
     this.tide = tide;
-    const now = performance.now();
     const dt = this.lastUpdateAt ? Math.min(0.1, (now - this.lastUpdateAt) / 1000) : 1 / 60;
     this.lastUpdateAt = now;
     // Step any edit sim being stroked or easing an undo/redo
@@ -1021,7 +1031,9 @@ export class NeighborView {
     if (ext.left - c < AHEAD) void this.more('left');
     if (ext.right + c < AHEAD) void this.more('right');
     for (const e of this.entries.values()) {
-      e.slot?.renderer?.update(p, camForward, time, simTime, tide, amp);
+      e.slot?.renderer?.update(p, camForward, time, simTime, tide, amp, now);
+      // things that moved in a new snapshot glide to their new places
+      e.slot?.objects?.glide(dt);
     }
   }
 }
