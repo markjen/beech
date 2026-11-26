@@ -189,6 +189,24 @@ describe('copy: one transition at a time', () => {
 });
 
 describe('copy: TLC counterexamples, replayed against the server', () => {
+  // PR #118 review: two owners copying each other's beach onto their own at
+  // the same moment. Each copy shares the other's row and updates its own;
+  // without one lock order PostgreSQL aborts one as a deadlock. PGlite runs
+  // one transaction at a time, so this needs a real PostgreSQL.
+  it.runIf(Boolean(process.env.TEST_DATABASE_URL))('two owners copying each other’s beach at once both go through', async () => {
+    for (let round = 0; round < 12; round++) {
+      const a = await source(0);
+      const b = await source(0);
+      const [va, vb] = [await version(a.id), await version(b.id)];
+      const results = await Promise.all([copy(a, b.code, vb, a.id), copy(b, a.code, va, b.id)]);
+      const answers = await Promise.all(results.map(answer));
+      // never a 500 (a deadlock); the one that goes second sees its source
+      // just replaced by the first, so it may be told "changed" and re-preview
+      for (const x of answers) expect([{ status: 200 }, { status: 409, why: 'changed' }], `round ${round}`).toContainEqual(x);
+      expect(answers.some((x) => x.status === 200), `round ${round}`).toBe(true);
+    }
+  });
+
   // BeachCopy.cfg, WithinBag: CopyStart, CopyRead, CopyCheck, Save(home, 1), CopyWrite.
   it('a save landing while a copy is on its way cannot put the one thing owned on two beaches', async () => {
     const src = await source(1);

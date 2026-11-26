@@ -165,6 +165,15 @@ describe('sand bucks: one transition at a time', () => {
     const bag = (await (await s.req('/bag', {}, w.token)).json()) as { items: { item: string; values: number[] }[] };
     expect(bag.items.find((i) => i.item === 'lighthouse')?.values).toEqual([30]);
     expect(bag.items.find((i) => i.item === 'tikitorch')?.values.sort()).toEqual([7, 8]);
+    // the same basket sent again with its request ID (the answer was lost): the first receipt, no second charge
+    const requestId = crypto.randomUUID();
+    const once = { basket: [{ product: 'item_parasol' }], requestId };
+    expect((await s.post('/store/buy', w.token, once)).status).toBe(200);
+    const again = await s.post('/store/buy', w.token, once);
+    expect(again.status).toBe(200);
+    expect(await again.json()).toMatchObject({ paid: 10, bucks: 45 });
+    expect(await balance(w)).toEqual({ bal: 45, debt: 0 });
+    expect(await units(w)).toEqual([10]);
     // short of bucks: refused, nothing changes
     const poor = await person();
     expect((await s.post('/store/buy', poor.token, { basket: [{ product: 'item_lighthouse' }] })).status).toBe(402);

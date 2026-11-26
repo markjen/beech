@@ -40,7 +40,7 @@
 import { Hono, type Context } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 
-import { PACKS, PRODUCTS, copyBasket, packById, productById, storeProductById, type Product } from './products.js';
+import { PACKS, PRODUCTS, copyBasket, productById, storeProductById, type Product } from './products.js';
 import { creditBalance, grantPurchase } from './bucksDb.js';
 import { BUCK, bucksToCents, centsToBucks, listBucks, roundToBuck, shareOut, tradeable, unitsOf } from './bucks.js';
 import { issueSubmissionSession, UUID_PATTERN } from './itemSubmissions.js';
@@ -2358,7 +2358,17 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     await requireEditToken(c);
     if (!copyLimiter(me)) fail(429, 'too many copies: try again later');
     return oneAtATime(me, () => asEditor(c, async (tx) => {
-      const src = await copySource(tx, p.from, me, true);
+      // Lock the two beach rows in id order before reading either: the
+      // target for the update, the source shared (it can't change or leave
+      // the shore until this commits). Two owners copying each other's beach
+      // onto their own at once would otherwise each share the row the other
+      // updates, and PostgreSQL would abort one as a deadlock (PR #118 review).
+      const srcId = (await tx.query<{ id: string }>('SELECT id FROM beach WHERE code = $1', [normalizeCode(p.from ?? '')]))[0]?.id;
+      const rows = [...new Set([srcId, target].filter((x): x is string => !!x))].sort();
+      for (const id of rows) {
+        await tx.query(`SELECT id FROM beach WHERE id = $1 ${id === target ? 'FOR NO KEY UPDATE' : 'FOR SHARE'}`, [id]);
+      }
+      const src = await copySource(tx, p.from, me);
       if (Number(src.version) !== p.version) return c.json({ error: 'changed', version: Number(src.version) }, 409);
       let bytes = toBytes(src.sand);
       const info = inspect(bytes);
@@ -2607,8 +2617,9 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const me = c.get('user').id;
     if (!checkoutLimiter(me)) return c.json({ error: 'slow down' }, 429);
     const { productId, promoCode, country: rawCountry } = await body<{ productId?: string; promoCode?: string; country?: unknown }>(c);
-    // the web sells sand-buck packs (docs/SAND_BUCKS.md)
-    const product = packById(productId ?? '');
+    // the web sells sand-buck packs (docs/SAND_BUCKS.md); item products stay
+    // accepted for a page loaded before the sand-bucks release
+    const product = storeProductById(productId ?? '');
     if (!product) fail(404, 'no such product');
     if (rawCountry !== undefined && (typeof rawCountry !== 'string' || !/^[A-Za-z]{2}$/.test(rawCountry))) {
       return fail(400, 'country must be a two-letter code');
@@ -2809,8 +2820,9 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const me = c.get('user').id;
     if (!checkoutLimiter(me)) return c.json({ error: 'slow down' }, 429);
     const { productId } = await body<{ productId?: string }>(c);
-    // Steam sells sand-buck packs (docs/SAND_BUCKS.md)
-    const product = packById(productId ?? '');
+    // Steam sells sand-buck packs (docs/SAND_BUCKS.md); the item products stay
+    // on sale here for the Steam builds already out (PR #118 review)
+    const product = storeProductById(productId ?? '');
     if (!product) fail(404, 'no such product');
 
     const idRows = await db.query<{ provider_sub: string }>(
@@ -3095,9 +3107,11 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       const lineShares = shareOut(paid, priced.map((l) => l.cents * l.quantity));
       const units = perLine.flat();
       const values = perLine.flatMap((u, i) => shareOut(lineShares[i], u.map((item) => listBucks(item) ?? 1)));
+      const creatorItems = new Set(priced.filter((l) => l.offer).map((l) => l.product.grants[0].item));
       const rows = new Map<string, { item: string; qty: number; unit: number }>();
       units.forEach((item, i) => {
-        const key = `${item}|${values[i]}`;
+        // a community item's units each get their own row: each carries its own royalty
+        const key = creatorItems.has(item) ? `${item}|#${i}` : `${item}|${values[i]}`;
         const r = rows.get(key) ?? { item, qty: 0, unit: values[i] };
         r.qty++;
         rows.set(key, r);
@@ -3119,9 +3133,11 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       for (const l of priced) {
         if (!l.offer) continue;
         const item = l.product.grants[0].item;
-        const row = granted.find((r) => r.item_id === item);
-        const itemPaid = units.reduce((t, u, i) => (u === item ? t + values[i] : t), 0);
-        if (row) await awardCreatorCredit(tx, { offer: l.offer, buyer: me, purchaseRef: `credit:${row.id}`, paidCents: itemPaid, now });
+        const paidEach = units.map((u, i) => (u === item ? values[i] : -1)).filter((v) => v >= 0);
+        const own = granted.filter((r) => r.item_id === item);
+        for (let k = 0; k < own.length; k++) {
+          await awardCreatorCredit(tx, { offer: l.offer, buyer: me, purchaseRef: `credit:${own[k].id}`, paidCents: paidEach[k] ?? 0, now });
+        }
       }
       if (requestId) await tx.query(
         'UPDATE credit_shop_orders SET paid_cents = $3, discount_cents = $4 WHERE user_id = $1 AND request_id = $2',
@@ -3231,8 +3247,10 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       }
       if (free < quantity) return { error: free > 0 ? `only ${free} can be traded in` : item === 'beach' ? 'every extra beach is in use' : 'pick it up off your beach first', free: Math.max(0, free) };
       // the newest first: "buy it, then change your mind" gives back exactly what was paid
-      const rows = await tx.query<{ id: string; quantity: number; unit_cents: number | null }>(
-        `SELECT id, quantity, unit_cents FROM inventory
+      const rows = await tx.query<{ id: string; quantity: number; unit_cents: number | null; royalty_ref: string }>(
+        `SELECT id, quantity, unit_cents,
+                COALESCE(royalty_ref, CASE WHEN purchase_id IS NOT NULL THEN 'store:' || purchase_id ELSE 'credit:' || id END) AS royalty_ref
+           FROM inventory
           WHERE user_id = $1 AND item_id = $2 AND quantity > 0 AND (expires_at IS NULL OR expires_at > $3)
           ORDER BY acquired_at DESC, id DESC FOR UPDATE`,
         [me, item, now],
@@ -3248,7 +3266,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
           me, r.id, item, take, unit * take, now,
         ]);
         // a community item's creator gives back the credit it earned
-        if (take === Number(r.quantity)) await reverseCreatorCreditByRef(tx, `credit:${r.id}`, now);
+        if (take === Number(r.quantity)) await reverseCreatorCreditByRef(tx, r.royalty_ref, now);
         cents += unit * take;
         left -= take;
       }
@@ -3299,14 +3317,17 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
                AND (expires_at IS NULL OR expires_at > $3)
              ORDER BY acquired_at ASC LIMIT 1
           ) AND quantity > 0
-         RETURNING item_id, expires_at, purchase_id, unit_cents
+         RETURNING id, item_id, expires_at, purchase_id, unit_cents, royalty_ref
        ), given AS (
          -- the gift keeps the purchase it came from, so a refund of that
          -- purchase takes it back from the recipient too (otherwise: buy,
          -- gift it to a second account, get a refund, keep the item)
          -- and its trade-in value (docs/SAND_BUCKS.md), so a discount can't be cashed out by gifting
-         INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at, expires_at, purchase_id, unit_cents)
-         SELECT $4, item_id, 1, 'gift', $3, expires_at, purchase_id, unit_cents FROM giver
+         -- and the creator royalty it earned, so trading the gift in takes that back
+         INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at, expires_at, purchase_id, unit_cents, royalty_ref)
+         SELECT $4, item_id, 1, 'gift', $3, expires_at, purchase_id, unit_cents,
+                COALESCE(royalty_ref, CASE WHEN purchase_id IS NOT NULL THEN 'store:' || purchase_id ELSE 'credit:' || id END)
+           FROM giver
          RETURNING item_id
        ), logged AS (
          INSERT INTO gifts (from_id, to_id, item_id, created_at)

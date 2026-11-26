@@ -58,7 +58,9 @@ Existing balances round up to the next whole buck in the migration.
   `pack_refund`. A refunded purchase from an old app version (it granted
   things, not bucks) still expires those things, and takes back the bucks of
   any that were traded in.
-- **Spending** (`POST /api/store/buy { offer | basket, promo?, requestId }`):
+- **Spending** (`POST /api/store/buy { offer | basket, promo?, requestId }`).
+  The app keeps a basket's request ID until a receipt or a definite no, so a
+  retry after a lost answer gets the first receipt, not a second charge:
   one statement debits the bucks and grants the things, each unit with its
   trade-in value (`inventory.unit_cents`), the price shared out by list
   value (largest remainder, so it adds up exactly). Promo codes discount it,
@@ -71,7 +73,11 @@ Existing balances round up to the next whole buck in the migration.
   (so "buy, then change your mind" returns exactly what was paid), credits
   their values, and logs `trade_ins`. A creator royalty on a traded-in unit
   goes back.
-- **Gifts** carry the unit's value (`unit_cents`) to the recipient.
+- **Gifts** carry the unit's value (`unit_cents`) to the recipient, and the
+  creator royalty it earned (`inventory.royalty_ref`, migration 32), so a
+  traded-in gift takes back the right royalty. A community item's units each
+  get their own bag row (and royalty) when bought, so one can be gifted or
+  traded in alone.
 - `inventory.unit_cents` NULL means "its list value" (everything granted for
   free, and everything from before this change).
 
@@ -80,9 +86,12 @@ Existing balances round up to the next whole buck in the migration.
 The apps in the stores today sell `item_lighthouse` and friends through
 Apple and Google. `GET /api/store/products` keeps answering them as before,
 and their receipts keep granting things (at their list value for a later
-trade-in). New apps use `GET /api/store/catalog`: packs (real money) and
-offers (bucks). The old products can be removed from sale in App Store
-Connect and the Play Console once the new app is out.
+trade-in). The Steam builds already out, and a web page loaded before the
+release, can still start a Steam or card checkout for an item product
+(`/store/steam/init` and `/store/web-checkout` take packs and the old items).
+New apps use `GET /api/store/catalog`: packs (real money) and offers (bucks).
+The old products can be removed from sale in App Store Connect, the Play
+Console and Steam once the new app is out.
 
 ## Copying a beach
 

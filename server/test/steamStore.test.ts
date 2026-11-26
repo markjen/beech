@@ -130,8 +130,8 @@ describe('Steam Wallet microtransaction routes', () => {
     // Steam sells sand-buck packs (docs/SAND_BUCKS.md): 100 to the balance, once
     const credit = (await (await app.request('/credit', { headers: { Authorization: `Bearer ${token}` } })).json()) as { bucks: number };
     expect(credit.bucks).toBe(100);
-    // a thing on its own is bought with sand bucks, not through Steam
-    expect((await post('/store/steam/init', { productId: 'item_parasol' }, token)).status).toBe(404);
+    // the Steam builds already out still buy things directly (PR #118 review)
+    expect((await post('/store/steam/init', { productId: 'item_parasol' }, token)).status).toBe(200);
   });
 
   it('rejects non-Steam accounts, canceled orders, and init failures cleanly', async () => {

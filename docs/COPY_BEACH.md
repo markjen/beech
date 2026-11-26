@@ -234,7 +234,7 @@ repeated here: a copy runs through the same `asEditor`.
 | Action | Route | Code |
 | --- | --- | --- |
 | `CopyStart` | `GET /beaches/:code/copy-fit`, then tapping Copy | the app pins the `version` it previewed |
-| `CopyAtomic` | `POST /beaches/mine/copy` | `oneAtATime(me, asEditor(tx => ...))`: the source row `FOR SHARE` (public, `version = $pin`), `fitOf`, the allowance, `dropMissing`, then the insert or the restore's `WITH snap ... UPDATE beach` |
+| `CopyAtomic` | `POST /beaches/mine/copy` | `oneAtATime(me, asEditor(tx => ...))`: both beach rows locked in id order (target for update, source `FOR SHARE`), then the source checked (public, `version = $pin`), `fitOf`, the allowance, `dropMissing`, then the insert or the restore's `WITH snap ... UPDATE beach` |
 | `SourceEdit` | the owner's `PUT /beaches/mine/:id/sand` | |
 | `SourceShore` | the owner's `PATCH /beaches/mine/:id { onShore }`, an admin hide | |
 | `Buy` | a store grant (receipt, webhook, credit) | grants only add |
@@ -265,11 +265,14 @@ So the design is **one transaction**. It holds the copier's player lock
 (`oneAtATime` + `asEditor`, which serialise their saves, restores and
 copies, and make the allowance check and insert safe), and reads the source
 row `FOR SHARE`, so the owner's save or hide waits for the copy to commit.
-**Lock order:** the copier's player lock, then the source row. The owner's
-save takes the owner's player lock, then their own beach row. A cycle
-would need the copier's own beach row taken under someone else's player
-lock, which never happens, so there is no deadlock (a PostgreSQL test
-should check two people copying each other's beaches at once). Copying
+**Lock order:** the copier's player lock, then **both beach rows in id
+order**: the target `FOR NO KEY UPDATE`, the source `FOR SHARE`. This
+design first said the source row alone was enough. It wasn't: two owners
+copying each other's beach onto their own at the same moment each shared the
+row the other was about to update, and PostgreSQL aborted one as a deadlock
+(found in review of PR #118, reproduced by a PostgreSQL-only test in
+`copy.test.ts`). With one order, the second copy waits for the first, then
+sees its source changed (409 `changed`) and the app looks again. Copying
 your own beach takes the same player lock twice, which is fine: it's one
 transaction.
 

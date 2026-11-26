@@ -1444,3 +1444,20 @@ changes. New gameplay and features follow the model-first workflow
 - Differs from the design: none so far. Owner tasks (store products) in
   BACKLOG.md.
 
+### Review of PR #118 (2026-11-26)
+
+Five findings, all fixed with a test each:
+- the copy sheet's "Buy what's missing" reused nothing between attempts: a
+  lost answer, then a retry, could charge twice. It now keeps the request ID
+  until a receipt or a definite no (`tests/shopBasket.test.ts`, and a replay
+  in `bucks.test.ts`);
+- switching the copy target left the old basket buyable while the new fit
+  loaded; the sheet now shows nothing to act on until the right answer is in,
+  and drops answers for a target no longer selected;
+- Steam (and a stale web page) can still check out the old item products;
+- two owners copying each other's beach at once deadlocked on PostgreSQL;
+  the copy now locks both beach rows in id order (a PostgreSQL-only test in
+  `copy.test.ts` reproduced it first);
+- a gifted community item now carries its creator royalty, so trading the
+  gift in takes back the right one (migration 32, `inventory.royalty_ref`).
+

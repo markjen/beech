@@ -839,6 +839,13 @@ const MIGRATIONS: string[] = [
   ALTER TABLE credit_ledger ADD CONSTRAINT credit_ledger_kind_check
     CHECK (kind IN ('gift_card', 'spend', 'creator_royalty', 'creator_royalty_refund', 'pack', 'pack_refund', 'trade_in', 'trade_in_refund'));
   `,
+
+  // 32: the creator royalty a bag row's unit earned, carried with it when
+  // it's gifted, so trading the gift in takes the right royalty back
+  // (PR #118 review). NULL: the row's own ('credit:<id>', or 'store:<purchase>').
+  `
+  ALTER TABLE inventory ADD COLUMN royalty_ref TEXT;
+  `,
 ];
 
 /** Apply migrations up to `upTo` (default: all). Tests use `upTo` to check a migration on older data. */

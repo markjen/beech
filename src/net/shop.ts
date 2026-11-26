@@ -212,18 +212,41 @@ export class ShopApi {
     return { bucks: d.bucks ?? 0, debt: d.debt ?? 0 };
   }
 
-  /** Buy a basket of offers with sand bucks, in one go ("buy what's missing"). */
+  /**
+   * Buy a basket of offers with sand bucks, in one go ("buy what's missing").
+   * The request ID is kept for that basket until a receipt comes back or the
+   * server says no: if the answer is lost (offline, a timeout, a 5xx), trying
+   * again sends the same ID, and the server answers with the first receipt
+   * instead of charging twice (PR #118 review).
+   */
   async buyBasket(lines: { product: string; quantity: number }[]): Promise<{ paid: number; bucks: number }> {
+    const key = 'beech.basketRequest.v1:' + JSON.stringify([this.account.user?.id, lines.map((l) => [l.product, l.quantity])]);
+    let requestId = this.creditRequests.get(key);
+    try {
+      requestId ??= sessionStorage.getItem(key) ?? undefined;
+    } catch { /* storage blocked */ }
+    requestId ??= crypto.randomUUID();
+    this.creditRequests.set(key, requestId);
+    try { sessionStorage.setItem(key, requestId); } catch { /* storage blocked */ }
+    const clearRequest = () => {
+      this.creditRequests.delete(key);
+      try { sessionStorage.removeItem(key); } catch { /* storage blocked */ }
+    };
+    // a network failure throws here and keeps the ID for the retry
     const res = await this.account.fetch('/api/store/buy', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ basket: lines, requestId: crypto.randomUUID() }),
+      body: JSON.stringify({ basket: lines, requestId }),
     });
     if (!res.ok) {
+      // a definite no (not enough sand bucks, gone from the shop, a bad basket): a new try is a new purchase
+      if (res.status < 500 && res.status !== 429) clearRequest();
       const msg = ((await res.json().catch(() => ({}))) as { error?: string }).error;
       throw new Error(msg ?? 'that did not go through');
     }
-    return (await res.json()) as { paid: number; bucks: number };
+    const receipt = (await res.json()) as { paid: number; bucks: number };
+    clearRequest();
+    return receipt;
   }
 
   /** What's in your bag and what each thing trades in for. */

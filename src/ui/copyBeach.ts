@@ -57,6 +57,11 @@ export class CopySheet {
   private mapFor = '';
   /** the target was picked by hand */
   private picked = false;
+  /** a fit is loading: nothing can be bought or copied until it's in (PR #118 review) */
+  private loading = false;
+  /** which target the fit on show is for, and the newest fit asked for */
+  private fitTarget: CopyTarget | null = null;
+  private fitSeq = 0;
 
   constructor(
     parent: HTMLElement,
@@ -119,19 +124,44 @@ export class CopySheet {
     return mine.find((b) => b.id === here)?.id ?? mine.find((b) => b.home)?.id ?? mine[0]?.id ?? 'new';
   }
 
+  /**
+   * Ask what copying onto the selected target takes. While it loads, the
+   * sheet offers nothing to buy or copy (the last answer was for another
+   * target), and an answer for a target that's no longer selected is dropped.
+   */
   private async refit(): Promise<void> {
+    const seq = ++this.fitSeq;
+    this.loading = true;
+    if (this.fit) this.render();
     try {
-      this.fit = await this.host.api.fit(this.code, this.target);
+      let target = this.target;
+      let fit = await this.host.api.fit(this.code, target);
+      if (seq !== this.fitSeq) return;
       // first look: no room for a new beach? start on one of yours (picking "+ a new beach" offers to buy one)
-      if (this.target === 'new' && !this.fit.room && !this.picked) {
-        this.target = this.defaultTarget(this.ownId());
-        if (this.target !== 'new') this.fit = await this.host.api.fit(this.code, this.target);
+      if (target === 'new' && !fit.room && !this.picked) {
+        target = this.defaultTarget(this.ownId());
+        if (target !== 'new') {
+          fit = await this.host.api.fit(this.code, target);
+          if (seq !== this.fitSeq) return;
+        }
+        this.target = target;
       }
+      this.fit = fit;
+      this.fitTarget = target;
+      this.loading = false;
       this.render();
     } catch (e) {
+      if (seq !== this.fitSeq) return;
+      this.loading = false;
       this.fit = null;
+      this.fitTarget = null;
       this.body.innerHTML = `<p class="shop-note">${esc((e as Error).message)}</p>`;
     }
+  }
+
+  /** the fit on show is for the selected target, and nothing newer is loading */
+  private current(): CopyFit | null {
+    return !this.loading && this.fit && this.fitTarget === this.target ? this.fit : null;
   }
 
   private ownId(): string | undefined {
@@ -201,7 +231,9 @@ export class CopySheet {
     const noRoom = this.target === 'new' && !f.room;
     const left = f.short.reduce((t, s) => t + (s.need - s.have), 0);
     const actions: string[] = [];
-    if (!shortItems && !noRoom) {
+    if (this.loading) {
+      // the answer for this target isn't in yet: nothing to act on
+    } else if (!shortItems && !noRoom) {
       const t = mine.find((b) => b.id === this.target);
       actions.push(`<button type="button" class="claw-go" data-act="copy-go">${t ? `Replace ${esc(beachLabel(t))}` : 'Copy'}</button>`);
     } else {
@@ -217,13 +249,13 @@ export class CopySheet {
       <p class="shop-note">${esc(by)}</p>
       <div class="copy-onto"><span>Onto</span>${pills}</div>
       ${this.rows(f)}
-      ${lines.length ? `<p class="copy-status">${esc(bucks(f.bucks))}</p>` : ''}
-      ${this.status ? `<p class="copy-status" role="status">${esc(this.status)}</p>` : ''}
+      ${lines.length && !this.loading ? `<p class="copy-status">${esc(bucks(f.bucks))}</p>` : ''}
+      ${this.loading ? '<p class="copy-status" role="status">Looking…</p>' : this.status ? `<p class="copy-status" role="status">${esc(this.status)}</p>` : ''}
       <div class="beachfile-actions">${actions.join('')}</div>
-      <button type="button" class="action beachfile-keep" data-act="copy-keep">keep it as a checkpoint</button>`;
+      ${this.loading ? '' : '<button type="button" class="action beachfile-keep" data-act="copy-keep">keep it as a checkpoint</button>'}`;
     this.body.querySelectorAll<HTMLButtonElement>('[data-target]').forEach((b) =>
       b.addEventListener('click', () => {
-        if (this.busy) return;
+        if (this.busy || b.dataset.target === this.target) return;
         this.target = b.dataset.target!;
         this.picked = true;
         this.status = '';
@@ -252,7 +284,7 @@ export class CopySheet {
   }
 
   private async copy(mode: CopyMode): Promise<void> {
-    const f = this.fit;
+    const f = this.current();
     if (!f) return;
     const t = this.host.beaches().find((b) => b.id === this.target);
     if (t && !window.confirm(`Replace ${beachLabel(t)} with “${f.name || f.code}”?`)) return;
@@ -289,7 +321,7 @@ export class CopySheet {
   }
 
   private async buy(): Promise<void> {
-    const f = this.fit;
+    const f = this.current();
     if (!f) return;
     // not enough sand bucks: get some first, then come back here
     if (f.bucks < f.basket.bucks) {
@@ -310,7 +342,7 @@ export class CopySheet {
   }
 
   private async keep(): Promise<void> {
-    const f = this.fit;
+    const f = this.current();
     if (!f) return;
     await this.run(async () => {
       try {
