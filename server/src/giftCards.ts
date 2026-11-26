@@ -146,10 +146,12 @@ export async function claimCreditPurchase(
     discountCents: number;
     items: string[];
     quantities: number[];
+    /** each row's trade-in value per unit (docs/SAND_BUCKS.md) */
+    unitCents: number[];
     now: number;
   },
-): Promise<string[]> {
-  const rows = await db.query<{ id: string }>(
+): Promise<{ id: string; item_id: string }[]> {
+  const rows = await db.query<{ id: string; item_id: string }>(
     `WITH paid AS (
        UPDATE users SET credit_cents = credit_cents - $5
         WHERE id = $1 AND credit_cents >= $5
@@ -178,11 +180,11 @@ export async function claimCreditPurchase(
        RETURNING 1
      )
      -- bought in the shop (with credit, not a store purchase: no purchase_id)
-     INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at, purchase_id)
-     SELECT $1, g.item, g.qty, 'shop', $4, NULL FROM paid, unnest($7::text[], $8::int[]) AS g(item, qty)
+     INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at, purchase_id, unit_cents)
+     SELECT $1, g.item, g.qty, 'shop', $4, NULL, g.unit FROM paid, unnest($7::text[], $8::int[], $9::int[]) AS g(item, qty, unit)
      WHERE $3::text IS NULL OR EXISTS (SELECT 1 FROM promo)
-     RETURNING id`,
-    [args.userId, args.productId, args.promoCode, args.now, args.finalCents, args.discountCents, args.items, args.quantities],
+     RETURNING id, item_id`,
+    [args.userId, args.productId, args.promoCode, args.now, args.finalCents, args.discountCents, args.items, args.quantities, args.unitCents],
   );
-  return rows.map((r) => r.id);
+  return rows.map((r) => ({ id: String(r.id), item_id: r.item_id }));
 }

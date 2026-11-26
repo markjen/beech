@@ -40,13 +40,14 @@
 import { Hono, type Context } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 
-import { PRODUCTS, copyBasket, productById } from './products.js';
+import { PACKS, PRODUCTS, copyBasket, packById, productById, storeProductById, type Product } from './products.js';
+import { creditBalance, grantPurchase } from './bucksDb.js';
+import { BUCK, bucksToCents, centsToBucks, listBucks, roundToBuck, shareOut, tradeable, unitsOf } from './bucks.js';
 import { issueSubmissionSession, UUID_PATTERN } from './itemSubmissions.js';
-import { awardCheckoutCreatorCredit, awardCreatorCredit, creatorOffer, creatorOffers, lockCreditUsers, nativeSalePrice, salePriceCents } from './creatorCredit.js';
+import { awardCheckoutCreatorCredit, awardCreatorCredit, creatorOffer, creatorOffers, lockCreditUsers, nativeSalePrice, reverseCreatorCreditByRef, salePriceCents } from './creatorCredit.js';
 import {
   claimCreditPurchase,
   discountCents,
-  formatCents,
   hashGiftCode,
   isGiftCodeShape,
   normalizePromoCode,
@@ -493,7 +494,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       c.get('user').id,
       item,
       Math.max(1, Math.min(10, Number(quantity) || 1)),
-      Date.now(),
+      cfg.now?.() ?? Date.now(),
     ]);
     return c.body(null, 204);
   });
@@ -2317,8 +2318,9 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const fit = await fitOf(me, info.items, target ?? NO_BEACH);
     const [allowed, count] = await Promise.all([allowance(me), beachCount(me)]);
     const room = target !== null || count < allowed;
-    const price = await creatorOffers(db);
-    const basket = copyBasket(fit.short, !room && count < BEACH_CAP, price);
+    const prices = await offerPrices();
+    const basket = copyBasket(fit.short, !room && count < BEACH_CAP, (p) => prices.get(p.id) ?? null);
+    const [me_] = await db.query<{ credit_cents: number }>('SELECT credit_cents FROM users WHERE id = $1', [me]);
     return c.json({
       code: src.code,
       name: src.name,
@@ -2335,6 +2337,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       allowance: allowed,
       beaches: count,
       basket,
+      bucks: centsToBucks(Number(me_?.credit_cents ?? 0)),
     });
   });
 
@@ -2445,6 +2448,31 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     });
   });
 
+  /** what each offer costs now, in sand bucks (null: not for sale) */
+  const offerPrices = async (q: Db = db): Promise<Map<string, number | null>> => {
+    const out = new Map<string, number | null>();
+    for (const p of PRODUCTS) {
+      const cents = offerCents(p, await creatorOffer(q, p));
+      out.set(p.id, cents === null ? null : centsToBucks(cents));
+    }
+    return out;
+  };
+
+  // The shop for apps that know sand bucks (docs/SAND_BUCKS.md): packs for
+  // real money, offers for sand bucks. (/store/products stays as it was for
+  // the app versions already in the stores.)
+  app.get('/store/catalog', async (c) => {
+    const prices = await offerPrices();
+    return c.json({
+      packs: PACKS.map((p) => ({ id: p.id, name: p.name, usd: p.usd, bucks: p.bucks, blurb: p.blurb, featured: !!p.featured })),
+      offers: PRODUCTS.flatMap((p) => {
+        const bucks = prices.get(p.id);
+        return bucks === null || bucks === undefined ? [] : [{ id: p.id, name: p.name, grants: p.grants, bucks, blurb: p.blurb, featured: !!p.featured }];
+      }),
+      webCheckout: !!cfg.xsolla,
+    });
+  });
+
   /**
    * The app finished a purchase: { platform: ios | android, productId, jws (iOS) | token (Android) }.
    * We check it with the store, record it once, and add what it grants to
@@ -2453,7 +2481,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   app.post('/store/purchase', requireUser, async (c) => {
     const me = c.get('user').id;
     const { platform, productId, jws, token } = await body<{ platform?: string; productId?: string; jws?: string; token?: string }>(c);
-    const product = productById(productId ?? '');
+    const product = storeProductById(productId ?? '');
     if (!product) fail(404, 'no such product');
     const ok = (platform === 'ios' && jws) || (platform === 'android' && token) || (platform === 'dev' && cfg.devAuth && token);
     if (!ok) fail(400, 'expected { platform: ios, jws } or { platform: android, token }');
@@ -2470,21 +2498,16 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     // the app ties each purchase to the account that made it
     if (v!.account && v!.account !== me) fail(403, 'that purchase belongs to another account');
     const now = clock();
-    const items = product!.grants.map((g) => g.item);
-    const qty = product!.grants.map((g) => g.quantity);
-    // Grant the items and any creator credit in the same transaction.
+    // Record it once, then grant (a pack's sand bucks, or an old app's
+    // things) and any creator credit in the same transaction.
     const rows = await db.withTransaction(async (tx) => {
       const granted = await tx.query<{ purchase_id: string }>(
-        `WITH p AS (
-           INSERT INTO purchases (user_id, store, transaction_id, product_id, environment, purchased_at, granted_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (store, transaction_id) DO NOTHING
-           RETURNING id, user_id
-         )
-         INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at, purchase_id)
-         SELECT p.user_id, g.item, g.qty, 'shop', $7, p.id FROM p, unnest($8::text[], $9::int[]) AS g(item, qty)
-         RETURNING purchase_id`,
-        [me, v.store, v.transactionId, product!.id, v.environment, v.purchasedAt, now, items, qty],
+        `INSERT INTO purchases (user_id, store, transaction_id, product_id, environment, purchased_at, granted_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (store, transaction_id) DO NOTHING
+         RETURNING id AS purchase_id`,
+        [me, v.store, v.transactionId, product!.id, v.environment, v.purchasedAt, now],
       );
+      if (granted.length) await grantPurchase(tx, { userId: me, purchaseId: granted[0].purchase_id, product: product!, now });
       if (granted.length && v.store !== 'dev' && v.environment.toLowerCase() === 'production') {
         const offer = await creatorOffer(tx, product!, true);
         if (offer) {
@@ -2569,7 +2592,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       status,
       createdAt: created,
       paidAt: o.paid_at === null ? null : Number(o.paid_at),
-      grants: productById(o.product_id)?.grants ?? [],
+      grants: storeProductById(o.product_id)?.grants ?? [],
     };
   };
   const isUuid = (s: string) => UUID_PATTERN.test(s);
@@ -2579,7 +2602,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const me = c.get('user').id;
     if (!checkoutLimiter(me)) return c.json({ error: 'slow down' }, 429);
     const { productId, promoCode, country: rawCountry } = await body<{ productId?: string; promoCode?: string; country?: unknown }>(c);
-    const product = productById(productId ?? '');
+    // the web sells sand-buck packs (docs/SAND_BUCKS.md)
+    const product = packById(productId ?? '');
     if (!product) fail(404, 'no such product');
     if (rawCountry !== undefined && (typeof rawCountry !== 'string' || !/^[A-Za-z]{2}$/.test(rawCountry))) {
       return fail(400, 'country must be a two-letter code');
@@ -2693,7 +2717,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       }
       // what was paid for must be exactly what we sold: the product, once,
       // and (in US dollars) our price
-      const product = productById(o.product_id)!;
+      const product = storeProductById(o.product_id)!;
       const items = w.items ?? [];
       if (items.length !== 1 || items[0].sku !== product.id || Number(items[0].quantity ?? 1) !== 1) {
         log('wrong_items', { items: items.map((i) => i.sku) }, 'ERROR');
@@ -2707,9 +2731,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       }
       if (currency && currency !== 'USD') log('local_currency', { currency });
       const now = clock();
-      const grantItems = product.grants.map((g) => g.item);
-      const qty = product.grants.map((g) => g.quantity);
-      // Record the payment once, mark the order paid, and grant items and credit atomically.
+      // Record the payment once, mark the order paid, and grant (sand bucks) and credit atomically.
       // A retried webhook hits the purchases unique key and changes nothing.
       // An order Xsolla already canceled is not revived by a late payment.
       const granted = await db.withTransaction(async (tx) => {
@@ -2725,11 +2747,10 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
              UPDATE web_orders SET status = 'paid', paid_at = $5 WHERE id = $6 AND status = 'created' AND EXISTS (SELECT 1 FROM p)
              RETURNING id
            )
-           INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at, purchase_id)
-           SELECT p.user_id, g.item, g.qty, 'shop', $5, p.id FROM p, unnest($7::text[], $8::int[]) AS g(item, qty)
-           RETURNING purchase_id`,
-          [o.user_id, providerId, product.id, testPayment ? 'Sandbox' : 'Production', now, o.id, grantItems, qty],
+           SELECT p.id AS purchase_id FROM p`,
+          [o.user_id, providerId, product.id, testPayment ? 'Sandbox' : 'Production', now, o.id],
         );
+        if (rows.length) await grantPurchase(tx, { userId: o.user_id, purchaseId: rows[0].purchase_id, product, now });
         if (rows.length && o.creator_submission_id && !testPayment && !o.sandbox) {
           await awardCheckoutCreatorCredit(tx, {
             submissionId: o.creator_submission_id, product, buyer: o.user_id, storePurchaseId: rows[0].purchase_id,
@@ -2783,7 +2804,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const me = c.get('user').id;
     if (!checkoutLimiter(me)) return c.json({ error: 'slow down' }, 429);
     const { productId } = await body<{ productId?: string }>(c);
-    const product = productById(productId ?? '');
+    // Steam sells sand-buck packs (docs/SAND_BUCKS.md)
+    const product = packById(productId ?? '');
     if (!product) fail(404, 'no such product');
 
     const idRows = await db.query<{ provider_sub: string }>(
@@ -2834,7 +2856,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     );
     const o = rows[0];
     if (!o) fail(404, 'no such order');
-    const product = productById(o!.product_id)!;
+    const product = storeProductById(o!.product_id)!;
     if (o!.status === 'paid') return c.json({ ok: true, already: true, grants: product.grants });
     if (o!.status !== 'created') fail(409, `order is ${o!.status}`);
 
@@ -2848,8 +2870,6 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     }
 
     const now = clock();
-    const grantItems = product.grants.map((g) => g.item);
-    const qty = product.grants.map((g) => g.quantity);
     const granted = await db.withTransaction(async (tx) => {
       const [order] = await tx.query<{ status: string }>('SELECT status FROM steam_orders WHERE order_id = $1 FOR NO KEY UPDATE', [oid]);
       if (order?.status === 'paid') return [];
@@ -2865,11 +2885,10 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
             WHERE order_id = $6 AND status = 'created' AND EXISTS (SELECT 1 FROM p)
            RETURNING order_id
          )
-         INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at, purchase_id)
-         SELECT p.user_id, g.item, g.qty, 'shop', $5, p.id FROM p, unnest($7::text[], $8::int[]) AS g(item, qty)
-         RETURNING purchase_id`,
-        [me, transId, product.id, o!.sandbox ? 'Sandbox' : 'Production', now, oid, grantItems, qty],
+         SELECT p.id AS purchase_id FROM p`,
+        [me, transId, product.id, o!.sandbox ? 'Sandbox' : 'Production', now, oid],
       );
+      if (rows.length) await grantPurchase(tx, { userId: me, purchaseId: rows[0].purchase_id, product, now });
       if (rows.length && o!.creator_submission_id && !o!.sandbox) {
         await awardCheckoutCreatorCredit(tx, {
           submissionId: o!.creator_submission_id, product, buyer: me, storePurchaseId: rows[0].purchase_id,
@@ -2938,45 +2957,53 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     if (!known) fail(404, "that code isn't valid");
     if (known.status !== 'active') fail(409, known.status === 'redeemed' ? 'that card was already used' : 'that card is disabled');
     if (known.expires_at !== null && Number(known.expires_at) <= now) fail(409, 'that card has expired');
-    // one statement: claim the card (only if still active and unexpired —
-    // a second redeem racing this one claims nothing), credit the player,
-    // and log the movement, all or nothing
-    const rows = await db.query<{ amount_cents: number; credit_cents: number }>(
-      `WITH claimed AS (
-         UPDATE gift_cards SET status = 'redeemed', redeemed_by = $2, redeemed_at = $3
+    // one transaction: claim the card (only if still active and unexpired —
+    // a second redeem racing this one claims nothing), then its sand bucks
+    // in (10 cents a buck, a part buck rounded up), paying off any debt first
+    const result = await db.withTransaction(async (tx) => {
+      const [claimed] = await tx.query<{ id: string; amount_cents: number }>(
+        `UPDATE gift_cards SET status = 'redeemed', redeemed_by = $2, redeemed_at = $3
           WHERE code_hash = $1 AND status = 'active' AND (expires_at IS NULL OR expires_at > $3)
-          RETURNING id, amount_cents
-       ), credited AS (
-         UPDATE users SET credit_cents = credit_cents + (SELECT amount_cents FROM claimed)
-          WHERE id = $2 AND EXISTS (SELECT 1 FROM claimed)
-          RETURNING credit_cents
-       ), logged AS (
-         INSERT INTO credit_ledger (user_id, kind, amount_cents, ref, created_at)
-         SELECT $2, 'gift_card', amount_cents, id::text, $3 FROM claimed
-         RETURNING 1
-       )
-       SELECT claimed.amount_cents, credited.credit_cents FROM claimed, credited`,
-      [hash, me, now],
-    );
-    if (!rows[0]) fail(409, 'that card was just used');
-    return c.json({ creditedCents: Number(rows[0].amount_cents), creditCents: Number(rows[0].credit_cents) });
+          RETURNING id, amount_cents`,
+        [hash, me, now],
+      );
+      if (!claimed) return null;
+      const cents = Math.ceil(Number(claimed.amount_cents) / BUCK) * BUCK;
+      await creditBalance(tx, me, cents, 'gift_card', String(claimed.id), now);
+      const [u] = await tx.query<{ credit_cents: number }>('SELECT credit_cents FROM users WHERE id = $1', [me]);
+      return { creditedCents: cents, creditCents: Number(u.credit_cents) };
+    });
+    if (!result) fail(409, 'that card was just used');
+    return c.json({ ...result!, credited: result!.creditedCents / BUCK, bucks: result!.creditCents / BUCK });
   });
 
   app.get('/credit', requireUser, async (c) => {
-    const rows = await db.query<{ credit_cents: number }>('SELECT credit_cents FROM users WHERE id = $1', [c.get('user').id]);
-    return c.json({ creditCents: Number(rows[0]?.credit_cents ?? 0) });
+    const rows = await db.query<{ credit_cents: number; creator_credit_debt_cents: number }>(
+      'SELECT credit_cents, creator_credit_debt_cents FROM users WHERE id = $1',
+      [c.get('user').id],
+    );
+    const cents = Number(rows[0]?.credit_cents ?? 0);
+    return c.json({ creditCents: cents, bucks: centsToBucks(cents), debt: centsToBucks(Number(rows[0]?.creator_credit_debt_cents ?? 0)) });
   });
 
-  // What a product costs with a promo code, before buying (validates the
-  // code but doesn't use it).
+  /** An offer's price in cents of sand bucks (whole bucks): a community item's approved price, rounded; else its bucks price. */
+  const offerCents = (product: Product, offer: Awaited<ReturnType<typeof creatorOffer>>): number | null => {
+    if (!offer) return bucksToCents(product.bucks);
+    const cents = salePriceCents(product, offer);
+    return cents === null ? null : roundToBuck(cents);
+  };
+  /** a promo's discount, in whole bucks (never more than the price) */
+  const bucksDiscount = (promo: Promo, priceCents: number) => Math.floor(discountCents(promo, priceCents) / BUCK) * BUCK;
+
+  // What a product costs in sand bucks with a promo code, before buying
+  // (validates the code but doesn't use it). docs/SAND_BUCKS.md.
   app.post('/store/quote', requireUser, async (c) => {
     const me = c.get('user').id;
     if (!creditLimiter(me)) return c.json({ error: 'slow down' }, 429);
     const { productId, promoCode } = await body<{ productId?: string; promoCode?: string }>(c);
     const product = productById(productId ?? '');
     if (!product) fail(404, 'no such product');
-    const offer = await creatorOffer(db, product!);
-    const priceCents = salePriceCents(product!, offer) ?? fail(404, 'that product is not for sale');
+    const priceCents = offerCents(product!, await creatorOffer(db, product!)) ?? fail(404, 'that product is not for sale');
     let discount = 0;
     let promo: Promo | null = null;
     if (promoCode) {
@@ -2984,29 +3011,38 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       if (!promo) fail(404, 'no such code');
       const blocked = promoBlocked(promo!, product!.id, clock());
       if (blocked) fail(400, blocked);
-      discount = discountCents(promo!, priceCents);
+      discount = bucksDiscount(promo!, priceCents);
     }
     return c.json({
       product: product!.id,
       priceCents,
       discountCents: discount,
       finalCents: priceCents - discount,
+      price: centsToBucks(priceCents),
+      final: centsToBucks(priceCents - discount),
       promo: promo ? promo.code : undefined,
     });
   });
 
-  // The credit debit, promo, inventory grant, receipt and creator credit
-  // commit together. A repeated request ID returns the first receipt.
-  app.post('/store/credit-purchase', requireUser, async (c) => {
-    const me = c.get('user').id;
-    if (!creditLimiter(me)) return c.json({ error: 'slow down' }, 429);
-    const { productId, promoCode, requestId, freeOnly } =
-      await body<{ productId?: string; promoCode?: string; requestId?: string; freeOnly?: boolean }>(c);
-    const product = productById(productId ?? '') ?? fail(404, 'no such product');
+  /**
+   * Buy with sand bucks (Spend in specs/tla/SandBucks.tla): one offer, or a
+   * basket of them ("buy what's missing", docs/COPY_BEACH.md). The debit, the
+   * promo, the grant (each unit with its trade-in value: the price paid,
+   * shared out) and any creator credit commit together. A repeated request ID
+   * returns the first receipt.
+   */
+  const buyWithBucks = async (
+    c: Context<Env>,
+    me: string,
+    lines: { product: Product; quantity: number }[],
+    opts: { promoCode?: string; requestId?: string; freeOnly?: boolean; ref: string },
+  ) => {
+    const { promoCode, requestId, freeOnly } = opts;
     if (requestId !== undefined && (typeof requestId !== 'string' || !UUID_PATTERN.test(requestId))) fail(400, 'invalid request ID');
     if (promoCode !== undefined && typeof promoCode !== 'string') fail(400, 'invalid promo code');
     if (freeOnly !== undefined && typeof freeOnly !== 'boolean') fail(400, 'invalid free claim');
     if (freeOnly && promoCode !== undefined) fail(400, 'free claims do not use promo codes');
+    if (promoCode && lines.length !== 1) fail(400, 'a promo code is for one thing at a time');
     const code = promoCode ? normalizePromoCode(promoCode) : null;
     const now = clock();
     const result = await db.withTransaction(async (tx) => {
@@ -3015,55 +3051,208 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
         const [claimed] = await tx.query(
           `INSERT INTO credit_shop_orders (user_id, request_id, product_id, promo_code, paid_cents, discount_cents)
            VALUES ($1, $2, $3, $4, 0, 0) ON CONFLICT DO NOTHING RETURNING 1`,
-          [me, requestId, product.id, code],
+          [me, requestId, opts.ref, code],
         );
         if (!claimed) {
           const [order] = await tx.query<{ product_id: string; promo_code: string | null; paid_cents: number; discount_cents: number }>(
             'SELECT product_id, promo_code, paid_cents, discount_cents FROM credit_shop_orders WHERE user_id = $1 AND request_id = $2',
             [me, requestId],
           );
-          if (!order || order.product_id !== product.id || order.promo_code !== code) fail(409, 'that request ID was used for a different purchase');
+          if (!order || order.product_id !== opts.ref || order.promo_code !== code) fail(409, 'that request ID was used for a different purchase');
           if (freeOnly && order.paid_cents !== 0) fail(409, 'that request ID was used for a paid purchase');
           return { paidCents: order.paid_cents, discountCents: order.discount_cents, creditCents: await balance() };
         }
       }
-
-      const offer = await creatorOffer(tx, product, true);
-      const price = salePriceCents(product, offer) ?? fail(404, 'that product is not for sale');
+      // what each line costs, and its creator (if it's a community item)
+      const priced: { product: Product; quantity: number; cents: number; offer: Awaited<ReturnType<typeof creatorOffer>> }[] = [];
+      for (const l of lines) {
+        const offer = await creatorOffer(tx, l.product, true);
+        const cents = offerCents(l.product, offer) ?? fail(404, `${l.product.name} is not for sale`);
+        priced.push({ ...l, cents, offer });
+      }
+      const price = priced.reduce((t, l) => t + l.cents * l.quantity, 0);
       if (freeOnly && price !== 0) fail(409, 'that item is no longer free. Reopen the shop for its current price.');
       let discount = 0;
       if (code !== null) {
         const promo = await loadPromo(code, tx) ?? fail(404, 'no such code');
-        const blocked = promoBlocked(promo, product.id, now);
+        const blocked = promoBlocked(promo, priced[0].product.id, now);
         if (blocked) fail(400, blocked);
-        discount = discountCents(promo, price);
+        discount = bucksDiscount(promo, price);
       }
       const paid = price - discount;
-      if (offer) await lockCreditUsers(tx, me, offer);
+      for (const l of priced) if (l.offer) await lockCreditUsers(tx, me, l.offer);
       const available = await balance();
       if (available < paid) throw new HTTPException(402, {
-        message: `not enough credit: ${formatCents(paid)} needed, ${formatCents(available)} available`,
+        message: `not enough sand bucks: ${centsToBucks(paid)} needed, ${centsToBucks(available)} in your balance`,
       });
-
+      // every unit's trade-in value: what was paid, shared out by list value
+      const perLine = priced.map((l) => Array.from({ length: l.quantity }, () => unitsOf(l.product.grants)).flat());
+      const lineShares = shareOut(paid, priced.map((l) => l.cents * l.quantity));
+      const units = perLine.flat();
+      const values = perLine.flatMap((u, i) => shareOut(lineShares[i], u.map((item) => listBucks(item) ?? 1)));
+      const rows = new Map<string, { item: string; qty: number; unit: number }>();
+      units.forEach((item, i) => {
+        const key = `${item}|${values[i]}`;
+        const r = rows.get(key) ?? { item, qty: 0, unit: values[i] };
+        r.qty++;
+        rows.set(key, r);
+      });
+      const grant = [...rows.values()];
       const granted = await claimCreditPurchase(tx, {
         userId: me,
-        productId: product.id,
+        productId: opts.ref,
         promoCode: code,
         finalCents: paid,
         discountCents: discount,
-        items: product.grants.map((g) => g.item),
-        quantities: product.grants.map((g) => g.quantity),
+        items: grant.map((g) => g.item),
+        quantities: grant.map((g) => g.qty),
+        unitCents: grant.map((g) => g.unit),
         now,
       });
       if (!granted.length) fail(409, 'that did not go through: try again');
-      if (offer) await awardCreatorCredit(tx, { offer, buyer: me, purchaseRef: `credit:${granted[0]}`, paidCents: paid, now });
+      // a community item's creator earns 30% of what its units were paid
+      for (const l of priced) {
+        if (!l.offer) continue;
+        const item = l.product.grants[0].item;
+        const row = granted.find((r) => r.item_id === item);
+        const itemPaid = units.reduce((t, u, i) => (u === item ? t + values[i] : t), 0);
+        if (row) await awardCreatorCredit(tx, { offer: l.offer, buyer: me, purchaseRef: `credit:${row.id}`, paidCents: itemPaid, now });
+      }
       if (requestId) await tx.query(
         'UPDATE credit_shop_orders SET paid_cents = $3, discount_cents = $4 WHERE user_id = $1 AND request_id = $2',
         [me, requestId, paid, discount],
       );
       return { paidCents: paid, discountCents: discount, creditCents: await balance() };
     });
-    return c.json({ product: product.id, grants: product.grants, ...result });
+    return {
+      ...result,
+      paid: centsToBucks(Number(result.paidCents)),
+      discount: centsToBucks(Number(result.discountCents)),
+      bucks: centsToBucks(Number(result.creditCents)),
+    };
+  };
+
+  // one offer (the shop), or a free one
+  app.post('/store/credit-purchase', requireUser, async (c) => {
+    const me = c.get('user').id;
+    if (!creditLimiter(me)) return c.json({ error: 'slow down' }, 429);
+    const { productId, promoCode, requestId, freeOnly } =
+      await body<{ productId?: string; promoCode?: string; requestId?: string; freeOnly?: boolean }>(c);
+    const product = productById(productId ?? '') ?? fail(404, 'no such product');
+    const r = await buyWithBucks(c, me, [{ product, quantity: 1 }], { promoCode, requestId, freeOnly, ref: product.id });
+    return c.json({ product: product.id, grants: product.grants, ...r });
+  });
+  app.post('/store/buy', requireUser, async (c) => {
+    const me = c.get('user').id;
+    if (!creditLimiter(me)) return c.json({ error: 'slow down' }, 429);
+    const p = await body<{ productId?: string; basket?: { product?: string; quantity?: number }[]; promoCode?: string; requestId?: string }>(c);
+    let lines: { product: Product; quantity: number }[];
+    if (p.basket !== undefined) {
+      if (!Array.isArray(p.basket) || !p.basket.length || p.basket.length > 20) fail(400, 'a basket is 1 to 20 lines');
+      lines = p.basket.map((l) => {
+        const product = productById(String(l.product ?? '')) ?? fail(404, 'no such product');
+        const quantity = Number(l.quantity ?? 1);
+        if (!Number.isInteger(quantity) || quantity < 1 || quantity > 20) fail(400, 'a quantity is 1 to 20');
+        return { product, quantity };
+      });
+    } else {
+      lines = [{ product: productById(p.productId ?? '') ?? fail(404, 'no such product'), quantity: 1 }];
+    }
+    const ref = lines.length === 1 && lines[0].quantity === 1 ? lines[0].product.id : `basket:${lines.map((l) => `${l.product.id}x${l.quantity}`).join(',')}`.slice(0, 200);
+    const r = await buyWithBucks(c, me, lines, { promoCode: p.promoCode, requestId: p.requestId, ref });
+    return c.json({ lines: lines.map((l) => ({ product: l.product.id, quantity: l.quantity, grants: l.product.grants })), ...r });
+  });
+
+  // ---------------------------------------------------------------- trade-ins
+  // What each thing in your bag trades in for (docs/SAND_BUCKS.md): how many
+  // you own, how many are on your beaches, and the value of each unit,
+  // newest first (the order a trade-in takes them).
+  app.get('/bag', requireUser, async (c) => {
+    const me = c.get('user').id;
+    const now = clock();
+    const rows = await db.query<{ item_id: string; quantity: number; unit_cents: number | null }>(
+      `SELECT item_id, quantity, unit_cents FROM inventory
+        WHERE user_id = $1 AND quantity > 0 AND (expires_at IS NULL OR expires_at > $2)
+        ORDER BY acquired_at DESC, id DESC`,
+      [me, now],
+    );
+    const placed = await itemsElsewhere(me, NO_BEACH);
+    const [count, uniques] = await Promise.all([
+      beachCount(me),
+      db.query<{ item_id: string }>('SELECT item_id FROM unique_items WHERE owner_id = $1', [me]),
+    ]);
+    const unique = new Set(uniques.map((u) => u.item_id));
+    const items = new Map<string, { item: string; owned: number; placed: number; values: number[] }>();
+    for (const r of rows) {
+      const list = listBucks(r.item_id);
+      if (list === null || unique.has(r.item_id)) continue;
+      const e = items.get(r.item_id) ?? { item: r.item_id, owned: 0, placed: r.item_id === 'beach' ? Math.max(0, count - 1) : (placed[r.item_id] ?? 0), values: [] };
+      e.owned += Number(r.quantity);
+      for (let i = 0; i < Number(r.quantity) && e.values.length < 50; i++) e.values.push(r.unit_cents === null ? list : centsToBucks(Number(r.unit_cents)));
+      items.set(r.item_id, e);
+    }
+    return c.json({
+      items: [...items.values()].map((e) => ({ ...e, free: Math.max(0, e.owned - e.placed) })),
+    });
+  });
+
+  // Trade a thing in for its sand bucks (TradeAtomic in specs/tla/SandBucks.tla):
+  // one transaction holding the player's lock (the one saves, restores,
+  // copies and gifts take), so a save placing it, or a second trade-in of the
+  // same last one, can't land in between. Only what isn't on a beach.
+  app.post('/bag/trade-in', requireUser, async (c) => {
+    const me = c.get('user').id;
+    const { item, quantity = 1 } = await body<{ item?: string; quantity?: number }>(c);
+    if (typeof item !== 'string' || !item || item.length > 40) fail(400, 'say which thing to trade in');
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 50) fail(400, 'a quantity is 1 to 50');
+    if (!tradeable(item!) || (await db.query('SELECT 1 FROM unique_items WHERE item_id = $1', [item])).length) {
+      fail(400, "that can't be traded in");
+    }
+    if (!creditLimiter(me)) return c.json({ error: 'slow down' }, 429);
+    const now = clock();
+    const list = bucksToCents(listBucks(item!)!);
+    const out = await withPlayerWriteLock(me, async (tx) => {
+      const [{ n: ownedN }] = await tx.query<{ n: string | null }>(
+        `SELECT SUM(quantity) AS n FROM inventory WHERE user_id = $1 AND item_id = $2 AND quantity > 0 AND (expires_at IS NULL OR expires_at > $3)`,
+        [me, item, now],
+      );
+      const owned = Number(ownedN ?? 0);
+      let free: number;
+      if (item === 'beach') {
+        free = Math.min(owned, (await allowance(me, tx)) - (await beachCount(me, tx)));
+      } else {
+        const placed = (await itemsElsewhere(me, NO_BEACH, tx))[item!] ?? 0;
+        free = owned - placed;
+      }
+      if (free < quantity) return { error: free > 0 ? `only ${free} can be traded in` : item === 'beach' ? 'every extra beach is in use' : 'pick it up off your beach first', free: Math.max(0, free) };
+      // the newest first: "buy it, then change your mind" gives back exactly what was paid
+      const rows = await tx.query<{ id: string; quantity: number; unit_cents: number | null }>(
+        `SELECT id, quantity, unit_cents FROM inventory
+          WHERE user_id = $1 AND item_id = $2 AND quantity > 0 AND (expires_at IS NULL OR expires_at > $3)
+          ORDER BY acquired_at DESC, id DESC FOR UPDATE`,
+        [me, item, now],
+      );
+      let left = quantity;
+      let cents = 0;
+      for (const r of rows) {
+        if (left <= 0) break;
+        const take = Math.min(left, Number(r.quantity));
+        const unit = r.unit_cents === null ? list : Number(r.unit_cents);
+        await tx.query('UPDATE inventory SET quantity = quantity - $2 WHERE id = $1 AND quantity >= $2', [r.id, take]);
+        await tx.query('INSERT INTO trade_ins (user_id, inventory_id, item_id, quantity, value_cents, created_at) VALUES ($1, $2, $3, $4, $5, $6)', [
+          me, r.id, item, take, unit * take, now,
+        ]);
+        // a community item's creator gives back the credit it earned
+        if (take === Number(r.quantity)) await reverseCreatorCreditByRef(tx, `credit:${r.id}`, now);
+        cents += unit * take;
+        left -= take;
+      }
+      await creditBalance(tx, me, cents, 'trade_in', item!, now);
+      const [u] = await tx.query<{ credit_cents: number }>('SELECT credit_cents FROM users WHERE id = $1', [me]);
+      return { cents, balance: Number(u.credit_cents) };
+    });
+    if ('error' in out) return c.json({ error: out.error, free: out.free }, 409);
+    return c.json({ item, quantity, credited: centsToBucks(out.cents), bucks: centsToBucks(out.balance) });
   });
 
   // (after /beaches/mine…, so 'mine' isn't taken for a code)
@@ -3105,13 +3294,14 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
                AND (expires_at IS NULL OR expires_at > $3)
              ORDER BY acquired_at ASC LIMIT 1
           ) AND quantity > 0
-         RETURNING item_id, expires_at, purchase_id
+         RETURNING item_id, expires_at, purchase_id, unit_cents
        ), given AS (
          -- the gift keeps the purchase it came from, so a refund of that
          -- purchase takes it back from the recipient too (otherwise: buy,
          -- gift it to a second account, get a refund, keep the item)
-         INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at, expires_at, purchase_id)
-         SELECT $4, item_id, 1, 'gift', $3, expires_at, purchase_id FROM giver
+         -- and its trade-in value (docs/SAND_BUCKS.md), so a discount can't be cashed out by gifting
+         INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at, expires_at, purchase_id, unit_cents)
+         SELECT $4, item_id, 1, 'gift', $3, expires_at, purchase_id, unit_cents FROM giver
          RETURNING item_id
        ), logged AS (
          INSERT INTO gifts (from_id, to_id, item_id, created_at)

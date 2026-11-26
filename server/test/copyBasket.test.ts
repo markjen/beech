@@ -8,15 +8,15 @@ describe('copyBasket', () => {
   it('buys exactly what is missing, one single-item product per item', () => {
     const b = copyBasket([short('lighthouse', 2, 1), short('parasol', 1)], false);
     expect(b.lines).toEqual([
-      { product: 'item_lighthouse', quantity: 1, item: 'lighthouse', cents: 299 },
-      { product: 'item_parasol', quantity: 1, item: 'parasol', cents: 99 },
+      { product: 'item_lighthouse', quantity: 1, item: 'lighthouse', bucks: 30 },
+      { product: 'item_parasol', quantity: 1, item: 'parasol', bucks: 10 },
     ]);
-    expect(b.cents).toBe(398);
+    expect(b.bucks).toBe(40);
     expect(b.notForSale).toEqual([]);
   });
 
   it('rounds up for things sold in pairs', () => {
-    expect(copyBasket([short('tikitorch', 3)], false).lines).toEqual([{ product: 'item_tikitorch', quantity: 2, item: 'tikitorch', cents: 149 }]);
+    expect(copyBasket([short('tikitorch', 3)], false).lines).toEqual([{ product: 'item_tikitorch', quantity: 2, item: 'tikitorch', bucks: 15 }]);
   });
 
   it('never suggests a pack, and picks one extra beach for a new beach with no room', () => {
@@ -26,7 +26,7 @@ describe('copyBasket', () => {
   });
 
   it('lists what no product sells, and skips products that are off sale', () => {
-    const b = copyBasket([short('conch', 2), short('palmtree', 1)], false, (p) => (p.id === 'item_palmtree' ? null : Math.round(p.usd * 100)));
+    const b = copyBasket([short('conch', 2), short('palmtree', 1)], false, (p) => (p.id === 'item_palmtree' ? null : p.bucks));
     expect(b.lines).toEqual([]);
     expect(b.notForSale).toEqual([
       { item: 'conch', missing: 2 },

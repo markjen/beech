@@ -172,14 +172,15 @@ it('credits only completed credit orders, including a discounted order retried c
   const attempts = await Promise.all([json('/store/credit-purchase', buy, buyer.token), json('/store/credit-purchase', buy, buyer.token)]);
   for (const res of attempts) {
     expect(res.status, await res.clone().text()).toBe(200);
-    expect(await res.json()).toMatchObject({ paidCents: 125, discountCents: 125, creditCents: 875 });
+    // sand bucks (docs/SAND_BUCKS.md): 25 bucks, half off rounds the discount down to 12
+    expect(await res.json()).toMatchObject({ paidCents: 130, discountCents: 120, creditCents: 870 });
   }
-  expect(await credit(creator.token)).toBe(38);
+  expect(await credit(creator.token)).toBe(40);
   expect(await db.query('SELECT id FROM inventory WHERE user_id = $1', [buyer.id])).toHaveLength(1);
   expect(await db.query('SELECT kind, amount_cents FROM credit_ledger WHERE user_id = $1', [creator.id]))
-    .toEqual([{ kind: 'creator_royalty', amount_cents: 38 }]);
+    .toEqual([{ kind: 'creator_royalty', amount_cents: 40 }]);
   expect(await (await shoreRequest('/submit/items', creator.scoped)).json()).toMatchObject({
-    submissions: [{ id, sales_count: 1, total_credit_earned_cents: 38 }],
+    submissions: [{ id, sales_count: 1, total_credit_earned_cents: 40 }],
   });
   expect((await json('/store/credit-purchase', { ...buy, promoCode: '' }, buyer.token)).status).toBe(409);
   // 0 is free: listed at $0, claimed with no credit spent and no royalty
@@ -191,19 +192,19 @@ it('credits only completed credit orders, including a discounted order retried c
   const claim = { productId: 'item_deckchair', requestId: crypto.randomUUID(), freeOnly: true };
   const free = await json('/store/credit-purchase', claim, buyer.token);
   expect(free.status, await free.clone().text()).toBe(200);
-  expect(await free.json()).toMatchObject({ paidCents: 0, creditCents: 875 });
+  expect(await free.json()).toMatchObject({ paidCents: 0, creditCents: 870 });
   expect(await db.query('SELECT id FROM inventory WHERE user_id = $1', [buyer.id])).toHaveLength(2);
-  expect(await credit(creator.token)).toBe(38);
+  expect(await credit(creator.token)).toBe(40);
 
   await approve(id, 'deckchair', '250');
   const retried = await json('/store/credit-purchase', claim, buyer.token);
   expect(retried.status).toBe(200);
-  expect(await retried.json()).toMatchObject({ paidCents: 0, creditCents: 875 });
+  expect(await retried.json()).toMatchObject({ paidCents: 0, creditCents: 870 });
   const stale = await json('/store/credit-purchase', { ...claim, requestId: crypto.randomUUID() }, buyer.token);
   expect(stale.status).toBe(409);
   expect(await stale.json()).toMatchObject({ error: expect.stringContaining('no longer free') });
-  expect(await credit(buyer.token)).toBe(875);
-  expect(await credit(creator.token)).toBe(38);
+  expect(await credit(buyer.token)).toBe(870);
+  expect(await credit(creator.token)).toBe(40);
   expect(await db.query('SELECT id FROM inventory WHERE user_id = $1', [buyer.id])).toHaveLength(2);
 
   // "not for sale" is its own choice, whatever the price
@@ -237,15 +238,15 @@ it('uses the approved price at native purchase time and reverses a refund once',
   expect((await json('/store/purchase', { ...payment, jws: 'sandbox-receipt' }, buyer.token)).status).toBe(200);
   expect(await credit(creator.token)).toBe(150);
   expect((await json('/store/credit-purchase', { productId: 'item_parasol' }, creator.token)).status).toBe(200);
-  expect(await credit(creator.token)).toBe(51);
+  expect(await credit(creator.token)).toBe(50);
   expect((await json('/store/apple/notifications', { signedPayload: payment.jws })).status).toBe(200);
   expect((await json('/store/apple/notifications', { signedPayload: payment.jws })).status).toBe(200);
   expect(await credit(creator.token)).toBe(0);
-  expect(await db.query('SELECT creator_credit_debt_cents FROM users WHERE id = $1', [creator.id])).toEqual([{ creator_credit_debt_cents: 99 }]);
+  expect(await db.query('SELECT creator_credit_debt_cents FROM users WHERE id = $1', [creator.id])).toEqual([{ creator_credit_debt_cents: 100 }]);
   nativeBoughtAt = now;
   expect((await json('/store/purchase', { productId: payment.productId, platform: 'android', token: 'google-order' }, buyer.token)).status).toBe(200);
   expect(await credit(creator.token)).toBe(0);
-  expect(await db.query('SELECT creator_credit_debt_cents FROM users WHERE id = $1', [creator.id])).toEqual([{ creator_credit_debt_cents: 39 }]);
+  expect(await db.query('SELECT creator_credit_debt_cents FROM users WHERE id = $1', [creator.id])).toEqual([{ creator_credit_debt_cents: 40 }]);
 });
 
 it('pays no credit for a purchase verified after the submission was rejected', async () => {
@@ -283,16 +284,17 @@ it('pays no credit when a creator buys their own item', async () => {
   });
 });
 
-it('sends a free item to the shop claim instead of a card or Steam checkout', async () => {
+it('sells things for sand bucks only: card and Steam checkouts sell packs, a free item is claimed in the shop', async () => {
   const creator = await user('Free creator');
   const buyer = await user('Free Steam buyer', true);
   const id = await submit(creator.scoped);
   await approve(id, 'palmtree', '0');
   for (const path of ['/store/steam/init', '/store/web-checkout']) {
     const res = await json(path, { productId: 'item_palmtree' }, buyer.token);
-    expect(res.status, path).toBe(400);
-    expect(await res.json()).toMatchObject({ error: 'that one is free: claim it in the shop' });
+    expect(res.status, path).toBe(404);
   }
+  const free = await json('/store/credit-purchase', { productId: 'item_palmtree', requestId: crypto.randomUUID(), freeOnly: true }, buyer.token);
+  expect(free.status, await free.clone().text()).toBe(200);
 });
 
 it('keeps a free item out of the shop until it is approved, and again once rejected', async () => {
@@ -313,33 +315,17 @@ it('keeps a free item out of the shop until it is approved, and again once rejec
   expect((await json('/store/credit-purchase', { productId: 'item_surfboard', requestId: crypto.randomUUID() }, buyer.token)).status).toBe(404);
 });
 
-it('honors the amount recorded at Steam and Xsolla checkout after an admin changes the price', async () => {
+it('pays a community item\'s creator from sand bucks spent, at the price when it was bought', async () => {
   const creator = await user('Checkout creator');
-  const buyer = await user('Steam buyer', true);
+  const buyer = await user('Bucks buyer');
   const id = await submit(creator.scoped);
   await approve(id, 'sandcastle', '180');
-  const productId = 'item_sandcastle';
-  const openedSteam = await json('/store/steam/init', { productId }, buyer.token);
-  expect(openedSteam.status).toBe(200);
-  const { orderId } = await openedSteam.json() as { orderId: string };
-  const openedWeb = await json('/store/web-checkout', { productId }, buyer.token);
-  expect(openedWeb.status).toBe(200);
-  const { order } = await openedWeb.json() as { order: string };
-  const [row] = await db.query<{ provider_order_id: string }>('SELECT provider_order_id FROM web_orders WHERE id = $1', [order]);
+  await db.query('UPDATE users SET credit_cents = 1000 WHERE id = $1', [buyer.id]);
+  const bought = await json('/store/buy', { productId: 'item_sandcastle', requestId: crypto.randomUUID() }, buyer.token);
+  expect(bought.status, await bought.clone().text()).toBe(200);
   now += 1;
   await approve(id, 'sandcastle', '330');
-
-  expect((await json('/store/steam/finalize', { orderId }, buyer.token)).status).toBe(200);
-  expect(await (await json('/store/steam/finalize', { orderId }, buyer.token)).json()).toMatchObject({ already: true });
-  expect(await credit(creator.token)).toBe(54);
-  const payload = JSON.stringify({
-    notification_type: 'order_paid', items: [{ sku: productId, quantity: 1 }],
-    order: { id: row.provider_order_id, currency: 'USD', amount: '1.80' },
-    user: { external_id: buyer.id },
-  });
-  for (let i = 0; i < 2; i++) {
-    const res = await root.request('/api/store/xsolla/webhook', { method: 'POST', body: payload, headers: { Authorization: signWebhook(payload, secret) } });
-    expect(res.status, await res.text()).toBe(204);
-  }
-  expect(await credit(creator.token)).toBe(108);
+  // 18 sand bucks paid, 30% is 5.4: rounds to 5
+  expect(await credit(creator.token)).toBe(50);
+  expect(await credit(buyer.token)).toBe(820);
 });

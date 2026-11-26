@@ -51,7 +51,7 @@ function hook(payload: unknown, secret = SECRET, a = app) {
   return a.request('/store/xsolla/webhook', { method: 'POST', body: raw, headers: { 'Content-Type': 'application/json', Authorization: signWebhook(raw, secret) } });
 }
 
-async function checkout(token: string, productId = 'beach_1') {
+async function checkout(token: string, productId = 'bucks_30') {
   const r = await req('/store/web-checkout', json('POST', { productId }), token);
   expect(r.status).toBe(200);
   const b = (await r.json()) as { order: string; url: string };
@@ -59,7 +59,7 @@ async function checkout(token: string, productId = 'beach_1') {
   return { ...b, xsollaOrder: row.provider_order_id };
 }
 
-const paid = (o: { order: string; xsollaOrder: string }, userId: string, over: Record<string, unknown> = {}, sku = 'beach_1', amount = '2.99') => ({
+const paid = (o: { order: string; xsollaOrder: string }, userId: string, over: Record<string, unknown> = {}, sku = 'bucks_30', amount = '2.99') => ({
   notification_type: 'order_paid',
   items: [{ sku, quantity: 1, amount, type: 'virtual_good' }],
   order: { id: Number(o.xsollaOrder), mode: 'default', currency: 'USD', amount, status: 'paid', platform: 'xsolla' },
@@ -70,6 +70,8 @@ const paid = (o: { order: string; xsollaOrder: string }, userId: string, over: R
 });
 
 async function owned(token: string, item: string): Promise<number> {
+  // sand bucks (docs/SAND_BUCKS.md): what the web sells now
+  if (item === 'bucks') return ((await (await req('/credit', {}, token)).json()) as { bucks: number }).bucks;
   const r = await req('/inventory', {}, token);
   const items = ((await r.json()) as { items: { item: string; quantity: number }[] }).items;
   return items.filter((i) => i.item === item).reduce((n, i) => n + i.quantity, 0);
@@ -95,11 +97,11 @@ describe('Xsolla helpers', () => {
   });
 
   it('builds a one-item token request tied to the player and our order', () => {
-    const b = tokenBody({ ...LIVE, sandbox: true }, { userId: 'u1', sku: 'beach_1', webOrderId: 'o1' });
+    const b = tokenBody({ ...LIVE, sandbox: true }, { userId: 'u1', sku: 'bucks_30', webOrderId: 'o1' });
     expect(b).toEqual({
       sandbox: true,
       user: { id: { value: 'u1' } },
-      purchase: { items: [{ sku: 'beach_1', quantity: 1 }] },
+      purchase: { items: [{ sku: 'bucks_30', quantity: 1 }] },
       settings: { external_id: 'o1', return_url: 'https://beech.example/?web_order=o1', currency: 'USD' },
       custom_parameters: { web_order: 'o1' },
     });
@@ -108,9 +110,9 @@ describe('Xsolla helpers', () => {
   });
 
   it('puts the player country in the token body when the client sent one', () => {
-    const b = tokenBody({ ...LIVE, sandbox: true }, { userId: 'u1', sku: 'beach_1', webOrderId: 'o1', country: 'US' });
+    const b = tokenBody({ ...LIVE, sandbox: true }, { userId: 'u1', sku: 'bucks_30', webOrderId: 'o1', country: 'US' });
     expect((b.user as { country?: { value: string } }).country).toEqual({ value: 'US' });
-    const noCountry = tokenBody({ ...LIVE, sandbox: true }, { userId: 'u1', sku: 'beach_1', webOrderId: 'o1' });
+    const noCountry = tokenBody({ ...LIVE, sandbox: true }, { userId: 'u1', sku: 'bucks_30', webOrderId: 'o1' });
     expect((noCountry.user as { country?: unknown }).country).toBeUndefined();
   });
 
@@ -118,7 +120,7 @@ describe('Xsolla helpers', () => {
     const fetch = vi.spyOn(globalThis, 'fetch');
     fetch.mockImplementation(async () => Response.json({ token: 'token', order_id: 1 }));
     try {
-      const req = { userId: 'u1', sku: 'beach_1', webOrderId: 'o1', country: 'US' };
+      const req = { userId: 'u1', sku: 'bucks_30', webOrderId: 'o1', country: 'US' };
       await createPaymentToken(LIVE, { ...req, ip: '192.0.2.1' });
       await createPaymentToken(LIVE, { ...req, ip: '2001:db8::1' });
       await createPaymentToken(LIVE, { ...req, ip: '999.0.2.1' });
@@ -150,14 +152,14 @@ describe('web checkout', () => {
     const products = (await (await req('/store/products')).json()) as { webCheckout: boolean };
     expect(products.webCheckout).toBe(true);
     const p = await signIn('web-buyer-1');
-    expect((await req('/store/web-checkout', json('POST', { productId: 'beach_1' }))).status).toBe(401);
+    expect((await req('/store/web-checkout', json('POST', { productId: 'bucks_30' }))).status).toBe(401);
     expect((await req('/store/web-checkout', json('POST', { productId: 'nope' }), p.token)).status).toBe(404);
     // a promo can't discount a card payment (Xsolla charges its catalog price)
-    expect((await req('/store/web-checkout', json('POST', { productId: 'beach_1', promoCode: 'LAUNCH20' }), p.token)).status).toBe(400);
+    expect((await req('/store/web-checkout', json('POST', { productId: 'bucks_30', promoCode: 'LAUNCH20' }), p.token)).status).toBe(400);
     tokenCalls = [];
     const o = await checkout(p.token);
     expect(o.url).toBe(`https://secure.xsolla.com/paystation4/?token=tok-${o.order}`);
-    expect(tokenCalls).toEqual([expect.objectContaining({ userId: p.id, sku: 'beach_1', webOrderId: o.order })]);
+    expect(tokenCalls).toEqual([expect.objectContaining({ userId: p.id, sku: 'bucks_30', webOrderId: o.order })]);
     expect(await orderStatus(p.token, o.order)).toBe('created');
     // someone else's order is not yours to look at
     const other = await signIn('web-other-1');
@@ -168,13 +170,13 @@ describe('web checkout', () => {
   it('forwards the client country to the token call, and refuses a bad one', async () => {
     const p = await signIn('web-buyer-country');
     tokenCalls = [];
-    const r = await req('/store/web-checkout', json('POST', { productId: 'beach_1', country: 'us' }), p.token);
+    const r = await req('/store/web-checkout', json('POST', { productId: 'bucks_30', country: 'us' }), p.token);
     expect(r.status).toBe(200);
     expect(tokenCalls).toEqual([expect.objectContaining({ country: 'US' })]);
     // a three-letter country is not a country code: no order is created
     tokenCalls = [];
     for (const country of ['USA', null, 42, {}, 'ß']) {
-      expect((await req('/store/web-checkout', json('POST', { productId: 'beach_1', country }), p.token)).status).toBe(400);
+      expect((await req('/store/web-checkout', json('POST', { productId: 'bucks_30', country }), p.token)).status).toBe(400);
     }
     expect(tokenCalls).toEqual([]);
     expect(await db.query('SELECT id FROM web_orders WHERE user_id = $1', [p.id])).toHaveLength(1);
@@ -184,7 +186,7 @@ describe('web checkout', () => {
     const p = await signIn('web-buyer-fail');
     tokenFails = true;
     try {
-      expect((await req('/store/web-checkout', json('POST', { productId: 'beach_1' }), p.token)).status).toBe(502);
+      expect((await req('/store/web-checkout', json('POST', { productId: 'bucks_30' }), p.token)).status).toBe(502);
     } finally {
       tokenFails = false;
     }
@@ -211,14 +213,14 @@ describe('web checkout', () => {
   it('grants a paid order once, however often Xsolla retries the webhook', async () => {
     const p = await signIn('web-buyer-2');
     const o = await checkout(p.token);
-    expect(await owned(p.token, 'beach')).toBe(0);
+    expect(await owned(p.token, 'bucks')).toBe(0);
     expect((await hook(paid(o, p.id))).status).toBe(204);
-    expect(await owned(p.token, 'beach')).toBe(1);
+    expect(await owned(p.token, 'bucks')).toBe(30);
     expect(await orderStatus(p.token, o.order)).toBe('paid');
     // retries, including two at once, grant nothing more
     const again = await Promise.all([hook(paid(o, p.id)), hook(paid(o, p.id))]);
     expect(again.map((r) => r.status)).toEqual([204, 204]);
-    expect(await owned(p.token, 'beach')).toBe(1);
+    expect(await owned(p.token, 'bucks')).toBe(30);
     const rows = await db.query<{ store: string; transaction_id: string; environment: string }>(
       'SELECT store, transaction_id, environment FROM purchases WHERE user_id = $1',
       [p.id],
@@ -226,13 +228,11 @@ describe('web checkout', () => {
     expect(rows).toEqual([{ store: 'xsolla', transaction_id: o.xsollaOrder, environment: 'Production' }]);
   });
 
-  it('grants a multi-item pack in full', async () => {
+  it('grants a bigger pack in full', async () => {
     const p = await signIn('web-buyer-pack');
-    const o = await checkout(p.token, 'pack_founder');
-    expect((await hook(paid(o, p.id, {}, 'pack_founder', '9.99'))).status).toBe(204);
-    expect(await owned(p.token, 'beach')).toBe(2);
-    expect(await owned(p.token, 'tikitorch')).toBe(2);
-    expect(await owned(p.token, 'lighthouse')).toBe(1);
+    const o = await checkout(p.token, 'bucks_100');
+    expect((await hook(paid(o, p.id, {}, 'bucks_100', '9.99'))).status).toBe(204);
+    expect(await owned(p.token, 'bucks')).toBe(100);
   });
 
   it('grants nothing for the wrong amount, items, player or order, or a test payment on live', async () => {
@@ -240,13 +240,13 @@ describe('web checkout', () => {
     const o = await checkout(p.token);
     const code = async (r: Response) => ((await r.json()) as { error: { code: string } }).error.code;
     // the wrong price in US dollars
-    let r = await hook(paid(o, p.id, {}, 'beach_1', '0.99'));
+    let r = await hook(paid(o, p.id, {}, 'bucks_30', '0.99'));
     expect(r.status).toBe(400);
     expect(await code(r)).toBe('INCORRECT_AMOUNT');
     // a different product, or more than one
-    r = await hook(paid(o, p.id, {}, 'pack_founder', '2.99'));
+    r = await hook(paid(o, p.id, {}, 'bucks_100', '2.99'));
     expect(await code(r)).toBe('INCORRECT_INVOICE');
-    r = await hook(paid(o, p.id, { items: [{ sku: 'beach_1', quantity: 5 }] }));
+    r = await hook(paid(o, p.id, { items: [{ sku: 'bucks_30', quantity: 5 }] }));
     expect(await code(r)).toBe('INCORRECT_INVOICE');
     // paid by (or for) somebody else
     const other = await signIn('web-other-3');
@@ -260,27 +260,27 @@ describe('web checkout', () => {
     expect(r.status).toBe(400);
     r = await hook(paid(o, p.id, { billing: { transaction: { id: 1, dry_run: 1 } } }));
     expect(r.status).toBe(400);
-    expect(await owned(p.token, 'beach')).toBe(0);
-    expect(await owned(other.token, 'beach')).toBe(0);
+    expect(await owned(p.token, 'bucks')).toBe(0);
+    expect(await owned(other.token, 'bucks')).toBe(0);
     expect(await orderStatus(p.token, o.order)).toBe('created');
     // a local-currency payment of the right item is fine (Xsolla converts)
     r = await hook(paid(o, p.id, { order: { id: Number(o.xsollaOrder), mode: 'default', currency: 'EUR', amount: '2.79' } }));
     expect(r.status).toBe(204);
-    expect(await owned(p.token, 'beach')).toBe(1);
+    expect(await owned(p.token, 'bucks')).toBe(30);
   });
 
-  it('a refund or cancellation takes the items back', async () => {
+  it('a refund or cancellation takes the sand bucks back', async () => {
     const p = await signIn('web-buyer-4');
-    const o = await checkout(p.token, 'item_parasol');
-    expect((await hook(paid(o, p.id, {}, 'item_parasol', '0.99'))).status).toBe(204);
-    expect(await owned(p.token, 'parasol')).toBe(1);
-    const cancel = { notification_type: 'order_canceled', items: [{ sku: 'item_parasol', quantity: 1 }], order: { id: Number(o.xsollaOrder), status: 'canceled' }, user: { external_id: p.id }, custom_parameters: { web_order: o.order } };
+    const o = await checkout(p.token, 'bucks_10');
+    expect((await hook(paid(o, p.id, {}, 'bucks_10', '0.99'))).status).toBe(204);
+    expect(await owned(p.token, 'bucks')).toBe(10);
+    const cancel = { notification_type: 'order_canceled', items: [{ sku: 'bucks_10', quantity: 1 }], order: { id: Number(o.xsollaOrder), status: 'canceled' }, user: { external_id: p.id }, custom_parameters: { web_order: o.order } };
     expect((await hook(cancel)).status).toBe(204);
-    expect(await owned(p.token, 'parasol')).toBe(0);
+    expect(await owned(p.token, 'bucks')).toBe(0);
     expect(await orderStatus(p.token, o.order)).toBe('refunded');
     // a late repeat of the payment doesn't bring it back
-    expect((await hook(paid(o, p.id, {}, 'item_parasol', '0.99'))).status).toBe(204);
-    expect(await owned(p.token, 'parasol')).toBe(0);
+    expect((await hook(paid(o, p.id, {}, 'bucks_10', '0.99'))).status).toBe(204);
+    expect(await owned(p.token, 'bucks')).toBe(0);
     // and a repeat of the cancellation is harmless
     expect((await hook(cancel)).status).toBe(204);
   });
@@ -291,7 +291,7 @@ describe('web checkout', () => {
     expect((await hook({ notification_type: 'order_canceled', order: { id: Number(o.xsollaOrder) }, custom_parameters: { web_order: o.order } })).status).toBe(204);
     expect(await orderStatus(p.token, o.order)).toBe('canceled');
     expect((await hook(paid(o, p.id))).status).toBe(204);
-    expect(await owned(p.token, 'beach')).toBe(0);
+    expect(await owned(p.token, 'bucks')).toBe(0);
   });
 
   it('an old unpaid order reads as expired, but a late payment still grants', async () => {
@@ -302,7 +302,7 @@ describe('web checkout', () => {
       expect(await orderStatus(p.token, o.order)).toBe('expired');
       expect((await hook(paid(o, p.id))).status).toBe(204);
       expect(await orderStatus(p.token, o.order)).toBe('paid');
-      expect(await owned(p.token, 'beach')).toBe(1);
+      expect(await owned(p.token, 'bucks')).toBe(30);
     } finally {
       skew = 0;
     }
@@ -320,7 +320,7 @@ describe('web checkout switched off', () => {
     expect(products.webCheckout).toBe(false);
     const r = await off.request('/auth/dev', json('POST', { name: 'web-off' }));
     const { token } = (await r.json()) as { token: string };
-    const c = await off.request('/store/web-checkout', { ...json('POST', { productId: 'beach_1' }), headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` } });
+    const c = await off.request('/store/web-checkout', { ...json('POST', { productId: 'bucks_30' }), headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` } });
     expect(c.status).toBe(404);
     expect((await hook({ notification_type: 'user_validation' }, SECRET, off)).status).toBe(404);
   });

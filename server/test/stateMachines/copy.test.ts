@@ -69,7 +69,7 @@ const fit = async (w: Who, from: string, target = 'new') => {
     version: number;
     short: { item: string; need: number; have: number }[];
     room: boolean;
-    basket: { lines: { product: string; quantity: number; item: string; cents: number }[]; cents: number; notForSale: { item: string }[] };
+    basket: { lines: { product: string; quantity: number; item: string; bucks: number }[]; bucks: number; notForSale: { item: string }[] };
   };
 };
 
@@ -120,7 +120,7 @@ describe('copy: one transition at a time', () => {
     await s.grant(me.token, 'beach');
     const f = await fit(me, src.code);
     expect(f.short).toEqual([{ item: ITEM, need: 2, have: 1 }]);
-    expect(f.basket.lines).toEqual([{ product: 'item_lighthouse', quantity: 1, item: ITEM, cents: 299 }]);
+    expect(f.basket.lines).toEqual([{ product: 'item_lighthouse', quantity: 1, item: ITEM, bucks: 30 }]);
     expect(await answer(await copy(me, src.code, f.version, 'new'))).toEqual({ status: 409, why: 'short' });
     expect((await held(me)).size).toBe(1);
     const r = await copy(me, src.code, f.version, 'new', 'drop-missing');

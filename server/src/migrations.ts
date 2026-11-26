@@ -809,6 +809,31 @@ const MIGRATIONS: string[] = [
   ALTER TABLE inbox DROP CONSTRAINT inbox_kind_check;
   ALTER TABLE inbox ADD CONSTRAINT inbox_kind_check CHECK (kind IN ('visit', 'gift', 'neighbor_request', 'neighbor_linked', 'star', 'rating', 'invite_joined', 'invite_settled', 'system', 'copied'));
   `,
+  // 30: sand bucks and trade-ins (docs/SAND_BUCKS.md). The balance stays in
+  // users.credit_cents at 10 cents a sand buck, always a whole number of
+  // bucks: balances round up to the next buck, debt down. Each bag row can
+  // carry its trade-in value per unit (unit_cents; NULL = its list value).
+  // creator_credit_debt_cents is now the debt of any clawback (a refunded
+  // pack whose bucks were spent), not only creator royalties.
+  `
+  UPDATE users SET credit_cents = ((credit_cents + 9) / 10) * 10 WHERE credit_cents % 10 <> 0;
+  UPDATE users SET creator_credit_debt_cents = (creator_credit_debt_cents / 10) * 10 WHERE creator_credit_debt_cents % 10 <> 0;
+  ALTER TABLE inventory ADD COLUMN unit_cents INTEGER CHECK (unit_cents IS NULL OR unit_cents >= 0);
+  CREATE TABLE trade_ins (
+    id BIGSERIAL PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    inventory_id BIGINT REFERENCES inventory (id) ON DELETE SET NULL,
+    item_id TEXT NOT NULL,
+    quantity INTEGER NOT NULL CHECK (quantity > 0),
+    value_cents INTEGER NOT NULL CHECK (value_cents >= 0),
+    created_at BIGINT NOT NULL
+  );
+  CREATE INDEX trade_ins_user ON trade_ins (user_id, created_at DESC);
+  CREATE INDEX trade_ins_inventory ON trade_ins (inventory_id);
+  ALTER TABLE credit_ledger DROP CONSTRAINT credit_ledger_kind_check;
+  ALTER TABLE credit_ledger ADD CONSTRAINT credit_ledger_kind_check
+    CHECK (kind IN ('gift_card', 'spend', 'creator_royalty', 'creator_royalty_refund', 'pack', 'pack_refund', 'trade_in', 'trade_in_refund'));
+  `,
 ];
 
 /** Apply migrations up to `upTo` (default: all). Tests use `upTo` to check a migration on older data. */

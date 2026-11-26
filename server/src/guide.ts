@@ -54,7 +54,8 @@ function ladderItems(): string {
 
 const pct = (v: number) => `${Math.round(v * 1000) / 10}%`;
 const names = (ids: string[]) => ids.map((id) => esc(displayName(id))).join(', ');
-const usd = (n: number) => `$${n.toFixed(2)}`;
+/** a price in sand bucks (docs/SAND_BUCKS.md) */
+const bucks = (n: number) => `${n} sand bucks`;
 const sentence = (s: string) => (s.endsWith('.') ? s : `${s}.`);
 const minutes = (ms: number) => {
   const m = Math.round(ms / 60000);
@@ -88,7 +89,7 @@ const byTierThenName = (a: string, b: string) => ORDER.indexOf(itemRarity(a)) - 
 function catalogRow(id: string): string {
   const behaviour = behaviourOfKind(itemKind(id));
   const single = PRODUCTS.find((p) => p.grants.length === 1 && p.grants[0].item === id);
-  const price = single ? ` · ${usd(single.usd)}` : '';
+  const price = single ? ` · ${bucks(single.bucks)}` : '';
   // The glow line is for placed things: extras with no behaviour (beach
   // snacks, the pet crab) aren't placed on the sand, and pets don't glow.
   const words = [single?.blurb ?? '', behaviour ? BEHAVIOUR_WORDS[behaviour] : '', behaviour && itemGlows(id) ? 'Glows and sparkles on the sand.' : '']
@@ -111,7 +112,7 @@ function catalogSection(now: number): string {
     (a, b) => a.grants[0].quantity - b.grants[0].quantity,
   );
   const beachPrices = beachProducts
-    .map((p) => (p.grants[0].quantity === 1 ? usd(p.usd) : `${p.grants[0].quantity} for ${usd(p.usd)}`))
+    .map((p) => (p.grants[0].quantity === 1 ? bucks(p.bucks) : `${p.grants[0].quantity} for ${bucks(p.bucks)}`))
     .join(', or ');
   const beachBlurb = beachProducts[0]?.blurb ?? '';
   return `
@@ -140,9 +141,9 @@ ${sets
 <ul>${clawIds.map(catalogRow).join('')}</ul>
 
 <h3>From the shop</h3>
-<p>Bought in the paid shop, under Shop. Prices in US dollars; what you buy is yours on every device you sign in on.</p>
+<p>Bought in the shop with sand bucks (see <a href="#shop">Shop</a>); what you buy is yours on every device you sign in on, and can be traded back in.</p>
 <ul>${shopIds.map(catalogRow).join('')}</ul>
-${founder ? `<p>The <b>${esc(founder.name)}</b> (${usd(founder.usd)}) — ${esc(sentence(founder.blurb))}</p>` : ''}
+${founder ? `<p>The <b>${esc(founder.name)}</b> (${bucks(founder.bucks)}) — ${esc(sentence(founder.blurb))}</p>` : ''}
 
 <h3>Extras</h3>
 <p>Things you own that aren't placed on the sand.</p>
@@ -368,8 +369,10 @@ ${GUIDE_STEPS.map((st) => `<tr><td>${esc(st.title)}</td><td>${esc(st.how)}</td><
 <p>The file format is documented for anyone who wants to design beaches by hand or with a script.</p>
 
 <h2 id="shop">Shop</h2>
-<p>Choose Paid shop from Shop. In the iPhone and Android apps you pay through your App Store or Google Play account. On the web, card payments are handled by Xsolla, our payment partner, on their secure page; prices are in US dollars and converted at checkout. Gift cards and promo codes work on the web only, and promo codes apply to buying with credit. Some things in the shop are free: tap <b>Free</b> to add one to your bag, on any device, with nothing to pay. What you buy is yours on every device you sign in on.</p>
-<p>Make an item for Beech and <a href="https://beechshore.com/submit">submit it on beechshore</a>. You can propose a price and how often it should appear. If your item is approved and sold, you earn 30% in Beech account credit to spend in the web shop.</p>
+<p>Everything in the shop is priced in <b>sand bucks</b> (1 sand buck is 10¢). Buy sand bucks in packs: in the iPhone and Android apps through your App Store or Google Play account, on Steam through Steam, and on the web by card through Xsolla, our payment partner, on their secure page (in US dollars, converted at checkout). Gift cards add sand bucks too (redeem them on the web), and promo codes take sand bucks off a price. Your sand bucks are yours on every device you sign in on, and can be spent in any of them. Some things in the shop are free: tap <b>Free</b> to add one to your bag.</p>
+<p><b>Trade-ins:</b> anything in your bag that you can place on a beach, and an extra beach you aren’t using, can be traded in for sand bucks: open your bag and tap “trade in”. You get back what you paid for it (a bundle’s or a promo’s price is shared out over what it held), so you can try things and change your mind without losing anything. Things that came free — from the claw machine, the vending machine, digging, a gift, or a reward — trade in at their shop price, or by rarity when the shop doesn’t sell them (common 5, uncommon 10, rare 15, legendary 30). A gift keeps the value it had. Something on one of your beaches has to be picked up first. Snacks, the pet sand crab and one-of-a-kind things can’t be traded in. Sand bucks can’t be cashed out or given to someone else.</p>
+<p>If a pack is refunded, its sand bucks come back out of your balance; anything already spent is owed and paid off from the next sand bucks you get.</p>
+<p>Make an item for Beech and <a href="https://beechshore.com/submit">submit it on beechshore</a>. You can propose a price and how often it should appear. If your item is approved and sold, you earn 30% of its price in sand bucks (it goes back if the buyer trades it in).</p>
 <p>Rare and legendary things glow and sparkle on the sand; lamps and flames glow at night.</p>
 
 <h2 id="item-catalog">Item catalog</h2>
