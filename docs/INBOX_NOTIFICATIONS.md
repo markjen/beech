@@ -281,17 +281,18 @@ Each one is a phase.
 
 ### Turning on push: owner steps
 
-Push needs keys and console setup that only the owner can do. None of it
-goes in the repo. The code is built (2026-11-26); each platform switches on
+Push needs keys and setup that only the owner can do. The Android/FCM
+side is Terraform in the repo (`infra/firebase.tf`); the Apple key and
+the GitHub variables and secrets stay by hand. The code is built (2026-11-26); each platform switches on
 by itself once its part below is done, and the deploy only adds a part's
 settings once its GitHub variable exists. Everything here is free.
 
-**Quick way:** `scripts/setup-push.sh web`, `scripts/setup-push.sh ios
-<AuthKey_KEYID.p8> <TEAM_ID>` and `scripts/setup-push.sh android` do every
-Google Cloud step below (run them where gcloud is signed in to
+**Quick way:** `scripts/setup-push.sh web` and `scripts/setup-push.sh ios
+<AuthKey_KEYID.p8> <TEAM_ID>` do every Google Cloud step below (run them where gcloud is signed in to
 `beech-prod`; they're safe to re-run and never print a secret), then print
-the GitHub variables to set. The Apple and Firebase console steps (B1, B4,
-C1, C2) and the GitHub variables and secrets stay by hand.
+the GitHub variables to set. The Android/FCM setup (§C) is Terraform now;
+`scripts/setup-push.sh android` is only a fallback for it. The Apple
+console steps (B1, B4) and the GitHub variables and secrets stay by hand.
 
 By hand, with the same shell variables as GCP.md, "One-time setup":
 
@@ -359,23 +360,27 @@ Screen** (iOS 16.4 and later). The store apps use native push (B, C).
    `app.beech.beach` → **Push Notifications** on. If you use manual
    provisioning profiles, regenerate them.
 
-**C. Android app (FCM)**
+**C. Android app (FCM)** — Terraform (`infra/firebase.tf`), done
+2026-11-26 and imported into state; do not redo it in the console.
 
-1. **Firebase on the existing project.** https://console.firebase.google.com
-   → Add project → pick **beech-prod** (not a new project). Analytics can
-   be off.
-2. **Android app in Firebase:** package `app.beech.beach`. Download
-   `google-services.json`. Don't commit it: add it as the GitHub Actions
-   **secret** `GOOGLE_SERVICES_JSON` (base64: `base64 -w0 google-services.json`),
-   and for local builds put it at `android/app/google-services.json` (the
-   build applies the plugin when the file is there; it's git-ignored).
-3. **Let the server send:**
-   ```bash
-   gcloud services enable fcm.googleapis.com
-   gcloud projects add-iam-policy-binding $PROJECT \
-     --member=serviceAccount:$RUN_SA --role=roles/firebasecloudmessaging.admin
-   ```
-   and the variable `FCM_PROJECT_ID` = `beech-prod`.
+1. **Firebase on the existing project** (`google_firebase_project`) and
+   the **Android app** (`google_firebase_android_app`, package
+   `app.beech.beach`) are managed by Terraform. Analytics is off. If
+   either ever has to be recreated, change the Terraform, don't click it
+   in the console — and import anything the console creates before the
+   next apply.
+2. **The config file stays by hand:** download `google-services.json`
+   (Firebase console → Project settings → Your apps) and add it as the
+   GitHub Actions **secret** `GOOGLE_SERVICES_JSON` (base64:
+   `base64 -w0 google-services.json`). For local builds put it at
+   `android/app/google-services.json` (the build applies the plugin when
+   the file is there; it's git-ignored). Don't commit it.
+3. **Let the server send** is Terraform too: the FCM API
+   (`fcm.googleapis.com`) is in the managed API list in `infra/main.tf`
+   and the `roles/firebasecloudmessaging.admin` grant on `beech-run` is
+   `google_project_iam_member.beech_run_fcm_admin`. Then the GitHub
+   variable `FCM_PROJECT_ID` = `beech-prod` (by hand — GitHub variables
+   aren't Terraform). The next deploy turns FCM on in the server.
 
 **D. App builds with push (after B and/or C)**
 

@@ -12,6 +12,13 @@ terraform {
       source  = "hashicorp/google"
       version = "~> 5.0"
     }
+    # The Firebase project/app resources are beta-only (they are not in
+    # the GA provider); only the two resources in infra/firebase.tf use
+    # this provider. Same version line as google.
+    google-beta = {
+      source  = "hashicorp/google-beta"
+      version = "~> 5.0"
+    }
     random = {
       source  = "hashicorp/random"
       version = "~> 3.0"
