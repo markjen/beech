@@ -1,13 +1,14 @@
 # Mobile apps (App Store + Google Play)
 
-The phone apps are the same web build wrapped with **Capacitor 8**:
+Both apps use **Capacitor 8**. Android loads the production game at
+`https://play.beech.games` in its WebView. iOS bundles the game from `dist/`.
 
 | | |
 |---|---|
-| Config | `capacitor.config.ts` (appId `app.beech.beach`, webDir `dist`) |
+| Config | `capacitor.config.ts` (appId `app.beech.beach`) |
 | Android project | `android/` (Gradle, compile/target SDK 36, min SDK 24) |
 | iOS project | `ios/App/App.xcodeproj` (Swift Package Manager, no CocoaPods) |
-| Native plugins | `@capacitor/haptics` (Taptic Engine / vibrator); `@capacitor/filesystem` and `@capacitor/share` (exporting a beach file through the share sheet) |
+| Native plugins | Native sign-in, store billing, haptics, filesystem and sharing on both platforms. Android also uses native approximate location and local pet reminders. |
 | Icons & splash sources | `resources/` (regenerate with `npm run icons`, then `npx @capacitor/assets generate`, see below) |
 
 > **Before the first store upload, decide the final `appId`.** It is the
@@ -21,13 +22,22 @@ The phone apps are the same web build wrapped with **Capacitor 8**:
 ## Everyday loop
 
 ```bash
-npm run build && npx cap sync        # copy dist/ + plugins into both native projects
-npx cap open android                 # Android Studio
-npx cap open ios                     # Xcode (macOS only)
+npm run cap:android                  # sync the hosted shell and open Android Studio
+npm run cap:ios                      # build, sync and open in Xcode (macOS only)
+npm run cap:sync                     # sync both native projects
 ```
 
-`npm run cap:android` / `npm run cap:ios` do build + sync + open in one go.
-Run `npx cap sync` after every web change you want in the native apps.
+Once the hosted shell is installed, production deployments from `main` update
+the Android game. Players who leave it open get a reload prompt. A new Android
+release is needed for changes to the native shell or its plugins. The shell
+requires a current Android System WebView and displays a retry screen when it
+can't reach the game. Local pet reminders are opt-in under Manage → Settings.
+
+Moving from the bundled Android client to the hosted origin requires signing
+in again. Account beaches and delivered purchases are server-side. Export
+device-only beaches and let any pending purchases finish syncing before
+upgrading. WebView data stored at the old `https://localhost` origin stays
+there, including settings and local checkpoints.
 
 ## Versioning
 
@@ -57,7 +67,7 @@ rm -rf icons                                    # the tool also writes PWA webps
 Needs JDK 21 and the Android SDK (Android Studio installs both).
 
 ```bash
-npm run build && npx cap sync android
+npm run cap:sync:android
 cd android && ./gradlew assembleDebug           # app/build/outputs/apk/debug/app-debug.apk
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```

@@ -10,6 +10,7 @@ import { Gestures, HOLD_SLOP_PX, LONG_PRESS_MS } from './input/gestures';
 import { SandPicker } from './input/sandPicker';
 import { rgbToCss, type Palette } from './palette';
 import { Haptics } from './platform/haptics';
+import { nearbyCoordinates } from './platform/location';
 import { registerServiceWorker } from './platform/pwa';
 import { tierFromBench } from './platform/quality';
 import { BeachRenderer, ORIGIN_X, ORIGIN_Z } from './render/beachRenderer';
@@ -64,9 +65,9 @@ import { loadSettings, saveSettings, type Settings, type WaveStrength } from './
 import { initTelemetry, reportError, reportEvent } from './net/telemetry';
 import { LocalCheckpointsSection } from './ui/localCheckpoints';
 import { watchForNewVersion } from './platform/version';
-import { isPackagedApp, isSteam, steamBridge } from './platform/runtime';
+import { isSteam, steamBridge, usesHostedClient } from './platform/runtime';
 import { unlockSteamAchievement, updateSteamRichPresence } from './platform/steamFeatures';
-import { schedulePetHungerReminder } from './platform/petNotify';
+import { canSchedulePetReminders, requestPetReminderPermission, setPetHungerReminder } from './platform/petNotify';
 import { GamepadController } from './input/gamepad';
 import { BeachFileDialog, beachFileName, pickFile, saveText, type BeachFileHost } from './ui/beachFileDialog';
 import { parseBeachFile, writeBeachFile } from './world/beachFile';
@@ -303,17 +304,17 @@ async function boot() {
 
   // ---------------------------------------------------------------- new versions
   // A tab left open across a deploy runs old code (and an old app's saves can
-  // be refused, 426): offer a reload, once. The phone apps update through the
-  // stores, so there it says to update instead.
+  // be refused, 426): offer a reload for hosted clients and a store update
+  // for clients whose game code ships with the native app.
   let reloadOffered = false;
   const offerReload = () => {
     if (reloadOffered) return;
     reloadOffered = true;
     if (isSteam()) showToast(uiRoot, 'A newer beech is out: update it on Steam to keep saving.');
-    else if (isPackagedApp()) showToast(uiRoot, 'A newer beech is out: update it from the store to keep saving.');
+    else if (!usesHostedClient()) showToast(uiRoot, 'A newer beech is out: update it from the store to keep saving.');
     else showActionToast(uiRoot, 'A new version of beech is ready.', 'Reload', () => location.reload(), 24 * 3600 * 1000);
   };
-  if (!isPackagedApp()) watchForNewVersion(offerReload);
+  if (usesHostedClient()) watchForNewVersion(offerReload);
 
   // ---------------------------------------------------------------- sim frames
   let info: FrameInfo = {
@@ -834,6 +835,11 @@ async function boot() {
   // The beach selected *for settings* (set by AccountPanel in production builds).
   let settingsBeachId: () => string | null = () => null;
   let applyPlaceToBeach = (b: Beach) => setBeach(b);
+  let petForReminder: Pick<PetDto, 'name' | 'lastFedAt'> | null = null;
+  const updatePetReminder = () => {
+    const reminder = settings.petReminders && petForReminder ? { ...petForReminder, beachName: beach.name } : null;
+    setPetHungerReminder(reminder);
+  };
   let smoothSelectedBeach = () => {
     if (!sync.id) return;
     markDirty(1500);
@@ -846,15 +852,11 @@ async function boot() {
     settings,
     {
       nearMe: () => {
-        if (!('geolocation' in navigator)) return;
-        navigator.geolocation.getCurrentPosition(
-          (pos) => applyPlaceToBeach(nearestBeach(pos.coords.latitude, pos.coords.longitude)),
-          () => {
-            /* denied or unavailable: keep the current beach */
-          },
-          { maximumAge: 3600000, timeout: 10000 },
-        );
+        void nearbyCoordinates()
+          .then(({ latitude, longitude }) => applyPlaceToBeach(nearestBeach(latitude, longitude)))
+          .catch(() => { /* denied or unavailable: keep the current beach */ });
       },
+      enablePetReminders: account && canSchedulePetReminders() ? requestPetReminderPermission : undefined,
       change: (s, key) => {
         if (key === 'beach') {
           const b = beachById(s.beach);
@@ -863,6 +865,7 @@ async function boot() {
         }
         settings = s;
         saveSettings(settings);
+        if (key === 'petReminders') updatePetReminder();
         if (key === 'sound') audio.setSound(s.sound);
         if (key === 'music') audio.setMusic(s.music);
         if (key === 'haptics') haptics.enabled = s.haptics;
@@ -2227,22 +2230,25 @@ async function boot() {
     const applyPet = (pet: { species: 'crab'; name: string; mood: 'happy' | 'peckish' | 'hungry' | 'sleepy'; lastFedAt: number } | null) => {
       syncAnimalObstacles();
       animals.setPet(pet ? { species: pet.species, name: pet.name, mood: pet.mood } : null, animalEnv);
-      if (pet) void schedulePetHungerReminder(pet.name, beach.name, pet.lastFedAt);
+      petForReminder = pet && { name: pet.name, lastFedAt: pet.lastFedAt };
+      if (settings.petReminders) updatePetReminder();
     };
     const refreshPet = () => {
-      if (!animalsApi?.signedIn) {
-        animals.setPet(null);
+      const userId = account.user?.id;
+      if (!animalsApi?.signedIn || !userId) {
+        applyPet(null);
         return;
       }
       // the pet of the live beach (the beach of yours in front of you)
       const bId = sync.id && sync.id !== LOCAL_BEACH ? sync.id : undefined;
       if (!bId) {
-        animals.setPet(null);
+        applyPet(null);
         return;
       }
       void animalsApi
         .getPet(bId)
         .then((r) => {
+          if (account.user?.id !== userId || sync.id !== bId) return;
           applyPet(r.pet);
           const latest = r.recentFeeders?.[0];
           if (r.pet && latest) {

@@ -2,7 +2,7 @@
 
 Status: **S1–S4 engineering complete (runtime abstraction, `desktop/` shell, SteamPipe CI, Steam Auth + cross-platform linking, `ISteamMicroTxn` + refund sync, Achievements, Rich Presence, Gamepad API, privacy policy). S5 (clean-machine Windows & Steam Deck beta testing) still to do; S6 (Steamworks Partner setup, store assets, Coming Soon, Valve review) remains.**
 
-The Steam release wraps the same Vite web build (`dist/`) in an **Electron + `steamworks.js`** shell under `desktop/`, mirroring how `android/` and `ios/` wrap `dist/` with Capacitor. It connects to the same Cloud Run backend (`https://play.beech.games`), adds zero-friction Steam sign-in with cross-platform account linking, and routes in-game shop purchases through Steam Wallet (`ISteamMicroTxn`).
+The Steam release bundles the Vite web build (`dist/`) in an **Electron + `steamworks.js`** shell under `desktop/`. It connects to the Cloud Run backend (`https://play.beech.games`), adds zero-friction Steam sign-in with cross-platform account linking, and routes in-game shop purchases through Steam Wallet (`ISteamMicroTxn`).
 
 ## Why Electron (over Tauri)
 

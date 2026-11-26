@@ -220,9 +220,10 @@ Facebook and Twitter are switched off in `capacitor.config.ts`, so their SDKs
      SHA-1 of the Play **app signing** key (Play Console → App integrity) and
      of the upload/debug keys used for testing;
    - an **iOS** OAuth client for bundle ID `app.beech.beach`.
-2. Build the apps with `VITE_ACCOUNTS=1`,
+2. Android takes `VITE_GOOGLE_CLIENT_ID` from the production web build.
+   For iOS, build with `VITE_ACCOUNTS=1`,
    `VITE_API_URL=https://<production domain>`, `VITE_GOOGLE_CLIENT_ID=<web
-   client>` and `VITE_GOOGLE_IOS_CLIENT_ID=<iOS client>`, then `npx cap sync`.
+   client>` and `VITE_GOOGLE_IOS_CLIENT_ID=<iOS client>`, then run `npx cap sync ios`.
 3. Run `VITE_GOOGLE_IOS_CLIENT_ID=… node scripts/native-auth-config.mjs` once,
    and commit the result. It adds the reversed client ID URL scheme to
    `ios/App/App/Info.plist`. Client IDs are public, not secrets.

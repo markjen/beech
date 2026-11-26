@@ -11,6 +11,7 @@ export interface Settings {
   sound: boolean;
   music: boolean;
   haptics: boolean;
+  petReminders?: boolean;
   /** the sky and light follow the real place of the beach in the middle of the view */
   localWeather: boolean;
   /** the light to use when local weather is off */

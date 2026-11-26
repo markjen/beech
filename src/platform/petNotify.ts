@@ -1,9 +1,4 @@
-// Cozy local hunger notification scheduling (docs/ANIMALS.md, Phase 3a).
-//
-// Schedules a single gentle reminder 24 h after the pet was last fed, pushing
-// out of local quiet hours (22:00–08:00) to 08:00 the next morning. Uses
-// Capacitor's LocalNotifications plugin when available in native shells, and
-// safely no-ops when absent or disabled.
+import { Capacitor } from '@capacitor/core';
 
 const HUNGRY_DELAY_MS = 24 * 3600 * 1000;
 const QUIET_START_HOUR = 22;
@@ -30,38 +25,41 @@ export function nextPetNotifyTime(lastFedAt: number, now: number): number {
   return target;
 }
 
-interface CapLocalNotifications {
-  schedule(opts: { notifications: { id: number; title: string; body: string; schedule: { at: Date } }[] }): Promise<void>;
-  cancel(opts: { notifications: { id: number }[] }): Promise<void>;
-}
-
-function nativeLocalNotifications(): CapLocalNotifications | null {
-  const cap = (window as unknown as { Capacitor?: { Plugins?: { LocalNotifications?: CapLocalNotifications } } }).Capacitor;
-  return cap?.Plugins?.LocalNotifications ?? null;
-}
-
 const PET_NOTIFY_ID = 7351;
+let pending = Promise.resolve();
 
-/** Schedule (or replace) the single local hunger reminder on iOS/Android. */
-export async function schedulePetHungerReminder(petName: string, beachName: string, lastFedAt: number, now = Date.now()): Promise<boolean> {
-  const plugin = nativeLocalNotifications();
-  if (!plugin) return false;
-  const at = new Date(nextPetNotifyTime(lastFedAt, now));
-  const label = petName || 'Your sand crab';
+export function canSchedulePetReminders(): boolean {
+  return Capacitor.isNativePlatform() && Capacitor.isPluginAvailable('LocalNotifications');
+}
+
+export async function requestPetReminderPermission(): Promise<boolean> {
+  if (!canSchedulePetReminders()) return false;
   try {
-    await plugin.cancel({ notifications: [{ id: PET_NOTIFY_ID }] }).catch(() => {});
-    await plugin.schedule({
-      notifications: [
-        {
-          id: PET_NOTIFY_ID,
-          title: 'beech',
-          body: `${label} is getting hungry on ${beachName || 'your beach'}.`,
-          schedule: { at },
-        },
-      ],
-    });
-    return true;
+    const { LocalNotifications } = await import('@capacitor/local-notifications');
+    return (await LocalNotifications.requestPermissions()).display === 'granted';
   } catch {
     return false;
   }
+}
+
+/** Keep a single local reminder. Serialize changes so opting out wins over a pending schedule. */
+export function setPetHungerReminder(pet: { name: string; beachName: string; lastFedAt: number } | null): void {
+  if (!canSchedulePetReminders()) return;
+  pending = pending.then(async () => {
+    const { LocalNotifications } = await import('@capacitor/local-notifications');
+    await LocalNotifications.cancel({ notifications: [{ id: PET_NOTIFY_ID }] });
+    if (!pet) {
+      await LocalNotifications.removeDeliveredNotificationsById({ ids: [PET_NOTIFY_ID] });
+      return;
+    }
+    if ((await LocalNotifications.checkPermissions()).display !== 'granted') return;
+    const at = new Date(nextPetNotifyTime(pet.lastFedAt, Date.now()));
+    await LocalNotifications.schedule({ notifications: [{
+      id: PET_NOTIFY_ID,
+      title: 'beech',
+      body: `${pet.name || 'Your sand crab'} is getting hungry on ${pet.beachName || 'your beach'}.`,
+      schedule: { at, allowWhileIdle: true },
+      isExactNotification: false,
+    }] });
+  }).catch(() => { /* Notifications may be unavailable on this device. */ });
 }
