@@ -4,7 +4,7 @@ import { MAX_OBJECTS } from '../sim/sandCodec';
 import { renderBeachMap, sortBeachesWestToEast } from './beachMap';
 import { SECTION_ROWS } from '../world/sections';
 import { buildOwnStretches, connectableBeaches, hasSparePierWithoutSite, ownBeachLabel } from './shoreConnect';
-import { DEV_AUTH, googleSignInAvailable, renderGoogleButton, type Account, type LinkedProvider, type MyBeach, type Neighbors, type Side } from '../net/account';
+import { DEV_AUTH, googleSignInAvailable, MergeNeedsConfirmError, renderGoogleButton, type Account, type LinkedProvider, type MergePreview, type MyBeach, type Neighbors, type Side } from '../net/account';
 import { beachShareText, shareUrl, shoreAccountUrl, shoreBeachUrl } from '../net/share';
 import { codesAllowed } from '../net/shop';
 import { bucksIcon } from './inventory';
@@ -978,7 +978,8 @@ export class AccountPanel {
       <form class="slot link-form">
         <input type="text" maxlength="9" placeholder="XXXX-XXXX" autocomplete="off" spellcheck="false" aria-label="Link code"/>
         <button type="submit" class="action">link</button>
-      </form>`;
+      </form>
+      <div class="link-merge" hidden></div>`;
     const gen = wrap.querySelector<HTMLButtonElement>('[data-act="link-gen"]')!;
     gen.addEventListener('click', () =>
       void this.guard(async () => {
@@ -989,14 +990,27 @@ export class AccountPanel {
     );
     const form = wrap.querySelector<HTMLFormElement>('.link-form')!;
     const input = form.querySelector<HTMLInputElement>('input')!;
+    const mergeBox = wrap.querySelector<HTMLDivElement>('.link-merge')!;
     form.addEventListener('submit', (e) => {
       e.preventDefault();
       const code = input.value.trim();
       if (!code) return;
-      void this.signIn(async () => {
-        await this.account.redeemLinkCode(code);
-        await this.account.loadBeaches();
-      }, 'link_code');
+      mergeBox.hidden = true;
+      mergeBox.replaceChildren();
+      // Preview first (guard, not signIn: a successful preview must not
+      // re-render the panel away from the confirm box it just built). An
+      // empty account links straight away; anything else asks first.
+      void this.guard(async () => {
+        const preview = await this.account.previewLinkCode(code);
+        if (preview.blocks.length) throw new Error(preview.blocks.join('; '));
+        if (preview.empty) {
+          await this.account.redeemLinkCode(code);
+          await this.account.loadBeaches();
+          this.onSignedIn();
+          return;
+        }
+        this.showMergeConfirm(mergeBox, preview, code);
+      });
     });
     return wrap;
   }
@@ -1113,6 +1127,52 @@ export class AccountPanel {
     };
     void refresh();
     return wrap;
+  }
+
+  /** The other account has saved data: show what the merge would do, and ask before it happens. */
+  private showMergeConfirm(box: HTMLDivElement, preview: MergePreview, code: string): void {
+    box.hidden = false;
+    box.replaceChildren();
+    const head = document.createElement('div');
+    head.textContent = `This merges the account you are signed in to now into ${preview.survivor.name || 'the other account'}'s account. The account you are on now will be gone — its beaches, bag and credit move over:`;
+    const list = document.createElement('ul');
+    for (const note of preview.notes) {
+      const li = document.createElement('li');
+      li.textContent = note;
+      list.appendChild(li);
+    }
+    const row = document.createElement('div');
+    row.className = 'buttons';
+    const go = document.createElement('button');
+    go.type = 'button';
+    go.className = 'action';
+    go.textContent = 'merge accounts';
+    go.addEventListener('click', () =>
+      void this.guard(async () => {
+        try {
+          await this.account.redeemLinkCode(code, true);
+        } catch (e) {
+          // the other account changed while you were reading: show the fresh preview instead
+          if (e instanceof MergeNeedsConfirmError) {
+            this.showMergeConfirm(box, e.preview, code);
+            return;
+          }
+          throw e;
+        }
+        await this.account.loadBeaches();
+        this.onSignedIn();
+      }),
+    );
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.className = 'action';
+    cancel.textContent = 'cancel';
+    cancel.addEventListener('click', () => {
+      box.hidden = true;
+      box.replaceChildren();
+    });
+    row.append(go, cancel);
+    box.append(head, list, row);
   }
 
   /** Your Beechshore account (balance, top-ups, history): signed in only,

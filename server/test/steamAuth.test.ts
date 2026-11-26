@@ -142,25 +142,37 @@ describe('Steam auth and cross-platform account linking', () => {
     expect(reuse.status).toBe(404);
   });
 
-  it('rejects self-linking, expired codes, and non-empty accounts', async () => {
+  it('rejects self-linking and expired codes; a non-empty account merges only after confirmation', async () => {
     const a = (await (await post('/auth/dev', { name: 'Alpha' })).json()) as { token: string; user: { id: string } };
     const { code } = (await (await post('/account/link-code', {}, a.token)).json()) as { code: string };
 
     // Self-link refused
     expect((await post('/account/link', { code }, a.token)).status).toBe(400);
 
-    // Non-empty Steam account refused (409)
-    const b = (await (await post('/auth/steam', { ticket: `${GOOD_TICKET}03`, name: 'BusySteam' })).json()) as { token: string };
+    // Non-empty Steam account: unconfirmed link is refused with a preview...
+    const b = (await (await post('/auth/steam', { ticket: `${GOOD_TICKET}03`, name: 'BusySteam' })).json()) as { token: string; user: { id: string } };
     expect((await post('/dev/grant', { item: 'parasol', quantity: 1 }, b.token)).status).toBe(204);
-    expect((await post('/account/link', { code }, b.token)).status).toBe(409);
+    const unconfirmed = await post('/account/link', { code }, b.token);
+    expect(unconfirmed.status).toBe(409);
+    const unconfirmedBody = (await unconfirmed.json()) as { preview?: { inventory?: { rowsMoved: number } } };
+    expect(unconfirmedBody.preview?.inventory?.rowsMoved).toBe(1);
 
-    // Expired code refused (404)
+    // ...and the confirmed link merges the parasol onto the target account
+    const confirmed = await post('/account/link', { code, confirmed: true }, b.token);
+    expect(confirmed.status).toBe(200);
+    const merged = (await confirmed.json()) as { user: { id: string } };
+    expect(merged.user.id).toBe(a.user.id);
+    const again = (await (await post('/auth/steam', { ticket: `${GOOD_TICKET}03`, name: 'BusySteam' })).json()) as { user: { id: string } };
+    expect(again.user.id).toBe(a.user.id);
+
+    // Expired code refused (404): a fresh code, then the clock moves past it
+    const { code: freshCode } = (await (await post('/account/link-code', {}, a.token)).json()) as { code: string };
     skew += 11 * 60 * 1000;
     const c = (await (await post('/auth/steam', { ticket: `${GOOD_TICKET}04`, name: 'LateSteam' })).json()) as { token: string };
-    expect((await post('/account/link', { code }, c.token)).status).toBe(404);
+    expect((await post('/account/link', { code: freshCode }, c.token)).status).toBe(404);
   });
 
-  it('refuses to link an account that starred a beach, even with an empty bag', async () => {
+  it('merges an account that starred a beach; a star on the survivor home beach is discarded', async () => {
     const a = (await (await post('/auth/dev', { name: 'Target' })).json()) as { token: string; user: { id: string } };
     const { code } = (await (await post('/account/link-code', {}, a.token)).json()) as { code: string };
 
@@ -168,8 +180,9 @@ describe('Steam auth and cross-platform account linking', () => {
       token: string;
       user: { id: string };
     };
-    // Star the target's beach: no items, no saved beach, but the star would
-    // be silently lost by the merge, so the link must be refused.
+    // Star the target's beach: no items, no saved beach. The star names the
+    // survivor's own home beach, so the merge discards it (you cannot star
+    // your own beach) instead of refusing the link.
     const beachRows = await db.query<{ id: string }>('SELECT id FROM beach WHERE owner_id = $1', [a.user.id]);
     expect(beachRows.length).toBe(1);
     await db.query('INSERT INTO star_first (user_id, beach_id, at) VALUES ($1, $2, $3)', [
@@ -177,6 +190,14 @@ describe('Steam auth and cross-platform account linking', () => {
       beachRows[0].id,
       Date.now(),
     ]);
-    expect((await post('/account/link', { code }, steam.token)).status).toBe(409);
+    const preview = await post('/account/link/preview', { code }, steam.token);
+    expect(preview.status).toBe(200);
+    const previewBody = (await preview.json()) as { preview: { stars: { moved: number; discarded: number } } };
+    expect(previewBody.preview.stars).toMatchObject({ moved: 0, discarded: 1 });
+    const linked = await post('/account/link', { code, confirmed: true }, steam.token);
+    expect(linked.status).toBe(200);
+    const linkedBody = (await linked.json()) as { user: { id: string } };
+    expect(linkedBody.user.id).toBe(a.user.id);
+    expect(await db.query('SELECT 1 FROM star_first WHERE user_id = $1', [a.user.id])).toEqual([]);
   });
 });
