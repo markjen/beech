@@ -74,7 +74,10 @@ a beach go, draws beaches you've seen at once. Rules:
   backend is told so (`load(ref, { reload })`).
 - Offline, the kept copy stands in however old it is; the next shore refresh
   marks it stale and it's fetched again.
-- Signing out clears it (a shared device). Production build only.
+- Leaving a signed-in account clears the cache. Fetches started before the
+  clear cannot repopulate it. IndexedDB updates the eviction index and the
+  snapshots together, including when several tabs are open. Production
+  build only.
 
 ## Easing the waves onto a beach
 

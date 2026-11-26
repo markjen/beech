@@ -2,7 +2,7 @@ import type { Account } from './account';
 import { ApiError, NeighborApi } from './account';
 import { LOCAL_BEACH, type BeachRef, type Saved, type StoreBackend } from './beachStore';
 import { loadLocalBeach, saveLocalBeach } from './localStore';
-import type { SnapshotCache } from './snapshotCache';
+import type { Snapshot, SnapshotCache } from './snapshotCache';
 
 /**
  * Where the BeachStore's beaches come from (docs/BEACH_STORE.md): yours by
@@ -52,19 +52,27 @@ export function withSnapshots(inner: StoreBackend, cache: SnapshotCache): StoreB
   return {
     async load(ref, o) {
       if (!cacheable(ref)) return inner.load(ref, o);
-      const kept = o?.reload ? null : await cache.get(ref.id).catch(() => null);
+      const { snapshot, generation } = await cache.read(ref.id).catch(() => ({ snapshot: null, generation: null }));
+      const kept = o?.reload ? null : snapshot;
       if (kept && typeof ref.updatedAt === 'number' && kept.updatedAt === ref.updatedAt) return kept;
+      const write = (value: Snapshot | null) => {
+        if (generation !== null) void cache.write(ref.id, value, generation).catch(() => {});
+      };
       let saved: Saved | null;
       try {
         saved = await inner.load(ref, o);
       } catch (e) {
+        if (e instanceof ApiError && e.status >= 400 && e.status < 500) {
+          if (e.status === 401 || e.status === 403 || e.status === 404) write(null);
+          throw e;
+        }
         if (kept) return kept;
         throw e;
       }
       if (saved) {
         const { bytes, location, nx, ny, updatedAt, version } = saved;
-        void cache.put(ref.id, { bytes, location, nx, ny, updatedAt, ...(version !== undefined ? { version } : {}) }).catch(() => {});
-      }
+        write({ bytes, location, nx, ny, updatedAt, ...(version !== undefined ? { version } : {}) });
+      } else if (snapshot) write(null);
       return saved;
     },
     save: (ref, bytes, o) => inner.save(ref, bytes, o),

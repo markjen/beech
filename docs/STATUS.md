@@ -337,7 +337,9 @@ accepted the repo's default branch, so the deploy job ran only there.
   Other people's beaches are kept on the device too (IndexedDB, by id,
   checked against the shore's save time), so a reload or re-anchor draws
   them without refetching; when the waves move onto a beach its snapshot's
-  water eases into the simulation's (`BEACH_STORE.liveEaseMs`).
+  water eases into the simulation's (`BEACH_STORE.liveEaseMs`). The handoff
+  starts with the new beach's sand. Clearing the IndexedDB cache on sign-out
+  also invalidates writes from requests already in flight.
 - Neighbors, requests and codes in settings follow the selected beach
   (`?beach=`); the shore is laid out around an anchor (home, a beach you
   went to, or one you're visiting). Putting one of your own beach codes next to another links them

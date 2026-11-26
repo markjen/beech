@@ -22,6 +22,29 @@ function open(): Promise<IDBDatabase | null> {
   return opening;
 }
 
+/** Run related requests together and resolve once IndexedDB commits them. */
+export async function localTransaction<T>(
+  start: (store: IDBObjectStore, result: (value: T) => void) => void,
+): Promise<T | null> {
+  const db = await open();
+  if (!db) return null;
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(STORE, 'readwrite');
+      let value: T | null = null;
+      tx.oncomplete = () => resolve(value);
+      tx.onabort = () => resolve(null);
+      try {
+        start(tx.objectStore(STORE), (result) => { value = result; });
+      } catch {
+        tx.abort();
+      }
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
 function run<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest<T>): Promise<T | null> {
   return open().then(
     (db) =>
