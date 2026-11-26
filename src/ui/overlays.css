@@ -110,6 +110,17 @@
   transform: translate(-50%, 0);
 }
 
+/* The topmost layer, for the "a new version is ready" prompt only: a plain
+   .hint has no z-index, so any open modal paints above it (Manage at 6,
+   Bag / Store / Inbox / … at 20, the pier preview at 40) and the modal's
+   backdrop swallows the click on its Reload button. A later toast would
+   also cover it, since every hint sits at the same spot. Keep this above
+   the highest modal; if a new modal needs a higher z-index, raise this too
+   (tests/reloadToast.test.ts guards the order). */
+.hint.topmost {
+  z-index: 50;
+}
+
 /* a hint under the status pane: in the pane's own flow, as wide as the pane,
    left-aligned, never covering the beach info stacked above it */
 .hint.below-status {

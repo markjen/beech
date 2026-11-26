@@ -59,8 +59,9 @@ export class StartScreen {
 }
 
 /** A short note over the beach ("no beach has that code"), gone after a few seconds. */
-export function showToast(parent: HTMLElement, text: string): () => void {
+export function showToast(parent: HTMLElement, text: string, opts: { topmost?: boolean } = {}): () => void {
   const { el, hide } = showNote(parent, 6000);
+  if (opts.topmost) el.classList.add('topmost');
   el.textContent = text;
   return hide;
 }
@@ -77,10 +78,23 @@ export function showPaneToast(parent: HTMLElement, text: string): () => void {
   return hide;
 }
 
-/** A note with one button ("Restored 'Moat' · Undo"), gone after `ms`. */
-export function showActionToast(parent: HTMLElement, text: string, label: string, onClick: () => void, ms = 10000): () => void {
+/**
+ * A note with one button ("Restored 'Moat' · Undo"), gone after `ms`.
+ * `topmost` puts it on the topmost layer, above every modal: use it for the
+ * "a new version is ready" prompt, whose Reload button must stay reachable
+ * no matter what else is open.
+ */
+export function showActionToast(
+  parent: HTMLElement,
+  text: string,
+  label: string,
+  onClick: () => void,
+  ms = 10000,
+  opts: { topmost?: boolean } = {},
+): () => void {
   const { el, hide } = showNote(parent, ms);
   el.classList.add('with-action');
+  if (opts.topmost) el.classList.add('topmost');
   const span = document.createElement('span');
   span.textContent = text;
   const b = document.createElement('button');

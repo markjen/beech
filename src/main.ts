@@ -323,9 +323,11 @@ async function boot() {
   const offerReload = () => {
     if (reloadOffered) return;
     reloadOffered = true;
-    if (isSteam()) showToast(uiRoot, 'A newer beech is out: update it on Steam to keep saving.');
-    else if (!usesHostedClient()) showToast(uiRoot, 'A newer beech is out: update it from the store to keep saving.');
-    else showActionToast(uiRoot, 'A new version of beech is ready.', 'Reload', () => location.reload(), 24 * 3600 * 1000);
+    // Topmost on every platform: the notice must sit above any open modal
+    // (Bag, Store, Inbox, Manage, …) instead of hiding behind its backdrop.
+    if (isSteam()) showToast(uiRoot, 'A newer beech is out: update it on Steam to keep saving.', { topmost: true });
+    else if (!usesHostedClient()) showToast(uiRoot, 'A newer beech is out: update it from the store to keep saving.', { topmost: true });
+    else showActionToast(uiRoot, 'A new version of beech is ready.', 'Reload', () => location.reload(), 24 * 3600 * 1000, { topmost: true });
   };
   if (usesHostedClient()) watchForNewVersion(offerReload);
 
