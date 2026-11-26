@@ -21,6 +21,35 @@ rules and the store tasks are in [SAND_BUCKS.md](SAND_BUCKS.md). The table
 below keeps the US prices the old app versions still sell at, and the
 reasoning for each price.
 
+## Paid extra tries on the machines (2026-11-26)
+
+When the free go is gone, one more try costs sand bucks: an extra ball
+from the vending machine is **15 sand bucks**, an extra go on the claw
+machine is **10**. The price is set from the expected value of one try —
+**1.5× EV, rounded up to the next 5 sand bucks** — so both machines carry
+the same house edge (about 70%), and a try can never be farmed for
+trade-ins: the price sits above what a try is worth on average, so buying
+tries to trade the prizes back in loses sand bucks. A won item is valued at
+its trade-in value (`RARITY_BUCKS` in `server/src/bucks.ts`), except the
+vending machine's unique item — a one-of-a-kind item with no trade-in
+value — where the EV assumes 40, one step above legendary's 30. The
+derivation lives in `server/src/paidPulls.ts` and is covered by tests, so
+the numbers below can't drift from the code.
+
+| Machine | Expected value of one try | Price | House edge |
+|---|---|---|---|
+| Vending machine | **8.5** — 60% common (5) + 25% uncommon (10) + 12% rare (15) + 3% unique (40) | **15** | ~76% |
+| Claw machine | **5.84** — 70% common × 80% held (5) + 25% rare × 65% held (15) + 5% legendary × 40% held (30); about 1 go in 4 comes up empty | **10** | ~71% |
+
+A paid try is exactly one draw, same as a free one: the vending ball never
+slips, the claw can still drop the ball (the go is spent), and a paid try
+never takes a starter gift and never touches the free go — the free cadence
+and the first-go gifts are for free play. The price is deducted server-side
+in one statement with the grant (`claimPaidPull` in
+`server/src/paidPulls.ts`); a player without enough sand bucks gets a 402
+and nothing is deducted or granted. The odds are shown in the machine and
+in the guide before the player buys.
+
 ## The price list
 
 US prices. Each one is a standard App Store / Google Play price point, and
@@ -73,11 +102,17 @@ from our side, so credit purchases are entirely server-side.
 
 ## Things we don't do, on purpose
 
-- **No paid random draws (loot boxes).** The claw machine stays free. Paid
-  random items mean showing odds in both stores, and they're restricted or
-  banned in some countries (Belgium, the Netherlands at times; age rules
-  elsewhere). If we ever add paid mystery boxes, they need odds shown before
-  buying, a pity limit, and a country check.
+- **No paid random draws (loot boxes) — with one exception.** The claw
+  machine stays free, and the paid *extra* tries on the claw and vending
+  machines are the exception: they are priced from expected value (see
+  above), the odds are shown in the machine and in the guide before buying,
+  and a paid try never takes a starter gift. Paid random items are
+  restricted or banned in some countries (Belgium, the Netherlands at
+  times; age rules elsewhere) — a country check before selling extra tries
+  in those markets is still open, as is a review of the current
+  Apple/Google paid-random-item policies. If we ever add paid mystery
+  boxes, they need odds shown before buying, a pity limit, and a country
+  check.
 - **No subscriptions** for now. A later "Beach club" ($2.99/month: a monthly
   legendary item, a gold name tag, an extra claw go a day) is possible once
   there's enough to give each month.

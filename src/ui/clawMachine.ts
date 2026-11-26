@@ -17,18 +17,22 @@ type Phase = 'idle' | 'drop' | 'grab' | 'lift' | 'carry' | 'open' | 'done';
  * The claw machine: free goes, with a random rest between them. The prize is
  * drawn on the server; the claw is the fun part. Hold the button to steer,
  * let go to drop — and sometimes the ball slips out of the claw on the way
- * up, which spends the go all the same. How it works and the odds are in the
- * guide on the website (GUIDE_URL#claw), not here.
+ * up, which spends the go all the same. When the claw is resting, one more
+ * go costs sand bucks — the price comes from the server, and the odds are
+ * on the guide link below, before the price. How it works and the odds are
+ * in the guide on the website (GUIDE_URL#claw), not here.
  */
 export class ClawMachine {
   private readonly root: HTMLDivElement;
   private readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
   private readonly btn: HTMLButtonElement;
+  private readonly paidBtn: HTMLButtonElement;
   private readonly note: HTMLParagraphElement;
   private readonly reveal: HTMLDivElement;
   private pool: PullPool | null = null;
   private nextFree = 0;
+  private balance = 0;
   private phase: Phase = 'idle';
   private t = 0;
   private clawX = 0.6;
@@ -64,6 +68,7 @@ export class ClawMachine {
         <h2>Claw machine</h2>
         <canvas width="300" height="300"></canvas>
         <button type="button" class="claw-go">Drop the claw</button>
+        <button type="button" class="claw-paid" hidden></button>
         <p class="claw-note"></p>
         <a class="guide-link" href="${GUIDE_URL}#claw" target="_blank" rel="noopener">odds and how it works</a>
         <div class="claw-reveal" hidden></div>
@@ -72,6 +77,7 @@ export class ClawMachine {
     this.canvas = this.root.querySelector('canvas')!;
     this.ctx = this.canvas.getContext('2d')!;
     this.btn = this.root.querySelector('.claw-go')!;
+    this.paidBtn = this.root.querySelector('.claw-paid')!;
     this.note = this.root.querySelector('.claw-note')!;
     this.reveal = this.root.querySelector('.claw-reveal')!;
     this.root.querySelector('.claw-close')!.addEventListener('click', () => this.close());
@@ -81,7 +87,8 @@ export class ClawMachine {
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && this.isOpen) this.close();
     });
-    this.btn.addEventListener('click', () => this.drop());
+    this.btn.addEventListener('click', () => this.drop(false));
+    this.paidBtn.addEventListener('click', () => this.drop(true));
     // a pile of capsules
     const r = mulberry(7);
     for (let i = 0; i < 26; i++) {
@@ -102,6 +109,7 @@ export class ClawMachine {
       const s = await this.api.status();
       this.pool = s.pools.find((p) => p.id === 'daily') ?? null;
       this.nextFree = s.nextFree;
+      this.balance = s.bucks;
       this.error = '';
     } catch (e) {
       this.error = (e as Error).message;
@@ -133,29 +141,48 @@ export class ClawMachine {
   private renderInfo(): void {
     const free = !!this.pool?.free;
     this.btn.disabled = !free || this.phase !== 'idle';
-    // status only: an error, or when the next go is ready
-    this.note.textContent = this.error || (this.pool && !free ? `Your next free go is in ${until(this.nextFree)}.` : '');
+    // an extra go for sand bucks, while the claw is resting — the odds are
+    // on the guide link below, before the price
+    const price = this.pool?.paidTry?.bucks;
+    const showPaid = !free && price !== undefined;
+    this.paidBtn.hidden = !showPaid;
+    if (showPaid) {
+      this.paidBtn.textContent = `Buy another go · ${price} sand bucks`;
+      this.paidBtn.disabled = (this.phase !== 'idle' && this.phase !== 'done') || this.balance < price;
+    }
+    // status only: an error, too few sand bucks for an extra go, or when the next go is ready
+    this.note.textContent =
+      this.error ||
+      (showPaid && this.balance < price ? `Not enough sand bucks — you have ${this.balance}.` : this.pool && !free ? `Your next free go is in ${until(this.nextFree)}.` : '');
   }
 
-  private drop(): void {
-    if (this.phase !== 'idle' || !this.pool?.free) return;
+  private drop(paid: boolean): void {
+    // a paid go can follow a free one without closing and reopening
+    if (this.phase !== 'idle' && this.phase !== 'done') return;
+    if (paid ? !this.pool?.paidTry : !this.pool?.free) return;
     this.phase = 'drop';
     this.t = 0;
+    this.prize = null;
+    this.missed = false;
+    this.dropped = null;
+    this.reveal.hidden = true;
+    this.error = '';
     this.btn.disabled = true;
+    this.paidBtn.disabled = true;
     // ask the server now; the claw takes long enough to cover the wait
-    this.result = this.api.pull('daily').then(
-      (r) => {
-        this.nextFree = r.nextFree;
-        if (this.pool) this.pool.free = false;
-        this.missed = r.missed;
-        this.dropped = r.dropped ?? null;
-        return r.missed ? null : { item: r.item!, rarity: r.rarity! };
-      },
-      (e: Error) => {
-        this.error = e.message;
-        return null;
-      },
-    );
+    const settle = (r: { item: string | null; rarity: string | null; missed: boolean; dropped?: { item: string; rarity: string }; nextFree: number; bucks?: number }) => {
+      this.nextFree = r.nextFree;
+      if (!paid && this.pool) this.pool.free = false;
+      if (r.bucks !== undefined) this.balance = r.bucks;
+      this.missed = r.missed;
+      this.dropped = r.dropped ?? null;
+      return r.missed ? null : { item: r.item!, rarity: r.rarity! };
+    };
+    const onErr = (e: Error) => {
+      this.error = e.message;
+      return null;
+    };
+    this.result = paid ? this.api.pullPaid('daily').then(settle, onErr) : this.api.pull('daily').then(settle, onErr);
     void this.result.then((p) => (this.prize = p));
   }
 

@@ -26,6 +26,7 @@ import { CLAIM_WINDOW_MS, GUIDE_BONUS, GUIDE_STEPS, REWARD_CAP, SETTLE_STEPS, WE
 import { RELEASE_NOTES } from './releaseNotes.js';
 import { behaviourOfKind, displayName, itemGlows, itemKind, itemRarity, type ItemBehaviour } from './prizeNames.js';
 import { PRODUCTS } from './products.js';
+import { CLAW_EXTRA_GO_BUCKS, VENDING_EXTRA_BALL_BUCKS } from './paidPulls.js';
 import { escapeHtml as esc } from './shareMeta.js';
 import { VENDING_SETS, currentSet, nextUtcMidnight, type VendingSet } from './vending.js';
 
@@ -304,6 +305,7 @@ export function guideHtml(now: number): string {
 <p><b>What’s inside, and the chances.</b> The server draws what the claw grabs, then whether it holds on. A ball that slips out spends the go and wins nothing.</p>
 ${oddsTable(claw.odds, claw.items, GRAB_CHANCE)}
 <p>Prizes go in your bag, ready to place.</p>
+<p>When the claw is resting, one more go costs ${bucks(CLAW_EXTRA_GO_BUCKS)} — the same draw, the same chances (the ball can still slip out), and it doesn’t use up your free go.</p>
 
 <h2 id="vending">Vending machine</h2>
 <p>One free ball a day when you’re signed in; the next one is ready at midnight UTC${set ? ` (next: ${esc(new Date(nextUtcMidnight(now)).toISOString().slice(0, 16).replace('T', ' '))} UTC)` : ''}. The set inside changes every week. A vending ball never slips.</p>
@@ -313,6 +315,7 @@ ${
     : '<p>No set is live right now.</p>'
 }
 <p>Past sets’ items stay yours, and stay placeable, after the week ends.</p>
+<p>When today’s ball is gone, one more ball from this week’s set costs ${bucks(VENDING_EXTRA_BALL_BUCKS)} — the same set, the same odds, and your free ball tomorrow is still free.</p>
 ${catalogSection(now)}
 
 <h2 id="beaches">Your beaches</h2>

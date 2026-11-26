@@ -596,6 +596,27 @@
   cursor: default;
 }
 
+/* an extra go or ball for sand bucks: a quiet outline button under the
+   free one, so the free go stays the obvious first choice */
+.claw-paid,
+.vending-paid {
+  margin-top: 8px;
+  padding: 10px 22px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  color: inherit;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.claw-paid:disabled,
+.vending-paid:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 .claw-note {
   margin: 8px 0 4px;
   font-size: 13px;
