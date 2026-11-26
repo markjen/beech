@@ -2,7 +2,7 @@ import { beachById } from '../world/locations';
 import { shoreRowOrder } from '../render/shoreSpacing';
 import { MAX_OBJECTS } from '../sim/sandCodec';
 import { renderBeachMap, sortBeachesWestToEast } from './beachMap';
-import { buildOwnStretches, connectableBeaches, ownBeachLabel } from './shoreConnect';
+import { buildOwnStretches, connectableBeaches, hasSparePierWithoutSite, ownBeachLabel } from './shoreConnect';
 import { DEV_AUTH, googleSignInAvailable, renderGoogleButton, type Account, type MyBeach, type Neighbors, type Side } from '../net/account';
 import { beachShareText, shareUrl, shoreBeachUrl } from '../net/share';
 import { DISCORD_INVITE_URL } from '../../server/src/community';
@@ -578,6 +578,25 @@ export class AccountPanel {
     for (const chain of stretches) for (const b of chain) {
       const row = this.pierRow(b);
       if (row) wrap.appendChild(row);
+    }
+
+    // A pier in the bag with no site yet: show it, and what unlocks one.
+    // (The shop sells the pier without that check, so without this the
+    // bought pier is invisible — docs/PIERS.md.)
+    if (hasSparePierWithoutSite(a.beaches, a.piers)) {
+      const spare = a.piers.owned - a.piers.placed;
+      const row = document.createElement('div');
+      row.className = 'slot pier-row';
+      row.dataset.pierBag = 'true';
+      const label = document.createElement('span');
+      label.className = 'fav-name';
+      label.textContent = spare > 1 ? `${spare} piers · in your bag` : 'pier · in your bag';
+      row.appendChild(label);
+      const hint = document.createElement('span');
+      hint.className = 'status';
+      hint.textContent = 'link three of your beaches side by side to place it on the middle one';
+      row.appendChild(hint);
+      wrap.appendChild(row);
     }
 
     return wrap;

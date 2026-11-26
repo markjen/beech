@@ -69,3 +69,16 @@ export function connectableBeaches(beaches: readonly MyBeach[], beachId: string,
 export function ownBeachLabel(b: Pick<MyBeach, 'name' | 'home'>): string {
   return b.name || (b.home ? 'Home' : 'A beach');
 }
+
+/**
+ * A pier in the bag with nowhere to put it: the player owns more piers than
+ * are placed, but no beach sits between two of their own (docs/PIERS.md).
+ * The shop sells the pier without that check, so the account panel has to
+ * say so instead of leaving the pier invisible.
+ */
+export function hasSparePierWithoutSite(
+  beaches: readonly MyBeach[],
+  piers: { owned: number; placed: number },
+): boolean {
+  return piers.owned > piers.placed && !beaches.some((b) => b.pierSite);
+}
