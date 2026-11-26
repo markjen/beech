@@ -2190,8 +2190,8 @@ async function boot() {
     const simTime = prevT + (info.t - prevT) * mix;
     const amp = info.waveMul * liveState.waves;
     const camFwd = cam.forward();
-    renderer.update(palette, camFwd, (now - t0) / 1000, simTime, info.tide, amp);
-    neighbors?.update(palette, camFwd, (now - t0) / 1000, simTime, info.tide, amp);
+    renderer.update(palette, camFwd, (now - t0) / 1000, simTime, info.tide, amp, now);
+    neighbors?.update(palette, camFwd, (now - t0) / 1000, simTime, info.tide, amp, now);
     // the live beach is drawn while it's near the view
     const ownShown = liveShown();
     renderer.setVisible(ownShown);
@@ -2621,6 +2621,7 @@ async function boot() {
     acct.onBeaches((list) => {
       const ids = new Set(list.map((b) => b.id));
       for (const id of store.ids()) if (id !== LOCAL_BEACH && store.peek(id)?.owned && !ids.has(id) && !isLive(id)) store.forget(id);
+      inventory.setExtraBeachesInUse(acct.extraBeachesInUse);
       updateElsewhereSoon();
     });
     store.onSaved((id, r) => {
@@ -2771,6 +2772,7 @@ async function boot() {
           await sync.bind(home && home.id !== id ? { id: home.id, code: home.code, owned: true } : null);
         }
         await acct.removeBeach(id);
+        void checkpoints.load();
         store.forget(id);
         if (nv.indexOfBeach(id) !== null) {
           await nv.anchorAt(null);
@@ -2940,7 +2942,12 @@ async function boot() {
 
     // what you've won (and later bought), and the claw machine
     const loadOwned = async () => {
-      if (!acct.user) return inventory.setOwned(new Map());
+      const user = acct.user;
+      if (!user) {
+        inventory.setOwned(new Map());
+        inventory.setExtraBeachesInUse(null);
+        return;
+      }
       try {
         const owned = new Map<string, number>();
         const foundBy = new Map<string, string>();
@@ -2948,6 +2955,8 @@ async function boot() {
           owned.set(it.item, (owned.get(it.item) ?? 0) + it.quantity);
           if (it.foundBy !== undefined) foundBy.set(it.item, it.foundBy);
         }
+        if (acct.user !== user) return;
+        const extraBeachesChanged = (owned.get('beach') ?? 0) !== inventory.ownedCount('beach');
         inventory.setOwned(owned, foundBy);
         // what each thing trades in for (docs/SAND_BUCKS.md): the next one that isn't on a beach
         const bag = await acct.fetch('/api/bag').then((r) => (r.ok ? (r.json() as Promise<{ items: BagEntry[] }>) : null)).catch(() => null);
@@ -2955,6 +2964,7 @@ async function boot() {
           inventory.setTradeValues(new Map(bag.items.filter((e) => e.free > 0 && e.values.length).map((e) => [e.item, e.values[0]])));
           placeBar.refreshTrade();
         }
+        if (extraBeachesChanged) void acct.loadBeaches().catch(() => {});
         // what you've dug up, for the bag's "found" list
         const dug = await new DigFindApi(acct).list().catch(() => null);
         if (dug) inventory.setFound(countFound(), dug);

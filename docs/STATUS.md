@@ -336,6 +336,12 @@ accepted the repo's default branch, so the deploy job ran only there.
   beach in view per device. Needs DEV_AUTH for
   `/api/dev/grant`.
 
+## Piers (designed 2026-11-26)
+
+[Piers](PIERS.md) describes the unlock, shop flow, placement and behavior
+when links change. TLC checked the proposed purchase and placement model.
+Gameplay implementation is on the backlog.
+
 ## Mutual neighbors and the global beachfront (added after the bulldozer)
 
 - **Asking and accepting:** in settings, put a code in "left" or "right" and
@@ -867,8 +873,13 @@ here: it needs the service's URL on the web OAuth client.
   about the beach in front of it: every 5 s while its owner is on it, every
   30 s otherwise, and fetches the sand again when the version moves on (the
   owner's saves and the server's catch-ups). `npm run e2e:live` checks a
-  dig reaches a visitor. Not done: the viewer's sand snaps to the new save
-  rather than easing in, and no SSE (polling only).
+  dig reaches a visitor. Since 2026-11-26 the viewer's sand eases to each
+  new save over 1 s (`BeachRenderer.easeStatic`: the old snapshot becomes
+  the previous frame and `frameMix` runs 0 → 1; `BEACH_STORE.viewerEaseMs`),
+  and things on any snapshot beach glide to where a new save or a drag
+  preview puts them (`ObjectView.glide`, called per frame from `Neighbors`;
+  before, a moved thing on a snapshot only moved when the whole beach was
+  rebuilt). Not done: SSE (polling only).
 - e2e on 2026-11-24 after rebasing onto main 6f6fa8c: `accounts`,
   `neighbors` and `live` pass. `shore`, `beaches` and `leaderboard` time
   out at the same steps on plain main too (signing a second person in on
@@ -1406,7 +1417,7 @@ changes. New gameplay and features follow the model-first workflow
   every copy.
 - One transaction per copy (player lock, source row `FOR SHARE`), as
   `specs/tla/BeachCopy.tla` requires; the restore route shares its write
-  (`writeOnto`). Migration 29. Copies counted once per person
+  (`writeOnto`). Migration 30. Copies counted once per person
   (`beach_copies`), the owner gets an inbox row the first time, and the
   beach page shows "copied N times" and "Copied from".
 - Differs from the design: no multi-product web order yet (one card

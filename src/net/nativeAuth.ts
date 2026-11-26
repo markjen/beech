@@ -1,5 +1,10 @@
 import { Capacitor } from '@capacitor/core';
 import { isMobileApp } from '../platform/runtime';
+import {
+  attachSignInDiagnostics,
+  finishSignInAttempt,
+  startSignInAttempt,
+} from './signinDiagnostics';
 
 // Sign-in inside the phone apps. Google refuses its web sign-in inside app
 // WebViews, so the apps use the system sign-in sheets instead (Credential
@@ -76,6 +81,10 @@ const looksCancelled = (e: unknown) => /cancel|dismiss|12501|1001|user closed/i.
 
 export async function nativeSignIn(provider: NativeProvider): Promise<NativeIdentity> {
   const SocialLogin = await plugin();
+  // Diagnostics only: the attempt and its outcome are uploaded as
+  // `auth_attempt` events (see signinDiagnostics.ts); the flow below is
+  // unchanged.
+  const attempt = startSignInAttempt(provider, provider === 'google' ? WEB_CLIENT_ID : undefined);
   try {
     if (provider === 'google') {
       // no scopes on Android: the default sign-in already includes profile and
@@ -86,14 +95,19 @@ export async function nativeSignIn(provider: NativeProvider): Promise<NativeIden
       });
       const r = res.result as { idToken?: string | null; profile?: { givenName?: string | null } };
       if (!r.idToken) throw new Error('Google did not return an ID token');
+      await finishSignInAttempt(attempt, 'success');
       return { provider, idToken: r.idToken, name: r.profile?.givenName ?? '' };
     }
     const res = await SocialLogin.login({ provider: 'apple', options: { scopes: ['name', 'email'] } });
     const r = res.result as { idToken?: string | null; profile?: { givenName?: string | null } };
     if (!r.idToken) throw new Error('Apple did not return an ID token');
+    await finishSignInAttempt(attempt, 'success');
     return { provider, idToken: r.idToken, name: r.profile?.givenName ?? '' };
   } catch (e) {
-    if (looksCancelled(e)) throw new SignInCancelled();
+    const cancelled = looksCancelled(e);
+    const done = await finishSignInAttempt(attempt, cancelled ? 'cancelled' : 'failed', e);
+    if (cancelled) throw new SignInCancelled();
+    attachSignInDiagnostics(e, done);
     throw e;
   }
 }

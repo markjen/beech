@@ -261,6 +261,10 @@ export class Account {
   allowance = 1;
   private beachListeners: ((beaches: MyBeach[]) => void)[] = [];
 
+  get extraBeachesInUse(): number {
+    return this.beaches.filter((b) => !b.home).length;
+  }
+
   /** Your beaches were (re)loaded: names, links, allowance. */
   onBeaches(fn: (beaches: MyBeach[]) => void): void {
     this.beachListeners.push(fn);
@@ -429,6 +433,8 @@ export interface Checkpoint {
   kind: 'named' | 'auto' | 'tide';
   source: 'beach' | 'import' | 'copy';
   fromBeach: { id: string; name: string } | null;
+  /** Source beach ID, retained when the beach is removed. */
+  originBeachId?: string | null;
   fromName: string;
   location: string | null;
   nx: number;

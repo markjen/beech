@@ -23,6 +23,7 @@ export class InventoryTray {
   private open = false;
   /** how many of each non-free item you own, and how many are on the beach */
   private owned = new Map<string, number>();
+  private extraBeachesInUse: number | null = null;
   /** the "found" collection: kept from the sea (by item, on this beach), and dug up (newest first) */
   private keptFromSea = new Map<string, number>();
   private dugUp: { item: string; rarity: string }[] = [];
@@ -80,6 +81,12 @@ export class InventoryTray {
     this.owned = owned;
     this.foundBy = foundBy;
     if (this.selected && !this.canPlace(this.selected) && this.placedOf(this.selected) === 0 && !this.ownedOf(this.selected)) this.select(null);
+    this.render();
+  }
+
+  setExtraBeachesInUse(count: number | null): void {
+    if (count === this.extraBeachesInUse) return;
+    this.extraBeachesInUse = count;
     this.render();
   }
 
@@ -276,7 +283,10 @@ export class InventoryTray {
         const b = document.createElement('div');
         b.className = `inv-item extra rarity-${x.rarity}`;
         b.dataset.extra = x.id;
-        b.innerHTML = `${icon(x.id as IconName)}<b>${x.name}</b><span>${n > 1 ? `${n} owned` : 'yours'}</span>`;
+        const count = x.id === 'beach' && this.extraBeachesInUse !== null
+          ? `${this.extraBeachesInUse} of ${n} in use`
+          : `${n} owned`;
+        b.innerHTML = `${icon(x.id as IconName)}<b>${x.name}</b><span>${count}</span>`;
         // an extra beach you aren't using can be traded in
         const value = this.tradeValues.get(x.id);
         if (value !== undefined) {

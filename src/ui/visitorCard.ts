@@ -130,6 +130,17 @@ export class VisitorCard {
     }
     this.body.appendChild(rate);
 
+    const go = document.createElement('button');
+    go.type = 'button';
+    go.className = 'action visitor-go';
+    go.dataset.act = 'visitor-leave';
+    go.textContent = 'leave it';
+    const changedRating = this.shells !== null && this.shells !== c.mine;
+    const syncLeaveButton = () => {
+      go.disabled = this.busy || (!changedRating && !this.note.trim() && !this.item);
+    };
+    go.addEventListener('click', () => void this.send());
+
     // a note: typed (not for brand-new accounts) or a quick one
     const noteBox = document.createElement('div');
     noteBox.className = 'visitor-section';
@@ -150,6 +161,7 @@ export class VisitorCard {
         this.quick = false;
         noteBox.querySelectorAll('.visitor-quick button.on').forEach((b) => b.classList.remove('on'));
         sync();
+        syncLeaveButton();
       });
       noteBox.append(ta, count);
     }
@@ -198,15 +210,7 @@ export class VisitorCard {
       this.body.appendChild(giftBox);
     }
 
-    const go = document.createElement('button');
-    go.type = 'button';
-    go.className = 'action visitor-go';
-    go.dataset.act = 'visitor-leave';
-    go.textContent = 'leave it';
-    const note = this.note.trim();
-    const changedRating = this.shells !== null && this.shells !== c.mine;
-    go.disabled = this.busy || (!changedRating && !note && !this.item);
-    go.addEventListener('click', () => void this.send());
+    syncLeaveButton();
     this.body.append(go, this.statusLine());
   }
 

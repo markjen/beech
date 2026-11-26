@@ -159,3 +159,30 @@ describe('migration 28: not for sale is its own choice', () => {
     }
   });
 });
+
+describe('migration 29: checkpoint source beach', () => {
+  it('backfills a known source ID and preserves saved names for already removed sources', async () => {
+    const db = await openEmptyTestDb();
+    try {
+      await migrate(db, 28);
+      const owner = '00000000-0000-4000-8000-0000000000a1';
+      const beach = '00000000-0000-4000-8000-0000000000a2';
+      await db.query("INSERT INTO users (id, provider, provider_sub, name, neighbor_code, created_at) VALUES ($1, 'dev', 'a', 'a', 'AAAAAA', 1)", [owner]);
+      await db.query("INSERT INTO beach (id, owner_id, code, name, created_at) VALUES ($1, $2, 'BBBBBB', 'Beach', 1)", [beach, owner]);
+      await db.query(
+        `INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, nx, ny, sand, bytes, objects, created_at)
+         VALUES ($1, $3, 'one', 'named', 'beach', $4, 'Beach', 8, 8, $5, 1, 0, 1),
+                ($2, $3, 'two', 'named', 'beach', NULL, 'Earlier beach', 8, 8, $5, 1, 0, 2)`,
+        [crypto.randomUUID(), crypto.randomUUID(), owner, beach, new Uint8Array([1])],
+      );
+      await migrate(db);
+      await db.query('DELETE FROM beach WHERE id = $1', [beach]);
+      expect(await db.query('SELECT from_beach, origin_beach_id, from_name FROM checkpoints ORDER BY created_at')).toEqual([
+        { from_beach: null, origin_beach_id: beach, from_name: 'Beach' },
+        { from_beach: null, origin_beach_id: null, from_name: 'Earlier beach' },
+      ]);
+    } finally {
+      await db.close();
+    }
+  });
+});

@@ -790,7 +790,12 @@ const MIGRATIONS: string[] = [
   UPDATE item_submissions SET for_sale = false WHERE approved_price_cents IS NULL OR approved_price_cents = 0;
   `,
 
-  // 29: copying a beach on the shore onto one of your own (docs/COPY_BEACH.md).
+  // 29: remember a checkpoint's source even after the beach reference is cleared.
+  `
+  ALTER TABLE checkpoints ADD COLUMN origin_beach_id UUID;
+  UPDATE checkpoints SET origin_beach_id = from_beach WHERE from_beach IS NOT NULL;
+  `,
+  // 30: copying a beach on the shore onto one of your own (docs/COPY_BEACH.md).
   // A copy remembers where it came from; beach_copies counts each person
   // once per source ("copied N times") and is the key for the owner's one
   // inbox row per copier. A copy kept as a checkpoint has source 'copy'.
@@ -809,7 +814,7 @@ const MIGRATIONS: string[] = [
   ALTER TABLE inbox DROP CONSTRAINT inbox_kind_check;
   ALTER TABLE inbox ADD CONSTRAINT inbox_kind_check CHECK (kind IN ('visit', 'gift', 'neighbor_request', 'neighbor_linked', 'star', 'rating', 'invite_joined', 'invite_settled', 'system', 'copied'));
   `,
-  // 30: sand bucks and trade-ins (docs/SAND_BUCKS.md). The balance stays in
+  // 31: sand bucks and trade-ins (docs/SAND_BUCKS.md). The balance stays in
   // users.credit_cents at 10 cents a sand buck, always a whole number of
   // bucks: balances round up to the next buck, debt down. Each bag row can
   // carry its trade-in value per unit (unit_cents; NULL = its list value).

@@ -136,12 +136,13 @@ export function createLiveBeaches(db: Db, now: () => number, cfg: LiveConfig = l
          RETURNING id, version
        ),
        snap AS (
-         INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at)
-         SELECT $8, $9, $10, 'tide', 'beach', $1, $11, $12, $13, $14, $15, $16, $17, $18, $7
+         INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at, origin_beach_id)
+         SELECT $8, $9, $10, 'tide', 'beach', $1, $11, $12, $13, $14, $15, $16, $17, $18, $7, $1
           WHERE $19::boolean AND EXISTS (SELECT 1 FROM upd)
          ON CONFLICT (from_beach) WHERE kind = 'tide' DO UPDATE SET
            name = EXCLUDED.name, from_name = EXCLUDED.from_name, location = EXCLUDED.location, nx = EXCLUDED.nx, ny = EXCLUDED.ny,
-           sand = EXCLUDED.sand, bytes = EXCLUDED.bytes, items = EXCLUDED.items, objects = EXCLUDED.objects, created_at = EXCLUDED.created_at
+           sand = EXCLUDED.sand, bytes = EXCLUDED.bytes, items = EXCLUDED.items, objects = EXCLUDED.objects, created_at = EXCLUDED.created_at,
+           origin_beach_id = EXCLUDED.origin_beach_id
            WHERE checkpoints.created_at <= $25
          RETURNING id
        ),

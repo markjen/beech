@@ -356,7 +356,7 @@ Each one leaves the app playable.
   /beaches/:code/copy-fit`, `POST /beaches/mine/copy`, `POST
   /checkpoints/copy`. The restore's write is `writeOnto`, shared by both
   routes. A strict copy that's short throws inside the transaction, so a
-  new beach made for it rolls back too. Migration 29 adds
+  new beach made for it rolls back too. Migration 30 adds
   `beach.copied_from`, `copied_from_code`, `copied_version`,
   `beach_copies`, the checkpoint source `copy` and the inbox kind
   `copied`.

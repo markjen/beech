@@ -320,8 +320,8 @@ beach marks it watched for 15 s (`beach.viewed_until`); the owner's
 heartbeat reply carries `watched`, and the owner's app then saves every
 5 s. Viewers poll `GET /api/beaches/:code/live` (`{ version, live }`) for
 the beach in front of them: every 5 s while its owner is on it, every 30 s
-otherwise, and refetch on a new version. The new sand replaces the old at
-once (no easing yet). No separate lease: the owner's `/here` heartbeat
+otherwise, and refetch on a new version. The new sand eases in over the old
+over 1 s, and moved things glide to their new places. No separate lease: the owner's `/here` heartbeat
 (section 3) does that job, and two of the owner's own devices still both
 save (last write wins, as before).
 

@@ -329,9 +329,19 @@ describe('checkpoints', () => {
     const b = await newBeach(t, 'Gone soon');
     await save(t, b, blob([], 5));
     const cp = await checkpoint(t, b, 'keepsake');
+    expect((await reqE(`/beaches/mine/${b}`, json('PATCH', { name: 'Renamed' }), t)).status).toBe(200);
+    const afterRename = await checkpoint(t, b, 'keepsake after rename');
+    const sameName = await newBeach(t, 'Renamed');
+    await save(t, sameName, blob([], 6));
+    const other = await checkpoint(t, sameName, 'another keepsake');
     expect((await reqE(`/beaches/mine/${b}`, { method: 'DELETE' }, t)).status).toBe(204);
+    expect((await reqE(`/beaches/mine/${sameName}`, { method: 'DELETE' }, t)).status).toBe(204);
     const list = (await (await req('/checkpoints', {}, t)).json()) as { checkpoints: { id: string; fromBeach: unknown; fromName: string }[] };
-    expect(list.checkpoints.find((c) => c.id === cp.id)).toMatchObject({ fromBeach: null, fromName: 'Gone soon' });
+    expect(list.checkpoints).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: cp.id, fromBeach: null, fromName: 'Gone soon', originBeachId: b }),
+      expect.objectContaining({ id: afterRename.id, fromBeach: null, fromName: 'Renamed', originBeachId: b }),
+      expect.objectContaining({ id: other.id, fromBeach: null, fromName: 'Renamed', originBeachId: sameName }),
+    ]));
     expect((await restore(t, user.id, cp.id)).status).toBe(200);
     await req('/account', { method: 'DELETE' }, t);
     expect((await db.query('SELECT 1 FROM checkpoints WHERE owner_id = $1', [user.id])).length).toBe(0);
