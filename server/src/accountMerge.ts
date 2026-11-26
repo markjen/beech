@@ -111,6 +111,8 @@ export interface MergeInternal {
     promoCodes: number;
     uniqueItems: number;
     royalties: number;
+    /** pets stowed in the absorbed account's bag (migration 35, `pet_bag`) */
+    baggedPets: number;
   };
 }
 
@@ -440,6 +442,12 @@ export async function planAccountMerge(
       'SELECT COUNT(*)::text AS n FROM creator_royalties WHERE creator_user_id = $1 OR buyer_user_id = $1',
       [absorbedId],
     ),
+    // bagged pets are plain rows keyed by user: they move whole (no dedupe,
+    // no unique constraint). Without this count the `empty` check below
+    // would call an account holding only a stowed pet empty and link it
+    // without confirmation — and the user row's delete would cascade the
+    // pet away with no preview.
+    baggedPets: await count(q, 'SELECT COUNT(*)::text AS n FROM pet_bag WHERE user_id = $1', [absorbedId]),
   };
 
   const empty =
@@ -494,6 +502,8 @@ export async function planAccountMerge(
   if (inboxMoved || inboxFolds.length) notes.push(`${inboxMoved} inbox rows move (${inboxFolds.length} folded into matching rows).`);
   if (other.gifts) notes.push(`${other.gifts} gift record${other.gifts === 1 ? '' : 's'} move over.`);
   if (other.uniqueItems) notes.push(`${other.uniqueItems} unique item${other.uniqueItems === 1 ? '' : 's'} move over.`);
+  if (other.baggedPets)
+    notes.push(`${other.baggedPets} pet${other.baggedPets === 1 ? '' : 's'} in the bag move${other.baggedPets === 1 ? 's' : ''} over.`);
   if (other.guideSteps || other.itemVotes || other.itemComments)
     notes.push(`${other.guideSteps} guide steps, ${other.itemVotes} item votes and ${other.itemComments} comments move over.`);
   if (other.pulls || other.pullState) notes.push(`claw history moves over (${other.pulls} draws).`);
@@ -663,6 +673,7 @@ export async function executeAccountMerge(tx: Db, plan: MergePlan, now: number):
     ['item_submissions', 'submitter_user_id'],
     ['beach_snacks', 'user_id'],
     ['beach_piers', 'owner_id'],
+    ['pet_bag', 'user_id'],
     ['notes', 'to_id'],
   ];
   for (const [table, column] of moves) {

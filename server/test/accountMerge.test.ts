@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createApp } from '../src/app.js';
-import type { MergePreview } from '../src/accountMerge.js';
+import { executeAccountMerge, planAccountMerge, type MergePreview } from '../src/accountMerge.js';
 import type { Db } from '../src/db.js';
 import { openTestDb } from './testDb.js';
 
@@ -90,6 +90,13 @@ async function owned(userId: string, item: string): Promise<number> {
     [userId, item],
   );
   return Number(rows[0]?.n ?? 0);
+}
+async function stowPet(userId: string, species: string, name: string): Promise<void> {
+  await db.query(
+    `INSERT INTO pet_bag (user_id, species, name, variant, source, fed_count, hunger_ms, created_at)
+     VALUES ($1, $2, $3, 0, 'befriended', 3, 0, 1)`,
+    [userId, species, name],
+  );
 }
 
 describe('merging two non-empty accounts', () => {
@@ -490,6 +497,62 @@ describe('merging two non-empty accounts', () => {
     const [u] = await db.query<{ name: string; email: string | null }>('SELECT name, email FROM users WHERE id = $1', [survivor.user.id]);
     expect(u.name).toBe('merge-blank-absorbed');
     expect(u.email).toBe('absorbed@example.test');
+  });
+
+  it('moves bagged pets to the survivor, and an account holding only a stowed pet is not empty', async () => {
+    const survivor = await signIn('merge-bag-survivor');
+    const absorbed = await signIn('merge-bag-absorbed');
+    await stowPet(absorbed.user.id, 'crab', 'Pinchy');
+    await grant(absorbed.user.id, 'parasol', 1);
+    const code = await linkCode(survivor.token);
+    const { preview: p } = await preview(code, absorbed.token);
+    expect(p.empty).toBe(false);
+    expect(p.notes.join(' ')).toMatch(/1 pet in the bag moves over/);
+    expect((await post('/account/link', { code, confirmed: true }, absorbed.token)).status).toBe(200);
+    const [bag] = await db.query<{ species: string; name: string; fed_count: string }>(
+      'SELECT species, name, fed_count FROM pet_bag WHERE user_id = $1',
+      [survivor.user.id],
+    );
+    expect(bag).toMatchObject({ species: 'crab', name: 'Pinchy', fed_count: 3 });
+    expect(await db.query('SELECT 1 FROM pet_bag WHERE user_id = $1', [absorbed.user.id])).toEqual([]);
+
+    // only a stowed pet: not the empty-account fast path — it needs
+    // confirming, and the pet survives the merge instead of being
+    // cascade-deleted with the absorbed user row
+    const survivor2 = await signIn('merge-bagonly-survivor');
+    const only = await signIn('merge-bagonly-absorbed');
+    await stowPet(only.user.id, 'turtle', 'Shelly');
+    const code2 = await linkCode(survivor2.token);
+    const { preview: p2 } = await preview(code2, only.token);
+    expect(p2.empty).toBe(false);
+    expect(p2.notes.join(' ')).toMatch(/1 pet in the bag moves over/);
+    expect((await post('/account/link', { code: code2 }, only.token)).status).toBe(409);
+    expect((await post('/account/link', { code: code2, confirmed: true }, only.token)).status).toBe(200);
+    expect(await db.query("SELECT 1 FROM pet_bag WHERE user_id = $1 AND species = 'turtle'", [survivor2.user.id])).toHaveLength(1);
+  });
+
+  it('a merge that fails halfway leaves both accounts untouched', async () => {
+    const survivor = await signIn('merge-rollback-survivor');
+    const absorbed = await signIn('merge-rollback-absorbed');
+    await grant(absorbed.user.id, 'parasol', 2);
+    await stowPet(absorbed.user.id, 'seal', 'Bubbles');
+    await db.query('UPDATE users SET credit_cents = 250 WHERE id = $1', [absorbed.user.id]);
+    // run plan + execute inside a transaction and abort it after execute,
+    // the way a crash or a late constraint failure would: nothing may move
+    await expect(
+      db.withTransaction(async (tx) => {
+        const plan = await planAccountMerge(tx, survivor.user.id, absorbed.user.id, Date.now(), 8);
+        await executeAccountMerge(tx, plan, Date.now());
+        throw new Error('boom');
+      }),
+    ).rejects.toThrow('boom');
+    expect(await userExists(absorbed.user.id)).toBe(true);
+    expect(await userExists(survivor.user.id)).toBe(true);
+    expect(await owned(absorbed.user.id, 'parasol')).toBe(2);
+    expect(await owned(survivor.user.id, 'parasol')).toBe(0);
+    expect(await db.query("SELECT 1 FROM pet_bag WHERE user_id = $1 AND species = 'seal'", [absorbed.user.id])).toHaveLength(1);
+    const [u] = await db.query<{ credit_cents: string }>('SELECT credit_cents FROM users WHERE id = $1', [absorbed.user.id]);
+    expect(Number(u.credit_cents)).toBe(250);
   });
 });
 
