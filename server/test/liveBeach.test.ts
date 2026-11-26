@@ -293,7 +293,7 @@ describe('while you were away', () => {
     const { token, user } = await signIn('Mara');
     await req(app, '/dev/grant', json('POST', { item: 'nautilus' }), token);
     // start of a UTC day, so both catch-ups below fall on the same one
-    t = Math.ceil(t / 86400000) * 86400000 + H;
+    t = Math.ceil(t / 86400000) * 86400000;
     await save(token, beach([{ id: 1, kind: 'nautilus', item: 'nautilus', x: 20, y: 12 }]), { nautilus: 1 });
     const inbox = async () =>
       (
@@ -302,8 +302,8 @@ describe('while you were away', () => {
           entries: { kind: string; count: number; payload: Record<string, unknown>; beach: { code: string } | null }[];
         }
       ).entries;
-    // 20 h away: a catch-up with a "Before the tide" (gap over 12 h)
-    t += 20 * H;
+    // 13 h away: a catch-up with a "Before the tide" (gap over 12 h)
+    t += 13 * H;
     await load(token);
     let rows = (await inbox()).filter((e) => e.kind === 'tide');
     expect(rows).toHaveLength(1);
@@ -315,7 +315,7 @@ describe('while you were away', () => {
     expect(rows[0].payload.checkpoint).toBe(cp.id);
     // a second catch-up later the same UTC day folds into the same row
     const ev1 = (await events(user.id)).length;
-    t += 2 * H;
+    t += 6 * H;
     await load(token);
     expect((await events(user.id)).length).toBe(ev1 + 1);
     rows = (await inbox()).filter((e) => e.kind === 'tide');

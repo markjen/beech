@@ -406,7 +406,7 @@ function pushRows(tx: Db, user: string, ids?: string[]): Promise<InboxPushRow[]>
 }
 
 async function visiblePushRows(tx: Db, user: string, rows: InboxPushRow[], clock: () => number): Promise<InboxPushRow[]> {
-  const prefs = (await tx.query<Record<NotifyPref, boolean>>('SELECT gifts, neighbors, invites FROM notify_prefs WHERE user_id = $1', [user]))[0];
+  const prefs = (await tx.query<Record<NotifyPref, boolean>>('SELECT gifts, neighbors, invites, beach FROM notify_prefs WHERE user_id = $1', [user]))[0];
   const blockedIds = new Set(
     (await tx.query<{ blocked_id: string }>('SELECT blocked_id FROM blocks WHERE blocker_id = $1', [user])).map((r) => r.blocked_id),
   );
