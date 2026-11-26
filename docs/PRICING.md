@@ -11,8 +11,10 @@ ads and no paid random draws.
 
 Everything below is now sold for **sand bucks** at **10¢ a buck**, the same
 prices rounded to the buck ($2.99 → 30). Real money only buys sand-buck
-packs: 10 for $0.99, 30 for $2.99, 50 for $4.99, 100 for $9.99, 200 for
-$19.99 (`bucks_10` … `bucks_200` in `server/src/products.ts`). Anything in the
+packs: 10 for $0.99, 33 for $2.99, 60 for $4.99, 130 for $9.99, 280 for
+$19.99 (`bucks_10` … `bucks_200` in `server/src/products.ts`) — the bigger
+packs carry a bonus (+10% / +20% / +30% / +40%), so the price per buck falls
+as the pack grows. Anything in the
 bag can be traded back in at what it cost, so trying things is free. This
 replaces "no in-app currency" (owner decision); the design, the trade-in
 rules and the store tasks are in [SAND_BUCKS.md](SAND_BUCKS.md). The table

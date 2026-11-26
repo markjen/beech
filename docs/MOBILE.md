@@ -212,9 +212,16 @@ lives in `server/src/products.ts`. Every product is a **consumable** with the
 **How a purchase flows:** the app buys, then hands the store's proof to
 `POST /api/store/purchase` (iOS: the signed transaction, `jwsRepresentation`;
 Android: the purchase token). The server checks it with the store and grants
-what it buys, once. If the hand-over fails (offline), the app keeps it and
-retries on the next sign-in or shop visit. Refunds come back as store
-notifications and take the items away.
+what it buys, once. The purchase is finished with the store (consumed on
+Android, finished on iOS) only after the server confirms it
+(`autoFinishTransactions: false`, `src/net/shop.ts`): finishing earlier would
+leave a paid purchase with no grant and nothing to recover. If the hand-over
+fails (offline), the app keeps it and retries on the next sign-in or shop
+visit, and unfinished store purchases are recovered the same way
+(`getUnfinishedTransactions`). A payment the store hasn't completed yet
+(for example a cash payment) comes back as pending, not an error, and the
+recovery hands it over once the store marks it bought. Refunds come back as
+store notifications and take the items away.
 
 ### App Store Connect
 

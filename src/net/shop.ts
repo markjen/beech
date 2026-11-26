@@ -171,7 +171,17 @@ let plugin: Promise<{ purchases: Purchases }> | null = null;
  * shop…". Unbox it after the await: `(await native()).purchases`.
  */
 function native(): Promise<{ purchases: Purchases }> {
-  plugin ??= import('@capgo/native-purchases').then((m) => ({ purchases: m.NativePurchases }));
+  plugin ??= import('@capgo/native-purchases').then((m) => {
+    // Finish purchases only after the server has confirmed them (see buy()):
+    // the plugin's default consumes a consumable the moment Play reports it
+    // bought, before the grant is checked — so a failed hand-over meant
+    // paid and nothing granted, with nothing left to recover. The
+    // capacitor.config value is the real switch (it applies from plugin
+    // load); this call is a backup. Best effort: a plugin without
+    // configure() must not break the shop.
+    void m.NativePurchases.configure({ autoFinishTransactions: false }).catch(() => {});
+    return { purchases: m.NativePurchases };
+  });
   return plugin;
 }
 
@@ -185,13 +195,17 @@ export class ShopApi {
   /**
    * The shop (docs/SAND_BUCKS.md): sand-buck packs for real money, with the
    * store's local prices in the apps, and what sand bucks buy.
+   * `storePacksAvailable` is false in the apps when the store offers none of
+   * the packs (they aren't created there yet) — the packs list is empty
+   * then, and the UI says so instead of showing a bare heading.
    */
-  async catalog(): Promise<{ packs: ShopPack[]; offers: ShopOffer[] }> {
+  async catalog(): Promise<{ packs: ShopPack[]; offers: ShopOffer[]; storePacksAvailable: boolean }> {
     const res = await this.account.fetch('/api/store/catalog');
     if (!res.ok) throw new Error('the shop is closed right now');
     const data = (await res.json()) as { packs: ShopPack[]; offers: ShopOffer[]; webCheckout?: boolean };
     this.webCheckout = !!data.webCheckout;
     let packs = data.packs;
+    let storePacksAvailable = true;
     if (shopMode() === 'native') {
       try {
         const p = (await native()).purchases;
@@ -202,12 +216,13 @@ export class ShopApi {
         }
         // only what the store actually offers here can be bought
         packs = packs.filter((x) => x.price);
+        storePacksAvailable = packs.length > 0;
       } catch (e) {
         reportError('shop', e, { source: 'shop:getProducts' });
         /* store unreachable: show US prices, buying will say why it can't */
       }
     }
-    return { packs, offers: data.offers };
+    return { packs, offers: data.offers, storePacksAvailable };
   }
 
   /** Your sand bucks (and any owed after a refund). */
@@ -306,12 +321,20 @@ export class ShopApi {
    * Buy a product. The store takes the payment; then the server checks the
    * purchase and adds it to your bag. If the hand-over to the server fails
    * (offline), it's kept and retried (`retryPending`), so nothing paid for
-   * is lost.
+   * is lost. The purchase is finished with the store (consumed on Android,
+   * finished on iOS) only after the server confirms it — finishing earlier
+   * would leave a paid purchase with no grant and nothing to recover.
+   * 'pending' is a payment the store hasn't completed yet (for example a
+   * cash payment): the bucks arrive when it completes, and the recovery in
+   * `retryPending()` hands it over then.
    */
-  async buy(productId: string): Promise<'bought' | 'cancelled'> {
+  async buy(productId: string): Promise<'bought' | 'cancelled' | 'pending'> {
     const user = this.account.user;
     if (!user) throw new Error('sign in to buy');
     let pending: Pending;
+    // the store's answer, kept so the purchase can be finished with the
+    // store once the server confirms it (native mode only)
+    let bought: { transactionId?: string; purchaseToken?: string } | undefined;
     const mode = shopMode();
     if (mode === 'steam') {
       return this.buyOnSteam(productId);
@@ -324,13 +347,22 @@ export class ShopApi {
           productIdentifier: productId,
           // ties the purchase to this account (the server checks it); a UUID, no personal data
           appAccountToken: user.id,
-          // Android: consume it, so the same thing can be bought again
+          // Android: consume it, so the same thing can be bought again —
+          // but only after the server confirms it (finishStorePurchase):
+          // with autoFinishTransactions off, this flag keeps the plugin
+          // from consuming it the moment Play reports it bought.
           isConsumable: true,
+          autoAcknowledgePurchases: false,
         });
       } catch (e) {
-        if (/cancel/i.test(String((e as Error)?.message ?? e))) {
+        const msg = String((e as Error)?.message ?? e);
+        if (/cancel/i.test(msg)) {
           reportEvent('purchase_cancel', { product: productId });
           return 'cancelled';
+        }
+        if (/pending/i.test(msg)) {
+          reportEvent('purchase_pending', { product: productId });
+          return 'pending';
         }
         reportError('shop', e, { source: 'shop:purchase', meta: { product: productId } });
         throw e;
@@ -347,6 +379,7 @@ export class ShopApi {
         throw err;
       }
       pending = ios ? { platform: 'ios', productId, jws: t.jwsRepresentation } : { platform: 'android', productId, token: t.purchaseToken };
+      bought = t;
     } else if (mode === 'dev') {
       pending = { platform: 'dev', productId, token: `dev-${crypto.randomUUID()}` };
     } else {
@@ -354,8 +387,31 @@ export class ShopApi {
     }
     writePending([...readPending(), pending]);
     await this.deliver(pending);
+    if (mode === 'native' && bought) {
+      // the server confirmed it: finish the purchase with the store, so the
+      // same consumable can be bought again. A failure here is not fatal —
+      // the grant is recorded, and the recovery finishes it later.
+      await this.finishStorePurchase(bought).catch((e) => reportError('shop', e, { source: 'shop:finish', meta: { product: productId } }));
+    }
     reportEvent('purchase_success', { product: productId, mode });
     return 'bought';
+  }
+
+  /**
+   * Finish a native purchase with the store, after the server confirmed it:
+   * consume it on Android (acknowledges it and frees it for re-purchase),
+   * finish the StoreKit transaction on iOS. Never called before `deliver()`
+   * succeeds — an unfinished purchase is what the recovery can still save.
+   */
+  private async finishStorePurchase(t: { transactionId?: string; purchaseToken?: string }): Promise<void> {
+    const p = (await native()).purchases;
+    if (Capacitor.getPlatform() === 'android') {
+      if (!t.purchaseToken) throw new Error('no purchase token to consume');
+      await p.consumePurchase({ purchaseToken: t.purchaseToken });
+      return;
+    }
+    if (!t.transactionId) throw new Error('no transaction to finish');
+    await p.finishTransaction({ transactionId: t.transactionId });
   }
 
   private async buyOnSteam(productId: string): Promise<'bought' | 'cancelled'> {
@@ -451,6 +507,16 @@ export class ShopApi {
       try {
         await this.deliver(p);
         done++;
+        // Android: the token is in the record — finish it now that the
+        // server confirmed it. iOS finishes through recoverUnfinished()
+        // below (the record holds the signed transaction, not its id).
+        if (shopMode() === 'native' && p.platform === 'android' && p.token) {
+          try {
+            await (await native()).purchases.consumePurchase({ purchaseToken: p.token });
+          } catch {
+            /* granted but not consumed: the recovery finishes it */
+          }
+        }
       } catch {
         /* still offline, or the server said no: deliver() already dropped the hopeless ones */
       }
@@ -461,6 +527,51 @@ export class ShopApi {
         done++;
       } catch {
         /* still offline or not finalized yet */
+      }
+    }
+    done += await this.recoverUnfinished();
+    return done;
+  }
+
+  /**
+   * Purchases the store still holds as unfinished — the app was killed, or
+   * the hand-over was lost before the server confirmed it. Each one is
+   * handed over and then finished, so nothing paid for is lost. Native apps
+   * only (the web mock answers with no transactions). Runs on sign-in and
+   * when the shop opens, through retryPending(). A transaction the server
+   * won't confirm stays unfinished and is tried again next time; Google
+   * refunds unacknowledged purchases after three days, so a stranded one
+   * never silently keeps the player's money.
+   */
+  async recoverUnfinished(): Promise<number> {
+    if (shopMode() !== 'native') return 0;
+    let transactions: { productIdentifier: string; purchaseToken?: string; jwsRepresentation?: string; transactionId: string }[];
+    try {
+      ({ transactions } = await (await native()).purchases.getUnfinishedTransactions());
+    } catch (e) {
+      reportError('shop', e, { source: 'shop:unfinished' });
+      return 0;
+    }
+    let done = 0;
+    for (const t of transactions ?? []) {
+      const ios = Capacitor.getPlatform() === 'ios';
+      if (ios && !t.jwsRepresentation) continue;
+      if (!ios && !t.purchaseToken) continue;
+      const pending: Pending = ios
+        ? { platform: 'ios', productId: t.productIdentifier, jws: t.jwsRepresentation }
+        : { platform: 'android', productId: t.productIdentifier, token: t.purchaseToken };
+      try {
+        await this.deliver(pending);
+      } catch {
+        // still unverified (the server said no, or offline): leave it
+        // unfinished so the next recovery tries again
+        continue;
+      }
+      try {
+        await this.finishStorePurchase(t);
+        done++;
+      } catch {
+        // granted but not finished: the next recovery finishes it
       }
     }
     return done;

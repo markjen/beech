@@ -84,13 +84,13 @@ describe('sand bucks: one transition at a time', () => {
   it('a pack fills the balance; spending moves it into the bag; trading in gives exactly that back', async () => {
     const w = await person();
     await buyPack(w, 'bucks_30');
-    expect(await balance(w)).toEqual({ bal: 30, debt: 0 });
+    expect(await balance(w)).toEqual({ bal: 33, debt: 0 });
     expect((await spend(w)).status).toBe(200);
-    expect(await balance(w)).toEqual({ bal: 20, debt: 0 });
+    expect(await balance(w)).toEqual({ bal: 23, debt: 0 });
     expect(await units(w)).toEqual([10]);
     const r = await tradeIn(w);
     expect(r.status).toBe(200);
-    expect(await r.json()).toMatchObject({ credited: 10, bucks: 30 });
+    expect(await r.json()).toMatchObject({ credited: 10, bucks: 33 });
     expect(await units(w)).toEqual([]);
   });
 
@@ -134,7 +134,7 @@ describe('sand bucks: one transition at a time', () => {
     await refund(t);
     expect(await balance(w)).toEqual({ bal: 0, debt: 10 });
     await buyPack(w, 'bucks_30');
-    expect(await balance(w)).toEqual({ bal: 20, debt: 0 });
+    expect(await balance(w)).toEqual({ bal: 23, debt: 0 });
   });
 
   it('a gift carries its value: a discount can’t be cashed out by gifting', async () => {
@@ -161,7 +161,7 @@ describe('sand bucks: one transition at a time', () => {
     await buyPack(w, 'bucks_100');
     const r = await s.post('/store/buy', w.token, { basket: [{ product: 'item_lighthouse' }, { product: 'item_tikitorch' }], requestId: crypto.randomUUID() });
     expect(r.status, await r.clone().text()).toBe(200);
-    expect(await r.json()).toMatchObject({ paid: 45, bucks: 55 });
+    expect(await r.json()).toMatchObject({ paid: 45, bucks: 85 });
     const bag = (await (await s.req('/bag', {}, w.token)).json()) as { items: { item: string; values: number[] }[] };
     expect(bag.items.find((i) => i.item === 'lighthouse')?.values).toEqual([30]);
     expect(bag.items.find((i) => i.item === 'tikitorch')?.values.sort()).toEqual([7, 8]);
@@ -171,8 +171,8 @@ describe('sand bucks: one transition at a time', () => {
     expect((await s.post('/store/buy', w.token, once)).status).toBe(200);
     const again = await s.post('/store/buy', w.token, once);
     expect(again.status).toBe(200);
-    expect(await again.json()).toMatchObject({ paid: 10, bucks: 45 });
-    expect(await balance(w)).toEqual({ bal: 45, debt: 0 });
+    expect(await again.json()).toMatchObject({ paid: 10, bucks: 75 });
+    expect(await balance(w)).toEqual({ bal: 75, debt: 0 });
     expect(await units(w)).toEqual([10]);
     // short of bucks: refused, nothing changes
     const poor = await person();

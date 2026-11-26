@@ -23,6 +23,8 @@ export class Shop {
   private readonly codes = codesAllowed();
   private packs: ShopPack[] = [];
   private offers: ShopOffer[] = [];
+  /** false in the apps when the store offers none of the packs (they aren't created there yet) */
+  private storePacksAvailable = true;
 
   constructor(
     parent: HTMLElement,
@@ -93,9 +95,10 @@ export class Shop {
         if (n) void this.afterPack('');
       });
     try {
-      const [{ packs, offers }] = await Promise.all([this.api.catalog(), this.refreshBucks()]);
+      const [{ packs, offers, storePacksAvailable }] = await Promise.all([this.api.catalog(), this.refreshBucks()]);
       this.packs = packs;
       this.offers = offers;
+      this.storePacksAvailable = storePacksAvailable;
       this.note.textContent = '';
       await this.render();
       if (section === 'packs') this.list.querySelector('.shop-packs')?.scrollIntoView({ block: 'start' });
@@ -188,6 +191,12 @@ export class Shop {
       p.textContent = 'Get these in the beech app:';
       packs.appendChild(p);
     }
+    if (mode === 'native' && !this.packs.length && !this.storePacksAvailable) {
+      const p = document.createElement('p');
+      p.className = 'shop-note';
+      p.textContent = 'Sand-buck packs aren’t in the store yet — check back soon.';
+      packs.appendChild(p);
+    }
     for (const p of this.packs) {
       const row = this.row('bucket', p.name, p.blurb, '', p.featured);
       const btn = this.button(p.id, p.price ?? `$${p.usd.toFixed(2)}`);
@@ -261,6 +270,8 @@ export class Shop {
       if (r === 'bought') {
         this.note.textContent = `${p.name}: thank you!`;
         await this.afterPack(p.id);
+      } else if (r === 'pending') {
+        this.note.textContent = 'Your purchase is pending — your sand bucks will arrive when it completes.';
       }
     });
   }

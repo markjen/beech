@@ -127,9 +127,9 @@ describe('Steam Wallet microtransaction routes', () => {
     expect(fin2.status).toBe(200);
     expect(await fin2.json()).toEqual(expect.objectContaining({ ok: true, already: true }));
 
-    // Steam sells sand-buck packs (docs/SAND_BUCKS.md): 100 to the balance, once
+    // Steam sells sand-buck packs (docs/SAND_BUCKS.md): 130 to the balance, once
     const credit = (await (await app.request('/credit', { headers: { Authorization: `Bearer ${token}` } })).json()) as { bucks: number };
-    expect(credit.bucks).toBe(100);
+    expect(credit.bucks).toBe(130);
     // the Steam builds already out still buy things directly (PR #118 review)
     expect((await post('/store/steam/init', { productId: 'item_parasol' }, token)).status).toBe(200);
   });
