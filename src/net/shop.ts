@@ -163,9 +163,15 @@ function writePendingSteam(list: string[]): void {
 }
 
 type Purchases = typeof import('@capgo/native-purchases').NativePurchases;
-let plugin: Promise<Purchases> | null = null;
-function native(): Promise<Purchases> {
-  plugin ??= import('@capgo/native-purchases').then((m) => m.NativePurchases);
+let plugin: Promise<{ purchases: Purchases }> | null = null;
+/**
+ * The store plugin, boxed. A Capacitor plugin is a Proxy that answers every
+ * property, `then` included, so a promise (or async function) that resolves
+ * with it bare never settles in the apps: the shop hung on "Opening the
+ * shop…". Unbox it after the await: `(await native()).purchases`.
+ */
+function native(): Promise<{ purchases: Purchases }> {
+  plugin ??= import('@capgo/native-purchases').then((m) => ({ purchases: m.NativePurchases }));
   return plugin;
 }
 
@@ -188,7 +194,7 @@ export class ShopApi {
     let packs = data.packs;
     if (shopMode() === 'native') {
       try {
-        const p = await native();
+        const p = (await native()).purchases;
         const { products } = await p.getProducts({ productIdentifiers: packs.map((x) => x.id) });
         for (const sp of products) {
           const mine = packs.find((x) => x.id === sp.identifier);
@@ -279,7 +285,7 @@ export class ShopApi {
     this.webCheckout = !!data.webCheckout;
     if (shopMode() === 'native') {
       try {
-        const p = await native();
+        const p = (await native()).purchases;
         const { products } = await p.getProducts({ productIdentifiers: list.map((x) => x.id) });
         for (const sp of products) {
           const mine = list.find((x) => x.id === sp.identifier);
@@ -311,7 +317,7 @@ export class ShopApi {
       return this.buyOnSteam(productId);
     }
     if (mode === 'native') {
-      const p = await native();
+      const p = (await native()).purchases;
       let t;
       try {
         t = await p.purchaseProduct({

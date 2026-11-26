@@ -51,9 +51,11 @@ export function nativeProviders(): NativeProvider[] {
 }
 
 type Plugin = typeof import('@capgo/capacitor-social-login').SocialLogin;
-let ready: Promise<Plugin> | null = null;
+// boxed: a Capacitor plugin is a Proxy that answers `then`, so a promise
+// resolved with it bare never settles in the apps (see native() in shop.ts)
+let ready: Promise<{ plugin: Plugin }> | null = null;
 
-function plugin(): Promise<Plugin> {
+function plugin(): Promise<{ plugin: Plugin }> {
   if (!ready) {
     ready = (async () => {
       // loaded only in the apps, so the web build never pulls it in
@@ -67,7 +69,7 @@ function plugin(): Promise<Plugin> {
           : undefined,
         apple: ios ? { clientId: 'app', redirectUrl: '' } : undefined,
       });
-      return SocialLogin;
+      return { plugin: SocialLogin };
     })();
     ready.catch(() => (ready = null));
   }
@@ -80,7 +82,7 @@ export class SignInCancelled extends Error {}
 const looksCancelled = (e: unknown) => /cancel|dismiss|12501|1001|user closed/i.test(String((e as Error)?.message ?? e));
 
 export async function nativeSignIn(provider: NativeProvider): Promise<NativeIdentity> {
-  const SocialLogin = await plugin();
+  const SocialLogin = (await plugin()).plugin;
   // Diagnostics only: the attempt and its outcome are uploaded as
   // `auth_attempt` events (see signinDiagnostics.ts); the flow below is
   // unchanged.
@@ -115,6 +117,6 @@ export async function nativeSignIn(provider: NativeProvider): Promise<NativeIden
 /** Forget the provider's own session too, so the next sign-in can pick another account. */
 export async function nativeSignOut(): Promise<void> {
   if (!isMobileApp() || !ready) return;
-  const SocialLogin = await ready;
+  const SocialLogin = (await ready).plugin;
   for (const provider of nativeProviders()) await SocialLogin.logout({ provider }).catch(() => {});
 }
