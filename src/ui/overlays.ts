@@ -3,6 +3,7 @@ import './overlays.css';
 import { GUIDE_URL, type QualityTier } from '../config';
 import { steamBridge } from '../platform/runtime';
 import type { Beach } from '../world/locations';
+import { PlacePicker } from './placePicker';
 import { WAVE_STRENGTHS, type PaletteChoice, type Settings } from './settingsStore';
 
 /** Title card shown until the first touch (which also unlocks audio). */
@@ -173,6 +174,8 @@ export class SettingsSheet {
   private open = false;
   private activeTab: SettingsTab = 'beach';
   private readonly hasAccounts: boolean;
+  /** the place picker on the Beaches tab */
+  readonly places: PlacePicker;
 
   constructor(
     parent: HTMLElement,
@@ -201,9 +204,7 @@ export class SettingsSheet {
         </div>
         <div class="sheet-pane" data-pane="beach" role="tabpanel">
           <div class="beach-slot"></div>
-          <div class="row col"><span>place</span><div class="chips" data-key="beach">${beaches
-            .map((b) => `<button type="button" data-v="${b.id}" title="${b.place}">${b.name}</button>`)
-            .join('')}<button type="button" class="near" data-act="near">near me</button></div></div>
+          <div class="row col place-slot"></div>
           <div class="row actions">
             <button type="button" class="action" data-act="share">save a picture</button>
             <button type="button" class="action" data-act="smooth">smooth the beach</button>
@@ -284,7 +285,14 @@ export class SettingsSheet {
         this.h.change(this.settings, key);
       });
     }
-    this.el.querySelector<HTMLButtonElement>('button[data-act="near"]')?.addEventListener('click', () => this.h.nearMe());
+    this.places = new PlacePicker(beaches, {
+      pick: (id) => {
+        this.settings = { ...this.settings, beach: id };
+        this.h.change(this.settings, 'beach');
+      },
+      nearMe: () => this.h.nearMe(),
+    });
+    this.el.querySelector('.place-slot')!.appendChild(this.places.el);
     this.el.querySelector<HTMLButtonElement>('button[data-act="fullscreen"]')?.addEventListener('click', () => {
       this.hide();
       this.h.fullscreen();
@@ -294,7 +302,7 @@ export class SettingsSheet {
       this.h.tv();
     });
     for (const group of this.el.querySelectorAll<HTMLDivElement>('.chips')) {
-      const key = group.dataset.key as 'palette' | 'quality' | 'beach' | 'waves';
+      const key = group.dataset.key as 'palette' | 'quality' | 'waves';
       for (const b of group.querySelectorAll<HTMLButtonElement>('button[data-v]')) {
         b.addEventListener('click', () => {
           this.settings = { ...this.settings, [key]: b.dataset.v } as Settings;
@@ -349,23 +357,20 @@ export class SettingsSheet {
 
   private sync(): void {
     for (const group of this.el.querySelectorAll<HTMLDivElement>('.chips')) {
-      const key = group.dataset.key as 'palette' | 'quality' | 'beach' | 'waves';
+      const key = group.dataset.key as 'palette' | 'quality' | 'waves';
       const v = this.settings[key] ?? (key === 'waves' ? 'lively' : undefined);
       for (const b of group.querySelectorAll<HTMLButtonElement>('button[data-v]')) {
         b.classList.toggle('on', b.dataset.v === v);
       }
     }
+    this.places?.setCurrent(this.settings.beach);
     // the pinned light waits in the background while local weather is on
     this.el.querySelector('.chips[data-key="palette"]')?.classList.toggle('standby', this.settings.localWeather);
   }
 
   /** Highlight a specific real-world place chip (e.g. for the beach selected in settings). */
   setBeachLocation(id: string): void {
-    const group = this.el.querySelector<HTMLDivElement>('.chips[data-key="beach"]');
-    if (!group) return;
-    for (const b of group.querySelectorAll<HTMLButtonElement>('button[data-v]')) {
-      b.classList.toggle('on', b.dataset.v === id);
-    }
+    this.places.setCurrent(id);
   }
 
   /** Reflect a change made outside the sheet (e.g. "near me" or the default beach). */

@@ -69,12 +69,15 @@ simulated one.
 | `src/ui/beachFileDialog.ts` | The import preview (map, items, warnings, shortfalls) and the file pick / download helpers |
 | `src/sim/profile.ts`, `waves.ts`, `undoStack.ts` | Rest beach shape, swell/tide functions, stroke-delta undo |
 | `src/render/beachRenderer.ts`, `shaders.ts` | All meshes and GLSL (sand, water, far ocean, skirts, rock, props) |
-| `src/render/sky.ts` | Gradient background |
+| `src/render/sky.ts` | Gradient background, sun, moon, stars and real-weather cloud puffs |
+| `src/render/precip.ts` | Rain and snow: a 2D canvas over the scene, drawn only while something falls |
 | `src/render/storeMeshes.ts`, `glow.ts`, `meshKit.ts` | The shop's pieces (parasol, surfboard, sandcastle, beach hut, lighthouse, tiki torch); the glow and sparkles on rare, legendary and shop things; shared mesh helpers |
 | `src/render/objects.ts` | The props (rocks, driftwood, shells, flags, shop items…): shapes from each thing's variant, drawn as GPU thin instances through a scene-wide prop bank (one source mesh per look, shared by your beach and the neighbors'), eased to the sim's positions; things at rest aren't touched |
 | `src/world/items.ts`, `src/ui/inventory.ts` | Item catalog (rarity, source, availability, price) and the bag tray |
 | `src/input/*` | Ortho camera, gestures (dig vs camera), heightfield picking, brush math |
-| `src/world/*` | Items (`items.ts`, above) and real beaches: `locations.ts` (catalogue), `astro.ts` (sun and moon), `tides.ts` (harmonic tide engine), `tideStations.json` (TICON-3 constants), `live.ts` (turns a beach and the current time into a palette, light, sky and tide) |
+| `src/world/*` | Items (`items.ts`, above) and real beaches: `locations.ts` (catalogue), `astro.ts` (sun and moon), `tides.ts` (harmonic tide engine), `tideStations.json` (TICON-3 constants), `live.ts` (turns a beach and the current time into a palette, light, sky and tide), `weather.ts` (the real-weather report: WMO codes to a look, the grey/fog palette shift, measured wave height to swell scale) |
+| `src/net/weather.ts` | Fetches `GET /api/weather` (every place at once) every 15 min in production builds, cached on the device |
+| `src/ui/placePicker.ts` | The place picker on the Beaches tab: search, world map, places by region with local time and weather |
 | `src/net/*` | Accounts (`account.ts`: session, API, Google button), `beachStore.ts` (every beach's state in memory by id, LRU, one save pipeline; docs/BEACH_STORE.md), `storeBackends.ts` (where beaches load from and save to), `snapshotCache.ts` (other people's beaches kept on the device), and `beachSync.ts` (which beach the wave worker simulates: the one of yours in view) |
 | `server/` | Node + Hono + Postgres (PGlite locally): serves the production web app and `/api` (sign-in, sessions, saved beach, neighbors, delete account). Runs on Cloud Run. See docs/BACKEND.md and docs/GCP.md. The admin console is a second entry point in the same package (`adminServer.ts` → `adminApp.ts`), deployed as its own Cloud Run service `beech-admin` on the same database (docs/GIFT_CARDS_PROMOS.md). Payments: `store.ts` (App Store / Play verification), `xsolla.ts` (web checkout token and webhook signature, docs/WEB_PAYMENTS.md), `giftCards.ts` (credit and promos). |
 | `server/src/shoreSite.ts`, `shore.ts`, `beachImage.ts` | beechshore.com, the public shore site (docs/SHORE_SITE.md): server-rendered pages, the shared shore walk, beach pictures as PNG |

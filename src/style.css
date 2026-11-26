@@ -38,6 +38,19 @@ body {
   touch-action: none;
 }
 
+/* rain and snow (src/render/precip.ts): over the scene, under the UI, never in the way */
+.precip {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.precip[hidden] {
+  display: none;
+}
+
 #ui {
   position: fixed;
   inset: 0;

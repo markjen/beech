@@ -3,7 +3,7 @@ import { Layer } from '@babylonjs/core/Layers/layer';
 import '@babylonjs/core/Layers/layerSceneComponent';
 import type { Scene } from '@babylonjs/core/scene';
 
-import { rgbToCss, type Palette } from '../palette';
+import { rgbToCss, WEATHER_COLORS, type Palette } from '../palette';
 
 /** Where to draw a sun or moon on the backdrop (fractions of the screen). */
 export interface SkyDisc {
@@ -17,6 +17,16 @@ export interface SkyScene {
   moon?: SkyDisc & { phase: number; fraction: number };
   /** 0..1 star visibility */
   stars: number;
+  /** real weather: cloud puffs (0..1), how grey (0..1) and how far they've drifted (screen widths) */
+  clouds?: { amount: number; overcast: number; drift: number };
+}
+
+/** Cloud puffs: [x 0..1, height 0..1 from the top, size, seed]. */
+const CLOUDS: [number, number, number, number][] = [];
+{
+  let seed = 19;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  for (let i = 0; i < 14; i++) CLOUDS.push([rnd(), 0.06 + Math.pow(rnd(), 1.3) * 0.42, 0.6 + rnd() * 0.8, rnd()]);
 }
 
 const STARS: [number, number, number][] = [];
@@ -66,6 +76,10 @@ export class Sky {
       r(sky.stars),
       sky.sun ? [r(sky.sun.x), r(sky.sun.y), r(sky.sun.alpha)].join() : '',
       sky.moon ? [r(sky.moon.x), r(sky.moon.y), r(sky.moon.alpha), r(sky.moon.phase)].join() : '',
+      // drift in whole texture pixels, so drifting clouds redraw only now and then
+      sky.clouds && sky.clouds.amount > 0.02
+        ? [r(sky.clouds.amount), r(sky.clouds.overcast), Math.round(sky.clouds.drift * this.w)].join()
+        : '',
     ].join('|');
     if (key === this.lastKey) return;
     this.lastKey = key;
@@ -129,7 +143,34 @@ export class Sky {
       ctx.arc(cx, cy, rad, 0, Math.PI * 2);
       ctx.fill();
     }
+    if (sky.clouds && sky.clouds.amount > 0.02) this.drawClouds(ctx, sky.clouds, unit);
     ctx.restore();
     this.tex.update(false);
+  }
+
+  /** Soft puffs drifting with the wind; greyer and flatter as the sky closes over. */
+  private drawClouds(ctx: CanvasRenderingContext2D, c: NonNullable<SkyScene['clouds']>, unit: number): void {
+    const { w, h } = this;
+    const n = Math.round(CLOUDS.length * Math.min(1, c.amount));
+    const light = rgbToCss(WEATHER_COLORS.cloud);
+    const shade = rgbToCss(WEATHER_COLORS.cloudShade);
+    const span = w + 240 * unit;
+    for (let i = 0; i < n; i++) {
+      const [px, py, size, sd] = CLOUDS[i];
+      const x = ((((px + c.drift * (0.6 + 0.4 * sd)) % 1) + 1) % 1) * span - 120 * unit;
+      const y = py * h;
+      const rx = 46 * unit * size * (1 + c.overcast * 0.6);
+      const ry = rx * (0.36 - 0.1 * c.overcast);
+      ctx.globalAlpha = (0.42 + 0.3 * sd) * Math.min(1, c.amount * 1.4) * (1 - 0.6 * c.overcast);
+      ctx.fillStyle = c.overcast > 0.5 ? shade : light;
+      for (let k = 0; k < 4; k++) {
+        const ox = (k - 1.5) * rx * 0.5;
+        const oy = -Math.abs(k - 1.5) * ry * -0.25 - (k === 1 || k === 2 ? ry * 0.35 : 0);
+        ctx.beginPath();
+        ctx.ellipse(x + ox, y + oy, rx * 0.55, ry * (k === 1 || k === 2 ? 1.1 : 0.8), 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.globalAlpha = 1;
   }
 }

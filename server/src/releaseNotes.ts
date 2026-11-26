@@ -17,8 +17,11 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: '2026-11-26',
-    title: 'Sand bucks, trade-ins, copying a beach, and smoother live beaches',
+    title: 'Real weather, 21 new beaches, sand bucks, trade-ins and copying a beach',
     changes: [
+      'Real weather: every beach’s sky now follows a live forecast. Clouds drift over, fog rolls in, rain and snow fall, and the swell follows the real sea. The status pane shows the weather and temperature.',
+      '21 new real beaches, from Whitehaven and Cable Beach to Nazaré, Sylt, Tofino, Cancún and Zanzibar: 34 in all, each with its own real tides.',
+      'A new place picker in Manage → Beaches: search, tap a dot on a world map, or browse by region, with each place’s local time and weather.',
       'The shop opens again in the Android and iPhone apps (it was stuck on “Opening the shop…”).',
       'When you aren’t signed in, a Sign in button sits in the lower-left corner of the title screen and your beach, so signing in is one tap away.',
       'Sand bucks: everything in the shop is now priced in sand bucks (1 sand buck is 10¢; prices are the same as before). Buy sand bucks in packs, from the App Store, Google Play, Steam or by card on the web, then spend them on anything, on any device. Gift cards add sand bucks.',

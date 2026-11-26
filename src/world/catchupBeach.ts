@@ -11,11 +11,16 @@ import { CATCHUP } from '../config';
 import { catchUp } from '../sim/catchup';
 import { decodeSand, encodeSand, fitWorld } from '../sim/sandCodec';
 import { diorama } from './live';
-import { beachById } from './locations';
+import { BEACHES, beachById } from './locations';
 import { tideHeight } from './tides';
 
 // Saves and catch-up use the same object validation as the app's decoder.
 export { sanitizeObjects } from '../sim/sandCodec';
+
+/** Every real place's id and position, for the server's weather fetch (server/src/weather.ts). */
+export function placeCoords(): { id: string; lat: number; lon: number }[] {
+  return BEACHES.map((b) => ({ id: b.id, lat: b.lat, lon: b.lon }));
+}
 
 export interface SavedCatchUp {
   /** the beach as the sea left it (sandCodec format) */

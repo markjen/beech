@@ -1,3 +1,4 @@
+import { mixLook } from './weather';
 import { SHORE_LIGHT } from '../config';
 import { mixPalette } from '../palette';
 import type { LiveState } from './live';
@@ -76,5 +77,6 @@ export function mixLive(a: LiveState, b: LiveState, t: number): LiveState {
       },
       night: lerp(a.sky.night, b.sky.night, t),
     },
+    look: mixLook(a.look, b.look, t),
   };
 }

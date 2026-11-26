@@ -331,3 +331,30 @@ export const ANIMALS = {
   dolphinBreachHeight: 1.15,
 };
 
+
+/** Real weather at each place (src/world/weather.ts, server/src/weather.ts). */
+export const WEATHER = {
+  /** how often the app asks the server for the weather (ms) */
+  refreshMs: 15 * 60 * 1000,
+  /** a report older than this is ignored (ms) */
+  staleMs: 3 * 60 * 60 * 1000,
+  /** real wave height (m) to swell scale: base + k × √height */
+  waveBase: 0.35,
+  waveK: 0.45,
+  /** blend between the beach's usual swell (0) and the measured sea (1) */
+  waveTrust: 0.75,
+  /** most an onshore wind adds to the swell scale (at windFull km/h) */
+  windChop: 0.12,
+  windFull: 45,
+  /** the swell scale stays in the range the sim is tuned for */
+  waveMin: 0.4,
+  waveMax: 1.15,
+  /** how much a full overcast dims the sunlight */
+  overcastDim: 0.45,
+  /** the light keeps this share of its colour under full cloud */
+  overcastKeep: 0.35,
+  /** how fast the shown weather follows a new report (per second) */
+  easePerSecond: 0.08,
+  /** rain drops and snowflakes at full strength */
+  maxDrops: 260,
+};

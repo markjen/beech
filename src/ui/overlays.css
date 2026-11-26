@@ -1292,3 +1292,199 @@ body.ambient-idle .hud-sign-in {
 }
 
 /* ---- visitors and the inbox (docs/INBOX_NOTIFICATIONS.md) ---- */
+
+/* ------------------------------------------------------- place picker */
+/* Beaches tab: the real place a beach sits at. One row closed; open, a
+   search box, near me, a map of every place and the places by region. */
+.place-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pp-summary {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1.5px solid color-mix(in srgb, currentColor 35%, transparent);
+  border-radius: 14px;
+  padding: 8px 12px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pp-label {
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  opacity: 0.6;
+}
+
+.pp-now {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.pp-now b,
+.pp-now span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-now span {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.pp-change {
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  opacity: 0.7;
+}
+
+.pp-summary[aria-expanded='true'] .pp-change {
+  opacity: 0.35;
+}
+
+.pp-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pp-body[hidden] {
+  display: none;
+}
+
+.pp-tools {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.pp-search {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 15px;
+  color: inherit;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  border: 1.5px solid color-mix(in srgb, currentColor 30%, transparent);
+  border-radius: 999px;
+  padding: 8px 14px;
+  min-height: 40px;
+}
+
+.pp-search:focus {
+  outline: none;
+  border-color: currentColor;
+}
+
+.pp-tools .near {
+  flex: 0 0 auto;
+  border-style: dashed;
+  white-space: nowrap;
+}
+
+.pp-map .marker .hit {
+  fill: transparent;
+}
+
+.pp-map .marker .dot {
+  stroke-width: 1;
+  transition: opacity 0.15s;
+}
+
+.pp-map .marker.dim {
+  opacity: 0.2;
+}
+
+.pp-map .marker.here .dot,
+.pp-map .marker.hover .dot {
+  r: 5.5;
+  stroke: var(--ui-fg);
+  stroke-width: 2;
+}
+
+.pp-list {
+  max-height: min(46vh, 360px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pp-region[hidden],
+.pp-list button[hidden] {
+  display: none;
+}
+
+.pp-region-name {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.55;
+  padding: 8px 4px 2px;
+}
+
+.pp-list button {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pp-list button:hover,
+.pp-list button:focus-visible {
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  outline: none;
+}
+
+.pp-list button.on {
+  background: var(--ui-fg);
+  color: var(--ui-bg);
+}
+
+.pp-name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.pp-name b,
+.pp-name span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-name span,
+.pp-time,
+.pp-wx {
+  font-size: 12px;
+  opacity: 0.7;
+  white-space: nowrap;
+}
+
+.pp-time {
+  min-width: 58px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}

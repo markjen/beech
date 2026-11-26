@@ -18,8 +18,11 @@ import type { AnimalView } from './render/animals';
 import { ObjectView } from './render/objects';
 import { Horizon } from './render/horizon';
 import { Sky, type SkyDisc } from './render/sky';
+import { Precipitation } from './render/precip';
 import { AnimalController, type AnimalEnv, type AnimalObstacle } from './world/animals';
 import { LiveConditions, type LiveState } from './world/live';
+import { fakeReport, setWeatherReport, shortWeather, usesFahrenheit, weatherFor, weatherGlyph, weatherText } from './world/weather';
+import { startWeather } from './net/weather';
 import { mixLive, shoreLightMix } from './world/shoreLight';
 import { BEACHES, beachById, defaultBeach, nearestBeach, type Beach } from './world/locations';
 import type { BrushMode, CastleShape, ClearingMode, SandMode } from './sim/beachSim';
@@ -224,6 +227,10 @@ async function boot() {
   const sendSea = () => send({ type: 'sea', tide: liveState.simTide, waves: liveState.waves });
   sendSea();
   const sky = new Sky(scene);
+  // real weather: rain and snow over the scene, clouds drifting on the sky
+  const precip = new Precipitation(document.body, document.getElementById('ui'));
+  let cloudDrift = 0;
+  const fahrenheit = usesFahrenheit(navigator.language);
   const picker = new SandPicker(grid, ready.rest);
   const cam = new CameraController(scene, canvas, grid.dx);
   // set up with the account layer (production builds)
@@ -903,6 +910,10 @@ async function boot() {
     { accounts: ACCOUNTS_ENABLED },
   );
   sheet.setSettings({ ...settings, beach: beach.id });
+  sheet.places.setWeather((id) => {
+    const w = weatherFor(id);
+    return w ? shortWeather(w, fahrenheit) : undefined;
+  });
 
   // the status pane, top left (shown with the rail): whose beach this is
   // and the weather by default; ⌄ adds the game status and actions while
@@ -990,7 +1001,10 @@ async function boot() {
     const owner = paneOwner();
     const sun = viewState.sky.sun.elevation;
     const glyph = SKY.find(([e]) => sun < e)![1];
-    const weather = `${glyph} ${viewState.localTime} · ${swellWord()}`;
+    const wx = viewState.weather;
+    const weather = wx
+      ? `${weatherGlyph(wx, sun < -6)} ${viewState.localTime} · ${weatherText(wx, fahrenheit)} · ${swellWord()}`
+      : `${glyph} ${viewState.localTime} · ${swellWord()}`;
     const detail = viewConditions.describe(viewState).split(' · ').slice(1).join(' · ');
     const chips = [`wave · ${waveStrength()}`, ...paneChips()];
     const key = JSON.stringify([owner.title, owner.shoreCode, weather, detail, chips]);
@@ -1013,6 +1027,16 @@ async function boot() {
   };
   updatePlace(true);
   setPane(paneState);
+  // the weather everywhere: from our server (production), or made up for screenshots (?wx=<WMO code>)
+  const weatherChanged = () => {
+    sheet.places.refresh();
+    updatePlace(true);
+  };
+  if (params.has('wx')) {
+    setWeatherReport(fakeReport(BEACHES.map((b) => b.id), Number(params.get('wx')) || 0));
+  } else if (ACCOUNTS_ENABLED) {
+    startWeather(weatherChanged);
+  }
   // the look tool (the hand, the default) only moves the view: pan, zoom,
   // tilt, turn. All dirt work is one rail button (the bulldozer) with a
   // flyout: dig, build up, smooth (the sand modes), flatten, vacuum,
@@ -2205,15 +2229,22 @@ async function boot() {
     }
     const sk = viewState.sky;
     const moonDisc = skyDisc(sk.moon.dir, sk.moon.elevation);
+    const look = viewState.look;
+    // cloud hides the sun, the moon and the stars
+    const skyOpen = 1 - Math.min(1, look.overcast * 0.9 + look.fog * 0.6);
+    const sunDisc = fixed ? undefined : skyDisc(sk.sun.dir, sk.sun.elevation);
+    cloudDrift += dt * (0.004 + 0.02 * look.wind);
     sky.update(
       palette,
       {
-        sun: fixed ? undefined : skyDisc(sk.sun.dir, sk.sun.elevation),
-        moon: fixed || !moonDisc ? undefined : { ...moonDisc, alpha: moonDisc.alpha * (0.35 + 0.65 * sk.night), phase: sk.moon.phase, fraction: sk.moon.fraction },
-        stars: fixed ? (fixed === 'night' ? 1 : 0) : sk.night,
+        sun: sunDisc ? { ...sunDisc, alpha: sunDisc.alpha * skyOpen } : undefined,
+        moon: fixed || !moonDisc ? undefined : { ...moonDisc, alpha: moonDisc.alpha * (0.35 + 0.65 * sk.night) * skyOpen, phase: sk.moon.phase, fraction: sk.moon.fraction },
+        stars: fixed ? (fixed === 'night' ? 1 : 0) : sk.night * skyOpen * (1 - look.clouds * 0.4),
+        clouds: fixed ? undefined : { amount: look.clouds, overcast: look.overcast, drift: cloudDrift },
       },
       cam.aspect(),
     );
+    precip.update(fixed ? { ...look, rain: 0 } : look, dt, sk.night, !settings.batterySaver);
     clear.set(palette.fog[0], palette.fog[1], palette.fog[2], 1);
     scene.clearColor = clear;
 
