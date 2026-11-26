@@ -19,6 +19,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     date: '2026-11-26',
     title: 'Real weather, 21 new beaches, piers, sand bucks, trade-ins, copying a beach and notifications',
     changes: [
+      'Cleaner navigation on beechshore.com: Beaches, Items and Account in the header, with tabs under Beaches (Most loved, Rising, Just built, Surprise me) and under Items (All items, Submit an item).',
       'Your account on beechshore.com: see your sand dollars (S$) and every one in and out — packs, what you bought, trade-ins, gift cards and invites — top up by card, redeem a gift card, gift something from your bag, and get your invite link. Gift cards and gifting have moved there from the game.',
       'Invites now give sand bucks: when a friend makes an account through your link, you both get S$ 50 (for your first 10 friends).',
       'Trade in from your bag: long press anything in it, pick how many, and see the S$ you’ll get before you trade. The same box has a gift button. The bar that shows while something is in hand no longer has trade-in or gift buttons.',

@@ -31,7 +31,7 @@ export function submissionContent(href: (p: string) => string, config: { endpoin
 <section class="head">
   <h1>Submit an item</h1>
   <p>Design a prop for Beech, propose its price and how often it should appear, and send it for review.</p>
-  <p><a href="${href('/submit/spec')}">Item asset specification →</a></p>
+  <div class="tabs"><a href="${href('/items')}">All items</a><a href="${href('/submit')}" aria-current="page">Submit an item</a><a href="${href('/submit/spec')}">Asset spec</a></div>
 </section>
 <section class="submission-panel">
   <p id="submission-status" role="status">Connect your Beech account to submit an item and see your previous submissions.</p>
@@ -244,7 +244,11 @@ export function connectContent(destination: string | null) {
 
 export function specContent(href: (p: string) => string) {
   return `<div class="submission">
-<section class="head"><h1>Item asset specification</h1><p>Use these requirements with any modeling tool or AI agent.</p></section>
+<section class="head">
+  <h1>Item asset specification</h1>
+  <p>Use these requirements with any modeling tool or AI agent.</p>
+  <div class="tabs"><a href="${href('/items')}">All items</a><a href="${href('/submit')}">Submit an item</a><a href="${href('/submit/spec')}" aria-current="page">Asset spec</a></div>
+</section>
 <section class="submission-panel">
   <h2>Model</h2>
   <ul>

@@ -24,6 +24,7 @@ export const ICONS = {
   sms: `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M21 11.5a8.5 8.5 0 0 1-12.5 7.5L3 20.5l1.6-4.7A8.5 8.5 0 1 1 21 11.5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
   compass: `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.9"/><path d="m15.8 8.2-2.2 5.4-5.4 2.2 2.2-5.4z" fill="currentColor"/></svg>`,
   pin: `<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M12 21s-6.5-5.8-6.5-11a6.5 6.5 0 1 1 13 0c0 5.2-6.5 11-6.5 11z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="10" r="2.2" fill="currentColor"/></svg>`,
+  user: `<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><circle cx="12" cy="8.5" r="3.7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M4.8 19.5a7.2 7.2 0 0 1 14.4 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`,
 };
 
 // Note: `.grid{...}`, `.strip{...}`, `.top{...}`, `.chips{...}` keep their
@@ -108,8 +109,13 @@ img{max-width:100%;height:auto;display:block}
   color:var(--ink2);text-decoration:none;white-space:nowrap;font-size:14.5px;font-weight:550;
   padding:6px 12px;border-radius:999px;transition:background .15s,color .15s;
 }
-.top nav a:hover{color:var(--ink);background:var(--sea-soft)}
-.top nav a[aria-current="page"]{color:var(--ink);background:var(--card);box-shadow:inset 0 0 0 1px var(--line)}
+.top nav a:hover,.acct-link:hover{color:var(--ink);background:var(--sea-soft)}
+.top nav a[aria-current="page"],.acct-link[aria-current="page"]{color:var(--ink);background:var(--card);box-shadow:inset 0 0 0 1px var(--line)}
+.acct-link{
+  display:inline-flex;align-items:center;gap:6px;flex-shrink:0;
+  color:var(--ink2);text-decoration:none;white-space:nowrap;font-size:14.5px;font-weight:550;
+  padding:6px 12px;border-radius:999px;transition:background .15s,color .15s;
+}
 .find{
   position:relative;display:flex;align-items:center;
   background:var(--card);border:1px solid var(--line);border-radius:999px;
@@ -446,17 +452,17 @@ footer .flinks a:hover{color:var(--sea)}
 .toast.on{opacity:1;transform:translate(-50%,0)}
 
 @media (max-width:900px){
+  .top{gap:16px;padding:10px 16px;flex-wrap:wrap}
+  .top nav,.top .acct-link{display:none}
+  .brand{margin-right:auto}
+  .find{order:3;flex:1 0 100%;width:100%;height:38px}
+  .find:focus-within{width:100%}
+  .mob-nav{display:flex}
   .studio-grid{grid-template-columns:1fr}
   .actions{align-items:flex-start}
   .action-row{justify-content:flex-start}
 }
 @media (max-width:760px){
-  .top{gap:16px;padding:10px 16px;flex-wrap:wrap}
-  .top nav{display:none}
-  .brand{margin-right:auto}
-  .find{order:3;flex:1 0 100%;width:100%;height:38px}
-  .find:focus-within{width:100%}
-  .mob-nav{display:flex}
   main{padding:0 14px 40px}
   section{margin:30px 0}
 }
