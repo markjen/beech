@@ -3,7 +3,7 @@
 #
 # What this creates:
 #   - required APIs (Cloud Run, Cloud SQL Admin, Artifact Registry,
-#     Secret Manager, IAM Credentials, STS, Firebase, FCM)
+#     Secret Manager, IAM Credentials, STS, Firebase, FCM, Cloud Scheduler)
 #   - Artifact Registry docker repo "beech"
 #   - Cloud SQL PostgreSQL 16 instance "beech-db" + database "beech" +
 #     user "beech" with a generated password stored in Secret Manager
@@ -36,6 +36,8 @@ resource "google_project_service" "apis" {
     # Firebase project link + FCM for Android push (infra/firebase.tf).
     "firebase.googleapis.com",
     "fcm.googleapis.com",
+    # Cloud Scheduler for the push tick (infra/scheduler.tf).
+    "cloudscheduler.googleapis.com",
   ])
 
   project            = var.project_id

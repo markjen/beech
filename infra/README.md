@@ -266,6 +266,35 @@ Actions variables, and the Play Data safety form line for the push
 token (device IDs). See `docs/INBOX_NOTIFICATIONS.md`, "Turning on
 push". iOS push is APNs directly, not Firebase (same doc, §B).
 
+## 8. Push tick (Cloud Scheduler)
+
+Push delivery is ticked once a minute by Cloud Scheduler
+(`docs/INBOX_NOTIFICATIONS.md`, "Push"): the `beech-push-tick` job
+POSTs `/api/push/tick` on the beech service with OIDC as the
+`beech-scheduler` service account, which holds `roles/run.invoker` on
+the service. The setup is Terraform-managed (`infra/scheduler.tf`):
+the job, the service account, the invoker grant, and the
+`cloudscheduler.googleapis.com` API. The service itself is deployed
+by GitHub Actions, not Terraform, so the job's target URL comes from
+the `beech_service_url` variable (the run.app URL — it does not
+change across revisions or redeploys).
+
+The job was created with gcloud on 2026-11-26, before this
+configuration existed, and then imported into state — do not recreate
+it in the console. The imports used:
+
+```bash
+cd infra
+terraform import google_service_account.beech_scheduler 'projects/beech-prod/serviceAccounts/beech-scheduler@beech-prod.iam.gserviceaccount.com'
+terraform import google_cloud_run_v2_service_iam_member.beech_scheduler_invoker 'projects/beech-prod/locations/us-central1/services/beech roles/run.invoker serviceAccount:beech-scheduler@beech-prod.iam.gserviceaccount.com'
+terraform import google_cloud_scheduler_job.beech_push_tick 'projects/beech-prod/locations/us-central1/jobs/beech-push-tick'
+terraform import 'google_project_service.apis["cloudscheduler.googleapis.com"]' beech-prod/cloudscheduler.googleapis.com
+```
+
+The invoker grant is non-authoritative for the role: the binding
+also holds `allUsers` (public access to the service), which this
+configuration leaves alone.
+
 ## Server runtime contract (for reference)
 
 From `server/src/server.ts` — what the container needs at runtime:
