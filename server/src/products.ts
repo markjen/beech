@@ -64,6 +64,7 @@ export const PRODUCTS: Product[] = [
   { id: 'item_towel', steamItemId: 1015, name: 'Beach towel', grants: [{ item: 'towel', quantity: 1 }], usd: 0.99, bucks: 10, blurb: 'Striped, lying flat on the sand' },
   { id: 'food_pack_10', steamItemId: 1016, name: 'Beach snacks (10)', grants: [{ item: 'crab-treat', quantity: 10 }], usd: 0.99, bucks: 10, blurb: 'Ten treats to attract and feed beach animals' },
   { id: 'food_pack_35', steamItemId: 1017, name: 'Beach snacks (35)', grants: [{ item: 'crab-treat', quantity: 35 }], usd: 2.99, bucks: 30, blurb: 'Thirty-five treats to attract and feed beach animals' },
+  { id: 'item_pier', steamItemId: 1019, name: 'Pier', grants: [{ item: 'pier', quantity: 1 }], usd: 2.99, bucks: 30, blurb: 'A timber pier out over the water, for the middle of three of your beaches side by side' },
   { id: 'pet_crab', steamItemId: 1018, name: 'Pet sand crab', grants: [{ item: 'pet-crab', quantity: 1 }], usd: 1.99, bucks: 20, blurb: 'Adopt a sand crab to live on your beach permanently' },
 ];
 

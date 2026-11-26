@@ -61,6 +61,8 @@ import { beachBackend } from './net/storeBackends';
 import { idbSnapshotCache } from './net/snapshotCache';
 import { snapshotBeforeBigEdit } from './net/bigEditSnapshot';
 import { AccountPanel } from './ui/accountPanel';
+import { PierPreview } from './ui/pierPreview';
+import { ownBeachLabel } from './ui/shoreConnect';
 import { Leaderboard } from './ui/leaderboard';
 import { NeighborView } from './render/neighbors';
 import { loadSettings, saveSettings, type Settings, type WaveStrength } from './ui/settingsStore';
@@ -2754,6 +2756,7 @@ async function boot() {
     });
     // go to one of your beaches: glide if it's on this shore, else lay the shore out around it
     // (the waves follow the view there: nothing is switched)
+    let pierPreview: PierPreview | null = null;
     const openMine = async (id: string) => {
       const idx = nv.indexOfBeach(id);
       if (idx !== null && !nv.visiting) {
@@ -2823,6 +2826,36 @@ async function boot() {
         },
         onAuthChange: (signedIn) => {
           sheet.setTab(signedIn ? 'beach' : 'account');
+        },
+        // piers (docs/PIERS.md): bought with sand bucks into the bag, then
+        // shown on the beach until "place pier" or "cancel"
+        buyPier: async () => {
+          try {
+            await new ShopApi(acct).buyBasket([{ product: 'item_pier', quantity: 1 }]);
+          } catch (e) {
+            // short of sand bucks: the shop, at the packs
+            if (/not enough sand bucks/.test((e as Error).message)) {
+              sheet.hide();
+              void shopDialog?.open('packs');
+            }
+            throw e;
+          }
+          void refreshOwned();
+        },
+        previewPier: (b) => {
+          pierPreview ??= new PierPreview(uiRoot);
+          const preview = pierPreview;
+          void openMine(b.id);
+          nv.previewPier(b.id);
+          preview.show(
+            `pier · ${ownBeachLabel(b)}`,
+            async () => {
+              await acct.placePier(b.id);
+              await nv.refresh();
+              nv.previewPier(null);
+            },
+            () => nv.previewPier(null),
+          );
         },
       },
       checkpoints,

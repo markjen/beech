@@ -488,3 +488,49 @@ describe('shore site helpers', () => {
     expect(ago(null, now)).toBe('');
   });
 });
+
+describe('piers on the shore site (docs/PIERS.md)', () => {
+  it('draws a showing pier, and its picture URLs change when it comes and goes', async () => {
+    const ana = people.Ana;
+    // two more of Ana's beaches either side of hers (kept off the shore, so
+    // the pages around them don't change), and a pier on hers
+    const sides: string[] = [];
+    for (const [i, side] of (['left', 'right'] as const).entries()) {
+      const id = crypto.randomUUID();
+      await db.query(`INSERT INTO beach (id, owner_id, code, name, home, on_shore, created_at) VALUES ($1, $2, $3, '', false, false, $4)`, [
+        id, ana.beachId, `PIER${i}${i}`, Date.now(),
+      ]);
+      const other = side === 'left' ? 'right' : 'left';
+      await db.query('INSERT INTO neighbors (beach_id, side, neighbor_beach_id, created_at) VALUES ($1, $2, $3, 0), ($3, $4, $1, 0)', [ana.beachId, side, id, other]);
+      sides.push(id);
+    }
+    const page = async () => (await root.request(`/${ana.code}`, shoreHost)).text();
+    const thumbUrl = (html: string) => html.match(new RegExp(`/img/${ana.code}/thumb\\.png\\?v=([0-9a-z]+)`))![1];
+    const isoUrl = (html: string) => html.match(new RegExp(`/img/${ana.code}/iso\\.png\\?v=([0-9a-z.]+)`))![1];
+    const before = await page();
+    expect(thumbUrl(before)).not.toMatch(/p$/);
+    const plainThumb = Buffer.from(await (await root.request(`/img/${ana.code}/thumb.png?v=${thumbUrl(before)}`, shoreHost)).arrayBuffer());
+    const plainIso = Buffer.from(await (await root.request(`/img/${ana.code}/iso.png?v=${isoUrl(before)}`, shoreHost)).arrayBuffer());
+
+    await db.query('INSERT INTO beach_piers (beach_id, owner_id, placed_at) VALUES ($1, $1, 0)', [ana.beachId]);
+    const after = await page();
+    expect(thumbUrl(after)).toBe(`${thumbUrl(before)}p`);
+    expect(isoUrl(after)).not.toBe(isoUrl(before));
+    for (const [kind, plain, v] of [['thumb', plainThumb, thumbUrl(after)], ['iso', plainIso, isoUrl(after)]] as const) {
+      const r = await root.request(`/img/${ana.code}/${kind}.png?v=${v}`, shoreHost);
+      expect(r.status).toBe(200);
+      expect(r.headers.get('cache-control')).toContain('immutable');
+      expect(Buffer.from(await r.arrayBuffer()).equals(plain), `${kind} draws the pier`).toBe(false);
+    }
+    // the link preview's image moves on too
+    expect(await (await root.request(`/${ana.code}`, shoreHost)).text()).toContain(`/img/${ana.code}.png?v=${thumbUrl(after)}`);
+
+    // a broken link pauses it: the pictures go back to the plain ones
+    await db.query("DELETE FROM neighbors WHERE beach_id = $1 AND side = 'right' OR neighbor_beach_id = $1 AND side = 'left'", [ana.beachId]);
+    expect(thumbUrl(await page())).toBe(thumbUrl(before));
+
+    await db.query('DELETE FROM beach WHERE id = ANY($1::uuid[])', [sides]);
+    expect(await db.query('SELECT 1 FROM beach_piers WHERE beach_id = $1', [ana.beachId])).toHaveLength(1);
+    await db.query('DELETE FROM beach_piers WHERE beach_id = $1', [ana.beachId]);
+  });
+});

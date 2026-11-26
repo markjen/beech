@@ -14,6 +14,7 @@ import type { PlacedObject } from '../sim/objects';
 import type { Swell } from '../sim/waves';
 import { BeachRenderer, OCEAN_REACH, ORIGIN_Z } from './beachRenderer';
 import { ObjectView } from './objects';
+import { PierLayer, type PierSpot } from './pier';
 import {
   boundaryLinked,
   indicesOverlapping,
@@ -123,6 +124,10 @@ export class NeighborView {
   private liveRenderer: BeachRenderer | null = null;
   /** step accumulators for the main-thread edit sims, by beach id */
   private editAcc = new Map<string, number>();
+  /** the piers along the shore (docs/PIERS.md), drawn whoever's beach they're on */
+  private piers: PierLayer | null = null;
+  /** a beach of yours showing a pier you haven't placed yet (the "place pier" preview) */
+  private piersPreview: string | null = null;
 
   constructor(
     private readonly scene: Scene,
@@ -231,6 +236,32 @@ export class NeighborView {
   showsSnapshot(id: string): boolean {
     for (const e of this.entries.values()) if (e.beach.id === id && e.slot?.renderer) return true;
     return false;
+  }
+
+  /** How many piers are drawn now (e2e). */
+  get piersDrawn(): number {
+    return this.piers?.count ?? 0;
+  }
+
+  /** Show a pier on this beach before it's placed (null: stop). */
+  previewPier(beachId: string | null): void {
+    this.piersPreview = beachId;
+    this.syncPiers();
+  }
+
+  /** The piers that should show: on beaches that have one, and the preview. */
+  private syncPiers(): void {
+    if (!this.piers) {
+      const r = this.liveRenderer;
+      if (!r) return;
+      this.piers = new PierLayer(this.scene, (c) => r.createPropMaterial(c));
+    }
+    const want: PierSpot[] = [];
+    for (const e of this.entries.values()) {
+      if (e.index < this.win[0] - 1 || e.index > this.win[1] + 1) continue;
+      if (e.beach.pier || e.beach.id === this.piersPreview) want.push({ key: `${e.beach.id}@${e.index}`, x: this.xFor(e.index) });
+    }
+    this.piers.sync(want);
   }
 
   /** Shore index of the live beach, if it's on this shore. */
@@ -1021,10 +1052,12 @@ export class NeighborView {
     if (!this.entries.size) {
       this.win = [0, 0];
       this.syncSeams();
+      this.syncPiers();
       return;
     }
     void this.fillWindow();
     this.syncSeams();
+    this.syncPiers();
     // infinite scroll: keep the shore loaded a few beaches past the view
     const c = this.nearestIndex(this.cam.focusX);
     const ext = this.extent;

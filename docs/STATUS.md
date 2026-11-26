@@ -352,11 +352,35 @@ accepted the repo's default branch, so the deploy job ran only there.
   beach in view per device. Needs DEV_AUTH for
   `/api/dev/grant`.
 
-## Piers (designed 2026-11-26)
+## Piers (built 2026-11-26)
 
-[Piers](PIERS.md) describes the unlock, shop flow, placement and behavior
-when links change. TLC checked the proposed purchase and placement model.
-Gameplay implementation is on the backlog.
+[Piers](PIERS.md): the middle of three of your own beaches side by side can
+hold a timber pier (18 m deck from dry sand out over the water, paired
+pilings, rails, a wider end platform). Decorative only.
+
+- **Bought with sand bucks**, not as its own real-money purchase (the design
+  said $2.99): `item_pier`, 30 sand bucks, a `pier` in the bag. Differs from
+  the design because the shop moved to sand bucks; a pier is counted
+  against what's owned rather than tied to one order.
+- Manage → Beaches lists each site under your stretches: **buy pier · 30
+  sand bucks** (short of bucks: the shop at the packs), **place pier** with
+  a spare in the bag, **remove pier**, and **pier paused** when a side link
+  is gone. Placing shows the pier on the beach first with **place pier** /
+  **cancel**.
+- Server: `beach_piers` (migration 34), `PUT`/`DELETE
+  /beaches/mine/:id/pier`, `pier` on beaches in shore data (signed in and
+  public), `pier`/`pierSite` per beach and `piers {owned, placed}` in
+  `/beaches/mine`. Placed piers count as placed for the bag, trade-ins and
+  gifts.
+- Drawn by `NeighborView` for every beach in view, yours or anyone's, at
+  the beach's centre (`src/render/pier.ts`, `PIER` in config).
+- beechshore.com draws it too: the card, the thumbnail and both 3D views
+  (`server/src/beachImage.ts`), with the pier in each picture URL's `?v=`
+  so a placed, removed or paused pier shows at once (SHORE_SITE.md).
+- Not yet: tuning the deck height against big real tides (1.35 m above
+  still water now).
+- Tests: `server/test/stateMachines/piers.test.ts`, `tests/pier.test.ts`,
+  `npm run e2e:piers`.
 
 ## Mutual neighbors and the global beachfront (added after the bulldozer)
 

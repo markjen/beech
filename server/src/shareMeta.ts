@@ -14,6 +14,7 @@ import type { Context, Next } from 'hono';
 import { normalizeCode } from './app.js';
 import { placeById } from './beachImage.js';
 import type { Db } from './db.js';
+import { PIER_SHOWN, imageVersion } from './shore.js';
 
 /** `&<>"'` -> entities, so a name can't break out of an attribute. */
 export function escapeHtml(s: string): string {
@@ -93,8 +94,8 @@ export function createSharePageHandler(db: Db, indexHtmlPath: string) {
     if (code.length !== 6) return next();
     // A code names a beach now (multi-beach), and the preview names its
     // owner; only a beach with a save gets tags.
-    const rows = await db.query<{ name: string; beach_name: string; location: string | null; on_shore: boolean; updated_at: string | null }>(
-      'SELECT u.name, b.name AS beach_name, b.location, b.on_shore, b.updated_at FROM beach b JOIN users u ON u.id = b.owner_id WHERE b.code = $1 AND b.sand IS NOT NULL',
+    const rows = await db.query<{ name: string; beach_name: string; location: string | null; on_shore: boolean; updated_at: string | null; pier: boolean }>(
+      `SELECT u.name, b.name AS beach_name, b.location, b.on_shore, b.updated_at, ${PIER_SHOWN} AS pier FROM beach b JOIN users u ON u.id = b.owner_id WHERE b.code = $1 AND b.sand IS NOT NULL`,
       [code],
     );
     if (!rows[0]) return next();
@@ -104,7 +105,7 @@ export function createSharePageHandler(db: Db, indexHtmlPath: string) {
     const u = new URL(c.req.url);
     const proto = c.req.header('x-forwarded-proto')?.split(',')[0]?.trim() || u.protocol.replace(':', '');
     const origin = `${proto}://${c.req.header('host') ?? u.host}`;
-    const image = rows[0].on_shore ? `${origin}/shore/img/${code}.png?v=${rows[0].updated_at ?? 0}` : undefined;
+    const image = rows[0].on_shore ? `${origin}/shore/img/${code}.png?v=${imageVersion(rows[0].updated_at, rows[0].pier)}` : undefined;
     c.header('Cache-Control', 'no-cache');
     return c.html(injectShareMeta(html, shareMetaTags({ name, beachName, location: rows[0].location, url: c.req.url, image, invite })));
   };

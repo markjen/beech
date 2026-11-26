@@ -233,6 +233,10 @@ export const PROP_COLORS = {
       trail reads as a dip rather than something sitting on it */
   footprints: [hex('#b08d68'), hex('#a5825f'), hex('#c09a72')] as RGB[],
   pole: hex('#d8c7ae'),
+  /** a pier (docs/PIERS.md): weathered deck planks, darker wet pilings, pale rails */
+  pierDeck: hex('#a8927a'),
+  pierPiling: hex('#6f6052'),
+  pierRail: hex('#c9b89f'),
   /** the rolled-up message inside a bottle */
   paper: hex('#f7efd9'),
 };

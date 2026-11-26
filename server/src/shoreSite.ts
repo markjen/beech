@@ -55,7 +55,7 @@ import {
   voteCounts,
 } from './itemCatalog.js';
 import { createRateLimiter, logEvent } from './observability.js';
-import { BEACH, NODE, isPublic, normalizeCode, shoreGraph, type NodeRow, type Step } from './shore.js';
+import { BEACH, NODE, imageVersion, isPublic, normalizeCode, shoreGraph, type NodeRow, type Step } from './shore.js';
 import { createItemSubmission, creatorSubmissions, limitUpload, multipart, requireSubmissionSession } from './itemSubmissions.js';
 import { assetExample, assetSchema } from './submissionAssets.js';
 import { connectContent, specContent, submissionContent } from './submissionPage.js';
@@ -100,6 +100,8 @@ export interface ShoreBeach {
   updatedAt: number | null;
   stars: number;
   recent: number;
+  /** it shows a pier (docs/PIERS.md): drawn in its pictures */
+  pier?: boolean;
 }
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -158,8 +160,8 @@ export function createShoreSite(db: Db, cfg: ShoreSiteConfig): Hono<any, any, an
     return `${cfg.canonicalOrigin}${pathname.slice(base.length) || '/'}${search}`;
   };
   const visitUrl = (code: string) => `${game}/?visit=${code}`;
-  const imgPath = (b: Pick<ShoreBeach, 'code' | 'updatedAt'>, kind: 'card' | 'thumb') =>
-    `/img/${b.code}${kind === 'thumb' ? '/thumb' : ''}.png?v=${b.updatedAt ?? 0}`;
+  const imgPath = (b: Pick<ShoreBeach, 'code' | 'updatedAt' | 'pier'>, kind: 'card' | 'thumb') =>
+    `/img/${b.code}${kind === 'thumb' ? '/thumb' : ''}.png?v=${imageVersion(b.updatedAt, b.pier)}`;
 
   // ------------------------------------------------------------ data
   const SCORE = `
@@ -184,6 +186,7 @@ export function createShoreSite(db: Db, cfg: ShoreSiteConfig): Hono<any, any, an
     updatedAt: r.updated_at === null ? null : Number(r.updated_at),
     stars: Number(r.stars),
     recent: Number(r.recent),
+    pier: !!r.pier,
   });
   const scoreArgs = () => {
     const t = now();
@@ -287,34 +290,32 @@ export function createShoreSite(db: Db, cfg: ShoreSiteConfig): Hono<any, any, an
     );
     const row = rows[0];
     if (!row) return c.text('no such beach on the shore', 404);
-    const v = String(row.updated_at ?? 0);
+    const v = imageVersion(row.updated_at, row.pier);
     // The 3D views also show the beaches either side, so their cache key
     // carries their save times too: a neighbour rebuilding changes the
     // picture even though this beach did not.
     let version = v;
-    let left: { bytes: Uint8Array; location: string | null; linked: boolean } | null = null;
-    let right: { bytes: Uint8Array; location: string | null; linked: boolean } | null = null;
+    let left: { bytes: Uint8Array; location: string | null; linked: boolean; pier: boolean } | null = null;
+    let right: { bytes: Uint8Array; location: string | null; linked: boolean; pier: boolean } | null = null;
     if (kind === 'iso' || kind === 'iso-ocean') {
       const { left: wl, right: wr } = await graph.walk(row, ['left', 'right'], 1, new Set([row.id]), isPublic);
       const fetchOne = async (s: Step | undefined) => {
         if (!s) return null;
-        const r = await db.query<{ sand: unknown; location: string | null; updated_at: string | null }>(
-          `SELECT b.sand, b.location, b.updated_at FROM beach b WHERE b.code = $1 AND ${PUBLIC}`,
-          [s.code],
-        );
+        const r = await db.query<NodeRow & { sand: unknown }>(`SELECT ${NODE}, b.sand FROM ${BEACH} WHERE b.code = $1 AND ${PUBLIC}`, [s.code]);
         if (!r[0]) return null; // walked past it, or it went private since
         return {
           bytes: toBytes(r[0].sand),
           location: r[0].location,
           linked: s.linked,
-          updatedAt: r[0].updated_at === null ? null : Number(r[0].updated_at),
+          pier: !!r[0].pier,
+          version: imageVersion(r[0].updated_at, r[0].pier),
         };
       };
       const l = await fetchOne(wl[0]);
       const r = await fetchOne(wr[0]);
       left = l;
       right = r;
-      version = `${v}.${l?.updatedAt ?? 0}.${r?.updatedAt ?? 0}`;
+      version = `${v}.${l?.version ?? 0}.${r?.version ?? 0}`;
     }
     const key = `${code}:${version}:${kind}`;
     let png = imageCache.get(key);
@@ -327,10 +328,10 @@ export function createShoreSite(db: Db, cfg: ShoreSiteConfig): Hono<any, any, an
       const t0 = Date.now();
       png =
         kind === 'iso'
-          ? beachIsoPng({ bytes: toBytes(row.sand), location: row.location }, left, right, CARD, 'land')
+          ? beachIsoPng({ bytes: toBytes(row.sand), location: row.location, pier: !!row.pier }, left, right, CARD, 'land')
           : kind === 'iso-ocean'
-            ? beachIsoPng({ bytes: toBytes(row.sand), location: row.location }, left, right, CARD, 'ocean')
-            : beachPng(toBytes(row.sand), { ...(kind === 'card' ? CARD : THUMB), location: row.location });
+            ? beachIsoPng({ bytes: toBytes(row.sand), location: row.location, pier: !!row.pier }, left, right, CARD, 'ocean')
+            : beachPng(toBytes(row.sand), { ...(kind === 'card' ? CARD : THUMB), location: row.location, pier: !!row.pier });
       remember(key, png);
       logEvent('shore_image', { kind, ms: Date.now() - t0, bytes: png.length });
     }
@@ -918,7 +919,8 @@ ${
     const text = shareText(b);
     const cardHref = href(imgPath(b, 'card'));
     const thumbHref = href(imgPath(b, 'thumb'));
-    const isoVersion = `${b.updatedAt ?? 0}.${left[0]?.updatedAt ?? 0}.${right[0]?.updatedAt ?? 0}`;
+    // the same version the image route works out: each beach's save time and pier
+    const isoVersion = `${imageVersion(b.updatedAt, b.pier)}.${left[0] ? imageVersion(left[0].updatedAt, left[0].pier) : 0}.${right[0] ? imageVersion(right[0].updatedAt, right[0].pier) : 0}`;
     const isoHref = href(`/img/${b.code}/iso.png?v=${isoVersion}`);
     const oceanHref = href(`/img/${b.code}/iso-ocean.png?v=${isoVersion}`);
     const n = now();
@@ -939,7 +941,7 @@ ${
         ? `<a class="walk ${dir}" href="${href(`/${s.code}`)}" rel="${dir === 'left' ? 'prev' : 'next'}" data-key="${dir === 'left' ? 'ArrowLeft' : 'ArrowRight'}" title="Walk ${dir} to ${esc(beachTitle(s))}" aria-label="Walk ${dir} to ${esc(beachTitle(s))}">${dir === 'left' ? '‹' : '›'}</a>`
         : '';
     const strip = (s: Step) =>
-      `<li><a href="${href(`/${s.code}`)}"><span class="sthumb"><img src="${esc(href(`/img/${s.code}/thumb.png?v=${s.updatedAt ?? 0}`))}" width="${THUMB.width}" height="${THUMB.height}" loading="lazy" alt="${esc(beachTitle(s))}"></span><span class="slabel"><span>${esc(beachTitle(s))}</span>${s.linked ? '<span class="linked-dot">Neighbor</span>' : ''}</span></a></li>`;
+      `<li><a href="${href(`/${s.code}`)}"><span class="sthumb"><img src="${esc(href(`/img/${s.code}/thumb.png?v=${imageVersion(s.updatedAt, s.pier)}`))}" width="${THUMB.width}" height="${THUMB.height}" loading="lazy" alt="${esc(beachTitle(s))}"></span><span class="slabel"><span>${esc(beachTitle(s))}</span>${s.linked ? '<span class="linked-dot">Neighbor</span>' : ''}</span></a></li>`;
     // left is on the left, the way you'd see it facing the sea
     const hereItem = `<li class="here"><div class="here-inner"><span class="sthumb"><img src="${esc(thumbHref)}" width="${THUMB.width}" height="${THUMB.height}" alt=""></span><span class="slabel"><span>${esc(title)}</span></span></div></li>`;
     const shore = [...left].reverse().map(strip).join('') + hereItem + right.map(strip).join('');

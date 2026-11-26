@@ -105,9 +105,9 @@ picked up.
   token takes several items; `web_orders` would need lines, and the
   webhook would grant them all) instead of one card checkout each; a place
   picker for a new beach on the copy sheet.
-- [ ] **Piers (model first)**: sell a timber pier to land on the middle
-  of three consecutive owned beaches. The [design](PIERS.md) and
-  [checked state machine](STATE_MACHINES.md#piers-pierstla) are ready.
+- [ ] **Piers, follow-ups** ([PIERS.md](PIERS.md)): check the deck against big real tides and storm
+  waves (it's 1.35 m above still water); a ghostly look for the preview
+  so it reads as not placed yet.
 - [ ] **Inland beach sections (model first)**: add up to four inland rows
   per beach, with editable sand and automatic joins between matching rows
   on linked beaches. See [INLAND_SECTIONS.md](INLAND_SECTIONS.md).

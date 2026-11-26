@@ -1,17 +1,21 @@
 ----------------------------- MODULE Piers -----------------------------
+\* Piers (docs/PIERS.md): a pier is a bag item, bought with sand bucks, that
+\* lands on the middle of three side-by-side beaches of one owner.
+\*
+\* A link <<a,b>> means b is immediately right of a, with a reciprocally left.
+\* `owned` is how many piers the player has (inventory rows); `site[b]` is
+\* how many attachments beach b holds (beach_piers rows). Attachments are
+\* counted against what's owned: the bag shows owned minus attached. A
+\* stored attachment whose beach no longer qualifies is dormant ("paused"):
+\* it still holds its pier and its beach's slot, and shows again when the
+\* beach qualifies again. Visibility is derived, never stored.
 EXTENDS Naturals, FiniteSets
 
-CONSTANTS Beaches, Own, Home, Orders, Fixed
+CONSTANTS Beaches, Own, Home, MaxOwned, Fixed
 
-\* A link <<a,b>> means b is immediately right of a, with a reciprocally left.
-\* Each successful order grants one identifiable pier. A paid pier with no
-\* attachment is in the bag. A stored attachment can be dormant.
-VARIABLES beaches, links, payment, site, checked, validLand
+VARIABLES beaches, links, owned, site, checked, validLand
 
-vars == <<beaches, links, payment, site, checked, validLand>>
-Bag == "bag"
-NoCheck == "none"
-Phases == {"new", "pending", "paid", "closed"}
+vars == <<beaches, links, owned, site, checked, validLand>>
 
 Eligible(b) ==
     /\ b \in beaches \cap Own
@@ -20,99 +24,107 @@ Eligible(b) ==
          /\ <<l, b>> \in links
          /\ <<b, r>> \in links
 
-Free(b) == \A o \in Orders : site[o] # b
-Visible(o) == payment[o] = "paid" /\ site[o] # Bag /\ Eligible(site[o])
+RECURSIVE SumOver(_)
+SumOver(S) == IF S = {} THEN 0 ELSE LET b == CHOOSE x \in S : TRUE IN site[b] + SumOver(S \ {b})
+Attached == SumOver(Beaches)
+Visible(b) == site[b] > 0 /\ Eligible(b)
 
 TypeOK ==
     /\ beaches \subseteq Beaches
     /\ links \subseteq beaches \X beaches
-    /\ payment \in [Orders -> Phases]
-    /\ site \in [Orders -> (beaches \cap Own) \cup {Bag}]
-    /\ checked \in [Orders -> Own \cup {NoCheck}]
+    /\ owned \in 0..MaxOwned
+    /\ site \in [Beaches -> 0..2]
+    /\ checked \in SUBSET Own
     /\ validLand \in BOOLEAN
 
-PaidAttachment == \A o \in Orders : site[o] # Bag => payment[o] = "paid"
-OnePerBeach == \A b \in beaches : Cardinality({o \in Orders : site[o] = b}) <= 1
+\* Every attachment is a pier the player still owns (no pier from nowhere).
+PaidAttachment == Attached <= owned
+\* A beach holds at most one pier.
+OnePerBeach == \A b \in Beaches : site[b] <= 1
+\* Only a deleted beach's attachment goes; nothing else lingers on it.
+NoOrphan == \A b \in Beaches \ beaches : site[b] = 0
+\* Every placement landed on a beach that qualified at that moment.
 PlacementWasEligible == validLand
 
 Init ==
     /\ beaches = Beaches
     /\ links = {}
-    /\ payment = [o \in Orders |-> "new"]
-    /\ site = [o \in Orders |-> Bag]
-    /\ checked = [o \in Orders |-> NoCheck]
+    /\ owned = 0
+    /\ site = [b \in Beaches |-> 0]
+    /\ checked = {}
     /\ validLand = TRUE
 
+\* Existing neighbor routes (link() locks both beach rows).
 Link(l, r) ==
     /\ l # r
     /\ <<r, l>> \notin links
     /\ \A b \in beaches : <<l, b>> \notin links /\ <<b, r>> \notin links
     /\ links' = links \cup {<<l, r>>}
-    /\ UNCHANGED <<beaches, payment, site, checked, validLand>>
+    /\ UNCHANGED <<beaches, owned, site, checked, validLand>>
 
 Unlink(l, r) ==
     /\ <<l, r>> \in links
     /\ links' = links \ {<<l, r>>}
-    /\ UNCHANGED <<beaches, payment, site, checked, validLand>>
+    /\ UNCHANGED <<beaches, owned, site, checked, validLand>>
 
+\* DELETE beach: its links and its attachment cascade; the pier is back in the bag.
 DeleteBeach(b) ==
     /\ b # Home
     /\ beaches' = beaches \ {b}
     /\ links' = {e \in links : e[1] # b /\ e[2] # b}
-    /\ site' = [o \in Orders |-> IF site[o] = b THEN Bag ELSE site[o]]
-    /\ UNCHANGED <<payment, checked, validLand>>
+    /\ site' = [site EXCEPT ![b] = 0]
+    /\ UNCHANGED <<owned, checked, validLand>>
 
-\* The chosen beach opens checkout. It does not reserve an attachment.
-Begin(o, b) ==
-    /\ payment[o] = "new"
-    /\ Eligible(b) /\ Free(b)
-    /\ payment' = [payment EXCEPT ![o] = "pending"]
+\* POST /store/buy: one statement spends the bucks and adds the pier to the bag.
+Buy ==
+    /\ owned < MaxOwned
+    /\ owned' = owned + 1
     /\ UNCHANGED <<beaches, links, site, checked, validLand>>
 
-\* Provider confirmation is keyed by order. A replay has no transition.
-Settle(o) ==
-    /\ payment[o] = "pending"
-    /\ payment' = [payment EXCEPT ![o] = "paid"]
+\* A pier leaving the bag: a trade-in or a gift. The design counts attached
+\* piers as placed, under the player's lock. The other form only asks
+\* "does the player own one?".
+GiveAway ==
+    /\ owned > 0
+    /\ Fixed => owned > Attached
+    /\ owned' = owned - 1
     /\ UNCHANGED <<beaches, links, site, checked, validLand>>
 
-\* Authoritative cancellation or refund, including before the grant arrives.
-Close(o) ==
-    /\ payment[o] \in {"pending", "paid"}
-    /\ payment' = [payment EXCEPT ![o] = "closed"]
-    /\ site' = [site EXCEPT ![o] = Bag]
-    /\ checked' = [checked EXCEPT ![o] = NoCheck]
-    /\ UNCHANGED <<beaches, links, validLand>>
+CanLand(b) == Eligible(b) /\ site[b] = 0 /\ Attached < owned
 
-CanLand(o, b) == payment[o] = "paid" /\ site[o] = Bag /\ Eligible(b) /\ Free(b)
-
-\* The alternate design reads eligibility before taking the write lock.
-LandCheck(o, b) ==
+\* The other form reads eligibility before the write's transaction.
+LandCheck(b) ==
     /\ ~Fixed
-    /\ checked[o] = NoCheck
-    /\ CanLand(o, b)
-    /\ checked' = [checked EXCEPT ![o] = b]
-    /\ UNCHANGED <<beaches, links, payment, site, validLand>>
+    /\ b \notin checked
+    /\ CanLand(b)
+    /\ checked' = checked \cup {b}
+    /\ UNCHANGED <<beaches, links, owned, site, validLand>>
 
-Land(o, b) ==
-    /\ IF Fixed THEN CanLand(o, b)
-         ELSE /\ checked[o] = b
+\* PUT /beaches/mine/:id/pier. The design: one transaction holding the
+\* player's lock, the beach row and its two links (FOR SHARE), so no unlink
+\* or deletion of a supporting beach lands between the check and the insert.
+\* The unique key on the beach and the bag count still guard the other form.
+Land(b) ==
+    /\ IF Fixed THEN CanLand(b)
+         ELSE /\ b \in checked
               /\ b \in beaches
-              /\ payment[o] = "paid" /\ site[o] = Bag /\ Free(b)
-    /\ site' = [site EXCEPT ![o] = b]
-    /\ checked' = [checked EXCEPT ![o] = NoCheck]
+              /\ site[b] = 0 /\ Attached < owned
+    /\ site' = [site EXCEPT ![b] = 1]
+    /\ checked' = checked \ {b}
     /\ validLand' = (validLand /\ Eligible(b))
-    /\ UNCHANGED <<beaches, links, payment>>
+    /\ UNCHANGED <<beaches, links, owned>>
 
-Lift(o) ==
-    /\ site[o] # Bag
-    /\ site' = [site EXCEPT ![o] = Bag]
-    /\ UNCHANGED <<beaches, links, payment, checked, validLand>>
+\* DELETE /beaches/mine/:id/pier: active or paused, the pier goes back to the bag.
+Lift(b) ==
+    /\ site[b] > 0
+    /\ site' = [site EXCEPT ![b] = 0]
+    /\ UNCHANGED <<beaches, links, owned, checked, validLand>>
 
 Next ==
     \/ \E l, r \in beaches : Link(l, r) \/ Unlink(l, r)
     \/ \E b \in beaches : DeleteBeach(b)
-    \/ \E o \in Orders : Settle(o) \/ Close(o) \/ Lift(o)
-    \/ \E o \in Orders, b \in Own : Begin(o, b) \/ LandCheck(o, b) \/ Land(o, b)
+    \/ Buy \/ GiveAway
+    \/ \E b \in Own : LandCheck(b) \/ Land(b) \/ Lift(b)
 
 Spec == Init /\ [][Next]_vars
 ========================================================================
