@@ -1,4 +1,4 @@
-// Your account on beechshore (/account; docs/SAND_BUCKS.md, "Your account on
+// Your account on beechshore (/account; docs/BEECH_BUCKS.md, "Your account on
 // beechshore"): your sand-dollar balance and history, topping up by card,
 // gift cards, gifting a thing from your bag, and your invite link. It
 // connects with the same popup as item submissions (submissionPage.ts) and
@@ -9,6 +9,7 @@ import { SUBMISSION_CSS } from './submissionPage.js';
 
 const ACCOUNT_CSS = `
 .account-balance{font-size:clamp(1.6rem,5vw,2.3rem);font-weight:800;margin:.2em 0}
+.bucks-icon{width:1em;height:1em;margin-right:.25em;vertical-align:-.15em;border-radius:4px}
 .account-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
 .account-row :is(input,select){padding:9px;border:1px solid var(--line2);border-radius:8px;background:var(--sand2);color:var(--ink);font:inherit;min-width:0}
 .account-row input{flex:1 1 180px}
@@ -30,7 +31,7 @@ export function accountContent(config: { api: string; connect: string; game: str
   return `<div class="submission account">
 <section class="head">
   <h1>Your account</h1>
-  <p>Your sand dollars (S$), what you’ve bought and traded in, gifts and invites.</p>
+  <p>Your beech bucks (bb), what you’ve bought and traded in, gifts and invites.</p>
 </section>
 <section class="submission-panel" id="account-connect-panel">
   <p id="account-status" role="status">Connect your Beech account to see your balance and history.</p>
@@ -82,7 +83,7 @@ export function accountContent(config: { api: string; connect: string; game: str
 <section class="submission-panel" id="history">
   <h2>History</h2>
   <table class="account-table">
-    <thead><tr><th>When</th><th>What</th><th style="text-align:right">S$</th></tr></thead>
+    <thead><tr><th>When</th><th>What</th><th style="text-align:right">bb</th></tr></thead>
     <tbody id="account-ledger"></tbody>
   </table>
 </section>
@@ -98,7 +99,7 @@ export function accountContent(config: { api: string; connect: string; game: str
   try { token = sessionStorage.getItem(KEY); } catch {}
   let popup = null;
   let data = null;
-  const S = (n) => 'S$ ' + n;
+  const S = (n) => 'bb ' + n;
   const when = (t) => new Date(t).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 
   function disconnect(message) {
@@ -127,15 +128,15 @@ export function accountContent(config: { api: string; connect: string; game: str
     const d = data;
     document.getElementById('top-up').hidden = fromApp;
     document.getElementById('gift-card').hidden = fromApp;
-    $('bucks').textContent = d.bucks + ' sand dollars (S$)';
+    $('bucks').innerHTML = '<img src="/icons/beech-bucks.webp" alt="" class="bucks-icon" width="18" height="18"> ' + d.bucks + ' beech ' + (d.bucks === 1 ? 'buck' : 'bucks');
     $('debt').hidden = !d.debt;
-    $('debt').textContent = d.debt ? S(d.debt) + ' owed from a refund: the next sand dollars in pay it off first.' : '';
+    $('debt').textContent = d.debt ? S(d.debt) + ' owed from a refund: the next beech bucks in pay it off first.' : '';
     // top up
     const packs = $('packs');
     packs.replaceChildren();
     $('topup-note').textContent = d.webCheckout
-      ? 'Pay by card. Sand dollars work in the game on every device.'
-      : 'Card payments on the web aren’t open yet. Get sand dollars in the beech app.';
+      ? 'Pay by card. Beech bucks work in the game on every device.'
+      : 'Card payments on the web aren’t open yet. Get beech bucks in the beech app.';
     for (const p of d.packs) {
       const b = document.createElement('button');
       b.type = 'button';
@@ -252,7 +253,7 @@ export function accountContent(config: { api: string; connect: string; game: str
       try {
         const { order } = await call('/web-orders/' + encodeURIComponent(id));
         if (order.status === 'paid') {
-          $('topup-status').textContent = 'Thank you! Your sand dollars are in.';
+          $('topup-status').textContent = 'Thank you! Your beech bucks are in.';
           await load();
           return;
         }
@@ -266,7 +267,7 @@ export function accountContent(config: { api: string; connect: string; game: str
       }
       await new Promise((r) => setTimeout(r, 2000));
     }
-    $('topup-status').textContent = 'Your payment is still on its way. Your sand dollars will arrive when it completes.';
+    $('topup-status').textContent = 'Your payment is still on its way. Your beech bucks will arrive when it completes.';
   }
 
   $('redeem').addEventListener('submit', async (e) => {

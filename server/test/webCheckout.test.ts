@@ -70,7 +70,7 @@ const paid = (o: { order: string; xsollaOrder: string }, userId: string, over: R
 });
 
 async function owned(token: string, item: string): Promise<number> {
-  // sand bucks (docs/SAND_BUCKS.md): what the web sells now
+  // beech bucks (docs/BEECH_BUCKS.md): what the web sells now
   if (item === 'bucks') return ((await (await req('/credit', {}, token)).json()) as { bucks: number }).bucks;
   const r = await req('/inventory', {}, token);
   const items = ((await r.json()) as { items: { item: string; quantity: number }[] }).items;
@@ -269,7 +269,7 @@ describe('web checkout', () => {
     expect(await owned(p.token, 'bucks')).toBe(33);
   });
 
-  it('a refund or cancellation takes the sand bucks back', async () => {
+  it('a refund or cancellation takes the beech bucks back', async () => {
     const p = await signIn('web-buyer-4');
     const o = await checkout(p.token, 'bucks_10');
     expect((await hook(paid(o, p.id, {}, 'bucks_10', '0.99'))).status).toBe(204);

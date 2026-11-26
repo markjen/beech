@@ -146,7 +146,7 @@ export async function claimCreditPurchase(
     discountCents: number;
     items: string[];
     quantities: number[];
-    /** each row's trade-in value per unit (docs/SAND_BUCKS.md) */
+    /** each row's trade-in value per unit (docs/BEECH_BUCKS.md) */
     unitCents: number[];
     now: number;
   },

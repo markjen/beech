@@ -46,6 +46,8 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       'The “a new version is ready” prompt now sits above any open panel, so its Reload button is always reachable.',
       'Used up your free go on the claw or vending machine? Extra tries are 10 sand bucks each.',
       'Bought a pier but have nowhere to put it yet? Your bag now says so in Manage → Beaches, with what unlocks a pier site.',
+      'Sand bucks are now beech bucks (bb) — same currency, new name, with a coin of its own. Your balance is unchanged.',
+      'Settings → Account now links to your Beechshore account, for topping up your balance and seeing its history.',
     ],
   },
   {

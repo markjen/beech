@@ -2,9 +2,9 @@
 // server (npm run server:dev), docs/INVITES_GUIDE.md:
 // Ana signs in; her invites are on her account page on beechshore. Fran opens
 // Ana's invite link in a fresh browser: the start screen says Ana invited her
-// and S$ 50 is waiting; she signs in, gets S$ 50, lands on Ana's beach, asks
+// and bb 50 is waiting; she signs in, gets bb 50, lands on Ana's beach, asks
 // to be her neighbor, then goes home and does three guide steps (dig, build,
-// undo). Ana comes back: she's told Fran joined, and she has S$ 50 too.
+// undo). Ana comes back: she's told Fran joined, and she has bb 50 too.
 //   node scripts/invites-e2e.mjs [screenshot-dir]
 import { e2eUrl, openApp, openBrowser } from './lib/e2e.mjs';
 
@@ -55,7 +55,7 @@ check(mine0.code === anaCode && mine0.joined === 0, 'her invite code is her beac
 const pf = await open(`invite=${anaCode}&fixedres&seed=1&nofinds`, { width: 390, height: 844 });
 await pf.waitForSelector('.start-invite', { timeout: 60000 });
 const startText = await pf.$eval('.start-invite', (e) => e.textContent);
-check(startText.includes(`${ana} invited you`) && startText.includes('S$ 50'), `the start screen says who invited her, and S$ 50 is waiting (${startText})`);
+check(startText.includes(`${ana} invited you`) && startText.includes('bb 50'), `the start screen says who invited her, and bb 50 is waiting (${startText})`);
 check(!(await pf.evaluate(() => location.search.includes('invite'))), 'the invite is taken out of the URL');
 if (shots) await pf.screenshot({ path: `${shots}/invite-start.png` });
 await pf.click('.start');
@@ -75,9 +75,9 @@ const welcome = await pf.waitForFunction(
   { timeout: 60000 },
 );
 const w = await welcome.jsonValue();
-check(w.text.includes(`A welcome gift from ${ana}`) && w.text.includes('S$ 50'), 'Fran is told about her S$ 50');
+check(w.text.includes(`A welcome gift from ${ana}`) && w.text.includes('bb 50'), 'Fran is told about her bb 50');
 check(w.asked, 'the welcome note has a "be her neighbor" button');
-check((await bucks(pf)) === 50, 'S$ 50 is in her balance');
+check((await bucks(pf)) === 50, 'bb 50 is in her balance');
 await pf.waitForFunction((c) => window.__beech.neighbors().visiting?.code === c, anaCode, { timeout: 60000 });
 check(true, "she lands on Ana's beach");
 if (shots) await pf.screenshot({ path: `${shots}/invite-welcome.png` });
@@ -143,13 +143,13 @@ if (shots) await pf.screenshot({ path: `${shots}/guide-panel.png` });
 await signIn(pa, `${ana}-other`);
 await signIn(pa, ana);
 await pa.waitForFunction(() => [...document.querySelectorAll('.hint')].some((h) => h.textContent.includes('joined through your invite')), null, { timeout: 60000 });
-check((await hints(pa)).some((h) => h.includes(`${fran} joined through your invite`) && h.includes('S$ 50')), 'Ana is told Fran joined, and the S$ she got');
-check((await bucks(pa)) === 50, 'S$ 50 is in her balance');
+check((await hints(pa)).some((h) => h.includes(`${fran} joined through your invite`) && h.includes('bb 50')), 'Ana is told Fran joined, and the bb she got');
+check((await bucks(pa)) === 50, 'bb 50 is in her balance');
 const asks = await pa.evaluate(() => window.__beech.neighbors().api.get().then((n) => n.requests.map((r) => r.name)));
 check(asks.includes(fran), 'Fran has asked to be her neighbor');
 check(await pa.evaluate(() => window.__beech.guide.done.has('invite')), "Ana's guide has its invite step done");
 const mine = await pa.evaluate(async () => (await window.__beech.account().fetch('/api/referrals')).json());
-check(mine.joined === 1 && mine.earned === 50 && mine.friends[0]?.name === fran, 'her invites list Fran, with S$ 50 earned');
+check(mine.joined === 1 && mine.earned === 50 && mine.friends[0]?.name === fran, 'her invites list Fran, with bb 50 earned');
 if (shots) await pa.screenshot({ path: `${shots}/invite-joined.png` });
 
 // a second sign-in doesn't tell her again

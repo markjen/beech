@@ -211,7 +211,7 @@ describe('gift cards', () => {
     playerToken = await signInDev('player-one');
     const r = await req('/gift-cards/redeem', json('POST', { code: issuedCode }), playerToken);
     expect(r.status).toBe(200);
-    // $9.99 is 99.9 sand bucks: the part buck rounds up (docs/SAND_BUCKS.md)
+    // $9.99 is 99.9 beech bucks: the part buck rounds up (docs/BEECH_BUCKS.md)
     expect(await r.json()).toEqual({ creditedCents: 1000, creditCents: 1000, credited: 100, bucks: 100 });
     const credit = await req('/credit', {}, playerToken);
     expect(await credit.json()).toEqual({ creditCents: 1000, bucks: 100, debt: 0 });
@@ -268,7 +268,7 @@ describe('promo codes and credit purchases', () => {
 
     const q = await req('/store/quote', json('POST', { productId: 'beach_1', promoCode: 'launch20' }), playerToken);
     expect(q.status).toBe(200);
-    // 30 sand bucks, 20% off: 6 off (docs/SAND_BUCKS.md)
+    // 30 beech bucks, 20% off: 6 off (docs/BEECH_BUCKS.md)
     expect(await q.json()).toEqual({ product: 'beach_1', priceCents: 300, discountCents: 60, finalCents: 240, price: 30, final: 24, promo: 'LAUNCH20' });
 
     const buy = await req('/store/credit-purchase', json('POST', { productId: 'beach_1', promoCode: 'LAUNCH20' }), playerToken);

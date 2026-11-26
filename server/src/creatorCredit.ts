@@ -88,7 +88,7 @@ export async function awardCreatorCredit(db: Db, args: {
   // keep paying out; and a creator buying their own item would get 30%
   // back on every purchase, including ones paid for with credit.
   if (offer.status !== 'approved' || buyer === offer.submitter_user_id) return;
-  // 30%, as whole sand bucks (docs/SAND_BUCKS.md)
+  // 30%, as whole beech bucks (docs/BEECH_BUCKS.md)
   const cents = Math.round((paidCents * 0.3) / 10) * 10;
   const [royalty] = await db.query<{ id: string }>(
     `INSERT INTO creator_royalties
@@ -120,7 +120,7 @@ export async function reverseCreatorCredit(db: Db, purchaseId: string, now: numb
   return reverseRoyalty(db, 'store_purchase_id = $1', purchaseId, now);
 }
 
-/** A traded-in unit (docs/SAND_BUCKS.md): its royalty, keyed `credit:<inventory id>`, goes back. */
+/** A traded-in unit (docs/BEECH_BUCKS.md): its royalty, keyed `credit:<inventory id>`, goes back. */
 export async function reverseCreatorCreditByRef(db: Db, purchaseRef: string, now: number) {
   return reverseRoyalty(db, 'purchase_ref = $1', purchaseRef, now);
 }

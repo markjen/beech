@@ -2,7 +2,7 @@
 //
 // The guide is a short checklist that teaches each mechanic by doing it once;
 // each step gives a small gift. Invites (specs/tla/Invites.tla): a friend who
-// joins through your link and makes an account gets INVITE_BONUS sand bucks,
+// joins through your link and makes an account gets INVITE_BONUS beech bucks,
 // and so do you, for your first REWARD_CAP friends. Referrals from before the
 // bonus still finish on the old item ladder once the friend settles in.
 //
@@ -31,7 +31,7 @@ export const GUIDE_STEPS: GuideStepDef[] = [
   { id: 'claw', title: 'Play the claw machine', how: 'Open the bag and play the claw machine. It’s free.', gift: null, serverChecked: true }, // the claw gives its own prize
   { id: 'visit', title: 'Visit someone’s beach', how: 'Walk down the shore, or open the most-starred beaches and pick one.', gift: 'sanddollar', serverChecked: false },
   { id: 'star', title: 'Star a beach you like', how: 'Tap ☆ on someone’s beach to star it.', gift: 'conch', serverChecked: true },
-  { id: 'invite', title: 'Invite a friend', how: 'Share your invite link from your account page on beechshore. When your friend makes an account, you both get 50 sand dollars.', gift: null, serverChecked: true }, // the invite ladder is the reward
+  { id: 'invite', title: 'Invite a friend', how: 'Share your invite link from your account page on beechshore. When your friend makes an account, you both get 50 beech bucks.', gift: null, serverChecked: true }, // the invite ladder is the reward
 ];
 
 export const guideStep = (id: string): GuideStepDef | undefined => GUIDE_STEPS.find((s) => s.id === id);
@@ -45,7 +45,7 @@ export const BONUS_STEPS = GUIDE_STEPS.filter((s) => s.id !== 'invite').map((s) 
 export const SETTLE_STEPS = 3;
 /** what a friend gets the moment they join through an invite (kept for old app versions' start screen) */
 export const WELCOME_GIFT = 'parasol';
-/** sand bucks a friend gets for joining through an invite, and the inviter gets for each of their first REWARD_CAP friends */
+/** beech bucks a friend gets for joining through an invite, and the inviter gets for each of their first REWARD_CAP friends */
 export const INVITE_BONUS = 50;
 /** only accounts this new can claim an invite */
 export const CLAIM_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;

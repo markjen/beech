@@ -1,32 +1,32 @@
-# Sand bucks and trade-ins (design)
+# Beech bucks and trade-ins (design)
 
 Status: **built** (2026-11-26), as designed. State machine:
 [`specs/tla/SandBucks.tla`](../specs/tla/SandBucks.tla) (see
 [State machine](#state-machine)).
 
-Everything in the shop is priced in **sand bucks**, whole numbers. Real
-money only ever buys sand-buck packs. Anything in your bag that isn't on a
-beach can be **traded in** for sand bucks at its full value, so people can
+Everything in the shop is priced in **beech bucks**, whole numbers. Real
+money only ever buys beech-buck packs. Anything in your bag that isn't on a
+beach can be **traded in** for beech bucks at its full value, so people can
 try builds freely and change their minds without losing anything.
 
 ## Decisions (owner, 2026-11-26)
 
 | | |
 |---|---|
-| Rate | **1 sand buck = 10¢.** Today's prices carry over exactly (rounded to the buck: $2.99 → 30). |
-| Real money | Buys **sand-buck packs only**: from the App Store / Google Play / Steam, a web card payment (Xsolla), or a gift card. |
-| Shop | Everything is bought with sand bucks: single things, extra beaches, snacks, the pet crab, and bundles. A bundle's discount is a sand-buck price. |
+| Rate | **1 beech buck = 10¢.** Today's prices carry over exactly (rounded to the buck: $2.99 → 30). |
+| Real money | Buys **beech-buck packs only**: from the App Store / Google Play / Steam, a web card payment (Xsolla), or a gift card. |
+| Shop | Everything is bought with beech bucks: single things, extra beaches, snacks, the pet crab, and bundles. A bundle's discount is a beech-buck price. |
 | Trade-in value | **What you actually paid** for that thing (a bundle's or a promo's price shared out over what it held). Things that came **free** (claw, vending, digging, rewards, starter and invite gifts) are worth their **shop price**, or a price by rarity when no shop sells them. A **gift** keeps the value it had for the giver. |
 | What can be traded in | Things you place on a beach, and unused extra beaches. Not snacks, not the pet crab, not one-of-a-kind items (each has one owner; trading it in would destroy it). Free things (rocks, shells…) aren't in the bag, so there's nothing to trade. |
 | On a beach | Only units that aren't on any of your beaches. Pick it up first. An extra beach can be traded in only while your beach allowance still covers the beaches you have. |
 
 The owner chose full value for free things knowing it makes the free claw
-and vending goes, and gifts, a way to earn sand bucks. That's on purpose:
+and vending goes, and gifts, a way to earn beech bucks. That's on purpose:
 "try anything, no penalty". Watch the numbers (STATUS.md, "Follow-ups").
 
 ## Prices
 
-| Thing | Sand bucks |
+| Thing | Beech bucks |
 |---|---|
 | Parasol, deckchair, beach towel | 10 |
 | Surfboard, bonfire, hammock, tiki torches (a pair) | 15 |
@@ -37,7 +37,7 @@ and vending goes, and gifts, a way to earn sand bucks. That's on purpose:
 | Claw, vending and digging finds (trade-in only) | common 5, uncommon 10, rare 15, legendary 30 |
 | Community items | their approved price, rounded to the buck |
 
-**Packs (real money):** 10 sand bucks $0.99 (`bucks_10`), 33 for $2.99
+**Packs (real money):** 10 beech bucks $0.99 (`bucks_10`), 33 for $2.99
 (`bucks_30`), 60 for $4.99 (`bucks_50`), 130 for $9.99 (`bucks_100`), 280 for
 $19.99 (`bucks_200`). The base rate is 10¢ a buck; bigger packs carry a
 bonus (+10% / +20% / +30% / +40%), so the price per buck falls as the pack
@@ -101,22 +101,24 @@ Console and Steam once the new app is out.
 ## Copying a beach
 
 "Buy what's missing" (docs/COPY_BEACH.md) becomes one tap: the basket is a
-sand-buck price, and one `POST /api/store/buy { basket }` buys it all. When
-the balance is short, the sheet offers a sand-buck pack first.
+beech-buck price, and one `POST /api/store/buy { basket }` buys it all. When
+the balance is short, the sheet offers a beech-buck pack first.
 
 ## App
 
-- **Names (owner, 2026-11-26):** sand bucks are written **S$** where space is
-  tight (prices, buttons, packs, toasts). The shop's balance line reads
-  "100 sand dollars (S$)".
-- **Shop:** your balance on top, then everything for sale in S$, then the S$
+- **Names (owner, 2026-11-26):** beech bucks are written **bb** where space is
+  tight (prices, buttons, packs, toasts). The shop's balance line shows the
+  coin and "100 beech bucks".
+- **Shop:** your balance on top, then everything for sale in bb, then the bb
   packs (the store's price). Promo codes stay here (web). Gift cards moved
   to your account page on beechshore; the web shop links to it ("your
   account · gift cards · history ↗"; hidden in the apps).
+- **Settings → Account:** links to your account page on beechshore, for
+  topping up and history (signed in only; the apps open it with `?from=app`).
 - **Bag:** a line under the title, "long press item to trade in" (the
   owner asked for this note in the game). Long press (or right click) any
   owned thing, or an extra beach, opens the trade-in dialog: a − n + picker
-  up to how many can be traded now (the server's `free`), "you get S$ X"
+  up to how many can be traded now (the server's `free`), "you get bb X"
   (the newest n units' values, the order a trade-in takes them), **trade in**
   (`POST /bag/trade-in { item, quantity }`), and **gift**, which opens your
   account page on beechshore with that thing picked. Things on a beach can't
@@ -132,7 +134,7 @@ item submissions (`/submit/connect`, `item_submission_sessions`, an hour).
 The page keeps the token in `sessionStorage`, so a top-up's return lands
 still connected.
 
-- **Balance:** "N sand dollars (S$)", and any debt from a refund.
+- **Balance:** the coin and "N beech bucks", and any debt from a refund.
 - **Top up:** the five packs, by card through Xsolla (`POST
   /account/api/top-up { productId, mount }`). Pay Station comes back to
   `SHORE_URL/account` (or `/shore/account` on the game host): one of two
@@ -142,7 +144,7 @@ still connected.
 - **Gift something:** pick a thing in your bag and a beach code (moved here
   from the place bar; `?gift=<item>` preselects it).
 - **Invite friends:** your link (`GAME_URL/?invite=CODE`), copy and share,
-  and who joined with the S$ each earned you (moved here from the game's
+  and who joined with the bb each earned you (moved here from the game's
   invite panel).
 - **History:** every `credit_ledger` row, newest 100, each with a plain
   line (`server/src/ledger.ts`): packs and refunds by name, what you
@@ -159,7 +161,7 @@ other route, and a game session token can't reach these.
 
 ## Invite bonuses
 
-A friend who makes an account through your invite gets **S$ 50**, and so do
+A friend who makes an account through your invite gets **bb 50**, and so do
 you, for your first 10 friends (`INVITE_BONUS`, `REWARD_CAP` in
 `server/src/referrals.ts`; ledger kind `invite_bonus`). One transaction in
 `POST /referrals/claim` writes the referral and both credits
@@ -167,7 +169,7 @@ you, for your first 10 friends (`INVITE_BONUS`, `REWARD_CAP` in
 `SandBucks.tla`, counted with the other free value in `ValueConserved`).
 Referrals from before keep the old item ladder (`bonus_bucks` NULL).
 
-- **Native apps:** sand bucks bought anywhere can be spent in the app (App
+- **Native apps:** beech bucks bought anywhere can be spent in the app (App
   Store guideline 3.1.3(b), multiplatform services, since the packs are
   also sold in the app). Gift cards and promo codes stay web only.
 
@@ -198,5 +200,5 @@ swaps), `NoPhantomUnits`, `NeverTradePlaced`, `NoNegative`.
 - Create the pack products in App Store Connect and the Play Console
   (`bucks_10` … `bucks_200`, consumable), in Steam (item ids 1101–1105), and
   in Xsolla (same SKUs).
-- Update the store listings (in-app purchases are now sand-buck packs).
+- Update the store listings (in-app purchases are now beech-buck packs).
 - Take the old item products off sale once the new app is live.

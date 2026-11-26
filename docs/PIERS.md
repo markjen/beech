@@ -3,7 +3,7 @@
 Status is **built** (2026-11-26) in the account-enabled game.
 
 Link three beaches you own side by side to unlock a pier on the middle
-beach. Buy it for sand bucks, preview it from the beach, then choose **Place
+beach. Buy it for beech bucks, preview it from the beach, then choose **Place
 pier** to run a wooden deck straight from the sand out over the water.
 
 ```text
@@ -31,12 +31,12 @@ Shoreline  ├──────────────┼───────
   (e.g. only two beaches, which can never form a trio), the section shows
   the pier in the bag and the unlock rule instead of hiding it. Put the
   unlock rule in the player guide.
-- The pier is a shop offer (`item_pier`, **30 sand bucks**, the $2.99
-  tier; see [SAND_BUCKS.md](SAND_BUCKS.md)) that adds one `pier` to the
+- The pier is a shop offer (`item_pier`, **30 beech bucks**, the $2.99
+  tier; see [BEECH_BUCKS.md](BEECH_BUCKS.md)) that adds one `pier` to the
   bag. It's bought like any other offer (`POST /store/buy`, one statement),
   so there is no pending checkout to track: real money only ever buys
   packs. **Buy pier** in the beach list buys it and opens the preview;
-  short of sand bucks, the shop opens at the packs. The pier stays in the
+  short of beech bucks, the shop opens at the packs. The pier stays in the
   bag until the player confirms placement. If the player cancels the
   preview, they can come back later. Each additional placement needs
   another copy. It can also be bought from the shop itself, and traded in
@@ -69,14 +69,14 @@ Shoreline  ├──────────────┼───────
 | The player removes the pier or deletes its middle beach | That pier returns to the bag and can be placed at another eligible site. |
 | A link changes between buying and placing | The pier stays in the bag. Placement checks the current links and can wait until a site qualifies. |
 | The pier is traded in or given away | Only a pier in the bag (owned minus placed) can go. A placed one has to be removed first. |
-| A sand-buck pack is refunded | The sand bucks are clawed back ([SAND_BUCKS.md](SAND_BUCKS.md)); the pier stays, like any other thing bought with them. |
+| A beech-buck pack is refunded | The beech bucks are clawed back ([BEECH_BUCKS.md](BEECH_BUCKS.md)); the pier stays, like any other thing bought with them. |
 
 ## State machine
 
 [Piers.tla](../specs/tla/Piers.tla) models the link graph, the number of
 piers the player owns and the attachments. Attachments are counted against
 what's owned (the bag shows owned minus placed), not tied to one purchase:
-with sand bucks, a pier is one bag unit like any other. The server derives
+with beech bucks, a pier is one bag unit like any other. The server derives
 visibility from the attachment and the current shore links; a dormant
 attachment still occupies its beach's pier slot. Attachments live in
 `beach_piers (beach_id PK, owner_id, placed_at)`, apart from the beach's

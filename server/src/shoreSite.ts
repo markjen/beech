@@ -741,7 +741,7 @@ ${
   }
 
   // ------------------------------------------------------------ your account
-  // Your sand dollars, history, top-ups, gift cards, gifts and invites
+  // Your beech bucks, history, top-ups, gift cards, gifts and invites
   // (accountPage.ts). Connects like /submit; the page's calls go to
   // /account/api/*, forwarded to the game API's /shore-account/* routes with
   // the same token (only those routes take it).
@@ -755,7 +755,7 @@ ${
       layout(
         {
           title: 'Your account · beechshore',
-          description: 'Your sand dollars, history, gifts and invites in beech.',
+          description: 'Your beech bucks, history, gifts and invites in beech.',
           url: abs(c, '/account'),
           image: abs(c, '/img/shore.png'),
           imageAlt: 'An untouched beach',

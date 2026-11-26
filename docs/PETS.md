@@ -12,12 +12,12 @@ like the other things in your bag.
 2. **Every pet is wild first.** Each species visits beaches on its own. Feed
    one enough times on a beach and it stays: that's befriending, the free path.
 3. **Feeding costs a quarter of the price.** Befriending takes `feeds`
-   snacks; one snack is 1 sand buck (`food_pack_10`: 10 snacks for 10
+   snacks; one snack is 1 beech buck (`food_pack_10`: 10 snacks for 10
    bucks). For every species `feeds × 1 buck = price ÷ 4` (`FEED_SHARE`), so
    befriending is quick: 5 to 20 snacks. Checked by tests on both sides so a
    future price change can't break it.
-4. **Sand bucks only.** Pets are offers in the sand-bucks shop
-   (`/store/catalog`), bought on every platform with sand bucks. New pet
+4. **Beech bucks only.** Pets are offers in the beech-bucks shop
+   (`/store/catalog`), bought on every platform with beech bucks. New pet
    products have no App Store, Play, Steam or Xsolla item: `bucksOnly` keeps
    them out of `/store/products` and refuses them at `/store/purchase`,
    `/store/web-checkout` and `/store/steam/init`. Only `pet_crab` keeps its
@@ -39,7 +39,7 @@ like the other things in your bag.
 
 ## The price sheet
 
-1 sand buck = 10¢. 1 snack = 1 buck. Every pet is bought with sand bucks, on every platform.
+1 beech buck = 10¢. 1 snack = 1 buck. Every pet is bought with beech bucks, on every platform.
 
 | Pet | Lives | Buy (bucks) | Feeds to befriend (= ¼) | Wild rarity | What it does |
 |---|---|---|---|---|---|
@@ -69,7 +69,7 @@ Migration 35:
   `variant`, `source`, `fed_count`, `hunger_ms` (time since fed when it was
   put away, restored on placing), `created_at`.
 - Shop items `pet-sandpiper`, `pet-octopus`, `pet-seal`, `pet-turtle`,
-  `pet-dolphin` join `pet-crab`. Products `pet_<species>`, sand bucks only
+  `pet-dolphin` join `pet-crab`. Products `pet_<species>`, beech bucks only
   (rule 7). None can be traded in (an adopted pet is one of a kind).
 
 ## Routes

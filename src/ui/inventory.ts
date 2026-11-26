@@ -37,7 +37,7 @@ export class InventoryTray {
   private elsewhere = new Map<string, number>();
   /** uses an actionable extra from the bag (e.g. tossing a beach snack) */
   onUseExtra: (id: string) => void = () => {};
-  /** what each thing trades in for (docs/SAND_BUCKS.md): how many can be, and each unit's value, newest first */
+  /** what each thing trades in for (docs/BEECH_BUCKS.md): how many can be, and each unit's value, newest first */
   private tradeInfo = new Map<string, TradeInfo>();
   /** trading in and gifting from the bag (signed in): long press a thing */
   private bagActions: BagActions | null = null;
@@ -433,9 +433,9 @@ export interface TradeInfo {
   values: number[];
 }
 
-/** Trading in and gifting from the bag (docs/SAND_BUCKS.md). */
+/** Trading in and gifting from the bag (docs/BEECH_BUCKS.md). */
 export interface BagActions {
-  /** Trade `quantity` in. Resolves with the sand bucks credited; throws with the reason it didn't. */
+  /** Trade `quantity` in. Resolves with the beech bucks credited; throws with the reason it didn't. */
   tradeIn: (id: string, quantity: number) => Promise<{ credited: number }>;
   /** Gift one: opens your account page on beechshore with it picked. */
   gift: (id: string) => void;
@@ -445,12 +445,26 @@ export interface BagActions {
 
 const LONG_PRESS_MS = 450;
 
-/** S$ and a number: the short form of sand bucks where space is tight. */
-export const sd = (n: number) => `S$ ${n}`;
+/** bb and a number: the short form of beech bucks where space is tight. */
+export const sd = (n: number) => `bb ${n}`;
+
+/** One beech buck, or many: the full form, with the singular right. */
+export const bucksWord = (n: number) => `${n} beech buck${n === 1 ? '' : 's'}`;
+
+/** The beech-buck coin (public/icons/beech-bucks.webp), for balance lines. */
+export function bucksIcon(size = 18): HTMLImageElement {
+  const img = document.createElement('img');
+  img.src = '/icons/beech-bucks.webp';
+  img.alt = '';
+  img.className = 'bucks-icon';
+  img.width = size;
+  img.height = size;
+  return img;
+}
 
 /**
  * The trade-in dialog (long press a thing in the bag): how many to trade
- * in, what that gives back in S$, trade in, and gift. Labels and status only.
+ * in, what that gives back in bb, trade in, and gift. Labels and status only.
  */
 export class TradeDialog {
   private readonly root: HTMLDivElement;

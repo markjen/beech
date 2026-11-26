@@ -1,4 +1,4 @@
-// Your sand-buck history (docs/SAND_BUCKS.md, "Your account on beechshore"):
+// Your beech-buck history (docs/BEECH_BUCKS.md, "Your account on beechshore"):
 // every row of credit_ledger for one player, newest first, each with a
 // plain-words line saying what it was. credit_ledger already logs every
 // movement of the balance (packs, spending, trade-ins, gift cards, creator
@@ -36,9 +36,9 @@ export function ledgerLabel(r: { kind: string; ref: string; product_id?: string 
   const who = r.who?.trim() || 'someone';
   switch (r.kind) {
     case 'pack':
-      return r.product_id ? `Bought ${productName(r.product_id)}` : 'Bought sand dollars';
+      return r.product_id ? `Bought ${productName(r.product_id)}` : 'Bought beech bucks';
     case 'pack_refund':
-      return r.product_id ? `Refund: ${productName(r.product_id)}` : 'Refund of sand dollars';
+      return r.product_id ? `Refund: ${productName(r.product_id)}` : 'Refund of beech bucks';
     case 'spend':
       if (r.ref.startsWith('basket:')) return 'Bought what a copied beach needed';
       if (r.ref === 'pull:daily') return 'Extra go on the claw machine';
@@ -64,7 +64,7 @@ export function ledgerLabel(r: { kind: string; ref: string; product_id?: string 
   }
 }
 
-/** The newest `limit` rows of a player's sand-buck history. */
+/** The newest `limit` rows of a player's beech-buck history. */
 export async function ledgerOf(db: Db, user: string, limit = 100): Promise<LedgerRow[]> {
   const rows = await db.query<Raw>(
     `SELECT l.id, l.kind, l.amount_cents, l.ref, l.created_at,

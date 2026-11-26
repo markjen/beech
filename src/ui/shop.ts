@@ -1,15 +1,15 @@
 import { APP_LINKS, codesAllowed, shopMode, type ShopApi, type ShopOffer, type ShopPack } from '../net/shop';
 import { prizeName } from '../world/items';
 import { icon, type IconName } from './hud';
-import { sd } from './inventory';
+import { bucksIcon, bucksWord, sd } from './inventory';
 import { shoreAccountUrl } from '../net/share';
 
 /**
- * The shop (docs/SAND_BUCKS.md): your sand bucks, sand-buck packs for real
- * money, and everything for sale in sand bucks. A pack goes through Apple or
+ * The shop (docs/BEECH_BUCKS.md): your beech bucks, beech-buck packs for real
+ * money, and everything for sale in beech bucks. A pack goes through Apple or
  * Google in the apps, Steam on Steam, and Xsolla's Pay Station on the web
  * (when the server has web checkout on; otherwise the web points you to the
- * app). Things are bought with sand bucks (S$ where space is tight), on any
+ * app). Things are bought with beech bucks (bb where space is tight), on any
  * device. Gift cards, your history and topping up by card are on your
  * account page on beechshore. Labels and status only: how it works is in
  * the web guide.
@@ -78,7 +78,7 @@ export class Shop {
     return this.root.classList.contains('open');
   }
 
-  /** Open the shop; `section` 'packs' scrolls to the sand-buck packs. */
+  /** Open the shop; `section` 'packs' scrolls to the beech-buck packs. */
   async open(section?: 'packs'): Promise<void> {
     this.root.classList.add('open');
     this.root.inert = false;
@@ -109,13 +109,19 @@ export class Shop {
     this.root.inert = true;
   }
 
+  /** The balance up top: the coin, then the full amount. */
+  private renderBalance(): void {
+    this.balanceLine.innerHTML = '';
+    this.balanceLine.append(bucksIcon(), document.createTextNode(bucksWord(this.bucks)));
+  }
+
   private async refreshBucks(): Promise<void> {
     try {
       this.bucks = (await this.api.bucks()).bucks;
     } catch {
       /* offline: keep what we had */
     }
-    this.balanceLine.textContent = `${this.bucks} sand dollars (S$)`;
+    this.renderBalance();
   }
 
   private promoCode(): string | undefined {
@@ -124,7 +130,7 @@ export class Shop {
   }
 
   private async render(): Promise<void> {
-    this.balanceLine.textContent = `${this.bucks} sand dollars (S$)`;
+    this.renderBalance();
     this.list.innerHTML = '';
     // a promo code: what each offer costs with it
     const promo = this.codes ? this.promoCode() : undefined;
@@ -161,7 +167,7 @@ export class Shop {
     const packs = document.createElement('div');
     packs.className = 'shop-packs';
     const h = document.createElement('h3');
-    h.textContent = 'Sand dollars (S$)';
+    h.textContent = 'Beech bucks (bb)';
     packs.appendChild(h);
     const mode = shopMode();
     if (mode === 'web' && !this.api.webCheckout) {
@@ -173,7 +179,7 @@ export class Shop {
     if (mode === 'native' && !this.packs.length && !this.storePacksAvailable) {
       const p = document.createElement('p');
       p.className = 'shop-note';
-      p.textContent = 'Sand-buck packs aren’t in the store yet — check back soon.';
+      p.textContent = 'Beech-buck packs aren’t in the store yet — check back soon.';
       packs.appendChild(p);
     }
     for (const p of this.packs) {
@@ -214,7 +220,7 @@ export class Shop {
     const ua = navigator.userAgent;
     const link = /iPhone|iPad|Mac/.test(ua) ? APP_LINKS.ios || APP_LINKS.android : APP_LINKS.android || APP_LINKS.ios;
     if (link) window.open(link, '_blank', 'noopener');
-    else this.note.textContent = 'Sand dollars (S$) are sold in the beech app on iPhone and Android (coming to the stores soon).';
+    else this.note.textContent = 'Beech bucks (bb) are sold in the beech app on iPhone and Android (coming to the stores soon).';
   }
 
   private async run(btn: HTMLButtonElement, fn: () => Promise<void>): Promise<void> {
@@ -250,7 +256,7 @@ export class Shop {
         this.note.textContent = `${p.name}: thank you!`;
         await this.afterPack(p.id);
       } else if (r === 'pending') {
-        this.note.textContent = 'Your purchase is pending — your S$ will arrive when it completes.';
+        this.note.textContent = 'Your purchase is pending — your bb will arrive when it completes.';
       }
     });
   }

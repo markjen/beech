@@ -7,28 +7,28 @@ claw machine. The shop sells **space** (more beaches) and **centrepieces**
 yours on every device. There are no subscriptions, no timers to pay past, no
 ads and no paid random draws.
 
-## Sand bucks (2026-11-26)
+## Beech bucks (2026-11-26)
 
-Everything below is now sold for **sand bucks** at **10¢ a buck**, the same
-prices rounded to the buck ($2.99 → 30). Real money only buys sand-buck
+Everything below is now sold for **beech bucks** at **10¢ a buck**, the same
+prices rounded to the buck ($2.99 → 30). Real money only buys beech-buck
 packs: 10 for $0.99, 33 for $2.99, 60 for $4.99, 130 for $9.99, 280 for
 $19.99 (`bucks_10` … `bucks_200` in `server/src/products.ts`) — the bigger
 packs carry a bonus (+10% / +20% / +30% / +40%), so the price per buck falls
 as the pack grows. Anything in the
 bag can be traded back in at what it cost, so trying things is free. This
 replaces "no in-app currency" (owner decision); the design, the trade-in
-rules and the store tasks are in [SAND_BUCKS.md](SAND_BUCKS.md). The table
+rules and the store tasks are in [BEECH_BUCKS.md](BEECH_BUCKS.md). The table
 below keeps the US prices the old app versions still sell at, and the
 reasoning for each price.
 
 ## Paid extra tries on the machines (2026-11-26)
 
-When the free go is gone, one more try costs sand bucks: an extra ball
-from the vending machine is **10 sand bucks**, an extra go on the claw
+When the free go is gone, one more try costs beech bucks: an extra ball
+from the vending machine is **10 beech bucks**, an extra go on the claw
 machine is **10**. Both prices sit above the expected value of one try —
 so a try can never be farmed for trade-ins: the price is above what a try
 is worth on average, so buying tries to trade the prizes back in loses
-sand bucks. (Mark's call, Nov 26, 2026: 10 on both, a thinner edge on the
+beech bucks. (Mark's call, Nov 26, 2026: 10 on both, a thinner edge on the
 vending machine than the 1.5× EV the code first proposed.) A won item is
 valued at its trade-in value (`RARITY_BUCKS` in `server/src/bucks.ts`), except the
 vending machine's unique item — a one-of-a-kind item with no trade-in
@@ -46,7 +46,7 @@ slips, the claw can still drop the ball (the go is spent), and a paid try
 never takes a starter gift and never touches the free go — the free cadence
 and the first-go gifts are for free play. The price is deducted server-side
 in one statement with the grant (`claimPaidPull` in
-`server/src/paidPulls.ts`); a player without enough sand bucks gets a 402
+`server/src/paidPulls.ts`); a player without enough beech bucks gets a 402
 and nothing is deducted or granted. The odds are shown in the machine and
 in the guide before the player buys.
 
@@ -73,7 +73,7 @@ list).
 | `item_parasol` | Parasol | $0.99 | Rare, and the entry point. |
 | `item_towel` | Beach towel | $0.99 | Rare. |
 | `item_deckchair` | Deckchair | $0.99 | Rare. Also everyone's second claw-machine gift, a taste of the shop. |
-| `pet_crab` … `pet_dolphin` | A pet: crab 20, sandpiper 28, octopus 40, seal 48, turtle 60, dolphin 80 bucks | sand bucks only (crab: $1.99 in old apps) | Befriending one in snacks costs a quarter; bigger, rarer animals that do more cost more. No store items: [PETS.md](PETS.md). |
+| `pet_crab` … `pet_dolphin` | A pet: crab 20, sandpiper 28, octopus 40, seal 48, turtle 60, dolphin 80 bucks | beech bucks only (crab: $1.99 in old apps) | Befriending one in snacks costs a quarter; bigger, rarer animals that do more cost more. No store items: [PETS.md](PETS.md). |
 
 What you buy counts toward "N of M left": you can put down as many of an
 item as you own, across all your beaches. Buying another adds one.

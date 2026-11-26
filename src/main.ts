@@ -3020,14 +3020,14 @@ async function boot() {
         onAuthChange: (signedIn) => {
           sheet.setTab(signedIn ? 'beach' : 'account');
         },
-        // piers (docs/PIERS.md): bought with sand bucks into the bag, then
+        // piers (docs/PIERS.md): bought with beech bucks into the bag, then
         // shown on the beach until "place pier" or "cancel"
         buyPier: async () => {
           try {
             await new ShopApi(acct).buyBasket([{ product: 'item_pier', quantity: 1 }]);
           } catch (e) {
-            // short of sand bucks: the shop, at the packs
-            if (/not enough sand bucks/.test((e as Error).message)) {
+            // short of beech bucks: the shop, at the packs
+            if (/not enough beech bucks/.test((e as Error).message)) {
               sheet.hide();
               void shopDialog?.open('packs');
             }
@@ -3189,7 +3189,7 @@ async function boot() {
         if (acct.user !== user) return;
         const extraBeachesChanged = (owned.get('beach') ?? 0) !== inventory.ownedCount('beach');
         inventory.setOwned(owned, foundBy);
-        // what each thing trades in for (docs/SAND_BUCKS.md): the next one that isn't on a beach
+        // what each thing trades in for (docs/BEECH_BUCKS.md): the next one that isn't on a beach
         const bag = await acct.fetch('/api/bag').then((r) => (r.ok ? (r.json() as Promise<{ items: BagEntry[] }>) : null)).catch(() => null);
         if (bag) {
           inventory.setTradeInfo(new Map(bag.items.map((e) => [e.item, { free: e.free, values: e.values }])));
@@ -3202,7 +3202,7 @@ async function boot() {
         /* offline: keep what we had */
       }
     };
-    // trading in and gifting from the bag (docs/SAND_BUCKS.md): long press a
+    // trading in and gifting from the bag (docs/BEECH_BUCKS.md): long press a
     // thing. Every beach is saved first, so the server counts what's on them
     // as it is now. Gifting happens on your account page on beechshore.
     const tradeIn = async (id: string, quantity: number) => {
@@ -3244,7 +3244,7 @@ async function boot() {
     const shop = new Shop(uiRoot, shopApi, (id) => {
       void loadOwned();
       void acct.loadBeaches().catch(() => {});
-      // a pack bought for a copy (docs/SAND_BUCKS.md): back to the copy
+      // a pack bought for a copy (docs/BEECH_BUCKS.md): back to the copy
       if (id.startsWith('bucks_')) {
         const p = takePendingCopy();
         if (p) {
@@ -3295,7 +3295,7 @@ async function boot() {
         await shopApi.buyBasket(lines);
         await loadOwned();
       },
-      // not enough sand bucks: the shop's packs; the copy reopens once a pack is in (or after a web checkout)
+      // not enough beech bucks: the shop's packs; the copy reopens once a pack is in (or after a web checkout)
       getBucks: (p) => {
         rememberCopy(p);
         copySheet.close();
@@ -3398,7 +3398,7 @@ async function boot() {
     guideHost.signedIn = () => !!acct.user;
     guideHost.load = () => guideApi.done();
     guideHost.complete = (step) => guideApi.complete(step);
-    // invites live on your account page on beechshore (your link, who joined, the S$ it earned)
+    // invites live on your account page on beechshore (your link, who joined, the bb it earned)
     const inviteUrl = () => shoreAccountUrl(codesAllowed() ? {} : { from: 'app' }, 'invite');
     guideHost.openInvite = () => {
       sheet.hide();
@@ -3452,7 +3452,7 @@ async function boot() {
         showToast(uiRoot, (e as Error).message);
       }
     };
-    /** the inviter: say so when friends have joined (S$) or settled in (an old referral's gift) since we last told you */
+    /** the inviter: say so when friends have joined (bb) or settled in (an old referral's gift) since we last told you */
     const toldKey = (id: string, what: string) => `beech-invite-${what}-${id}`;
     const told = (key: string) => {
       try {
@@ -3478,7 +3478,7 @@ async function boot() {
         return;
       }
       const invite = () => window.open(inviteUrl(), '_blank', 'noopener');
-      // friends who joined since we last said, and the S$ they earned you
+      // friends who joined since we last said, and the bb they earned you
       const paid = r.friends.filter((f) => f.bucks > 0);
       const bonusKey = toldKey(me.id, 'bonus');
       const freshPaid = paid.slice(told(bonusKey));
@@ -3489,7 +3489,7 @@ async function boot() {
         showActionToast(uiRoot, `${f.name} joined through your invite${more}: +${sd(freshPaid.reduce((t, x) => t + x.bucks, 0))}`, 'Invite more', invite, 12000);
         return;
       }
-      // a referral from before the S$ bonus, settling in: its ladder gift
+      // a referral from before the bb bonus, settling in: its ladder gift
       const settledKey = `beech-invite-told-${me.id}`;
       const fresh = r.friends.filter((f) => f.settled).slice(told(settledKey));
       setTold(settledKey, r.settled);
@@ -3760,7 +3760,7 @@ async function boot() {
     visitor: () => visitorUi,
     /** open the copy sheet for a beach code (docs/COPY_BEACH.md) */
     copyBeach: (code: string) => copyBeach?.(code),
-    /** reload what you own (sand bucks e2e, docs/SAND_BUCKS.md) */
+    /** reload what you own (beech bucks e2e, docs/BEECH_BUCKS.md) */
     refreshOwned: () => refreshOwned(),
     objectView,
     animals: {

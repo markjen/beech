@@ -1,12 +1,12 @@
-// Sand bucks and trade-ins (docs/SAND_BUCKS.md): the pure parts. The
-// balance is kept in users.credit_cents at 10 cents a sand buck, so every
+// Beech bucks and trade-ins (docs/BEECH_BUCKS.md): the pure parts. The
+// balance is kept in users.credit_cents at 10 cents a beech buck, so every
 // amount here in cents is a whole number of bucks (a multiple of 10).
 
 import { catalogItemById } from './itemCatalog.js';
 import { PET_ITEMS } from './petCatalog.js';
 import { PRODUCTS, type Product } from './products.js';
 
-/** cents in one sand buck */
+/** cents in one beech buck */
 export const BUCK = 10;
 export const bucksToCents = (bucks: number): number => Math.round(bucks) * BUCK;
 export const centsToBucks = (cents: number): number => Math.floor(cents / BUCK);
@@ -20,7 +20,7 @@ export const RARITY_BUCKS: Record<string, number> = { common: 5, uncommon: 10, r
 const NOT_TRADEABLE = new Set(['crab-treat', ...PET_ITEMS, 'bucks']);
 
 /**
- * An item's list value in sand bucks: what one costs on its own in the shop
+ * An item's list value in beech bucks: what one costs on its own in the shop
  * (a pair's price shared out), else by its rarity; null when it has none
  * (free things, snacks, the pet, one-of-a-kind items).
  */

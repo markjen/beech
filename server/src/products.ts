@@ -1,7 +1,7 @@
-// What the shop sells (docs/SAND_BUCKS.md).
+// What the shop sells (docs/BEECH_BUCKS.md).
 //
-// PRODUCTS are the shop's offers, bought with sand bucks (`bucks`). Real
-// money only buys PACKS of sand bucks: consumable in-app purchases with the
+// PRODUCTS are the shop's offers, bought with beech bucks (`bucks`). Real
+// money only buys PACKS of beech bucks: consumable in-app purchases with the
 // same id in App Store Connect, Google Play Console, Steam and Xsolla. A
 // pack's grant is the pseudo-item `bucks`, which goes to the balance, not
 // the bag.
@@ -21,7 +21,7 @@ export interface Product {
   /** stable integer itemid sent to Steam ISteamMicroTxn/InitTxn (packs, and the old item products) */
   steamItemId?: number;
   /**
-   * sold only for sand bucks: not in any store, Steam or web checkout, and not
+   * sold only for beech bucks: not in any store, Steam or web checkout, and not
    * listed for the app versions that sold things for real money
    */
   bucksOnly?: boolean;
@@ -30,7 +30,7 @@ export interface Product {
   grants: { item: string; quantity: number }[];
   /** US price tier (USD) to set in the stores: a pack's price, or an old app's price for an offer */
   usd: number;
-  /** price in sand bucks (offers; a pack: how many it gives) */
+  /** price in beech bucks (offers; a pack: how many it gives) */
   bucks: number;
   /** short line for the shop */
   blurb: string;
@@ -73,7 +73,7 @@ export const PRODUCTS: Product[] = [
   { id: 'food_pack_35', steamItemId: 1017, name: 'Beach snacks (35)', grants: [{ item: 'crab-treat', quantity: 35 }], usd: 2.99, bucks: 30, blurb: 'Thirty-five treats to attract and feed beach animals' },
   { id: 'item_pier', bucksOnly: true, name: 'Pier', grants: [{ item: 'pier', quantity: 1 }], usd: 2.99, bucks: 30, blurb: 'A timber pier out over the water, for the middle of three of your beaches side by side' },
   // pets: one product per species, priced from the pet table (docs/PETS.md).
-  // Sand bucks only; the crab keeps its old store listing for old app versions.
+  // Beech bucks only; the crab keeps its old store listing for old app versions.
   ...PETS.map((p): Product => ({
     id: p.product,
     ...(p.legacySteamItemId ? { steamItemId: p.legacySteamItemId } : { bucksOnly: true }),
@@ -88,7 +88,7 @@ export const PRODUCTS: Product[] = [
 export const productById = (id: string): Product | undefined => PRODUCTS.find((p) => p.id === id);
 
 /**
- * Sand-buck packs: what real money buys (docs/SAND_BUCKS.md). 1 sand buck =
+ * Beech-buck packs: what real money buys (docs/BEECH_BUCKS.md). 1 beech buck =
  * 10¢ at the base rate; bigger packs carry a bonus, so the price per buck
  * falls as the pack grows (10: 9.90¢, 33: 9.06¢, 60: 8.32¢, 130: 7.68¢,
  * 280: 7.14¢). The id is the price tier, not the grant: the ids are the
@@ -96,11 +96,11 @@ export const productById = (id: string): Product | undefined => PRODUCTS.find((p
  * grant (and the name) carries the bonus.
  */
 export const PACKS: Product[] = [
-  { id: 'bucks_10', steamItemId: 1101, name: '10 sand bucks', grants: [{ item: 'bucks', quantity: 10 }], usd: 0.99, bucks: 10, blurb: 'Enough for a parasol or a deckchair' },
-  { id: 'bucks_30', steamItemId: 1102, name: '33 sand bucks', grants: [{ item: 'bucks', quantity: 33 }], usd: 2.99, bucks: 33, blurb: 'A lighthouse, or an extra beach — plus 3 free' },
-  { id: 'bucks_50', steamItemId: 1103, name: '60 sand bucks', grants: [{ item: 'bucks', quantity: 60 }], usd: 4.99, bucks: 60, blurb: 'A centrepiece and a few things around it — plus 10 free' },
-  { id: 'bucks_100', steamItemId: 1104, name: '130 sand bucks', grants: [{ item: 'bucks', quantity: 130 }], usd: 9.99, bucks: 130, blurb: 'The Founder’s pack, or a whole new build — plus 30 free' },
-  { id: 'bucks_200', steamItemId: 1105, name: '280 sand bucks', grants: [{ item: 'bucks', quantity: 280 }], usd: 19.99, bucks: 280, blurb: 'For a stretch of shore — plus 80 free, the best value per buck', featured: true },
+  { id: 'bucks_10', steamItemId: 1101, name: '10 beech bucks', grants: [{ item: 'bucks', quantity: 10 }], usd: 0.99, bucks: 10, blurb: 'Enough for a parasol or a deckchair' },
+  { id: 'bucks_30', steamItemId: 1102, name: '33 beech bucks', grants: [{ item: 'bucks', quantity: 33 }], usd: 2.99, bucks: 33, blurb: 'A lighthouse, or an extra beach — plus 3 free' },
+  { id: 'bucks_50', steamItemId: 1103, name: '60 beech bucks', grants: [{ item: 'bucks', quantity: 60 }], usd: 4.99, bucks: 60, blurb: 'A centrepiece and a few things around it — plus 10 free' },
+  { id: 'bucks_100', steamItemId: 1104, name: '130 beech bucks', grants: [{ item: 'bucks', quantity: 130 }], usd: 9.99, bucks: 130, blurb: 'The Founder’s pack, or a whole new build — plus 30 free' },
+  { id: 'bucks_200', steamItemId: 1105, name: '280 beech bucks', grants: [{ item: 'bucks', quantity: 280 }], usd: 19.99, bucks: 280, blurb: 'For a stretch of shore — plus 80 free, the best value per buck', featured: true },
 ];
 export const packById = (id: string): Product | undefined => PACKS.find((p) => p.id === id);
 /** What a real-money receipt can be for: a pack, or (from an old app version) an offer. */
@@ -110,7 +110,7 @@ export const realMoneyProductById = (id: string): Product | undefined => {
   const p = storeProductById(id);
   return p && !p.bucksOnly ? p : undefined;
 };
-/** sand bucks a real-money product gives (0 for an old app's offer, which gives things) */
+/** beech bucks a real-money product gives (0 for an old app's offer, which gives things) */
 export const bucksIn = (p: Product): number => p.grants.filter((g) => g.item === 'bucks').reduce((t, g) => t + g.quantity, 0);
 
 /** One line of a "buy what's missing" basket (docs/COPY_BEACH.md). */
@@ -120,7 +120,7 @@ export interface BasketLine {
   quantity: number;
   /** the item it covers */
   item: string;
-  /** price of one, in sand bucks */
+  /** price of one, in beech bucks */
   bucks: number;
 }
 
@@ -131,7 +131,7 @@ export interface BasketLine {
  * ceil(missing / grant) times. Packs are never suggested. Items no product
  * sells (claw, vending, dig finds) come back in `notForSale`. `beach`: the
  * copy goes onto a new beach and there's no room for one. `priceOf` is the
- * shop's price in sand bucks, or null when a product is off sale.
+ * shop's price in beech bucks, or null when a product is off sale.
  */
 export function copyBasket(
   short: { item: string; need: number; have: number }[],

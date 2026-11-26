@@ -53,7 +53,7 @@ export class StartScreen {
     if (this.done) return;
     const p = document.createElement('p');
     p.className = 'start-invite';
-    p.textContent = `${name} invited you · S$ ${bucks} is waiting`;
+    p.textContent = `${name} invited you · bb ${bucks} is waiting`;
     this.el.querySelector('.start-sub')!.after(p);
   }
 }

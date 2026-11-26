@@ -52,11 +52,11 @@ describe('the guide catalog', () => {
     for (const item of ITEMS.filter((i) => i.source === 'shop')) {
       expect(shop, item.id).toContain(item.name);
       const product = PRODUCTS.find((p) => p.id === item.product)!;
-      expect(shop, item.id).toContain(`${product.bucks} sand bucks`);
+      expect(shop, item.id).toContain(`${product.bucks} beech bucks`);
     }
     const extras = groupSection(catalog, 'Extras');
     expect(extras).toContain('Extra beach');
-    expect(extras).toContain('30 sand bucks');
+    expect(extras).toContain('30 beech bucks');
   });
 
   it('never mentions the claw’s starter gifts', () => {

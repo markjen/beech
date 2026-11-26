@@ -18,7 +18,7 @@ type Phase = 'idle' | 'drop' | 'grab' | 'lift' | 'carry' | 'open' | 'done';
  * drawn on the server; the claw is the fun part. Hold the button to steer,
  * let go to drop — and sometimes the ball slips out of the claw on the way
  * up, which spends the go all the same. When the claw is resting, one more
- * go costs sand bucks — the price comes from the server, and the odds are
+ * go costs beech bucks — the price comes from the server, and the odds are
  * on the guide link below, before the price. How it works and the odds are
  * in the guide on the website (GUIDE_URL#claw), not here.
  */
@@ -141,19 +141,19 @@ export class ClawMachine {
   private renderInfo(): void {
     const free = !!this.pool?.free;
     this.btn.disabled = !free || this.phase !== 'idle';
-    // an extra go for sand bucks, while the claw is resting — the odds are
+    // an extra go for beech bucks, while the claw is resting — the odds are
     // on the guide link below, before the price
     const price = this.pool?.paidTry?.bucks;
     const showPaid = !free && price !== undefined;
     this.paidBtn.hidden = !showPaid;
     if (showPaid) {
-      this.paidBtn.textContent = `Buy another go · ${price} sand bucks`;
+      this.paidBtn.textContent = `Buy another go · ${price} beech bucks`;
       this.paidBtn.disabled = (this.phase !== 'idle' && this.phase !== 'done') || this.balance < price;
     }
-    // status only: an error, too few sand bucks for an extra go, or when the next go is ready
+    // status only: an error, too few beech bucks for an extra go, or when the next go is ready
     this.note.textContent =
       this.error ||
-      (showPaid && this.balance < price ? `Not enough sand bucks — you have ${this.balance}.` : this.pool && !free ? `Your next free go is in ${until(this.nextFree)}.` : '');
+      (showPaid && this.balance < price ? `Not enough beech bucks — you have ${this.balance}.` : this.pool && !free ? `Your next free go is in ${until(this.nextFree)}.` : '');
   }
 
   private drop(paid: boolean): void {

@@ -9,7 +9,7 @@ export interface PetSpec {
   species: PetSpecies;
   name: string;
   habitat: Habitat;
-  /** shop price in sand bucks */
+  /** shop price in beech bucks */
   bucks: number;
   /** snacks (1 buck each) to befriend a wild one: a quarter of the price */
   feeds: number;
@@ -17,12 +17,12 @@ export interface PetSpec {
   item: string;
   /** the shop product */
   product: string;
-  /** only the crab: sold for real money by the app versions already in the stores (docs/SAND_BUCKS.md) */
+  /** only the crab: sold for real money by the app versions already in the stores (docs/BEECH_BUCKS.md) */
   legacySteamItemId?: number;
   blurb: string;
 }
 
-/** What one beach snack costs in sand bucks (food_pack_10: 10 snacks, 10 bucks). */
+/** What one beach snack costs in beech bucks (food_pack_10: 10 snacks, 10 bucks). */
 export const SNACK_BUCKS = 1;
 /** Befriending costs this share of the shop price (docs/PETS.md). */
 export const FEED_SHARE = 1 / 4;

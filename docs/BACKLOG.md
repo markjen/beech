@@ -23,7 +23,7 @@ The single list of what's left to do, for the owner and for agents.
   as `OPEN_METEO_API_KEY` and the server uses the `customer-*` hosts. Until
   then it uses the free API.
 
-- [ ] **Sand-buck packs in the stores** (docs/SAND_BUCKS.md, "Owner tasks"):
+- [ ] **Beech-buck packs in the stores** (docs/BEECH_BUCKS.md, "Owner tasks"):
   create the consumable products `bucks_10`, `bucks_30`, `bucks_50`,
   `bucks_100`, `bucks_200` ($0.99 / $2.99 / $4.99 / $9.99 / $19.99) in App
   Store Connect and the Play Console, the same SKUs in Xsolla's catalog, and
@@ -101,7 +101,7 @@ _(nothing right now)_
 
 ## Up next (engineering)
 
-- [ ] **Sand bucks, follow-ups** ([SAND_BUCKS.md](SAND_BUCKS.md)): trade in
+- [ ] **Beech bucks, follow-ups** ([BEECH_BUCKS.md](BEECH_BUCKS.md)): trade in
   several at once from the bag; an admin view of trade-ins and debts.
 
 Items marked **(model first)** change state the server keeps: they start
@@ -232,7 +232,7 @@ picked up.
   and invites (moved there); the shop shows "N sand dollars (S$)" and S$
   prices; long press in the bag to trade in (pick how many) or gift; the
   place bar lost its trade/gift buttons; invites give S$ 50 to both sides.
-  SAND_BUCKS.md, INVITES_GUIDE.md, `specs/tla/Invites.tla`.
+  BEECH_BUCKS.md, INVITES_GUIDE.md, `specs/tla/Invites.tla`.
 
 - [x] **More real beaches, a place picker, and real weather** (2026-11-26):
   21 new beaches (34 in all), a searchable place picker with a map and
