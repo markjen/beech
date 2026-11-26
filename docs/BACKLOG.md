@@ -226,6 +226,14 @@ picked up.
 
 ## Done (recent)
 
+- [x] **Your account on beechshore, S$, bag trade-ins, invite bonuses**
+  (2026-11-26): `beechshore.com/account` with balance, history (the
+  credit ledger), card top-ups, gift cards and gifting (both moved there)
+  and invites (moved there); the shop shows "N sand dollars (S$)" and S$
+  prices; long press in the bag to trade in (pick how many) or gift; the
+  place bar lost its trade/gift buttons; invites give S$ 50 to both sides.
+  SAND_BUCKS.md, INVITES_GUIDE.md, `specs/tla/Invites.tla`.
+
 - [x] **More real beaches, a place picker, and real weather** (2026-11-26):
   21 new beaches (34 in all), a searchable place picker with a map and
   regions, and live weather per place from Open-Meteo through

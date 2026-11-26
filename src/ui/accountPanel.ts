@@ -633,7 +633,7 @@ export class AccountPanel {
     } else if (a.piers.owned > a.piers.placed) {
       if (this.mine?.previewPier) button('place pier', 'pier-place', async () => this.mine?.previewPier?.(b));
     } else if (this.mine?.buyPier) {
-      button('buy pier · 30 sand bucks', 'pier-buy', async () => {
+      button('buy pier · S$ 30', 'pier-buy', async () => {
         await this.mine!.buyPier!();
         await a.loadBeaches();
         this.mine?.previewPier?.(b);

@@ -1,6 +1,18 @@
 # Invites and the beach guide
 
-Status: **built** (2026-11-23; updated 2026-11-24). Viral sharing that also teaches the game.
+Status: **built** (2026-11-23; updated 2026-11-24, 2026-11-26). Viral sharing that also teaches the game.
+
+**Updated 2026-11-26 (owner): invites give sand bucks, and live on
+beechshore.** A friend who makes an account through your link gets **S$ 50**
+at once, and you get **S$ 50** too, at the same moment, for your first 10
+friends (no waiting for them to settle in). The invite panel moved out of
+the game to your account page on beechshore (`/account#invite`, docs/SAND_BUCKS.md);
+"invite friends" and the guide's invite step open it. Sand bucks are
+spendable in the apps now (SAND_BUCKS.md), so the reason below for items no
+longer holds. State machine: [`specs/tla/Invites.tla`](../specs/tla/Invites.tla)
+(see [State machine](#state-machine)). Referrals from before (migration 37's
+`bonus_bucks` NULL) still finish on the ladder below when the friend settles
+in.
 
 **Updated 2026-11-24:** the game now shows no explanations (CLAUDE.md). The
 coach card and the checklist show each step's name only, and the invite
@@ -25,7 +37,7 @@ The guide's last step is "invite a friend", so everyone who learns the game
 is walked to the invite at the moment they like it most. And every invited
 friend is walked through the guide, which is what earns the inviter's reward.
 
-## Why items, not store credit
+## Why items, not store credit (until 2026-11-26)
 
 Account credit (GIFT_CARDS_PROMOS.md) is **web only**: the App Store
 (3.1.1) and Play payments policy don't allow spending it in the apps, so
@@ -104,7 +116,7 @@ same as old visit links. That's the trade for not adding a second code.
 - Only once: `referrals.invitee_id` is the primary key.
 - Not yourself (any of your own beaches' codes is refused).
 
-### The inviter's ladder
+### The inviter's ladder (referrals from before 2026-11-26)
 
 A friend **settles in** when they've done three guide steps (any three,
 not counting `invite`). At that moment, inside their guide request, the
@@ -130,7 +142,7 @@ server marks the referral qualified and gives the inviter the next rung:
   "Ana settled in: a surfboard is in your bag", once per reward (the app
   remembers the last count it told you about).
 
-### The invite panel
+### The invite panel (moved to beechshore, 2026-11-26)
 
 Opened from the guide's last step and from the account panel
 ("invite friends"):
@@ -205,3 +217,19 @@ when either side is deleted.
 - An `og:image` for previews (the same gap as visit links).
 - Admin console: a referrals view (who invited whom) for disputes.
 - Push for "your friend settled in" instead of waiting for the next load.
+
+## State machine
+
+[`specs/tla/Invites.tla`](../specs/tla/Invites.tla): one inviter, friends
+with two devices each. `InvitesFixed.cfg` passes; `Invites.cfg` (read "not
+claimed yet" and the next rank in one statement, write in another) breaks
+`OneBonusEach` (two devices both claim) and `CapHolds` (two friends both take
+the last rank).
+
+| Action | Route | Code |
+| --- | --- | --- |
+| `ClaimAtomic` | `POST /referrals/claim` | one transaction: `INSERT INTO referrals … ON CONFLICT (invitee_id) DO NOTHING` with `reward_rank` = MAX + 1 (NULL past the cap; `UNIQUE (inviter_id, reward_rank)` makes a racing friend retry), then `creditBalance` for the friend and, with a rank, the inviter |
+
+Invariants: `OneBonusEach`, `CapHolds`, `InviterPaid`. Tests:
+`server/test/referrals.test.ts`, `server/test/stateMachines/invites.test.ts`
+(two devices at once, and random walks against `invitesModel.ts`).

@@ -106,10 +106,67 @@ the balance is short, the sheet offers a sand-buck pack first.
 
 ## App
 
-- **Shop:** your balance on top, sand-buck packs (the store's price), then
-  everything for sale in sand bucks.
-- **Bag:** each tradeable thing shows "trade in · N". Things on a beach
-  can't be traded until they're picked up (the server says so).
+- **Names (owner, 2026-11-26):** sand bucks are written **S$** where space is
+  tight (prices, buttons, packs, toasts). The shop's balance line reads
+  "100 sand dollars (S$)".
+- **Shop:** your balance on top, then everything for sale in S$, then the S$
+  packs (the store's price). Promo codes stay here (web). Gift cards moved
+  to your account page on beechshore; the web shop links to it ("your
+  account · gift cards · history ↗"; hidden in the apps).
+- **Bag:** a line under the title, "long press item to trade in" (the
+  owner asked for this note in the game). Long press (or right click) any
+  owned thing, or an extra beach, opens the trade-in dialog: a − n + picker
+  up to how many can be traded now (the server's `free`), "you get S$ X"
+  (the newest n units' values, the order a trade-in takes them), **trade in**
+  (`POST /bag/trade-in { item, quantity }`), and **gift**, which opens your
+  account page on beechshore with that thing picked. Things on a beach can't
+  be traded until they're picked up (the dialog says so).
+- **Thing in hand:** the place bar has only the size slider and ×; no
+  trade-in or gift buttons.
+
+## Your account on beechshore
+
+`beechshore.com/account` (`server/src/accountPage.ts`; `/shore/account` on
+the game's host). It connects with the same popup and short-lived token as
+item submissions (`/submit/connect`, `item_submission_sessions`, an hour).
+The page keeps the token in `sessionStorage`, so a top-up's return lands
+still connected.
+
+- **Balance:** "N sand dollars (S$)", and any debt from a refund.
+- **Top up:** the five packs, by card through Xsolla (`POST
+  /account/api/top-up { productId, mount }`). Pay Station comes back to
+  `SHORE_URL/account` (or `/shore/account` on the game host): one of two
+  fixed places, never a URL from the request. The page then polls the web
+  order until it's paid. Packs only (an item product is refused).
+- **Gift card:** redeem a code (moved here from the shop).
+- **Gift something:** pick a thing in your bag and a beach code (moved here
+  from the place bar; `?gift=<item>` preselects it).
+- **Invite friends:** your link (`GAME_URL/?invite=CODE`), copy and share,
+  and who joined with the S$ each earned you (moved here from the game's
+  invite panel).
+- **History:** every `credit_ledger` row, newest 100, each with a plain
+  line (`server/src/ledger.ts`): packs and refunds by name, what you
+  bought, trade-ins with how many, gift cards, creator credit, invite
+  bonuses.
+- Opened from an app (`?from=app`): no top-up or gift card (store rules on
+  linking out to paying).
+
+The page calls `/account/api/*`; the shore site forwards those to the game
+API's `/shore-account/*` routes (`app.ts`), which take only the shore token
+(`requireShoreAccount`) and reuse the game's own handlers (`webCheckout`,
+`webOrder`, `redeemGiftCard`, `sendGift`). The shore token can't reach any
+other route, and a game session token can't reach these.
+
+## Invite bonuses
+
+A friend who makes an account through your invite gets **S$ 50**, and so do
+you, for your first 10 friends (`INVITE_BONUS`, `REWARD_CAP` in
+`server/src/referrals.ts`; ledger kind `invite_bonus`). One transaction in
+`POST /referrals/claim` writes the referral and both credits
+(`specs/tla/Invites.tla`). These are free bucks in (`BonusIn` in
+`SandBucks.tla`, counted with the other free value in `ValueConserved`).
+Referrals from before keep the old item ladder (`bonus_bucks` NULL).
+
 - **Native apps:** sand bucks bought anywhere can be spent in the app (App
   Store guideline 3.1.3(b), multiplatform services, since the packs are
   also sold in the app). Gift cards and promo codes stay web only.
@@ -130,6 +187,7 @@ save places it in between).
 | `GiftOut` | `POST /gifts` | `giveOne` (moves `unit_cents`) |
 | `Save` | `PUT /beaches/mine/:id/sand` | `saveBeach` (asEditor) |
 | `TradeAtomic` | `POST /bag/trade-in` | one transaction under the player lock |
+| `BonusIn` | `POST /referrals/claim` | `creditBalance(..., 'invite_bonus')` in the claim's transaction (`Invites.tla`) |
 
 Invariants: `ValueConserved` (balance − debt + the bag's trade-in value =
 packs bought + free value in − gifts out: spending and trading in are even

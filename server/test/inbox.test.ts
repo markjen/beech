@@ -269,16 +269,13 @@ describe('what else lands in the inbox', () => {
     expect((await inbox(ben)).entries[0]).toMatchObject({ kind: 'neighbor_linked', from: { code: ana.code } });
   });
 
-  it('invites: a friend joined, then settled in', async () => {
+  it('invites: a friend joined (the bonus comes with it; no settling in any more)', async () => {
     const ana = await player();
     const fran = await player('fran', false);
     expect((await req('/referrals/claim', json('POST', { code: ana.code }), fran.token)).status).toBe(200);
     for (const s of ['dig', 'pile', 'undo']) await req(`/guide/${s}`, { method: 'POST' }, fran.token);
     const kinds = (await inbox(ana)).entries.map((e) => [e.kind, e.item]);
-    expect(kinds).toEqual([
-      ['invite_settled', 'parasol'],
-      ['invite_joined', null],
-    ]);
+    expect(kinds).toEqual([['invite_joined', null]]);
   });
 });
 

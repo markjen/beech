@@ -1007,26 +1007,27 @@ export interface Referrals {
   code: string;
   joined: number;
   settled: number;
-  friends: { name: string; joinedAt: number; settled: boolean; reward: string | null }[];
-  ladder: { rank: number; item: string }[];
+  /** reward: an old referral's ladder gift; bucks: the S$ this friend earned you */
+  friends: { name: string; joinedAt: number; settled: boolean; reward: string | null; bucks: number }[];
+  /** S$ earned from invites, and the bonus each side gets */
+  earned: number;
+  bonus: number;
   cap: number;
-  settleSteps: number;
-  welcomeGift: string;
 }
 
 export class ReferralApi {
   constructor(private readonly account: Account) {}
 
   /** Who an invite is from (works signed out). null: no beach has that code. */
-  async lookup(code: string): Promise<{ name: string; welcomeGift: string } | null> {
+  async lookup(code: string): Promise<{ name: string; welcomeBucks: number } | null> {
     const res = await this.account.fetch(`/api/invites/${encodeURIComponent(code)}`);
     if (res.status === 404) return null;
     if (!res.ok) throw await errorOf(res, 'could not look up that invite');
     return res.json();
   }
 
-  /** A new player claims the invite they came through: the welcome gift. */
-  async claim(code: string): Promise<{ inviter: { name: string; code: string }; gift: string }> {
+  /** A new player claims the invite they came through: S$ for them and the inviter. */
+  async claim(code: string): Promise<{ inviter: { name: string; code: string }; bucks: number }> {
     const res = await this.account.fetch('/api/referrals/claim', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

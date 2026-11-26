@@ -330,6 +330,40 @@ accepted the repo's default branch, so the deploy job ran only there.
   `GET /api/inventory` for owned, unexpired non-free items. Nothing writes to
   it yet.
 
+## Your account on beechshore, S$, bag trade-ins, invite bonuses (2026-11-26)
+
+Owner request. Details in [SAND_BUCKS.md](SAND_BUCKS.md) ("App", "Your
+account on beechshore", "Invite bonuses") and
+[INVITES_GUIDE.md](INVITES_GUIDE.md).
+
+- **S$:** sand bucks are written S$ in the shop, copy sheet, pier button and
+  bag; the shop's balance reads "N sand dollars (S$)" (the owner's wording).
+  Product names in the stores still say "sand bucks".
+- **beechshore.com/account:** connect (the submission popup), then balance,
+  history (every `credit_ledger` row, labelled by `server/src/ledger.ts`),
+  card top-ups through Xsolla (returns to the page), gift cards, gifting a
+  thing by beach code, and the invite link with who joined. Forwarded to the
+  game API's `/shore-account/*` routes, which take only the shore token.
+- **Moved out of the game:** gift card redeem (shop), gifting (place bar)
+  and the invite panel (`src/ui/invite.ts`, deleted). The web shop links to
+  the account page; the apps don't link to it from the shop, and open it
+  with `?from=app` (no top-up or gift card there) from the bag's gift button
+  and "invite friends".
+- **Bag:** "long press item to trade in" under the title (a note in the game
+  at the owner's request, an exception to the no-notes rule). Long press or
+  right click opens a dialog: how many, "you get S$ X", trade in, gift.
+  The place bar has no trade/gift buttons any more.
+- **Invites:** S$ 50 to the friend and to the inviter (first 10 friends) in
+  the claim's transaction (`specs/tla/Invites.tla`, migration 37). Legacy
+  referrals keep the item ladder. The inviter hears "Fran joined through
+  your invite: +S$ 50" on their next sign-in.
+- **Follow-ups:** watch invite-bonus farming (each throwaway account needs
+  its own Google/Apple sign-in; the bonus is now instant, not after three
+  guide steps). Apple review: the account page sells packs by card, so the
+  apps only open it with `?from=app`; check that's enough for App Review.
+  The `invite_settled` push and inbox kinds now only come from legacy
+  referrals.
+
 ## Shop (added after more than one beach)
 
 - **Items:** parasol, surfboard, tiki torches (rare); sandcastle, beach hut,

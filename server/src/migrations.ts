@@ -937,6 +937,18 @@ const MIGRATIONS: string[] = [
   CREATE INDEX inbox_unpushed ON inbox (user_id)
     WHERE pushed_at IS NULL AND kind IN ('visit', 'gift', 'neighbor_request', 'neighbor_linked', 'invite_settled', 'tide', 'pet_fed');
   `,
+
+  // 37: invite bonuses in sand bucks (docs/INVITES_GUIDE.md, specs/tla/Invites.tla).
+  // A claim gives the friend and the inviter INVITE_BONUS bucks each, in the
+  // claim's own transaction; the referral's reward_rank (unique per inviter)
+  // keeps the inviter's bonuses to the cap. bonus_bucks NULL: a referral from
+  // before, still on the old item ladder (settle()).
+  `
+  ALTER TABLE credit_ledger DROP CONSTRAINT credit_ledger_kind_check;
+  ALTER TABLE credit_ledger ADD CONSTRAINT credit_ledger_kind_check
+    CHECK (kind IN ('gift_card', 'spend', 'creator_royalty', 'creator_royalty_refund', 'pack', 'pack_refund', 'trade_in', 'trade_in_refund', 'invite_bonus'));
+  ALTER TABLE referrals ADD COLUMN bonus_bucks INTEGER;
+  `,
 ];
 
 /** Apply migrations up to `upTo` (default: all). Tests use `upTo` to check a migration on older data. */

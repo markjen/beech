@@ -59,6 +59,8 @@ export interface TokenRequest {
   sku: string;
   /** our web order id: settings.external_id and custom_parameters.web_order */
   webOrderId: string;
+  /** where Pay Station comes back to, instead of cfg.returnUrl (the account page on beechshore) */
+  returnUrl?: string;
   /** Two-letter locale region to use when there is no IPv4 address. */
   country?: string;
   /** Client address. A valid IPv4 goes in X-User-Ip. */
@@ -75,7 +77,7 @@ export type CreateToken = (cfg: XsollaConfig, req: TokenRequest) => Promise<Toke
 
 /** The request body for a one-item payment token (exported for tests). */
 export function tokenBody(cfg: XsollaConfig, req: TokenRequest): Record<string, unknown> {
-  const ret = new URL(cfg.returnUrl);
+  const ret = new URL(req.returnUrl ?? cfg.returnUrl);
   ret.searchParams.set('web_order', req.webOrderId);
   return {
     sandbox: cfg.sandbox,

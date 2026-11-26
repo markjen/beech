@@ -1,21 +1,24 @@
 import { APP_LINKS, codesAllowed, shopMode, type ShopApi, type ShopOffer, type ShopPack } from '../net/shop';
 import { prizeName } from '../world/items';
 import { icon, type IconName } from './hud';
+import { sd } from './inventory';
+import { shoreAccountUrl } from '../net/share';
 
 /**
  * The shop (docs/SAND_BUCKS.md): your sand bucks, sand-buck packs for real
  * money, and everything for sale in sand bucks. A pack goes through Apple or
  * Google in the apps, Steam on Steam, and Xsolla's Pay Station on the web
  * (when the server has web checkout on; otherwise the web points you to the
- * app). Things are bought with sand bucks, on any device. Labels and status
- * only: how it works is in the web guide.
+ * app). Things are bought with sand bucks (S$ where space is tight), on any
+ * device. Gift cards, your history and topping up by card are on your
+ * account page on beechshore. Labels and status only: how it works is in
+ * the web guide.
  */
 export class Shop {
   private readonly root: HTMLDivElement;
   private readonly list: HTMLDivElement;
   private readonly note: HTMLParagraphElement;
   private readonly balanceLine: HTMLParagraphElement;
-  private readonly giftForm: HTMLFormElement;
   private readonly promoInput: HTMLInputElement;
   private busy = false;
   private bucks = 0;
@@ -45,17 +48,14 @@ export class Shop {
         <p class="shop-credit shop-bucks" role="status"></p>
         <p class="shop-note"></p>
         <div class="shop-list"></div>
-        <form class="shop-gift">
-          <input name="code" type="text" placeholder="Gift card code" autocomplete="off" aria-label="Gift card code">
-          <button type="submit">Redeem gift card</button>
-        </form>
+        <a class="shop-account" data-act="shop-account" target="_blank" rel="noopener">your account · gift cards · history ↗</a>
         <label class="shop-promo">Promo code <input name="promo" type="text" autocomplete="off" aria-label="Promo code"></label>
       </div>`;
     parent.appendChild(this.root);
     this.list = this.root.querySelector('.shop-list')!;
     this.note = this.root.querySelector('.shop-note')!;
     this.balanceLine = this.root.querySelector('.shop-bucks')!;
-    this.giftForm = this.root.querySelector('.shop-gift')!;
+    this.root.querySelector<HTMLAnchorElement>('.shop-account')!.href = shoreAccountUrl({}, 'balance');
     this.promoInput = this.root.querySelector('.shop-promo input')!;
     this.root.querySelector('.claw-close')!.addEventListener('click', () => this.close());
     this.root.addEventListener('click', (e) => {
@@ -65,12 +65,9 @@ export class Shop {
       if (e.key === 'Escape' && this.isOpen) this.close();
     });
     // the apps sell through the stores only: no code fields there
-    this.giftForm.hidden = !this.codes;
     this.root.querySelector<HTMLElement>('.shop-promo')!.hidden = !this.codes;
-    this.giftForm.addEventListener('submit', (e) => {
-      e.preventDefault();
-      void this.redeem();
-    });
+    // and no link out to paying on the web (store rules)
+    this.root.querySelector<HTMLElement>('.shop-account')!.hidden = !this.codes;
     // a promo code changes what the offers cost: price them again
     this.promoInput.addEventListener('change', () => {
       if (this.offers.length) void this.render();
@@ -118,7 +115,7 @@ export class Shop {
     } catch {
       /* offline: keep what we had */
     }
-    this.balanceLine.textContent = `${this.bucks} sand bucks`;
+    this.balanceLine.textContent = `${this.bucks} sand dollars (S$)`;
   }
 
   private promoCode(): string | undefined {
@@ -126,26 +123,8 @@ export class Shop {
     return code ? code : undefined;
   }
 
-  private async redeem(): Promise<void> {
-    const input = this.giftForm.querySelector('input')!;
-    const code = input.value.trim();
-    if (!code || this.busy) return;
-    this.busy = true;
-    try {
-      const r = await this.api.redeemGiftCard(code);
-      this.bucks = r.bucks;
-      this.note.textContent = `Gift card redeemed: ${r.credited} sand bucks`;
-      input.value = '';
-      await this.render();
-    } catch (e) {
-      this.note.textContent = (e as Error).message;
-    } finally {
-      this.busy = false;
-    }
-  }
-
   private async render(): Promise<void> {
-    this.balanceLine.textContent = `${this.bucks} sand bucks`;
+    this.balanceLine.textContent = `${this.bucks} sand dollars (S$)`;
     this.list.innerHTML = '';
     // a promo code: what each offer costs with it
     const promo = this.codes ? this.promoCode() : undefined;
@@ -167,10 +146,10 @@ export class Shop {
       const price = finals.get(o.id) ?? o.bucks;
       const what = o.grants.map((g) => `${g.quantity > 1 ? `${g.quantity} × ` : ''}${prizeName(g.item)}`).join(', ');
       const row = this.row(o.grants[0]?.item ?? 'bag', o.featured ? `${o.name} · best value` : o.name, o.blurb, what, o.featured);
-      const btn = this.button(o.id, price === 0 ? 'Free' : `${price} sand bucks`);
+      const btn = this.button(o.id, price === 0 ? 'Free' : sd(price));
       btn.classList.add('shop-bucks-buy');
       if (price > this.bucks) {
-        btn.textContent = `${price} sand bucks`;
+        btn.textContent = sd(price);
         btn.classList.add('short');
         btn.addEventListener('click', () => this.list.querySelector('.shop-packs')?.scrollIntoView({ block: 'start', behavior: 'smooth' }));
       } else {
@@ -182,7 +161,7 @@ export class Shop {
     const packs = document.createElement('div');
     packs.className = 'shop-packs';
     const h = document.createElement('h3');
-    h.textContent = 'Sand bucks';
+    h.textContent = 'Sand dollars (S$)';
     packs.appendChild(h);
     const mode = shopMode();
     if (mode === 'web' && !this.api.webCheckout) {
@@ -198,7 +177,7 @@ export class Shop {
       packs.appendChild(p);
     }
     for (const p of this.packs) {
-      const row = this.row('bucket', p.name, p.blurb, '', p.featured);
+      const row = this.row('bucket', sd(p.bucks), p.blurb, '', p.featured);
       const btn = this.button(p.id, p.price ?? `$${p.usd.toFixed(2)}`);
       if (mode === 'web' && this.api.webCheckout) btn.addEventListener('click', () => void this.payOnWeb(p, btn));
       else if (mode === 'web') btn.addEventListener('click', () => this.getTheApp());
@@ -235,7 +214,7 @@ export class Shop {
     const ua = navigator.userAgent;
     const link = /iPhone|iPad|Mac/.test(ua) ? APP_LINKS.ios || APP_LINKS.android : APP_LINKS.android || APP_LINKS.ios;
     if (link) window.open(link, '_blank', 'noopener');
-    else this.note.textContent = 'Sand bucks are sold in the beech app on iPhone and Android (coming to the stores soon).';
+    else this.note.textContent = 'Sand dollars (S$) are sold in the beech app on iPhone and Android (coming to the stores soon).';
   }
 
   private async run(btn: HTMLButtonElement, fn: () => Promise<void>): Promise<void> {
@@ -271,7 +250,7 @@ export class Shop {
         this.note.textContent = `${p.name}: thank you!`;
         await this.afterPack(p.id);
       } else if (r === 'pending') {
-        this.note.textContent = 'Your purchase is pending — your sand bucks will arrive when it completes.';
+        this.note.textContent = 'Your purchase is pending — your S$ will arrive when it completes.';
       }
     });
   }
