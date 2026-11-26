@@ -102,6 +102,19 @@ much a beach holds"):
     - `BeachRenderer.update()`, `Horizon.update()`, `NeighborView.update()`, `Hud`, `LiveConditions`, and `main.ts` reuse scratch vectors/colours and dirty-check palette/lighting/DOM updates.
   - **Server OG image rendering −66 %** (`server/src/beachImage.ts`): hoisted constant `Math.pow` terms and per-column/per-row bilinear coordinates and removed per-pixel `[r, g, b]` allocations (~460 → ~157 ms for a 1200×630 card).
 
+- **2026-11-26 performance & bundle-size pass**:
+  - **Client JS bundle size** (`src/input/cameraController.ts`, `src/render/sky.ts`, `src/sim/modes.ts`, `src/net/beachStore.ts`, `src/net/telemetry.ts`, `src/main.ts`):
+    - Replaced `ArcRotateCamera` and `FreeCamera` with `TargetCamera` + a small `OrbitCamera` subclass, dropping Babylon's unused camera inputs, behaviors, collisions, and `Animations` subsystem (−85 KB raw / −18 KB gzip from both main and total).
+    - Replaced `Sky`'s Babylon `Layer` + `DynamicTexture` with a fullscreen clip-space triangle `Mesh`, `ShaderMaterial`, and `RawTexture`, dropping `Layer`, `layerSceneComponent`, `DynamicTexture`, and 4 layer shader chunks (−12 KB raw / −4 KB gzip).
+    - Extracted `src/sim/modes.ts` and lazy-loaded `BeachSim` in `BeachStore` (loaded in parallel when fetching an editable non-local beach) so `BeachSim` is no longer in the main chunk.
+    - Lazy-loaded `beachFileDialog` / `beachFile`, `LocalCheckpointsSection`, and account-only UI panels (`AccountPanel`, `CheckpointsSection`, `Shop`, `ClawMachine`, `VendingMachine`, `CopySheet`, `Leaderboard`, `SocialHub`, `DigFind`, `PierPreview`), and replaced `package.json` imports with `APP_VERSION`.
+    - Sandbox main JS: **1323 → 1188 KB raw (350 → 314 KB gzip, −10.3 %)**; total JS: **1571 → 1476 KB raw (434 → 414 KB gzip, −4.6 %)**. Production (`VITE_ACCOUNTS=1`) main JS: **1494 → 1286 KB raw (401 → 344 KB gzip, −14.2 %)**.
+  - **Simulation tick, another −6 % to −9 %** (`src/sim/beachSim.ts`):
+    - `flow()` skips dead `vx`/`vy` computation on non-final substeps (`computeVel`), threads `wetTop` across substeps, hoists boundary checks in interior Pass 2 loops, and uses a deep-water fast-path (`d + water[kn] >= 2 * maxFluxDepth`) in Pass 1 (`flow` −11 % to −14 %).
+    - `erode()` short-circuits `Math.sqrt` and division when `g2 <= minG2`, and `updateWetFoam()` reads only `sand[]` on dry rows above `wetTop`.
+    - Sim tick in Node: low **5.85 → 5.37 ms**, medium **9.96 → 9.40 ms**, high **15.47 → 14.06 ms**.
+  - **Main-thread allocations** (`src/input/cameraController.ts`): `groundFootprint()`, `forward()`, and `projectDirection()` reuse scratch vectors and matrices instead of allocating every frame.
+
 ## Ideas, if a budget gets tight
 
 - Far neighbor beaches could skip their smallest things (shells, sea glass,
