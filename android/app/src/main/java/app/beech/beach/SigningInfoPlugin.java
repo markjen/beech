@@ -26,7 +26,7 @@ public class SigningInfoPlugin extends Plugin {
     @PluginMethod
     public void getSigningInfo(PluginCall call) {
         try {
-            Signature[] signatures = PackageInfoCompat.getSignatures(
+            List<Signature> signatures = PackageInfoCompat.getSignatures(
                 getContext().getPackageManager(), getContext().getPackageName());
             List<String> sha1 = new ArrayList<>();
             List<String> sha256 = new ArrayList<>();
