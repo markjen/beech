@@ -41,6 +41,7 @@ export class BeachRenderer {
   private texCur: RawTexture;
   private restTex: RawTexture;
   private frameMix = 1;
+  private skipFrameInterpolation = false;
   private readonly lit: LitMaterial[] = [];
   readonly sandMat: ShaderMaterial;
   readonly waterMat: ShaderMaterial;
@@ -685,9 +686,8 @@ export class BeachRenderer {
    * the simulation's over `ms` instead of swapping in one frame.
    */
   easeFromStatic(ms: number): void {
-    this.setStaticMix(1);
+    this.setStaticMix(ms > 0 ? 1 : 0);
     this.ease = ms > 0 ? { t0: performance.now(), ms } : null;
-    if (!this.ease) this.setStaticMix(0);
   }
 
   private setStaticMix(v: number): void {
@@ -718,7 +718,7 @@ export class BeachRenderer {
   // ---------------------------------------------------------------- per frame
 
   /** Upload a new sim frame (becomes "current"; the old current becomes "previous"). */
-  uploadFrame(buf: Float32Array): void {
+  uploadFrame(buf: Float32Array, startsBeach = false): void {
     const t = this.texPrev;
     this.texPrev = this.texCur;
     this.texCur = t;
@@ -731,11 +731,12 @@ export class BeachRenderer {
     }
     this.texGen++;
     this.bindFieldTextures();
-    this.frameMix = 0;
+    this.skipFrameInterpolation = startsBeach;
+    this.frameMix = startsBeach ? 1 : 0;
   }
 
   setFrameMix(m: number): void {
-    this.frameMix = Math.max(0, Math.min(1, m));
+    this.frameMix = this.skipFrameInterpolation ? 1 : Math.max(0, Math.min(1, m));
   }
 
   /** Sample the blend at the same time on both sides of a linked edge. */

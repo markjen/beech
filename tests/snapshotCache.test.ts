@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { GRID_TIERS } from '../src/config';
+import { ApiError } from '../src/net/account';
 import { BeachStore, LOCAL_BEACH, type BeachRef, type Saved, type StoreBackend } from '../src/net/beachStore';
 import { memorySnapshotCache } from '../src/net/snapshotCache';
 import { withSnapshots } from '../src/net/storeBackends';
@@ -63,7 +64,7 @@ describe('snapshots on the device', () => {
     const st = await new BeachStore(grid, rest, withSnapshots(s.backend, cache)).load(theirs('a', 200));
     expect(s.loads).toEqual(['a', 'a']);
     expect(st?.display[0]).toBeCloseTo(0.5);
-    expect((await cache.get('a'))?.updatedAt).toBe(200);
+    expect((await cache.read('a')).snapshot?.updatedAt).toBe(200);
   });
 
   it('a beach the store holds is reloaded from the server, never from the device', async () => {
@@ -114,10 +115,45 @@ describe('snapshots on the device', () => {
   it('keeps at most its capacity, dropping the least recently used', async () => {
     const cache = memorySnapshotCache(2);
     const snap = await saved(0, 1);
-    await cache.put('a', snap);
-    await cache.put('b', snap);
-    await cache.get('a');
-    await cache.put('c', snap);
+    const { generation } = await cache.read('a');
+    await cache.write('a', snap, generation!);
+    await cache.write('b', snap, generation!);
+    await cache.read('a');
+    await cache.write('c', snap, generation!);
     expect(cache.ids()).toEqual(['a', 'c']);
+  });
+
+  it('a fetch started before sign-out cannot refill the cleared cache', async () => {
+    const cache = memorySnapshotCache();
+    const snap = await saved(0.2, 100);
+    let finish!: (snapshot: Saved) => void;
+    let started!: () => void;
+    const network = new Promise<Saved>((resolve) => { finish = resolve; });
+    const fetching = new Promise<void>((resolve) => { started = resolve; });
+    const backend = withSnapshots({
+      async load() {
+        started();
+        return network;
+      },
+      async save() { return { updatedAt: 0 }; },
+    }, cache);
+    const load = backend.load(theirs('a', 100));
+    await fetching;
+    await cache.clear();
+    finish(snap);
+    await load;
+    expect((await cache.read('a')).snapshot).toBeNull();
+  });
+
+  it('clears a kept snapshot if the server refuses access', async () => {
+    const cache = memorySnapshotCache();
+    const { generation } = await cache.read('a');
+    await cache.write('a', await saved(0.2, 100), generation!);
+    const backend = withSnapshots({
+      async load() { throw new ApiError(403, 'forbidden'); },
+      async save() { return { updatedAt: 0 }; },
+    }, cache);
+    await expect(backend.load(theirs('a', 200))).rejects.toMatchObject({ status: 403 });
+    expect((await cache.read('a')).snapshot).toBeNull();
   });
 });

@@ -74,6 +74,19 @@ it('swaps at once when there is no snapshot to ease from', async () => {
   });
 });
 
+it('uses only the new beach on the first frame after a handoff', async () => {
+  await withScene((scene) => {
+    const r = makeRenderer(scene);
+    r.uploadFrame(new Float32Array(64));
+    r.uploadFrame(new Float32Array(64).fill(1), true);
+    r.setFrameMix(0.25);
+    expect(frameMixAt(r, 1000)).toBe(1);
+    r.uploadFrame(new Float32Array(64).fill(2));
+    r.setFrameMix(0.25);
+    expect(frameMixAt(r, 1016)).toBe(0.25);
+  });
+});
+
 it('glides a thing on a snapshot to where a new save put it', async () => {
   await withScene((scene) => {
     const view = new ObjectView(scene, makeRenderer(scene));

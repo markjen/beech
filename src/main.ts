@@ -340,6 +340,7 @@ async function boot() {
   let loadId = 0;
 
   let pendingBuf: Float32Array | null = null;
+  let pendingBeachHandoff = false;
   let pendingTouch = false;
   type SandReply = { delta: Float32Array; objects: PlacedObject[]; cover?: Float32Array };
   /** what's on the beach now (the worker sends the roster when it changes, positions every frame) */
@@ -424,6 +425,7 @@ async function boot() {
       // the worker has the new beach now: move the live renderer there and
       // let the snapshot take the old one, in the same frame
       awaitingLoad = 0;
+      pendingBeachHandoff = true;
       liveArrived();
     }
     // everything's position this frame, in roster order (no objects made per frame)
@@ -2055,7 +2057,7 @@ async function boot() {
   const liveArrived = () => {
     const id = sync.id;
     // the waves moved onto a beach drawn as a snapshot: ease from its water, not a one-frame swap
-    if (id && neighbors?.showsSnapshot(id)) renderer.easeFromStatic(BEACH_STORE.liveEaseMs);
+    renderer.easeFromStatic(id && neighbors?.showsSnapshot(id) ? BEACH_STORE.liveEaseMs : 0);
     neighbors?.setLive(id, renderer);
     const x = id && neighbors ? neighbors.xForBeach(id) : 0;
     placeLive(x ?? 0);
@@ -2182,7 +2184,8 @@ async function boot() {
       const buf = pendingBuf;
       pendingBuf = null;
       picker.updateFromFrame(buf);
-      if (!noRender) renderer.uploadFrame(buf);
+      if (!noRender) renderer.uploadFrame(buf, pendingBeachHandoff);
+      pendingBeachHandoff = false;
       send({ type: 'return', buf }, [buf.buffer]);
     }
 
@@ -2553,6 +2556,7 @@ async function boot() {
     let signedInAs: string | null = null;
     account.onChange((u) => {
       if ((u?.id ?? null) !== signedInAs) {
+        if (signedInAs) void snapshots?.clear();
         undoTargets.length = 0;
         redoTargets.length = 0;
         fenced = false;
@@ -2593,8 +2597,6 @@ async function boot() {
         // still runs past your (local-only) beach — load it
         nv.clear();
         if (signedInAs) {
-          // a shared device: the beaches you looked at go with you
-          void snapshots?.clear();
           void s.resetToLocal().then(() => nv.refresh());
         }
       }
