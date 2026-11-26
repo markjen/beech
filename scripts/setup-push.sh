@@ -88,6 +88,11 @@ ios() {
   echo "Also: developer.apple.com -> Identifiers -> app.beech.beach -> Push Notifications on."
 }
 
+# Fallback only: the Android/FCM setup is Terraform-managed now
+# (infra/firebase.tf — the Firebase project link, the Android app, the
+# FCM API and the beech-run FCM role are all in state). Keep this
+# function for recovery if the Terraform state is ever lost; do not use
+# it for routine setup, or the console and the state will disagree.
 android() {
   say "Android push: FCM"
   "${GC[@]}" services enable fcm.googleapis.com

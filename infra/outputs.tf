@@ -55,6 +55,11 @@ output "monitoring_uptime_checks" {
   }
 }
 
+output "firebase_android_app_id" {
+  description = "Firebase App ID of the Android app (app.beech.beach). The release workflow needs the matching google-services.json in the GOOGLE_SERVICES_JSON GitHub secret; the App ID is how you check the secret matches the registered app."
+  value       = google_firebase_android_app.beech.app_id
+}
+
 output "admin_domain_mapping" {
   description = "Admin console domain mapping name (the domain) and URL. Empty when var.admin_custom_domain is unset — the mapping is only created once the domain is set."
   value = {

@@ -14,6 +14,9 @@ Identity Federation. No keys, no secrets in the repo.
 - A generated database password, stored in Secret Manager as
   `beech-db-password` (the value never appears in the repo)
 - Runtime service account `beech-run` — Cloud SQL client + secret accessor
+- Firebase for Android push (FCM): the project link, the Android app
+  `app.beech.beach`, the FCM + Firebase APIs, and `beech-run`'s
+  `roles/firebasecloudmessaging.admin` grant (see §7 below)
 - Deployer service account `beech-deploy` — Cloud Run admin, Artifact
   Registry writer, service-account user
 - Workload Identity pool + OIDC provider so GitHub Actions can assume
@@ -231,6 +234,37 @@ only the mappings and DNS are missing:
 
 Until the domain is on, the shore is at `/shore` on https://play.beech.games
 (see [SHORE_SITE.md](../docs/SHORE_SITE.md)).
+
+## 7. Firebase (Android push notifications)
+
+The Android app gets push through FCM. The setup is Terraform-managed
+(`infra/firebase.tf`): the Firebase project link, the Android app
+`app.beech.beach` (App ID `1:650382817342:android:762319383603d406b3b96f`),
+the Firebase + FCM APIs, and the `roles/firebasecloudmessaging.admin`
+grant on `beech-run`. Analytics is off, and no other Firebase product is
+enabled. The Firebase resources are **beta-only** in the provider, so
+they use the `google-beta` provider (see `infra/versions.tf`); everything
+else uses the GA provider.
+
+The project was linked to Firebase and the app registered in the console
+on 2026-11-26, before this configuration existed, and then imported into
+state — do not recreate them in the console. The imports used:
+
+```bash
+cd infra
+terraform import google_firebase_project.beech beech-prod
+terraform import google_firebase_android_app.beech 'projects/beech-prod/androidApps/1:650382817342:android:762319383603d406b3b96f'
+terraform import 'google_project_service.apis["firebase.googleapis.com"]' beech-prod/firebase.googleapis.com
+terraform import 'google_project_service.apis["fcm.googleapis.com"]' beech-prod/fcm.googleapis.com
+terraform import google_project_iam_member.beech_run_fcm_admin 'projects/beech-prod roles/firebasecloudmessaging.admin serviceAccount:beech-run@beech-prod.iam.gserviceaccount.com'
+```
+
+What stays outside Terraform (by hand): the `GOOGLE_SERVICES_JSON`
+GitHub secret (download `google-services.json` from Firebase console →
+Project settings), the `FCM_PROJECT_ID` and `NATIVE_PUSH` GitHub
+Actions variables, and the Play Data safety form line for the push
+token (device IDs). See `docs/INBOX_NOTIFICATIONS.md`, "Turning on
+push". iOS push is APNs directly, not Firebase (same doc, §B).
 
 ## Server runtime contract (for reference)
 
