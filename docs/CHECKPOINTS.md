@@ -17,6 +17,10 @@ stars kept). Also added while building:
   onto…** on each checkpoint, an Undo toast, and **export** / **import a
   beach file** (BEACH_FILE.md). The confirm and short dialogs use the
   browser's own `confirm()`, like removing a beach.
+- The account-wide list opens on **All sources** and can be filtered by the
+  source beach or imported files. Checkpoints keep their source beach ID after
+  removal. Older checkpoints whose beaches were already removed use their saved
+  source name.
 - CORS: the phone apps call the API cross-origin, and the allowed headers
   were missing `X-Beach-Items` (every save) and the `PATCH` method (renaming
   a beach). Both are allowed now, with `X-Beach-Epoch` and
@@ -137,7 +141,7 @@ All behind `requireUser`. In the app, everything is behind `ACCOUNTS_ENABLED`.
 
 | | |
 |---|---|
-| `GET /api/checkpoints` | `{ limit, bytesUsed, bytesLimit, checkpoints: [{ id, name, kind, source, fromBeach: { id, name } \| null, location, nx, ny, items, objects, bytes, createdAt }] }`, newest first |
+| `GET /api/checkpoints` | `{ limit, bytesUsed, bytesLimit, checkpoints: [{ id, name, kind, source, fromBeach: { id, name } \| null, originBeachId, fromName, location, nx, ny, items, objects, bytes, createdAt }] }`, newest first |
 | `POST /api/beaches/mine/:id/checkpoints { name }` | copy that beach's saved sand (server side, no upload). 404 if it has no save; 409 at the limit. The app flushes `BeachSync` first when it's the live beach |
 | `POST /api/checkpoints` (body = BCH2 bytes, `X-Checkpoint-Name`, URL-encoded) | import: `inspectBlob`, then store with `source = 'import'`. 400 bad blob, 409 at the limit, 413 too big |
 | `GET /api/checkpoints/:id/sand` | the bytes, with `X-Beach-Nx/Ny/Location` (same as `/api/beach`), for export and preview |

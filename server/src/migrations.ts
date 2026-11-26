@@ -789,6 +789,12 @@ const MIGRATIONS: string[] = [
   ALTER TABLE item_submissions ADD COLUMN for_sale BOOLEAN NOT NULL DEFAULT true;
   UPDATE item_submissions SET for_sale = false WHERE approved_price_cents IS NULL OR approved_price_cents = 0;
   `,
+
+  // 29: remember a checkpoint's source even after the beach reference is cleared.
+  `
+  ALTER TABLE checkpoints ADD COLUMN origin_beach_id UUID;
+  UPDATE checkpoints SET origin_beach_id = from_beach WHERE from_beach IS NOT NULL;
+  `,
 ];
 
 /** Apply migrations up to `upTo` (default: all). Tests use `upTo` to check a migration on older data. */

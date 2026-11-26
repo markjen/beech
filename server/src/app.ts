@@ -759,12 +759,13 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       /* an unreadable old save: keep the bytes, uncounted */
     }
     await db.query(
-      `INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at)
-       SELECT $1, owner_id, $2, 'auto', 'beach', id, name, location, nx, ny, sand, octet_length(sand), $3, $4, $5
+      `INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at, origin_beach_id)
+       SELECT $1, owner_id, $2, 'auto', 'beach', id, name, location, nx, ny, sand, octet_length(sand), $3, $4, $5, id
          FROM beach WHERE id = $6 AND sand IS NOT NULL
        ON CONFLICT (from_beach) WHERE kind = 'auto' DO UPDATE SET
          name = EXCLUDED.name, from_name = EXCLUDED.from_name, location = EXCLUDED.location, nx = EXCLUDED.nx, ny = EXCLUDED.ny,
-         sand = EXCLUDED.sand, bytes = EXCLUDED.bytes, items = EXCLUDED.items, objects = EXCLUDED.objects, created_at = EXCLUDED.created_at`,
+         sand = EXCLUDED.sand, bytes = EXCLUDED.bytes, items = EXCLUDED.items, objects = EXCLUDED.objects, created_at = EXCLUDED.created_at,
+         origin_beach_id = EXCLUDED.origin_beach_id`,
       [crypto.randomUUID(), name, JSON.stringify(items), objects, now, beachId],
     );
     return true;
@@ -1943,6 +1944,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     kind: 'named' | 'auto' | 'tide';
     source: 'beach' | 'import';
     from_beach: string | null;
+    origin_beach_id: string | null;
     from_name: string;
     beach_name: string | null;
     location: string | null;
@@ -1962,6 +1964,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     source: r.source,
     // the beach it came from: its name now if it's still there, else then
     fromBeach: r.from_beach ? { id: r.from_beach, name: r.beach_name ?? r.from_name } : null,
+    originBeachId: r.origin_beach_id ?? r.from_beach,
     fromName: r.from_name,
     location: r.location,
     nx: Number(r.nx),
@@ -1971,7 +1974,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     bytes: Number(r.bytes),
     createdAt: Number(r.created_at),
   });
-  const CHECKPOINT_COLS = `c.id, c.name, c.kind, c.source, c.from_beach, c.from_name, b.name AS beach_name, c.location, c.nx, c.ny, c.bytes, c.items, c.objects, c.created_at`;
+  const CHECKPOINT_COLS = `c.id, c.name, c.kind, c.source, c.from_beach, c.origin_beach_id, c.from_name, b.name AS beach_name, c.location, c.nx, c.ny, c.bytes, c.items, c.objects, c.created_at`;
   const myCheckpoint = async (c: Context<Env>, id: string | undefined): Promise<CheckpointRow & { sand: unknown }> => {
     if (!id || !/^[0-9a-f-]{36}$/.test(id)) fail(404, 'no such checkpoint');
     const rows = await db.query<CheckpointRow & { sand: unknown }>(
@@ -2081,11 +2084,12 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       if (total.bytes + bytes.byteLength > CHECKPOINT_BYTES_PER_USER) fail(413, 'your checkpoints are full: delete some first');
     } else await checkRoom(me, bytes.byteLength);
     const r = await db.query<{ id: string }>(
-      `INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at)
-       VALUES ($1, $2, $3, $14, 'beach', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      `INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at, origin_beach_id)
+       VALUES ($1, $2, $3, $14, 'beach', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $4)
        ON CONFLICT (from_beach) WHERE kind = 'auto' DO UPDATE SET
          name = EXCLUDED.name, from_name = EXCLUDED.from_name, location = EXCLUDED.location, nx = EXCLUDED.nx, ny = EXCLUDED.ny,
-         sand = EXCLUDED.sand, bytes = EXCLUDED.bytes, items = EXCLUDED.items, objects = EXCLUDED.objects, created_at = EXCLUDED.created_at
+         sand = EXCLUDED.sand, bytes = EXCLUDED.bytes, items = EXCLUDED.items, objects = EXCLUDED.objects, created_at = EXCLUDED.created_at,
+         origin_beach_id = EXCLUDED.origin_beach_id
        RETURNING id`,
       [
         crypto.randomUUID(),
@@ -2204,12 +2208,13 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       const now = clock();
       const rows = await tx.query<{ version: number; epoch: number; undo: string | null }>(
         `WITH snap AS (
-           INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at)
-           SELECT $1, owner_id, $2, 'auto', 'beach', id, name, location, nx, ny, sand, octet_length(sand), $3, $4, $5
+           INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at, origin_beach_id)
+           SELECT $1, owner_id, $2, 'auto', 'beach', id, name, location, nx, ny, sand, octet_length(sand), $3, $4, $5, id
              FROM beach WHERE id = $6 AND sand IS NOT NULL
            ON CONFLICT (from_beach) WHERE kind = 'auto' DO UPDATE SET
              name = EXCLUDED.name, from_name = EXCLUDED.from_name, location = EXCLUDED.location, nx = EXCLUDED.nx, ny = EXCLUDED.ny,
-             sand = EXCLUDED.sand, bytes = EXCLUDED.bytes, items = EXCLUDED.items, objects = EXCLUDED.objects, created_at = EXCLUDED.created_at
+             sand = EXCLUDED.sand, bytes = EXCLUDED.bytes, items = EXCLUDED.items, objects = EXCLUDED.objects, created_at = EXCLUDED.created_at,
+             origin_beach_id = EXCLUDED.origin_beach_id
            RETURNING id
          )
          UPDATE beach SET sand = $7, nx = $8, ny = $9, items = $10, version = version + 1, updated_at = $5, epoch = epoch + 1,

@@ -2603,6 +2603,7 @@ async function boot() {
     acct.onBeaches((list) => {
       const ids = new Set(list.map((b) => b.id));
       for (const id of store.ids()) if (id !== LOCAL_BEACH && store.peek(id)?.owned && !ids.has(id) && !isLive(id)) store.forget(id);
+      inventory.setExtraBeachesInUse(acct.extraBeachesInUse);
       updateElsewhereSoon();
     });
     store.onSaved((id, r) => {
@@ -2771,6 +2772,7 @@ async function boot() {
               await sync.bind(home && home.id !== id ? { id: home.id, code: home.code, owned: true } : null);
             }
             await acct.removeBeach(id);
+            void checkpoints.load();
             store.forget(id);
             if (nv.indexOfBeach(id) !== null) {
               await nv.anchorAt(null);
@@ -2918,7 +2920,12 @@ async function boot() {
 
     // what you've won (and later bought), and the claw machine
     const loadOwned = async () => {
-      if (!acct.user) return inventory.setOwned(new Map());
+      const user = acct.user;
+      if (!user) {
+        inventory.setOwned(new Map());
+        inventory.setExtraBeachesInUse(null);
+        return;
+      }
       try {
         const owned = new Map<string, number>();
         const foundBy = new Map<string, string>();
@@ -2926,7 +2933,10 @@ async function boot() {
           owned.set(it.item, (owned.get(it.item) ?? 0) + it.quantity);
           if (it.foundBy !== undefined) foundBy.set(it.item, it.foundBy);
         }
+        if (acct.user !== user) return;
+        const extraBeachesChanged = (owned.get('beach') ?? 0) !== inventory.ownedCount('beach');
         inventory.setOwned(owned, foundBy);
+        if (extraBeachesChanged) void acct.loadBeaches().catch(() => {});
         // what you've dug up, for the bag's "found" list
         const dug = await new DigFindApi(acct).list().catch(() => null);
         if (dug) inventory.setFound(countFound(), dug);

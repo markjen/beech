@@ -984,6 +984,16 @@ body.ambient-idle .shore-home {
 
 /* ---------------------------------------------------------- checkpoints */
 
+.checkpoints .cp-results {
+  display: flex;
+  flex-direction: column;
+  gap: inherit;
+}
+
+.checkpoints .cp-source {
+  max-width: 100%;
+}
+
 .checkpoints .cp-row {
   display: flex;
   flex-direction: column;

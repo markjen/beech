@@ -8,6 +8,7 @@ import { shortfall, type Short } from '../world/checkpointFit';
 import { itemById } from '../world/items';
 import { decodeSand, fitWorld } from '../sim/sandCodec';
 import { drawMap } from './beachFileDialog';
+import { ownBeachLabel } from './shoreConnect';
 import { unlockSteamAchievement } from '../platform/steamFeatures';
 
 /** A checkpoint's thumbnail from its saved bytes (a small top-down map), as an image URL. */
@@ -62,6 +63,8 @@ export function describeShort(short: Short[]): string {
 
 export class CheckpointsSection {
   private list: CheckpointList | null = null;
+  private listOwner: string | null = null;
+  private sourceFilter = '';
   private error = '';
   private busy = false;
   private confirmDelete: { id: string; at: number } | null = null;
@@ -79,14 +82,21 @@ export class CheckpointsSection {
 
   /** (Re)load the list from the server. */
   async load(): Promise<void> {
-    if (!this.account.user) {
+    const owner = this.account.user?.id ?? null;
+    if (owner !== this.listOwner) {
       this.list = null;
-      return;
+      this.listOwner = owner;
+      this.sourceFilter = '';
+      this.error = '';
     }
+    if (!owner) return;
     try {
-      this.list = await this.api.list();
+      const list = await this.api.list();
+      if (this.account.user?.id !== owner) return;
+      this.list = list;
       this.error = '';
     } catch (e) {
+      if (this.account.user?.id !== owner) return;
       this.error = (e as Error).message;
     }
     this.redraw();
@@ -110,6 +120,17 @@ export class CheckpointsSection {
   private beachName(id: string): string {
     const b = this.account.beaches.find((x) => x.id === id);
     return b?.name || (b?.home ? 'your home beach' : 'that beach');
+  }
+
+  private checkpointSource(cp: Checkpoint): { key: string; label: string } {
+    if (cp.source === 'import') return { key: 'import', label: 'Imported files' };
+    const id = cp.originBeachId ?? cp.fromBeach?.id;
+    const beach = this.account.mine(cp.fromBeach?.id);
+    const name = beach ? ownBeachLabel(beach) : cp.fromBeach?.name || cp.fromName || 'A beach';
+    return {
+      key: id ? `beach:${id}` : `removed:${cp.fromName}`,
+      label: cp.fromBeach ? name : `${name} (removed)`,
+    };
   }
 
   /** what's on your beaches other than `target` */
@@ -235,7 +256,41 @@ export class CheckpointsSection {
       note.textContent = 'none yet';
       wrap.appendChild(note);
     }
-    for (const cp of list.checkpoints) wrap.appendChild(this.row(cp));
+    const entries = list.checkpoints.map((cp) => ({ cp, source: this.checkpointSource(cp) }));
+    const sources = new Map<string, string>();
+    for (const { source } of entries) {
+      if (!sources.has(source.key)) sources.set(source.key, source.label);
+    }
+    if (!sources.has(this.sourceFilter)) this.sourceFilter = '';
+    const results = document.createElement('div');
+    results.className = 'cp-results';
+    const renderRows = () => {
+      results.replaceChildren();
+      for (const { cp, source } of entries) {
+        if (!this.sourceFilter || source.key === this.sourceFilter) results.appendChild(this.row(cp, source.label));
+      }
+    };
+    if (sources.size > 1) {
+      const filter = document.createElement('select');
+      filter.className = 'action cp-source';
+      filter.setAttribute('aria-label', 'Filter checkpoints by source');
+      filter.add(new Option('All sources', ''));
+      const labels = new Map<string, number>();
+      const ordered = [...sources].sort(([a, nameA], [b, nameB]) => nameA.localeCompare(nameB) || a.localeCompare(b));
+      for (const [key, label] of ordered) {
+        const n = (labels.get(label) ?? 0) + 1;
+        labels.set(label, n);
+        filter.add(new Option(n === 1 ? label : `${label} (${n})`, key));
+      }
+      filter.value = this.sourceFilter;
+      filter.addEventListener('change', () => {
+        this.sourceFilter = filter.value;
+        renderRows();
+      });
+      buttons.appendChild(filter);
+    }
+    renderRows();
+    wrap.appendChild(results);
     if (this.error) {
       const err = document.createElement('div');
       err.className = 'err';
@@ -245,7 +300,7 @@ export class CheckpointsSection {
     return wrap;
   }
 
-  private row(cp: Checkpoint): HTMLElement {
+  private row(cp: Checkpoint, sourceLabel: string): HTMLElement {
     const a = this.account;
     const row = document.createElement('div');
     row.className = `cp-row${cp.kind !== 'named' ? ' auto' : ''}`;
@@ -278,19 +333,16 @@ export class CheckpointsSection {
     name.textContent = cp.name;
     const meta = document.createElement('span');
     meta.className = 'cp-meta';
-    const from =
+    const kind =
       cp.kind === 'auto'
         ? cp.name.startsWith('Auto-save ')
           ? 'auto-saved daily'
           : cp.name.startsWith('Before import')
             ? 'kept before an import'
             : 'kept before a restore'
-        : cp.kind === 'tide'
-          ? 'kept before the tide came in'
-          : cp.source === 'import'
-          ? 'imported'
-          : `from ${cp.fromBeach?.name || cp.fromName || (cp.fromBeach?.id === a.beaches.find((b) => b.home)?.id ? 'home' : 'a beach')}${cp.fromBeach ? '' : ' (removed)'}`;
-    meta.textContent = `${from} · ${ago(cp.createdAt)}`;
+        : cp.kind === 'tide' ? 'kept before the tide came in' : '';
+    const from = cp.source === 'import' ? 'imported' : `from ${sourceLabel}`;
+    meta.textContent = [kind, from, ago(cp.createdAt)].filter(Boolean).join(' · ');
     title.append(name, meta);
     row.appendChild(title);
     // the non-free things on it; red when restoring here would be short
