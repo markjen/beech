@@ -26,8 +26,7 @@ import { fakeReport, setWeatherReport, shortWeather, usesFahrenheit, weatherFor,
 import { startWeather } from './net/weather';
 import { mixLive, shoreLightMix } from './world/shoreLight';
 import { BEACHES, beachById, defaultBeach, nearestBeach, type Beach } from './world/locations';
-import type { BrushMode, CastleShape, ClearingMode, SandMode } from './sim/beachSim';
-import { isClearingMode, isSandMode } from './sim/beachSim';
+import { isClearingMode, isSandMode, type BrushMode, type CastleShape, type ClearingMode, type SandMode } from './sim/modes';
 import { DIG_FIND_ROLL_COOLDOWN_MS, qualifiesForFind } from './sim/digFinds';
 import { POS_STRIDE, type ObjectState, type PlacedObject } from './sim/objects';
 import type { FrameInfo, FromWorker, ToWorker } from './sim/protocol';
@@ -37,16 +36,14 @@ import type { UndoHistory } from './sim/undoStack';
 import { restHeight } from './sim/profile';
 import { Ambient, toggleFullscreen } from './ui/ambient';
 import { Hud, icon, type DirtDef } from './ui/hud';
-import { SocialHub, StarredDialog, VisitDialog } from './ui/socialHub';
+import type { SocialHub } from './ui/socialHub';
 import { SettingsSheet, StartScreen, showActionToast, showPaneToast, showToast } from './ui/overlays';
-import { CheckpointsSection } from './ui/checkpoints';
 import { InventoryTray, PlaceBar, sd } from './ui/inventory';
-import { ClawMachine } from './ui/clawMachine';
-import { DigFind } from './ui/digFind';
-import { Shop } from './ui/shop';
+import type { ClawMachine } from './ui/clawMachine';
+import type { DigFind } from './ui/digFind';
+import type { Shop } from './ui/shop';
 import { codesAllowed, ShopApi, webOrderFromUrl, withoutWebOrderParams, type BagEntry } from './net/shop';
-import { CopySheet, rememberCopy, takePendingCopy } from './ui/copyBeach';
-import { VendingMachine } from './ui/vendingMachine';
+import type { VendingMachine } from './ui/vendingMachine';
 import { DEFAULT_SIZE, ITEMS, rollPlacement, type Item } from './world/items';
 import { footprintDrag, footprintFarSide, type FootprintStroke } from './world/footprints';
 import { ACCOUNTS_ENABLED, Account, AnimalsApi, ApiError, CheckpointApi, CopyApi, DigFindApi, GuideApi, InboxApi, PullApi, ReferralApi, type PetDto, type ShoreBeach } from './net/account';
@@ -62,24 +59,21 @@ import { BeachStore, LOCAL_BEACH, type BeachRef } from './net/beachStore';
 import { beachBackend } from './net/storeBackends';
 import { idbSnapshotCache } from './net/snapshotCache';
 import { snapshotBeforeBigEdit } from './net/bigEditSnapshot';
-import { AccountPanel } from './ui/accountPanel';
-import { PierPreview } from './ui/pierPreview';
+import type { AccountPanel } from './ui/accountPanel';
+import type { PierPreview } from './ui/pierPreview';
 import { sectionById } from './world/sections';
 import type { SectionsEditor } from './ui/sectionsEditor';
 import { ownBeachLabel } from './ui/shoreConnect';
-import { Leaderboard } from './ui/leaderboard';
+import type { Leaderboard } from './ui/leaderboard';
 import { NeighborView } from './render/neighbors';
 import { loadSettings, saveSettings, type Settings, type WaveStrength } from './ui/settingsStore';
 import { initTelemetry, reportError, reportEvent } from './net/telemetry';
-import { LocalCheckpointsSection } from './ui/localCheckpoints';
-import { watchForNewVersion } from './platform/version';
+import { APP_VERSION, watchForNewVersion } from './platform/version';
 import { isSteam, steamBridge, usesHostedClient } from './platform/runtime';
 import { unlockSteamAchievement, updateSteamRichPresence } from './platform/steamFeatures';
 import { canSchedulePetReminders, requestPetReminderPermission, setPetHungerReminder } from './platform/petNotify';
 import { GamepadController } from './input/gamepad';
-import { BeachFileDialog, beachFileName, pickFile, saveText, type BeachFileHost } from './ui/beachFileDialog';
-import { parseBeachFile, writeBeachFile } from './world/beachFile';
-import { version as APP_VERSION } from '../package.json';
+import type { BeachFileDialog, BeachFileHost } from './ui/beachFileDialog';
 
 // Unhandled errors + one page-load timing sample go to /api/client-events,
 // so phones are visible in Cloud Logging too. First, so early errors count.
@@ -930,7 +924,7 @@ async function boot() {
       smoothTarget: () => settingsBeachId(),
       share: () => void share(),
       exportBeach: () => void exportBeach(),
-      importBeach: () => void beachFiles.pick(),
+      importBeach: () => void getBeachFiles().then((d) => d.pick()),
       fullscreen: () => void toggleFullscreen(),
       tv: () => {
         // one tap for the TV: idle controls + wake lock, seated on the sand,
@@ -1154,9 +1148,13 @@ async function boot() {
   });
 
   // beach files (docs/BEACH_FILE.md): export what's here, import a designed beach
+  const loadBeachFileMods = () => Promise.all([import('./ui/beachFileDialog'), import('./world/beachFile')]);
   const myBeachName = () => account?.mine(sync.id)?.name || beach.name;
   const exportBeach = async () => {
-    const { delta, objects, cover } = await getSand();
+    const [{ delta, objects, cover }, [{ beachFileName, saveText }, { writeBeachFile }]] = await Promise.all([
+      getSand(),
+      loadBeachFileMods(),
+    ]);
     const name = myBeachName();
     const text = await writeBeachFile(
       { nx: grid.nx, ny: grid.ny, delta, objects, ...(cover ? { cover } : {}) },
@@ -1182,7 +1180,14 @@ async function boot() {
       showToast(uiRoot, b.name ? `${b.name} is here. Undo brings your beach back.` : 'Imported. Undo brings your beach back.');
     },
   };
-  const beachFiles = new BeachFileDialog(uiRoot, beachFileHost);
+  let beachFilesDialog: BeachFileDialog | null = null;
+  const getBeachFiles = async (): Promise<BeachFileDialog> => {
+    if (!beachFilesDialog) {
+      const { BeachFileDialog } = await import('./ui/beachFileDialog');
+      beachFilesDialog = new BeachFileDialog(uiRoot, beachFileHost);
+    }
+    return beachFilesDialog;
+  };
   const sizeOf = (id: string) => settings.itemSizes?.[id] ?? DEFAULT_SIZE;
   const placeBar = new PlaceBar(
     hud.root,
@@ -2870,17 +2875,42 @@ async function boot() {
       await cpApi.save(here, 'Before import', true);
       void checkpoints.load();
     };
+    const [
+      { CheckpointsSection },
+      { AccountPanel },
+      { Leaderboard },
+      { SocialHub, StarredDialog, VisitDialog },
+      { ClawMachine },
+      { Shop },
+      { CopySheet, rememberCopy, takePendingCopy },
+      { VendingMachine },
+      { DigFind },
+    ] = await Promise.all([
+      import('./ui/checkpoints'),
+      import('./ui/accountPanel'),
+      import('./ui/leaderboard'),
+      import('./ui/socialHub'),
+      import('./ui/clawMachine'),
+      import('./ui/shop'),
+      import('./ui/copyBeach'),
+      import('./ui/vendingMachine'),
+      import('./ui/digFind'),
+    ]);
     const checkpoints = new CheckpointsSection(
       cpApi,
       acct,
       {
         exportCheckpoint: async (cp) => {
-          const { bytes, location } = await cpApi.sand(cp.id);
+          const [{ bytes, location }, [{ beachFileName, saveText }, { writeBeachFile }]] = await Promise.all([
+            cpApi.sand(cp.id),
+            loadBeachFileMods(),
+          ]);
           const b = fitWorld(await decodeSand(bytes));
           const text = await writeBeachFile(b, { name: cp.name, location: location || undefined, createdWith: `beech ${APP_VERSION}` });
           await saveText(beachFileName(cp.name), text);
         },
         importAsCheckpoint: async () => {
+          const [{ pickFile }, { parseBeachFile }] = await loadBeachFileMods();
           const f = await pickFile();
           if (!f) return;
           const r = await parseBeachFile(await f.text(), { nx: grid.nx, ny: grid.ny });
@@ -3084,19 +3114,24 @@ async function boot() {
           show(b.sections ?? []);
         },
         previewPier: (b) => {
-          pierPreview ??= new PierPreview(uiRoot);
-          const preview = pierPreview;
-          void openMine(b.id);
-          nv.previewPier(b.id);
-          preview.show(
-            `pier · ${ownBeachLabel(b)}`,
-            async () => {
-              await acct.placePier(b.id);
-              await nv.refresh();
-              nv.previewPier(null);
-            },
-            () => nv.previewPier(null),
-          );
+          void (async () => {
+            if (!pierPreview) {
+              const { PierPreview } = await import('./ui/pierPreview');
+              pierPreview = new PierPreview(uiRoot);
+            }
+            const preview = pierPreview;
+            void openMine(b.id);
+            nv.previewPier(b.id);
+            preview.show(
+              `pier · ${ownBeachLabel(b)}`,
+              async () => {
+                await acct.placePier(b.id);
+                await nv.refresh();
+                nv.previewPier(null);
+              },
+              () => nv.previewPier(null),
+            );
+          })();
         },
       },
       checkpoints,
@@ -3744,6 +3779,7 @@ async function boot() {
       };
     };
     // (the beach itself is the store's `local` beach: kept in IndexedDB by its backend)
+    const { LocalCheckpointsSection } = await import('./ui/localCheckpoints');
     new LocalCheckpointsSection(sheet.accountSlot, {
       snapshot: async () => {
         const { delta, objects, cover } = await getSand();
@@ -3757,10 +3793,14 @@ async function boot() {
         markDirty(1500);
       },
       exportFile: async (name, bytes) => {
-        const b = fitWorld(await decodeSand(bytes));
+        const [b, [{ beachFileName, saveText }, { writeBeachFile }]] = await Promise.all([
+          decodeSand(bytes).then(fitWorld),
+          loadBeachFileMods(),
+        ]);
         await saveText(beachFileName(name), await writeBeachFile(b, { name, createdWith: `beech ${APP_VERSION}` }));
       },
       importFile: async () => {
+        const [{ pickFile }, { parseBeachFile }] = await loadBeachFileMods();
         const f = await pickFile();
         if (!f) return null;
         const r = await parseBeachFile(await f.text(), { nx: grid.nx, ny: grid.ny });

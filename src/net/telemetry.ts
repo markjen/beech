@@ -1,6 +1,6 @@
 import { Capacitor } from '@capacitor/core';
 
-import { version as APP_VERSION } from '../../package.json';
+import { APP_VERSION } from '../platform/version';
 import { APP_BUILD } from '../platform/version';
 
 // Reports client errors (both unhandled and caught failures like sign-in,

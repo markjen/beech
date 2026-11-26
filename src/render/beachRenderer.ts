@@ -5,7 +5,6 @@ import type { Engine } from '@babylonjs/core/Engines/engine';
 import { Effect } from '@babylonjs/core/Materials/effect';
 import { ShaderMaterial } from '@babylonjs/core/Materials/shaderMaterial';
 import { RawTexture } from '@babylonjs/core/Materials/Textures/rawTexture';
-import { Texture } from '@babylonjs/core/Materials/Textures/texture';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
 import { Vector2, Vector3, Vector4 } from '@babylonjs/core/Maths/math.vector';
 import { Mesh } from '@babylonjs/core/Meshes/mesh';
@@ -348,8 +347,8 @@ export class BeachRenderer {
       Constants.TEXTURETYPE_FLOAT,
     );
     t.name = name;
-    t.wrapU = Texture.CLAMP_ADDRESSMODE;
-    t.wrapV = Texture.CLAMP_ADDRESSMODE;
+    t.wrapU = Constants.TEXTURE_CLAMP_ADDRESSMODE;
+    t.wrapV = Constants.TEXTURE_CLAMP_ADDRESSMODE;
     return t;
   }
 

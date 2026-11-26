@@ -1,9 +1,29 @@
-import { DynamicTexture } from '@babylonjs/core/Materials/Textures/dynamicTexture';
-import { Layer } from '@babylonjs/core/Layers/layer';
-import '@babylonjs/core/Layers/layerSceneComponent';
+import { Constants } from '@babylonjs/core/Engines/constants';
+import { Effect } from '@babylonjs/core/Materials/effect';
+import { ShaderMaterial } from '@babylonjs/core/Materials/shaderMaterial';
+import { RawTexture } from '@babylonjs/core/Materials/Textures/rawTexture';
+import { Mesh } from '@babylonjs/core/Meshes/mesh';
+import { VertexData } from '@babylonjs/core/Meshes/mesh.vertexData';
 import type { Scene } from '@babylonjs/core/scene';
 
 import { rgbToCss, WEATHER_COLORS, type Palette } from '../palette';
+
+const SKY_VERT = `
+precision highp float;
+attribute vec3 position;
+varying vec2 vUv;
+void main() {
+  vUv = vec2(position.x * 0.5 + 0.5, 0.5 - position.y * 0.5);
+  gl_Position = vec4(position.xy, 1.0, 1.0);
+}`;
+
+const SKY_FRAG = `
+precision highp float;
+varying vec2 vUv;
+uniform sampler2D skyTex;
+void main() {
+  gl_FragColor = texture2D(skyTex, vUv);
+}`;
 
 /** Where to draw a sun or moon on the backdrop (fractions of the screen). */
 export interface SkyDisc {
@@ -42,16 +62,59 @@ const STARS: [number, number, number][] = [];
  * when something visible changes.
  */
 export class Sky {
-  private tex: DynamicTexture;
-  private readonly layer: Layer;
+  private readonly canvas: HTMLCanvasElement;
+  private readonly ctx: CanvasRenderingContext2D;
+  private readonly mat: ShaderMaterial;
+  private tex: RawTexture;
   private lastKey = '';
   private w = 4;
   private h = 256;
 
   constructor(private readonly scene: Scene) {
-    this.tex = new DynamicTexture('sky', { width: this.w, height: this.h }, scene, false);
-    this.layer = new Layer('skyLayer', null, scene, true);
-    this.layer.texture = this.tex;
+    this.canvas = document.createElement('canvas');
+    this.canvas.width = this.w;
+    this.canvas.height = this.h;
+    this.ctx = this.canvas.getContext('2d', { willReadFrequently: true })!;
+
+    Effect.ShadersStore['beechSkyVertexShader'] = SKY_VERT;
+    Effect.ShadersStore['beechSkyFragmentShader'] = SKY_FRAG;
+
+    this.tex = this.makeTex(this.w, this.h);
+    this.mat = new ShaderMaterial(
+      'skyMat',
+      scene,
+      { vertex: 'beechSky', fragment: 'beechSky' },
+      { attributes: ['position'], uniforms: [], samplers: ['skyTex'], needAlphaBlending: false },
+    );
+    this.mat.backFaceCulling = false;
+    this.mat.disableDepthWrite = true;
+    this.mat.depthFunction = Constants.LEQUAL;
+    this.mat.setTexture('skyTex', this.tex);
+
+    const mesh = new Mesh('sky', scene);
+    const vd = new VertexData();
+    vd.positions = [-1, -1, 0, 3, -1, 0, -1, 3, 0];
+    vd.indices = [0, 1, 2];
+    vd.applyToMesh(mesh);
+    mesh.material = this.mat;
+    mesh.alwaysSelectAsActiveMesh = true;
+    mesh.isPickable = false;
+    mesh.freezeWorldMatrix();
+  }
+
+  private makeTex(w: number, h: number): RawTexture {
+    const tex = RawTexture.CreateRGBATexture(
+      new Uint8Array(w * h * 4),
+      w,
+      h,
+      this.scene,
+      false,
+      false,
+      Constants.TEXTURE_BILINEAR_SAMPLINGMODE,
+    );
+    tex.wrapU = Constants.TEXTURE_CLAMP_ADDRESSMODE;
+    tex.wrapV = Constants.TEXTURE_CLAMP_ADDRESSMODE;
+    return tex;
   }
 
   private ensureSize(aspect: number): void {
@@ -60,9 +123,11 @@ export class Sky {
     if (w === this.w && h === this.h) return;
     this.w = w;
     this.h = h;
+    this.canvas.width = w;
+    this.canvas.height = h;
     this.tex.dispose();
-    this.tex = new DynamicTexture('sky', { width: w, height: h }, this.scene, false);
-    this.layer.texture = this.tex;
+    this.tex = this.makeTex(w, h);
+    this.mat.setTexture('skyTex', this.tex);
     this.lastKey = '';
   }
 
@@ -83,11 +148,7 @@ export class Sky {
     ].join('|');
     if (key === this.lastKey) return;
     this.lastKey = key;
-    const { w, h } = this;
-    const ctx = this.tex.getContext() as CanvasRenderingContext2D;
-    // the layer samples the texture bottom-up, so draw upside down
-    ctx.save();
-    ctx.setTransform(1, 0, 0, -1, 0, h);
+    const { w, h, ctx } = this;
     const g = ctx.createLinearGradient(0, 0, 0, h);
     g.addColorStop(0, rgbToCss(p.skyTop));
     g.addColorStop(0.55, rgbToCss(p.skyBottom));
@@ -144,8 +205,7 @@ export class Sky {
       ctx.fill();
     }
     if (sky.clouds && sky.clouds.amount > 0.02) this.drawClouds(ctx, sky.clouds, unit);
-    ctx.restore();
-    this.tex.update(false);
+    this.tex.update(ctx.getImageData(0, 0, w, h).data);
   }
 
   /** Soft puffs drifting with the wind; greyer and flatter as the sky closes over. */

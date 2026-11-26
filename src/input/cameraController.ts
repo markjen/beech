@@ -1,6 +1,5 @@
-import { ArcRotateCamera } from '@babylonjs/core/Cameras/arcRotateCamera';
 import { Camera } from '@babylonjs/core/Cameras/camera';
-import { FreeCamera } from '@babylonjs/core/Cameras/freeCamera';
+import { TargetCamera } from '@babylonjs/core/Cameras/targetCamera';
 import { Matrix, Vector3 } from '@babylonjs/core/Maths/math.vector';
 import '@babylonjs/core/Culling/ray';
 import type { Scene } from '@babylonjs/core/scene';
@@ -11,6 +10,75 @@ import { brushRadiusOnSand, worldPerPx, zoomLimits } from './brushMath';
 const TAU = Math.PI * 2;
 const PICK_Y = 0.2;
 const DEG = Math.PI / 180;
+
+/**
+ * Minimal spherical-orbit camera over TargetCamera. Replaces Babylon's
+ * ArcRotateCamera (which pulls in pointer/keyboard/wheel inputs, bouncing &
+ * framing behaviors, and the Animation subsystem) since CameraController drives
+ * all gestures and easing itself.
+ */
+class OrbitCamera extends TargetCamera {
+  alpha: number;
+  beta: number;
+  radius: number;
+  private _orbitTarget: Vector3;
+  private _lastAlpha = Number.NaN;
+  private _lastBeta = Number.NaN;
+  private _lastRadius = Number.NaN;
+  private readonly _lastTarget = new Vector3(Number.NaN, Number.NaN, Number.NaN);
+
+  constructor(name: string, alpha: number, beta: number, radius: number, target: Vector3, scene: Scene) {
+    super(name, Vector3.Zero(), scene);
+    this.alpha = alpha;
+    this.beta = beta;
+    this.radius = radius;
+    this._orbitTarget = target;
+    this._syncPosition();
+  }
+
+  override get target(): Vector3 {
+    return this._orbitTarget;
+  }
+
+  override set target(v: Vector3) {
+    this._orbitTarget = v;
+  }
+
+  private _syncPosition(): void {
+    const sinb = Math.sin(this.beta) || 0.0001;
+    const t = this._orbitTarget;
+    this.position.set(
+      t.x + this.radius * Math.cos(this.alpha) * sinb,
+      t.y + this.radius * Math.cos(this.beta),
+      t.z + this.radius * Math.sin(this.alpha) * sinb,
+    );
+  }
+
+  override _updateCache(ignoreParentClass?: boolean): void {
+    if (!ignoreParentClass) super._updateCache();
+    this._lastAlpha = this.alpha;
+    this._lastBeta = this.beta;
+    this._lastRadius = this.radius;
+    this._lastTarget.copyFrom(this._orbitTarget);
+  }
+
+  override _isSynchronizedViewMatrix(): boolean {
+    if (!super._isSynchronizedViewMatrix()) return false;
+    return (
+      this._lastAlpha === this.alpha &&
+      this._lastBeta === this.beta &&
+      this._lastRadius === this.radius &&
+      this._lastTarget.equals(this._orbitTarget)
+    );
+  }
+
+  override _getViewMatrix(): Matrix {
+    this._syncPosition();
+    this._currentTarget.copyFrom(this._orbitTarget);
+    this._computeViewMatrix(this.position, this._orbitTarget, this.upVector);
+    return this._viewMatrix;
+  }
+}
 
 export type ViewMode = 'diorama' | 'chair';
 
@@ -43,8 +111,8 @@ export const TILT = { min: 12 * DEG, max: 80 * DEG };
  * natural thing for the current view.
  */
 export class CameraController {
-  readonly camera: ArcRotateCamera;
-  readonly chairCam: FreeCamera;
+  readonly camera: OrbitCamera;
+  readonly chairCam: TargetCamera;
   mode: ViewMode = 'diorama';
   halfH: number = CAMERA.defaultHalfHeight;
   private snapTarget: number | null = null;
@@ -81,7 +149,7 @@ export class CameraController {
     private readonly cellSize: number,
   ) {
     const beta = Math.PI / 2 - CAMERA.elevation * DEG;
-    this.camera = new ArcRotateCamera('cam', CAMERA.alpha, beta, CAMERA.radius, new Vector3(0, PICK_Y, PROFILE.shoreline - WORLD_SIZE_Z / 2 + 1), scene); // just up from the waterline
+    this.camera = new OrbitCamera('cam', CAMERA.alpha, beta, CAMERA.radius, new Vector3(0, PICK_Y, PROFILE.shoreline - WORLD_SIZE_Z / 2 + 1), scene); // just up from the waterline
     this.camera.mode = Camera.ORTHOGRAPHIC_CAMERA;
     this.camera.minZ = 1;
     this.camera.maxZ = 400;
@@ -90,11 +158,10 @@ export class CameraController {
     this.halfH = this.clampZoom(this.fitHalfHeight(WORLD_SIZE_Z - EXTRA_SEA) * (this.aspect() < 1 ? 0.55 : 0.85));
     this.applyOrtho();
 
-    this.chairCam = new FreeCamera('chair', new Vector3(0, 2, CHAIR.seatZ), scene, false);
+    this.chairCam = new TargetCamera('chair', new Vector3(0, 2, CHAIR.seatZ), scene, false);
     this.chairCam.minZ = 0.05;
     this.chairCam.maxZ = 2000;
     this.chairCam.inertia = 0;
-    this.chairCam.inputs.clear();
     this.applyChair();
     scene.activeCamera = this.camera;
   }
@@ -250,6 +317,20 @@ export class CameraController {
     return zoomLimits(this.canvas.clientHeight, this.cellSize, this.fitHalfHeight());
   }
 
+  private readonly _invMat = new Matrix();
+  private readonly _vpMat = new Matrix();
+  private readonly _idMat = Matrix.Identity();
+  private readonly _v0 = new Vector3();
+  private readonly _v1 = new Vector3();
+  private readonly _fwd = new Vector3();
+  private readonly _unitZ = new Vector3(0, 0, 1);
+  private readonly _foot: { x: number; z: number }[] = [
+    { x: 0, z: 0 },
+    { x: 0, z: 0 },
+    { x: 0, z: 0 },
+    { x: 0, z: 0 },
+  ];
+
   /**
    * The diorama view's footprint on the ground plane at height `y`: the four
    * screen corners carried along the view direction, in order. Null in the
@@ -258,18 +339,28 @@ export class CameraController {
   groundFootprint(y = 0): { x: number; z: number }[] | null {
     if (this.mode !== 'diorama' || this.anim) return null;
     const cam = this.camera;
-    const inv = cam.getViewMatrix().clone().invert();
-    const dir = cam.target.subtract(cam.position).normalize();
+    cam.getViewMatrix().invertToRef(this._invMat);
+    const dir = this._v0;
+    cam.target.subtractToRef(cam.position, dir).normalize();
     if (Math.abs(dir.y) < 1e-4) return null;
     const a = this.aspect();
     const h = this.halfH;
-    const out: { x: number; z: number }[] = [];
-    for (const [sx, sy] of [[-1, 1], [1, 1], [1, -1], [-1, -1]]) {
-      const p = Vector3.TransformCoordinates(new Vector3(sx * h * a, sy * h, 0), inv);
+    const ha = h * a;
+    const p = this._v1;
+    const corners: readonly [number, number][] = [
+      [-ha, h],
+      [ha, h],
+      [ha, -h],
+      [-ha, -h],
+    ];
+    for (let i = 0; i < 4; i++) {
+      p.set(corners[i][0], corners[i][1], 0);
+      Vector3.TransformCoordinatesToRef(p, this._invMat, p);
       const t = (y - p.y) / dir.y;
-      out.push({ x: p.x + dir.x * t, z: p.z + dir.z * t });
+      this._foot[i].x = p.x + dir.x * t;
+      this._foot[i].z = p.z + dir.z * t;
     }
-    return out;
+    return this._foot;
   }
 
   /** 0 = zoomed in close, 1 = zoomed right out (used for the sound mix). */
@@ -297,7 +388,8 @@ export class CameraController {
   }
 
   forward(): Vector3 {
-    return this.active.getForwardRay(1).direction.clone();
+    this.active.getDirectionToRef(this._unitZ, this._fwd);
+    return this._fwd;
   }
 
   /**
@@ -307,13 +399,14 @@ export class CameraController {
   projectDirection(dir: [number, number, number]): { x: number; y: number; front: boolean } {
     const cam = this.active;
     const origin = cam.globalPosition;
-    const far = origin.add(new Vector3(dir[0], dir[1], dir[2]).scale(1000));
+    const far = this._v0.set(origin.x + dir[0] * 1000, origin.y + dir[1] * 1000, origin.z + dir[2] * 1000);
     const engine = this.scene.getEngine();
     const w = engine.getRenderWidth();
     const h = engine.getRenderHeight();
-    const p = Vector3.Project(far, Matrix.Identity(), cam.getViewMatrix().multiply(cam.getProjectionMatrix()), cam.viewport.toGlobal(w, h));
+    cam.getViewMatrix().multiplyToRef(cam.getProjectionMatrix(), this._vpMat);
+    Vector3.ProjectToRef(far, this._idMat, this._vpMat, cam.viewport.toGlobal(w, h), this._v1);
     const fwd = this.forward();
-    return { x: p.x / w, y: p.y / h, front: fwd.x * dir[0] + fwd.y * dir[1] + fwd.z * dir[2] > 0 };
+    return { x: this._v1.x / w, y: this._v1.y / h, front: fwd.x * dir[0] + fwd.y * dir[1] + fwd.z * dir[2] > 0 };
   }
 
   // ------------------------------------------------------------ actions

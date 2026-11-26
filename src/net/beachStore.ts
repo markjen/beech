@@ -1,9 +1,18 @@
 import { BEACH_STORE, type GridSpec } from '../config';
-import { BeachSim } from '../sim/beachSim';
+import type { BeachSim } from '../sim/beachSim';
 import { applyRockCover, type PlacedObject } from '../sim/objects';
 import { decodeSand, encodeSand, fitWorld, objectsToSave, resampleField } from '../sim/sandCodec';
 import type { UndoHistory } from '../sim/undoStack';
 import { itemById } from '../world/items';
+
+type BeachSimCtor = typeof BeachSim;
+let editSimCtor: BeachSimCtor | null = null;
+let editSimLoading: Promise<BeachSimCtor> | null = null;
+
+function loadEditSimCtor(): Promise<BeachSimCtor> {
+  if (editSimCtor) return Promise.resolve(editSimCtor);
+  return (editSimLoading ??= import('../sim/beachSim').then((m) => (editSimCtor = m.BeachSim)));
+}
 
 /**
  * Beach state on the client, kept in memory by beach id
@@ -293,9 +302,10 @@ export class BeachStore {
     const gen = this.generation;
     const reload = this.states.has(ref.id);
     const p = (async () => {
+      const needSim = ref.owned && ref.id !== LOCAL_BEACH && !this.sources.has(ref.id);
       let saved: Saved | null;
       try {
-        saved = await this.backend.load(ref, { reload });
+        [saved] = await Promise.all([this.backend.load(ref, { reload }), needSim ? loadEditSimCtor() : Promise.resolve(null)]);
       } catch {
         return gen === this.generation ? this.states.get(ref.id) ?? null : null;
       }
@@ -441,6 +451,7 @@ export class BeachStore {
     this.sources.delete(id);
     const st = this.states.get(id);
     if (!st) return;
+    if (st.owned && id !== LOCAL_BEACH) void loadEditSimCtor();
     this.applySand(st, sand);
     st.history = sand.history;
     this.changed(id);
@@ -460,7 +471,11 @@ export class BeachStore {
     if (!st || !st.owned || this.sources.has(id)) return null;
     st.lastUsed = ++this.clock;
     if (!st.sim) {
-      const sim = new BeachSim(this.grid, this.seed, { waves: false, tide: false, erosion: false, healing: false, seep: false });
+      if (!editSimCtor) {
+        void loadEditSimCtor();
+        return null;
+      }
+      const sim = new editSimCtor(this.grid, this.seed, { waves: false, tide: false, erosion: false, healing: false, seep: false });
       sim.loadDelta(st.delta, st.objects, st.cover, st.history);
       st.history = undefined;
       st.sim = sim;
