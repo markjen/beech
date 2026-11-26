@@ -867,8 +867,13 @@ here: it needs the service's URL on the web OAuth client.
   about the beach in front of it: every 5 s while its owner is on it, every
   30 s otherwise, and fetches the sand again when the version moves on (the
   owner's saves and the server's catch-ups). `npm run e2e:live` checks a
-  dig reaches a visitor. Not done: the viewer's sand snaps to the new save
-  rather than easing in, and no SSE (polling only).
+  dig reaches a visitor. Since 2026-11-26 the viewer's sand eases to each
+  new save over 1 s (`BeachRenderer.easeStatic`: the old snapshot becomes
+  the previous frame and `frameMix` runs 0 → 1; `BEACH_STORE.viewerEaseMs`),
+  and things on any snapshot beach glide to where a new save or a drag
+  preview puts them (`ObjectView.glide`, called per frame from `Neighbors`;
+  before, a moved thing on a snapshot only moved when the whole beach was
+  rebuilt). Not done: SSE (polling only).
 - e2e on 2026-11-24 after rebasing onto main 6f6fa8c: `accounts`,
   `neighbors` and `live` pass. `shore`, `beaches` and `leaderboard` time
   out at the same steps on plain main too (signing a second person in on

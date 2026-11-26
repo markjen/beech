@@ -1281,8 +1281,16 @@ export class ObjectView {
   }
 
   update(dt: number): void {
-    this.time += dt;
     this.bank.tick(dt);
+    this.glide(dt);
+  }
+
+  /**
+   * Move things toward where they belong, without ticking the shared prop
+   * bank (its wind and glow advance once a frame, from your own beach's view).
+   */
+  glide(dt: number): void {
+    this.time += dt;
     if (this.hidden || this.active.size === 0) return;
     const ease = 1 - Math.exp(-dt * 12);
     for (const s of this.active) {

@@ -2,7 +2,7 @@ import type { Ray } from '@babylonjs/core/Culling/ray';
 import type { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import type { Scene } from '@babylonjs/core/scene';
 
-import { SIM_HZ, WORLD_SIZE_X, WORLD_SIZE_Z, type GridSpec } from '../config';
+import { BEACH_STORE, SIM_HZ, WORLD_SIZE_X, WORLD_SIZE_Z, type GridSpec } from '../config';
 import type { CameraController } from '../input/cameraController';
 import { pickHeightfield } from '../input/sandPicker';
 import type { Account, MyBeach, Neighbors, ShoreBeach, Side } from '../net/account';
@@ -107,6 +107,8 @@ export class NeighborView {
   private liveTimer = 0;
   /** when to next ask about each beach (fast while its owner is on it) */
   private liveNext = new Map<string, number>();
+  /** beaches whose next repaint eases in (a viewer's live update) */
+  private readonly easeNext = new Set<string>();
   private win: [number, number] = [0, 0];
   /** a direction where the whole world has been walked (the shore came round) */
   private exhausted = new Set<Side>();
@@ -472,7 +474,15 @@ export class NeighborView {
     const live = await this.api.beachLive(code).catch(() => null);
     this.liveNext.set(code, now + (live?.live ? LIVE_POLL_MS : POLL_MS) - 100);
     if (!live || this.entries.get(c) !== e) return;
-    if (st.version !== undefined && live.version !== st.version) await this.store.reload(this.refOf(e.beach));
+    if (st.version !== undefined && live.version !== st.version) {
+      // their new save eases in over the one drawn now, rather than swapping in one frame
+      this.easeNext.add(e.beach.id);
+      try {
+        await this.store.reload(this.refOf(e.beach));
+      } finally {
+        this.easeNext.delete(e.beach.id);
+      }
+    }
   }
 
   private schedulePoll(): void {
@@ -728,7 +738,7 @@ export class NeighborView {
     const objs = preview ? base.map((o) => (o.id === preview.id ? { ...o, x: preview.x, y: preview.y } : o)) : base;
     const display = d.display;
     s.objects.setStatic(objs, (x, y) => this.heightAt(display, x, y) + (preview && Math.abs(x - preview.x) < 1e-4 && Math.abs(y - preview.y) < 1e-4 ? 0.12 : 0));
-    this.paint(s.renderer, display);
+    this.paint(s.renderer, display, this.easeNext.has(e.beach.id) ? BEACH_STORE.viewerEaseMs : 0);
   }
 
   private entryOf(beachId: string): Entry | null {
@@ -970,7 +980,7 @@ export class NeighborView {
   }
 
   /** Pack their sand with still water at the current tide into a field frame. */
-  private paint(r: BeachRenderer, delta: Float32Array): void {
+  private paint(r: BeachRenderer, delta: Float32Array, easeMs = 0): void {
     const n = this.grid.nx * this.grid.ny;
     if (!this.paintBuf || this.paintBuf.length !== n * 4) this.paintBuf = new Float32Array(n * 4);
     const buf = this.paintBuf;
@@ -982,7 +992,8 @@ export class NeighborView {
       buf[o + 2] = water > 0.004 ? 1 : Math.max(0, Math.min(0.8, 1 - (sand - this.tide) / 0.35));
       buf[o + 3] = 0;
     }
-    r.showStatic(buf);
+    if (easeMs > 0) r.easeStatic(buf, easeMs);
+    else r.showStatic(buf);
   }
 
   /** Per frame: which beaches to draw, shared lighting/sea, animated neighbor waves. */
@@ -1022,6 +1033,8 @@ export class NeighborView {
     if (ext.right + c < AHEAD) void this.more('right');
     for (const e of this.entries.values()) {
       e.slot?.renderer?.update(p, camForward, time, simTime, tide, amp);
+      // things that moved in a new snapshot glide to their new places
+      e.slot?.objects?.glide(dt);
     }
   }
 }
