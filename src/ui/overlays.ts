@@ -10,7 +10,7 @@ export class StartScreen {
   readonly el: HTMLDivElement;
   private done = false;
 
-  constructor(parent: HTMLElement, onStart: () => void, isTouch: boolean) {
+  constructor(parent: HTMLElement, private readonly onStart: () => void, isTouch: boolean) {
     this.el = document.createElement('div');
     this.el.className = 'start';
     this.el.innerHTML = `
@@ -20,22 +20,27 @@ export class StartScreen {
         <p class="start-hint">${isTouch ? 'touch to begin' : 'click to begin'}</p>
       </div>`;
     parent.appendChild(this.el);
-    const go = (e: Event) => {
+    this.el.addEventListener('pointerdown', (e) => {
       e.preventDefault();
-      if (this.done) return;
-      this.done = true;
-      this.el.classList.add('gone');
-      window.setTimeout(() => this.el.remove(), 900);
-      onStart();
-    };
-    this.el.addEventListener('pointerdown', go);
+      this.dismiss();
+    });
     window.addEventListener(
       'keydown',
       (e) => {
-        if (!this.done && (e.key === 'Enter' || e.key === ' ')) go(e);
+        if (this.done || e.target instanceof HTMLButtonElement || (e.key !== 'Enter' && e.key !== ' ')) return;
+        e.preventDefault();
+        this.dismiss();
       },
       { once: false },
     );
+  }
+
+  dismiss(): void {
+    if (this.done) return;
+    this.done = true;
+    this.el.classList.add('gone');
+    window.setTimeout(() => this.el.remove(), 900);
+    this.onStart();
   }
 
   get visible(): boolean {

@@ -140,8 +140,8 @@ export interface DirtDef {
 }
 
 /**
- * The controls over the canvas: at rest, one palm button in the lower
- * right. Tapping it opens the rail above it (three groups of buttons in one
+ * The controls over the canvas: the palm button in the lower right opens
+ * the rail above it (three groups of buttons in one
  * frosted pill), with Undo directly above the palm, which turns into a ×
  * that closes it all again. The dirt tools fan out in a flyout to the left
  * of the rail.

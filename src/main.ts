@@ -1314,7 +1314,7 @@ async function boot() {
   viewBtn.addEventListener('click', cycleView);
   syncViewButton(false);
 
-  // Minimal (the default): only the palm. Tapping it opens the rail, with
+  // Minimal (the default): the rail is tucked behind the palm. Tapping it opens the rail, with
   // the hand picked every time; the palm turns into a × that closes it all.
   const setCollapsed = (on: boolean) => {
     if (collapsed === on) return;
@@ -3352,6 +3352,20 @@ async function boot() {
       });
     }
 
+    const signInBtn = hud.button('profile', 'Sign in', 'hud-btn hud-sign-in');
+    signInBtn.append('Sign in');
+    signInBtn.hidden = true;
+    signInBtn.addEventListener('click', () => {
+      start?.dismiss();
+      sheet.show('account');
+    });
+    uiRoot.appendChild(signInBtn);
+    const setSignInVisible = (visible: boolean) => {
+      signInBtn.hidden = !visible;
+      hud.root.classList.toggle('has-sign-in', visible);
+    };
+    acct.onChange((u) => setSignInVisible(!u));
+
     // a link opened signed out: open the beach read-only in 3D if it's
     // public on the shore (and let them walk the public shore); an off-shore
     // beach still waits for sign-in. A sign-up from a plain visit link counts
@@ -3371,6 +3385,7 @@ async function boot() {
         }
       }
       if (u || acct.user) return;
+      setSignInVisible(true);
       // a sign-up from a plain visit link counts as an invite of that beach's owner
       if (visitCode && !readInvite()) writeInvite(visitCode);
       const code = visitCode ?? inviteFromLink;
@@ -3384,7 +3399,7 @@ async function boot() {
         history.replaceState(null, '', location.pathname + withoutVisitParam(location.search) + location.hash);
         cam.goTo(0, true);
       } catch {
-        showToast(uiRoot, 'Sign in (settings) to visit this beach');
+        showToast(uiRoot, 'Sign in to visit this beach');
         void nv.refresh();
       }
     });

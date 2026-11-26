@@ -4,6 +4,11 @@
   max-height: 100dvh;
   pointer-events: none;
   --pad: 18px;
+  --sign-in-space: 0px;
+}
+
+.hud.has-sign-in {
+  --sign-in-space: 60px;
 }
 
 /* ---- the palm, the rail, undo (bottom right) ---- */
@@ -139,7 +144,7 @@
   height: 60px;
 }
 
-/* the palm: the only control at rest. Open, it is the × at the bottom of the rail. */
+/* Open, the palm is the × at the bottom of the rail. */
 .hud-btn.hud-palm {
   width: 64px;
   height: 64px;
@@ -159,7 +164,7 @@
   stroke-width: 2;
 }
 
-/* Minimal: just the palm */
+/* Minimal: tuck away the tools */
 .hud.collapsed .hud-rail,
 .hud.collapsed .hud-undo {
   opacity: 0;
@@ -234,6 +239,38 @@
   stroke-width: 1.8;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.hud-btn.hud-sign-in {
+  position: fixed;
+  left: calc(18px + env(safe-area-inset-left));
+  bottom: calc(18px + env(safe-area-inset-bottom));
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: auto;
+  padding: 0 16px 0 12px;
+  border-radius: 999px;
+  color: #fff;
+  background: #2f7f5a;
+  font: inherit;
+  font-weight: 700;
+}
+
+.hud-sign-in[hidden] {
+  display: none;
+}
+
+.hud-sign-in svg {
+  width: 20px;
+  height: 20px;
+}
+
+@media (max-width: 620px) and (max-height: 560px) {
+  .hud:not(.collapsed) ~ .hud-sign-in {
+    bottom: calc(82px + env(safe-area-inset-bottom));
+  }
 }
 
 .hud-btn.pressed {
@@ -1077,6 +1114,17 @@
   }
 }
 
+@media (max-width: 520px) and (min-height: 561px) {
+  .hud-walk,
+  .hud:not(.chair) .place-bar {
+    bottom: calc(var(--pad) + var(--sign-in-space) + env(safe-area-inset-bottom));
+  }
+
+  .hud.chair .place-bar {
+    bottom: calc(var(--pad) + 64px + var(--sign-in-space) + env(safe-area-inset-bottom));
+  }
+}
+
 /* Short screens (landscape phones): the rail lies along the bottom, and
    the palm blooms sideways; the dirt tools fan out above it. */
 @media (max-height: 560px) {
@@ -1636,7 +1684,7 @@
 .guide-coach {
   position: absolute;
   left: calc(var(--pad) + env(safe-area-inset-left));
-  bottom: calc(var(--pad) + env(safe-area-inset-bottom));
+  bottom: calc(var(--pad) + var(--sign-in-space) + env(safe-area-inset-bottom));
   display: flex;
   align-items: stretch;
   max-width: min(320px, calc(100vw - 2 * var(--pad) - 76px));
@@ -1737,7 +1785,13 @@
 }
 
 .hud.chair:not(.collapsed) .guide-coach {
-  bottom: calc(var(--pad) + 64px + env(safe-area-inset-bottom));
+  bottom: calc(var(--pad) + 64px + var(--sign-in-space) + env(safe-area-inset-bottom));
+}
+
+@media (max-width: 620px) and (max-height: 560px) {
+  .hud.has-sign-in:not(.collapsed) .guide-coach {
+    bottom: calc(var(--pad) + 64px + var(--sign-in-space) + env(safe-area-inset-bottom));
+  }
 }
 
 .guide-mark {
