@@ -25,6 +25,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       'You’ll hear when someone copies your beach, and its beechshore.com page shows how many people have.',
       'Watching someone else’s beach while they play, their changes to the sand now flow in smoothly instead of popping, and things they move slide to their new spot.',
       'Your bag and the Beaches tab show how many of your extra beach slots are in use, and removing a beach frees its slot.',
+      'Signed out, your bag now has a sign-in button at the top.',
       'The checkpoint list can be filtered by the beach it came from, or by imported files. Checkpoints from removed beaches keep their own place in the filter.',
       'Typing in a visitor note — or picking from a dropdown — no longer triggers game keys: spaces and letters go into what you’re typing instead of moving the camera.',
     ],

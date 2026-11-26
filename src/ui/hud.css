@@ -315,6 +315,19 @@
   transform: none;
 }
 
+.inv-signin {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 2px 12px;
+  font-size: 14px;
+}
+
+.inv-signin .action {
+  flex: none;
+}
+
 .inv-machines {
   display: grid;
   grid-template-columns: repeat(2, 1fr);

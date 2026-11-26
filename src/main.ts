@@ -2942,8 +2942,10 @@ async function boot() {
     });
 
     // what you've won (and later bought), and the claw machine
+    const showSignIn = () => sheet.show('account');
     const loadOwned = async () => {
       const user = acct.user;
+      inventory.setSignIn(user ? null : showSignIn);
       if (!user) {
         inventory.setOwned(new Map());
         inventory.setExtraBeachesInUse(null);
@@ -3158,6 +3160,7 @@ async function boot() {
       void loadOwned();
     };
     acct.onChange(() => void loadOwned());
+    inventory.setSignIn(acct.user ? null : showSignIn);
     // ---- the beach guide and invites (docs/INVITES_GUIDE.md)
     // The panels only signed-in players use (invites, the inbox, the visitor
     // card) load in their own chunk, off the start-up bundle (perf/budget.json).
