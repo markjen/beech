@@ -710,6 +710,13 @@ void main() {
   float spec = pow(max(dot(reflect(sunDir, normalize(vNormal)), -cameraDir), 0.0), 24.0) * shine;
   col += sunCol * spec;
   col = mix(col, fogCol, (1.0 - smoothstep(fadeBottom, fadeTop, vWorld.y)) * 0.85);
+#ifdef GHOST
+  // a preview, not placed yet (docs/PIERS.md): see-through by a fine
+  // screen-door pattern (no sorting against the water) and paler
+  vec2 px = floor(gl_FragCoord.xy);
+  if (mod(px.x + px.y, 2.0) < 1.0) discard;
+  col = mix(col, vec3(1.0), 0.35);
+#endif
   gl_FragColor = vec4(col, 1.0);
 }
 `;

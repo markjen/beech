@@ -44,6 +44,10 @@ Shoreline  ├──────────────┼───────
 - The preview frames the middle beach and shows the whole deck. The pier
   has one fixed position and orientation. Show **Place pier** and **Cancel**
   together so a player can inspect it before changing their beach.
+  Until it's placed the pier is drawn as a ghost: see-through by a fine
+  screen-door pattern and paler (the prop shader's `GHOST` variant,
+  `createPropMaterial(…, ghost)`), so it reads as not there yet. Placing
+  it swaps the same meshes to the solid materials.
 
 ## What the pier looks like
 

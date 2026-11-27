@@ -83,6 +83,8 @@ export interface PierSpot {
   /** what it's for (a beach id, or a preview) */
   key: string;
   x: number;
+  /** not placed yet: drawn see-through and paler */
+  ghost?: boolean;
 }
 
 /**
@@ -91,29 +93,47 @@ export interface PierSpot {
  */
 export class PierLayer {
   private geometry: PierGeometry | null = null;
-  private mats: Record<keyof PierGeometry, ShaderMaterial> | null = null;
-  private shown = new Map<string, { x: number; root: Mesh }>();
+  /** the materials, solid and ghost, made when first needed */
+  private mats = new Map<boolean, Record<keyof PierGeometry, ShaderMaterial>>();
+  private shown = new Map<string, { x: number; ghost: boolean; root: Mesh; parts: Record<keyof PierGeometry, Mesh> }>();
 
   constructor(
     private readonly scene: Scene,
-    private readonly material: (color: RGB) => ShaderMaterial,
+    private readonly material: (color: RGB, ghost: boolean) => ShaderMaterial,
   ) {}
 
-  private build(key: string): Mesh {
-    this.geometry ??= pierGeometry();
-    this.mats ??= {
-      deck: this.material(PROP_COLORS.pierDeck),
-      pilings: this.material(PROP_COLORS.pierPiling),
-      rails: this.material(PROP_COLORS.pierRail),
-    };
-    const root = new Mesh(`pier:${key}`, this.scene);
-    for (const part of ['deck', 'pilings', 'rails'] as const) {
-      const g = this.geometry[part];
-      const m = finish(this.scene, `pier:${key}:${part}`, [...g.P], [...g.I]);
-      m.material = this.mats[part];
-      m.parent = root;
+  private matsFor(ghost: boolean): Record<keyof PierGeometry, ShaderMaterial> {
+    let m = this.mats.get(ghost);
+    if (!m) {
+      m = {
+        deck: this.material(PROP_COLORS.pierDeck, ghost),
+        pilings: this.material(PROP_COLORS.pierPiling, ghost),
+        rails: this.material(PROP_COLORS.pierRail, ghost),
+      };
+      this.mats.set(ghost, m);
     }
-    return root;
+    return m;
+  }
+
+  private build(key: string, ghost: boolean): { root: Mesh; parts: Record<keyof PierGeometry, Mesh> } {
+    const geometry = (this.geometry ??= pierGeometry());
+    const mats = this.matsFor(ghost);
+    const root = new Mesh(`pier:${key}`, this.scene);
+    const part = (name: keyof PierGeometry): Mesh => {
+      const g = geometry[name];
+      const m = finish(this.scene, `pier:${key}:${name}`, [...g.P], [...g.I]);
+      m.material = mats[name];
+      m.parent = root;
+      return m;
+    };
+    return { root, parts: { deck: part('deck'), pilings: part('pilings'), rails: part('rails') } };
+  }
+
+  /** How many are drawn as previews (e2e). */
+  get ghosts(): number {
+    let n = 0;
+    for (const s of this.shown.values()) if (s.ghost) n++;
+    return n;
   }
 
   sync(want: PierSpot[]): void {
@@ -124,9 +144,16 @@ export class PierLayer {
       this.shown.delete(key);
     }
     for (const w of want) {
+      const ghost = !!w.ghost;
       let s = this.shown.get(w.key);
+      // placed after its preview (or the other way round): the other look
+      if (s && s.ghost !== ghost) {
+        const mats = this.matsFor(ghost);
+        for (const name of ['deck', 'pilings', 'rails'] as const) s.parts[name].material = mats[name];
+        s.ghost = ghost;
+      }
       if (!s) {
-        s = { x: Number.NaN, root: this.build(w.key) };
+        s = { x: Number.NaN, ghost, ...this.build(w.key, ghost) };
         this.shown.set(w.key, s);
       }
       if (s.x !== w.x) {
@@ -142,7 +169,7 @@ export class PierLayer {
 
   dispose(): void {
     this.sync([]);
-    for (const m of Object.values(this.mats ?? {})) m.dispose();
-    this.mats = null;
+    for (const set of this.mats.values()) for (const m of Object.values(set)) m.dispose();
+    this.mats.clear();
   }
 }
