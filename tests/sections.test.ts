@@ -8,20 +8,25 @@ import { colorOf, sectionGeometry } from '../src/render/sections';
 import { restHeight } from '../src/sim/profile';
 import { freeFor, replaceRow } from '../src/ui/sectionsEditor';
 import { EXTRAS } from '../src/world/items';
-import { SECTIONS, SECTION_ROWS, gridWithSand, sandRowsInGrid, sandRowsOf, sectionJoins } from '../src/world/sections';
-import { SECTIONS as SERVER_SECTIONS, SECTION_ROWS as SERVER_ROWS } from '../server/src/sections';
+import { SECTIONS, SECTIONS_ON_SALE, SECTION_BUCKS, SECTION_ROWS, gridWithSand, sandRowsInGrid, sandRowsOf, sectionJoins } from '../src/world/sections';
+import { SECTIONS as SERVER_SECTIONS, SECTIONS_ON_SALE as SERVER_ON_SALE, SECTION_BUCKS as SERVER_BUCKS, SECTION_ROWS as SERVER_ROWS } from '../server/src/sections';
 import { PRODUCTS } from '../server/src/products';
 import { PRIZE_NAMES } from '../server/src/prizeNames';
 
 describe('the section catalog', () => {
   it('matches the server: types, names, products and the row limit', () => {
     expect(SECTION_ROWS).toBe(SERVER_ROWS);
+    expect([...SECTIONS_ON_SALE]).toEqual([...SERVER_ON_SALE]);
+    expect(SECTION_BUCKS).toBe(SERVER_BUCKS);
     expect(SECTIONS.map((s) => [s.id, s.name])).toEqual(SERVER_SECTIONS.map((s) => [s.id, s.name]));
     for (const s of SECTIONS) {
       const p = PRODUCTS.find((x) => x.id === s.product);
+      // only the types on sale are for sale (the others are hidden for now)
       expect(p, s.id).toBeTruthy();
       expect(p!.grants).toEqual([{ item: s.id, quantity: 1 }]);
       expect(p!.bucksOnly).toBe(true);
+      expect(!!p!.offSale).toBe(!SECTIONS_ON_SALE.includes(s.id));
+      if (!p!.offSale) expect(p!.bucks).toBe(SECTION_BUCKS);
       expect(PRIZE_NAMES[s.id]).toBe(s.name);
       expect(EXTRAS.find((e) => e.id === s.id)?.name).toBe(s.name);
     }

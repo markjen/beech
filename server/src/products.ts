@@ -15,7 +15,7 @@
 // for an extra beach); tests/items.test.ts keeps the two in step.
 
 import { PETS } from './petCatalog.js';
-import { SECTIONS, SECTION_BUCKS } from './sections.js';
+import { SECTIONS, SECTIONS_ON_SALE, SECTION_BUCKS, SECTION_BUCKS_BEFORE } from './sections.js';
 
 export interface Product {
   id: string;
@@ -37,6 +37,8 @@ export interface Product {
   blurb: string;
   /** shown first, and marked as the best value */
   featured?: boolean;
+  /** not for sale for now (hidden from the shop, can't be bought); its price still sets trade-in value */
+  offSale?: boolean;
 }
 
 export const PRODUCTS: Product[] = [
@@ -73,8 +75,14 @@ export const PRODUCTS: Product[] = [
   { id: 'food_pack_10', steamItemId: 1016, name: 'Beach snacks (10)', grants: [{ item: 'crab-treat', quantity: 10 }], usd: 0.99, bucks: 10, blurb: 'Ten treats to attract and feed beach animals' },
   { id: 'food_pack_35', steamItemId: 1017, name: 'Beach snacks (35)', grants: [{ item: 'crab-treat', quantity: 35 }], usd: 2.99, bucks: 30, blurb: 'Thirty-five treats to attract and feed beach animals' },
   { id: 'item_pier', bucksOnly: true, name: 'Pier', grants: [{ item: 'pier', quantity: 1 }], usd: 2.99, bucks: 30, blurb: 'A timber pier out over the water, for the middle of three of your beaches side by side' },
-  // inland beach sections (docs/INLAND_SECTIONS.md): one product per type, beech bucks only
-  ...SECTIONS.map((s): Product => ({ id: `item_${s.id.replace('-', '_')}`, bucksOnly: true, name: s.name, grants: [{ item: s.id, quantity: 1 }], usd: 1.49, bucks: SECTION_BUCKS, blurb: s.blurb })),
+  // inland beach sections (docs/INLAND_SECTIONS.md): one product per type,
+  // beech bucks only. Only SECTIONS_ON_SALE are sold for now; the others keep
+  // their old price (it's what they trade in for) but are off sale.
+  ...SECTIONS.map((s): Product => {
+    const onSale = SECTIONS_ON_SALE.includes(s.id);
+    const bucks = onSale ? SECTION_BUCKS : SECTION_BUCKS_BEFORE;
+    return { id: `item_${s.id.replace('-', '_')}`, bucksOnly: true, name: s.name, grants: [{ item: s.id, quantity: 1 }], usd: bucks / 10, bucks, blurb: s.blurb, ...(onSale ? {} : { offSale: true }) };
+  }),
   // pets: one product per species, priced from the pet table (docs/PETS.md).
   // Beech bucks only; the crab keeps its old store listing for old app versions.
   ...PETS.map((p): Product => ({

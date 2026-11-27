@@ -7,7 +7,7 @@ import { buildOwnStretches, connectableBeaches, hasSparePierWithoutSite, ownBeac
 import { appleSignInAvailable, DEV_AUTH, googleSignInAvailable, MergeNeedsConfirmError, renderGoogleButton, webAppleSignIn, type Account, type LinkedProvider, type MergePreview, type MyBeach, type Neighbors, type Side } from '../net/account';
 import { beachShareText, shareUrl, shoreAccountUrl, shoreBeachUrl } from '../net/share';
 import { codesAllowed } from '../net/shop';
-import { bucksIcon } from './inventory';
+import { bucksIcon, setPriceLabel } from './inventory';
 import { DISCORD_INVITE_URL } from '../../server/src/community';
 import { copyText, shareLink } from './shareSheet';
 import { isSteam, steamBridge } from '../platform/runtime';
@@ -654,6 +654,7 @@ export class AccountPanel {
         void this.guard(fn).finally(() => (btn.disabled = false));
       });
       row.appendChild(btn);
+      return btn;
     };
     if (b.pier) {
       button('remove pier', 'pier-remove', async () => {
@@ -663,11 +664,12 @@ export class AccountPanel {
     } else if (a.piers.owned > a.piers.placed) {
       if (this.mine?.previewPier) button('place pier', 'pier-place', async () => this.mine?.previewPier?.(b));
     } else if (this.mine?.buyPier) {
-      button('buy pier · bb 30', 'pier-buy', async () => {
+      const buy = button('buy pier', 'pier-buy', async () => {
         await this.mine!.buyPier!();
         await a.loadBeaches();
         this.mine?.previewPier?.(b);
       });
+      setPriceLabel(buy, 30, 'buy pier');
     }
     return row;
   }

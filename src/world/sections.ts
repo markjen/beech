@@ -36,6 +36,11 @@ export const SECTIONS: SectionType[] = (
   ] as const
 ).map(([id, name]) => ({ id, name, product: `item_${id.replace('-', '_')}` }));
 
+/** the types the shop sells for now (server/src/sections.ts SECTIONS_ON_SALE); the others show only if you have one */
+export const SECTIONS_ON_SALE: readonly SectionId[] = ['section-sand'];
+/** beech bucks each (server/src/sections.ts SECTION_BUCKS) */
+export const SECTION_BUCKS = 50;
+
 export const isSection = (id: string): id is SectionId => SECTIONS.some((s) => s.id === id);
 export const sectionById = (id: string): SectionType | undefined => SECTIONS.find((s) => s.id === id);
 
