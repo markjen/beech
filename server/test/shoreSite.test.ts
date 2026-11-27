@@ -9,6 +9,7 @@ import { createApp } from '../src/app.js';
 import { type Db } from '../src/db.js';
 import { createRootApp } from '../src/rootApp.js';
 import { ago, beachTitle, shareText } from '../src/shoreSite.js';
+import { rowsHeight } from '../src/beachImage.js';
 import { openTestDb } from './testDb.js';
 
 let db: Db;
@@ -571,5 +572,36 @@ describe('piers on the shore site (docs/PIERS.md)', () => {
     const account = await (await root.request('/account', shoreHost)).text();
     expect(headerNav(account)).toContain('class="acct-link" href="/account" aria-current="page"');
     expect(mobNav(account)).toContain('href="/account" aria-current="page"');
+  });
+});
+
+describe('inland rows on the shore site (docs/INLAND_SECTIONS.md)', () => {
+  const pngSize = (b: Buffer) => [b.readUInt32BE(16), b.readUInt32BE(20)];
+  it('draws them under the beach: taller thumbnails and flat view, the link-preview card unchanged', async () => {
+    const ben = people.Dee;
+    const page = async () => (await root.request(`/${ben.code}`, shoreHost)).text();
+    const thumbV = (html: string) => html.match(new RegExp(`/img/${ben.code}/thumb\\.png\\?v=([0-9a-z-]+)`))![1];
+    const before = await page();
+    expect(before).not.toContain('/plan.png');
+    const plain = Buffer.from(await (await root.request(`/img/${ben.code}/thumb.png?v=${thumbV(before)}`, shoreHost)).arrayBuffer());
+    expect(pngSize(plain)).toEqual([480, 300]);
+
+    await db.query(
+      "INSERT INTO beach_sections (beach_id, row, owner_id, item_id, placed_at) VALUES ($1, 0, $1, 'section-boardwalk', 0), ($1, 1, $1, 'section-road', 0)",
+      [ben.beachId],
+    );
+    const after = await page();
+    // the rows are in the version (they change the picture without a save)
+    expect(thumbV(after)).not.toBe(thumbV(before));
+    expect(after).toContain(`/img/${ben.code}/plan.png?v=`);
+    expect(after).toMatch(/class="pic rows-2" data-view="card"/);
+    const thumb = Buffer.from(await (await root.request(`/img/${ben.code}/thumb.png?v=${thumbV(after)}`, shoreHost)).arrayBuffer());
+    expect(pngSize(thumb)).toEqual([480, 300 + rowsHeight(300, 2)]);
+    const plan = Buffer.from(await (await root.request(`/img/${ben.code}/plan.png`, shoreHost)).arrayBuffer());
+    expect(pngSize(plan)).toEqual([1200, 630 + rowsHeight(630, 2)]);
+    // link previews keep their shape: the beach alone
+    const card = Buffer.from(await (await root.request(`/img/${ben.code}.png`, shoreHost)).arrayBuffer());
+    expect(pngSize(card)).toEqual([1200, 630]);
+    await db.query('DELETE FROM beach_sections WHERE beach_id = $1', [ben.beachId]);
   });
 });

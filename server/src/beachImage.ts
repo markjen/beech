@@ -12,6 +12,7 @@
 // copies of the app's (src/config.ts, src/palette.ts,
 // src/world/locations.ts). tests/beachImage.test.ts keeps them in step.
 
+import { colorOf, SECTION, sectionGeometry } from './generated/sections.js';
 import { deflateSync, inflateSync } from 'node:zlib';
 
 // ---------------------------------------------------------------- the beach shape (copy of the app's)
@@ -310,6 +311,71 @@ export interface ImageOptions {
   location?: string | null;
   /** the beach shows a pier (docs/PIERS.md) */
   pier?: boolean;
+  /**
+   * its inland rows, front row first (docs/INLAND_SECTIONS.md): drawn under
+   * the beach at the same scale, so the picture is taller than `height` by
+   * rowsHeight(height, rows.length)
+   */
+  sections?: string[];
+}
+
+/** How many pixels `rows` inland rows add under a top-down picture `height` tall (same metres per pixel as the beach). */
+export function rowsHeight(height: number, rows: number): number {
+  return rows > 0 ? Math.round((rows * SECTION.depth * height) / (VIEW_Y1 - VIEW_Y0)) : 0;
+}
+
+/** A top-down picture's full height: the beach, then its rows. */
+export const pictureHeight = (opts: ImageOptions): number => opts.height + rowsHeight(opts.height, opts.sections?.length ?? 0);
+
+/**
+ * The inland rows from above, into rows `top`.. of `out` (W wide): each
+ * row's boxes (the app's own shapes, server/src/generated/sections.ts) as
+ * their footprints, lowest first so what stands taller covers what's under
+ * it, lighter the higher they reach. The ends are finished (joins with
+ * neighbors show in the game).
+ */
+function drawRowsTop(out: Uint8Array, W: number, top: number, bottom: number, scaleX: number, scaleY: number, cx: number, rows: string[]): void {
+  const boxes: { x0: number; x1: number; y0: number; y1: number; h: number; c: [number, number, number] }[] = [];
+  rows.forEach((type, i) => {
+    for (const [key, g] of sectionGeometry(type, false, false, 1) as Map<string, { P: number[] }>) {
+      const c = colorOf(key) as [number, number, number];
+      for (let b = 0; b + 24 <= g.P.length; b += 24) {
+        let xMin = Infinity, xMax = -Infinity, zMin = Infinity, zMax = -Infinity, yMax = -Infinity;
+        for (let v = b; v < b + 24; v += 3) {
+          xMin = Math.min(xMin, g.P[v]); xMax = Math.max(xMax, g.P[v]);
+          yMax = Math.max(yMax, g.P[v + 1]);
+          zMin = Math.min(zMin, g.P[v + 2]); zMax = Math.max(zMax, g.P[v + 2]);
+        }
+        // facing the sea, +x is on the left (as the beach is drawn)
+        boxes.push({
+          x0: cx - xMax * scaleX, x1: cx - xMin * scaleX,
+          y0: top + (i * SECTION.depth + zMin) * scaleY, y1: top + (i * SECTION.depth + zMax) * scaleY,
+          h: yMax, c,
+        });
+      }
+    }
+  });
+  boxes.sort((a, b) => a.h - b.h);
+  for (const bx of boxes) {
+    const lift = Math.max(0, Math.min(1, (bx.h - SECTION.ground) / 4));
+    const shade = 0.88 + 0.24 * lift;
+    const r = to8(bx.c[0] * shade), g = to8(bx.c[1] * shade), b = to8(bx.c[2] * shade);
+    const xa = Math.max(0, Math.floor(bx.x0)), xb = Math.min(W, Math.ceil(bx.x1));
+    const ya = Math.max(top, Math.floor(bx.y0)), yb = Math.min(bottom, Math.ceil(bx.y1));
+    for (let y = ya; y < yb; y++) {
+      let k = (y * W + xa) * 3;
+      for (let x = xa; x < xb; x++) {
+        out[k++] = r;
+        out[k++] = g;
+        out[k++] = b;
+      }
+    }
+  }
+  // a thin shadow line where the sand meets the first row
+  for (let x = 0; x < W; x++) {
+    const k = (top * W + x) * 3;
+    out[k] = Math.round(out[k] * 0.8); out[k + 1] = Math.round(out[k + 1] * 0.8); out[k + 2] = Math.round(out[k + 2] * 0.8);
+  }
 }
 
 /** A saved beach's sand deltas with buried-rock cover lifted over the rocks (BCH3), as the pictures use them. Returns a copy; the input is untouched. */
@@ -433,7 +499,7 @@ export function renderBeach(sand: SavedSand | null, opts: ImageOptions): Uint8Ar
   const cx = W / 2;
   const invScaleX = 1 / scaleX;
   const invScaleY = 1 / scaleY;
-  const out = new Uint8Array(W * H * 3);
+  const out = new Uint8Array(W * pictureHeight(opts) * 3);
   // light from the top left of the picture (offshore, +x)
   const L = norm3([-0.55, -0.55, 0.63]);
   const L0 = L[0];
@@ -609,6 +675,7 @@ export function renderBeach(sand: SavedSand | null, opts: ImageOptions): Uint8Ar
     drawThings(out, W, H, visible, look, (x, y) => [cx - (x - WORLD / 2) * scaleX, (y - VIEW_Y0) * scaleY], scaleY);
   }
   if (opts.pier) drawPierTop(out, W, H, (x, y) => [cx - (x - WORLD / 2) * scaleX, (y - VIEW_Y0) * scaleY], scaleY);
+  if (opts.sections?.length) drawRowsTop(out, W, H, pictureHeight(opts), scaleX, scaleY, cx, opts.sections);
   return out;
 }
 
@@ -1660,7 +1727,7 @@ export function beachPng(bytes: Uint8Array | null, opts: ImageOptions): Buffer {
       sand = null; // a broken save still gets a picture of the beach
     }
   }
-  return encodePng(renderBeach(sand, opts), opts.width, opts.height);
+  return encodePng(renderBeach(sand, opts), opts.width, pictureHeight(opts));
 }
 
 // ---------------------------------------------------------------- the pier (docs/PIERS.md)

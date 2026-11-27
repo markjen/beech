@@ -8,7 +8,11 @@ import { build } from 'esbuild';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
-export const BUNDLES = [{ entry: 'src/world/catchupBeach.ts', out: 'server/src/generated/catchup.ts' }];
+export const BUNDLES = [
+  { entry: 'src/world/catchupBeach.ts', out: 'server/src/generated/catchup.ts' },
+  // the inland rows' shapes, for the shore site's pictures (docs/INLAND_SECTIONS.md)
+  { entry: 'src/render/sectionShapes.ts', out: 'server/src/generated/sections.ts' },
+];
 
 const BANNER = (entry) =>
   `// @ts-nocheck\n// GENERATED from ${entry} by scripts/bundle-server.mjs. Do not edit: run \`npm run bundle:server\`.\n/* eslint-disable */`;
