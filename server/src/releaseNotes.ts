@@ -17,8 +17,9 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: '2026-11-27',
-    title: 'Multi-item trade-ins, promo bonus beech bucks, playable sand extensions, a quieter palm, more of the beach guide, ratings along the shore, a see-through pier preview and safer notes',
+    title: 'Stars and finds in the status pane, multi-item trade-ins, promo bonus beech bucks, playable sand extensions, a quieter palm, more of the beach guide, ratings along the shore, a see-through pier preview and safer notes',
     changes: [
+      'The expanded status pane now shows the stars on the beach you’re looking at and how many buried finds you’ve dug up today.',
       'Tap “select” at the top of your bag to pick several things and trade them all in at once.',
       'Promo codes now give bonus beech bucks instead of money off. Redeem one on its own (the same box as gift cards), or enter it when you buy a pack on the web to get its bonus on top. Each code works once per player, and codes from before now give beech bucks too.',
       'Sand extensions straight behind your beach are now part of it: the sand runs straight on from your beach, and you can dig, build, use molds and put things from your bag there, just like on the rest of your beach. It lines up with a linked neighbor’s sand extension in the same row.',

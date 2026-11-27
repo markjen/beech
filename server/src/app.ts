@@ -1836,6 +1836,21 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     return c.json({ finds: rows.map((r) => ({ item: r.item_id, rarity: r.rarity, at: Number(r.created_at) })) });
   });
 
+  // GET /pane?beach=ID: the expanded status pane's chips (palm-first UI): the
+  // stars on the beach in view (anyone's: the leaderboard counts them in the
+  // open), and your buried finds today out of the daily cap. Read-only.
+  app.get('/pane', requireUser, async (c) => {
+    const me = c.get('user').id;
+    const beach = c.req.query('beach') ?? '';
+    const now = clock();
+    const stars = UUID_PATTERN.test(beach)
+      ? Number((await db.query<{ n: string }>('SELECT COUNT(*) AS n FROM favorites WHERE beach_id = $1', [beach]))[0].n)
+      : null;
+    const st = (await db.query<{ day: string; finds: number }>('SELECT day, finds FROM dig_state WHERE user_id = $1', [me]))[0];
+    const findsToday = st && st.day === pullDay(now) ? Number(st.finds) : 0;
+    return c.json({ stars, findsToday, findsCap: DIG_FIND_DAILY_CAP });
+  });
+
   app.post('/dig-finds', requireUser, async (c) => {
     const me = c.get('user').id;
     const now = clock();

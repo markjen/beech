@@ -121,9 +121,9 @@ picked up.
   row's sand stays with its position rather than its copy (playable sand
   is the leading sand rows, INLAND_SECTIONS.md); draw the rows on beechshore.com's pictures and 3D views (and put
   them in the pictures' `?v=`); a replace-in-place control in the editor.
-- [ ] **Palm-first UI, follow-ups**: stars and finds-today chips in
-  the expanded pane (they need their own requests; no credit/sand-bucks
-  chip: Mark, 2026-11-26, the balance is only useful in the shop). Tap-the-sand-to-close was left out:
+- [ ] **Palm-first UI, follow-ups**: (stars and finds-today chips done
+  2026-11-27; no credit/sand-bucks chip: Mark, 2026-11-26, the balance is
+  only useful in the shop). Tap-the-sand-to-close was left out:
   a tap is also how you stop a glide.
 - [ ] **Live beaches, next**: SSE instead of polling if the 5 s polls show up in
   Cloud Run costs; catch up the beechshore.com page pictures too; one
@@ -218,6 +218,8 @@ picked up.
 
 ## Done (recent)
 
+- [x] **Stars and finds-today chips** (2026-11-27): the expanded status
+  pane shows ★ (stars on the beach in view) and "finds n/3" (GET /pane).
 - [x] **Push alerts** (2026-11-27): `beech: push tick failing` and `beech:
   many push sends failing` in `infra/monitoring.tf` (apply with
   `terraform apply`). OBSERVABILITY.md.

@@ -1504,8 +1504,10 @@ the HUD layout in the section above.
   feed pet and star). Closed leaves a lone *i*. The state
   is saved in settings (`statusPane`). There is no weather data, so
   "weather" is the sky (☀ ◒ ☾), the local time and a swell word from the
-  live wave scale. The mockup's credit, stars and finds chips were left
-  out; they would need extra requests. The credit (beech bucks) chip is
+  live wave scale. The mockup's stars and finds chips came later
+  (2026-11-27): ★ n (stars on the beach in view) and "finds n/3" (your
+  buried finds today), from `GET /api/pane`, fetched when the beach in
+  view changes, after a dig find and every 2 minutes. The credit (beech bucks) chip is
   out on purpose: the balance is only useful in the shop, where it
   already shows (Mark, 2026-11-26). The "also in view" list
   (`ShoreInfo`) and floating neighbor name-tag pills (`tagPlace`) are
