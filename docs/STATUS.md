@@ -330,6 +330,16 @@ accepted the repo's default branch, so the deploy job ran only there.
   `GET /api/inventory` for owned, unexpired non-free items. Nothing writes to
   it yet.
 
+## Suspending a sender's notes (2026-11-27)
+
+From a report in the admin console: suspend the sender's notes for 1, 7,
+30 or 365 days (optionally hiding every note of theirs still shown), or
+lift it. While it lasts a visit carrying a note is refused (403); ratings
+and gifts go through. Migration 42 (`users.notes_suspended_until`).
+Modelled first (`specs/tla/NoteSuspension.tla`); the check is inside the
+visit's transaction under the sender's row lock. INBOX_NOTIFICATIONS.md,
+STATE_MACHINES.md.
+
 ## Moving things by long-press (2026-11-27)
 
 Long-press a thing you set down, drag, let go: it moves (one undo step),

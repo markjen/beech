@@ -254,6 +254,29 @@ sends open at a fake provider to replay those races and inject a rollback after 
 acceptance to verify that later ticks skip the committed claim. A crash after
 claiming can drop the notification. The inbox entry remains available.
 
+## Suspending a sender's notes (`NoteSuspension.tla`)
+
+One sender, their notes and the admin
+([INBOX_NOTIFICATIONS.md](INBOX_NOTIFICATIONS.md), "Reports"). State:
+`users.notes_suspended_until`, the sender's notes (hidden or shown) and
+visits between their check and their insert.
+
+| Action | Route or job | Code |
+| --- | --- | --- |
+| `VisitCheck`, `VisitInsert` | `POST /beaches/:code/visit` with a note | one transaction: `SELECT notes_suspended_until … FOR NO KEY UPDATE` on the sender's row, refuse (403) if it's in the future, then the note's insert |
+| `Suspend(hide)` | `POST /api/senders/:id/suspend-notes { days, hide }` (admin) | one transaction: `UPDATE users SET notes_suspended_until` (takes the sender's row lock), then with `hide` `UPDATE notes SET hidden_at` for every shown note of theirs, then the audit row |
+| `Lift` | `POST /api/senders/:id/lift-notes` (admin), or the time running out | one `UPDATE users` (and its audit row) |
+| `HideOne` | `POST /api/reports/:id/resolve { action: hide }` | one `UPDATE notes` (unchanged) |
+
+Invariants: `NoNoteWhileSuspended` (no note is accepted while its sender is
+suspended) and `SweptStaysClean` (after "suspend and hide their notes",
+none of theirs shows until it's lifted). The other form reads the
+suspension before the visit's transaction: a suspension that lands between
+the read and the insert lets one more note through, shown, and breaks both.
+`server/test/stateMachines/noteSuspension.test.ts` replays that (paused
+before the visit's transaction), runs transitions and seeded random walks
+against `noteSuspensionModel.ts`.
+
 ## Bugs found (2026-11-25), all fixed
 
 Each was found by TLC, then reproduced on the real server by a replay test

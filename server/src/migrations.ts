@@ -1027,6 +1027,13 @@ const MIGRATIONS: string[] = [
   ALTER TABLE user_identities ADD COLUMN apple_refresh_token TEXT;
   ALTER TABLE user_identities ADD COLUMN apple_client_id TEXT;
   `,
+
+  // 42: suspending a sender's notes (docs/INBOX_NOTIFICATIONS.md, "Reports";
+  // specs/tla/NoteSuspension.tla): while it's in the future, the visit route
+  // refuses anything carrying a note from them. Set and lifted by the admin.
+  `
+  ALTER TABLE users ADD COLUMN notes_suspended_until BIGINT;
+  `,
 ];
 
 /** Apply migrations up to `upTo` (default: all). Tests use `upTo` to check a migration on older data. */

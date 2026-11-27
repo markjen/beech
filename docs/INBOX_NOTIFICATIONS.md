@@ -94,8 +94,18 @@ available, and a later tick skips the claim. Tests: `server/test/stateMachines/p
   `/public/shore`) carries it as `rating: { average, count }` on each
   beach, left out under 3 ratings (`ratingShown` in `server/src/shore.ts`).
 - The **blocked list** is at the bottom of the inbox, not in settings.
-- The admin can **hide** a reported note or **dismiss** the report.
-  "Suspend the sender's notes" isn't built: block-by-admin is a follow-up.
+- The admin can **hide** a reported note or **dismiss** the report, and
+  **suspend the sender's notes** for 1, 7, 30 or 365 days (2026-11-27),
+  optionally hiding every note of theirs still shown, and lift it again.
+  While suspended, `POST /beaches/:code/visit` refuses anything carrying a
+  note (403, "notes are paused on your account until …"); ratings and
+  gifts still go through. `users.notes_suspended_until`, migration 42;
+  `POST /api/senders/:id/suspend-notes { days, hide }` and
+  `POST /api/senders/:id/lift-notes` in the admin console, both audited.
+  Modelled in `specs/tla/NoteSuspension.tla`: the visit checks the
+  suspension inside its transaction under the sender's row lock, which the
+  suspension's `UPDATE users` also takes, so no note lands after a
+  suspension commits.
 - Ratings with no note fold into a "N new ratings" row per day, as
   designed. A rating that comes with a note or a gift is part of that
   visit's row.
