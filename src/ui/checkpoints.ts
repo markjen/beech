@@ -34,6 +34,8 @@ export interface CheckpointHost {
   /** your beaches or bag changed (reload the list, recount the bag) */
   changed(): Promise<void>;
   toast(text: string, undo?: () => void): void;
+  /** a named checkpoint was saved (the guide's step) */
+  saved?(): void;
   /** export a checkpoint as a beach file (BEACH_FILE.md) */
   exportCheckpoint?(cp: Checkpoint): Promise<void>;
   /** pick a beach file and keep it as a checkpoint */
@@ -114,6 +116,7 @@ export class CheckpointsSection {
       const cp = await this.api.save(beachId, name.trim());
       this.host.toast(`Saved checkpoint “${cp.name}”`);
       unlockSteamAchievement('CHECKPOINT_SAVED');
+      this.host.saved?.();
     });
   }
 

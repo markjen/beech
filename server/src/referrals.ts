@@ -28,9 +28,13 @@ export const GUIDE_STEPS: GuideStepDef[] = [
   { id: 'undo', title: 'Take it back', how: 'Tap undo to take back your last stroke.', gift: 'conch', serverChecked: false },
   { id: 'place', title: 'Put something on the sand', how: 'Open the bag, pick a rock or a shell, and tap the sand.', gift: 'sanddollar', serverChecked: false },
   { id: 'chair', title: 'Sit on the beach', how: 'Tap the chair to sit and look out to sea. Hold ‹ › to walk along the shore.', gift: 'conch', serverChecked: false },
+  { id: 'clear', title: 'Clear some sand away', how: 'Pick the bulldozer, flatten or vacuum from the sand tools and drag across the beach. It scrapes the sand and anything on it away; undo puts it back.', gift: 'sanddollar', serverChecked: false },
+  { id: 'calm', title: 'Calm the waves', how: 'Open Manage → Settings and set the waves to calm. Gentle, lively and surf bring them back up.', gift: 'conch', serverChecked: false },
   { id: 'claw', title: 'Play the claw machine', how: 'Open the bag and play the claw machine. It’s free.', gift: null, serverChecked: true }, // the claw gives its own prize
+  { id: 'vending', title: 'Try the vending machine', how: 'Open the bag and use the vending machine. It has this week’s set of things to find.', gift: null, serverChecked: true }, // the machine gives its own prize
   { id: 'visit', title: 'Visit someone’s beach', how: 'Walk down the shore, or open the most-starred beaches and pick one.', gift: 'sanddollar', serverChecked: false },
   { id: 'star', title: 'Star a beach you like', how: 'Tap ☆ on someone’s beach to star it.', gift: 'conch', serverChecked: true },
+  { id: 'checkpoint', title: 'Save a checkpoint', how: 'Open Manage → Beaches, pick a beach and save a checkpoint of it. It keeps a copy you can go back to.', gift: 'sanddollar', serverChecked: true },
   { id: 'invite', title: 'Invite a friend', how: 'Share your invite link from your account page on beechshore. When your friend makes an account, you both get 50 beech bucks.', gift: null, serverChecked: true }, // the invite ladder is the reward
 ];
 

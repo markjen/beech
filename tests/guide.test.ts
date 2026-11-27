@@ -27,18 +27,20 @@ describe('the beach guide', () => {
 
   it('needs an account exactly for the steps the server checks, plus visiting', () => {
     for (const s of GUIDE_STEPS) if (s.serverChecked) expect(GUIDE.find((g) => g.id === s.id)!.needsAccount).toBe(true);
-    expect(guideSteps(false).map((s) => s.id)).toEqual(['dig', 'pile', 'undo', 'place', 'chair']);
-    expect(guideSteps(true)).toHaveLength(9);
+    expect(guideSteps(false).map((s) => s.id)).toEqual(['dig', 'pile', 'undo', 'place', 'chair', 'clear', 'calm']);
+    expect(guideSteps(true)).toHaveLength(13);
   });
 
   it('points at the first step not done, and counts progress', () => {
     expect(nextStep(new Set(), true)?.id).toBe('dig');
     expect(nextStep(new Set(['dig', 'undo']), true)?.id).toBe('pile');
     const local = new Set(['dig', 'pile', 'undo', 'place', 'chair']);
+    expect(nextStep(local, false)?.id).toBe('clear');
+    local.add('clear').add('calm');
     expect(nextStep(local, false)).toBeNull();
     expect(nextStep(local, true)?.id).toBe('claw');
-    expect(progress(local, true)).toEqual({ done: 5, total: 9 });
-    expect(progress(new Set(['claw', 'nonsense']), false)).toEqual({ done: 0, total: 5 });
+    expect(progress(local, true)).toEqual({ done: 7, total: 13 });
+    expect(progress(new Set(['claw', 'nonsense']), false)).toEqual({ done: 0, total: 7 });
   });
 });
 

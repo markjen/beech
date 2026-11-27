@@ -5,7 +5,7 @@
 
 import type { IconName } from '../ui/hud';
 
-export type GuideStepId = 'dig' | 'pile' | 'undo' | 'place' | 'chair' | 'claw' | 'visit' | 'star' | 'invite';
+export type GuideStepId = 'dig' | 'pile' | 'undo' | 'place' | 'chair' | 'clear' | 'calm' | 'claw' | 'vending' | 'visit' | 'star' | 'checkpoint' | 'invite';
 
 export interface GuideStep {
   id: GuideStepId;
@@ -24,9 +24,13 @@ export const GUIDE: GuideStep[] = [
   { id: 'undo', icon: 'undo', title: 'Take it back', needsAccount: false, gift: 'conch' },
   { id: 'place', icon: 'bag', title: 'Put something on the sand', needsAccount: false, gift: 'sanddollar' },
   { id: 'chair', icon: 'chair', title: 'Sit on the beach', needsAccount: false, gift: 'conch' },
+  { id: 'clear', icon: 'dozer', title: 'Clear some sand away', needsAccount: false, gift: 'sanddollar' },
+  { id: 'calm', icon: 'calm', title: 'Calm the waves', needsAccount: false, gift: 'conch' },
   { id: 'claw', icon: 'claw', title: 'Play the claw machine', needsAccount: true, gift: null },
+  { id: 'vending', icon: 'vending', title: 'Try the vending machine', needsAccount: true, gift: null },
   { id: 'visit', icon: 'trophy', title: 'Visit someone’s beach', needsAccount: true, gift: 'sanddollar' },
   { id: 'star', icon: 'starfish', title: 'Star a beach you like', needsAccount: true, gift: 'conch' },
+  { id: 'checkpoint', icon: 'flag', title: 'Save a checkpoint', needsAccount: true, gift: 'sanddollar' },
   { id: 'invite', icon: 'gift', title: 'Invite a friend', needsAccount: true, gift: null },
 ];
 

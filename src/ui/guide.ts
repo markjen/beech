@@ -32,7 +32,7 @@ export interface GuideHost {
 }
 
 /** the steps the server checks for itself: only marked done when it says so */
-const SERVER_CHECKED = new Set<GuideStepId>(['claw', 'star', 'invite']);
+const SERVER_CHECKED = new Set<GuideStepId>(['claw', 'vending', 'star', 'checkpoint', 'invite']);
 const KEY = 'beech-guide';
 
 interface Stored {
@@ -66,9 +66,13 @@ const DONE_LINE: Record<GuideStepId, string> = {
   undo: 'Taken back.',
   place: 'Set down.',
   chair: 'Nice view.',
+  clear: 'Cleared away.',
+  calm: 'All calm.',
   claw: 'Claw machine played.',
+  vending: 'Vending machine tried.',
   visit: 'You went visiting.',
   star: 'Starred.',
+  checkpoint: 'Checkpoint saved.',
   invite: 'A friend joined!',
 };
 
