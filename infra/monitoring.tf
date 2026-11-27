@@ -733,7 +733,7 @@ resource "google_monitoring_alert_policy" "push_failed" {
       threshold_value = 5
       aggregations {
         alignment_period   = "1800s"
-        per_series_aligner = "ALIGN_MEAN"
+        per_series_aligner = "ALIGN_DELTA"
       }
     }
   }
