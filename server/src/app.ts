@@ -52,6 +52,7 @@ import { creditBalance, grantPurchase } from './bucksDb.js';
 import { SECTION_IDS, SECTION_ROWS, isSection } from './sections.js';
 import { BUCK, bucksToCents, centsToBucks, listBucks, roundToBuck, shareOut, tradeable, unitsOf } from './bucks.js';
 import { issueSubmissionSession, UUID_PATTERN } from './itemSubmissions.js';
+import { createMerch, type Merch } from './merch.js';
 import { awardCheckoutCreatorCredit, awardCreatorCredit, creatorOffer, creatorOffers, lockCreditUsers, nativeSalePrice, reverseCreatorCreditByRef, salePriceCents } from './creatorCredit.js';
 import {
   claimCreditPurchase,
@@ -220,6 +221,8 @@ export interface AppConfig {
   push?: { config: PushConfig; send?: PushSender; tick?: { audience: string; email: string } };
   /** the shore site's public origin (SHORE_URL): where a top-up from your account page comes back to */
   shoreUrl?: string;
+  /** the merch store's orders (docs/MERCH_STORE.md, merch.ts), mounted at /merch; unset: the catalog only */
+  merch?: Merch;
 }
 
 export interface User {
@@ -330,7 +333,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   // forwarded IP (tests, local development) aren't limited.
   const perIp = createRateLimiter(cfg.rateLimit?.perMinute ?? 300);
   const signIns = createRateLimiter(cfg.rateLimit?.signInsPerMinute ?? 20);
-  const WEBHOOKS = ['/store/apple/notifications', '/store/google/rtdn', '/store/xsolla/webhook'];
+  const WEBHOOKS = ['/store/apple/notifications', '/store/google/rtdn', '/store/xsolla/webhook', '/merch/stripe-webhook', '/merch/printful-webhook'];
   app.use('*', async (c, next) => {
     const ip = (c.req.header('x-forwarded-for') ?? '').split(',')[0]?.trim();
     if (ip && c.req.method !== 'OPTIONS' && !WEBHOOKS.some((w) => c.req.path.endsWith(w))) {
@@ -357,6 +360,9 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     return c.json({ error: 'something went wrong' }, 500);
   });
   app.notFound((c) => c.json({ error: 'not found' }, 404));
+
+  // the merch store (docs/MERCH_STORE.md): store.beech.games forwards /api/* here
+  app.route('/merch', (cfg.merch ?? createMerch(db, { now: () => (cfg.now ?? Date.now)() })).app);
 
   // ---------------------------------------------------------------- sessions
   /** Find or create the account for a verified identity and start a game session for it. */

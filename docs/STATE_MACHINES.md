@@ -305,6 +305,41 @@ at once on a fresh day (one goes out), runs transitions and a random walk
 against `systemMessagesModel.ts`. Push delivery is `Push.tla`'s, unchanged:
 `system` is one more pushed kind, under its own `news` preference.
 
+## Merch store orders (`MerchOrders.tla`)
+
+An order on store.beech.games ([MERCH_STORE.md](MERCH_STORE.md)): Stripe
+takes the payment and tells us by webhook (each event at least once, in any
+order), the return page asks Stripe too, and a worker sends the paid order
+to Printful (a draft keyed by our order id, then confirm). State:
+`merch_orders.status`, its claim, the beach snapshot on each "your beach"
+line, Stripe's session and refund, the events in flight, and Printful's
+draft and confirm.
+
+| Action | Route | Code |
+| --- | --- | --- |
+| `Checkout` | `POST /api/merch/checkout` | the Stripe session first (idempotency key = order id), then one transaction: the order and its lines, each beach print `INSERT … SELECT` from `beach WHERE owner_id = me` (its sand, look, pier and rows) |
+| `Edit` | the game's beach saves | (unchanged) the print never reads the beach again |
+| `Pays`, `Lapses`, `Refund` | Stripe | — |
+| `Completed` | `POST /api/merch/stripe-webhook` (`checkout.session.completed`), `GET /api/merch/orders/:id` (asks Stripe) | one statement: `UPDATE … SET status='paid' WHERE status IN ('open','expired') RETURNING`; only the caller that gets the row starts the send |
+| `Expired` | webhook `checkout.session.expired` | `UPDATE … SET status='expired' WHERE status='open'` (we never expire orders ourselves) |
+| `Refunded` | webhook `charge.refunded` (full refunds) | one statement: anything before `sent` → `canceled`, `sent`/`shipped` → `refunded`; an order whose "completed" hasn't come is found through the payment intent's metadata |
+| `Claim` | `send()` in `merch.ts` (after `Completed`, and the sweep) | `UPDATE … SET status='sending', claim=$token WHERE status='paid' RETURNING` |
+| `Draft` | Printful `GET/POST /orders` | `external_id` = order id; print files from the snapshot (`/api/merch/print/<key>.png`) |
+| `Mark` | `send()` | `UPDATE … SET status='sent' WHERE status='sending' AND claim=$token`, before the confirm |
+| `Confirm` | Printful `POST /orders/@id/confirm` | then `confirmed_at`; the sweep re-confirms a `sent` order left unconfirmed |
+| `Crash`, `Recover` | the sweep (`tick()`, once a minute in `server.ts`) | `UPDATE … SET status='paid', claim=NULL WHERE status='sending' AND claimed_at` older than 10 minutes |
+| `Ships` | `POST /api/merch/printful-webhook?s=<secret>` (`package_shipped`) | `UPDATE … SET status='shipped' WHERE status='sent'` |
+
+Invariants: `OneReceipt`, `PrintOnlyPaid`, `NoPrintAfterEarlyRefund`,
+`PrintIsWhatTheyBought`, `PaidIsFulfilled` and `RefundIsFinal` (the last
+two once all events are in and no worker is busy). The obvious build
+(read-then-mark-paid, our own expiry sweep, the print drawn at send time,
+confirm before mark, a refund that only cancels paid orders) breaks all but
+`PrintOnlyPaid`. `server/test/stateMachines/merch.test.ts` runs the
+transitions against fake Stripe and Printful (`merchFakes.ts`), replays the
+refund that lands between the draft and the mark (it fails when the confirm
+comes first), and walks 300 random steps against `merchModel.ts`.
+
 ## Bugs found (2026-11-25), all fixed
 
 Each was found by TLC, then reproduced on the real server by a replay test

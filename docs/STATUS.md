@@ -331,6 +331,21 @@ accepted the repo's default branch, so the deploy job ran only there.
   `GET /api/inventory` for owned, unexpired non-free items. Nothing writes to
   it yet.
 
+## Merch store (2026-11-27)
+
+store.beech.games sells a beech tee, hoodie, dad hat, flip flops and
+beach towel, the whole set (all five) at $160, and "your beach" tees
+and hoodies that print the shopper's own beach as it was at checkout.
+Stripe Checkout takes the payment; Printful prints and ships. The
+sunglasses are out of the store for now: nobody prints them on demand,
+so they need a bulk order sent to Printful's warehouse first, and they
+come back as their own product when that is done. Built model-first
+(`specs/tla/MerchOrders.tla`); off until the
+owner sets up Stripe and Printful, and the page says it opens soon. Server:
+`merchCatalog.ts`, `merchProviders.ts`, `merch.ts` (API at `/api/merch/*`),
+`merchSite.ts` (the page, on the store host and at `/merch-store`),
+migration 45. See [MERCH_STORE.md](MERCH_STORE.md).
+
 ## Live handover: no blank beach (2026-11-27)
 
 Panning between your own beaches, the one you left went blank (the

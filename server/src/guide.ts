@@ -402,6 +402,12 @@ ${GUIDE_STEPS.map((st) => `<tr><td>${esc(st.title)}</td><td>${esc(st.how)}</td><
 <p>Make an item for Beech and <a href="https://beechshore.com/submit">submit it on beechshore</a>. You can propose a price and how often it should appear. If your item is approved and sold, you earn 30% of its price in beech bucks (it goes back if the buyer trades it in).</p>
 <p>Rare and legendary things glow and sparkle on the sand; lamps and flames glow at night.</p>
 
+<h2 id="store">Merch store</h2>
+<p>Real beech things to wear and take to the beach are at <a href="https://store.beech.games">store.beech.games</a>: the beech tee, hoodie, embroidered dad hat, flip flops and beach towel, or all five together as <b>the whole beach set</b> for $160 — $28 less than buying them one by one. Pick colours and sizes for each piece of the set.</p>
+<p><b>Your beach, printed.</b> Sign in on the store with the same Google or Apple account you play with, pick one of your beaches, and get it printed big on the front of a tee or hoodie. The print shows your beach as it is the moment you check out — keep building afterwards and your order doesn’t change. Only your own beaches can be printed.</p>
+<p><b>Paying and shipping.</b> You pay on Stripe’s secure checkout page (cards, Apple Pay and Google Pay); beech never sees your card. Everything is printed to order by Printful, usually in 2–5 working days, then shipped; your order page shows where it’s at, with tracking once it ships. Shipping is a flat rate, free over $100. We ship to the US, Canada, the UK, Ireland, most of the EU, Switzerland, Norway, Australia, New Zealand and Japan.</p>
+<p><b>Returns.</b> Things are made for you, so we can’t take back something that just didn’t suit; but if anything arrives misprinted, damaged or wrong, write to <a href="mailto:markjen@gmail.com">markjen@gmail.com</a> within 30 days with your order link and a photo and we’ll replace it or refund you. If you change your mind before your order goes to print, we can cancel and refund it in full.</p>
+
 <h2 id="item-catalog">Item catalog</h2>
 <p>Every item in the game — free things, claw and vending prizes, and shop pieces — is listed on beechshore, with a picture, its size and price, and how to get it: <a href="https://beechshore.com/items">beechshore.com/items</a>. Sign in there to vote for the items you like and leave a comment on any of them.</p>
 
