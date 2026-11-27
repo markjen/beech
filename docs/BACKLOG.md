@@ -200,8 +200,6 @@ picked up.
 - [ ] **Invites: open in the apps**: Universal Links / App Links so
   `?invite=` and `?visit=` links open the phone apps (the invite code is
   kept in `localStorage`, so the claim works the same once it lands).
-- [ ] **Long-press to pick up and drag items**: long-press on an item picks
-  it up, then drag it somewhere else and release to put it down.
 
 ## Ideas
 
@@ -226,6 +224,10 @@ picked up.
 
 ## Done (recent)
 
+- [x] **Long-press to pick up and drag items** (2026-11-27): already built
+  (`thingAt`/`dragging` in `src/main.ts`, `Gestures.grabAt` in look mode);
+  `npm run e2e:sandbox` now checks it in look mode and with a tool picked,
+  and the guide says how.
 - [x] **Admin: trade-ins and debts** (2026-11-27): a Beech bucks tab in the
   admin console. BEECH_BUCKS.md, "Admin: the Beech bucks tab".
 - [x] **Pier preview looks like a ghost** (2026-11-27): see-through

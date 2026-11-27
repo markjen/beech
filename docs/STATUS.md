@@ -330,6 +330,14 @@ accepted the repo's default branch, so the deploy job ran only there.
   `GET /api/inventory` for owned, unexpired non-free items. Nothing writes to
   it yet.
 
+## Moving things by long-press (2026-11-27)
+
+Long-press a thing you set down, drag, let go: it moves (one undo step),
+on the live beach and on your beaches next door, in look mode (palm only)
+and with a tool picked. It was already built; the backlog entry was stale.
+`npm run e2e:sandbox` now covers both modes, and the guide's Bag section
+says how.
+
 ## Admin: trade-ins and debts (2026-11-27)
 
 A read-only Beech bucks tab in the admin console (`GET /api/bucks`):
