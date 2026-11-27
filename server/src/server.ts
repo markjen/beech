@@ -31,6 +31,18 @@
 //                        set: the web shop takes card payments. Any missing: it doesn't.
 //   XSOLLA_SANDBOX       "1": test payments only (Xsolla sandbox, test cards)
 //   WEB_CHECKOUT_RETURN_URL  where Pay Station returns to (default https://play.beech.games/)
+//   STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, PRINTFUL_TOKEN, PRINTFUL_WEBHOOK_SECRET
+//                        the merch store (docs/MERCH_STORE.md; all from Secret Manager).
+//                        All four set: store.beech.games takes orders. Any missing:
+//                        it shows the catalog and "opening soon".
+//   PRINTFUL_STORE_ID    Printful store id, for an account-level token
+//   MERCH_SUNGLASSES_VARIANT  Printful Warehousing variant id of the sunglasses; unset:
+//                        sunglasses and the set show sold out
+//   MERCH_STRIPE_TAX     "1": Stripe Tax on the checkout
+//   PRINTFUL_DRAFTS_ONLY "1": orders reach Printful as drafts and are never confirmed (testing)
+//   STORE_URL            the store's origin (default https://store.beech.games)
+//   STORE_HOSTS          hosts served as the store (default store.beech.games);
+//                        every other host has it under /merch-store
 //   CATCHUP_MAX_GAP_DAYS most of an unvisited gap the sea's catch-up simulates
 //                        (docs/LIVE_SIM.md), default 14
 //   ALLOWED_ORIGINS      extra CORS origins, default the Capacitor app shells
@@ -62,10 +74,12 @@ import { appleAuthKeyFromEnv } from './auth.js';
 import { openDbFromEnv } from './dbEnv.js';
 import { migrate } from './migrations.js';
 import { logEvent } from './observability.js';
-import { createRootApp, DEFAULT_SHORE, DEFAULT_LANDING } from './rootApp.js';
+import { createRootApp, DEFAULT_SHORE, DEFAULT_LANDING, DEFAULT_STORE } from './rootApp.js';
 import { steamStoreFromEnv, syncSteamRefunds } from './steamStore.js';
 import { devVapidKeys, makeSender, pushFromEnv, pushTick } from './push.js';
 import { xsollaFromEnv } from './xsolla.js';
+import { createMerch } from './merch.js';
+import { merchFromEnv } from './merchProviders.js';
 
 const env = process.env;
 const list = (v?: string) => (v ?? '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -167,7 +181,30 @@ if ((pushConfig.web || pushConfig.apns || pushConfig.fcm) && !schedulerTick) {
   pushTimer.unref();
 }
 
+// The merch store (docs/MERCH_STORE.md): orders on only when Stripe and
+// Printful are both set up. The sweep sends paid orders on and recovers
+// stale claims once a minute (specs/tla/MerchOrders.tla, Recover).
+const merchEnv = merchFromEnv(env);
+if (!merchEnv.cfg && merchEnv.missing.length < 4)
+  logEvent('merch_config', { warning: `the merch store is off: ${merchEnv.missing.join(', ')} not set` }, 'WARNING');
+logEvent('merch_config', { enabled: !!merchEnv.cfg, sunglasses: !!merchEnv.cfg?.sunglassesVariant, drafts_only: !!merchEnv.cfg?.printfulDraftsOnly });
+const merch = createMerch(db, { cfg: merchEnv.cfg ?? undefined, now: Date.now });
+if (merchEnv.cfg) {
+  let sweeping = false;
+  const merchTimer = setInterval(() => {
+    if (sweeping) return;
+    sweeping = true;
+    void merch
+      .tick()
+      .then((r) => (r.recovered || r.confirmed || r.sent) && logEvent('merch_tick', { ...r }))
+      .catch((e) => logEvent('merch_tick_error', { message: (e as Error).message }, 'WARNING'))
+      .finally(() => (sweeping = false));
+  }, 60_000);
+  merchTimer.unref();
+}
+
 const api = createApp(db, {
+  merch,
   push: {
     config: pushConfig,
     send: pushSend,
@@ -195,6 +232,13 @@ const root = createRootApp(db, api, publicDir, {
     hosts: env.SHORE_HOSTS !== undefined ? list(env.SHORE_HOSTS) : DEFAULT_SHORE.hosts,
     url: env.SHORE_URL || DEFAULT_SHORE.url,
     gameUrl: env.GAME_URL || DEFAULT_SHORE.gameUrl,
+    googleClientId: env.GOOGLE_CLIENT_ID || undefined,
+    appleClientId: env.APPLE_CLIENT_ID || undefined,
+  },
+  store: {
+    hosts: env.STORE_HOSTS !== undefined ? list(env.STORE_HOSTS) : DEFAULT_STORE.hosts,
+    url: env.STORE_URL || DEFAULT_STORE.url,
+    gameUrl: env.GAME_URL || DEFAULT_STORE.gameUrl,
     googleClientId: env.GOOGLE_CLIENT_ID || undefined,
     appleClientId: env.APPLE_CLIENT_ID || undefined,
   },

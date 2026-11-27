@@ -70,6 +70,17 @@ The single list of what's left to do, for the owner and for agents.
   (`https://discord.gg/y7EGw2yg2d`) is in PR #40 (draft) — tick this once
   that merges.
 
+- [ ] **Open the merch store** (2026-11-27; docs/MERCH_STORE.md, "Turning
+  it on"): Printful account + token, Stripe account + webhook, the four
+  secrets in Secret Manager, `MERCH_ENABLED=1`, the `store.beech.games`
+  domain mapping and DNS, the store origin on the Google OAuth client and
+  the Apple Services ID. Test with `PRINTFUL_DRAFTS_ONLY=1` and Stripe test
+  keys, then order one of each for real. Then a release note.
+- [ ] **Sunglasses stock for the store** (2026-11-27): order logo
+  sunglasses in bulk, send them to Printful Warehousing, set
+  `MERCH_SUNGLASSES_VARIANT`. Until then the sunglasses and the set show
+  sold out.
+
 ## Owner decisions
 
 - [ ] **Invite rewards** (2026-11-23): check the ladder (parasol,
@@ -184,6 +195,8 @@ picked up.
 
 ## Ideas
 
+- [ ] **Store: Printful mockups, your beach on the towel, store links in
+  the game and on beechshore** (docs/MERCH_STORE.md, "Not built").
 - Model more state machines the same way: the claw machine (goes,
   cooldowns, starter gifts), dig finds (daily cap), shop orders and refunds
   (Xsolla, Steam, Apple and Google), checkpoints (limits, the auto slot),
@@ -205,6 +218,9 @@ picked up.
 
 ## Done (recent)
 
+- [x] **Merch store** (2026-11-27; Mark): store.beech.games with the six
+  beech things, the set, and your-beach tees and hoodies; Stripe Checkout +
+  Printful, `specs/tla/MerchOrders.tla`. MERCH_STORE.md.
 - [x] **Inland rows on beechshore.com's pictures** (2026-11-27; Mark: "make
   pictures taller"): the thumbnail and the beach page's flat view are taller
   by the rows, drawn from the app's own shapes; the link-preview card stays

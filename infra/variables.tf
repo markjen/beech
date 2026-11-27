@@ -61,6 +61,12 @@ variable "admin_custom_domain" {
   default     = ""
 }
 
+variable "store_custom_domain" {
+  description = "Optional custom domain for the merch store on the beech service, e.g. store.beech.games (docs/MERCH_STORE.md). Empty (the default) skips the domain mapping; after apply, add the DNS record the mapping prints in Squarespace."
+  type        = string
+  default     = ""
+}
+
 variable "alert_email" {
   description = "Email address monitoring alert notifications go to."
   type        = string

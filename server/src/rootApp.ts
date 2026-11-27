@@ -18,6 +18,7 @@ import { createLiveBeaches, liveConfig, type LiveBeaches } from './liveBeach.js'
 import { landingHtml } from './landingSite.js';
 import { createSharePageHandler } from './shareMeta.js';
 import { createShoreSite } from './shoreSite.js';
+import { createStoreSite } from './merchSite.js';
 import type { Db } from './db.js';
 
 export interface ShoreOptions {
@@ -56,12 +57,30 @@ export const DEFAULT_LANDING: LandingOptions = {
   gameUrl: 'https://play.beech.games',
 };
 
-/** Both sites' options; each defaults to its DEFAULT_* when omitted. */
+export interface StoreOptions {
+  /** hosts that are the merch store itself (store.beech.games) */
+  hosts: string[];
+  /** the store's public origin, https://store.beech.games */
+  url: string;
+  /** the game, for the store's "Play" link */
+  gameUrl: string;
+  googleClientId?: string;
+  appleClientId?: string;
+}
+
+export const DEFAULT_STORE: StoreOptions = {
+  hosts: ['store.beech.games'],
+  url: 'https://store.beech.games',
+  gameUrl: 'https://play.beech.games',
+};
+
+/** The sites' options; each defaults to its DEFAULT_* when omitted. */
 export interface RootAppOptions {
   /** the sea's catch-up (docs/LIVE_SIM.md), shared with the game API when given; tests pass their own */
   live?: Pick<LiveBeaches, 'ensure'>;
   shore?: ShoreOptions;
   landing?: LandingOptions;
+  store?: StoreOptions;
 }
 
 /**
@@ -105,6 +124,20 @@ export function createRootApp(db: Db, api: Hono<any, any, any>, publicDir: strin
     const p = c.req.path;
     if (p === '/shore/') return c.redirect('/shore', 301);
     if (p === '/shore' || p.startsWith('/shore/')) return shoreUnder.fetch(c.req.raw);
+    return next();
+  });
+  // the merch store (docs/MERCH_STORE.md): every path on its own host, and
+  // under /merch-store on every other host (development, before the domain)
+  const storeOpts = opts.store ?? DEFAULT_STORE;
+  const storeHosts = new Set(storeOpts.hosts.map((h) => h.toLowerCase()));
+  const storeSite = { gameUrl: storeOpts.gameUrl, publicDir, api, googleClientId: storeOpts.googleClientId, appleClientId: storeOpts.appleClientId };
+  const storeHere = createStoreSite({ ...storeSite, base: '' });
+  const storeUnder = createStoreSite({ ...storeSite, base: '/merch-store' });
+  root.use('*', async (c, next) => {
+    const host = (c.req.header('host') ?? '').toLowerCase().replace(/:\d+$/, '');
+    if (storeHosts.has(host)) return storeHere.fetch(c.req.raw);
+    const p = c.req.path;
+    if (p === '/merch-store' || p.startsWith('/merch-store/')) return storeUnder.fetch(c.req.raw);
     return next();
   });
   const landingHosts = new Set(landing.hosts.map((h) => h.toLowerCase()));

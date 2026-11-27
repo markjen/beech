@@ -311,3 +311,21 @@ resource "google_cloud_run_domain_mapping" "admin" {
     route_name = "beech-admin"
   }
 }
+
+# The merch store (docs/MERCH_STORE.md): store.beech.games on the beech
+# service, which serves it by host (server/src/rootApp.ts). Set
+# var.store_custom_domain, apply, then add the CNAME the mapping prints.
+resource "google_cloud_run_domain_mapping" "store" {
+  count    = var.store_custom_domain != "" ? 1 : 0
+  project  = var.project_id
+  location = var.region
+  name     = var.store_custom_domain
+
+  metadata {
+    namespace = var.project_id
+  }
+
+  spec {
+    route_name = "beech"
+  }
+}

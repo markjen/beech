@@ -1075,6 +1075,58 @@ const MIGRATIONS: string[] = [
   CREATE INDEX inbox_unpushed ON inbox (user_id)
     WHERE pushed_at IS NULL AND kind IN ('visit', 'gift', 'neighbor_request', 'neighbor_linked', 'invite_settled', 'tide', 'pet_fed', 'system');
   `,
+
+  // 45: the merch store (docs/MERCH_STORE.md, specs/tla/MerchOrders.tla).
+  // One row per checkout; Stripe says when it's paid (or expired, or
+  // refunded), and the submit worker claims a paid order (claim + claimed_at)
+  // to send it to Printful. A "your beach" line keeps the beach as it was at
+  // checkout (design + its look), so later building never changes the print;
+  // print_key names its print file for Printful to fetch.
+  `
+  CREATE TABLE merch_orders (
+    id UUID PRIMARY KEY,
+    status TEXT NOT NULL CHECK (status IN ('open', 'expired', 'paid', 'sending', 'sent', 'shipped', 'canceled', 'refunded')),
+    user_id UUID REFERENCES users (id) ON DELETE SET NULL,
+    stripe_session TEXT NOT NULL UNIQUE,
+    payment_intent TEXT UNIQUE,
+    subtotal_cents INTEGER NOT NULL CHECK (subtotal_cents > 0),
+    shipping_cents INTEGER NOT NULL CHECK (shipping_cents >= 0),
+    total_cents INTEGER,
+    tax_cents INTEGER,
+    email TEXT,
+    recipient JSONB,
+    claim UUID,
+    claimed_at BIGINT,
+    printful_id BIGINT,
+    tracking JSONB,
+    created_at BIGINT NOT NULL,
+    paid_at BIGINT,
+    sent_at BIGINT,
+    confirmed_at BIGINT,
+    shipped_at BIGINT,
+    refunded_at BIGINT
+  );
+  CREATE INDEX merch_orders_work ON merch_orders (status) WHERE status IN ('paid', 'sending', 'sent');
+  CREATE INDEX merch_orders_user ON merch_orders (user_id);
+  CREATE TABLE merch_lines (
+    id BIGSERIAL PRIMARY KEY,
+    order_id UUID NOT NULL REFERENCES merch_orders (id) ON DELETE CASCADE,
+    product TEXT NOT NULL,
+    label TEXT NOT NULL,
+    choice JSONB NOT NULL,
+    parts JSONB,
+    quantity INTEGER NOT NULL CHECK (quantity BETWEEN 1 AND 10),
+    unit_cents INTEGER NOT NULL CHECK (unit_cents > 0),
+    beach_id UUID REFERENCES beach (id) ON DELETE SET NULL,
+    beach_name TEXT,
+    design BYTEA,
+    design_location TEXT,
+    design_pier BOOLEAN,
+    design_sections TEXT,
+    print_key TEXT UNIQUE
+  );
+  CREATE INDEX merch_lines_order ON merch_lines (order_id);
+  `,
 ];
 
 /** Apply migrations up to `upTo` (default: all). Tests use `upTo` to check a migration on older data. */

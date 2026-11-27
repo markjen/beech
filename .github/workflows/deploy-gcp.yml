@@ -40,6 +40,11 @@ name: Deploy production (Google Cloud Run)
 #   beech-gift-code-pepper (both: the game redeems, the admin service issues),
 #   beech-xsolla-api-key and beech-xsolla-webhook-secret (game service only,
 #   web checkout; XSOLLA_SANDBOX=1 until the live launch)
+# The merch store (docs/MERCH_STORE.md), only once vars.MERCH_ENABLED=1:
+#   secrets beech-stripe-secret-key, beech-stripe-webhook-secret,
+#   beech-printful-token, beech-printful-webhook-secret; optional vars
+#   MERCH_SUNGLASSES_VARIANT, PRINTFUL_STORE_ID, MERCH_STRIPE_TAX=1,
+#   PRINTFUL_DRAFTS_ONLY=1 (orders reach Printful as drafts: the first test)
 # No keys are stored in GitHub: authentication is Workload Identity Federation,
 # and the database password lives in Secret Manager (beech-db-password).
 on:
@@ -102,6 +107,11 @@ jobs:
           OPEN_METEO_ENABLED: ${{ vars.OPEN_METEO_ENABLED }}
           GOOGLE_RTDN_AUDIENCE: ${{ vars.GOOGLE_RTDN_AUDIENCE }}
           GOOGLE_RTDN_SERVICE_ACCOUNT: ${{ vars.GOOGLE_RTDN_SERVICE_ACCOUNT }}
+          MERCH_ENABLED: ${{ vars.MERCH_ENABLED }}
+          MERCH_SUNGLASSES_VARIANT: ${{ vars.MERCH_SUNGLASSES_VARIANT }}
+          PRINTFUL_STORE_ID: ${{ vars.PRINTFUL_STORE_ID }}
+          MERCH_STRIPE_TAX: ${{ vars.MERCH_STRIPE_TAX }}
+          PRINTFUL_DRAFTS_ONLY: ${{ vars.PRINTFUL_DRAFTS_ONLY }}
         run: |
           PUSH_ENV=""
           PUSH_SECRETS=""
@@ -125,6 +135,12 @@ jobs:
           fi
           if [ -n "$GOOGLE_RTDN_AUDIENCE" ]; then
             PUSH_ENV="$PUSH_ENV;GOOGLE_RTDN_AUDIENCE=$GOOGLE_RTDN_AUDIENCE;GOOGLE_RTDN_SERVICE_ACCOUNT=$GOOGLE_RTDN_SERVICE_ACCOUNT"
+          fi
+          if [ "$MERCH_ENABLED" = "1" ]; then
+            PUSH_SECRETS="$PUSH_SECRETS,STRIPE_SECRET_KEY=beech-stripe-secret-key:latest,STRIPE_WEBHOOK_SECRET=beech-stripe-webhook-secret:latest,PRINTFUL_TOKEN=beech-printful-token:latest,PRINTFUL_WEBHOOK_SECRET=beech-printful-webhook-secret:latest"
+            for v in MERCH_SUNGLASSES_VARIANT PRINTFUL_STORE_ID MERCH_STRIPE_TAX PRINTFUL_DRAFTS_ONLY; do
+              if [ -n "${!v}" ]; then PUSH_ENV="$PUSH_ENV;$v=${!v}"; fi
+            done
           fi
           gcloud run deploy beech \
             --image "$IMAGE" \

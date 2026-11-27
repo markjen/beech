@@ -19,6 +19,8 @@ Read these first:
    The public shore site (beechshore.com) is in [docs/SHORE_SITE.md](docs/SHORE_SITE.md).
    Copying a beach onto one of yours is in [docs/COPY_BEACH.md](docs/COPY_BEACH.md);
    sand bucks, the shop's currency, and trade-ins in [docs/SAND_BUCKS.md](docs/SAND_BUCKS.md).
+   The merch store (store.beech.games: Stripe + Printful, your-beach prints)
+   is in [docs/MERCH_STORE.md](docs/MERCH_STORE.md).
 6. [docs/AGENT_TOKENS.md](docs/AGENT_TOKENS.md): how to keep tool output
    small. Cloud sessions install [rtk](https://github.com/rtk-ai/rtk), and a
    Bash hook in `.claude/settings.json` routes commands through it; treat its
