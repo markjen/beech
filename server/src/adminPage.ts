@@ -2,7 +2,8 @@
 //   - adminSignInHtml: all anyone gets until they sign in. A Google button
 //     and nothing else: no console code, no API paths beyond /auth/google.
 //   - adminConsoleHtml: only for a signed-in admin. Beaches, gift cards,
-//     promo codes, redemptions, referrals, reports and the audit log.
+//     promo codes, redemptions, referrals, beech bucks (trade-ins, debts),
+//     reports and the audit log.
 // Both run under a nonce-based Content-Security-Policy, so every <script>
 // and <style> carries the nonce and there are no inline handlers or style
 // attributes. A gift card code is rendered once, right after it is issued
@@ -129,6 +130,7 @@ export function adminConsoleHtml(opts: { nonce: string; email: string; appUrl: s
     <button type="button" role="tab" data-tab="promos" aria-selected="false">Promo codes</button>
     <button type="button" role="tab" data-tab="redemptions" aria-selected="false">Redemptions</button>
     <button type="button" role="tab" data-tab="referrals" aria-selected="false">Referrals</button>
+    <button type="button" role="tab" data-tab="bucks" aria-selected="false">Beech bucks</button>
     <button type="button" role="tab" data-tab="reports" aria-selected="false">Reports</button>
     <button type="button" role="tab" data-tab="audit" aria-selected="false">Audit log</button>
   </nav>
@@ -258,6 +260,20 @@ export function adminConsoleHtml(opts: { nonce: string; email: string; appUrl: s
     </div>
   </section>
 
+  <section id="tab-bucks" hidden>
+    <div id="bucks-stats" class="stats"></div>
+    <div class="panel"><h2>Debts</h2><div id="bucks-debts"><p class="muted">Loading…</p></div></div>
+    <div class="panel">
+      <h2>Trade-ins</h2>
+      <form id="bucks-search" class="row">
+        <input name="q" type="search" placeholder="Player name, email or item" aria-label="Search trade-ins">
+        <button type="submit" class="primary">Search</button>
+      </form>
+      <div id="bucks-list"><p class="muted">Loading…</p></div>
+      <div class="row"><button id="bucks-more" type="button" hidden>More</button></div>
+    </div>
+  </section>
+
   <section id="tab-reports" hidden>
     <div class="panel">
       <label><input type="checkbox" id="reports-all"> show resolved too</label>
@@ -291,7 +307,7 @@ const items = (m) => { const e = Object.entries(m || {}); return e.length ? e.ma
 
 // ---- tabs
 const loaded = {};
-const loaders = { beaches: loadBeachesTab, users: () => loadUsers(false), submissions: () => loadSubmissions(0), gifts: loadGifts, promos: loadPromos, redemptions: loadRedemptions, referrals: () => loadReferrals(false), reports: loadReports, audit: loadAudit };
+const loaders = { beaches: loadBeachesTab, users: () => loadUsers(false), submissions: () => loadSubmissions(0), gifts: loadGifts, promos: loadPromos, redemptions: loadRedemptions, referrals: () => loadReferrals(false), bucks: () => loadBucks(false), reports: loadReports, audit: loadAudit };
 function show(tab) {
   document.querySelectorAll('nav [data-tab]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === tab)));
   for (const t of Object.keys(loaders)) $('tab-' + t).hidden = t !== tab;
@@ -746,6 +762,37 @@ $('tab-referrals').addEventListener('click', (e) => {
   refSearch = { q: t.dataset.q, offset: 0 };
   $('ref-search').elements.q.value = t.dataset.q;
   loadReferrals(false).catch((err) => say(err.message));
+});
+// ---- beech bucks: trade-ins and debts
+let bucksSearch = { q: '', offset: 0 };
+const who = (p) => esc(p.name || '—') + (p.email ? '<br><span class="muted">' + esc(p.email) + '</span>' : '');
+async function loadBucks(append) {
+  const r = await api('/bucks?' + new URLSearchParams({ q: bucksSearch.q, offset: String(bucksSearch.offset) }));
+  const t = r.totals;
+  $('bucks-stats').innerHTML = [['Trade-ins in 24 h', t.tradeInsDay + ' · ' + t.bucksDay + ' bb'], ['Trade-ins in 7 days', t.tradeInsWeek + ' · ' + t.bucksWeek + ' bb'], ['Players in debt', t.debtors], ['Debt owed', t.debtBucks + ' bb'], ['Balances held', t.balanceBucks + ' bb']]
+    .map(([k, v]) => '<div class="stat"><b>' + esc(v) + '</b><span>' + k + '</span></div>').join('');
+  $('bucks-debts').innerHTML = r.debts.length ? '<table><thead><tr><th>Player</th><th>Owes</th><th>Balance</th><th>Last refund</th></tr></thead><tbody>' +
+    r.debts.map((d) => '<tr class="pick" data-q="' + esc(d.player.id) + '"><td>' + who(d.player) + '</td><td>' + d.debtBucks + ' bb</td><td>' + d.balanceBucks + ' bb</td><td>' + when(d.lastRefundAt) + '</td></tr>').join('') +
+    '</tbody></table>' : '<p class="muted">Nobody owes anything.</p>';
+  const rows = r.tradeIns.map((x) => '<tr><td>' + when(x.at) + '</td><td class="pick" data-q="' + esc(x.player.id) + '">' + who(x.player) + '</td><td>' + esc(x.item) + (x.quantity > 1 ? ' ×' + x.quantity : '') + '</td><td>' + x.bucks + ' bb</td></tr>').join('');
+  const el = $('bucks-list');
+  if (!append) el.innerHTML = rows ? '<table><thead><tr><th>When</th><th>Player</th><th>Item</th><th>Got</th></tr></thead><tbody>' + rows + '</tbody></table>' : '<p class="muted">No trade-ins match.</p>';
+  else el.querySelector('tbody').insertAdjacentHTML('beforeend', rows);
+  $('bucks-more').hidden = !r.more;
+}
+$('bucks-search').addEventListener('submit', (e) => {
+  e.preventDefault();
+  bucksSearch = { q: String(new FormData(e.target).get('q') || ''), offset: 0 };
+  loadBucks(false).catch((err) => say(err.message));
+});
+$('bucks-more').addEventListener('click', () => { bucksSearch.offset += 50; loadBucks(true).catch((err) => say(err.message)); });
+// tap a player: just their trade-ins
+$('tab-bucks').addEventListener('click', (e) => {
+  const t = e.target.closest('[data-q]');
+  if (!t) return;
+  bucksSearch = { q: t.dataset.q, offset: 0 };
+  $('bucks-search').elements.q.value = t.dataset.q;
+  loadBucks(false).catch((err) => say(err.message));
 });
 async function loadReports() {
   const { reports } = await api('/reports' + ($('reports-all').checked ? '?all=1' : ''));

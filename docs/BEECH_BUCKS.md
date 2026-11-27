@@ -174,6 +174,16 @@ Referrals from before keep the old item ladder (`bonus_bucks` NULL).
   Store guideline 3.1.3(b), multiplatform services, since the packs are
   also sold in the app). Gift cards and promo codes stay web only.
 
+## Admin: the Beech bucks tab
+
+The admin console has a read-only **Beech bucks** tab (`GET /api/bucks?q=&offset=`):
+trade-ins in the last 24 hours and 7 days (how many, bb paid out), how
+many players owe bucks and how much, and the bb held in balances; the
+**debts** (players with `creator_credit_debt_cents > 0`, largest first,
+with their balance and last refund); and the latest **trade-ins**, 50 at a
+time, searchable by player name, email or id, or item. Tapping a player
+shows just theirs.
+
 ## State machine
 
 [`specs/tla/SandBucks.tla`](../specs/tla/SandBucks.tla); `SandBucksFixed.cfg`

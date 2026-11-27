@@ -43,6 +43,7 @@ import { hashToken, newSessionToken, verifyGoogleIdToken } from './auth.js';
 import { BUCK, centsToBucks } from './bucks.js';
 import { clawBack, creditBalance } from './bucksDb.js';
 import { BadBlob, inspectBlob } from './checkpoints.js';
+import { centsToBucks } from './bucks.js';
 import { toBytes, type Db } from './db.js';
 import { formatCents, hashesEqual, hashGiftCode, isAdminEmail, isPromoCodeShape, newGiftCardCode, normalizePromoCode } from './giftCards.js';
 import { ledgerLabel } from './ledger.js';
@@ -588,6 +589,72 @@ export function createAdminApp(db: Db, cfg: AdminConfig): Hono<Env> {
         bonusBucks: num(r.bonus_bucks),
       })),
       more: rows.length > 50,
+    });
+  });
+
+  // ---------------------------------------------------------------- beech bucks
+  // Trade-ins and debts (docs/BEECH_BUCKS.md), read-only: what players traded
+  // in lately (searchable by player or item) and who owes bucks after a
+  // refund clawed back what they'd already spent.
+  api.get('/bucks', async (c) => {
+    const q = (c.req.query('q') ?? '').trim().slice(0, 100);
+    const offset = Number(c.req.query('offset') ?? '0');
+    if (!Number.isSafeInteger(offset) || offset < 0) fail(400, 'bad offset');
+    const like = `%${q.replace(/[\\%_]/g, (m) => '\\' + m)}%`;
+    const now = clock();
+    const totals = (
+      await db.query<{ day_n: string; day_cents: string | null; week_n: string; week_cents: string | null; debtors: string; debt: string | null; balance: string | null }>(
+        `SELECT (SELECT COUNT(*) FROM trade_ins WHERE created_at > $1) AS day_n,
+                (SELECT SUM(value_cents) FROM trade_ins WHERE created_at > $1) AS day_cents,
+                (SELECT COUNT(*) FROM trade_ins WHERE created_at > $2) AS week_n,
+                (SELECT SUM(value_cents) FROM trade_ins WHERE created_at > $2) AS week_cents,
+                (SELECT COUNT(*) FROM users WHERE creator_credit_debt_cents > 0) AS debtors,
+                (SELECT SUM(creator_credit_debt_cents) FROM users) AS debt,
+                (SELECT SUM(credit_cents) FROM users) AS balance`,
+        [now - 86400000, now - 7 * 86400000],
+      )
+    )[0];
+    const trades = await db.query<{ id: string; item_id: string; quantity: number; value_cents: number; created_at: string; user_id: string; name: string; email: string | null }>(
+      `SELECT t.id, t.item_id, t.quantity, t.value_cents, t.created_at, u.id AS user_id, u.name, u.email
+         FROM trade_ins t JOIN users u ON u.id = t.user_id
+        WHERE $1 = '' OR u.name ILIKE $2 OR u.email ILIKE $2 OR t.item_id ILIKE $2 OR u.id::text = $1
+        ORDER BY t.created_at DESC, t.id DESC
+        LIMIT 51 OFFSET $3`,
+      [q, like, offset],
+    );
+    const debts = await db.query<{ id: string; name: string; email: string | null; debt: number; balance: number; last_refund: string | null }>(
+      `SELECT u.id, u.name, u.email, u.creator_credit_debt_cents AS debt, u.credit_cents AS balance,
+              (SELECT MAX(l.created_at) FROM credit_ledger l WHERE l.user_id = u.id AND l.kind LIKE '%\\_refund') AS last_refund
+         FROM users u WHERE u.creator_credit_debt_cents > 0
+        ORDER BY u.creator_credit_debt_cents DESC, u.id
+        LIMIT 50`,
+    );
+    const bb = (cents: string | number | null) => centsToBucks(Number(cents ?? 0));
+    return c.json({
+      totals: {
+        tradeInsDay: Number(totals.day_n),
+        bucksDay: bb(totals.day_cents),
+        tradeInsWeek: Number(totals.week_n),
+        bucksWeek: bb(totals.week_cents),
+        debtors: Number(totals.debtors),
+        debtBucks: bb(totals.debt),
+        balanceBucks: bb(totals.balance),
+      },
+      tradeIns: trades.slice(0, 50).map((t) => ({
+        id: Number(t.id),
+        at: Number(t.created_at),
+        item: t.item_id,
+        quantity: Number(t.quantity),
+        bucks: bb(t.value_cents),
+        player: { id: t.user_id, name: t.name, email: t.email },
+      })),
+      more: trades.length > 50,
+      debts: debts.map((d) => ({
+        player: { id: d.id, name: d.name, email: d.email },
+        debtBucks: bb(d.debt),
+        balanceBucks: bb(d.balance),
+        lastRefundAt: d.last_refund === null ? null : Number(d.last_refund),
+      })),
     });
   });
 
