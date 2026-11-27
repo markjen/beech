@@ -19,6 +19,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     date: '2026-11-26',
     title: 'Real weather, 21 new beaches, piers, sand bucks, trade-ins, copying a beach and notifications',
     changes: [
+      'Sign in with Apple on the web: sign in or link your Apple account from Settings on the web as well as on iPhone, and deleting your account revokes your Apple sign-in too.',
       'Inland sections: add up to four rows behind any of your beaches — a sand extension, a boardwalk, a bike path, a playground, a coastal road, storefronts, a dune garden or a picnic grove (15 beech bucks each). Pick a beach in Manage → Beaches and choose inland sections to add, reorder or put them back in your bag. When a linked neighbor has the same row, the two join up and run straight on.',
       'Promo codes: load promo codes into your account (on beechshore.com/account or in the web shop) and collect as many as you like. Pack prices stay the same, and whenever you buy a beech-buck pack, the code that gives you the biggest extra bonus bb applies automatically.',
       'Cleaner navigation on beechshore.com: Beaches, Items and Account in the header, with tabs under Beaches (Most loved, Rising, Just built, Surprise me) and under Items (All items, Submit an item, Asset spec).',

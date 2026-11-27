@@ -101,7 +101,7 @@ _(nothing right now)_
 
 ## Up next (engineering)
 
-- [ ] **Apple sign-in on the web** (2026-11-26): attaching Apple while signed in works on iOS only — the web has no Apple JS SDK integration or Services ID, so web users can attach Google but not Apple. Add the Apple JS button to Settings (and the `APPLE_CLIENT_IDS` Services ID on the server) if web Apple attach is wanted.
+- [x] **Apple sign-in on the web** (2026-11-26): added Apple JS SDK popup sign-in (`webAppleSignIn` in `src/net/account.ts`) to the web sign-in screen and Settings → connected sign-ins when `VITE_APPLE_CLIENT_ID` is set (`Dockerfile`, `deploy-gcp.yml`). Owner setup: create a Sign in with Apple Services ID for `play.beech.games` and set `vars.APPLE_CLIENT_ID` + include it in `vars.APPLE_CLIENT_IDS`.
 
 - [ ] **Beech bucks, follow-ups** ([BEECH_BUCKS.md](BEECH_BUCKS.md)): trade in
   several at once from the bag; an admin view of trade-ins and debts.
@@ -156,9 +156,13 @@ picked up.
   clients, build env vars, the Info.plist URL scheme, the Apple capability,
   and server client IDs. Steps are in BACKEND.md, "Phone apps". Then test on
   real devices.
-- [ ] **Revoke Apple tokens on account delete**: App Store guideline
-  5.1.1(v). Needs a Sign in with Apple private key in Secret Manager and a
-  call to Apple's `/auth/revoke`.
+- [x] **Revoke Apple tokens on account delete** (2026-11-26): App Store
+  guideline 5.1.1(v). Migration 41 stores the exchanged Apple refresh token
+  and client ID on `user_identities`, and `DELETE /api/account` calls
+  Apple's `/auth/revoke` (`server/src/auth.ts`, `server/src/app.ts`,
+  `deploy-gcp.yml`). Owner setup: put the Sign in with Apple `.p8` key in
+  Secret Manager as `beech-apple-auth-key` and set `vars.APPLE_AUTH_KEY_ID`
+  and `vars.APPLE_AUTH_TEAM_ID`.
 - [ ] **Store privacy forms** (DevOps): the wording is in MOBILE.md.
 - [ ] **More free items**: a bucket that stamps sand castles, and a beach
   umbrella that casts a shadow (needs a shadow decal in the sand shader).

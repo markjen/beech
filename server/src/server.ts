@@ -9,6 +9,9 @@
 //   PGLITE_DIR           no Postgres at all: embedded PGlite (dev only; "memory" for in-memory)
 //   GOOGLE_CLIENT_IDS    comma-separated OAuth client IDs (web, iOS, Android)
 //   APPLE_CLIENT_IDS     comma-separated (bundle id, Services ID)
+//   APPLE_AUTH_KEY, APPLE_AUTH_KEY_ID, APPLE_AUTH_TEAM_ID  optional Sign in with Apple
+//                        .p8 private key (Secret Manager) for exchanging auth codes and
+//                        revoking Apple tokens on account delete (App Store 5.1.1(v))
 //   APPLE_BUNDLE_ID      iOS bundle id store purchases are for (default app.beech.beach)
 //   ANDROID_PACKAGE      Android package store purchases are for (default app.beech.beach)
 //   GOOGLE_PLAY_SERVICE_ACCOUNT  optional service-account JSON for the Play Developer API
@@ -51,6 +54,7 @@ import { fileURLToPath } from 'node:url';
 
 import { createApp } from './app.js';
 import { startAdminServer } from './adminServer.js';
+import { appleAuthKeyFromEnv } from './auth.js';
 import { openDbFromEnv } from './dbEnv.js';
 import { migrate } from './migrations.js';
 import { logEvent } from './observability.js';
@@ -167,6 +171,7 @@ const api = createApp(db, {
   },
   googleClientIds: list(env.GOOGLE_CLIENT_IDS),
   appleClientIds: list(env.APPLE_CLIENT_IDS),
+  appleAuthKey: appleAuthKeyFromEnv(env),
   steamAuth,
   steamStore,
   allowedOrigins: list(env.ALLOWED_ORIGINS ?? 'capacitor://localhost,https://localhost,app://beech'),

@@ -23,7 +23,9 @@ name: Deploy production (Google Cloud Run)
 #   vars.GCP_SQL_INSTANCE           <project>:<region>:beech-db
 #   vars.GOOGLE_CLIENT_ID           OAuth web client ID (public)
 #   vars.GOOGLE_CLIENT_IDS          accepted client IDs, comma-separated (web, iOS, Android)
-#   vars.APPLE_CLIENT_IDS           optional
+#   vars.APPLE_CLIENT_ID            optional: Sign in with Apple Services ID for web (public)
+#   vars.APPLE_CLIENT_IDS           optional: accepted Apple client IDs, comma-separated (bundle id, Services ID)
+#   vars.APPLE_AUTH_KEY_ID, vars.APPLE_AUTH_TEAM_ID  optional: Sign in with Apple key for /auth/revoke on delete (+ secret beech-apple-auth-key)
 #   vars.ADMIN_EMAILS               Google accounts allowed into the admin console
 # Push notifications (docs/INBOX_NOTIFICATIONS.md, "Turning on push"), each
 # part added only once its variable is set, so a deploy never names a secret
@@ -80,7 +82,9 @@ jobs:
       - name: Build and push the images
         run: |
           gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet
-          docker build -t "$IMAGE" --build-arg "VITE_GOOGLE_CLIENT_ID=${{ vars.GOOGLE_CLIENT_ID }}" .
+          docker build -t "$IMAGE" \
+            --build-arg "VITE_GOOGLE_CLIENT_ID=${{ vars.GOOGLE_CLIENT_ID }}" \
+            --build-arg "VITE_APPLE_CLIENT_ID=${{ vars.APPLE_CLIENT_ID }}" .
           docker build --target admin -t "$ADMIN_IMAGE" .
           docker push "$IMAGE"
           docker push "$ADMIN_IMAGE"
@@ -90,6 +94,8 @@ jobs:
           VAPID_SUBJECT: ${{ vars.VAPID_SUBJECT }}
           APNS_KEY_ID: ${{ vars.APNS_KEY_ID }}
           APNS_TEAM_ID: ${{ vars.APNS_TEAM_ID }}
+          APPLE_AUTH_KEY_ID: ${{ vars.APPLE_AUTH_KEY_ID }}
+          APPLE_AUTH_TEAM_ID: ${{ vars.APPLE_AUTH_TEAM_ID }}
           FCM_PROJECT_ID: ${{ vars.FCM_PROJECT_ID }}
           PUSH_TICK_SERVICE_ACCOUNT: ${{ vars.PUSH_TICK_SERVICE_ACCOUNT }}
           PUSH_TICK_AUDIENCE: ${{ vars.PUSH_TICK_AUDIENCE }}
@@ -106,6 +112,10 @@ jobs:
           if [ -n "$APNS_KEY_ID" ]; then
             PUSH_ENV="$PUSH_ENV;APNS_KEY_ID=$APNS_KEY_ID;APNS_TEAM_ID=$APNS_TEAM_ID"
             PUSH_SECRETS="$PUSH_SECRETS,APNS_KEY=beech-apns-key:latest"
+          fi
+          if [ -n "$APPLE_AUTH_KEY_ID" ]; then
+            PUSH_ENV="$PUSH_ENV;APPLE_AUTH_KEY_ID=$APPLE_AUTH_KEY_ID;APPLE_AUTH_TEAM_ID=$APPLE_AUTH_TEAM_ID"
+            PUSH_SECRETS="$PUSH_SECRETS,APPLE_AUTH_KEY=beech-apple-auth-key:latest"
           fi
           if [ -n "$FCM_PROJECT_ID" ]; then PUSH_ENV="$PUSH_ENV;FCM_PROJECT_ID=$FCM_PROJECT_ID"; fi
           # real weather: Open-Meteo's free API is non-commercial only (server/src/weather.ts)

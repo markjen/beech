@@ -19,7 +19,8 @@ COPY src ./src
 # The client shares the Discord invite and push kinds with the server.
 COPY server/src/community.ts server/src/notifyKinds.ts ./server/src/
 ARG VITE_GOOGLE_CLIENT_ID=""
-ENV VITE_ACCOUNTS=1 VITE_API_URL="" VITE_GOOGLE_CLIENT_ID=${VITE_GOOGLE_CLIENT_ID}
+ARG VITE_APPLE_CLIENT_ID=""
+ENV VITE_ACCOUNTS=1 VITE_API_URL="" VITE_GOOGLE_CLIENT_ID=${VITE_GOOGLE_CLIENT_ID} VITE_APPLE_CLIENT_ID=${VITE_APPLE_CLIENT_ID}
 RUN npx tsc --noEmit && npx vite build
 
 # ---- API server

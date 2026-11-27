@@ -1,4 +1,4 @@
-import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from 'jose';
+import { createRemoteJWKSet, importPKCS8, jwtVerify, SignJWT, type JWTVerifyGetKey } from 'jose';
 
 /** Google's signing keys for ID tokens (cached by jose between requests). */
 const GOOGLE_JWKS = createRemoteJWKSet(new URL('https://www.googleapis.com/oauth2/v3/certs'));
@@ -14,6 +14,11 @@ export interface VerifiedIdentity {
    * unverified address must never arrive here.
    */
   email?: string;
+  /**
+   * Apple only: the verified `aud` claim (iOS bundle ID or web Services ID),
+   * needed when exchanging an authorization code or revoking a refresh token.
+   */
+  clientId?: string;
 }
 
 /**
@@ -60,7 +65,119 @@ export async function verifyAppleIdToken(
     clockTolerance: 60,
   });
   if (typeof payload.sub !== 'string' || !payload.sub) throw new Error('token has no subject');
-  return { provider: 'apple', sub: payload.sub, name: name.slice(0, 60) };
+  const clientId = typeof payload.aud === 'string' ? payload.aud : Array.isArray(payload.aud) ? payload.aud[0] : undefined;
+  return { provider: 'apple', sub: payload.sub, name: name.slice(0, 60), ...(clientId ? { clientId } : {}) };
+}
+
+export interface AppleAuthKeyConfig {
+  /** Sign in with Apple .p8 private key (PEM) */
+  key: string;
+  /** 10-character Key ID */
+  keyId: string;
+  /** 10-character Apple Developer Team ID */
+  teamId: string;
+}
+
+/**
+ * Read Sign in with Apple private-key credentials from the environment.
+ * Unset until the owner adds the key to Secret Manager: sign-in still works
+ * without it, and token exchange / revocation switch on once it is set.
+ */
+export function appleAuthKeyFromEnv(env: Record<string, string | undefined>): AppleAuthKeyConfig | undefined {
+  const key = env.APPLE_AUTH_KEY?.trim();
+  const keyId = env.APPLE_AUTH_KEY_ID?.trim();
+  const teamId = (env.APPLE_AUTH_TEAM_ID || env.APNS_TEAM_ID)?.trim();
+  if (!key || !keyId || !teamId) return undefined;
+  return { key: key.replace(/\\n/g, '\n'), keyId, teamId };
+}
+
+/**
+ * Sign a short-lived ES256 client_secret JWT for Apple's /auth/token and
+ * /auth/revoke endpoints.
+ */
+export async function makeAppleClientSecret(
+  cfg: AppleAuthKeyConfig,
+  clientId: string,
+  nowMs: number = Date.now(),
+): Promise<string> {
+  const iat = Math.floor(nowMs / 1000);
+  const privateKey = await importPKCS8(cfg.key, 'ES256');
+  return new SignJWT({})
+    .setProtectedHeader({ alg: 'ES256', kid: cfg.keyId })
+    .setIssuer(cfg.teamId)
+    .setIssuedAt(iat)
+    .setExpirationTime(iat + 300)
+    .setAudience('https://appleid.apple.com')
+    .setSubject(clientId)
+    .sign(privateKey);
+}
+
+/**
+ * Exchange a Sign in with Apple authorization code for a refresh token via
+ * POST https://appleid.apple.com/auth/token. The code expires in 5 minutes,
+ * so this runs at sign-in / identity-attach time and stores the refresh token
+ * for revocation on account delete.
+ */
+export async function exchangeAppleAuthorizationCode(
+  code: string,
+  clientId: string,
+  cfg: AppleAuthKeyConfig,
+  redirectUri?: string,
+  fetchFn: typeof fetch = fetch,
+  nowMs: number = Date.now(),
+): Promise<string> {
+  const clientSecret = await makeAppleClientSecret(cfg, clientId, nowMs);
+  const body = new URLSearchParams({
+    client_id: clientId,
+    client_secret: clientSecret,
+    code,
+    grant_type: 'authorization_code',
+    ...(redirectUri ? { redirect_uri: redirectUri } : {}),
+  });
+  const res = await fetchFn('https://appleid.apple.com/auth/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: body.toString(),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`apple token exchange HTTP ${res.status}${text ? `: ${text.slice(0, 200)}` : ''}`);
+  }
+  const data = (await res.json()) as { refresh_token?: string; error?: string };
+  if (data.error) throw new Error(`apple token exchange error: ${data.error}`);
+  if (typeof data.refresh_token !== 'string' || !data.refresh_token) {
+    throw new Error('apple token exchange returned no refresh_token');
+  }
+  return data.refresh_token;
+}
+
+/**
+ * Revoke a stored Sign in with Apple refresh token on account deletion
+ * (App Store guideline 5.1.1(v)) via POST https://appleid.apple.com/auth/revoke.
+ */
+export async function revokeAppleToken(
+  refreshToken: string,
+  clientId: string,
+  cfg: AppleAuthKeyConfig,
+  fetchFn: typeof fetch = fetch,
+  nowMs: number = Date.now(),
+): Promise<void> {
+  const clientSecret = await makeAppleClientSecret(cfg, clientId, nowMs);
+  const body = new URLSearchParams({
+    client_id: clientId,
+    client_secret: clientSecret,
+    token: refreshToken,
+    token_type_hint: 'refresh_token',
+  });
+  const res = await fetchFn('https://appleid.apple.com/auth/revoke', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: body.toString(),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`apple token revoke HTTP ${res.status}${text ? `: ${text.slice(0, 200)}` : ''}`);
+  }
 }
 
 export interface SteamAuthConfig {

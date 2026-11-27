@@ -229,12 +229,19 @@ Facebook and Twitter are switched off in `capacitor.config.ts`, so their SDKs
    `ios/App/App/Info.plist`. Client IDs are public, not secrets.
 4. Apple Developer → Identifiers → `app.beech.beach`: enable **Sign in with
    Apple**. The entitlement is already in `ios/App/App/App.entitlements`.
+   For web Sign in with Apple, also create a Services ID (e.g.
+   `app.beech.beach.web`) with domain `play.beech.games` and Return URL
+   `https://play.beech.games/`, and set `vars.APPLE_CLIENT_ID`.
 5. Server: `GOOGLE_CLIENT_IDS=<web>,<iOS>` (Android tokens carry the web ID)
-   and `APPLE_CLIENT_IDS=app.beech.beach`.
+   and `APPLE_CLIENT_IDS=app.beech.beach` (plus the web Services ID when web
+   Apple sign-in is enabled).
 6. Store privacy forms: user ID, the beach, and a first name shown to
    neighbors you choose. These are linked to the user, used for app
    functionality, and not used for tracking.
-
-Still to do: when someone who signed in with Apple deletes their account, the
-server should also revoke their Apple token (App Store guideline 5.1.1(v)).
-That needs a Sign in with Apple key on the server; see BACKLOG.md.
+7. Apple token revocation on account delete (App Store guideline 5.1.1(v)):
+   create a Sign in with Apple key (`.p8`), store it in Secret Manager as
+   `beech-apple-auth-key`, and set `vars.APPLE_AUTH_KEY_ID` and
+   `vars.APPLE_AUTH_TEAM_ID`. Once set, `/api/auth/apple` and
+   `/api/account/identities` exchange the authorization code for a refresh
+   token (`user_identities.apple_refresh_token`, migration 41), and
+   `DELETE /api/account` revokes it via Apple's `/auth/revoke`.

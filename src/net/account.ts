@@ -1,6 +1,6 @@
 import type { PetSpecies } from '../world/pets';
 import { isPackagedApp } from '../platform/runtime';
-import { nativeSignOut } from './nativeAuth';
+import { nativeSignOut, SignInCancelled } from './nativeAuth';
 import { MAX_OBJECTS } from '../sim/sandCodec';
 import { APP_BUILD } from '../platform/version';
 
@@ -9,10 +9,12 @@ import { APP_BUILD } from '../platform/version';
 //   VITE_ACCOUNTS=1
 //   VITE_API_URL=           (empty = same origin, e.g. https://beech.app/api)
 //   VITE_GOOGLE_CLIENT_ID=  (OAuth web client ID; public, not a secret)
+//   VITE_APPLE_CLIENT_ID=   (Sign in with Apple Services ID; public, not a secret)
 //   VITE_DEV_AUTH=1         (local development only: a "dev sign in" button)
 const env = import.meta.env;
 export const ACCOUNTS_ENABLED = import.meta.env.VITE_ACCOUNTS === '1';
 export const GOOGLE_CLIENT_ID: string = env.VITE_GOOGLE_CLIENT_ID ?? '';
+export const APPLE_CLIENT_ID: string = env.VITE_APPLE_CLIENT_ID ?? '';
 export const DEV_AUTH = env.VITE_DEV_AUTH === '1';
 const API = String(env.VITE_API_URL ?? '').replace(/\/+$/, '');
 const TOKEN_KEY = 'beech.session.v1';
@@ -214,12 +216,22 @@ export class Account {
     }).then((r) => this.session(r));
   }
 
-  /** Sign in with Apple (the iOS app). Apple only shares the name on the very first sign-in. */
-  signInWithApple(identityToken: string, name: string): Promise<AccountUser> {
+  /** Sign in with Apple (iOS app or web JS SDK). Apple only shares the name on the very first sign-in. */
+  signInWithApple(
+    identityToken: string,
+    name: string,
+    authorizationCode?: string,
+    redirectUri?: string,
+  ): Promise<AccountUser> {
     return this.call('/api/auth/apple', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ identityToken, name }),
+      body: JSON.stringify({
+        identityToken,
+        name,
+        ...(authorizationCode ? { authorizationCode } : {}),
+        ...(redirectUri ? { redirectUri } : {}),
+      }),
     }).then((r) => this.session(r));
   }
 
@@ -284,11 +296,22 @@ export class Account {
    * attached; if it already belongs to another account the server refuses
    * with a 409 and this account is unchanged.
    */
-  async attachIdentity(provider: LinkedProvider, credential: string, name = ''): Promise<LinkedProvider[]> {
+  async attachIdentity(
+    provider: LinkedProvider,
+    credential: string,
+    name = '',
+    extra?: { authorizationCode?: string; redirectUri?: string },
+  ): Promise<LinkedProvider[]> {
     const res = await this.call('/api/account/identities', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ provider, credential, name }),
+      body: JSON.stringify({
+        provider,
+        credential,
+        name,
+        ...(extra?.authorizationCode ? { authorizationCode: extra.authorizationCode } : {}),
+        ...(extra?.redirectUri ? { redirectUri: extra.redirectUri } : {}),
+      }),
     });
     if (!res.ok) throw await errorOf(res, 'could not link that sign-in');
     return ((await res.json()) as { identities: LinkedProvider[] }).identities;
@@ -1341,6 +1364,106 @@ export async function renderGoogleButton(el: HTMLElement, onCredential: (credent
     use_fedcm_for_button: true,
   });
   google.accounts.id.renderButton(el, { theme: 'outline', size: 'large', shape: 'pill', text: 'signin_with', width: 260 });
+}
+
+interface AppleIdResponse {
+  authorization?: {
+    code?: string;
+    id_token?: string;
+    state?: string;
+  };
+  user?: {
+    email?: string;
+    name?: { firstName?: string; lastName?: string };
+  };
+}
+
+interface AppleIdSdk {
+  auth: {
+    init(cfg: {
+      clientId: string;
+      scope: string;
+      redirectURI: string;
+      state: string;
+      usePopup: boolean;
+    }): void;
+    signIn(): Promise<AppleIdResponse>;
+  };
+}
+
+export interface WebAppleIdentity {
+  idToken: string;
+  name: string;
+  authorizationCode?: string;
+  redirectUri: string;
+}
+
+let appleJsLoading: Promise<AppleIdSdk> | null = null;
+
+function loadAppleJs(): Promise<AppleIdSdk> {
+  const existing = (window as unknown as { AppleID?: AppleIdSdk }).AppleID;
+  if (existing?.auth) return Promise.resolve(existing);
+  if (!appleJsLoading) {
+    appleJsLoading = new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js';
+      s.async = true;
+      s.onload = () => {
+        const sdk = (window as unknown as { AppleID?: AppleIdSdk }).AppleID;
+        if (sdk?.auth) resolve(sdk);
+        else reject(new Error('Apple sign-in did not initialize'));
+      };
+      s.onerror = () => reject(new Error('could not reach Apple'));
+      document.head.appendChild(s);
+    });
+    appleJsLoading.catch(() => (appleJsLoading = null));
+  }
+  return appleJsLoading;
+}
+
+/** Can this build/platform offer Sign in with Apple on the web? (Needs a Services ID in VITE_APPLE_CLIENT_ID; iOS uses native AuthenticationServices.) */
+export function appleSignInAvailable(): boolean {
+  return ACCOUNTS_ENABLED && !!APPLE_CLIENT_ID && !isPackagedApp();
+}
+
+const isApplePopupCancelled = (e: unknown): boolean => {
+  const err = typeof e === 'object' && e !== null && 'error' in e ? String((e as { error?: unknown }).error ?? '') : String((e as Error)?.message ?? e);
+  return /popup_closed_by_user|user_cancelled_authorize|cancel/i.test(err);
+};
+
+/** Run Apple's popup sign-in flow on the web; throws SignInCancelled if the user closes the popup. */
+export async function webAppleSignIn(clientId = APPLE_CLIENT_ID): Promise<WebAppleIdentity> {
+  if (!clientId) throw new Error('Apple sign-in is not configured');
+  const apple = await loadAppleJs();
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  const state = [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
+  const redirectUri = `${window.location.origin}/`;
+  apple.auth.init({
+    clientId,
+    scope: 'name email',
+    redirectURI: redirectUri,
+    state,
+    usePopup: true,
+  });
+  let res: AppleIdResponse;
+  try {
+    res = await apple.auth.signIn();
+  } catch (e) {
+    if (isApplePopupCancelled(e)) throw new SignInCancelled();
+    const detail = typeof e === 'object' && e !== null && 'error' in e ? String((e as { error?: unknown }).error ?? '') : '';
+    throw new Error(detail ? `Apple sign-in failed: ${detail}` : (e as Error)?.message || 'Apple sign-in failed');
+  }
+  const idToken = res.authorization?.id_token ?? '';
+  if (!idToken) throw new Error('Apple did not return an ID token');
+  const authorizationCode = res.authorization?.code || undefined;
+  const name = res.user?.name?.firstName ?? '';
+  return {
+    idToken,
+    name,
+    ...(authorizationCode ? { authorizationCode } : {}),
+    redirectUri,
+  };
 }
 
 export interface PetDto {
