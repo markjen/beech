@@ -13,6 +13,10 @@ import { escapeHtml as esc } from './shareMeta.js';
 interface Agent {
   name: string;
   role: string;
+  /** what this agent turned out to be best at, in a line */
+  bestAt: string;
+  /** the areas it did most of */
+  mostly: string[];
   did: string[];
 }
 
@@ -20,6 +24,8 @@ const AGENTS: Agent[] = [
   {
     name: 'Mark',
     role: 'The one human. Owner, product lead, reviewer.',
+    bestAt: 'Deciding. Short calls that every agent applied across the whole task.',
+    mostly: ['Product calls', 'Merging', 'Accounts and consoles'],
     did: [
       'Wrote the direction, usually as one line: “Lets do it”, “Change promo codes to always be for bonus bb”, “Keep the free API as-is”.',
       'Did every step that needs a person: domains, the Apple and Google consoles, store listings, signing keys, secrets.',
@@ -29,6 +35,8 @@ const AGENTS: Agent[] = [
   {
     name: 'Claude',
     role: 'Claude Code in cloud sessions. Most of the code.',
+    bestAt: 'Building whole features end to end: the model, server, client, tests, guide and release note, all in one change.',
+    mostly: ['Simulation and rendering', 'Game features', 'Game server', 'Formal verification', 'Docs and process'],
     did: [
       'Worked in at least 33 separate cloud sessions, many at once, each on its own branch. Around 190 commits carry its name.',
       'Built the simulation and renderer on day one (milestones M0 to M7), then most features after: multi-beach, checkpoints, beach files, live beaches, animals, piers, inland rows, push notifications, beech bucks.',
@@ -39,6 +47,8 @@ const AGENTS: Agent[] = [
   {
     name: 'Antigravity',
     role: 'A second coding agent. Desktop, UI, performance, economy.',
+    bestAt: 'Platform and performance: native shells, bundle size, hot loops, and tidying how the interface is laid out.',
+    mostly: ['Steam and desktop', 'Performance', 'Navigation and UI', 'Admin tooling'],
     did: [
       'Steam S1: one runtime layer shared by web, phone and Steam builds, plus the Electron and Steamworks shell (#52).',
       'Grouped the sand tools and added a hide-everything pan mode (#73). Reworked navigation on beechshore.com (#145) and in the shop (#146).',
@@ -49,15 +59,21 @@ const AGENTS: Agent[] = [
   {
     name: 'Muse',
     role: 'The coordinating session. Review, release, players.',
+    bestAt: 'Production. Getting beech live and keeping it running: domains, deploys, secrets, app stores, and the players.',
+    mostly: ['Production setup', 'Releases and stores', 'Review and merge', 'Player feedback', 'Bug fixes'],
     did: [
-      'Ran the review loop: a review agent gives each PR a verdict of READY or NEEDS WORK, a fix-up agent clears the blockers, then the PR is reviewed again.',
-      'Watched the Beech Discord every five minutes. Bugs players reported became pull requests, and the reporter got a reply when the fix shipped.',
-      'Took builds through Play testing tracks and TestFlight, and kept the day-by-day record that much of this page is drawn from.',
+      'Set up production: the domains (beech.games, play.beech.games, beechshore.com), Cloud Run deploys, secrets and their access grants, and the steps in the Apple, Google and Play consoles that ran alongside them.',
+      'Shipped the apps: Play internal and closed testing tracks, the merchant account and beech bucks products, Apple Developer enrollment, and the first TestFlight build. It traced the Android sign-in error to an unregistered signing key.',
+      'Ran operations: chasing alerts (the “slow database” turned out to be push ticks on throttled instances, so they moved to Cloud Scheduler) and getting a deploy that had failed five times to land.',
+      'Ran the review loop. A review agent gives each PR a verdict of READY or NEEDS WORK, a fix-up agent clears the blockers, then the PR is reviewed again.',
+      'Watched the Beech Discord every five minutes. Bugs players reported became fixes, such as #96, #138 and #140, and the reporter got a reply when each shipped.',
     ],
   },
   {
     name: 'Codex',
     role: 'OpenAI’s coding agent. Notes still to come.',
+    bestAt: 'Untangling client state: making the game keep each beach by id, with no single “active” beach.',
+    mostly: ['Client architecture', 'Rendering'],
     did: [
       'Uses the same review-pr skill as the Claude sessions (#130), so every PR got the same review.',
       'Co-wrote the switch to keeping beach state by id, so waves follow the view (#100).',
@@ -138,6 +154,39 @@ const PRACTICES: [string, string][] = [
   ['People do the human parts', 'Agents write the code, review and deploy. Domains, store consoles, keys and money stay with a person, and the agents write the checklists for those steps.'],
 ];
 
+/** Who led (2) or helped with (1) each area, in AGENTS order. */
+const WHO: [string, number[]][] = [
+  ['The sand, waves and 3D look', [1, 2, 1, 0, 1]],
+  ['Gameplay features', [1, 2, 1, 1, 0]],
+  ['Game server and database', [0, 2, 1, 1, 0]],
+  ['Formal models (TLA+, Dafny)', [0, 2, 1, 0, 0]],
+  ['Performance', [0, 2, 2, 0, 0]],
+  ['Steam and desktop', [0, 1, 2, 0, 0]],
+  ['Menus and navigation', [0, 1, 2, 1, 0]],
+  ['Client state and structure', [0, 1, 0, 0, 2]],
+  ['Production: domains, deploys, secrets', [1, 1, 0, 2, 0]],
+  ['App store releases', [1, 1, 0, 2, 0]],
+  ['Review and merging', [2, 1, 0, 2, 1]],
+  ['Player feedback (Discord)', [1, 0, 0, 2, 0]],
+];
+
+interface Shot {
+  file: string;
+  when: string;
+  title: string;
+  caption: string;
+}
+
+/** The game as it was, built from the commit named and screenshotted at midday. */
+const SHOTS: Shot[] = [
+  { file: 'state-1-waves.webp', when: '22 Nov, early', title: 'Waves on a slab of sand', caption: 'Milestones M3 and M4: the beach simulation, foam, wet sand and erosion. No interface yet beyond undo.' },
+  { file: 'state-2-toy.webp', when: '22 Nov, a few hours later', title: 'A sand toy', caption: 'M7: dig, build and smooth tools, shells washing in, a start screen and a settings sheet.' },
+  { file: 'state-3-claw.webp', when: '22 Nov, night', title: 'A real beach with things to do', caption: 'A live sun, moon and tide at a real place (Brighton here), a tool rail, the bag, and the claw machine.' },
+  { file: 'state-4-live.webp', when: '23 Nov', title: 'Going live', caption: 'A shop, more than one beach, checkpoints, beach files. The game moved to play.beech.games.' },
+  { file: 'state-5-palm.webp', when: '24 Nov', title: 'Palm first', caption: 'After animals, Steam and live beaches came a quieter screen: just the beach and a palm that opens every tool.' },
+  { file: 'state-6-today.webp', when: '27 Nov', title: 'Today', caption: 'Weather, piers, inland rows, pets, beech bucks. The picture is still the beach.' },
+];
+
 const STATS: [string, string][] = [
   ['5', 'days, plan to TestFlight'],
   ['~170', 'pull requests merged'],
@@ -150,12 +199,23 @@ export function storyHtml(): string {
   const agents = AGENTS.map((a) => `<article class="agent">
   <h3>${esc(a.name)}</h3>
   <p class="role">${esc(a.role)}</p>
+  <p class="best"><b>Best at:</b> ${esc(a.bestAt)}</p>
+  <p class="tags">${a.mostly.map((m) => `<span>${esc(m)}</span>`).join('')}</p>
   <ul>${a.did.map((d) => `<li>${esc(d)}</li>`).join('')}</ul>
 </article>`).join('\n');
   const days = DAYS.map((d) => `<li class="day">
   <time>${esc(d.date)}</time>
   <div><h3>${esc(d.title)}</h3><ul>${d.points.map((p) => `<li>${esc(p)}</li>`).join('')}</ul></div>
 </li>`).join('\n');
+  const who = `<div class="tablewrap"><table class="who">
+<thead><tr><th></th>${AGENTS.map((a) => `<th>${esc(a.name)}</th>`).join('')}</tr></thead>
+<tbody>${WHO.map(([area, row]) => `<tr><th>${esc(area)}</th>${row.map((v) => `<td>${v === 2 ? '<span class="lead" title="led">●</span>' : v === 1 ? '<span class="help" title="helped">○</span>' : ''}</td>`).join('')}</tr>`).join('')}</tbody>
+</table></div>
+<p class="note">● led · ○ helped. Drawn from each agent’s log and the commit trailers.</p>`;
+  const shots = SHOTS.map((x) => `<figure>
+  <img src="/landing-assets/story/${esc(x.file)}" alt="${esc(x.title)}: beech on ${esc(x.when)}" width="1280" height="800" loading="lazy">
+  <figcaption><time>${esc(x.when)}</time><b>${esc(x.title)}</b>${esc(x.caption)}</figcaption>
+</figure>`).join('\n');
   const practices = PRACTICES.map(([h, p]) => `<div class="practice"><h3>${esc(h)}</h3><p>${esc(p)}</p></div>`).join('');
   return `<!doctype html>
 <html lang="en">
@@ -193,11 +253,26 @@ a { color: var(--accent); }
 .day::before { content: ""; position: absolute; left: -7px; top: 6px; width: 12px; height: 12px; border-radius: 50%; background: var(--accent); }
 .day time { color: var(--muted); font-size: 14px; padding-top: 1px; }
 .day ul { margin: 4px 0 0; padding-left: 18px; }
+.best { margin: 0 0 8px; font-size: 15px; }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
+.tags span { background: var(--sand); border-radius: 999px; padding: 1px 10px; font-size: 13px; }
+.tablewrap { overflow-x: auto; }
+.who { border-collapse: collapse; width: 100%; font-size: 14px; }
+.who th, .who td { padding: 7px 8px; border-bottom: 1px solid var(--line); text-align: center; }
+.who tbody th { text-align: left; font-weight: 400; }
+.who thead th { color: var(--muted); font-weight: 500; }
+.lead { color: var(--accent); font-size: 16px; } .help { color: var(--muted); }
+.shots { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 16px; }
+figure { margin: 0; background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+figure img { display: block; width: 100%; height: auto; aspect-ratio: 16 / 10; object-fit: cover; }
+figcaption { padding: 10px 14px 14px; font-size: 15px; }
+figcaption time { display: block; color: var(--muted); font-size: 13px; }
+figcaption b { display: block; }
 .practices { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
 .practice p { margin: 0; font-size: 15px; }
 .note { color: var(--muted); font-size: 14px; }
 footer { color: var(--muted); font-size: 13px; padding: 48px 16px 32px; }
-@media (max-width: 560px) { .stats { grid-template-columns: repeat(2, 1fr); } .day { grid-template-columns: 1fr; gap: 0; } }
+@media (max-width: 560px) { .shots { grid-template-columns: 1fr; } .who { font-size: 13px; } .who th, .who td { padding: 6px 4px; } .stats { grid-template-columns: repeat(2, 1fr); } .day { grid-template-columns: 1fr; gap: 0; } }
 </style>
 </head>
 <body>
@@ -211,6 +286,15 @@ footer { color: var(--muted); font-size: 13px; padding: 48px 16px 32px; }
 <h2>Who built it</h2>
 <div class="agents">
 ${agents}
+</div>
+
+<h2>Who did what</h2>
+${who}
+
+<h2>Beech as it grew</h2>
+<p class="note">Each picture is the game built from that day’s commit, at midday on the same beach.</p>
+<div class="shots">
+${shots}
 </div>
 
 <h2>Day by day</h2>
