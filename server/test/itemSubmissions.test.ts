@@ -161,28 +161,28 @@ it('protects the queue and preserves the original upload when an admin revises o
   expect(await (await shoreRequest('/submit/items', creator.scoped)).json()).toMatchObject({ submissions: [{ id, status: 'rejected' }] });
 });
 
-it('credits only completed credit orders, including a discounted order retried concurrently', async () => {
+it('credits only completed credit orders, including an order retried concurrently', async () => {
   const creator = await user('Credit creator');
   const buyer = await user('Credit buyer');
   const id = await submit(creator.scoped);
   await approve(id, 'deckchair', '250');
   await db.query('UPDATE users SET credit_cents = 1000 WHERE id = $1', [buyer.id]);
-  await db.query("INSERT INTO promo_codes (code, kind, value, max_uses, created_at) VALUES ('HALF', 'percent', 50, 1, $1)", [now]);
-  const buy = { productId: 'item_deckchair', promoCode: 'HALF', requestId: crypto.randomUUID() };
+  const buy = { productId: 'item_deckchair', requestId: crypto.randomUUID() };
   const attempts = await Promise.all([json('/store/credit-purchase', buy, buyer.token), json('/store/credit-purchase', buy, buyer.token)]);
   for (const res of attempts) {
     expect(res.status, await res.clone().text()).toBe(200);
-    // beech bucks (docs/BEECH_BUCKS.md): 25 bucks, half off rounds the discount down to 12
-    expect(await res.json()).toMatchObject({ paidCents: 130, discountCents: 120, creditCents: 870 });
+    // beech bucks (docs/BEECH_BUCKS.md): 25 bucks at full price, no promo discount
+    expect(await res.json()).toMatchObject({ paidCents: 250, discountCents: 0, creditCents: 750 });
   }
-  expect(await credit(creator.token)).toBe(40);
+  expect(await credit(creator.token)).toBe(80);
   expect(await db.query('SELECT id FROM inventory WHERE user_id = $1', [buyer.id])).toHaveLength(1);
   expect(await db.query('SELECT kind, amount_cents FROM credit_ledger WHERE user_id = $1', [creator.id]))
-    .toEqual([{ kind: 'creator_royalty', amount_cents: 40 }]);
+    .toEqual([{ kind: 'creator_royalty', amount_cents: 80 }]);
   expect(await (await shoreRequest('/submit/items', creator.scoped)).json()).toMatchObject({
-    submissions: [{ id, sales_count: 1, total_credit_earned_cents: 40 }],
+    submissions: [{ id, sales_count: 1, total_credit_earned_cents: 80 }],
   });
-  expect((await json('/store/credit-purchase', { ...buy, promoCode: '' }, buyer.token)).status).toBe(409);
+  // the same request ID reused for a different product is refused
+  expect((await json('/store/credit-purchase', { productId: 'item_parasol', requestId: buy.requestId }, buyer.token)).status).toBe(409);
   // 0 is free: listed at $0, claimed with no credit spent and no royalty
   await approve(id, 'deckchair', '0');
   const listed = await (await root.request('/api/store/products')).json() as { products: { id: string; usd: number }[] };
@@ -192,19 +192,19 @@ it('credits only completed credit orders, including a discounted order retried c
   const claim = { productId: 'item_deckchair', requestId: crypto.randomUUID(), freeOnly: true };
   const free = await json('/store/credit-purchase', claim, buyer.token);
   expect(free.status, await free.clone().text()).toBe(200);
-  expect(await free.json()).toMatchObject({ paidCents: 0, creditCents: 870 });
+  expect(await free.json()).toMatchObject({ paidCents: 0, creditCents: 750 });
   expect(await db.query('SELECT id FROM inventory WHERE user_id = $1', [buyer.id])).toHaveLength(2);
-  expect(await credit(creator.token)).toBe(40);
+  expect(await credit(creator.token)).toBe(80);
 
   await approve(id, 'deckchair', '250');
   const retried = await json('/store/credit-purchase', claim, buyer.token);
   expect(retried.status).toBe(200);
-  expect(await retried.json()).toMatchObject({ paidCents: 0, creditCents: 870 });
+  expect(await retried.json()).toMatchObject({ paidCents: 0, creditCents: 750 });
   const stale = await json('/store/credit-purchase', { ...claim, requestId: crypto.randomUUID() }, buyer.token);
   expect(stale.status).toBe(409);
   expect(await stale.json()).toMatchObject({ error: expect.stringContaining('no longer free') });
-  expect(await credit(buyer.token)).toBe(870);
-  expect(await credit(creator.token)).toBe(40);
+  expect(await credit(buyer.token)).toBe(750);
+  expect(await credit(creator.token)).toBe(80);
   expect(await db.query('SELECT id FROM inventory WHERE user_id = $1', [buyer.id])).toHaveLength(2);
 
   // "not for sale" is its own choice, whatever the price

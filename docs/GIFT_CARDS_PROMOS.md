@@ -13,17 +13,25 @@ Instead they work on **account credit**, which the server owns end to end.
   expire or be disabled.
 - **Account credit** — a balance on the player, in cents. Every movement is
   a row in `credit_ledger`, so a balance can always be explained.
-- **Credit purchase** — `POST /api/store/credit-purchase { productId,
-  promoCode? }`. The server prices the product from its own list
-  (`server/src/products.ts`), applies a validated promo code, checks the
-  credit balance, and — in one SQL statement — deducts the credit, claims
-  the promo use, logs the movement and grants the product. A client-supplied
-  price is never trusted; there is no price field to supply.
-- **Promo code** — a public code (`LAUNCH20`) that discounts a credit
-  purchase: percent (1–100) or a fixed amount in cents, optionally for one
-  product, with an optional usage cap and expiry. Validated server-side at
-  quote and at purchase time, and claimed atomically with the purchase, so
-  it can't be spent twice or after expiring.
+- **Credit purchase** — `POST /api/store/credit-purchase { productId }`.
+  The server prices the product from its own list
+  (`server/src/products.ts`), checks the credit balance, and — in one SQL
+  statement — deducts the credit, logs the movement and grants the product.
+  A client-supplied price is never trusted; there is no price field to
+  supply. Credit purchases are always full price: promo codes never
+  discount them.
+- **Promo code** — a public code (`LAUNCH20`) that a player loads onto
+  their account (`POST /promo-codes/load`); it then adds bonus beech bucks
+  to bb pack purchases. When a pack is bought (Apple, Google, Steam, Xsolla
+  or dev), the loaded code that gives the biggest extra bonus applies
+  automatically, at most once per account, claimed atomically with the
+  purchase so it can't be spent twice or after expiring. A code is a
+  percent bonus (1–100, of the pack's bb, rounded up), optionally for one
+  pack, with an optional usage cap and expiry. There is no fixed-value
+  kind: `promo_codes.kind` is always `'percent'`. Bonus rows also write
+  the bonus (in cents) into `promo_uses.discount_cents` alongside
+  `bonus_bucks`; nothing sums that column, and the admin redemption display
+  keys off `bonus_bucks`.
 
 Gift cards and promos are the only way to get something without the store:
 that is the point (a gift from Mark, a launch code, a press copy), and it
@@ -122,12 +130,15 @@ the console as its own process locally, point both at one Postgres with
 |---|---|---|
 | `POST /api/gift-cards/redeem { code }` | session | Claims the card atomically (active, unexpired, not yet redeemed), credits the player, logs it. Unknown code: 404; used/disabled/expired: 409. Rate-limited per user. |
 | `GET /api/credit` | session | Current credit in cents. |
-| `POST /api/store/quote { productId, promoCode? }` | session | Price, discount and final price, without spending anything. |
-| `POST /api/store/credit-purchase { productId, promoCode? }` | session | The purchase. 402 when the credit doesn't cover it. |
+| `POST /api/promo-codes/load { code }` | session | Loads a promo code onto the account (active, unexpired, under its cap); the biggest-bonus loaded code then applies automatically to pack purchases. Unknown code: 404; used/disabled/expired/exhausted: 409. |
+| `GET /api/promo-codes/mine` | session | The account's loaded codes with their per-pack bonuses. |
+| `POST /api/store/quote { productId }` | session | Price and final price, without spending anything. Promo codes never discount a credit purchase. |
+| `POST /api/store/credit-purchase { productId }` | session | The purchase, at full price. 402 when the credit doesn't cover it. A `promoCode` in the body is refused (400): promo codes are for bb pack bonuses, loaded onto the account. |
 
 The shop dialog shows the credit balance, a gift card redeem box, a promo
-code field, and a "Buy with credit" button on products the credit covers
-(`src/ui/shop.ts`, `src/net/shop.ts`).
+code field that loads a code onto the account (its bonus then shows on
+packs as "+ N bonus"), and a "Buy with credit" button on products the
+credit covers (`src/ui/shop.ts`, `src/net/shop.ts`).
 
 **Web only.** In the iOS and Android apps the shop shows none of these:
 digital items there must be bought through the store (App Store

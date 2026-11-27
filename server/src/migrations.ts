@@ -977,6 +977,44 @@ const MIGRATIONS: string[] = [
   ALTER TABLE credit_ledger ADD CONSTRAINT credit_ledger_kind_check
     CHECK (kind IN ('gift_card', 'spend', 'creator_royalty', 'creator_royalty_refund', 'pack', 'pack_refund', 'trade_in', 'trade_in_refund', 'invite_bonus', 'merge'));
   `,
+
+  // 40: account-loaded promo codes for bb pack bonuses (specs/tla/PromoCodes.tla)
+  // and admin ledger corrections/refunds. Players load promo codes onto their
+  // account (at most once per account per code); buying a bb pack automatically
+  // applies the eligible loaded code that gives the largest bonus bb, leaving
+  // the purchase price unchanged. Admin ledger adjustments and bb refunds log
+  // under 'admin_adjustment' and 'admin_refund'.
+  `
+  CREATE TABLE account_promo_codes (
+    user_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    code TEXT NOT NULL REFERENCES promo_codes (code) ON DELETE CASCADE,
+    loaded_at BIGINT NOT NULL,
+    used_at BIGINT,
+    purchase_id BIGINT REFERENCES purchases (id) ON DELETE SET NULL,
+    bonus_bucks INTEGER NOT NULL DEFAULT 0 CHECK (bonus_bucks >= 0),
+    PRIMARY KEY (user_id, code)
+  );
+  CREATE INDEX account_promo_codes_user ON account_promo_codes (user_id, used_at NULLS FIRST, loaded_at);
+  CREATE INDEX account_promo_codes_purchase ON account_promo_codes (purchase_id) WHERE purchase_id IS NOT NULL;
+
+  ALTER TABLE promo_uses ADD COLUMN purchase_id BIGINT REFERENCES purchases (id) ON DELETE SET NULL;
+  ALTER TABLE promo_uses ADD COLUMN bonus_bucks INTEGER NOT NULL DEFAULT 0 CHECK (bonus_bucks >= 0);
+
+  ALTER TABLE credit_ledger DROP CONSTRAINT credit_ledger_kind_check;
+  ALTER TABLE credit_ledger ADD CONSTRAINT credit_ledger_kind_check
+    CHECK (kind IN (
+      'gift_card', 'spend', 'creator_royalty', 'creator_royalty_refund',
+      'pack', 'pack_refund', 'trade_in', 'trade_in_refund', 'invite_bonus',
+      'merge', 'promo_bonus', 'promo_bonus_refund', 'admin_adjustment', 'admin_refund'
+    ));
+
+  -- Promo codes are percent-only now: tighten the kind check created with
+  -- the promo_codes table (migration 12). No fixed code exists in
+  -- production (the only fixture is percent LAUNCH20), so no existing row
+  -- can violate it.
+  ALTER TABLE promo_codes DROP CONSTRAINT promo_codes_kind_check;
+  ALTER TABLE promo_codes ADD CONSTRAINT promo_codes_kind_check CHECK (kind = 'percent');
+  `,
 ];
 
 /** Apply migrations up to `upTo` (default: all). Tests use `upTo` to check a migration on older data. */

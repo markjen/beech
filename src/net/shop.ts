@@ -681,35 +681,69 @@ export class ShopApi {
     return (await res.json()) as { creditedCents: number; creditCents: number; credited: number; bucks: number };
   }
 
-  /** What a product costs with a promo code, before buying. */
+  /** Promo codes loaded onto your account, and the best bonus bb for each pack. */
+  async myPromos(): Promise<{
+    promos: { code: string; kind: 'percent'; value: number; appliesTo: string | null; status: string; bonusBucks: number; expiresAt: number | null }[];
+    packBonuses: Record<string, { code: string; bonusBucks: number }>;
+  }> {
+    const res = await this.account.fetch('/api/promo-codes/mine');
+    if (!res.ok) throw new Error('could not load your promo codes');
+    return (await res.json()) as {
+      promos: { code: string; kind: 'percent'; value: number; appliesTo: string | null; status: string; bonusBucks: number; expiresAt: number | null }[];
+      packBonuses: Record<string, { code: string; bonusBucks: number }>;
+    };
+  }
+
+  /** Load a promo code onto your account (used automatically on your next matching bb pack purchase). */
+  async loadPromo(code: string): Promise<{
+    promo: { code: string; kind: 'percent'; value: number; appliesTo: string | null; status: string };
+    promos: { code: string; kind: 'percent'; value: number; appliesTo: string | null; status: string; bonusBucks: number; expiresAt: number | null }[];
+    packBonuses: Record<string, { code: string; bonusBucks: number }>;
+  }> {
+    const res = await this.account.fetch('/api/promo-codes/load', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
+    });
+    if (!res.ok) {
+      const msg = ((await res.json().catch(() => ({}))) as { error?: string }).error;
+      throw new Error(msg ?? 'that code did not work');
+    }
+    return (await res.json()) as {
+      promo: { code: string; kind: 'percent'; value: number; appliesTo: string | null; status: string };
+      promos: { code: string; kind: 'percent'; value: number; appliesTo: string | null; status: string; bonusBucks: number; expiresAt: number | null }[];
+      packBonuses: Record<string, { code: string; bonusBucks: number }>;
+    };
+  }
+
+  /** What a product costs, before buying. Promo codes never discount a credit purchase. */
   async quote(
     productId: string,
-    promoCode?: string,
-  ): Promise<{ priceCents: number; discountCents: number; finalCents: number; price: number; final: number; promo?: string }> {
+  ): Promise<{ priceCents: number; discountCents: number; finalCents: number; price: number; final: number }> {
     const res = await this.account.fetch('/api/store/quote', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ productId, ...(promoCode ? { promoCode } : {}) }),
+      body: JSON.stringify({ productId }),
     });
     if (!res.ok) {
       const msg = ((await res.json().catch(() => ({}))) as { error?: string }).error;
       throw new Error(msg ?? 'could not price that');
     }
-    return (await res.json()) as { priceCents: number; discountCents: number; finalCents: number; price: number; final: number; promo?: string };
+    return (await res.json()) as { priceCents: number; discountCents: number; finalCents: number; price: number; final: number };
   }
 
-  /** Buy a product with account credit, with an optional promo code. */
-  buyWithCredit(productId: string, promoCode?: string) {
-    return this.creditPurchase(productId, promoCode, false);
+  /** Buy a product with account credit. */
+  buyWithCredit(productId: string) {
+    return this.creditPurchase(productId, false);
   }
 
   claimFree(productId: string) {
-    return this.creditPurchase(productId, undefined, true);
+    return this.creditPurchase(productId, true);
   }
 
-  private async creditPurchase(productId: string, promoCode: string | undefined, freeOnly: boolean) {
+  private async creditPurchase(productId: string, freeOnly: boolean) {
     const prefix = freeOnly ? 'beech.freeClaim.v1:' : 'beech.creditRequest.v1:';
-    const key = prefix + JSON.stringify([this.account.user?.id, productId, promoCode]);
+    const key = prefix + JSON.stringify([this.account.user?.id, productId]);
     let requestId = this.creditRequests.get(key);
     try {
       requestId ??= sessionStorage.getItem(key) ?? undefined;
@@ -724,7 +758,7 @@ export class ShopApi {
     const res = await this.account.fetch('/api/store/credit-purchase', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ productId, requestId, ...(promoCode ? { promoCode } : {}), ...(freeOnly ? { freeOnly } : {}) }),
+      body: JSON.stringify({ productId, requestId, ...(freeOnly ? { freeOnly } : {}) }),
     });
     if (!res.ok) {
       if (res.status < 500 && res.status !== 429) clearRequest();

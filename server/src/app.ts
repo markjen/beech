@@ -55,14 +55,11 @@ import { issueSubmissionSession, UUID_PATTERN } from './itemSubmissions.js';
 import { awardCheckoutCreatorCredit, awardCreatorCredit, creatorOffer, creatorOffers, lockCreditUsers, nativeSalePrice, reverseCreatorCreditByRef, salePriceCents } from './creatorCredit.js';
 import {
   claimCreditPurchase,
-  discountCents,
   hashGiftCode,
   isGiftCodeShape,
-  normalizePromoCode,
-  promoBlocked,
-  type Promo,
 } from './giftCards.js';
 import { appleRefund, googleVoided, revokeStorePurchase, verifyAppleTransaction, verifyGoogleOidc, verifyGooglePurchase, type VerifiedPurchase } from './store.js';
+import { accountPromos, bestPromoForPack, loadAccountPromo } from './promos.js';
 import { NOTIFY_PREFS, PUSH_DEVICES, lockPush, makeSender, pushTick, validEndpoint, validTz, type NotifyPref, type PushConfig, type PushSender } from './push.js';
 import { POOLS, GRAB_CHANCE, COOLDOWN_MAX_MS, COOLDOWN_MIN_MS, cooldownAfter, cryptoRandom, draw, grab, pullDay, starterPrize, STARTER, type Rarity } from './pulls.js';
 import { currentSet, drawVending, nextUtcMidnight } from './vending.js';
@@ -2820,14 +2817,17 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const now = clock();
     // Record it once, then grant (a pack's beech bucks, or an old app's
     // things) and any creator credit in the same transaction.
-    const rows = await db.withTransaction(async (tx) => {
+    const { rows, promo } = await db.withTransaction(async (tx) => {
       const granted = await tx.query<{ purchase_id: string }>(
         `INSERT INTO purchases (user_id, store, transaction_id, product_id, environment, purchased_at, granted_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (store, transaction_id) DO NOTHING
          RETURNING id AS purchase_id`,
         [me, v.store, v.transactionId, product!.id, v.environment, v.purchasedAt, now],
       );
-      if (granted.length) await grantPurchase(tx, { userId: me, purchaseId: granted[0].purchase_id, product: product!, now });
+      let appliedPromo: { code: string; bonusBucks: number } | null = null;
+      if (granted.length) {
+        appliedPromo = (await grantPurchase(tx, { userId: me, purchaseId: granted[0].purchase_id, product: product!, now })).promo;
+      }
       if (granted.length && v.store !== 'dev' && v.environment.toLowerCase() === 'production') {
         const offer = await creatorOffer(tx, product!, true);
         if (offer) {
@@ -2838,14 +2838,14 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
           });
         }
       }
-      return granted;
+      return { rows: granted, promo: appliedPromo };
     });
     if (!rows.length) {
       const prev = (await db.query<{ user_id: string }>('SELECT user_id FROM purchases WHERE store = $1 AND transaction_id = $2', [v!.store, v!.transactionId]))[0];
       if (prev && prev.user_id !== me) fail(409, 'that purchase was already used by another account');
       return c.json({ already: true, product: product!.id, grants: product!.grants });
     }
-    return c.json({ already: false, product: product!.id, grants: product!.grants });
+    return c.json({ already: false, product: product!.id, grants: product!.grants, promo: promo ?? undefined });
   });
 
   /** A refund: the purchase is marked, and what it granted expires now. */
@@ -2938,8 +2938,10 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     }
     const country = rawCountry?.toUpperCase();
     // Xsolla charges its catalog price, so a promo from our own list can't
-    // discount a card payment yet (docs/WEB_PAYMENTS.md, "Promo codes").
-    if (promoCode) fail(400, 'promo codes work with credit only for now: clear the code to pay by card');
+    // discount a card payment (docs/WEB_PAYMENTS.md, "Promo codes"). A code
+    // loaded on the account applies automatically as bonus bb when a bb pack
+    // grants, so a promoCode sent here is refused with a pointer there.
+    if (promoCode) fail(400, 'promo codes apply automatically from your account: load the code first, then pay by card');
     const id = crypto.randomUUID();
     const now = clock();
     const offer = await creatorOffer(db, product!);
@@ -3204,7 +3206,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const now = clock();
     const granted = await db.withTransaction(async (tx) => {
       const [order] = await tx.query<{ status: string }>('SELECT status FROM steam_orders WHERE order_id = $1 FOR NO KEY UPDATE', [oid]);
-      if (order?.status === 'paid') return [];
+      if (order?.status === 'paid') return { rows: [] as { purchase_id: string }[], promo: null };
       if (order?.status !== 'created') fail(409, 'the order is no longer open');
       const rows = await tx.query<{ purchase_id: string }>(
         `WITH p AS (
@@ -3220,17 +3222,18 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
          SELECT p.id AS purchase_id FROM p`,
         [me, transId, product.id, o!.sandbox ? 'Sandbox' : 'Production', now, oid],
       );
-      if (rows.length) await grantPurchase(tx, { userId: me, purchaseId: rows[0].purchase_id, product, now });
+      let appliedPromo: { code: string; bonusBucks: number } | null = null;
+      if (rows.length) appliedPromo = (await grantPurchase(tx, { userId: me, purchaseId: rows[0].purchase_id, product, now })).promo;
       if (rows.length && o!.creator_submission_id && !o!.sandbox) {
         await awardCheckoutCreatorCredit(tx, {
           submissionId: o!.creator_submission_id, product, buyer: me, storePurchaseId: rows[0].purchase_id,
           paidCents: Number(o!.amount_cents), now,
         });
       }
-      return rows;
+      return { rows, promo: appliedPromo };
     });
-    logEvent('steam_checkout_paid', { product: product.id, order_id: oid, granted: granted.length > 0 });
-    return c.json({ ok: true, already: granted.length === 0, grants: product.grants });
+    logEvent('steam_checkout_paid', { product: product.id, order_id: oid, granted: granted.rows.length > 0 });
+    return c.json({ ok: true, already: granted.rows.length === 0, grants: product.grants, promo: granted.promo ?? undefined });
   });
 
   app.post('/store/steam/cancel', requireUser, async (c) => {
@@ -3243,37 +3246,37 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   });
 
   // ---------------------------------------------------------------- gift cards, promos, credit
-  // Gift cards are prepaid credit; credit buys products server-side, where
-  // a promo code can discount the price. The server prices from its own
-  // product list — a client-supplied price is never trusted. See
-  // docs/GIFT_CARDS_PROMOS.md.
-  const redeemLimiter = createRateLimiter(10); // gift card guesses, per user per minute
+  // Gift cards are prepaid credit; promo codes are loaded onto an account and
+  // automatically grant extra bonus bb on the next matching bb pack purchase
+  // (always picking the loaded code that gives the best bonus for that pack).
+  // See docs/GIFT_CARDS_PROMOS.md and specs/tla/PromoCodes.tla.
+  const redeemLimiter = createRateLimiter(10); // gift card / promo code attempts, per user per minute
   const creditLimiter = createRateLimiter(30); // quotes and credit purchases, per user per minute
 
-  const loadPromo = async (code: string, conn = db): Promise<Promo | null> => {
-    const rows = await conn.query<{
-      code: string;
-      kind: string;
-      value: number;
-      applies_to: string | null;
-      max_uses: number | null;
-      uses: number;
-      active: boolean;
-      expires_at: string | null;
-    }>('SELECT code, kind, value, applies_to, max_uses, uses, active, expires_at FROM promo_codes WHERE code = $1', [code]);
-    const r = rows[0];
-    if (!r) return null;
-    return {
-      code: r.code,
-      kind: r.kind as 'percent' | 'fixed',
-      value: Number(r.value),
-      appliesTo: r.applies_to,
-      maxUses: r.max_uses === null ? null : Number(r.max_uses),
-      uses: Number(r.uses),
-      active: r.active,
-      expiresAt: r.expires_at === null ? null : Number(r.expires_at),
-    };
+  const packBonusesFor = (promos: Awaited<ReturnType<typeof accountPromos>>) => {
+    const out: Record<string, { code: string; bonusBucks: number }> = {};
+    for (const p of PACKS) {
+      const best = bestPromoForPack(promos, p);
+      if (best) out[p.id] = best;
+    }
+    return out;
   };
+
+  const loadPromoHandler = async (c: Context<Env>) => {
+    const me = c.get('user').id;
+    if (!redeemLimiter(me)) return c.json({ error: 'slow down' }, 429);
+    const { code } = await body<{ code?: string }>(c);
+    const now = clock();
+    const res = await loadAccountPromo(db, me, String(code ?? ''), now);
+    if (!res.ok) return fail(res.status, res.error);
+    const promos = await accountPromos(db, me, now);
+    return c.json({ promo: res.promo, promos, packBonuses: packBonusesFor(promos) });
+  };
+  app.post('/promo-codes/load', requireUser, loadPromoHandler);
+  app.get('/promo-codes/mine', requireUser, async (c) => {
+    const promos = await accountPromos(db, c.get('user').id, clock());
+    return c.json({ promos, packBonuses: packBonusesFor(promos) });
+  });
 
   // --- players: redeem a gift card, see credit, buy with credit ---
   const redeemGiftCard = async (c: Context<Env>) => {
@@ -3325,73 +3328,60 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const cents = salePriceCents(product, offer);
     return cents === null ? null : roundToBuck(cents);
   };
-  /** a promo's discount, in whole bucks (never more than the price) */
-  const bucksDiscount = (promo: Promo, priceCents: number) => Math.floor(discountCents(promo, priceCents) / BUCK) * BUCK;
-
-  // What a product costs in beech bucks with a promo code, before buying
-  // (validates the code but doesn't use it). docs/BEECH_BUCKS.md.
+  // What a product costs in beech bucks, before buying (docs/BEECH_BUCKS.md).
+  // Promo codes never discount a credit purchase: they add bonus bb to bb
+  // pack purchases, applied automatically from the account (see promos.ts),
+  // so a promoCode sent here is refused.
   app.post('/store/quote', requireUser, async (c) => {
     const me = c.get('user').id;
     if (!creditLimiter(me)) return c.json({ error: 'slow down' }, 429);
     const { productId, promoCode } = await body<{ productId?: string; promoCode?: string }>(c);
+    if (promoCode !== undefined) fail(400, 'promo codes are for beech-buck packs: load the code on your account instead');
     const product = productById(productId ?? '');
     if (!product) fail(404, 'no such product');
     const priceCents = offerCents(product!, await creatorOffer(db, product!)) ?? fail(404, 'that product is not for sale');
-    let discount = 0;
-    let promo: Promo | null = null;
-    if (promoCode) {
-      promo = await loadPromo(normalizePromoCode(promoCode));
-      if (!promo) fail(404, 'no such code');
-      const blocked = promoBlocked(promo!, product!.id, clock());
-      if (blocked) fail(400, blocked);
-      discount = bucksDiscount(promo!, priceCents);
-    }
     return c.json({
       product: product!.id,
       priceCents,
-      discountCents: discount,
-      finalCents: priceCents - discount,
+      discountCents: 0,
+      finalCents: priceCents,
       price: centsToBucks(priceCents),
-      final: centsToBucks(priceCents - discount),
-      promo: promo ? promo.code : undefined,
+      final: centsToBucks(priceCents),
     });
   });
 
   /**
    * Buy with beech bucks (Spend in specs/tla/SandBucks.tla): one offer, or a
    * basket of them ("buy what's missing", docs/COPY_BEACH.md). The debit, the
-   * promo, the grant (each unit with its trade-in value: the price paid,
-   * shared out) and any creator credit commit together. A repeated request ID
-   * returns the first receipt.
+   * grant (each unit with its trade-in value: the price paid, shared out) and
+   * any creator credit commit together. A repeated request ID returns the
+   * first receipt. Promo codes never apply here: they add bonus bb to bb
+   * pack purchases, applied automatically from the account (see promos.ts).
    */
   const buyWithBucks = async (
     c: Context<Env>,
     me: string,
     lines: { product: Product; quantity: number }[],
-    opts: { promoCode?: string; requestId?: string; freeOnly?: boolean; ref: string },
+    opts: { requestId?: string; freeOnly?: boolean; ref: string },
   ) => {
-    const { promoCode, requestId, freeOnly } = opts;
+    const { requestId, freeOnly } = opts;
     if (requestId !== undefined && (typeof requestId !== 'string' || !UUID_PATTERN.test(requestId))) fail(400, 'invalid request ID');
-    if (promoCode !== undefined && typeof promoCode !== 'string') fail(400, 'invalid promo code');
     if (freeOnly !== undefined && typeof freeOnly !== 'boolean') fail(400, 'invalid free claim');
-    if (freeOnly && promoCode !== undefined) fail(400, 'free claims do not use promo codes');
-    if (promoCode && lines.length !== 1) fail(400, 'a promo code is for one thing at a time');
-    const code = promoCode ? normalizePromoCode(promoCode) : null;
     const now = clock();
     const result = await db.withTransaction(async (tx) => {
       const balance = async () => (await tx.query<{ credit_cents: number }>('SELECT credit_cents FROM users WHERE id = $1', [me]))[0]?.credit_cents ?? 0;
       if (requestId) {
         const [claimed] = await tx.query(
           `INSERT INTO credit_shop_orders (user_id, request_id, product_id, promo_code, paid_cents, discount_cents)
-           VALUES ($1, $2, $3, $4, 0, 0) ON CONFLICT DO NOTHING RETURNING 1`,
-          [me, requestId, opts.ref, code],
+           VALUES ($1, $2, $3, NULL, 0, 0) ON CONFLICT DO NOTHING RETURNING 1`,
+          [me, requestId, opts.ref],
         );
         if (!claimed) {
           const [order] = await tx.query<{ product_id: string; promo_code: string | null; paid_cents: number; discount_cents: number }>(
             'SELECT product_id, promo_code, paid_cents, discount_cents FROM credit_shop_orders WHERE user_id = $1 AND request_id = $2',
             [me, requestId],
           );
-          if (!order || order.product_id !== opts.ref || order.promo_code !== code) fail(409, 'that request ID was used for a different purchase');
+          if (!order || order.product_id !== opts.ref || order.promo_code !== null) fail(409, 'that request ID was used for a different purchase');
           if (freeOnly && order.paid_cents !== 0) fail(409, 'that request ID was used for a paid purchase');
           return { paidCents: order.paid_cents, discountCents: order.discount_cents, creditCents: await balance() };
         }
@@ -3405,14 +3395,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       }
       const price = priced.reduce((t, l) => t + l.cents * l.quantity, 0);
       if (freeOnly && price !== 0) fail(409, 'that item is no longer free. Reopen the shop for its current price.');
-      let discount = 0;
-      if (code !== null) {
-        const promo = await loadPromo(code, tx) ?? fail(404, 'no such code');
-        const blocked = promoBlocked(promo, priced[0].product.id, now);
-        if (blocked) fail(400, blocked);
-        discount = bucksDiscount(promo, price);
-      }
-      const paid = price - discount;
+      const paid = price;
       for (const l of priced) if (l.offer) await lockCreditUsers(tx, me, l.offer);
       const available = await balance();
       if (available < paid) throw new HTTPException(402, {
@@ -3436,9 +3419,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       const granted = await claimCreditPurchase(tx, {
         userId: me,
         productId: opts.ref,
-        promoCode: code,
         finalCents: paid,
-        discountCents: discount,
         items: grant.map((g) => g.item),
         quantities: grant.map((g) => g.qty),
         unitCents: grant.map((g) => g.unit),
@@ -3456,10 +3437,10 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
         }
       }
       if (requestId) await tx.query(
-        'UPDATE credit_shop_orders SET paid_cents = $3, discount_cents = $4 WHERE user_id = $1 AND request_id = $2',
-        [me, requestId, paid, discount],
+        'UPDATE credit_shop_orders SET paid_cents = $3, discount_cents = 0 WHERE user_id = $1 AND request_id = $2',
+        [me, requestId, paid],
       );
-      return { paidCents: paid, discountCents: discount, creditCents: await balance() };
+      return { paidCents: paid, discountCents: 0, creditCents: await balance() };
     });
     return {
       ...result,
@@ -3475,14 +3456,16 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     if (!creditLimiter(me)) return c.json({ error: 'slow down' }, 429);
     const { productId, promoCode, requestId, freeOnly } =
       await body<{ productId?: string; promoCode?: string; requestId?: string; freeOnly?: boolean }>(c);
+    if (promoCode !== undefined) fail(400, 'promo codes are for beech-buck packs: load the code on your account instead');
     const product = productById(productId ?? '') ?? fail(404, 'no such product');
-    const r = await buyWithBucks(c, me, [{ product, quantity: 1 }], { promoCode, requestId, freeOnly, ref: product.id });
+    const r = await buyWithBucks(c, me, [{ product, quantity: 1 }], { requestId, freeOnly, ref: product.id });
     return c.json({ product: product.id, grants: product.grants, ...r });
   });
   app.post('/store/buy', requireUser, async (c) => {
     const me = c.get('user').id;
     if (!creditLimiter(me)) return c.json({ error: 'slow down' }, 429);
     const p = await body<{ productId?: string; basket?: { product?: string; quantity?: number }[]; promoCode?: string; requestId?: string }>(c);
+    if (p.promoCode !== undefined) fail(400, 'promo codes are for beech-buck packs: load the code on your account instead');
     let lines: { product: Product; quantity: number }[];
     if (p.basket !== undefined) {
       if (!Array.isArray(p.basket) || !p.basket.length || p.basket.length > 20) fail(400, 'a basket is 1 to 20 lines');
@@ -3496,7 +3479,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       lines = [{ product: productById(p.productId ?? '') ?? fail(404, 'no such product'), quantity: 1 }];
     }
     const ref = lines.length === 1 && lines[0].quantity === 1 ? lines[0].product.id : `basket:${lines.map((l) => `${l.product.id}x${l.quantity}`).join(',')}`.slice(0, 200);
-    const r = await buyWithBucks(c, me, lines, { promoCode: p.promoCode, requestId: p.requestId, ref });
+    const r = await buyWithBucks(c, me, lines, { requestId: p.requestId, ref });
     return c.json({ lines: lines.map((l) => ({ product: l.product.id, quantity: l.quantity, grants: l.product.grants })), ...r });
   });
 
@@ -3920,7 +3903,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   app.get('/shore-account/summary', requireShoreAccount, async (c) => {
     const me = c.get('user').id;
     const now = clock();
-    const [[u], ledger, bag, invites] = await Promise.all([
+    const [[u], ledger, bag, invites, promos] = await Promise.all([
       db.query<{ credit_cents: number; creator_credit_debt_cents: number }>('SELECT credit_cents, creator_credit_debt_cents FROM users WHERE id = $1', [me]),
       ledgerOf(db, me),
       db.query<{ item_id: string; n: string }>(
@@ -3930,6 +3913,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
         [me, now],
       ),
       referralsOf(me),
+      accountPromos(db, me, now),
     ]);
     return c.json({
       user: { name: c.get('user').name },
@@ -3938,7 +3922,19 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       ledger,
       bag: bag.filter((r) => r.item_id !== 'beach').map((r) => ({ item: r.item_id, name: displayName(r.item_id), owned: Number(r.n) })),
       invites,
-      packs: PACKS.map((p) => ({ id: p.id, name: p.name, usd: p.usd, bucks: p.bucks, featured: !!p.featured })),
+      promos,
+      packs: PACKS.map((p) => {
+        const best = bestPromoForPack(promos, p);
+        return {
+          id: p.id,
+          name: p.name,
+          usd: p.usd,
+          bucks: p.bucks,
+          featured: !!p.featured,
+          bonusBucks: best?.bonusBucks ?? 0,
+          promoCode: best?.code ?? null,
+        };
+      }),
       webCheckout: !!cfg.xsolla,
     });
   });
@@ -3953,6 +3949,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   app.post('/shore-account/top-up', requireShoreAccount, webCheckout);
   app.get('/shore-account/web-orders/:id', requireShoreAccount, webOrder);
   app.post('/shore-account/redeem', requireShoreAccount, redeemGiftCard);
+  app.post('/shore-account/promo-codes', requireShoreAccount, loadPromoHandler);
   app.post('/shore-account/gift', requireShoreAccount, sendGift);
 
 

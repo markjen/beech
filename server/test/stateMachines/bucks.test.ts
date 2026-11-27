@@ -8,7 +8,6 @@ import { BucksModel, type BucksAnswer } from './bucksModel.js';
 let s: Server;
 beforeAll(async () => {
   s = await startServer();
-  await s.db.query("INSERT INTO promo_codes (code, kind, value, created_at) VALUES ('HALFOFF', 'percent', 50, 0)");
 });
 afterAll(() => s.close());
 
@@ -38,8 +37,8 @@ async function buyPack(w: Who, product = 'bucks_10') {
   return token;
 }
 const refund = (token: string) => revokeStorePurchase(s.db, 'dev' as 'apple', token, s.clock.now);
-const spend = (w: Who, promo = false) =>
-  s.post('/store/credit-purchase', w.token, { productId: 'item_parasol', requestId: crypto.randomUUID(), ...(promo ? { promoCode: 'HALFOFF' } : {}) });
+const spend = (w: Who) =>
+  s.post('/store/credit-purchase', w.token, { productId: 'item_parasol', requestId: crypto.randomUUID() });
 const tradeIn = (w: Who, item = ITEM, quantity = 1) => s.post('/bag/trade-in', w.token, { item, quantity });
 const gift = (from: Who, to: Who) => s.post('/gifts', from.token, { code: to.code, item: ITEM });
 async function save(w: Who, k: number) {
@@ -94,14 +93,14 @@ describe('beech bucks: one transition at a time', () => {
     expect(await units(w)).toEqual([]);
   });
 
-  it('a promo price is what comes back, and a free thing is worth its shop price', async () => {
+  it('a free thing is worth its shop price', async () => {
     const w = await person();
     await buyPack(w);
-    expect((await spend(w, true)).status).toBe(200);
+    expect((await spend(w)).status).toBe(200);
     await s.grant(w.token, ITEM);
-    expect(await units(w)).toEqual([5, 10]);
+    expect(await units(w)).toEqual([10, 10]);
     expect(await (await tradeIn(w)).json()).toMatchObject({ credited: 10 });
-    expect(await (await tradeIn(w)).json()).toMatchObject({ credited: 5 });
+    expect(await (await tradeIn(w)).json()).toMatchObject({ credited: 10 });
     expect(await balance(w)).toEqual({ bal: 20, debt: 0 });
   });
 
@@ -137,14 +136,14 @@ describe('beech bucks: one transition at a time', () => {
     expect(await balance(w)).toEqual({ bal: 23, debt: 0 });
   });
 
-  it('a gift carries its value: a discount can’t be cashed out by gifting', async () => {
+  it('a gift carries its value', async () => {
     const a = await person();
     const b = await person();
     await buyPack(a);
-    expect((await spend(a, true)).status).toBe(200);
+    expect((await spend(a)).status).toBe(200);
     expect((await gift(a, b)).status).toBe(200);
-    expect(await units(b)).toEqual([5]);
-    expect(await (await tradeIn(b)).json()).toMatchObject({ credited: 5 });
+    expect(await units(b)).toEqual([10]);
+    expect(await (await tradeIn(b)).json()).toMatchObject({ credited: 10 });
   });
 
   it('an old app’s item receipt still grants the thing; its refund takes back the bucks of a trade-in', async () => {
@@ -210,8 +209,8 @@ describe('beech bucks: TLC counterexamples, replayed against the server', () => 
 });
 
 describe('beech bucks: random walks, server vs model', () => {
-  type Action = 'pack' | 'refund' | 'spend' | 'promo' | 'free' | 'gift' | 'save' | 'trade';
-  const actions: Action[] = ['pack', 'pack', 'refund', 'spend', 'spend', 'promo', 'free', 'gift', 'save', 'save', 'trade', 'trade', 'trade'];
+  type Action = 'pack' | 'refund' | 'spend' | 'free' | 'gift' | 'save' | 'trade';
+  const actions: Action[] = ['pack', 'pack', 'refund', 'spend', 'spend', 'free', 'gift', 'save', 'save', 'trade', 'trade', 'trade'];
 
   for (const seed of [31, 32, 33, 34, 35, 36]) {
     it(`seed ${seed}: 40 steps agree with the model and keep its invariants`, async () => {
@@ -236,8 +235,8 @@ describe('beech bucks: random walks, server vs model', () => {
             await refund(t);
             m.refundPack();
           }
-        } else if (a === 'spend' || a === 'promo') {
-          [got, want] = [{ status: (await spend(w, a === 'promo')).status }, m.spend(a === 'promo' ? 5 : 10)];
+        } else if (a === 'spend') {
+          [got, want] = [{ status: (await spend(w)).status }, m.spend(10)];
         } else if (a === 'free') {
           await s.grant(w.token, ITEM);
           m.freeGrant(10);

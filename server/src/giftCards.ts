@@ -1,13 +1,13 @@
-//@ backend dafny
 // Gift cards and promo codes (docs/GIFT_CARDS_PROMOS.md).
 //
 // The shape follows the shop: purchases go through Apple / Google, whose
 // prices the server can't change, so neither feature touches the stores.
 // A gift card is prepaid credit (USD cents): redeeming one moves its whole
 // value into your account credit, and credit buys products server-side
-// (`POST /api/store/credit-purchase`), where a promo code can discount the
-// price. The server always prices from its own product list; the client
-// never supplies a price.
+// (`POST /api/store/credit-purchase`) at full price. Promo codes never
+// discount a credit purchase: they add bonus bb to bb pack purchases,
+// applied automatically from the account (see promos.ts). The server always
+// prices from its own product list; the client never supplies a price.
 //
 // The two kinds of code are treated differently on purpose:
 // - Gift card codes are bearer credentials: 16 random characters (80 bits)
@@ -54,19 +54,6 @@ export function hashesEqual(a: string, b: string): boolean {
   return ba.length === bb.length && timingSafeEqual(ba, bb);
 }
 
-export interface Promo {
-  code: string;
-  /** 'percent' (1-100) or 'fixed' (USD cents off) */
-  kind: 'percent' | 'fixed';
-  value: number;
-  /** null: any product; otherwise one product id */
-  appliesTo: string | null;
-  maxUses: number | null;
-  uses: number;
-  active: boolean;
-  expiresAt: number | null;
-}
-
 /** "launch-20" -> "LAUNCH20". Promo codes are public, so this is only about
  *  treating the same code typed two ways as one code. */
 export function normalizePromoCode(raw: string): string {
@@ -76,33 +63,6 @@ export function normalizePromoCode(raw: string): string {
 export function isPromoCodeShape(raw: string): boolean {
   const code = normalizePromoCode(raw);
   return code.length >= 3 && code.length <= 32;
-}
-
-/**
- * Why a promo can't be used for this product right now, or null if it can.
- * Checked again inside the purchase statement, so a code can't be used
- * twice in a race or after it expired mid-request.
- */
-export function promoBlocked(promo: Promo, productId: string, now: number): string | null {
-  //@ verify
-  //@ ensures (\result === null) <==> (promo.active && (promo.expiresAt === null || promo.expiresAt > now) && (promo.maxUses === null || promo.uses < promo.maxUses) && (promo.appliesTo === null || promo.appliesTo === productId))
-  if (!promo.active) return 'that code is no longer active';
-  if (promo.expiresAt !== null && promo.expiresAt <= now) return 'that code has expired';
-  if (promo.maxUses !== null && promo.uses >= promo.maxUses) return 'that code has been used up';
-  if (promo.appliesTo !== null && promo.appliesTo !== productId) return 'that code is not for this product';
-  return null;
-}
-
-/** The discount in USD cents for a product at `priceCents`. Percent rounds
- *  down (the player never overpays by a fraction); a fixed discount never
- *  takes the price below zero. */
-export function discountCents(promo: Promo, priceCents: number): number {
-  //@ verify
-  //@ requires priceCents >= 0
-  //@ ensures \result >= 0 && \result <= priceCents
-  //@ ensures promo.kind === 'fixed' ==> \result === Math.min(priceCents, Math.max(0, promo.value))
-  if (promo.kind === 'percent') return Math.floor((priceCents * Math.min(100, Math.max(0, promo.value))) / 100);
-  return Math.min(priceCents, Math.max(0, promo.value));
 }
 
 /** The admin allowlist: exact email match, case-insensitive. Empty list
@@ -119,31 +79,18 @@ export function formatCents(cents: number): string {
 }
 
 /**
- * The credit purchase itself, as one statement: debit the credit, claim the
- * promo, log the use and the spend, grant the items — all or nothing. The
- * payment is the anchor: it debits only if the credit covers the
- * (discounted) price and — when a promo was given — the promo is claimable
- * right now. The EXISTS locks that promo row (FOR UPDATE) until the
- * statement ends, so a second purchase can't slip in and exhaust the promo
- * between this check and the increment below. The promo is then incremented
- * only because the payment went through, the use is logged only because the
- * promo was claimed, and the items are granted only when the payment went
- * through (and the promo, if any, was claimed). Returns the granted inventory
- * row IDs, or [] if credit or promo availability changed after the handler's
- * pre-checks. A [] return has changed
- * nothing: no burned promo use, no credit debited without items.
- *
- * The $3::text casts are load-bearing: Postgres can't infer the promo-code
- * parameter's type from inside ($3 IS NULL OR EXISTS (...)) alone (42P08).
+ * The credit purchase itself, as one statement: debit the credit, log the
+ * spend, grant the items — all or nothing. The payment debits only if the
+ * credit covers the price. Returns the granted inventory row IDs, or [] if
+ * the credit changed after the handler's pre-checks. A [] return has changed
+ * nothing: no credit debited without items.
  */
 export async function claimCreditPurchase(
   db: Db,
   args: {
     userId: string;
     productId: string;
-    promoCode: string | null;
     finalCents: number;
-    discountCents: number;
     items: string[];
     quantities: number[];
     /** each row's trade-in value per unit (docs/BEECH_BUCKS.md) */
@@ -153,38 +100,19 @@ export async function claimCreditPurchase(
 ): Promise<{ id: string; item_id: string }[]> {
   const rows = await db.query<{ id: string; item_id: string }>(
     `WITH paid AS (
-       UPDATE users SET credit_cents = credit_cents - $5
-        WHERE id = $1 AND credit_cents >= $5
-          AND ($3::text IS NULL OR EXISTS (
-            SELECT 1 FROM promo_codes
-             WHERE code = $3::text AND active AND (expires_at IS NULL OR expires_at > $4)
-               AND (max_uses IS NULL OR uses < max_uses)
-               AND (applies_to IS NULL OR applies_to = $2)
-             FOR UPDATE
-          ))
+       UPDATE users SET credit_cents = credit_cents - $4
+        WHERE id = $1 AND credit_cents >= $4
         RETURNING credit_cents
-     ), promo AS (
-       UPDATE promo_codes SET uses = uses + 1
-        WHERE code = $3::text AND active AND (expires_at IS NULL OR expires_at > $4)
-          AND (max_uses IS NULL OR uses < max_uses)
-          AND (applies_to IS NULL OR applies_to = $2)
-          AND EXISTS (SELECT 1 FROM paid)
-        RETURNING code
-     ), used AS (
-       INSERT INTO promo_uses (code, user_id, product_id, discount_cents, created_at)
-       SELECT $3::text, $1, $2, $6, $4 FROM paid WHERE $3::text IS NOT NULL AND EXISTS (SELECT 1 FROM promo)
-       RETURNING 1
      ), logged AS (
        INSERT INTO credit_ledger (user_id, kind, amount_cents, ref, created_at)
-       SELECT $1, 'spend', -$5, $2, $4 FROM paid
+       SELECT $1, 'spend', -$4, $2, $3 FROM paid
        RETURNING 1
      )
      -- bought in the shop (with credit, not a store purchase: no purchase_id)
      INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at, purchase_id, unit_cents)
-     SELECT $1, g.item, g.qty, 'shop', $4, NULL, g.unit FROM paid, unnest($7::text[], $8::int[], $9::int[]) AS g(item, qty, unit)
-     WHERE $3::text IS NULL OR EXISTS (SELECT 1 FROM promo)
+     SELECT $1, g.item, g.qty, 'shop', $3, NULL, g.unit FROM paid, unnest($5::text[], $6::int[], $7::int[]) AS g(item, qty, unit)
      RETURNING id, item_id`,
-    [args.userId, args.productId, args.promoCode, args.now, args.finalCents, args.discountCents, args.items, args.quantities, args.unitCents],
+    [args.userId, args.productId, args.now, args.finalCents, args.items, args.quantities, args.unitCents],
   );
   return rows.map((r) => ({ id: String(r.id), item_id: r.item_id }));
 }

@@ -201,10 +201,23 @@ export async function googleVoided(
 
 /**
  * A refund, from any store: the purchase is marked, what it granted
- * expires now, and a pack's beech bucks (or a traded-in thing's) come back out. Shared by the Apple/Google notification handlers (via
- * `refund()` in app.ts) and the Steam `GetReport/v5` sync
- * (`syncSteamRefunds` in steamStore.ts) so every store revokes the same way.
+ * expires now, and a pack's beech bucks (plus any promo bonus or traded-in
+ * thing's bucks) come back out. Shared by the Apple/Google notification
+ * handlers (via `refund()` in app.ts), the Steam `GetReport/v5` sync
+ * (`syncSteamRefunds` in steamStore.ts), and admin-issued refunds.
  */
+async function revokePurchaseEffects(
+  tx: Db,
+  purchase: { id: string; user_id: string; product_id: string },
+  now: number,
+): Promise<void> {
+  await tx.query('UPDATE inventory SET expires_at = $2 WHERE purchase_id = $1', [purchase.id, now]);
+  await reverseCreatorCredit(tx, purchase.id, now);
+  // beech bucks (docs/BEECH_BUCKS.md): a pack's bucks (and any promo bonus)
+  // come back out, and so do the bucks of any of its things that were traded in
+  await revokeGrant(tx, { purchaseId: purchase.id, userId: purchase.user_id, product: storeProductById(purchase.product_id), now });
+}
+
 export async function revokeStorePurchase(
   db: Db,
   store: 'apple' | 'google' | 'xsolla' | 'steam',
@@ -217,10 +230,31 @@ export async function revokeStorePurchase(
       [store, transactionId, now],
     );
     if (!purchase) return;
-    await tx.query('UPDATE inventory SET expires_at = $2 WHERE purchase_id = $1', [purchase.id, now]);
-    await reverseCreatorCredit(tx, purchase.id, now);
-    // beech bucks (docs/BEECH_BUCKS.md): a pack's bucks come back out, and so
-    // do the bucks of any of its things that were traded in
-    await revokeGrant(tx, { purchaseId: purchase.id, userId: purchase.user_id, product: storeProductById(purchase.product_id), now });
+    await revokePurchaseEffects(tx, purchase, now);
   });
+}
+
+/**
+ * Admin-issued refund of a recorded purchase by its internal `purchases.id`.
+ * Run inside a transaction. Returns the refunded purchase row, or null if not
+ * found or already refunded.
+ */
+export async function revokePurchaseById(
+  tx: Db,
+  purchaseId: string,
+  now: number,
+): Promise<{ id: string; user_id: string; store: string; transaction_id: string; product_id: string } | null> {
+  const [purchase] = await tx.query<{ id: string; user_id: string; store: string; transaction_id: string; product_id: string }>(
+    `UPDATE purchases SET refunded_at = $2 WHERE id = $1 AND refunded_at IS NULL
+     RETURNING id, user_id, store, transaction_id, product_id`,
+    [purchaseId, now],
+  );
+  if (!purchase) return null;
+  if (purchase.store === 'xsolla') {
+    await tx.query(`UPDATE web_orders SET status = 'refunded' WHERE provider_order_id = $1 AND status = 'paid'`, [purchase.transaction_id]);
+  } else if (purchase.store === 'steam') {
+    await tx.query(`UPDATE steam_orders SET status = 'refunded' WHERE trans_id = $1 AND status = 'paid'`, [purchase.transaction_id]);
+  }
+  await revokePurchaseEffects(tx, purchase, now);
+  return purchase;
 }

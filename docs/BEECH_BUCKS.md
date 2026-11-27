@@ -63,13 +63,14 @@ Existing balances round up to the next whole buck in the migration.
   `pack_refund`. A refunded purchase from an old app version (it granted
   things, not bucks) still expires those things, and takes back the bucks of
   any that were traded in.
-- **Spending** (`POST /api/store/buy { offer | basket, promo?, requestId }`).
+- **Spending** (`POST /api/store/buy { offer | basket, requestId }`).
   The app keeps a basket's request ID until a receipt or a definite no, so a
   retry after a lost answer gets the first receipt, not a second charge:
   one statement debits the bucks and grants the things, each unit with its
   trade-in value (`inventory.unit_cents`), the price shared out by list
-  value (largest remainder, so it adds up exactly). Promo codes discount it,
-  rounded to whole bucks. Creator royalties: 30% of the bucks paid, rounded
+  value (largest remainder, so it adds up exactly). Promo codes never
+  discount a credit purchase; they add bonus bb to bb pack purchases
+  (docs/GIFT_CARDS_PROMOS.md). Creator royalties: 30% of the bucks paid, rounded
   to the buck.
 - **Trade-ins** (`POST /api/bag/trade-in { item, quantity }`): one
   transaction holding the player's lock (the one saves, restores, copies and
