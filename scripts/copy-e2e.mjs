@@ -155,7 +155,10 @@ await pb.waitForFunction(() => window.__beech.inventory.tradeValue('parasol') ==
 await pb.evaluate(() => window.__beech.setRail(true)); // the HUD starts as just the palm
 await pb.evaluate(() => window.__beech.inventory.setOpen(true));
 await pb.waitForSelector('.inv-tray.open', { timeout: 10000 });
-check((await pb.textContent('.inv-tray .inv-tip')) === 'long press item to trade in', 'the bag says to long press to trade in');
+// the tip line also holds the select button (#170), so its textContent is
+// 'long press item to trade inselect': read the tip's own text node
+const tipText = await pb.evaluate(() => document.querySelector('.inv-tray .inv-tip')?.firstChild?.textContent ?? '');
+check(tipText === 'long press item to trade in', 'the bag says to long press to trade in');
 const tile = pb.locator('.inv-grid .inv-item', { hasText: 'Parasol' }).first();
 await pb.waitForTimeout(1500); // let the bag settle (it re-renders as the bag loads)
 await tile.scrollIntoViewIfNeeded();
