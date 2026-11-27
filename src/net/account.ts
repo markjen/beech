@@ -1017,6 +1017,8 @@ export interface ShoreBeach {
   pier?: boolean;
   /** its inland sections, front row first (docs/INLAND_SECTIONS.md) */
   sections?: string[];
+  /** its average in shells and how many rated it, once it has a few ratings */
+  rating?: { average: number; count: number };
 }
 
 export interface Shore {

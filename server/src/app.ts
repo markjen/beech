@@ -104,7 +104,7 @@ import {
 } from './auth.js';
 import { toBytes, type Db } from './db.js';
 import { executeAccountMerge, planAccountMerge } from './accountMerge.js';
-import { BEACH, NODE, PIER_SITE, SIDES, beachJson, isPublic, normalizeCode, shoreGraph, type NodeRow, type Side } from './shore.js';
+import { BEACH, NODE, PIER_SITE, SIDES, beachJson, isPublic, normalizeCode, ratingShown, shoreGraph, type NodeRow, type Side } from './shore.js';
 import {
   BadBlob,
   CHECKPOINT_BYTES_PER_USER,
@@ -130,7 +130,6 @@ import {
   NOTES_PER_HOUR,
   QUICK_NOTES,
   RATING_EVERY_MS,
-  RATING_SHOWN_AT,
   checkNote,
   utcDay,
 } from './inbox.js';
@@ -4070,7 +4069,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   const ratingOf = async (beach: string) => {
     const r = (await db.query<{ n: string; avg: string | null }>('SELECT COUNT(*) AS n, AVG(shells) AS avg FROM ratings WHERE beach_id = $1', [beach]))[0];
     const count = Number(r?.n ?? 0);
-    return { count, average: count >= RATING_SHOWN_AT && r?.avg ? Math.round(Number(r.avg) * 10) / 10 : null };
+    return { count, average: ratingShown(count, r?.avg)?.average ?? null };
   };
 
   const isNewAccount = async (user: string, now: number) =>
