@@ -91,7 +91,9 @@ export type Step = BeachJson & { linked: boolean };
  * good, so anything drawn has to be in here.
  */
 export const imageVersion = (updatedAt: number | string | null | undefined, pier: boolean | undefined): string =>
-  `${updatedAt ?? 0}${pier ? 'p' : ''}`;
+  `${updatedAt ?? 0}${pier ? PIER_LOOK : ''}`;
+/** the pier's look in pictures: bump when its shape changes (2: the higher deck, 2026-11-27) */
+const PIER_LOOK = 'p2';
 
 /** Can anyone, signed in or not, see this beach (beechshore.com)? On the shore and saved. */
 export const isPublic = (r: Pick<NodeRow, 'on_shore' | 'saved'>): boolean => !!r.on_shore && !!r.saved;

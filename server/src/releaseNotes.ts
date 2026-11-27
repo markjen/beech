@@ -17,8 +17,9 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: '2026-11-27',
-    title: 'Swap an inland row in place, pick a place for a copied beach, stars and finds in the status pane, multi-item trade-ins, promo bonus beech bucks, playable sand extensions, a quieter palm, more of the beach guide, ratings along the shore, a see-through pier preview and safer notes',
+    title: 'A higher pier, swap an inland row in place, pick a place for a copied beach, stars and finds in the status pane, multi-item trade-ins, promo bonus beech bucks, playable sand extensions, a quieter palm, more of the beach guide, ratings along the shore, a see-through pier preview and safer notes',
     changes: [
+      'Piers stand a little higher, with a slightly longer ramp, so the biggest storm waves at high tide pass under the deck instead of through it.',
       'In the inland sections editor, “replace” on a row swaps it for another type without moving the rest; the one it replaces goes back to your bag.',
       'Copying a beach onto a new beach of yours, you can now pick where in the world it is (it starts at the original’s place).',
       'The expanded status pane now shows the stars on the beach you’re looking at and how many buried finds you’ve dug up today.',

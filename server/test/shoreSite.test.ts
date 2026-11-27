@@ -514,7 +514,7 @@ describe('piers on the shore site (docs/PIERS.md)', () => {
 
     await db.query('INSERT INTO beach_piers (beach_id, owner_id, placed_at) VALUES ($1, $1, 0)', [ana.beachId]);
     const after = await page();
-    expect(thumbUrl(after)).toBe(`${thumbUrl(before)}p`);
+    expect(thumbUrl(after)).toBe(`${thumbUrl(before)}p2`); // the pier look in the version (shore.ts PIER_LOOK)
     expect(isoUrl(after)).not.toBe(isoUrl(before));
     for (const [kind, plain, v] of [['thumb', plainThumb, thumbUrl(after)], ['iso', plainIso, isoUrl(after)]] as const) {
       const r = await root.request(`/img/${ana.code}/${kind}.png?v=${v}`, shoreHost);

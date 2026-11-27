@@ -1668,14 +1668,14 @@ export function beachPng(bytes: Uint8Array | null, opts: ImageOptions): Buffer {
 // thumbnail, and as boxes in the isometric views.
 
 export const PIER = {
-  landY: 21,
+  landY: 22,
   rampTopY: 18,
   endY: 3,
   platformY: 6.5,
   width: 2.5,
   platformWidth: 4,
-  deckHeight: 1.35,
-  footHeight: 0.36,
+  deckHeight: 1.65,
+  footHeight: 0.43,
   deckThickness: 0.14,
   pilingStep: 3,
   pilingDepth: -2.7,
