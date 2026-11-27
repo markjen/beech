@@ -4,7 +4,7 @@
 // (docs/BEACH_FILE.md). The sandbox has no bag: everything in it is free.
 
 import { LocalCheckpoints, LOCAL_CHECKPOINTS, type LocalCheckpoint } from '../net/localStore';
-import { thumbnailOf } from './checkpoints';
+import { thumbnailCanvas } from './checkpoints';
 
 export interface LocalCheckpointHost {
   /** the beach as it is now: saved-beach bytes, things on it, the real beach */
@@ -29,7 +29,7 @@ function ago(ts: number): string {
 export class LocalCheckpointsSection {
   readonly el: HTMLDivElement;
   private list: LocalCheckpoint[] = [];
-  private thumbs = new Map<string, string>();
+  private thumbs = new Map<string, HTMLCanvasElement>();
   private error = '';
   private confirmDelete: { id: string; at: number } | null = null;
 
@@ -108,20 +108,24 @@ export class LocalCheckpointsSection {
     const row = document.createElement('div');
     row.className = 'cp-row';
     row.dataset.id = cp.id;
-    const img = document.createElement('img');
-    img.className = 'cp-thumb';
-    img.alt = '';
+    // a little top-down map of it, drawn on first sight. The drawn canvas
+    // itself is the thumbnail (no pixel readback); a re-render just moves
+    // the cached canvas from the discarded row.
     const cached = this.thumbs.get(cp.id);
-    if (cached) img.src = cached;
-    else
+    const thumb = cached ?? document.createElement('canvas');
+    if (!cached) {
+      thumb.className = 'cp-thumb';
+      thumb.width = thumb.height = 72;
+      thumb.setAttribute('aria-hidden', 'true');
       void LocalCheckpoints.sand(cp.id).then(async (bytes) => {
         if (!bytes) return;
-        const url = await thumbnailOf(bytes).catch(() => '');
-        if (!url) return;
-        this.thumbs.set(cp.id, url);
-        img.src = url;
+        const drawn = await thumbnailCanvas(bytes).catch(() => null);
+        if (!drawn) return;
+        this.thumbs.set(cp.id, drawn);
+        if (thumb.isConnected) thumb.replaceWith(drawn);
       });
-    row.appendChild(img);
+    }
+    row.appendChild(thumb);
     const title = document.createElement('div');
     title.className = 'cp-title';
     const name = document.createElement('b');
