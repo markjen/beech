@@ -5,14 +5,16 @@
 // every cart from here; the browser's prices are only for show.
 //
 // Printful variant ids come from Printful's public catalog API
-// (GET https://api.printful.com/products/<id>), checked 2026-11-27. The
-// sunglasses aren't in Printful's print-on-demand catalog: they are stocked
-// goods kept in Printful's warehouse (Printful Warehousing), so they ship in
-// the same box. Their warehouse variant id is a setting
-// (MERCH_SUNGLASSES_VARIANT); until it is set, the sunglasses and the set
-// show as sold out.
+// (GET https://api.printful.com/products/<id>), checked 2026-11-27.
+//
+// The sunglasses aren't here: they aren't in Printful's print-on-demand
+// catalog, they are stocked goods kept in Printful's warehouse (Printful
+// Warehousing), so they were taken out of the store for now (2026-11-27).
+// They come back on their own later, once a bulk order is warehoused and
+// its variant id is set (MERCH_SUNGLASSES_VARIANT); the set stays the
+// five printed things and does not wait on that.
 
-export type ProductId = 'tee' | 'hoodie' | 'hat' | 'flipflops' | 'towel' | 'sunglasses' | 'beach-tee' | 'beach-hoodie' | 'set';
+export type ProductId = 'tee' | 'hoodie' | 'hat' | 'flipflops' | 'towel' | 'beach-tee' | 'beach-hoodie' | 'set';
 
 export interface Color {
   id: string;
@@ -108,10 +110,12 @@ export const PRODUCTS: Product[] = [
     sizes: ['S', 'M', 'L'], printfulProduct: 359, variants: { 'white/S': 10170, 'white/M': 10171, 'white/L': 10172 }, placement: 'default', art: 'flipflops.png',
   },
   { id: 'towel', name: 'Beech beach towel', blurb: '30″ × 60″, printed edge to edge', cents: 4500, colors: WHITE, sizes: ['30″ × 60″'], printfulProduct: 259, variants: { 'white/30″ × 60″': 8874 }, placement: 'default', art: 'towel.png' },
-  { id: 'sunglasses', name: 'Beech sunglasses', blurb: 'UV400, beech on the arm', cents: 2200, colors: [{ id: 'white', name: 'White', hex: '#ffffff' }], sizes: ONE, variants: {}, placement: '', warehouse: true },
   { id: 'beach-tee', name: 'Your beach tee', blurb: 'Your own beach, printed big on the front', cents: 3600, colors: TEE_COLORS, sizes: SIZES, printfulProduct: 71, variants: TEE_VARIANTS, placement: 'front', beachPrint: true },
   { id: 'beach-hoodie', name: 'Your beach hoodie', blurb: 'Your own beach, printed big on the front', cents: 6200, colors: HOODIE_COLORS, sizes: SIZES, printfulProduct: 146, variants: HOODIE_VARIANTS, placement: 'front', beachPrint: true },
-  { id: 'set', name: 'The whole beach set', blurb: 'Tee, hoodie, hat, flip flops, sunglasses and towel', cents: 17900, colors: [], sizes: [], variants: {}, placement: '', parts: ['tee', 'hoodie', 'hat', 'flipflops', 'sunglasses', 'towel'] },
+  // The whole beach set: the five printed things (no sunglasses — stocked,
+  // not printed; see the header note). $160, decided by Mark 2026-11-27:
+  // the five separately are $188, so the set is ~15% off.
+  { id: 'set', name: 'The whole beach set', blurb: 'Tee, hoodie, hat, flip flops and towel', cents: 16000, colors: [], sizes: [], variants: {}, placement: '', parts: ['tee', 'hoodie', 'hat', 'flipflops', 'towel'] },
 ];
 
 export const productById = (id: string): Product | undefined => PRODUCTS.find((p) => p.id === id);

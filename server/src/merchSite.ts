@@ -83,9 +83,9 @@ export function storeHtml(o: { base: string; gameUrl: string; googleClientId: st
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>beech store</title>
-<meta name="description" content="Tees, hoodies, hats, flip flops, sunglasses and towels from beech, and your own beach printed on a tee or hoodie.">
+<meta name="description" content="Tees, hoodies, hats, flip flops and towels from beech, and your own beach printed on a tee or hoodie.">
 <meta property="og:title" content="beech store">
-<meta property="og:description" content="Wear the beach. Tees, hoodies, hats, flip flops, sunglasses, towels, and your own beach on a tee.">
+<meta property="og:description" content="Wear the beach. Tees, hoodies, hats, flip flops, towels, and your own beach on a tee.">
 <meta property="og:image" content="https://beech.games/hero-beach.jpg">
 <meta name="theme-color" content="#fbf4e7" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#131b26" media="(prefers-color-scheme: dark)">
@@ -110,7 +110,7 @@ export function storeHtml(o: { base: string; gameUrl: string; googleClientId: st
     <div class="hero-copy">
       <p class="kicker">The beech store</p>
       <h1>Wear the beach.</h1>
-      <p class="lede">Soft tees and hoodies, an embroidered hat, flip flops, sunglasses and a big beach towel. Or put your own beach on a shirt.</p>
+      <p class="lede">Soft tees and hoodies, an embroidered hat, flip flops and a big beach towel. Or put your own beach on a shirt.</p>
       <div class="hero-actions">
         <a class="btn" href="#set">Get the whole set</a>
         <a class="btn ghost" href="#yours">Print your beach</a>
@@ -382,7 +382,6 @@ function picture(id, color, print) {
       return '<svg viewBox="0 0 400 400"><defs><pattern id="' + k + '" patternUnits="userSpaceOnUse" width="400" height="400"><image href="' + art('flipflops.png') + '" width="400" height="400"/></pattern></defs><g transform="rotate(-8 140 200)"><path d="M140 40 C 200 40 214 120 200 200 C 190 280 196 360 140 364 C 84 360 92 280 82 200 C 70 120 80 40 140 40 Z" fill="url(#' + k + ')" stroke="#2a3a46" stroke-width="10"/><path d="M90 170 Q140 110 192 170" fill="none" stroke="#1d2d38" stroke-width="12" stroke-linecap="round"/><path d="M140 118 L140 130" stroke="#1d2d38" stroke-width="12" stroke-linecap="round"/></g><g transform="rotate(8 270 200)"><path d="M270 40 C 330 40 340 120 328 200 C 318 280 326 360 270 364 C 214 360 222 280 210 200 C 200 120 210 40 270 40 Z" fill="url(#' + k + ')" stroke="#2a3a46" stroke-width="10"/><path d="M218 170 Q270 110 320 170" fill="none" stroke="#1d2d38" stroke-width="12" stroke-linecap="round"/><path d="M270 118 L270 130" stroke="#1d2d38" stroke-width="12" stroke-linecap="round"/></g></svg>';
     case 'towel':
       return '<svg viewBox="0 0 400 400"><defs><clipPath id="' + k + '"><rect x="110" y="20" width="180" height="360" rx="14"/></clipPath></defs><g transform="rotate(-6 200 200)"><g clip-path="url(#' + k + ')"><image href="' + art('towel.png') + '" x="110" y="20" width="180" height="360" preserveAspectRatio="none"/></g><rect x="110" y="20" width="180" height="360" rx="14" fill="none" stroke="#e8dcc6" stroke-width="5"/><path d="M110 352 L290 352" stroke="#fff" stroke-width="4" stroke-dasharray="6 6" opacity=".7"/></g></svg>';
-    case 'sunglasses':
       return '<svg viewBox="0 0 400 400"><path d="M44 178 Q40 150 70 148 L168 148 Q186 150 182 176 L174 226 Q168 254 136 254 L92 254 Q62 254 56 226 Z" fill="#1d2d38"/><path d="M356 178 Q360 150 330 148 L232 148 Q214 150 218 176 L226 226 Q232 254 264 254 L308 254 Q338 254 344 226 Z" fill="#1d2d38"/><path d="M70 160 L160 160 L150 220 Q146 240 124 240 L94 240 Q76 240 72 220 Z" fill="#2fa4bb" opacity=".85"/><path d="M330 160 L240 160 L250 220 Q254 240 276 240 L306 240 Q324 240 328 220 Z" fill="#2fa4bb" opacity=".85"/><path d="M78 168 L120 168" stroke="#8ff0de" stroke-width="6" stroke-linecap="round" opacity=".8"/><path d="M282 168 L322 168" stroke="#8ff0de" stroke-width="6" stroke-linecap="round" opacity=".8"/><path d="M182 168 Q200 156 218 168" fill="none" stroke="#1d2d38" stroke-width="10"/><path d="M44 160 L14 150 M356 160 L386 150" stroke="#1d2d38" stroke-width="10" stroke-linecap="round"/></svg>';
   }
   return '';
@@ -412,7 +411,7 @@ function renderShop() {
     place(picture('hoodie', productOf('hoodie').colors[0]), 'left:4%;top:8%;width:62%') +
     place(picture('tee', productOf('tee').colors[2]), 'right:2%;bottom:4%;width:54%;transform:rotate(6deg)') +
     place(picture('hat', productOf('hat').colors[0]), 'right:6%;top:4%;width:34%;transform:rotate(-10deg)');
-  const grid = ['tee', 'hoodie', 'hat', 'flipflops', 'sunglasses', 'towel'].map(productOf);
+  const grid = ['tee', 'hoodie', 'hat', 'flipflops', 'towel'].map(productOf);
   $('grid').innerHTML = grid.map(card).join('');
   $('yours-products').innerHTML = ['beach-tee', 'beach-hoodie'].map(productOf).map(card).join('');
   document.querySelectorAll('.card').forEach((el) => {

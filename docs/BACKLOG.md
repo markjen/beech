@@ -76,10 +76,10 @@ The single list of what's left to do, for the owner and for agents.
   domain mapping and DNS, the store origin on the Google OAuth client and
   the Apple Services ID. Test with `PRINTFUL_DRAFTS_ONLY=1` and Stripe test
   keys, then order one of each for real. Then a release note.
-- [ ] **Sunglasses stock for the store** (2026-11-27): order logo
-  sunglasses in bulk, send them to Printful Warehousing, set
-  `MERCH_SUNGLASSES_VARIANT`. Until then the sunglasses and the set show
-  sold out.
+- [ ] **Sunglasses stock for the store** (2026-11-27; not a launch
+  blocker): order logo sunglasses in bulk, send them to Printful
+  Warehousing, set `MERCH_SUNGLASSES_VARIANT`. The sunglasses then come
+  back as their own product; the set stays the five printed things.
 
 ## Owner decisions
 

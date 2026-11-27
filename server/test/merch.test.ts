@@ -32,7 +32,7 @@ describe('merch catalog', () => {
     expect(a).toMatchObject({ ok: true, subtotalCents: 6000, shippingCents: MERCH.shippingCents });
     const b = priceCart([{ ...tee, quantity: 4 }], ON);
     expect(b).toMatchObject({ ok: true, subtotalCents: 12000, shippingCents: 0 });
-    expect(priceCart([{ product: 'sunglasses', quantity: 1 }], OFF)).toEqual({ ok: false, error: 'the beech sunglasses is sold out' });
+    expect(priceCart([{ product: 'sunglasses', quantity: 1 }], OFF)).toEqual({ ok: false, error: 'something in your bag isn’t sold any more' }); // out of the store for now
     expect(priceCart([{ product: 'set', quantity: 1, parts: {} }], OFF)).toMatchObject({ ok: false });
     expect(priceCart([{ product: 'set', quantity: 1, parts: { tee: { color: 'white', size: 'M' } } }], ON)).toEqual({ ok: false, error: 'pick a color for the beech hoodie' });
     expect(priceCart([{ product: 'beach-tee', quantity: 1, color: 'white', size: 'M' }], ON)).toEqual({ ok: false, error: 'pick a beach for your tee' });
@@ -41,12 +41,11 @@ describe('merch catalog', () => {
 
   it('splits the set’s price over its parts so they add up to what was paid', () => {
     const set = productById('set')!;
-    const parts = { tee: { color: 'white', size: 'M' }, hoodie: { color: 'sand', size: 'L' }, hat: { color: 'khaki', size: 'One size' }, flipflops: { color: 'white', size: 'S' }, sunglasses: { color: 'white', size: 'One size' }, towel: { color: 'white', size: '30″ × 60″' } };
+    const parts = { tee: { color: 'white', size: 'M' }, hoodie: { color: 'sand', size: 'L' }, hat: { color: 'khaki', size: 'One size' }, flipflops: { color: 'white', size: 'S' }, towel: { color: 'white', size: '30″ × 60″' } };
     const items = printItems({ product: 'set', quantity: 2, unitCents: set.cents, choice: {}, parts }, ON, (f) => `https://x/${f}`);
-    expect(items).toHaveLength(6);
+    expect(items).toHaveLength(5);
     expect(items.reduce((s, i) => s + i.retailCents, 0)).toBe(set.cents);
     expect(items.every((i) => i.quantity === 2)).toBe(true);
-    expect(items[4]).toMatchObject({ warehouseVariantId: 5 });
     expect(() => printItems({ product: 'beach-tee', quantity: 1, unitCents: 3600, choice: { color: 'white', size: 'M' } }, ON, (f) => f)).toThrow(/no print file/);
   });
 });
@@ -118,7 +117,8 @@ describe('store.beech.games', () => {
     expect(cat.status).toBe(200);
     const body = (await cat.json()) as { open: boolean; products: { id: string; available: boolean }[] };
     expect(body.open).toBe(false);
-    expect(body.products.find((p) => p.id === 'set')?.available).toBe(false); // no sunglasses yet
+    expect(body.products.some((p) => p.id === 'sunglasses')).toBe(false); // out of the store for now
+    expect(body.products.find((p) => p.id === 'set')?.available).toBe(true); // the five, no sunglasses to wait on
     expect((await get('/api/me', 'store.beech.games')).status).toBe(404);
     expect((await get('/api/../me', 'store.beech.games')).status).not.toBe(200);
     const checkout = await root.request('http://store.beech.games/api/checkout', { method: 'POST', headers: { host: 'store.beech.games', 'Content-Type': 'application/json' }, body: '{"lines":[]}' });

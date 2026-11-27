@@ -40,7 +40,8 @@
 //                        STRIPE_WEBHOOK_SECRET belongs to the game checkout.
 //   PRINTFUL_STORE_ID    Printful store id, for an account-level token
 //   MERCH_SUNGLASSES_VARIANT  Printful Warehousing variant id of the sunglasses; unset:
-//                        sunglasses and the set show sold out
+//                        the sunglasses stay out of the store (they come back
+//                        on their own later; the set does not wait on this)
 //   MERCH_STRIPE_TAX     "1": Stripe Tax on the checkout
 //   PRINTFUL_DRAFTS_ONLY "1": orders reach Printful as drafts and are never confirmed (testing)
 //   STORE_URL            the store's origin (default https://store.beech.games)

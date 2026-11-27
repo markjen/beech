@@ -202,15 +202,15 @@ describe('merch orders: your beach', () => {
     expect((await s.req(`/merch/beach-preview/${me.beach}`, {}, me.shore)).headers.get('content-type')).toBe('image/png');
   });
 
-  it('the set expands to all six, its price split so the slip adds up', async () => {
+  it('the set expands to all five, its price split so the slip adds up', async () => {
     const o = await checkout([
       { product: 'set', quantity: 1, parts: { tee: { color: 'aqua', size: 'S' }, hoodie: { color: 'sand', size: 'XL' }, hat: { color: 'navy' }, flipflops: { size: 'M' } } },
     ]);
     expect(o.status).toBe(200);
     await hook('checkout.session.completed', f.pay(await sessionOf(o.id!)));
     const items = f.printful.get(ext(o.id!))!.body.items;
-    expect(items.map((i) => i.variant_id ?? `warehouse:${i.warehouse_product_variant_id}`)).toEqual([4021, 13000, 7857, 10171, 'warehouse:777', 8874]);
-    expect(items.reduce((sum, i) => sum + Math.round(Number(i.retail_price) * 100), 0)).toBe(17900);
+    expect(items.map((i) => i.variant_id ?? `warehouse:${i.warehouse_product_variant_id}`)).toEqual([4021, 13000, 7857, 10171, 8874]);
+    expect(items.reduce((sum, i) => sum + Math.round(Number(i.retail_price) * 100), 0)).toBe(16000);
     expect(items[2].files?.[0]).toEqual({ type: 'embroidery_front', url: 'https://store.example/merch-art/logo-hat-light.png' });
   });
 });

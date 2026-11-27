@@ -17,8 +17,7 @@ it opens soon. Orders turn on by themselves when the four secrets are set
 | Beech dad hat | $28 | embroidered on demand | 206 Yupoong 6245CM; khaki, stone, light blue, navy, white |
 | Beech flip flops | $30 | sublimated on demand | 359 Sublimation flip flops; S, M, L |
 | Beech beach towel | $45 | sublimated on demand | 259 Beach towel 30″ × 60″ |
-| Beech sunglasses | $22 | **stocked in Printful's warehouse** | Printful Warehousing variant (`MERCH_SUNGLASSES_VARIANT`) |
-| The whole beach set | $179 (vs $210) | one of each of the six, colours and sizes chosen per piece | — |
+| The whole beach set | $160 (vs $188) | one of each of the five, colours and sizes chosen per piece | — |
 | Your beach tee | $36 | your own beach printed on the front | 71, same colours and sizes |
 | Your beach hoodie | $62 | your own beach printed on the front | 146, same colours and sizes |
 
@@ -28,13 +27,16 @@ and the shipping rule live in `merchCatalog.ts`; the server prices every
 cart from there and never trusts the browser's numbers. Variant ids were
 read from Printful's public catalog API on 2026-11-27.
 
-**Why sunglasses are stocked.** Printful (and Printify, Gooten) don't
-print sunglasses on demand. The few who do (Contrado, Bags of Love) have no
+**Sunglasses, for later.** The sunglasses were in the first catalog and
+are out for now (2026-11-27): Printful (and Printify, Gooten) don't print
+sunglasses on demand. The few who do (Contrado, Bags of Love) have no
 order API that fits. So the sunglasses are ordered once in bulk with the
 beech logo on the arm (any promo supplier; 50–100 units, a few dollars
 each), sent to Printful's warehouse (Printful Warehousing), and picked into
-the same box as the printed things. Until their warehouse variant id is
-set, the sunglasses and the set show "sold out" and can't be ordered.
+the same box as the printed things. When that is done and the Actions
+variable `MERCH_SUNGLASSES_VARIANT` is set to their warehouse variant id,
+the sunglasses come back as their own product in the store. The set does
+not wait on that: it stays the five printed things.
 
 ## One-off prints of your beach
 
@@ -133,11 +135,7 @@ expired; a refunded order never looks live. What the model decided:
    charges you per order). Put the token in Secret Manager as
    `beech-printful-token`. (An account-level token also needs the Actions
    variable `PRINTFUL_STORE_ID`.)
-2. **Sunglasses**: order logo sunglasses in bulk, send them to Printful
-   Warehousing, and set the Actions variable `MERCH_SUNGLASSES_VARIANT` to
-   their warehouse variant id. Without it everything else sells; the
-   sunglasses and the set show sold out.
-3. **Stripe**: ✅ the account is set up — Jenerator Labs
+2. **Stripe**: ✅ the account is set up — Jenerator Labs
    (`acct_14FIlH4IbcjUfc8t`), charges and payouts on, daily payouts to Bank
    of America ending 8659. Stripe Tax is active with a US–CA registration,
    so set the Actions variable `MERCH_STRIPE_TAX=1` (prices below are
@@ -166,8 +164,8 @@ expired; a refunded order never looks live. What the model decided:
      | Beech Hat (`prod_Vhp2JZnhpjs0Rx`) | $28.00 | `price_1UgQGN4IbcjUfc8tKWNztsXL` |
      | Beech Flip Flops (`prod_Vhp2mhGLOqLJh1`) | $30.00 | `price_1UgQGP4IbcjUfc8tB47117yz` |
      | Beech Beach Towel (`prod_Vhp2nbZ5Ky0sGs`) | $45.00 | `price_1UgQGR4IbcjUfc8tzLnosN8E` |
-     | Beech Sunglasses (`prod_Vhp2nKNk8Ha8za`) | $22.00 | `price_1UgQGU4IbcjUfc8tSHsBsldI` |
-     | Beech Merch Set (`prod_Vhp2rlrkX6n0p2`) | $179.00 | `price_1UgQGW4IbcjUfc8t1RRXfCxQ` |
+     | Beech Sunglasses (`prod_Vhp2nKNk8Ha8za`) | $22.00 | `price_1UgQGU4IbcjUfc8tSHsBsldI` — dormant: out of the store for now (see "Sunglasses, for later"), not deleted |
+     | Beech Merch Set (`prod_Vhp2rlrkX6n0p2`) | $160.00 | `price_1UgRKK4IbcjUfc8tAzGYhxrx` (default since 2026-11-27; the old $179 price `price_1UgQGW4IbcjUfc8t1RRXfCxQ` still exists on the product but is no longer the default) |
      | Your Beach Tee (`prod_VhpwfdcKos7z6l`) | $36.00 | `price_1UgQGX4IbcjUfc8tvcXlVpiu` |
      | Your Beach Hoodie (`prod_Vhpw6RneSazepM`) | $62.00 | `price_1UgQGZ4IbcjUfc8t7B6QQ11B` |
 
@@ -175,25 +173,30 @@ expired; a refunded order never looks live. What the model decided:
      two secrets (`beech-stripe-secret-key`, `beech-stripe-merch-webhook-secret`,
      TEST keys) and grant the game service's account access; register the
      webhook endpoint above in the Stripe dashboard (test mode); at launch,
-     create the same nine products + prices in **live** mode and swap the
-     secrets for live keys.
-4. **Printful webhook**: make up a long random secret →
+     create the same eight store products + prices in **live** mode (not the
+     dormant sunglasses) and swap the secrets for live keys.
+3. **Printful webhook**: make up a long random secret →
    `beech-printful-webhook-secret`, then register
    `https://store.beech.games/api/printful-webhook?s=<that secret>` for
    `package_shipped`, `order_failed`, `order_canceled`, `order_put_hold`
    (`POST https://api.printful.com/webhooks`, or the dashboard).
-5. Give the game service's account access to the four secrets, set the
+4. Give the game service's account access to the four secrets, set the
    Actions variable `MERCH_ENABLED=1`, and deploy.
-6. **Domain**: `terraform apply -var store_custom_domain=store.beech.games`,
+5. **Domain**: `terraform apply -var store_custom_domain=store.beech.games`,
    then add the CNAME it prints in Squarespace (`beech.games` zone).
-7. **Sign-in**: add `https://store.beech.games` to the web OAuth client's
+6. **Sign-in**: add `https://store.beech.games` to the web OAuth client's
    Authorized JavaScript origins, and the domain + return URL
    `https://store.beech.games/` to the Sign in with Apple Services ID.
-8. **Test first**: set `PRINTFUL_DRAFTS_ONLY=1` and use Stripe test keys:
+7. **Test first**: set `PRINTFUL_DRAFTS_ONLY=1` and use Stripe test keys:
    orders reach Printful as drafts you can inspect (check each placement
    and the hat's embroidery in Printful's preview) and are never made.
    Order one of each for real before telling anyone.
-9. Then a line in the release notes (`server/src/releaseNotes.ts`).
+8. Then a line in the release notes (`server/src/releaseNotes.ts`).
+
+**Later: sunglasses.** Not a launch step. Order logo sunglasses in bulk,
+send them to Printful Warehousing, and set the Actions variable
+`MERCH_SUNGLASSES_VARIANT` to their warehouse variant id — the sunglasses
+then come back as their own product in the store. The set stays five.
 
 ## Not built (ideas)
 
