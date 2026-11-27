@@ -588,18 +588,16 @@ varying vec3 vNormal;
 varying float vTop;
 varying float vWet;
 varying float vDepth;
+varying float vHide;
 void main() {
   vNormal = normal;
-  // a linked side has no skirt, except where this beach runs deeper inland than its neighbor
+  // a linked side has no skirt, except where this beach runs deeper inland
+  // than its neighbor. Hidden in the fragment shader, not by moving the
+  // vertex off screen: a quad with hidden and shown corners (where the
+  // neighbor's rows end) would be clipped, not dropped, and draw a long
+  // sliver toward the corner of the screen.
   float skirtRow = floor(uv.y * gridSize.y);
-  if ((normal.x < -0.5 && linkedSides.x > 0.5 && skirtRow < negRows - 0.5) || (normal.x > 0.5 && linkedSides.y > 0.5 && skirtRow < posRows - 0.5)) {
-    vWorld = vec3(0.0);
-    vTop = 0.0;
-    vWet = 0.0;
-    vDepth = 0.0;
-    gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
-    return;
-  }
+  vHide = (normal.x < -0.5 && linkedSides.x > 0.5 && skirtRow < negRows - 0.5) || (normal.x > 0.5 && linkedSides.y > 0.5 && skirtRow < posRows - 0.5) ? 1.0 : 0.0;
   vec2 c = floor(uv * gridSize);
   float nx = gridSize.x;
   float cy = c.y;
@@ -645,6 +643,7 @@ varying vec3 vNormal;
 varying float vTop;
 varying float vWet;
 varying float vDepth;
+varying float vHide;
 ${LIGHT_UNIFORMS}
 uniform vec3 sandDry;
 uniform vec3 sandWet;
@@ -655,6 +654,8 @@ uniform vec3 shallowCol;
 uniform vec3 deepCol;
 uniform float isWater;
 void main() {
+  // a linked side, where the neighbor runs as deep (see skirtVertex)
+  if (vHide > 0.5) discard;
   float ndl = dot(normalize(vNormal), -sunDir);
   float lit = 0.55 + 0.45 * smoothstep(-0.2, 0.5, ndl);
   vec3 col;

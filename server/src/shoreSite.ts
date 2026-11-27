@@ -31,7 +31,7 @@ import { HTTPException } from 'hono/http-exception';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
-import { beachIsoPng, beachPng, placeById, PLACES } from './beachImage.js';
+import { beachIsoPng, beachPng, pictureHeight, placeById, PLACES } from './beachImage.js';
 import { DISCORD_INVITE_URL } from './community.js';
 import { toBytes, type Db } from './db.js';
 import {
@@ -117,6 +117,8 @@ export interface ShoreBeach {
   recent: number;
   /** it shows a pier (docs/PIERS.md): drawn in its pictures */
   pier?: boolean;
+  /** its inland rows, front row first (docs/INLAND_SECTIONS.md): drawn under it, so its top-down pictures are taller */
+  sections?: string[];
 }
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -175,8 +177,12 @@ export function createShoreSite(db: Db, cfg: ShoreSiteConfig): Hono<any, any, an
     return `${cfg.canonicalOrigin}${pathname.slice(base.length) || '/'}${search}`;
   };
   const visitUrl = (code: string) => `${game}/?visit=${code}`;
-  const imgPath = (b: Pick<ShoreBeach, 'code' | 'updatedAt' | 'pier' | 'version'>, kind: 'card' | 'thumb') =>
-    `/img/${b.code}${kind === 'thumb' ? '/thumb' : ''}.png?v=${imageVersion(b.updatedAt, b.pier, b.version)}`;
+  // the link-preview card is the beach alone (1200×630, as previews want);
+  // the thumbnail and the beach page's flat view ("plan") show its inland rows under it
+  const imgPath = (b: Pick<ShoreBeach, 'code' | 'updatedAt' | 'pier' | 'version' | 'sections'>, kind: 'card' | 'thumb' | 'plan') =>
+    `/img/${b.code}${kind === 'card' ? '' : `/${kind}`}.png?v=${imageVersion(b.updatedAt, b.pier, b.version, kind === 'card' ? null : b.sections)}`;
+  /** "rows-2": the class that makes a picture as tall as its rows need (shoreAssets.ts) */
+  const rowsClass = (sections: readonly string[] | undefined) => (sections?.length ? ` rows-${Math.min(4, sections.length)}` : '');
 
   // ------------------------------------------------------------ data
   const SCORE = `
@@ -203,6 +209,7 @@ export function createShoreSite(db: Db, cfg: ShoreSiteConfig): Hono<any, any, an
     stars: Number(r.stars),
     recent: Number(r.recent),
     pier: !!r.pier,
+    ...(r.sections ? { sections: r.sections.split(',') } : {}),
   });
   const scoreArgs = () => {
     const t = now();
@@ -305,10 +312,11 @@ export function createShoreSite(db: Db, cfg: ShoreSiteConfig): Hono<any, any, an
 
   app.get('/img/:file{[A-Za-z0-9]{6}\\.png}', (c) => image(c, c.req.param('file').slice(0, 6), 'card'));
   app.get('/img/:code{[A-Za-z0-9]{6}}/thumb.png', (c) => image(c, c.req.param('code'), 'thumb'));
+  app.get('/img/:code{[A-Za-z0-9]{6}}/plan.png', (c) => image(c, c.req.param('code'), 'plan'));
   app.get('/img/:code{[A-Za-z0-9]{6}}/iso.png', (c) => image(c, c.req.param('code'), 'iso'));
   app.get('/img/:code{[A-Za-z0-9]{6}}/iso-ocean.png', (c) => image(c, c.req.param('code'), 'iso-ocean'));
 
-  async function image(c: Context, raw: string, kind: 'card' | 'thumb' | 'iso' | 'iso-ocean') {
+  async function image(c: Context, raw: string, kind: 'card' | 'thumb' | 'plan' | 'iso' | 'iso-ocean') {
     const code = normalizeCode(raw);
     const read = () => db.query<NodeRow & { sand: unknown }>(`SELECT ${NODE}, b.sand FROM ${BEACH} WHERE b.code = $1 AND ${PUBLIC}`, [code]);
     let rows = await read();
@@ -316,7 +324,8 @@ export function createShoreSite(db: Db, cfg: ShoreSiteConfig): Hono<any, any, an
     if (rows[0] && (await caughtUp(rows[0].id))) rows = await read();
     const row = rows[0];
     if (!row) return c.text('no such beach on the shore', 404);
-    const v = imageVersion(row.updated_at, row.pier, row.version);
+    const inland = kind === 'thumb' || kind === 'plan' ? row.sections?.split(',') ?? [] : [];
+    const v = imageVersion(row.updated_at, row.pier, row.version, inland);
     // The 3D views also show the beaches either side, so their cache key
     // carries their save times too: a neighbour rebuilding changes the
     // picture even though this beach did not.
@@ -358,7 +367,7 @@ export function createShoreSite(db: Db, cfg: ShoreSiteConfig): Hono<any, any, an
           ? beachIsoPng({ bytes: toBytes(row.sand), location: row.location, pier: !!row.pier }, left, right, CARD, 'land')
           : kind === 'iso-ocean'
             ? beachIsoPng({ bytes: toBytes(row.sand), location: row.location, pier: !!row.pier }, left, right, CARD, 'ocean')
-            : beachPng(toBytes(row.sand), { ...(kind === 'card' ? CARD : THUMB), location: row.location, pier: !!row.pier });
+            : beachPng(toBytes(row.sand), { ...(kind === 'thumb' ? THUMB : CARD), location: row.location, pier: !!row.pier, sections: inland });
       remember(key, png);
       logEvent('shore_image', { kind, ms: Date.now() - t0, bytes: png.length });
     }
@@ -469,9 +478,9 @@ ${main}
     const where = placeLabel(b.location);
     return `<li class="card">
   <a href="${href(`/${b.code}`)}">
-    <span class="thumb">
+    <span class="thumb${rowsClass(b.sections)}">
       ${opts.rank ? `<span class="rank-badge r${opts.rank}">#${opts.rank}</span>` : ''}
-      <img src="${esc(href(imgPath(b, 'thumb')))}" width="${THUMB.width}" height="${THUMB.height}" loading="lazy" decoding="async" alt="${esc(`${beachTitle(b)}, seen from above`)}">
+      <img src="${esc(href(imgPath(b, 'thumb')))}" width="${THUMB.width}" height="${pictureHeight({ ...THUMB, sections: b.sections })}" loading="lazy" decoding="async" alt="${esc(`${beachTitle(b)}, seen from above`)}">
     </span>
     <span class="info">
       <span class="t">${esc(beachTitle(b))}</span>
@@ -1005,6 +1014,8 @@ ${
     const text = shareText(b);
     const cardHref = href(imgPath(b, 'card'));
     const thumbHref = href(imgPath(b, 'thumb'));
+    // the flat view with the inland rows under the beach (the card stays the link preview)
+    const planHref = b.sections?.length ? href(imgPath(b, 'plan')) : cardHref;
     // the same version the image route works out: each beach's save time and pier
     const isoVersion = `${imageVersion(b.updatedAt, b.pier, b.version)}.${left[0] ? imageVersion(left[0].updatedAt, left[0].pier, left[0].version) : 0}.${right[0] ? imageVersion(right[0].updatedAt, right[0].pier, right[0].version) : 0}`;
     const isoHref = href(`/img/${b.code}/iso.png?v=${isoVersion}`);
@@ -1027,16 +1038,16 @@ ${
         ? `<a class="walk ${dir}" href="${href(`/${s.code}`)}" rel="${dir === 'left' ? 'prev' : 'next'}" data-key="${dir === 'left' ? 'ArrowLeft' : 'ArrowRight'}" title="Walk ${dir} to ${esc(beachTitle(s))}" aria-label="Walk ${dir} to ${esc(beachTitle(s))}">${dir === 'left' ? '‹' : '›'}</a>`
         : '';
     const strip = (s: Step) =>
-      `<li><a href="${href(`/${s.code}`)}"><span class="sthumb"><img src="${esc(href(`/img/${s.code}/thumb.png?v=${imageVersion(s.updatedAt, s.pier, s.version)}`))}" width="${THUMB.width}" height="${THUMB.height}" loading="lazy" alt="${esc(beachTitle(s))}"></span><span class="slabel"><span>${esc(beachTitle(s))}</span>${s.linked ? '<span class="linked-dot">Neighbor</span>' : ''}</span></a></li>`;
+      `<li><a href="${href(`/${s.code}`)}"><span class="sthumb${rowsClass(s.sections)}"><img src="${esc(href(`/img/${s.code}/thumb.png?v=${imageVersion(s.updatedAt, s.pier, s.version, s.sections)}`))}" width="${THUMB.width}" height="${pictureHeight({ ...THUMB, sections: s.sections })}" loading="lazy" alt="${esc(beachTitle(s))}"></span><span class="slabel"><span>${esc(beachTitle(s))}</span>${s.linked ? '<span class="linked-dot">Neighbor</span>' : ''}</span></a></li>`;
     // left is on the left, the way you'd see it facing the sea
-    const hereItem = `<li class="here"><div class="here-inner"><span class="sthumb"><img src="${esc(thumbHref)}" width="${THUMB.width}" height="${THUMB.height}" alt=""></span><span class="slabel"><span>${esc(title)}</span></span></div></li>`;
+    const hereItem = `<li class="here"><div class="here-inner"><span class="sthumb${rowsClass(b.sections)}"><img src="${esc(thumbHref)}" width="${THUMB.width}" height="${pictureHeight({ ...THUMB, sections: b.sections })}" alt=""></span><span class="slabel"><span>${esc(title)}</span></span></div></li>`;
     const shore = [...left].reverse().map(strip).join('') + hereItem + right.map(strip).join('');
     const neighbors = [left[0]?.linked ? left[0] : null, right[0]?.linked ? right[0] : null].filter(Boolean) as Step[];
     const main = `
 <article class="beach">
-  <div class="pic">
-    <img src="${esc(cardHref)}" width="${CARD.width}" height="${CARD.height}" alt="${esc(`${title}, seen from above: the sand, the sea, and what's on it`)}" data-alt-card="${esc(`${title}, seen from above: the sand, the sea, and what's on it`)}" data-alt-iso="${esc(`${title}, seen in 3D from the land, looking out toward the sea`)}" data-alt-ocean="${esc(`${title}, seen in 3D from the sea, with the beaches either side`)}">
-    <div class="view-toggle" role="group" aria-label="Picture view" data-view-toggle data-card="${esc(cardHref)}" data-iso="${esc(isoHref)}" data-ocean="${esc(oceanHref)}">
+  <div class="pic${rowsClass(b.sections)}" data-view="card">
+    <img src="${esc(planHref)}" width="${CARD.width}" height="${pictureHeight({ ...CARD, sections: b.sections })}" alt="${esc(`${title}, seen from above: the sand, the sea, and what's on it`)}" data-alt-card="${esc(`${title}, seen from above: the sand, the sea, and what's on it`)}" data-alt-iso="${esc(`${title}, seen in 3D from the land, looking out toward the sea`)}" data-alt-ocean="${esc(`${title}, seen in 3D from the sea, with the beaches either side`)}">
+    <div class="view-toggle" role="group" aria-label="Picture view" data-view-toggle data-card="${esc(planHref)}" data-iso="${esc(isoHref)}" data-ocean="${esc(oceanHref)}">
       <button type="button" data-view="card" aria-pressed="true">Flat</button>
       <button type="button" data-view="iso" aria-pressed="false">3D</button>
       <button type="button" data-view="ocean" aria-pressed="false">From the sea</button>

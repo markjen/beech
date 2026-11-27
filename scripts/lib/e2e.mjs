@@ -30,6 +30,14 @@ function observePage(page) {
   if (pageEvents.has(page)) return;
   const events = [];
   pageEvents.set(page, events);
+  // waitForFunction defaults to polling on requestAnimationFrame, but the
+  // app's frame loop stalls when rendering is off (E2E_RENDER=0 adds
+  // ?norender&fast, which skips continuous WebGL draws): only a handful of
+  // frames fire in 10 s, so a wait whose condition already holds still times
+  // out. Poll on an interval instead, unless the caller asked for a mode.
+  // (waitForApp below already used polling: 100 for the same reason.)
+  const origWaitForFunction = page.waitForFunction.bind(page);
+  page.waitForFunction = (fn, arg, options) => origWaitForFunction(fn, arg, { polling: 100, ...(options ?? {}) });
   const record = (message) => {
     events.push(message);
     if (events.length > 15) events.shift();
@@ -52,7 +60,13 @@ function observePage(page) {
   page.on('crash', () => record('Page crashed'));
 }
 
-async function waitForApp(page, timeout = 30000) {
+// Navigations and boots are slow on the software renderer: a goto after
+// an import (new grid depth, renderer resize, service worker in the way)
+// took 62 s to commit once, and a cold boot can take most of a minute.
+// The defaults below are for this runner, not for a real device.
+const NAV_TIMEOUT = 120000;
+
+async function waitForApp(page, timeout = 60000) {
   try {
     // A background tab can stop advancing animation frames while it boots.
     const ready = await page.waitForFunction(
@@ -97,11 +111,11 @@ async function navigateApp(page, url, navigate, timeout) {
 }
 
 export function openApp(page, url, timeout) {
-  return navigateApp(page, url, () => page.goto(url, { waitUntil: 'commit' }), timeout);
+  return navigateApp(page, url, () => page.goto(url, { waitUntil: 'commit', timeout: NAV_TIMEOUT }), timeout);
 }
 
 export function reloadApp(page) {
-  return navigateApp(page, page.url(), () => page.reload({ waitUntil: 'commit' }));
+  return navigateApp(page, page.url(), () => page.reload({ waitUntil: 'commit', timeout: NAV_TIMEOUT }));
 }
 
 export async function openBrowser() {

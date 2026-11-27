@@ -27,6 +27,18 @@ playable sand since 2026-11-27 ("Playable sand: what was built", below).
   revision is refused (the player reopens the editor).
 - **Rendering:** `src/render/sections.ts` (`SectionLayer`, loaded on first
   use), drawn by `NeighborView` for every beach in view, yours or anyone's.
+  The shapes themselves are in `src/render/sectionShapes.ts` (no Babylon),
+  which `npm run bundle:server` also bundles into
+  `server/src/generated/sections.ts`.
+- **On beechshore.com (2026-11-27):** a beach's thumbnail and its page's
+  flat view are taller by its rows, drawn under the sand at the same scale
+  from those same shapes seen from above (`drawRowsTop` in
+  `server/src/beachImage.ts`; the flat view is `/img/CODE/plan.png`). The
+  link-preview card (`/img/CODE.png`) stays the beach alone at 1200×630.
+  The rows are part of the pictures' version (`imageVersion`), since
+  changing them changes the picture without a save. The site's `rows-1` …
+  `rows-4` classes give the cards and the flat view their taller shape. The
+  3D views don't show rows yet.
   Joins are derived in `NeighborView.syncSections` from the shore entries
   (`sectionJoins` in `src/world/sections.ts`), so a culled neighbor still
   joins. The camera can pan inland over the deepest occupied row

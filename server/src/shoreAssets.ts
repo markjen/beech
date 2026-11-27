@@ -233,6 +233,8 @@ h2 a:hover,.see-all:hover{color:var(--sea-hi);transform:translateX(2px)}
 }
 .card a:hover{background:var(--card2)}
 .thumb{position:relative;overflow:hidden;background:var(--sand);aspect-ratio:480/300}
+/* a beach with inland rows: its thumbnail is as tall as the rows need (beachImage.ts rowsHeight) */
+.thumb.rows-1,.strip .sthumb.rows-1{aspect-ratio:480/476}.thumb.rows-2,.strip .sthumb.rows-2{aspect-ratio:480/651}.thumb.rows-3,.strip .sthumb.rows-3{aspect-ratio:480/827}.thumb.rows-4,.strip .sthumb.rows-4{aspect-ratio:480/1002}
 .card img{width:100%;height:100%;object-fit:cover;transition:transform .35s cubic-bezier(.22,1,.36,1)}
 .card a:hover img{transform:scale(1.045)}
 .info{display:flex;flex-direction:column;padding:12px 15px 14px;gap:3px;flex:1}
@@ -270,6 +272,8 @@ h2 a:hover,.see-all:hover{color:var(--sea-hi);transform:translateX(2px)}
   border:1px solid color-mix(in srgb,var(--ink) 8%,transparent);
 }
 .pic img{width:100%;aspect-ratio:1200/630;object-fit:cover}
+/* the flat view of a beach with inland rows, taller by the rows (the 3D views keep their shape) */
+.pic.rows-1[data-view=card] img{aspect-ratio:1200/999}.pic.rows-2[data-view=card] img{aspect-ratio:1200/1368}.pic.rows-3[data-view=card] img{aspect-ratio:1200/1736}.pic.rows-4[data-view=card] img{aspect-ratio:1200/2105}
 .pic-pills{
   position:absolute;top:14px;left:14px;right:14px;
   display:flex;justify-content:space-between;align-items:center;gap:10px;pointer-events:none;
@@ -527,6 +531,7 @@ if(vt){
     const b=e.target.closest('[data-view]');if(!b||!img)return;
     const view=b.dataset.view;if(!views[view])return;
     img.src=views[view];
+    pic.dataset.view=view;
     img.alt=img.dataset[alts[view]]||img.alt;
     vt.querySelectorAll('[data-view]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));
   });

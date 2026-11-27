@@ -107,8 +107,10 @@ const before = await api(pb, `/api/beaches/mine/${benHome}/sand`);
 await pb.click('.copybeach [data-act="copy-drop"]');
 await pb.waitForFunction(() => [...document.querySelectorAll('.hint')].some((h) => h.textContent.includes('Copied')), null, { timeout: 60000 });
 check(true, 'copied, with a toast');
-// the toast lasts 10 s, and loading the beach can take most of that here: hold on to its Undo now
-// (the copy's own toast: a welcome-gift toast with its own action can be up too)
+// the toast lasts 10 s, and loading the beach can take most of that here: hold on to its Undo now.
+// Scope the lookup to the Copied toast: the welcome-gift toast ("Be Ana's
+// neighbor") is still on the page too, and an unscoped `.hint .hint-action`
+// grabs its button instead.
 const undo = await pb.$('.hint:has-text("Copied") .hint-action');
 check(!!undo && (await undo.textContent()) === 'Undo', 'the toast offers Undo');
 await pb.waitForFunction(() => window.__beech.beachId() && window.__beech.sync().state === 'saved', null, { timeout: 30000 });
@@ -153,7 +155,10 @@ await pb.waitForFunction(() => window.__beech.inventory.tradeValue('parasol') ==
 await pb.evaluate(() => window.__beech.setRail(true)); // the HUD starts as just the palm
 await pb.evaluate(() => window.__beech.inventory.setOpen(true));
 await pb.waitForSelector('.inv-tray.open', { timeout: 10000 });
-check((await pb.textContent('.inv-tray .inv-tip')) === 'long press item to trade in', 'the bag says to long press to trade in');
+// the tip line also holds the select button (#170), so its textContent is
+// 'long press item to trade inselect': read the tip's own text node
+const tipText = await pb.evaluate(() => document.querySelector('.inv-tray .inv-tip')?.firstChild?.textContent ?? '');
+check(tipText === 'long press item to trade in', 'the bag says to long press to trade in');
 const tile = pb.locator('.inv-grid .inv-item', { hasText: 'Parasol' }).first();
 await pb.waitForTimeout(1500); // let the bag settle (it re-renders as the bag loads)
 await tile.scrollIntoViewIfNeeded();
