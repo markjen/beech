@@ -3,8 +3,8 @@
 // A public page telling how the whole of beech (the game, the server, the
 // apps, beechshore.com) was built in a few days by one person steering
 // several AI agents. The source logs, one per agent, live in docs/story/
-// (CLAUDE_LOG.md, ANTIGRAVITY_LOG.md, MUSE_LOG.md); keep this page in step
-// with them. Codex has no log yet.
+// (CLAUDE_LOG.md, ANTIGRAVITY_LOG.md, MUSE_LOG.md, CODEX_LOG.md). Keep this
+// page in step with them.
 //
 // Never mention the claw's starter gifts here (#9).
 
@@ -78,13 +78,14 @@ const AGENTS: Agent[] = [
   {
     name: 'Codex',
     hue: ['#4e606e', '#a7b6c3'],
-    role: 'OpenAI’s coding agent. Notes still to come.',
-    bestAt: 'Untangling client state: making the game keep each beach by id, with no single “active” beach.',
-    mostly: ['Client architecture', 'Rendering'],
+    role: 'OpenAI’s coding agent. Worked on the shore, player controls, and the shared review workflow.',
+    bestAt: 'Keeping state, saves, and rendering attached to the right beach as players move along the shore.',
+    mostly: ['Client architecture', 'Rendering', 'Player controls'],
     did: [
-      'Uses the same review-pr skill as the Claude sessions (#130), so every PR got the same review.',
-      'Co-wrote the switch to keeping beach state by id, so waves follow the view (#100).',
-      'Its own log hasn’t been written yet. This section will grow when it is.',
+      'Helped keep the shore cache and undo history in sync with the view during the move to beach IDs (#100).',
+      'Followed Claude’s device-cache work with fixes for concurrent tabs, account transitions, and the first live frame on a new beach (#114, #132).',
+      'Made beach slots and checkpoint sources easier to see, let waves wash away footprints, and made sign-in easier to find (#119, #124, #126).',
+      'Gave Codex and Claude sessions the same pull request review and landing instructions (#130).',
     ],
   },
 ];
@@ -465,7 +466,7 @@ ${cast}
 <section class="block">
   <div class="section-head"><p class="kicker">Sources</p><h2>Where this comes from</h2></div>
   <div class="sources">
-    <p>Each agent wrote its own log from the repository’s history: commits, pull requests, release notes and status docs. This page puts them together. Every pull request was opened under one account, so the git record shows what was built but not always who wrote which line. Credit here follows the agents’ own logs and commit trailers. Codex’s log is still to come.</p>
+    <p>Each agent wrote its own log from the repository’s history: commits, pull requests, release notes and status docs. This page puts them together. Every pull request was opened under one account, so the git record shows what was built but not always who wrote which line. Credit here follows the agents’ own logs and commit trailers.</p>
   </div>
 </section>
 

@@ -1,5 +1,7 @@
 # Status
 
+The [creation logs](story/README.md) record how the agents built Beech.
+
 ## Milestones
 
 | # | Milestone | State |
