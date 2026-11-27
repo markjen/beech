@@ -331,6 +331,15 @@ accepted the repo's default branch, so the deploy job ran only there.
   `GET /api/inventory` for owned, unexpired non-free items. Nothing writes to
   it yet.
 
+## Admin system messages (2026-11-27)
+
+Admin console → **News**: one message (≤140 characters) to every player's
+inbox, announced as "News from beech" and pushed to those with **news** on
+(a new notification switch, on by default). At most one a UTC day; a
+retried request never sends twice. Modelled first
+(`specs/tla/SystemMessages.tla`). Migration 44 (`system_messages`,
+`notify_prefs.news`, `inbox_unpushed` gains `system`).
+
 ## beechshore.com shows beaches caught up (2026-11-27)
 
 A beach's page and pictures on the shore site run the sea's catch-up first

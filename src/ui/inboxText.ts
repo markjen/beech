@@ -71,7 +71,7 @@ export function ago(at: number, now = Date.now()): string {
 }
 
 /** the kinds worth a note over the beach when they arrive (the rest wait in the inbox) */
-export const ANNOUNCE = new Set(['visit', 'gift', 'neighbor_request', 'neighbor_linked', 'invite_settled', 'copied']);
+export const ANNOUNCE = new Set(['visit', 'gift', 'neighbor_request', 'neighbor_linked', 'invite_settled', 'copied', 'system']);
 // Away events ('tide', 'pet_fed') are deliberately not here: they happened
 // while the owner was away, so they wait in the inbox (with a push) instead
 // of popping up over the beach when it opens.
@@ -92,6 +92,8 @@ export function announce(kind: string, name: string | null): string {
       return `${who} settled in`;
     case 'copied':
       return `${who} copied your beach`;
+    case 'system':
+      return 'News from beech';
     default:
       return 'Something new in your inbox';
   }

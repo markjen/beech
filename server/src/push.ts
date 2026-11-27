@@ -18,7 +18,7 @@ import { PUSH_KINDS, type NotifyPref } from './notifyKinds.js';
 // ------------------------------------------------------------------ rules
 
 export { PUSH_KINDS, type NotifyPref } from './notifyKinds.js';
-export const NOTIFY_PREFS: readonly NotifyPref[] = ['gifts', 'neighbors', 'invites', 'beach'];
+export const NOTIFY_PREFS: readonly NotifyPref[] = ['gifts', 'neighbors', 'invites', 'beach', 'news'];
 const PUSHED = Object.keys(PUSH_KINDS);
 
 /** at most one push an hour per player; more in the hour folds into the next */
@@ -71,6 +71,8 @@ export function validEndpoint(platform: string, endpoint: unknown): endpoint is 
 export interface PushRow {
   kind: string;
   name: string | null;
+  /** a system message's words (the admin's, never a player's) */
+  text?: string | null;
 }
 
 export interface PushMessage {
@@ -96,6 +98,7 @@ export function pushMessage(rows: PushRow[]): PushMessage {
       invite_settled: `${who} settled in`,
       tide: 'The sea changed your beach while you were away',
       pet_fed: `${who} fed your pet`,
+      system: (rows[0].text ?? '').slice(0, 140) || 'News from beech',
     }[rows[0].kind] ?? 'Something new in your inbox';
     return { ...base, body };
   }
@@ -397,7 +400,7 @@ function pushSubscriptions(tx: Db, user: string, now: number) {
 function pushRows(tx: Db, user: string, ids?: string[]): Promise<InboxPushRow[]> {
   const rows = ids ? 'i.id = ANY($2::bigint[])' : 'i.pushed_at IS NULL AND i.kind = ANY($2::text[])';
   return tx.query<InboxPushRow>(
-    `SELECT i.id, i.kind, u.name, i.actor_id, i.read_at, i.created_at
+    `SELECT i.id, i.kind, u.name, i.actor_id, i.read_at, i.created_at, CASE WHEN i.kind = 'system' THEN i.payload->>'text' END AS text
        FROM inbox i LEFT JOIN users u ON u.id = i.actor_id
       WHERE i.user_id = $1 AND ${rows}
       ORDER BY i.id FOR UPDATE OF i`,
@@ -406,7 +409,7 @@ function pushRows(tx: Db, user: string, ids?: string[]): Promise<InboxPushRow[]>
 }
 
 async function visiblePushRows(tx: Db, user: string, rows: InboxPushRow[], clock: () => number): Promise<InboxPushRow[]> {
-  const prefs = (await tx.query<Record<NotifyPref, boolean>>('SELECT gifts, neighbors, invites, beach FROM notify_prefs WHERE user_id = $1', [user]))[0];
+  const prefs = (await tx.query<Record<NotifyPref, boolean>>('SELECT gifts, neighbors, invites, beach, news FROM notify_prefs WHERE user_id = $1', [user]))[0];
   const blockedIds = new Set(
     (await tx.query<{ blocked_id: string }>('SELECT blocked_id FROM blocks WHERE blocker_id = $1', [user])).map((r) => r.blocked_id),
   );

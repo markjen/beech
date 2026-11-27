@@ -1055,6 +1055,26 @@ const MIGRATIONS: string[] = [
   CREATE INDEX IF NOT EXISTS promo_uses_user ON promo_uses (code, user_id) WHERE bonus_cents IS NOT NULL;
   ALTER TABLE web_orders ADD COLUMN IF NOT EXISTS promo_code TEXT;
   `,
+
+  // 44: the admin's system messages (docs/INBOX_NOTIFICATIONS.md, "system";
+  // specs/tla/SystemMessages.tla): one row in everyone's inbox, at most one
+  // a UTC day (the unique day decides, in the same statement as the rows),
+  // a retried request never sends twice (its unique request id), and a
+  // "news" switch for pushing them.
+  `
+  CREATE TABLE system_messages (
+    id BIGSERIAL PRIMARY KEY,
+    day TEXT NOT NULL UNIQUE,
+    request_id UUID NOT NULL UNIQUE,
+    text TEXT NOT NULL CHECK (char_length(text) BETWEEN 1 AND 140),
+    created_by TEXT NOT NULL,
+    created_at BIGINT NOT NULL
+  );
+  ALTER TABLE notify_prefs ADD COLUMN news BOOLEAN NOT NULL DEFAULT true;
+  DROP INDEX inbox_unpushed;
+  CREATE INDEX inbox_unpushed ON inbox (user_id)
+    WHERE pushed_at IS NULL AND kind IN ('visit', 'gift', 'neighbor_request', 'neighbor_linked', 'invite_settled', 'tide', 'pet_fed', 'system');
+  `,
 ];
 
 /** Apply migrations up to `upTo` (default: all). Tests use `upTo` to check a migration on older data. */

@@ -131,6 +131,7 @@ export function adminConsoleHtml(opts: { nonce: string; email: string; appUrl: s
     <button type="button" role="tab" data-tab="redemptions" aria-selected="false">Redemptions</button>
     <button type="button" role="tab" data-tab="referrals" aria-selected="false">Referrals</button>
     <button type="button" role="tab" data-tab="bucks" aria-selected="false">Beech bucks</button>
+    <button type="button" role="tab" data-tab="news" aria-selected="false">News</button>
     <button type="button" role="tab" data-tab="reports" aria-selected="false">Reports</button>
     <button type="button" role="tab" data-tab="audit" aria-selected="false">Audit log</button>
   </nav>
@@ -273,6 +274,18 @@ export function adminConsoleHtml(opts: { nonce: string; email: string; appUrl: s
     </div>
   </section>
 
+  <section id="tab-news" hidden>
+    <div class="panel">
+      <h2>Message everyone</h2>
+      <form id="news-form" class="row">
+        <input name="text" type="text" maxlength="140" required placeholder="Week 2’s vending set is in" aria-label="Message">
+        <button type="submit" class="primary">Send to everyone</button>
+      </form>
+      <p class="muted">Lands in every player’s inbox and is pushed to those with news on. One a day.</p>
+    </div>
+    <div class="panel"><h2>Sent</h2><div id="news-list"><p class="muted">Loading…</p></div></div>
+  </section>
+
   <section id="tab-reports" hidden>
     <div class="panel">
       <label><input type="checkbox" id="reports-all"> show resolved too</label>
@@ -306,7 +319,7 @@ const items = (m) => { const e = Object.entries(m || {}); return e.length ? e.ma
 
 // ---- tabs
 const loaded = {};
-const loaders = { beaches: loadBeachesTab, users: () => loadUsers(false), submissions: () => loadSubmissions(0), gifts: loadGifts, promos: loadPromos, redemptions: loadRedemptions, referrals: () => loadReferrals(false), bucks: () => loadBucks(false), reports: loadReports, audit: loadAudit };
+const loaders = { beaches: loadBeachesTab, users: () => loadUsers(false), submissions: () => loadSubmissions(0), gifts: loadGifts, promos: loadPromos, redemptions: loadRedemptions, referrals: () => loadReferrals(false), bucks: () => loadBucks(false), news: loadNews, reports: loadReports, audit: loadAudit };
 function show(tab) {
   document.querySelectorAll('nav [data-tab]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === tab)));
   for (const t of Object.keys(loaders)) $('tab-' + t).hidden = t !== tab;
@@ -792,6 +805,27 @@ $('tab-bucks').addEventListener('click', (e) => {
   bucksSearch = { q: t.dataset.q, offset: 0 };
   $('bucks-search').elements.q.value = t.dataset.q;
   loadBucks(false).catch((err) => say(err.message));
+});
+// ---- system messages (one a day, to everyone)
+async function loadNews() {
+  const { messages } = await api('/system-messages');
+  $('news-list').innerHTML = messages.length ? '<table><tr><th>Day</th><th>Message</th><th>By</th></tr>' +
+    messages.map((m) => '<tr><td>' + esc(m.day) + '</td><td>' + esc(m.text) + '</td><td>' + esc(m.by) + '</td></tr>').join('') + '</table>'
+    : '<p class="muted">Nothing sent yet.</p>';
+}
+let newsRequest = crypto.randomUUID();
+$('news-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const text = String(new FormData(e.target).get('text') || '').trim();
+  if (!text || !confirm('Send to every player? “' + text + '”')) return;
+  try {
+    // the same request id until it's answered: a double click or a retry sends once
+    const r = await post('/system-messages', { text, requestId: newsRequest });
+    newsRequest = crypto.randomUUID();
+    say('Sent to ' + r.recipients + ' players', true);
+    e.target.reset();
+    await loadNews();
+  } catch (err) { say(err.message); }
 });
 // a sender's notes: suspended until a date (with lift), or a suspend control
 const senderNotes = (f) => f.notesSuspendedUntil

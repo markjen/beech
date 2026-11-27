@@ -181,8 +181,7 @@ picked up.
   [INBOX_NOTIFICATIONS.md](INBOX_NOTIFICATIONS.md), "Push: as built".
 - [ ] **Push follow-ups**: try a real device on each platform once the
   owner setup is done (headless Chromium can't subscribe, so delivery is
-  tested against a fake push service only); an admin `system` push
-  ("week 2's vending set"), which needs its own pref and rate.
+  tested against a fake push service only).
 - [ ] **Invites: open in the apps**: Universal Links / App Links so
   `?invite=` and `?visit=` links open the phone apps (the invite code is
   kept in `localStorage`, so the claim works the same once it lands).
@@ -210,6 +209,9 @@ picked up.
 
 ## Done (recent)
 
+- [x] **Admin system messages** (2026-11-27): one message to every inbox,
+  pushed to those with "news" on, at most one a day, a retry never sends
+  twice (`specs/tla/SystemMessages.tla`). Admin console → News.
 - [x] **beechshore.com shows beaches caught up** (2026-11-27): a beach's
   page and pictures run the sea's catch-up first, like the game's read;
   picture URLs carry the sand's `version`. LIVE_SIM.md.

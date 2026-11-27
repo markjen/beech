@@ -285,6 +285,26 @@ the read and the insert lets one more note through, shown, and breaks both.
 before the visit's transaction), runs transitions and seeded random walks
 against `noteSuspensionModel.ts`.
 
+## System messages (`SystemMessages.tla`)
+
+The admin's message to every inbox
+([INBOX_NOTIFICATIONS.md](INBOX_NOTIFICATIONS.md), `system`). State:
+`system_messages` (day, request), the `system` inbox rows, who has an
+account, and each request's step.
+
+| Action | Route | Code |
+| --- | --- | --- |
+| `Send`, `Retry` | admin `POST /api/system-messages { text, requestId }` | one statement: `INSERT INTO system_messages … ON CONFLICT DO NOTHING` (unique `day` and `request_id`), then `INSERT INTO inbox … SELECT` every user `WHERE EXISTS` the inserted message; 409 otherwise |
+| `Join` | sign-up | (unchanged) a later player gets only later messages |
+| `NextDay` | the clock (UTC day) | — |
+
+Invariants: `OneADay`, `OncePerRequest`, `OneRowEach`. The check-then-write
+form ("nothing sent today?", then insert) breaks `OneADay` when two sends
+land at once; `server/test/stateMachines/systemMessages.test.ts` sends two
+at once on a fresh day (one goes out), runs transitions and a random walk
+against `systemMessagesModel.ts`. Push delivery is `Push.tla`'s, unchanged:
+`system` is one more pushed kind, under its own `news` preference.
+
 ## Bugs found (2026-11-25), all fixed
 
 Each was found by TLC, then reproduced on the real server by a replay test
