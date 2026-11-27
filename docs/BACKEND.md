@@ -23,6 +23,9 @@ Migrations live in `src/migrations.ts` and are applied at startup.
 | `POST /api/auth/apple { identityToken, name? }` | Sign in with Apple → `{ token, user }` |
 | `POST /api/auth/dev { name }` | local development only (`DEV_AUTH=1`; refused when `NODE_ENV=production`) |
 | `POST /api/auth/logout` | ends this session |
+| `POST /api/shore-auth/google { credential }` | beechshore.com sign-in: Google ID token → `{ token, user }`, where the token is a 1-hour shore token, not a game session |
+| `POST /api/shore-auth/apple { identityToken, name?, authorizationCode?, redirectUri? }` | beechshore.com sign-in with Apple → `{ token, user }` (shore token; the authorization code is exchanged, as on `/api/auth/apple`) |
+| `POST /api/shore-account/identities` | link a Google/Apple sign-in from beechshore.com, under the shore token (same checks as `POST /api/account/identities`) |
 | `GET /api/me` | `{ user }` |
 | `POST /api/edit-session` | claim this instance as the one editor: `{ token }` (fences older instances; docs/EDIT_SESSIONS.md) |
 | `GET /api/edit-session` (`X-Edit-Token`) | heartbeat: `{ active }` — whether this instance is still the editor |
@@ -231,10 +234,16 @@ Facebook and Twitter are switched off in `capacitor.config.ts`, so their SDKs
    Apple**. The entitlement is already in `ios/App/App/App.entitlements`.
    For web Sign in with Apple, also create a Services ID (e.g.
    `app.beech.beach.web`) with domain `play.beech.games` and Return URL
-   `https://play.beech.games/`, and set `vars.APPLE_CLIENT_ID`.
+   `https://play.beech.games/`, and set `vars.APPLE_CLIENT_ID`. The shore
+   signs in with the same Services ID: add domain `beechshore.com` and
+   Return URL `https://beechshore.com/` to it, and the shore page's Apple
+   button works there too (docs/SHORE_SITE.md, "Signing in on the shore").
 5. Server: `GOOGLE_CLIENT_IDS=<web>,<iOS>` (Android tokens carry the web ID)
    and `APPLE_CLIENT_IDS=app.beech.beach` (plus the web Services ID when web
-   Apple sign-in is enabled).
+   Apple sign-in is enabled). The shore page's buttons also need the web
+   IDs alone: `GOOGLE_CLIENT_ID=<web>` (and add `https://beechshore.com`
+   as an authorized JavaScript origin on that OAuth client) and
+   `APPLE_CLIENT_ID=<Services ID>` (both from `deploy-gcp.yml` vars).
 6. Store privacy forms: user ID, the beach, and a first name shown to
    neighbors you choose. These are linked to the user, used for app
    functionality, and not used for tracking.

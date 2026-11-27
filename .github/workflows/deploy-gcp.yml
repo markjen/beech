@@ -132,7 +132,7 @@ jobs:
             --allow-unauthenticated \
             --service-account "${{ vars.GCP_RUNTIME_SA }}" \
             --add-cloudsql-instances "${{ vars.GCP_SQL_INSTANCE }}" \
-            --set-env-vars "^;^DB_SOCKET=/cloudsql/${{ vars.GCP_SQL_INSTANCE }};DB_NAME=beech;DB_USER=beech;GOOGLE_CLIENT_IDS=${{ vars.GOOGLE_CLIENT_IDS }};APPLE_CLIENT_IDS=${{ vars.APPLE_CLIENT_IDS }};ALLOWED_ORIGINS=https://play.beech.games,capacitor://localhost,https://localhost,app://beech;XSOLLA_PROJECT_ID=324072;XSOLLA_SANDBOX=1$PUSH_ENV" \
+            --set-env-vars "^;^DB_SOCKET=/cloudsql/${{ vars.GCP_SQL_INSTANCE }};DB_NAME=beech;DB_USER=beech;GOOGLE_CLIENT_IDS=${{ vars.GOOGLE_CLIENT_IDS }};GOOGLE_CLIENT_ID=${{ vars.GOOGLE_CLIENT_ID }};APPLE_CLIENT_IDS=${{ vars.APPLE_CLIENT_IDS }};APPLE_CLIENT_ID=${{ vars.APPLE_CLIENT_ID }};ALLOWED_ORIGINS=https://play.beech.games,capacitor://localhost,https://localhost,app://beech;XSOLLA_PROJECT_ID=324072;XSOLLA_SANDBOX=1$PUSH_ENV" \
             --set-secrets "DB_PASSWORD=beech-db-password:latest,GIFT_CODE_PEPPER=beech-gift-code-pepper:latest,XSOLLA_API_KEY=beech-xsolla-api-key:latest,XSOLLA_WEBHOOK_SECRET=beech-xsolla-webhook-secret:latest$PUSH_SECRETS" \
             --cpu 1 --memory 512Mi --concurrency 80 \
             --min-instances 0 --max-instances 10

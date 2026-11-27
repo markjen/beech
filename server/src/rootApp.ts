@@ -27,6 +27,10 @@ export interface ShoreOptions {
   gameUrl: string;
   /** uncached image draws per minute per client IP (default 60) */
   imageDrawsPerMinute?: number;
+  /** Google web OAuth client ID (public) for the account page's sign-in button; unset hides it */
+  googleClientId?: string;
+  /** Sign in with Apple Services ID (public) for the account page's sign-in button; unset hides it */
+  appleClientId?: string;
 }
 
 export const DEFAULT_SHORE: ShoreOptions = {
@@ -74,9 +78,9 @@ export function createRootApp(db: Db, api: Hono<any, any, any>, publicDir: strin
   const shoreHosts = new Set(shore.hosts.map((h) => h.toLowerCase()));
   const apex = new URL(shore.url).host.toLowerCase();
   const imageLimiter = createRateLimiter(shore.imageDrawsPerMinute ?? 60);
-  const shoreHere = createShoreSite(db, { base: '', gameUrl: shore.gameUrl, publicUrl: shore.url, imageLimiter, publicDir, api });
+  const shoreHere = createShoreSite(db, { base: '', gameUrl: shore.gameUrl, publicUrl: shore.url, imageLimiter, publicDir, api, googleClientId: shore.googleClientId, appleClientId: shore.appleClientId });
   const shoreUnder = createShoreSite(db, {
-    base: '/shore', gameUrl: shore.gameUrl, imageLimiter, canonicalOrigin: new URL(shore.url).origin, publicDir, api,
+    base: '/shore', gameUrl: shore.gameUrl, imageLimiter, canonicalOrigin: new URL(shore.url).origin, publicDir, api, googleClientId: shore.googleClientId, appleClientId: shore.appleClientId,
   });
   root.use('*', async (c, next) => {
     const host = (c.req.header('host') ?? '').toLowerCase().replace(/:\d+$/, '');

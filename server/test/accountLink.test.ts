@@ -1,6 +1,6 @@
 // Attach another sign-in to the account you're already signed into
 // (POST /api/account/identities), and what the beechshore account page
-// may read through its short-lived token (GET /shore-account/identities).
+// may do through its short-lived token (GET/POST /shore-account/identities).
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
 import { type Db } from '../src/db.js';
@@ -142,20 +142,21 @@ describe('the beechshore account page and the shore token', () => {
     return { ...u, scoped };
   }
 
-  it('the shore token can read connected sign-ins, but cannot attach one', async () => {
+  it('the shore token can read and attach connected sign-ins', async () => {
     const u = await scopedUser('ShoreReader');
     await post('/api/account/identities', { provider: 'google', credential: 'google-fay' }, u.token);
     const read = await accountApi('/identities', u.scoped);
     expect(read.status).toBe(200);
     expect(((await read.json()) as { identities: string[] }).identities).toEqual(['google']);
-    // attaching needs the game session: the shore token gets nothing here
-    expect((await accountApi('/identities', u.scoped, { provider: 'apple', credential: 'apple-fay' })).status).toBe(404);
-    expect((await root.request('/api/shore-account/identities', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${u.scoped}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ provider: 'apple', credential: 'apple-fay' }),
-    })).status).toBe(404);
-    // and the failed attach changed nothing
-    expect(((await (await get('/api/account/identities', u.token)).json()) as { identities: string[] }).identities).toEqual(['google']);
+    // attaching through the shore token works the same as through the game
+    const attached = await accountApi('/identities', u.scoped, { provider: 'apple', credential: 'apple-fay' });
+    expect(attached.status).toBe(200);
+    expect(((await attached.json()) as { identities: string[] }).identities).toEqual(['apple', 'google']);
+    // and the game session sees the new identity too
+    expect(((await (await get('/api/account/identities', u.token)).json()) as { identities: string[] }).identities).toEqual(['apple', 'google']);
+    // a 409 when the identity belongs to another account still holds on the shore
+    const other = await scopedUser('ShoreOther');
+    expect((await accountApi('/identities', other.scoped, { provider: 'apple', credential: 'apple-fay' })).status).toBe(409);
+    expect(((await (await get('/api/account/identities', other.token)).json()) as { identities: string[] }).identities).toEqual([]);
   });
 });

@@ -334,7 +334,9 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   app.use('*', async (c, next) => {
     const ip = (c.req.header('x-forwarded-for') ?? '').split(',')[0]?.trim();
     if (ip && c.req.method !== 'OPTIONS' && !WEBHOOKS.some((w) => c.req.path.endsWith(w))) {
-      const signIn = c.req.method === 'POST' && c.req.path.includes('/auth/');
+      // sign-in covers the game's /auth/* and the shore's /shore-auth/*:
+      // both verify a provider credential and start a session
+      const signIn = c.req.method === 'POST' && (c.req.path.includes('/auth/') || c.req.path.includes('/shore-auth/'));
       if (!perIp(ip) || (signIn && !signIns(ip))) {
         logEvent('rate_limited', { route: routeLabel(c), sign_in: signIn }, 'WARNING');
         return c.json({ error: 'too many requests: slow down a little' }, 429, { 'Retry-After': '60' });
@@ -357,7 +359,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   app.notFound((c) => c.json({ error: 'not found' }, 404));
 
   // ---------------------------------------------------------------- sessions
-  async function startSession(c: Context<Env>, who: VerifiedIdentity | { provider: 'dev'; sub: string; name: string }) {
+  /** Find or create the account for a verified identity and start a game session for it. */
+  async function createSession(who: VerifiedIdentity | { provider: 'dev'; sub: string; name: string }) {
     const now = (cfg.now ?? Date.now)();
     const email = 'email' in who ? who.email ?? null : null;
     let rows = await db.query<User>(
@@ -397,13 +400,19 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       [user!.id],
     );
     const token = newSessionToken();
+    const tokenHash = await hashToken(token);
     await db.query('INSERT INTO sessions (token_hash, user_id, created_at, expires_at) VALUES ($1, $2, $3, $4)', [
-      await hashToken(token),
+      tokenHash,
       user!.id,
       now,
       now + SESSION_DAYS * 86400000,
     ]);
     await db.query('DELETE FROM sessions WHERE user_id = $1 AND expires_at < $2', [user!.id, now]);
+    return { token, tokenHash, user: user! };
+  }
+
+  async function startSession(c: Context<Env>, who: VerifiedIdentity | { provider: 'dev'; sub: string; name: string }) {
+    const { token, user } = await createSession(who);
     return c.json({ token, user });
   }
 
@@ -533,6 +542,51 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const res = await startSession(c, who);
     await saveAppleRefreshToken(who.sub, who.clientId, authorizationCode, redirectUri);
     return res;
+  });
+
+  // Sign in on beechshore.com (docs/SHORE_SITE.md, "Signing in on the
+  // shore"): the same provider credential check as /auth/*, but instead of
+  // a game session token the caller gets a 1-hour shore token for it — the
+  // same token the game's Connect flow mints (issueSubmissionSession), so
+  // the shore page can only call /shore-account/*, never the game itself.
+  // The game session row stays on the server; the shore page never sees it.
+  const shoreSignIn = async (
+    c: Context<Env>,
+    who: VerifiedIdentity,
+    onSignedIn?: (who: VerifiedIdentity) => Promise<void>,
+  ) => {
+    const { tokenHash, user } = await createSession(who);
+    if (onSignedIn) await onSignedIn(who);
+    return c.json({ token: await issueSubmissionSession(db, tokenHash), user });
+  };
+  app.post('/shore-auth/google', async (c) => {
+    const { credential } = await body<{ credential?: string }>(c);
+    if (!credential) fail(400, 'missing credential');
+    let who: VerifiedIdentity;
+    try {
+      who = await verifyGoogle(credential!, cfg.googleClientIds);
+    } catch (e) {
+      return fail(401, `google sign-in failed: ${(e as Error).message}`);
+    }
+    return shoreSignIn(c, who);
+  });
+  app.post('/shore-auth/apple', async (c) => {
+    const { identityToken, name, authorizationCode, redirectUri } = await body<{
+      identityToken?: string;
+      name?: string;
+      authorizationCode?: string;
+      redirectUri?: string;
+    }>(c);
+    if (!identityToken) fail(400, 'missing identityToken');
+    let who: VerifiedIdentity;
+    try {
+      who = await verifyApple(identityToken!, cfg.appleClientIds, name ?? '');
+    } catch (e) {
+      return fail(401, `apple sign-in failed: ${(e as Error).message}`);
+    }
+    return shoreSignIn(c, who, async (w) => {
+      await saveAppleRefreshToken(w.sub, w.clientId, authorizationCode, redirectUri);
+    });
   });
 
   const submissionConnections = createRateLimiter(10);
@@ -786,14 +840,13 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   app.get('/api/account/identities', requireUser, async (c) => {
     return c.json({ identities: await identitiesOf(c.get('user').id) });
   });
-  app.post('/api/account/identities', requireUser, async (c) => {
-    const { provider, credential, name, authorizationCode, redirectUri } = await body<{
-      provider?: string;
-      credential?: string;
-      name?: string;
-      authorizationCode?: string;
-      redirectUri?: string;
-    }>(c);
+  /** Attach a verified provider identity to `me` (idempotent; 409 when it belongs to another account). */
+  type AttachInput = { provider?: string; credential?: string; name?: string; authorizationCode?: string; redirectUri?: string };
+  const attachIdentity = async (
+    me: string,
+    input: AttachInput,
+  ): Promise<AttachableProvider[]> => {
+    const { provider, credential, name, authorizationCode, redirectUri } = input;
     if (!provider || !(ATTACHABLE as readonly string[]).includes(provider)) fail(400, 'unknown provider: use google, apple, or steam');
     if (!credential) fail(400, 'missing credential');
     let who: VerifiedIdentity;
@@ -808,7 +861,6 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       if (e instanceof HTTPException) throw e;
       return fail(401, `${provider} sign-in failed: ${(e as Error).message}`);
     }
-    const me = c.get('user').id;
     const attached = await db.withTransaction(async (tx) => {
       const rows = await tx.query<{ user_id: string }>(
         'SELECT user_id FROM user_identities WHERE provider = $1 AND provider_sub = $2',
@@ -835,7 +887,10 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     if (who.provider === 'apple') {
       await saveAppleRefreshToken(who.sub, who.clientId, authorizationCode, redirectUri);
     }
-    return c.json({ identities: await identitiesOf(me) });
+    return identitiesOf(me);
+  };
+  app.post('/api/account/identities', requireUser, async (c) => {
+    return c.json({ identities: await attachIdentity(c.get('user').id, await body<AttachInput>(c)) });
   });
 
   // ---------------------------------------------------------------- beaches
@@ -4126,13 +4181,17 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       webCheckout: !!cfg.xsolla,
     });
   });
-  // What the beechshore account page shows under "Connected sign-ins".
-  // Read-only here on purpose: attaching needs the provider's own sign-in
-  // sheet, which lives in the game (native sheets / Google's web button),
-  // so there is no attach action on that page for the shore token to call.
-  // POST /api/account/identities stays on the game session only.
+  // What the beechshore account page shows under "Connected sign-ins", and
+  // its attach action: the same attach as the game's
+  // POST /api/account/identities (idempotent, 409 when the identity belongs
+  // to another account), under the shore token instead of a game session.
+  // The provider's own sign-in sheet runs on this page now (accountPage.ts),
+  // so the shore can link without going through the game.
   app.get('/shore-account/identities', requireShoreAccount, async (c) => {
     return c.json({ identities: await identitiesOf(c.get('user').id) });
+  });
+  app.post('/shore-account/identities', requireShoreAccount, async (c) => {
+    return c.json({ identities: await attachIdentity(c.get('user').id, await body<AttachInput>(c)) });
   });
   app.post('/shore-account/top-up', requireShoreAccount, webCheckout);
   app.get('/shore-account/web-orders/:id', requireShoreAccount, webOrder);

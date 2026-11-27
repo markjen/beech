@@ -72,6 +72,36 @@ beach does; the server keeps the 64 most recent pictures in memory.
 
 See [Community item submissions](ITEM_SUBMISSIONS.md) for the review, catalog release, and credit workflow.
 
+## Signing in on the shore
+
+The shore has no accounts of its own, but its account page
+(`/account`) signs you in with Google or Apple right there, and links
+more sign-ins to the account — the same providers as the game's web
+sign-in, with the same buttons (`server/src/accountPage.ts`, following
+`src/net/account.ts`).
+
+It reuses the shore-token model, not a second session system: the
+provider credential goes to `POST /account/auth/google|apple` (the shore
+site forwards it to the game API's `POST /shore-auth/*`), which verifies
+it exactly like `/auth/*`, starts a game session, and mints a 1-hour
+shore token for it (`issueSubmissionSession`). Only the shore token
+reaches the browser, so the page can call `/shore-account/*` and nothing
+else on the game. Linking is `POST /shore-account/identities` under the
+shore token — the same attach as the game's
+`POST /api/account/identities` (idempotent, 409 when the identity
+belongs to another account). The old way still works: "Connect Beech
+account" opens the game's popup, which posts a shore token back.
+
+Owner setup (both need doing before the buttons appear):
+- Apple: add domain `beechshore.com` and Return URL
+  `https://beechshore.com/` to the Services ID `app.beech.beach.web`
+  (the game already uses it for `play.beech.games`).
+- Google: add `https://beechshore.com` as an authorized JavaScript origin
+  on the web OAuth client.
+- Server env (from `deploy-gcp.yml` vars, both public): `GOOGLE_CLIENT_ID`
+  (the web client alone) and `APPLE_CLIENT_ID` (the Services ID). Unset
+  hides that provider's button; the Connect popup still works.
+
 ## The pictures
 
 `server/src/beachImage.ts` draws a saved beach top-down with no canvas or

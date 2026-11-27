@@ -8,7 +8,11 @@
 //   DB_SOCKET, DB_USER, DB_PASSWORD, DB_NAME   Cloud SQL unix socket (Cloud Run --add-cloudsql-instances)
 //   PGLITE_DIR           no Postgres at all: embedded PGlite (dev only; "memory" for in-memory)
 //   GOOGLE_CLIENT_IDS    comma-separated OAuth client IDs (web, iOS, Android)
+//   GOOGLE_CLIENT_ID     the web OAuth client ID alone (public) — the beechshore
+//                        account page's Google sign-in button (deploy-gcp.yml)
 //   APPLE_CLIENT_IDS     comma-separated (bundle id, Services ID)
+//   APPLE_CLIENT_ID      the Sign in with Apple Services ID alone (public) — the
+//                        beechshore account page's Apple sign-in button (deploy-gcp.yml)
 //   APPLE_AUTH_KEY, APPLE_AUTH_KEY_ID, APPLE_AUTH_TEAM_ID  optional Sign in with Apple
 //                        .p8 private key (Secret Manager) for exchanging auth codes and
 //                        revoking Apple tokens on account delete (App Store 5.1.1(v))
@@ -191,6 +195,8 @@ const root = createRootApp(db, api, publicDir, {
     hosts: env.SHORE_HOSTS !== undefined ? list(env.SHORE_HOSTS) : DEFAULT_SHORE.hosts,
     url: env.SHORE_URL || DEFAULT_SHORE.url,
     gameUrl: env.GAME_URL || DEFAULT_SHORE.gameUrl,
+    googleClientId: env.GOOGLE_CLIENT_ID || undefined,
+    appleClientId: env.APPLE_CLIENT_ID || undefined,
   },
   landing: {
     hosts: env.LANDING_HOSTS !== undefined ? list(env.LANDING_HOSTS) : DEFAULT_LANDING.hosts,
