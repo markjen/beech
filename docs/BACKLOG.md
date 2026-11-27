@@ -112,8 +112,7 @@ picked up.
 - [ ] **Copy a beach, follow-ups** ([COPY_BEACH.md](COPY_BEACH.md)): one
   web order holding every product "Buy what's missing" needs (Xsolla's
   token takes several items; `web_orders` would need lines, and the
-  webhook would grant them all) instead of one card checkout each; a place
-  picker for a new beach on the copy sheet.
+  webhook would grant them all) instead of one card checkout each.
 - [ ] **Piers, follow-ups** ([PIERS.md](PIERS.md)): check the deck against big real tides and storm
   waves (it's 1.35 m above still water).
 - [ ] **Inland sections, follow-ups** ([INLAND_SECTIONS.md](INLAND_SECTIONS.md)):
@@ -218,6 +217,9 @@ picked up.
 
 ## Done (recent)
 
+- [x] **Copy sheet: a place for a new beach** (2026-11-27): the place picker
+  shows for "+ a new beach", starting at the original's place; the copy
+  sends `location`. COPY_BEACH.md.
 - [x] **Stars and finds-today chips** (2026-11-27): the expanded status
   pane shows ★ (stars on the beach in view) and "finds n/3" (GET /pane).
 - [x] **Push alerts** (2026-11-27): `beech: push tick failing` and `beech:

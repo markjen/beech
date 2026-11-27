@@ -331,6 +331,12 @@ accepted the repo's default branch, so the deploy job ran only there.
   `GET /api/inventory` for owned, unexpired non-free items. Nothing writes to
   it yet.
 
+## Copy sheet: a place for a new beach (2026-11-27)
+
+"+ a new beach" on the copy sheet shows the place picker (the same one as
+Settings), starting at the original's place; `POST /beaches/mine/copy`
+already took `location`, now tested.
+
 ## Push alerts (2026-11-27)
 
 Two alert policies in `infra/monitoring.tf` (not applied yet: `terraform

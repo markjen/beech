@@ -113,6 +113,28 @@ describe('copy: one transition at a time', () => {
     expect((await held(me)).get(body.beach)).toBe(1);
   });
 
+  it('a new beach takes the original’s place, or the one picked on the sheet', async () => {
+    const src = await source(0);
+    await s.db.query("UPDATE beach SET location = 'bondi' WHERE id = $1", [src.id]);
+    const me = await person('Copier');
+    await s.grant(me.token, 'beach', 2);
+    const placeOf = async (r: Response) => {
+      expect(r.status).toBe(200);
+      const { beach } = (await r.json()) as { beach: string };
+      return (await s.db.query<{ location: string | null }>('SELECT location FROM beach WHERE id = $1', [beach]))[0].location;
+    };
+    expect(await placeOf(await copy(me, src.code, (await fit(me, src.code)).version, 'new'))).toBe('bondi');
+    const picked = await s.post(
+      '/beaches/mine/copy',
+      me.token,
+      { from: src.code, version: (await fit(me, src.code)).version, target: 'new', mode: 'strict', location: 'piha' },
+      { 'X-Edit-Token': me.edit },
+    );
+    expect(await placeOf(picked)).toBe('piha');
+    const bad = await s.post('/beaches/mine/copy', me.token, { from: src.code, version: 1, target: 'new', mode: 'strict', location: 'Not A Place!' }, { 'X-Edit-Token': me.edit });
+    expect(bad.status).toBe(400);
+  });
+
   it('strict refuses when short and writes nothing (not even the new beach); drop-missing copies the rest', async () => {
     const src = await source(2);
     const me = await person('Copier');
