@@ -103,6 +103,7 @@ _(nothing right now)_
 
 - [x] **Apple sign-in on the web** (2026-11-26): added Apple JS SDK popup sign-in (`webAppleSignIn` in `src/net/account.ts`) to the web sign-in screen and Settings → connected sign-ins when `VITE_APPLE_CLIENT_ID` is set (`Dockerfile`, `deploy-gcp.yml`). Owner setup: create a Sign in with Apple Services ID for `play.beech.games` and set `vars.APPLE_CLIENT_ID` + include it in `vars.APPLE_CLIENT_IDS`.
 
+- [x] **Sign in + link accounts on beechshore.com** (2026-11-27): the account page signs in with Google or Apple right there (`server/src/accountPage.ts`, `POST /account/auth/*` → game API `POST /shore-auth/*`, which verifies like `/auth/*` and mints a 1-hour shore token — the page never holds a game session), and links more sign-ins under the shore token (`POST /shore-account/identities`, same attach as the game). Owner setup before the buttons appear: add domain `beechshore.com` + Return URL `https://beechshore.com/` to the Services ID, add `https://beechshore.com` as a JavaScript origin on the Google web OAuth client, and set server env `GOOGLE_CLIENT_ID` / `APPLE_CLIENT_ID` (from `deploy-gcp.yml` vars).
 
 Items marked **(model first)** change state the server keeps: they start
 with their TLA+ spec ([STATE_MACHINES.md](STATE_MACHINES.md#model-first-workflow),

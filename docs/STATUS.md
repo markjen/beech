@@ -412,11 +412,14 @@ account on beechshore", "Invite bonuses") and
   bag; the shop's balance reads "N beech bucks (bb)" (the owner's wording).
   Product names in the stores still say "sand bucks" (update them in App
   Store Connect and the Play Console — owner task).
-- **beechshore.com/account:** connect (the submission popup), then balance,
+- **beechshore.com/account:** sign in with Google or Apple right on the
+  page (or connect through the game as before), then balance,
   history (every `credit_ledger` row, labelled by `server/src/ledger.ts`),
   card top-ups through Xsolla (returns to the page), gift cards, gifting a
-  thing by beach code, and the invite link with who joined. Forwarded to the
-  game API's `/shore-account/*` routes, which take only the shore token.
+  thing by beach code, and the invite link with who joined. Link more
+  sign-ins under "Connected sign-ins" on the page. Forwarded to the
+  game API's `/shore-account/*` routes (sign-in to `/shore-auth/*`),
+  which take only the shore token.
   Settings → Account links to it too (signed in only; the apps open it with
   `?from=app`, so no top-up or gift card there).
 - **Moved out of the game:** gift card redeem (shop), gifting (place bar)

@@ -178,3 +178,100 @@ describe('the account page', () => {
     expect(s.ledger[0]?.what).toBe('Promo bonus (SHORE25)');
   });
 });
+
+describe('signing in on the shore', () => {
+  // Stubbed provider checks: the credential is the identity ('bad' fails).
+  let rootAuth: ReturnType<typeof createRootApp>;
+  beforeAll(async () => {
+    const apiAuth = createApp(db, {
+      googleClientIds: ['web'],
+      appleClientIds: ['app.beech.beach', 'app.beech.beach.web'],
+      allowedOrigins: [],
+      devAuth: true,
+      verifyGoogle: async (token) => {
+        if (token === 'bad') throw new Error('nope');
+        return { provider: 'google', sub: `g-${token}`, name: `G ${token}`, email: `${token}@example.com` };
+      },
+      verifyApple: async (token, _clientIds, name = '') => {
+        if (token === 'bad') throw new Error('nope');
+        return { provider: 'apple', sub: `a-${token}`, name: name || `A ${token}`, clientId: 'app.beech.beach.web' };
+      },
+      appleTokenExchange: async () => 'refresh-token',
+    });
+    rootAuth = createRootApp(db, apiAuth, '/no-static-files-needed', {
+      shore: { hosts: ['beechshore.com'], url: 'https://beechshore.com', gameUrl: 'https://play.beech.games', googleClientId: 'web', appleClientId: 'app.beech.beach.web' },
+    });
+  });
+
+  const auth = (provider: string, data: unknown) =>
+    rootAuth.request(`https://beechshore.com/account/auth/${provider}`, {
+      method: 'POST',
+      headers: { Host: 'beechshore.com', 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+  const accountAuth = (path: string, token?: string, data?: unknown) =>
+    rootAuth.request(`https://beechshore.com/account/api${path}`, {
+      method: data === undefined ? 'GET' : 'POST',
+      headers: { Host: 'beechshore.com', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(data === undefined ? {} : { 'Content-Type': 'application/json' }) },
+      body: data === undefined ? undefined : JSON.stringify(data),
+    });
+
+  it('signs in with Google and Apple, and the shore token only opens the account', async () => {
+    const g = await auth('google', { credential: 'gina' });
+    expect(g.status).toBe(200);
+    const gj = (await g.json()) as { token: string; user: { id: string; name: string } };
+    expect(gj.user.name).toBe('G gina');
+    expect((await accountAuth('/summary', gj.token)).status).toBe(200);
+    // the shore token is not a game session token and can't reach the game
+    expect((await rootAuth.request('/api/bag', { headers: { Authorization: `Bearer ${gj.token}` } })).status).toBe(401);
+    // a second Google sign-in is the same account
+    const g2 = await auth('google', { credential: 'gina' });
+    expect(((await g2.json()) as { user: { id: string } }).user.id).toBe(gj.user.id);
+
+    const a = await auth('apple', { identityToken: 'ana', name: 'Ana', authorizationCode: 'code-1', redirectUri: 'https://beechshore.com/' });
+    expect(a.status).toBe(200);
+    const aj = (await a.json()) as { token: string; user: { id: string } };
+    expect((await accountAuth('/summary', aj.token)).status).toBe(200);
+    // the Apple authorization code was exchanged and the refresh token stored
+    const [row] = await db.query<{ apple_refresh_token: string | null }>(
+      "SELECT apple_refresh_token FROM user_identities WHERE user_id = $1 AND provider = 'apple'",
+      [aj.user.id],
+    );
+    expect(row?.apple_refresh_token).toBe('refresh-token');
+  });
+
+  it('rejects bad credentials and unknown providers', async () => {
+    expect((await auth('google', { credential: 'bad' })).status).toBe(401);
+    expect((await auth('apple', { identityToken: 'bad' })).status).toBe(401);
+    expect((await auth('google', {})).status).toBe(400);
+    expect((await auth('steam', { credential: 'x' })).status).toBe(404);
+  });
+
+  it('links providers on the shore, idempotently, and 409s across accounts', async () => {
+    const a = (await (await auth('google', { credential: 'amy' })).json()) as { token: string; user: { id: string } };
+    const b = (await (await auth('google', { credential: 'bob' })).json()) as { token: string; user: { id: string } };
+    // link Apple to Amy's account, twice: the second is a no-op
+    const link = await accountAuth('/identities', a.token, { provider: 'apple', credential: 'amy-apple', name: 'Amy' });
+    expect(link.status).toBe(200);
+    expect(((await link.json()) as { identities: string[] }).identities).toEqual(['apple', 'google']);
+    const again = await accountAuth('/identities', a.token, { provider: 'apple', credential: 'amy-apple', name: 'Amy' });
+    expect(again.status).toBe(200);
+    expect(((await again.json()) as { identities: string[] }).identities).toEqual(['apple', 'google']);
+    // Bob can't take Amy's Apple identity
+    expect((await accountAuth('/identities', b.token, { provider: 'apple', credential: 'amy-apple' })).status).toBe(409);
+    // and Bob can't take her Google identity either
+    expect((await accountAuth('/identities', b.token, { provider: 'google', credential: 'amy' })).status).toBe(409);
+  });
+
+  it('shows the sign-in buttons when the client IDs are configured', async () => {
+    const r = await rootAuth.request('https://beechshore.com/account', { headers: { Host: 'beechshore.com' } });
+    const html = await r.text();
+    expect(html).toContain('"googleClientId":"web"');
+    expect(html).toContain('"appleClientId":"app.beech.beach.web"');
+    expect(html).toContain('Sign in with Apple');
+    // and hides them when neither is configured (the default root)
+    const plain = await (await root.request(`${shore}/account`, { headers: { Host: 'beechshore.com' } })).text();
+    expect(plain).toContain('"googleClientId":""');
+    expect(plain).toContain('"appleClientId":""');
+  });
+});
