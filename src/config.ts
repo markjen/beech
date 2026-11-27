@@ -405,7 +405,7 @@ export const SECTION = {
 
 export const PIER = {
   /** where the ramp meets the sand (dry, landward of the shoreline) */
-  landY: 21,
+  landY: 22,
   /** where the ramp reaches the deck */
   rampTopY: 18,
   /** the seaward end */
@@ -415,9 +415,14 @@ export const PIER = {
   /** deck width, and the end platform's */
   width: 2.5,
   platformWidth: 4,
-  /** deck surface height, and the sand height at the ramp's foot */
-  deckHeight: 1.35,
-  footHeight: 0.36,
+  /**
+   * deck surface height, and the sand height at the ramp's foot. The deck's
+   * underside clears the worst water under it: the highest sim tide (0.3 m)
+   * with the strongest waves (surf, the biggest real swell) in a day's worst
+   * set reaches about 1.36 m at the seaward end (tests/pier.test.ts).
+   */
+  deckHeight: 1.65,
+  footHeight: 0.43,
   deckThickness: 0.14,
   /** pilings: spacing along the pier, how far down they go */
   pilingStep: 3,

@@ -56,7 +56,12 @@ Shoreline  ├──────────────┼───────
   (world Z = +5 to −13 on a centered 32 m beach). A short ramp starts
   on dry sand and roughly 13 m of deck extends beyond the still-water
   shoreline. Tune the ramp and deck heights against the rest profile,
-  high tide and the strongest waves.
+  high tide and the strongest waves. (Checked 2026-11-27: at the sim's
+  highest tide, 0.3 m, with surf on the biggest real swell and a day's
+  worst set, the water under the seaward end reaches about 1.33 m, which
+  would have washed over the first 1.35 m deck. The deck is now 1.65 m,
+  underside 1.51 m, and the ramp's foot moved 1 m inland, to 22 m, so the
+  ramp stays about 17°. `tests/pier.test.ts` runs that storm.)
 - Use paired pilings, simple rails and a slightly wider end platform.
   Waves and foam pass between the pilings. The pier stays fixed during
   tides and digging. Players can pick up and move any decorations
@@ -116,7 +121,8 @@ removing or pausing one gives new pictures ([SHORE_SITE.md](SHORE_SITE.md#the-pi
 
 All of these are covered by the state-machine tests and `e2e:piers`,
 except the high/low tide silhouette, which was checked by eye at the
-default tide only.
+default tide only. The deck's clearance over the worst storm at the
+highest tide is a unit test (`tests/pier.test.ts`).
 
 - Test isolated and two-beach accounts, an eligible trio, a trio with a
   foreign neighbor and two eligible centers on a longer stretch.

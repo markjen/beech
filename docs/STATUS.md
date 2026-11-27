@@ -331,6 +331,14 @@ accepted the repo's default branch, so the deploy job ran only there.
   `GET /api/inventory` for owned, unexpired non-free items. Nothing writes to
   it yet.
 
+## Pier deck vs storms (2026-11-27)
+
+Simulated the worst case (the sim's highest tide, surf, the biggest real
+swell, a day's worst set): water under the pier's seaward end reaches about
+1.33 m, which washed over the first 1.35 m deck. `PIER.deckHeight` is now
+1.65 m (underside 1.51 m), `landY` 22 m and `footHeight` 0.43 m (ramp about
+17°). A unit test runs that storm (`tests/pier.test.ts`, ~4 s).
+
 ## Inland sections: replace a row in place (2026-11-27)
 
 The sections editor's rows have **replace**: the add buttons become **→

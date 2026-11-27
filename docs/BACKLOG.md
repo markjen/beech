@@ -114,8 +114,6 @@ picked up.
   web order holding every product "Buy what's missing" needs (Xsolla's
   token takes several items; `web_orders` would need lines, and the
   webhook would grant them all) instead of one card checkout each.
-- [ ] **Piers, follow-ups** ([PIERS.md](PIERS.md)): check the deck against big real tides and storm
-  waves (it's 1.35 m above still water).
 - [ ] **Inland sections, follow-ups** ([INLAND_SECTIONS.md](INLAND_SECTIONS.md)):
   sand extensions behind a non-sand row are still scenery, and a sand
   row's sand stays with its position rather than its copy (playable sand
@@ -218,6 +216,10 @@ picked up.
 
 ## Done (recent)
 
+- [x] **Pier deck vs storms and big tides** (2026-11-27): measured in the
+  sim (a day's worst set, surf, the highest tide): 1.33 m of water under the
+  seaward end, over the old 1.35 m deck. Raised to 1.65 m (ramp foot to
+  22 m); `tests/pier.test.ts` keeps it clear.
 - [x] **Inland sections: replace a row in place** (2026-11-27): **replace**
   on a row, then **→ type**. INLAND_SECTIONS.md.
 - [x] **Copy sheet: a place for a new beach** (2026-11-27): the place picker
