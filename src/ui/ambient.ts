@@ -1,8 +1,11 @@
+import { IDLE_FADE } from '../config';
 import { steamBridge } from '../platform/runtime';
 
 // Ambient ("TV") mode: after a few quiet seconds the controls fade away and
 // the screen is kept awake, so the beach can sit on a TV or a tablet stand
 // like a window. Any touch, mouse move or key (TV remote) brings them back.
+// Outside ambient mode only the palm fades (palm-idle), and only while it's
+// the one control showing (the rail closed); it stays tappable.
 
 interface WakeLockLike {
   release(): Promise<void>;
@@ -11,9 +14,13 @@ interface WakeLockLike {
 export class Ambient {
   enabled = false;
   private timer = 0;
+  private palmTimer = 0;
   private lock: WakeLockLike | null = null;
 
-  constructor(private readonly idleMs = 6000) {
+  constructor(
+    private readonly idleMs = IDLE_FADE.ambientMs,
+    private readonly palmMs = IDLE_FADE.palmMs,
+  ) {
     for (const ev of ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart']) {
       window.addEventListener(ev, () => this.poke(), { passive: true });
     }
@@ -32,9 +39,11 @@ export class Ambient {
   }
 
   poke(): void {
-    document.body.classList.remove('ambient-idle');
+    document.body.classList.remove('ambient-idle', 'palm-idle');
     window.clearTimeout(this.timer);
+    window.clearTimeout(this.palmTimer);
     if (this.enabled) this.timer = window.setTimeout(() => document.body.classList.add('ambient-idle'), this.idleMs);
+    else this.palmTimer = window.setTimeout(() => document.body.classList.add('palm-idle'), this.palmMs);
   }
 
   private async wake(): Promise<void> {

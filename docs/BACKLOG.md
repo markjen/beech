@@ -125,9 +125,7 @@ picked up.
   them in the pictures' `?v=`); a replace-in-place control in the editor.
 - [ ] **Palm-first UI, follow-ups**: stars and finds-today chips in
   the expanded pane (they need their own requests; no credit/sand-bucks
-  chip: Mark, 2026-11-26, the balance is only useful in the shop); decide whether the
-  palm should also fade after idle outside ambient mode (the mockup's open
-  question; for now it never does). Tap-the-sand-to-close was left out:
+  chip: Mark, 2026-11-26, the balance is only useful in the shop). Tap-the-sand-to-close was left out:
   a tap is also how you stop a glide.
 - [ ] **Live beaches, next**: SSE instead of polling if the 5 s polls show up in
   Cloud Run costs; catch up the beechshore.com page pictures too; one
@@ -189,13 +187,6 @@ picked up.
   tested against a fake push service only); a monitoring alert on
   `push_tick_error` and on a high `failed` count; an admin `system` push
   ("week 2's vending set"), which needs its own pref and rate.
-<<<<<<< HEAD
-- [ ] **Admin: suspend a sender's notes** after repeated reports (today
-  the admin can hide a note or dismiss the report).
-=======
-- [ ] **Ratings on name tags**: the shore walk's JSON carries each beach's
-  average, shown on the name tags along the shore (today: in the visitor card).
->>>>>>> 6c3492f (Admin: suspend a sender's notes (model first: NoteSuspension.tla))
 - [ ] **Flaky tests**: `npm run e2e:checkpoints` times out at varying
   steps in the cloud container, also on main (so do `neighbors`, `live`,
   `shore`, `beaches` and `leaderboard`: signing a second device in).
@@ -229,6 +220,9 @@ picked up.
 
 ## Done (recent)
 
+- [x] **The palm fades after idle** (2026-11-27; Mark: "fade after 5
+  seconds"): outside ambient mode, with the rail closed, the palm fades
+  after 5 s quiet and stays tappable (`IDLE_FADE` in `src/config.ts`).
 - [x] **Admin: suspend a sender's notes** (2026-11-27): 1/7/30/365 days,
   optionally hiding their shown notes, from the Reports tab; visits with a
   note are refused while it lasts. `specs/tla/NoteSuspension.tla`.

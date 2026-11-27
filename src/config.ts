@@ -194,6 +194,14 @@ export const CAMERA = {
  */
 export const GUIDE_URL = 'https://beech.games/guide';
 
+/** Quiet time before the controls fade (src/ui/ambient.ts). */
+export const IDLE_FADE = {
+  /** ambient (TV) mode: everything fades */
+  ambientMs: 6000,
+  /** otherwise, with only the palm showing: the palm fades (still tappable) */
+  palmMs: 5000,
+};
+
 /** longest note a visitor can leave (the server's NOTE_MAX, server/src/inbox.ts) */
 export const NOTE_MAX_CHARS = 280;
 

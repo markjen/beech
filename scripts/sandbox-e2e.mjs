@@ -108,6 +108,22 @@ for (const mode of ['look', 'tool']) {
   const moved = Math.hypot(after.x - before.x, after.y - before.y);
   check(after.id === before.id && moved > 0.5, `${mode} mode: long-press and drag moves the rock (${moved.toFixed(2)} m)`);
 }
+// the lone palm fades after 5 s of quiet (outside ambient mode) and comes back on a move
+await page.evaluate(() => { window.__beech.sheet.hide(); window.__beech.inventory.select(null); window.__beech.setRail(false); });
+await page.mouse.move(10, 10);
+const palmIdle = () => page.evaluate(() => document.body.classList.contains('palm-idle'));
+await page.waitForTimeout(1000);
+const early = await palmIdle();
+await page.waitForFunction(() => document.body.classList.contains('palm-idle'), null, { timeout: 8000 }).catch(() => {});
+await page.waitForTimeout(2000); // the 1.2 s fade
+const faded = await page.evaluate(() => document.body.classList.contains('palm-idle') && Number(getComputedStyle(document.querySelector('.hud')).opacity));
+await page.mouse.move(20, 20);
+check(!early && faded < 0.05 && !(await palmIdle()), `the palm fades after a quiet spell and comes back on a move (opacity ${faded})`);
+// with the rail open nothing fades
+await page.evaluate(() => window.__beech.setRail(true));
+await page.mouse.move(30, 30);
+await page.waitForTimeout(6000);
+check(await page.evaluate(() => getComputedStyle(document.querySelector('.hud')).opacity === '1'), 'with the rail open the controls stay');
 check(errors.length === 0, `no page errors ${errors.join(' | ')}`);
 await closeBrowser();
 console.log(failed ? `${failed} FAILED` : 'SANDBOX E2E PASS');

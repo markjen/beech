@@ -17,8 +17,9 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: '2026-11-27',
-    title: 'More of the beach guide, ratings along the shore, a see-through pier preview and safer notes',
+    title: 'A quieter palm, more of the beach guide, ratings along the shore, a see-through pier preview and safer notes',
     changes: [
+      'With the toolbar closed, the palm button fades away after 5 seconds without a touch, leaving just the beach. Tap where it was, or move the mouse, and it’s back.',
       'Someone whose notes keep getting reported can have their notes paused for a while. They can still rate and give.',
       'Before you place a pier, its preview is see-through and paler, so it’s clear it isn’t placed yet.',
       'When you look at someone’s beach, its average rating in shells and how many have rated it now show next to the star, once a few people have rated it.',
