@@ -91,6 +91,20 @@ check(JSON.stringify(shore.body?.center?.sections) === JSON.stringify(['section-
 const stale = await api(b, `/api/beaches/mine/${home.id}/sections`, { method: 'PUT', body: JSON.stringify({ rows: [], rev: 0 }) });
 check(stale.status === 409, 'a write from an old layout is refused');
 
+// replace a row in place: the picnic grove (front row) becomes a boardwalk,
+// the second copy in the bag; the grove goes back to the bag
+await a.evaluate(() => window.__beech.account().loadBeaches());
+await openEditor(home.id);
+await click(a, '.sections-editor li[data-row="0"] [data-act="sections-replace"]');
+check((await a.locator('.sections-editor [data-act="sections-swap"][data-type="section-picnic"]').count()) === 0, 'replacing offers other types, not the one in the row');
+await click(a, '.sections-editor [data-act="sections-swap"][data-type="section-boardwalk"]');
+if (shots) await a.screenshot({ path: `${shots}/sections-replaced.png` });
+await click(a, '.sections-editor [data-act="sections-save"]');
+await a.waitForSelector('.sections-editor', { state: 'hidden', timeout: 10000 });
+await a.waitForTimeout(800);
+const replaced = await a.evaluate((id) => window.__beech.account().mine(id), home.id);
+check(JSON.stringify(replaced?.sections) === JSON.stringify(['section-boardwalk', 'section-boardwalk']), 'a row replaced in place, the others where they were');
+
 check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join('; ')}` : ''}`);
 await closeBrowser();
 process.exit(failed ? 1 : 0);

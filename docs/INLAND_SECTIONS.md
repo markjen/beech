@@ -18,7 +18,10 @@ playable sand since 2026-11-27 ("Playable sand: what was built", below).
   the bag), made from the revision the editor opened at. The same type can
   fill more than one row if you own enough.
 - **Editor:** Manage → Beaches → **inland sections** on the selected beach
-  (`src/ui/sectionsEditor.ts`): each row with ↑ ↓ and **to bag**, then
+  (`src/ui/sectionsEditor.ts`): each row with ↑ ↓, **replace** and
+  **to bag** (replace, 2026-11-27: the add buttons become **→ type** and
+  swap that row in place; the displaced copy goes back to the bag; buying
+  while replacing fills that row), then
   **+ type** for what's free or **type · bb 15** to buy one; the rows show
   behind the beach as you change them; **save** / **cancel**. A stale
   revision is refused (the player reopens the editor).

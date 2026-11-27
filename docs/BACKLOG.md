@@ -119,7 +119,7 @@ picked up.
   sand extensions behind a non-sand row are still scenery, and a sand
   row's sand stays with its position rather than its copy (playable sand
   is the leading sand rows, INLAND_SECTIONS.md); draw the rows on beechshore.com's pictures and 3D views (and put
-  them in the pictures' `?v=`); a replace-in-place control in the editor.
+  them in the pictures' `?v=`).
 - [ ] **Palm-first UI, follow-ups**: (stars and finds-today chips done
   2026-11-27; no credit/sand-bucks chip: Mark, 2026-11-26, the balance is
   only useful in the shop). Tap-the-sand-to-close was left out:
@@ -217,6 +217,8 @@ picked up.
 
 ## Done (recent)
 
+- [x] **Inland sections: replace a row in place** (2026-11-27): **replace**
+  on a row, then **→ type**. INLAND_SECTIONS.md.
 - [x] **Copy sheet: a place for a new beach** (2026-11-27): the place picker
   shows for "+ a new beach", starting at the original's place; the copy
   sends `location`. COPY_BEACH.md.

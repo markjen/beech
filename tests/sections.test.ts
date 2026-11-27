@@ -6,7 +6,7 @@ import type { PlacedObject } from '../src/sim/objects';
 import { fitDepth, resampleWidth } from '../src/sim/sandCodec';
 import { colorOf, sectionGeometry } from '../src/render/sections';
 import { restHeight } from '../src/sim/profile';
-import { freeFor } from '../src/ui/sectionsEditor';
+import { freeFor, replaceRow } from '../src/ui/sectionsEditor';
 import { EXTRAS } from '../src/world/items';
 import { SECTIONS, SECTION_ROWS, gridWithSand, sandRowsInGrid, sandRowsOf, sectionJoins } from '../src/world/sections';
 import { SECTIONS as SERVER_SECTIONS, SECTION_ROWS as SERVER_ROWS } from '../server/src/sections';
@@ -138,5 +138,19 @@ describe('sand rows inland are part of the beach', () => {
     // another device's grid: as deep, in metres
     const wide = resampleWidth({ nx: deep.nx, ny: deep.ny, delta, objects }, GRID_TIERS.high.nx);
     expect(wide.ny).toBe(gridWithSand(GRID_TIERS.high, 2).ny);
+  });
+});
+
+describe('replacing a row in place', () => {
+  it('swaps one row and keeps the rest in order; the displaced copy is free again', () => {
+    const draft = ['section-sand', 'section-boardwalk', 'section-road'];
+    const next = replaceRow(draft, 1, 'section-playground');
+    expect(next).toEqual(['section-sand', 'section-playground', 'section-road']);
+    expect(draft[1]).toBe('section-boardwalk'); // not changed in place
+    expect(replaceRow(draft, 5, 'section-playground')).toEqual(draft);
+    const counts = { owned: { 'section-boardwalk': 1, 'section-playground': 1 }, placed: { 'section-boardwalk': 1 } };
+    // the boardwalk comes back to the bag once the draft no longer holds it
+    expect(freeFor('section-boardwalk', counts, draft, next)).toBe(1);
+    expect(freeFor('section-playground', counts, draft, next)).toBe(0);
   });
 });

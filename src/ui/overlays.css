@@ -1630,6 +1630,9 @@ body.ambient-idle .hud-sign-in {
   align-items: center;
   gap: 6px;
 }
+.sections-rows li.replacing .sections-name {
+  font-weight: 700;
+}
 .sections-name {
   flex: 1;
   min-width: 0;
