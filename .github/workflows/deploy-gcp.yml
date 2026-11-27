@@ -45,9 +45,14 @@ name: Deploy production (Google Cloud Run)
 #   beech-printful-token, beech-printful-webhook-secret; optional vars
 #   MERCH_SUNGLASSES_VARIANT, PRINTFUL_STORE_ID, MERCH_STRIPE_TAX=1,
 #   PRINTFUL_DRAFTS_ONLY=1 (orders reach Printful as drafts: the first test)
-#   The Stripe secret key is shared with the game's web checkout (PR #191);
-#   the merch webhook secret is the merch endpoint's own — the game's
-#   endpoint uses beech-stripe-webhook-secret, a different signing secret.
+# The game's Stripe web checkout (docs/STRIPE_PAYMENTS.md), test mode:
+#   secrets beech-stripe-game-secret-key (the game's own test key — NOT
+#   the merch store's beech-stripe-secret-key, which went live Nov 27,
+#   2026 while the game checkout is still in test mode) and
+#   beech-stripe-webhook-secret (the game endpoint's signing secret —
+#   not the merch endpoint's beech-stripe-merch-webhook-secret);
+#   STRIPE_SANDBOX=1 until the live launch (then drop it and put live
+#   keys in as new versions of the same two secrets).
 # No keys are stored in GitHub: authentication is Workload Identity Federation,
 # and the database password lives in Secret Manager (beech-db-password).
 on:
@@ -151,8 +156,8 @@ jobs:
             --allow-unauthenticated \
             --service-account "${{ vars.GCP_RUNTIME_SA }}" \
             --add-cloudsql-instances "${{ vars.GCP_SQL_INSTANCE }}" \
-            --set-env-vars "^;^DB_SOCKET=/cloudsql/${{ vars.GCP_SQL_INSTANCE }};DB_NAME=beech;DB_USER=beech;GOOGLE_CLIENT_IDS=${{ vars.GOOGLE_CLIENT_IDS }};GOOGLE_CLIENT_ID=${{ vars.GOOGLE_CLIENT_ID }};APPLE_CLIENT_IDS=${{ vars.APPLE_CLIENT_IDS }};APPLE_CLIENT_ID=${{ vars.APPLE_CLIENT_ID }};ALLOWED_ORIGINS=https://play.beech.games,capacitor://localhost,https://localhost,app://beech;XSOLLA_PROJECT_ID=324072;XSOLLA_SANDBOX=1$PUSH_ENV" \
-            --set-secrets "DB_PASSWORD=beech-db-password:latest,GIFT_CODE_PEPPER=beech-gift-code-pepper:latest,XSOLLA_API_KEY=beech-xsolla-api-key:latest,XSOLLA_WEBHOOK_SECRET=beech-xsolla-webhook-secret:latest$PUSH_SECRETS" \
+            --set-env-vars "^;^DB_SOCKET=/cloudsql/${{ vars.GCP_SQL_INSTANCE }};DB_NAME=beech;DB_USER=beech;GOOGLE_CLIENT_IDS=${{ vars.GOOGLE_CLIENT_IDS }};GOOGLE_CLIENT_ID=${{ vars.GOOGLE_CLIENT_ID }};APPLE_CLIENT_IDS=${{ vars.APPLE_CLIENT_IDS }};APPLE_CLIENT_ID=${{ vars.APPLE_CLIENT_ID }};ALLOWED_ORIGINS=https://play.beech.games,capacitor://localhost,https://localhost,app://beech;XSOLLA_PROJECT_ID=324072;XSOLLA_SANDBOX=1;STRIPE_SANDBOX=1$PUSH_ENV" \
+            --set-secrets "DB_PASSWORD=beech-db-password:latest,GIFT_CODE_PEPPER=beech-gift-code-pepper:latest,XSOLLA_API_KEY=beech-xsolla-api-key:latest,XSOLLA_WEBHOOK_SECRET=beech-xsolla-webhook-secret:latest,STRIPE_GAME_SECRET_KEY=beech-stripe-game-secret-key:latest,STRIPE_WEBHOOK_SECRET=beech-stripe-webhook-secret:latest$PUSH_SECRETS" \
             --cpu 1 --memory 512Mi --concurrency 80 \
             --min-instances 0 --max-instances 10
       - name: Deploy the admin console to Cloud Run

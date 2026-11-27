@@ -34,10 +34,20 @@
 //   STRIPE_SECRET_KEY, STRIPE_MERCH_WEBHOOK_SECRET, PRINTFUL_TOKEN, PRINTFUL_WEBHOOK_SECRET
 //                        the merch store (docs/MERCH_STORE.md; all from Secret Manager).
 //                        All four set: store.beech.games takes orders. Any missing:
-//                        it shows the catalog and "opening soon". The secret key
-//                        is shared with the game's Stripe checkout (PR #191);
-//                        the webhook secret is the merch endpoint's own —
-//                        STRIPE_WEBHOOK_SECRET belongs to the game checkout.
+//                        it shows the catalog and "opening soon". The merch
+//                        secret key is the store's own — the game's checkout
+//                        has its own key (STRIPE_GAME_SECRET_KEY, below), so
+//                        the game stays in test mode while the store is live.
+//   STRIPE_GAME_SECRET_KEY, STRIPE_WEBHOOK_SECRET, STRIPE_SANDBOX
+//                        the game's Stripe web checkout (docs/STRIPE_PAYMENTS.md).
+//                        STRIPE_GAME_SECRET_KEY is Secret Manager
+//                        beech-stripe-game-secret-key (test key for now);
+//                        STRIPE_WEBHOOK_SECRET is beech-stripe-webhook-secret,
+//                        the game endpoint's signing secret — not the merch
+//                        endpoint's (STRIPE_MERCH_WEBHOOK_SECRET).
+//                        STRIPE_SANDBOX "1": test payments only (Stripe test
+//                        mode and test cards). All three set: the web shop
+//                        offers Stripe when Xsolla is off.
 //   PRINTFUL_STORE_ID    Printful store id, for an account-level token
 //   MERCH_SUNGLASSES_VARIANT  Printful Warehousing variant id of the sunglasses; unset:
 //                        the sunglasses stay out of the store (they come back
@@ -80,6 +90,7 @@ import { migrate } from './migrations.js';
 import { logEvent } from './observability.js';
 import { createRootApp, DEFAULT_SHORE, DEFAULT_LANDING, DEFAULT_STORE } from './rootApp.js';
 import { steamStoreFromEnv, syncSteamRefunds } from './steamStore.js';
+import { stripeFromEnv } from './stripe.js';
 import { devVapidKeys, makeSender, pushFromEnv, pushTick } from './push.js';
 import { xsollaFromEnv } from './xsolla.js';
 import { createMerch } from './merch.js';
@@ -105,6 +116,14 @@ const xsolla = xsollaFromEnv(env);
 if (!xsolla.cfg && xsolla.missing.length < 3)
   logEvent('web_checkout_config', { warning: `web checkout is off: ${xsolla.missing.join(', ')} not set` }, 'WARNING');
 logEvent('web_checkout_config', { enabled: !!xsolla.cfg, sandbox: !!xsolla.cfg?.sandbox });
+
+// Stripe web checkout (docs/STRIPE_PAYMENTS.md), the backup: same rule — on
+// only when both test-mode secrets are set. Nothing here creates secrets;
+// see the doc for the Secret Manager step.
+const stripe = stripeFromEnv(env);
+if (!stripe.cfg && stripe.missing.length < 2)
+  logEvent('stripe_config', { warning: `stripe checkout is off: ${stripe.missing.join(', ')} not set` }, 'WARNING');
+logEvent('stripe_config', { enabled: !!stripe.cfg, sandbox: !!stripe.cfg?.sandbox });
 
 const adminDevPort = env.ADMIN_DEV_PORT ? Number(env.ADMIN_DEV_PORT) : null;
 if (adminDevPort && env.NODE_ENV === 'production') throw new Error('ADMIN_DEV_PORT is for local development only');
@@ -227,6 +246,7 @@ const api = createApp(db, {
   codePepper,
   weatherApiKey: env.OPEN_METEO_API_KEY || undefined,
   xsolla: xsolla.cfg ?? undefined,
+  stripe: stripe.cfg ?? undefined,
   shoreUrl: env.SHORE_URL || undefined,
 });
 

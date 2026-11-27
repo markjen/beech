@@ -154,6 +154,7 @@ import {
 import { createRateLimiter, logEvent, parseClientEvent, routeLabel } from './observability.js';
 import { createLiveBeaches, liveConfig, type LiveConfig } from './liveBeach.js';
 import { createPaymentToken, payStationUrl, verifyWebhookSignature, xsollaError, type CreateToken, type XsollaConfig, type XsollaWebhook } from './xsolla.js';
+import { createCheckoutSession, verifyStripeSignature, type CreateCheckoutSession, type StripeConfig, type StripeEvent } from './stripe.js';
 import { finalizeSteamTxn, initSteamTxn, type SteamStoreConfig } from './steamStore.js';
 
 export interface AppConfig {
@@ -213,6 +214,15 @@ export interface AppConfig {
   xsolla?: XsollaConfig;
   /** injectable for tests: how a Pay Station payment token is made */
   xsollaToken?: CreateToken;
+  /**
+   * Web checkout through Stripe (docs/STRIPE_PAYMENTS.md), the backup to
+   * Xsolla. Unset: Stripe checkout stays off. Xsolla is the primary
+   * whenever it is set; the client falls back to Stripe only when Xsolla
+   * is off and Stripe is on.
+   */
+  stripe?: StripeConfig;
+  /** injectable for tests: how a Checkout Session is made */
+  stripeSession?: CreateCheckoutSession;
   /**
    * Push notifications (docs/INBOX_NOTIFICATIONS.md, server/src/push.ts):
    * which platforms are set up, how a push is sent (tests pass their own),
@@ -333,7 +343,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   // forwarded IP (tests, local development) aren't limited.
   const perIp = createRateLimiter(cfg.rateLimit?.perMinute ?? 300);
   const signIns = createRateLimiter(cfg.rateLimit?.signInsPerMinute ?? 20);
-  const WEBHOOKS = ['/store/apple/notifications', '/store/google/rtdn', '/store/xsolla/webhook', '/merch/stripe-webhook', '/merch/printful-webhook'];
+  const WEBHOOKS = ['/store/apple/notifications', '/store/google/rtdn', '/store/xsolla/webhook', '/store/stripe/webhook', '/merch/stripe-webhook', '/merch/printful-webhook'];
   app.use('*', async (c, next) => {
     const ip = (c.req.header('x-forwarded-for') ?? '').split(',')[0]?.trim();
     if (ip && c.req.method !== 'OPTIONS' && !WEBHOOKS.some((w) => c.req.path.endsWith(w))) {
@@ -2915,8 +2925,9 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
         const cents = price(p);
         return cents === null ? [] : [{ id: p.id, name: p.name, grants: p.grants, usd: cents / 100, blurb: p.blurb, featured: !!p.featured }];
       }),
-      // the web shop can take payment itself (Xsolla), instead of pointing at the apps
+      // the web shop can take payment itself (Xsolla, or Stripe when Xsolla is off), instead of pointing at the apps
       webCheckout: !!cfg.xsolla,
+      stripeCheckout: !!cfg.stripe,
     });
   });
 
@@ -2942,6 +2953,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
         return bucks === null || bucks === undefined ? [] : [{ id: p.id, name: p.name, grants: p.grants, bucks, blurb: p.blurb, featured: !!p.featured }];
       }),
       webCheckout: !!cfg.xsolla,
+      stripeCheckout: !!cfg.stripe,
     });
   });
 
@@ -3050,6 +3062,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     product_id: string;
     amount_cents: number;
     creator_submission_id: string | null;
+    /** 'xsolla' or 'stripe': which provider took the money */
+    provider: string;
     provider_order_id: string | null;
     sandbox: boolean;
     status: string;
@@ -3074,6 +3088,72 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     };
   };
   const isUuid = (s: string) => UUID_PATTERN.test(s);
+
+  /**
+   * Grant a paid web order once, whoever took the money (Xsolla or Stripe).
+   * Records the payment once, marks the order paid, and grants (beech bucks)
+   * and credit atomically. A retried webhook hits the purchases unique key
+   * and changes nothing. An order already canceled is not revived by a late
+   * payment. Returns the granted rows (empty when already settled) and any
+   * promo outcome, for the caller's log line.
+   */
+  const grantWebOrder = async (
+    o: WebOrderRow,
+    providerId: string,
+    store: 'xsolla' | 'stripe',
+    testPayment: boolean,
+  ): Promise<{ granted: { purchase_id: string }[]; promo: string | null }> => {
+    const product = storeProductById(o.product_id)!;
+    const now = clock();
+    let promoResult: string | null = null;
+    const granted = await db.withTransaction(async (tx) => {
+      const [order] = await tx.query<{ status: string }>('SELECT status FROM web_orders WHERE id = $1 FOR NO KEY UPDATE', [o.id]);
+      if (order?.status !== 'created') return [];
+      // the promo's row before the player's (claimPromo's lock order)
+      if (o.promo_code) await tx.query('SELECT 1 FROM promo_codes WHERE code = $1 FOR UPDATE', [o.promo_code]);
+      const rows = await tx.query<{ purchase_id: string }>(
+        `WITH p AS (
+           INSERT INTO purchases (user_id, store, transaction_id, product_id, environment, purchased_at, granted_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $6)
+           ON CONFLICT (store, transaction_id) DO NOTHING
+           RETURNING id, user_id
+         ), o AS (
+           UPDATE web_orders SET status = 'paid', paid_at = $6 WHERE id = $7 AND status = 'created' AND EXISTS (SELECT 1 FROM p)
+           RETURNING id
+         )
+         SELECT p.id AS purchase_id FROM p`,
+        [o.user_id, store, providerId, product.id, testPayment ? 'Sandbox' : 'Production', now, o.id],
+      );
+      if (rows.length) await grantPurchase(tx, { userId: o.user_id, purchaseId: rows[0].purchase_id, product, now });
+      // the pack always; its promo's bonus on top only if the code is still good
+      if (rows.length && o.promo_code) {
+        const got = await claimPromo(tx, o.user_id, o.promo_code, { product, purchaseId: rows[0].purchase_id }, now);
+        promoResult = 'bonusCents' in got ? `bonus:${got.bonusCents}` : `no_bonus:${got.error}`;
+      }
+      if (rows.length && o.creator_submission_id && !testPayment && !o.sandbox) {
+        await awardCheckoutCreatorCredit(tx, {
+          submissionId: o.creator_submission_id, product, buyer: o.user_id, storePurchaseId: rows[0].purchase_id,
+          paidCents: Number(o.amount_cents), now,
+        });
+      }
+      return rows;
+    });
+    return { granted, promo: promoResult };
+  };
+
+  /** Take back a paid web order, or cancel one that never paid — whoever took the money. */
+  const cancelWebOrder = async (o: WebOrderRow): Promise<void> => {
+    await db.withTransaction(async (tx) => {
+      // Take the order lock first, just like settlement. A concurrent refund
+      // either prevents the grant or reverses the already completed grant.
+      await tx.query(
+        `UPDATE web_orders SET status = CASE WHEN status = 'paid' THEN 'refunded' ELSE 'canceled' END
+          WHERE id = $1 AND status IN ('created', 'paid')`,
+        [o.id],
+      );
+      if (o.provider_order_id) await revokeStorePurchase(tx, o.provider as 'xsolla' | 'stripe', o.provider_order_id, clock());
+    });
+  };
 
   const webCheckout = async (c: Context<Env>) => {
     if (!cfg.xsolla) fail(404, 'buying on the web is not open yet: buy in the beech app');
@@ -3228,44 +3308,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
         return c.json(xsollaError('INCORRECT_AMOUNT', 'Incorrect amount'), 400);
       }
       if (currency && currency !== 'USD') log('local_currency', { currency });
-      const now = clock();
-      // Record the payment once, mark the order paid, and grant (beech bucks) and credit atomically.
-      // A retried webhook hits the purchases unique key and changes nothing.
-      // An order Xsolla already canceled is not revived by a late payment.
-      let promoResult: string | null = null;
-      const granted = await db.withTransaction(async (tx) => {
-        const [order] = await tx.query<{ status: string }>('SELECT status FROM web_orders WHERE id = $1 FOR NO KEY UPDATE', [o.id]);
-        if (order?.status !== 'created') return [];
-        // the promo's row before the player's (claimPromo's lock order)
-        if (o.promo_code) await tx.query('SELECT 1 FROM promo_codes WHERE code = $1 FOR UPDATE', [o.promo_code]);
-        const rows = await tx.query<{ purchase_id: string }>(
-          `WITH p AS (
-             INSERT INTO purchases (user_id, store, transaction_id, product_id, environment, purchased_at, granted_at)
-             VALUES ($1, 'xsolla', $2, $3, $4, $5, $5)
-             ON CONFLICT (store, transaction_id) DO NOTHING
-             RETURNING id, user_id
-           ), o AS (
-             UPDATE web_orders SET status = 'paid', paid_at = $5 WHERE id = $6 AND status = 'created' AND EXISTS (SELECT 1 FROM p)
-             RETURNING id
-           )
-           SELECT p.id AS purchase_id FROM p`,
-          [o.user_id, providerId, product.id, testPayment ? 'Sandbox' : 'Production', now, o.id],
-        );
-        if (rows.length) await grantPurchase(tx, { userId: o.user_id, purchaseId: rows[0].purchase_id, product, now });
-        // the pack always; its promo's bonus on top only if the code is still good
-        if (rows.length && o.promo_code) {
-          const got = await claimPromo(tx, o.user_id, o.promo_code, { product, purchaseId: rows[0].purchase_id }, now);
-          promoResult = 'bonusCents' in got ? `bonus:${got.bonusCents}` : `no_bonus:${got.error}`;
-        }
-        if (rows.length && o.creator_submission_id && !testPayment && !o.sandbox) {
-          await awardCheckoutCreatorCredit(tx, {
-            submissionId: o.creator_submission_id, product, buyer: o.user_id, storePurchaseId: rows[0].purchase_id,
-            paidCents: Number(o.amount_cents), now,
-          });
-        }
-        return rows;
-      });
-      log(granted.length ? 'granted' : 'already', { product: product.id, ...(promoResult ? { promo: promoResult } : {}) });
+      const { granted, promo } = await grantWebOrder(o, providerId, 'xsolla', testPayment);
+      log(granted.length ? 'granted' : 'already', { product: product.id, ...(promo ? { promo } : {}) });
       return c.body(null, 204);
     }
 
@@ -3276,16 +3320,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
         // nothing of ours to take back; don't make Xsolla retry for days
         return c.body(null, 204);
       }
-      await db.withTransaction(async (tx) => {
-        // Take the order lock first, just like settlement. A concurrent refund
-        // either prevents the grant or reverses the already completed grant.
-        await tx.query(
-          `UPDATE web_orders SET status = CASE WHEN status = 'paid' THEN 'refunded' ELSE 'canceled' END
-            WHERE id = $1 AND status IN ('created', 'paid')`,
-          [o.id],
-        );
-        if (o.provider_order_id) await revokeStorePurchase(tx, 'xsolla', o.provider_order_id, clock());
-      });
+      await cancelWebOrder(o);
       log('revoked', { was: o.status });
       return c.body(null, 204);
     }
@@ -3294,6 +3329,159 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     // on elsewhere (order_paid / order_canceled carry what we need)
     log('ignored');
     return c.body(null, 204);
+  });
+
+  // ---------------------------------------------------------------- web checkout (Stripe)
+  // docs/STRIPE_PAYMENTS.md. The backup to Xsolla: the same web_orders row
+  // and the same grant, through Stripe's hosted Checkout page instead of
+  // Pay Station. The client uses it only when Xsolla is off and Stripe is
+  // on; Xsolla stays the primary whenever it works.
+  const stripeSession = cfg.stripeSession ?? createCheckoutSession;
+
+  const stripeCheckout = async (c: Context<Env>) => {
+    if (!cfg.stripe) fail(404, 'buying on the web is not open yet: buy in the beech app');
+    const me = c.get('user').id;
+    if (!checkoutLimiter(me)) return c.json({ error: 'slow down' }, 429);
+    const { productId, promoCode } = await body<{ productId?: string; promoCode?: string }>(c);
+    const product = realMoneyProductById(productId ?? '');
+    if (!product) fail(404, 'no such product');
+    // A promo code never takes money off: it gives bonus bucks on top of a
+    // pack. Checked now so a bad code is said before paying; used only when
+    // the payment comes in, if still good.
+    const id = crypto.randomUUID();
+    const now = clock();
+    let promo: string | null = null;
+    let bonus = 0;
+    if (promoCode !== undefined && promoCode !== '') {
+      if (typeof promoCode !== 'string' || !isPromoCodeShape(promoCode)) fail(400, "that code isn't valid");
+      if (!packById(product!.id)) fail(400, 'codes give bonus bucks on beech-buck packs only');
+      promo = normalizePromoCode(promoCode);
+      bonus = await promoPreview(me, promo, product!, now);
+    }
+    const offer = await creatorOffer(db, product!);
+    const amount = salePriceCents(product!, offer) ?? fail(404, 'that product is not for sale');
+    // a free item has nothing to pay: it's claimed through /store/credit-purchase
+    if (amount === 0) fail(400, 'that one is free: claim it in the shop');
+    await db.query(
+      `INSERT INTO web_orders (id, user_id, product_id, amount_cents, sandbox, created_at, creator_submission_id, promo_code, provider)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'stripe')`,
+      [id, me, product!.id, amount, cfg.stripe!.sandbox, now, offer?.id ?? null, promo],
+    );
+    let s: { sessionId: string; url: string };
+    try {
+      s = await stripeSession(cfg.stripe!, {
+        userId: me,
+        productId: product!.id,
+        productName: product!.name,
+        amountCents: amount,
+        webOrderId: id,
+      });
+    } catch (e) {
+      // the order never got a session: nothing can pay it, so drop it
+      await db.query('DELETE FROM web_orders WHERE id = $1', [id]);
+      logEvent('stripe_checkout_error', { product: product!.id, message: (e as Error).message }, 'ERROR');
+      return c.json({ error: 'the checkout could not be opened right now: try again in a minute' }, 502);
+    }
+    await db.query('UPDATE web_orders SET provider_order_id = $2 WHERE id = $1', [id, s!.sessionId]);
+    logEvent('stripe_checkout', { product: product!.id, order: id, sandbox: cfg.stripe!.sandbox });
+    return c.json({ order: id, url: s!.url, ...(promo ? { promo, bonus: centsToBucks(bonus) } : {}) });
+  };
+  app.post('/store/stripe-checkout', requireUser, stripeCheckout);
+
+  /**
+   * Stripe's webhooks. Not session-authenticated: the signature is the
+   * authentication, checked over the raw body before anything is parsed.
+   * Answers 200 to anything verified and handled (including a repeat, so
+   * Stripe's retries are harmless), 400 otherwise.
+   */
+  app.post('/store/stripe/webhook', async (c) => {
+    if (!cfg.stripe) fail(404, 'not set up');
+    const s = cfg.stripe!;
+    const raw = new Uint8Array(await c.req.arrayBuffer());
+    if (!verifyStripeSignature(raw, c.req.header('Stripe-Signature'), s.webhookSecret)) {
+      logEvent('stripe_webhook', { outcome: 'bad_signature' }, 'WARNING');
+      return c.json({ error: 'invalid signature' }, 400);
+    }
+    let w: StripeEvent;
+    try {
+      w = JSON.parse(new TextDecoder().decode(raw)) as StripeEvent;
+    } catch {
+      return c.json({ error: 'invalid JSON' }, 400);
+    }
+    const type = w.type ?? '';
+    const obj = w.data?.object ?? {};
+    const log = (outcome: string, extra: Record<string, unknown> = {}, sev: 'INFO' | 'WARNING' | 'ERROR' = 'INFO') =>
+      logEvent('stripe_webhook', { type, outcome, order: obj.id ?? null, ...extra }, sev);
+    // a live event never grants in a test setup, and a test event never
+    // grants in a live one (Stripe sends both kinds to the same endpoint
+    // while the keys are being swapped)
+    if (w.livemode === true && s.sandbox) {
+      log('live_event_on_test', {}, 'ERROR');
+      return c.json({ error: 'live event in test mode' }, 400);
+    }
+    if (w.livemode === false && !s.sandbox) {
+      log('test_event_on_live', {}, 'ERROR');
+      return c.json({ error: 'test event in live mode' }, 400);
+    }
+
+    // find our order: the id we sent in metadata (and client_reference_id)
+    const ours = obj.metadata?.web_order ?? obj.client_reference_id;
+    const find = async () => {
+      if (ours && isUuid(ours)) return (await db.query<WebOrderRow>('SELECT * FROM web_orders WHERE id = $1', [ours]))[0];
+      return undefined;
+    };
+
+    if (type === 'checkout.session.completed') {
+      const o = await find();
+      if (!o || !obj.id || o.provider_order_id !== obj.id) {
+        log('unknown_order', {}, 'ERROR');
+        return c.json({ error: 'unknown order' }, 400);
+      }
+      // the session must be paid, for our order, our player, our price
+      if (obj.payment_status !== 'paid') {
+        log('unpaid_session', { payment_status: obj.payment_status }, 'ERROR');
+        return c.json({ error: 'session not paid' }, 400);
+      }
+      if (obj.metadata?.user_id && obj.metadata.user_id !== o.user_id) {
+        log('wrong_user', {}, 'ERROR');
+        return c.json({ error: 'wrong user' }, 400);
+      }
+      const currency = (obj.currency ?? '').toUpperCase();
+      if (currency !== 'USD' || Number(obj.amount_total) !== Number(o.amount_cents)) {
+        log('wrong_amount', { amount_total: obj.amount_total, want_cents: Number(o.amount_cents) }, 'ERROR');
+        return c.json({ error: 'incorrect amount' }, 400);
+      }
+      const testPayment = !w.livemode;
+      const { granted, promo } = await grantWebOrder(o, obj.id, 'stripe', testPayment);
+      log(granted.length ? 'granted' : 'already', { product: o.product_id, ...(promo ? { promo } : {}) });
+      return c.body(null, 200);
+    }
+
+    if (type === 'charge.refunded') {
+      const o = await find();
+      if (!o) {
+        log('unknown_order', {}, 'WARNING');
+        // nothing of ours to take back; don't make Stripe retry for days
+        return c.body(null, 200);
+      }
+      await cancelWebOrder(o);
+      log('revoked', { was: o.status });
+      return c.body(null, 200);
+    }
+
+    if (type === 'checkout.session.expired') {
+      const o = await find();
+      if (o && o.status === 'created') {
+        await cancelWebOrder(o);
+        log('expired', { was: o.status });
+      } else {
+        log('ignored');
+      }
+      return c.body(null, 200);
+    }
+
+    log('ignored');
+    return c.body(null, 200);
   });
 
   // ---------------------------------------------------------------- Steam Wallet (ISteamMicroTxn)
