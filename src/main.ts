@@ -835,6 +835,7 @@ async function boot() {
     } catch {
       return; // offline, or the server said not yet: nothing is lost, the roll is server-side
     }
+    refreshPaneStats();
     if (!res.found || !res.item || !res.rarity) return;
     refreshOwned();
     digFind.show({ item: res.item, rarity: res.rarity }, res.findsLeft ?? 0);
@@ -1058,6 +1059,8 @@ async function boot() {
   let paneOwner: () => { title: string; shoreCode?: string } = () => ({ title: `Your beach · ${beach.name}` });
   /** extra status chips (saved, visiting…): filled in by the account layer */
   let paneChips: () => string[] = () => [];
+  /** the stars and finds-today chips' numbers: fetched again by the account layer (not every frame) */
+  let refreshPaneStats: () => void = () => {};
   const SKY: [number, string][] = [
     [-6, '☾'],
     [6, '◒'],
@@ -2752,7 +2755,41 @@ async function boot() {
       syncChip = SYNC_CHIP[st] ?? '';
       updatePlace(true);
     });
-    paneChips = () => [neighbors?.viewing ? 'look only' : '', acct.user ? syncChip : ''].filter(Boolean);
+    // the stars on the beach in view, and your buried finds today (GET /pane):
+    // fetched when the beach in view changes, after a dig find, and every 2 minutes
+    let paneStats: { beach: string | null; stars: number | null; findsToday: number; findsCap: number } | null = null;
+    let paneStatsAt = 0;
+    let paneStatsBusy = false;
+    const paneBeach = () => neighbors?.beachAt(neighbors.nearestIndex(cam.focusX))?.id ?? (sync.id && sync.id !== LOCAL_BEACH ? sync.id : null);
+    refreshPaneStats = () => {
+      if (!account?.user || paneStatsBusy) return;
+      const beachId = paneBeach();
+      paneStatsBusy = true;
+      paneStatsAt = performance.now();
+      void account
+        .fetch(`/api/pane${beachId ? `?beach=${encodeURIComponent(beachId)}` : ''}`)
+        .then(async (r) => {
+          if (!r.ok) return;
+          const d = (await r.json()) as { stars: number | null; findsToday: number; findsCap: number };
+          paneStats = { beach: beachId, ...d };
+          updatePlace(true);
+        })
+        .catch(() => {})
+        .finally(() => (paneStatsBusy = false));
+    };
+    const statsChips = (): string[] => {
+      if (!account?.user) return [];
+      const stale = !paneStatsAt || performance.now() - paneStatsAt > 120_000;
+      if (stale || (paneStats && paneStats.beach !== paneBeach())) refreshPaneStats();
+      if (!paneStats) return [];
+      return [paneStats.stars !== null ? `★ ${paneStats.stars}` : '', `finds ${paneStats.findsToday}/${paneStats.findsCap}`].filter(Boolean);
+    };
+    account.onChange(() => {
+      paneStats = null;
+      paneStatsAt = 0;
+      updatePlace(true);
+    });
+    paneChips = () => [neighbors?.viewing ? 'look only' : '', acct.user ? syncChip : '', ...statsChips()].filter(Boolean);
     let toldTooBig = false;
     store.onState((st) => {
       if (st === 'tooBig' && !toldTooBig) showToast(uiRoot, 'This beach is too big to save. Smooth some of the sand and it will save again.');
