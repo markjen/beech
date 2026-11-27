@@ -509,6 +509,88 @@ export function createAdminApp(db: Db, cfg: AdminConfig): Hono<Env> {
     });
   });
 
+  // ---------------------------------------------------------------- referrals
+  // Who invited whom (docs/INVITES_GUIDE.md), for disputes and to spot
+  // farming: the latest referrals (optionally one player's, either side),
+  // and the players who invited the most, with how many settled in, how many
+  // came in the last day, and how many friends signed in the same way.
+  api.get('/referrals', async (c) => {
+    const q = (c.req.query('q') ?? '').trim().slice(0, 100);
+    const offset = Number(c.req.query('offset') ?? '0');
+    if (!Number.isSafeInteger(offset) || offset < 0) fail(400, 'bad offset');
+    const like = `%${q.replace(/[\\%_]/g, (m) => '\\' + m)}%`;
+    const rows = await db.query<{
+      created_at: string;
+      qualified_at: string | null;
+      reward_rank: number | null;
+      reward_item: string | null;
+      bonus_bucks: number | null;
+      code: string;
+      inviter_id: string;
+      inviter_name: string;
+      inviter_email: string | null;
+      invitee_id: string;
+      invitee_name: string;
+      invitee_email: string | null;
+      invitee_provider: string;
+      invitee_joined: string;
+    }>(
+      `SELECT r.created_at, r.qualified_at, r.reward_rank, r.reward_item, r.bonus_bucks, r.code,
+              a.id AS inviter_id, a.name AS inviter_name, a.email AS inviter_email,
+              b.id AS invitee_id, b.name AS invitee_name, b.email AS invitee_email, b.provider AS invitee_provider, b.created_at AS invitee_joined
+         FROM referrals r JOIN users a ON a.id = r.inviter_id JOIN users b ON b.id = r.invitee_id
+        WHERE $1 = '' OR a.name ILIKE $2 OR a.email ILIKE $2 OR b.name ILIKE $2 OR b.email ILIKE $2 OR r.code ILIKE $2
+           OR a.id::text = $1 OR b.id::text = $1
+        ORDER BY r.created_at DESC, r.invitee_id
+        LIMIT 51 OFFSET $3`,
+      [q, like, offset],
+    );
+    const dayAgo = clock() - 86400000;
+    const top = await db.query<{ id: string; name: string; email: string | null; n: string; settled: string; day: string; same_provider: string; rewarded: string }>(
+      `SELECT a.id, a.name, a.email, COUNT(*) AS n,
+              COUNT(r.qualified_at) AS settled,
+              COUNT(*) FILTER (WHERE r.created_at > $1) AS day,
+              COUNT(*) FILTER (WHERE b.provider = a.provider) AS same_provider,
+              COUNT(r.reward_rank) AS rewarded
+         FROM referrals r JOIN users a ON a.id = r.inviter_id JOIN users b ON b.id = r.invitee_id
+        GROUP BY a.id, a.name, a.email
+        ORDER BY COUNT(*) DESC, MAX(r.created_at) DESC
+        LIMIT 20`,
+      [dayAgo],
+    );
+    const totals = (
+      await db.query<{ n: string; settled: string; day: string }>(
+        `SELECT COUNT(*) AS n, COUNT(qualified_at) AS settled, COUNT(*) FILTER (WHERE created_at > $1) AS day FROM referrals`,
+        [dayAgo],
+      )
+    )[0];
+    const num = (v: string | number | null) => (v === null ? null : Number(v));
+    return c.json({
+      totals: { referrals: Number(totals.n), settled: Number(totals.settled), lastDay: Number(totals.day) },
+      top: top.map((t) => ({
+        id: t.id,
+        name: t.name,
+        email: t.email,
+        invited: Number(t.n),
+        settled: Number(t.settled),
+        lastDay: Number(t.day),
+        sameProvider: Number(t.same_provider),
+        rewarded: Number(t.rewarded),
+      })),
+      referrals: rows.slice(0, 50).map((r) => ({
+        at: Number(r.created_at),
+        code: r.code,
+        inviter: { id: r.inviter_id, name: r.inviter_name, email: r.inviter_email },
+        invitee: { id: r.invitee_id, name: r.invitee_name, email: r.invitee_email, provider: r.invitee_provider, joinedAt: Number(r.invitee_joined) },
+        settledAt: num(r.qualified_at),
+        rewardRank: num(r.reward_rank),
+        rewardItem: r.reward_item,
+        bonusBucks: num(r.bonus_bucks),
+      })),
+      more: rows.length > 50,
+    });
+  });
+
   // ---------------------------------------------------------------- beaches
   interface BeachRow {
     id: string;

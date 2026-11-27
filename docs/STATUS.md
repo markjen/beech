@@ -330,6 +330,12 @@ accepted the repo's default branch, so the deploy job ran only there.
   `GET /api/inventory` for owned, unexpired non-free items. Nothing writes to
   it yet.
 
+## Admin: referrals view (2026-11-27)
+
+The admin console has a read-only Referrals tab (`GET /api/referrals`):
+totals, the top 20 inviters and the latest referrals, searchable by either
+side's name, email, player id or the invite code. See INVITES_GUIDE.md.
+
 ## More guide steps (2026-11-27)
 
 Four more steps in the beach guide (INVITES_GUIDE.md): `clear` (a stroke
