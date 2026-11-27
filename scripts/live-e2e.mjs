@@ -19,10 +19,10 @@ const check = (cond, msg) => {
 const who = `live${Date.now() % 100000}`;
 
 // ------------------------------------------------------------------ the beach, from Node
-const api = async (path, init = {}, token) => {
+const api = async (path, init = {}, token, extraHeaders = {}) => {
   const r = await fetch(new URL(`api${path}`, URL_), {
     ...init,
-    headers: { ...(init.headers ?? {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    headers: { ...(init.headers ?? {}), ...extraHeaders, ...(token ? { Authorization: `Bearer ${token}` } : {}) },
   });
   return { status: r.status, body: r.headers.get('content-type')?.includes('json') ? await r.json() : null };
 };
@@ -103,19 +103,11 @@ check(!(mine.body.beaches[0].items?.nautilus > 0), 'the server counts no nautilu
 // (the same restore the checkpoints panel runs; slow here: a restore, then
 // the beach reloads)
 const beachId = mine.body.beaches[0].id;
-// through the page: it's the editor now (a restore needs its X-Edit-Token)
-const restoredRes = await page.evaluate(
-  async ([id, checkpoint]) => {
-    const a = window.__beech.account();
-    const r = await a.fetch(`/api/beaches/mine/${id}/restore`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...a.editHeaders() },
-      body: JSON.stringify({ checkpoint, mode: 'strict' }),
-    });
-    return { status: r.status };
-  },
-  [beachId, tide.payload.checkpoint],
-);
+// a restore replaces the beach: only the current editor may do it, so the
+// call carries the page's edit token (server/src/app.ts requireEditToken;
+// a bare call is refused 426, "this app is out of date")
+const editHeaders = await page.evaluate(() => window.__beech.account().editHeaders());
+const restoredRes = await api(`/beaches/mine/${beachId}/restore`, json('POST', { checkpoint: tide.payload.checkpoint, mode: 'strict' }), token, editHeaders);
 check(restoredRes.status === 200, `restoring "Before the tide" works (${restoredRes.status})`);
 const restored = (await api('/checkpoints', {}, token)).body.checkpoints.some((c) => c.kind === 'auto' && /Before the tide/.test(c.name));
 check(restored, 'the beach was restored from "Before the tide" (its own "Before restoring" copy is there for Undo)');

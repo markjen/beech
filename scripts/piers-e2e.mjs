@@ -102,7 +102,9 @@ if (shots) {
 
 // B: the same player on another device sees it
 const b = await device('B');
-await b.waitForTimeout(1500);
+// the pier arrives with the beach load, not on a fixed clock: wait for it
+// (a sleep here passed locally and failed on the loaded runner)
+await b.waitForFunction(() => window.__beech.neighbors().piersDrawn === 1, null, { timeout: 30000 });
 check((await drawn(b)) === 1, 'a second device draws the pier');
 
 // signed out, the public shore carries it
