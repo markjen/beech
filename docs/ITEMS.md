@@ -149,8 +149,10 @@ alternate a bright colour (red, blue or yellow by variant) with white.
 ## Shop
 
 Centrepieces sold individually (`server/src/products.ts`, prices in
-`docs/PRICING.md`). All fixed size, behaviour `fixed`, and one variant
-except the deckchair, which has three. Meshes are in `src/render/storeMeshes.ts`.
+`docs/PRICING.md`). All fixed size (rendered at 1.5× scale via `SHOP_SCALE`
+so they stand out as centrepieces on the 32 m beach), behaviour `fixed`, and
+one variant except the deckchair, which has three. Meshes are in
+`src/render/storeMeshes.ts` (and `deckchairMesh` in `src/render/objects.ts`).
 
 | Item | Kind | Rarity | Product | US price |
 |---|---|---|---|---|

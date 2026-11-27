@@ -9,7 +9,7 @@ import { OBJECT_KINDS, ROCK_HEIGHT, WOOD_RADIUS, floatRadius, type ObjectKind, t
 import { ORIGIN_X, ORIGIN_Z, type BeachRenderer } from './beachRenderer';
 import { box, finish, lathe, orient, rng } from './meshKit';
 import { Glow, type GlowHandle } from './glow';
-import { STORE_BUILDERS, STORE_REACH, isStoreKind } from './storeMeshes';
+import { SHOP_SCALE, STORE_BUILDERS, STORE_REACH, isShopKind, isStoreKind } from './storeMeshes';
 import { itemById } from '../world/items';
 
 /**
@@ -699,11 +699,11 @@ function extent(o: PlacedObject): { reach: number; height: number } {
       : o.kind === 'hammock' ? 1.1
       : o.kind === 'towel' ? 0.3
       : 1.4;
-    return { reach: STORE_REACH[o.kind], height };
+    return { reach: STORE_REACH[o.kind] * SHOP_SCALE, height: height * SHOP_SCALE };
   }
   switch (o.kind) {
     case 'deckchair':
-      return { reach: 0.6, height: 0.8 };
+      return { reach: 0.6 * SHOP_SCALE, height: 0.8 * SHOP_SCALE };
     case 'beachball':
       return { reach: o.size, height: o.size * 2 };
     case 'bucket':
@@ -1234,9 +1234,10 @@ export class ObjectView {
   private add(st: ObjectState): void {
     const look = this.bank.look(st);
     const insts: Inst[] = look.parts.map((p) => ({ src: p.src, slot: -1 }));
-    let sx = 1;
-    let sy = 1;
-    let sz = 1;
+    const shop = isShopKind(st.kind);
+    let sx = shop ? SHOP_SCALE : 1;
+    let sy = shop ? SHOP_SCALE : 1;
+    let sz = shop ? SHOP_SCALE : 1;
     if (LINEAR.has(st.kind)) sx = sy = sz = st.size / look.base;
     else if (st.kind === 'driftwood') {
       sx = st.size / look.base;
@@ -1249,7 +1250,8 @@ export class ObjectView {
     const special = ITEM_LOOKS[st.item]?.glow ?? (rarity === 'rare' || rarity === 'legendary' || rarity === 'unique' ? rarity : null);
     if (special || look.lights.length) {
       const { reach, height } = extent(st);
-      s.glow = this.bank.glow.attach(special, reach, height, look.lights, st.id + st.variant * 7);
+      const lights = shop && look.lights.length ? look.lights.map((p) => p.scale(SHOP_SCALE)) : look.lights;
+      s.glow = this.bank.glow.attach(special, reach, height, lights, st.id + st.variant * 7);
       if (this.hidden) s.glow.setEnabled(false);
     }
     this.shown.set(st.id, s);
