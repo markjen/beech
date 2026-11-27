@@ -331,6 +331,14 @@ accepted the repo's default branch, so the deploy job ran only there.
   `GET /api/inventory` for owned, unexpired non-free items. Nothing writes to
   it yet.
 
+## Inland rows on beechshore.com's pictures (2026-11-27)
+
+Mark: make the pictures taller. Thumbnails and a beach page's flat view
+(`/img/CODE/plan.png`) are taller by the rows, drawn from the app's own row
+shapes (now in Babylon-free `src/render/sectionShapes.ts`, bundled into
+`server/src/generated/sections.ts`). The link-preview card stays 1200×630.
+Rows are in the picture version. Not yet in the 3D views. INLAND_SECTIONS.md.
+
 ## Admin system messages (2026-11-27)
 
 Admin console → **News**: one message (≤140 characters) to every player's

@@ -113,8 +113,8 @@ picked up.
 - [ ] **Inland sections, follow-ups** ([INLAND_SECTIONS.md](INLAND_SECTIONS.md)):
   sand extensions behind a non-sand row are still scenery, and a sand
   row's sand stays with its position rather than its copy (playable sand
-  is the leading sand rows, INLAND_SECTIONS.md); draw the rows on beechshore.com's pictures and 3D views (and put
-  them in the pictures' `?v=`).
+  is the leading sand rows, INLAND_SECTIONS.md); draw the rows in
+  beechshore.com's 3D views (the flat pictures have them since 2026-11-27).
 - [ ] **Palm-first UI, follow-ups**: (stars and finds-today chips done
   2026-11-27; no credit/sand-bucks chip: Mark, 2026-11-26, the balance is
   only useful in the shop). Tap-the-sand-to-close was left out:
@@ -205,6 +205,10 @@ picked up.
 
 ## Done (recent)
 
+- [x] **Inland rows on beechshore.com's pictures** (2026-11-27; Mark: "make
+  pictures taller"): the thumbnail and the beach page's flat view are taller
+  by the rows, drawn from the app's own shapes; the link-preview card stays
+  1200×630. The rows are in the pictures' `?v=`. INLAND_SECTIONS.md.
 - [x] **Copy: one order for the whole basket** (2026-11-27): already true
   since beech bucks. "Buy what's missing" is one `POST /store/buy { basket }`
   in bb, and real money only buys a pack, so there is no multi-product card

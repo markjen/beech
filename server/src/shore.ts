@@ -94,10 +94,23 @@ export type Step = BeachJson & { linked: boolean };
  * pictures without a save (docs/PIERS.md). Picture URLs are cached for
  * good, so anything drawn has to be in here.
  */
-export const imageVersion = (updatedAt: number | string | null | undefined, pier: boolean | undefined, version?: number | string | null): string =>
-  `${updatedAt ?? 0}${version ? `-${version}` : ''}${pier ? PIER_LOOK : ''}`;
+export const imageVersion = (
+  updatedAt: number | string | null | undefined,
+  pier: boolean | undefined,
+  version?: number | string | null,
+  sections?: readonly string[] | string | null,
+): string => `${updatedAt ?? 0}${version ? `-${version}` : ''}${pier ? PIER_LOOK : ''}${rowsTag(sections)}`;
 /** the pier's look in pictures: bump when its shape changes (2: the higher deck, 2026-11-27) */
 const PIER_LOOK = 'p2';
+
+/** the inland rows in a picture's version: their types change the picture without a save (docs/INLAND_SECTIONS.md) */
+function rowsTag(sections: readonly string[] | string | null | undefined): string {
+  const list = typeof sections === 'string' ? sections.split(',') : sections ?? [];
+  if (!list.length) return '';
+  let h = 0;
+  for (const ch of list.join(',')) h = (Math.imul(h, 31) + ch.charCodeAt(0)) | 0;
+  return `s${list.length}${(h >>> 0).toString(36)}`;
+}
 
 /** Can anyone, signed in or not, see this beach (beechshore.com)? On the shore and saved. */
 export const isPublic = (r: Pick<NodeRow, 'on_shore' | 'saved'>): boolean => !!r.on_shore && !!r.saved;
