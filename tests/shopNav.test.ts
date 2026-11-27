@@ -10,6 +10,7 @@ describe('shop offer categorization', () => {
     expect(byId.get('beach_1')).toBe('beaches');
     expect(byId.get('beach_3')).toBe('beaches');
     expect(byId.get('item_pier')).toBe('beaches');
+    expect(byId.get('item_section_sand')).toBe('beaches');
 
     expect(byId.get('food_pack_10')).toBe('pets');
     expect(byId.get('food_pack_35')).toBe('pets');
