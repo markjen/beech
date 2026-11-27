@@ -4500,7 +4500,14 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     } catch {
       fail(401, 'not allowed');
     }
-    const r = await pushTick(db, pushSend, clock);
+    let r: Awaited<ReturnType<typeof pushTick>>;
+    try {
+      r = await pushTick(db, pushSend, clock);
+    } catch (e) {
+      // the same event the server's own timer logs: it drives the push alert (infra/monitoring.tf)
+      logEvent('push_tick_error', { message: (e as Error).message }, 'WARNING');
+      throw e;
+    }
     if (r.pushes) logEvent('push_tick', { ...r });
     return c.json(r);
   });

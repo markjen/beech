@@ -7,8 +7,8 @@
 #
 # Cost: uptime checks are $0.30/1,000 executions with 1M free per project
 # per month (up to 5 checks x 1/min = ~216k/month, free). Each alert
-# condition is $0.10/month (11 conditions = $1.10/month, up to 14 =
-# $1.40/month once the three conditional uptime checks exist — the uptime
+# condition is $0.10/month (13 conditions = $1.30/month, up to 16 =
+# $1.60/month once the three conditional uptime checks exist — the uptime
 # policy gains one condition per check that exists). Dashboards,
 # notification channels and log-based metrics are free within the free
 # tiers (log ingestion: 50 GiB/project/month free). The $100/month budget
@@ -187,6 +187,41 @@ resource "google_logging_metric" "db_errors" {
     metric_kind = "DELTA"
     value_type  = "INT64"
     unit        = "1"
+  }
+
+  depends_on = [google_project_service.logging]
+}
+
+# Push notifications (docs/INBOX_NOTIFICATIONS.md, "Push"): a tick that
+# failed outright (server/src/server.ts's timer, or POST /api/push/tick from
+# Cloud Scheduler), and how many sends failed in each tick that pushed.
+resource "google_logging_metric" "push_tick_errors" {
+  project = var.project_id
+  name    = "beech_push_tick_errors_total"
+  filter  = "${local.beech_log_filter} AND jsonPayload.event=\"push_tick_error\""
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "INT64"
+    unit        = "1"
+  }
+
+  depends_on = [google_project_service.logging]
+}
+
+resource "google_logging_metric" "push_failed" {
+  project = var.project_id
+  name    = "beech_push_failed"
+  filter  = "${local.beech_log_filter} AND jsonPayload.event=\"push_tick\""
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "DISTRIBUTION"
+    unit        = "1"
+  }
+  value_extractor = "EXTRACT(jsonPayload.failed)"
+  bucket_options {
+    explicit_buckets {
+      bounds = [0, 1, 2, 5, 10, 20, 50, 100]
+    }
   }
 
   depends_on = [google_project_service.logging]
@@ -651,6 +686,59 @@ resource "google_monitoring_alert_policy" "db_errors" {
   }
 
   depends_on = [google_project_service.monitoring, google_logging_metric.db_errors]
+}
+
+resource "google_monitoring_alert_policy" "push_tick_errors" {
+  project               = var.project_id
+  display_name          = "beech: push tick failing"
+  combiner              = "OR"
+  notification_channels = [google_monitoring_notification_channel.email.id]
+  documentation {
+    content   = "The push tick (Cloud Scheduler's POST /api/push/tick, or the server's own timer) threw at least twice in 15 minutes, so notifications aren't going out. In Logs Explorer look for jsonPayload.event=\"push_tick_error\" (the message says why) and db_error lines around it. docs/INBOX_NOTIFICATIONS.md, \"Push\"."
+    mime_type = "text/markdown"
+  }
+  conditions {
+    display_name = "push tick errors"
+    condition_threshold {
+      filter          = "metric.type=\"logging.googleapis.com/user/beech_push_tick_errors_total\" AND resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"beech\""
+      duration        = "0s"
+      comparison      = "COMPARISON_GT"
+      threshold_value = 1
+      aggregations {
+        alignment_period     = "900s"
+        per_series_aligner   = "ALIGN_DELTA"
+        cross_series_reducer = "REDUCE_SUM"
+      }
+    }
+  }
+
+  depends_on = [google_project_service.monitoring, google_logging_metric.push_tick_errors]
+}
+
+resource "google_monitoring_alert_policy" "push_failed" {
+  project               = var.project_id
+  display_name          = "beech: many push sends failing"
+  combiner              = "OR"
+  notification_channels = [google_monitoring_notification_channel.email.id]
+  documentation {
+    content   = "Ticks that pushed averaged more than 5 failed sends each over 30 minutes: a push service (web push, APNs, FCM) is refusing or timing out, or a key expired. Failed sends are retried next tick; devices that are gone are dropped. Look at jsonPayload.event=\"push_tick\" lines (sent / gone / failed) and push_config at startup. docs/INBOX_NOTIFICATIONS.md, \"Push: as built\"."
+    mime_type = "text/markdown"
+  }
+  conditions {
+    display_name = "mean failed sends per tick > 5"
+    condition_threshold {
+      filter          = "metric.type=\"logging.googleapis.com/user/beech_push_failed\" AND resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"beech\""
+      duration        = "0s"
+      comparison      = "COMPARISON_GT"
+      threshold_value = 5
+      aggregations {
+        alignment_period   = "1800s"
+        per_series_aligner = "ALIGN_MEAN"
+      }
+    }
+  }
+
+  depends_on = [google_project_service.monitoring, google_logging_metric.push_failed]
 }
 
 resource "google_monitoring_alert_policy" "db_slow_queries" {

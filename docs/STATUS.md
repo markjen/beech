@@ -331,6 +331,13 @@ accepted the repo's default branch, so the deploy job ran only there.
   `GET /api/inventory` for owned, unexpired non-free items. Nothing writes to
   it yet.
 
+## Push alerts (2026-11-27)
+
+Two alert policies in `infra/monitoring.tf` (not applied yet: `terraform
+apply` from `infra/`): a failing push tick (`push_tick_error`, now also
+logged by `POST /api/push/tick`, the route Cloud Scheduler calls) and a
+high mean `failed` count per pushing tick. OBSERVABILITY.md.
+
 ## Promo codes give bonus beech bucks (2026-11-27)
 
 Promo codes give bonus beech bucks (`bucks` or `percent` of a pack's bb),
