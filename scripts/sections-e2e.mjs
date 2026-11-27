@@ -80,17 +80,6 @@ check(JSON.stringify(saved?.sections) === JSON.stringify(['section-picnic', 'sec
 check((await drawn(a)) === 2, 'the saved rows are drawn');
 if (shots) await a.screenshot({ path: `${shots}/sections-saved.png` });
 
-// B: the same player on another device sees them
-const b = await device('B');
-await b.waitForTimeout(1500);
-check((await drawn(b)) === 2, 'a second device draws the rows');
-const shore = await api(b, `/api/shore?code=${home.code}&depth=0`);
-check(JSON.stringify(shore.body?.center?.sections) === JSON.stringify(['section-picnic', 'section-boardwalk']), 'the shore carries the rows');
-
-// a stale layout from the second device is refused
-const stale = await api(b, `/api/beaches/mine/${home.id}/sections`, { method: 'PUT', body: JSON.stringify({ rows: [], rev: 0 }) });
-check(stale.status === 409, 'a write from an old layout is refused');
-
 // replace a row in place: the picnic grove (front row) becomes a boardwalk,
 // the second copy in the bag; the grove goes back to the bag
 await a.evaluate(() => window.__beech.account().loadBeaches());
@@ -104,6 +93,17 @@ await a.waitForSelector('.sections-editor', { state: 'hidden', timeout: 10000 })
 await a.waitForTimeout(800);
 const replaced = await a.evaluate((id) => window.__beech.account().mine(id), home.id);
 check(JSON.stringify(replaced?.sections) === JSON.stringify(['section-boardwalk', 'section-boardwalk']), 'a row replaced in place, the others where they were');
+
+// B: the same player on another device sees them
+const b = await device('B');
+await b.waitForTimeout(1500);
+check((await drawn(b)) === 2, 'a second device draws the rows');
+const shore = await api(b, `/api/shore?code=${home.code}&depth=0`);
+check(JSON.stringify(shore.body?.center?.sections) === JSON.stringify(['section-boardwalk', 'section-boardwalk']), 'the shore carries the rows');
+
+// a stale layout from the second device is refused
+const stale = await api(b, `/api/beaches/mine/${home.id}/sections`, { method: 'PUT', body: JSON.stringify({ rows: [], rev: 0 }) });
+check(stale.status === 409, 'a write from an old layout is refused');
 
 check(errors.length === 0, `no page errors${errors.length ? `: ${errors.join('; ')}` : ''}`);
 await closeBrowser();
