@@ -74,5 +74,16 @@
 	<string>Used once, on your device, to pick the beach nearest to you. Your location is never stored or sent anywhere.</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<!-- google-signin-url-scheme -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.650382817342-ccjl9igamsn4fuclkqqk9dmqnc0a4pr6</string>
+			</array>
+		</dict>
+	</array>
+	<!-- /google-signin-url-scheme -->
 </dict>
 </plist>
