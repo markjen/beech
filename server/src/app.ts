@@ -4119,7 +4119,15 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     if (shells === null && note === null && item === null) fail(400, 'leave a rating, a note or a gift');
     await db.withTransaction(async (tx) => {
       // Serialize a sender’s limits and commit the gift, note, rating and inbox together.
-      await tx.query('SELECT 1 FROM users WHERE id = $1 FOR NO KEY UPDATE', [me]);
+      // The note suspension is read here, under the same row lock the admin's
+      // suspension takes (specs/tla/NoteSuspension.tla: checked before the
+      // transaction, a suspension could land between the check and the note).
+      const sender = (
+        await tx.query<{ until: string | null }>('SELECT notes_suspended_until AS until FROM users WHERE id = $1 FOR NO KEY UPDATE', [me])
+      )[0];
+      if (note !== null && sender?.until !== null && sender?.until !== undefined && Number(sender.until) > now) {
+        fail(403, `notes are paused on your account until ${new Date(Number(sender.until)).toISOString().slice(0, 10)}`);
+      }
       if (note !== null) {
         const n = (
           await tx.query<{ hour: string; here: string }>(

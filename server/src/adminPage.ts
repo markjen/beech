@@ -794,12 +794,18 @@ $('tab-bucks').addEventListener('click', (e) => {
   $('bucks-search').elements.q.value = t.dataset.q;
   loadBucks(false).catch((err) => say(err.message));
 });
+// a sender's notes: suspended until a date (with lift), or a suspend control
+const senderNotes = (f) => f.notesSuspendedUntil
+  ? '<br><span class="tag off">notes paused until ' + esc(new Date(f.notesSuspendedUntil).toLocaleDateString()) + '</span> <button type="button" data-notes-lift="' + esc(f.id) + '">Lift</button>'
+  : '<br><select data-notes-days="' + esc(f.id) + '" aria-label="Suspend for"><option value="1">1 day</option><option value="7" selected>7 days</option><option value="30">30 days</option><option value="365">365 days</option></select>' +
+    ' <label><input type="checkbox" data-notes-hide="' + esc(f.id) + '" checked> hide their notes</label>' +
+    ' <button type="button" data-notes-suspend="' + esc(f.id) + '">Suspend notes</button>';
 async function loadReports() {
   const { reports } = await api('/reports' + ($('reports-all').checked ? '?all=1' : ''));
   const el = $('reports');
   el.innerHTML = reports.length ? '<table><tr><th>When</th><th>Note</th><th>From</th><th>To</th><th>Reason</th><th></th></tr>' +
     reports.map((r) => '<tr><td>' + when(r.at) + '</td><td>' + (r.hidden ? '<s>' + esc(r.note) + '</s>' : esc(r.note)) + '</td><td>' +
-      (r.from ? esc(r.from.name) + ' <span class="mono">' + esc(r.from.code || '') + '</span><br><span class="muted">' + esc(r.from.email || '') + ' · ' + r.senderReports + ' report(s)</span>' : '<span class="muted">deleted</span>') +
+      (r.from ? esc(r.from.name) + ' <span class="mono">' + esc(r.from.code || '') + '</span><br><span class="muted">' + esc(r.from.email || '') + ' · ' + r.senderReports + ' report(s)</span>' + senderNotes(r.from) : '<span class="muted">deleted</span>') +
       '</td><td>' + esc(r.to.name) + ' <span class="mono">' + esc(r.to.code || '') + '</span></td><td>' + esc(r.reason) + '</td><td>' +
       (r.resolvedAt ? esc(r.resolution) + '<br><span class="muted">' + esc(r.resolvedBy || '') + '</span>'
         : '<button type="button" data-report-hide="' + r.id + '">Hide note</button> <button type="button" data-report-dismiss="' + r.id + '">Dismiss</button>') +
@@ -811,6 +817,19 @@ async function loadReports() {
   }));
   act('data-report-hide', 'hide');
   act('data-report-dismiss', 'dismiss');
+  el.querySelectorAll('[data-notes-suspend]').forEach((b) => b.addEventListener('click', async () => {
+    const id = b.getAttribute('data-notes-suspend');
+    const row = b.closest('tr') || el;
+    const days = Number(row.querySelector('[data-notes-days="' + id + '"]').value);
+    const hide = row.querySelector('[data-notes-hide="' + id + '"]').checked;
+    if (!confirm('Suspend this player’s notes for ' + days + ' day(s)' + (hide ? ' and hide every note of theirs?' : '?'))) return;
+    try { const r = await post('/senders/' + id + '/suspend-notes', { days, hide }); say('Notes suspended' + (hide ? ', ' + r.hidden + ' hidden' : ''), true); await loadReports(); }
+    catch (e) { say(e.message); }
+  }));
+  el.querySelectorAll('[data-notes-lift]').forEach((b) => b.addEventListener('click', async () => {
+    try { await post('/senders/' + b.getAttribute('data-notes-lift') + '/lift-notes', {}); say('Notes suspension lifted', true); await loadReports(); }
+    catch (e) { say(e.message); }
+  }));
 }
 $('reports-all').addEventListener('change', () => loadReports().catch((e) => say(e.message)));
 

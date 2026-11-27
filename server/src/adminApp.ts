@@ -1172,10 +1172,11 @@ export function createAdminApp(db: Db, cfg: AdminConfig): Hono<Env> {
       id: string; note_id: string; body: string; hidden_at: string | null; reason: string; created_at: string;
       resolved_at: string | null; resolution: string | null; resolved_by: string | null;
       from_name: string | null; from_email: string | null; from_code: string | null; to_name: string; to_code: string | null;
-      sender_reports: string;
+      sender_reports: string; from_id: string | null; from_suspended_until: string | null;
     }>(
       `SELECT r.id, r.note_id, n.body, n.hidden_at, r.reason, r.created_at, r.resolved_at, r.resolution, r.resolved_by,
               f.name AS from_name, f.email AS from_email, fh.code AS from_code, t.name AS to_name, th.code AS to_code,
+              f.id AS from_id, f.notes_suspended_until AS from_suspended_until,
               (SELECT COUNT(*) FROM reports r2 JOIN notes n2 ON n2.id = r2.note_id WHERE n2.from_id = n.from_id) AS sender_reports
          FROM reports r
          JOIN notes n ON n.id = r.note_id
@@ -1198,7 +1199,16 @@ export function createAdminApp(db: Db, cfg: AdminConfig): Hono<Env> {
         resolvedAt: r.resolved_at === null ? null : Number(r.resolved_at),
         resolution: r.resolution,
         resolvedBy: r.resolved_by,
-        from: r.from_name === null ? null : { name: r.from_name, email: r.from_email, code: r.from_code },
+        from: r.from_name === null
+          ? null
+          : {
+              id: r.from_id,
+              name: r.from_name,
+              email: r.from_email,
+              code: r.from_code,
+              // their notes are suspended until then (null: they aren't)
+              notesSuspendedUntil: r.from_suspended_until !== null && Number(r.from_suspended_until) > clock() ? Number(r.from_suspended_until) : null,
+            },
         to: { name: r.to_name, code: r.to_code },
         senderReports: Number(r.sender_reports),
       })),
@@ -1207,6 +1217,40 @@ export function createAdminApp(db: Db, cfg: AdminConfig): Hono<Env> {
 
   // hide the note (the recipient's inbox then says it was removed) or dismiss
   // the report; either way every open report on that note is closed
+  // Suspend a sender's notes (specs/tla/NoteSuspension.tla): for `days`, and
+  // with `hide`, every note of theirs still shown is hidden too. One
+  // transaction, the user row first: a visit checks the suspension under that
+  // row's lock, so no note of theirs lands after this commits.
+  const SUSPEND_DAYS = [1, 7, 30, 365];
+  api.post('/senders/:id/suspend-notes', async (c) => {
+    const id = c.req.param('id');
+    if (!UUID_PATTERN.test(id)) fail(404, 'no such player');
+    const { days, hide } = await body<{ days?: number; hide?: boolean }>(c);
+    if (!SUSPEND_DAYS.includes(Number(days))) fail(400, `days is one of ${SUSPEND_DAYS.join(', ')}`);
+    const now = clock();
+    const until = now + Number(days) * 86400000;
+    const actor = c.get('actor');
+    const hidden = await db.withTransaction(async (tx) => {
+      const u = await tx.query('UPDATE users SET notes_suspended_until = $2 WHERE id = $1 RETURNING id', [id, until]);
+      if (u.length === 0) fail(404, 'no such player');
+      const h = hide === true ? await tx.query('UPDATE notes SET hidden_at = $2 WHERE from_id = $1 AND hidden_at IS NULL RETURNING id', [id, now]) : [];
+      await audit(actor, 'notes.suspend', 'user', id, { days: Number(days), until, hidden: h.length }, tx);
+      return h.length;
+    });
+    return c.json({ id, notesSuspendedUntil: until, hidden });
+  });
+  api.post('/senders/:id/lift-notes', async (c) => {
+    const id = c.req.param('id');
+    if (!UUID_PATTERN.test(id)) fail(404, 'no such player');
+    const actor = c.get('actor');
+    await db.withTransaction(async (tx) => {
+      const u = await tx.query('UPDATE users SET notes_suspended_until = NULL WHERE id = $1 RETURNING id', [id]);
+      if (u.length === 0) fail(404, 'no such player');
+      await audit(actor, 'notes.lift', 'user', id, {}, tx);
+    });
+    return c.json({ id, notesSuspendedUntil: null });
+  });
+
   api.post('/reports/:id/resolve', async (c) => {
     const id = Number(c.req.param('id'));
     if (!Number.isSafeInteger(id)) fail(404, 'no such report');

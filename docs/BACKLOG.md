@@ -189,8 +189,13 @@ picked up.
   tested against a fake push service only); a monitoring alert on
   `push_tick_error` and on a high `failed` count; an admin `system` push
   ("week 2's vending set"), which needs its own pref and rate.
+<<<<<<< HEAD
 - [ ] **Admin: suspend a sender's notes** after repeated reports (today
   the admin can hide a note or dismiss the report).
+=======
+- [ ] **Ratings on name tags**: the shore walk's JSON carries each beach's
+  average, shown on the name tags along the shore (today: in the visitor card).
+>>>>>>> 6c3492f (Admin: suspend a sender's notes (model first: NoteSuspension.tla))
 - [ ] **Flaky tests**: `npm run e2e:checkpoints` times out at varying
   steps in the cloud container, also on main (so do `neighbors`, `live`,
   `shore`, `beaches` and `leaderboard`: signing a second device in).
@@ -224,6 +229,9 @@ picked up.
 
 ## Done (recent)
 
+- [x] **Admin: suspend a sender's notes** (2026-11-27): 1/7/30/365 days,
+  optionally hiding their shown notes, from the Reports tab; visits with a
+  note are refused while it lasts. `specs/tla/NoteSuspension.tla`.
 - [x] **Long-press to pick up and drag items** (2026-11-27): already built
   (`thingAt`/`dragging` in `src/main.ts`, `Gestures.grabAt` in look mode);
   `npm run e2e:sandbox` now checks it in look mode and with a tool picked,
