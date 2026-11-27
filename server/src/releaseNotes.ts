@@ -37,6 +37,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       'Before you place a pier, its preview is see-through and paler, so it’s clear it isn’t placed yet.',
       'When you look at someone’s beach, its average rating in shells and how many have rated it now show next to the star, once a few people have rated it.',
       'The beach guide has four more steps, each with a small gift: clear some sand away, calm the waves, try the vending machine and save a checkpoint.',
+      'Going home right after following an invite link no longer gets undone when the visit you left behind finishes loading.',
     ],
   },
   {
