@@ -198,12 +198,11 @@ await page.click('[data-act="dirt"]');
   // frames — and rAF runs at ~1 fps in this headless shell with rendering
   // off, so the stability check flakes. The handler is what matters here.
   await page.click('.beachfile [data-act="apply"]', { force: true });
-  // 60 s, not 10: applying an import saves a "Before import" checkpoint,
-  // and the checkpoints panel draws a thumbnail per row — a canvas readback
-  // that stalls the main thread ~25 s on software rendering (CDP profiler:
-  // toBlob is 97% of samples over the stall). The parasol itself lands
-  // in ~1 s once the thread is free.
-  await page.waitForFunction(() => window.__beech.info().objects.some((o) => o.item === 'parasol'), null, { timeout: 60000 });
+  // applying an import saves a "Before import" checkpoint, and the
+  // checkpoints panel draws a thumbnail per row — but the canvas itself is
+  // the thumbnail now (no pixel readback), so that no longer stalls the
+  // main thread. The parasol itself lands in ~1 s.
+  await page.waitForFunction(() => window.__beech.info().objects.some((o) => o.item === 'parasol'), null, { timeout: 10000 });
   const items = await page.evaluate(() => window.__beech.info().objects.filter((o) => !o.wild).map((o) => o.item).sort().join());
   check(items === 'parasol,rock', `the imported beach replaced this one (${items})`);
   // the import marks the beach changed; wait for that save to start and finish

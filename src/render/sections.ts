@@ -41,9 +41,14 @@ export const rowZ = (i: number): number => WORLD_SIZE_Z + ORIGIN_Z + i * SECTION
  * Every beach's rows in view. `sync` is given the rows that should show,
  * and builds, moves or drops meshes to match.
  */
+/** how many beaches' rows are kept hidden after they leave the view, to show again without a rebuild */
+const SPARE = 6;
+
 export class SectionLayer {
   private mats = new Map<string, ShaderMaterial>();
   private shown = new Map<string, { sig: string; x: number; root: Mesh }>();
+  /** rows that left the view, by key and layout, oldest first */
+  private spare = new Map<string, { sig: string; x: number; root: Mesh }>();
 
   constructor(
     private readonly scene: Scene,
@@ -91,14 +96,31 @@ export class SectionLayer {
     const keep = new Map(want.map((w) => [w.key, sigOf(w)]));
     for (const [key, s] of this.shown) {
       if (keep.get(key) === s.sig) continue;
-      s.root.dispose(false, false);
       this.shown.delete(key);
+      if (keep.has(key)) {
+        s.root.dispose(false, false); // a new layout: this one won't be back
+        continue;
+      }
+      // scrolled out of view: keep it a while, scrolling back is common
+      s.root.setEnabled(false);
+      this.spare.set(`${key}|${s.sig}`, s);
+      for (const [k, old] of this.spare) {
+        if (this.spare.size <= SPARE) break;
+        old.root.dispose(false, false);
+        this.spare.delete(k);
+      }
     }
     for (const w of want) {
       if (w.rows.length <= (w.from ?? 0)) continue;
       let s = this.shown.get(w.key);
       if (!s) {
-        s = { sig: sigOf(w), x: Number.NaN, root: this.build(w) };
+        const sig = sigOf(w);
+        const k = `${w.key}|${sig}`;
+        s = this.spare.get(k);
+        if (s) {
+          this.spare.delete(k);
+          s.root.setEnabled(true);
+        } else s = { sig, x: Number.NaN, root: this.build(w) };
         this.shown.set(w.key, s);
       }
       if (s.x !== w.x) {
@@ -117,6 +139,8 @@ export class SectionLayer {
 
   dispose(): void {
     this.sync([]);
+    for (const s of this.spare.values()) s.root.dispose(false, false);
+    this.spare.clear();
     for (const m of this.mats.values()) m.dispose();
     this.mats.clear();
   }

@@ -107,6 +107,8 @@ export class NeighborView {
   private shoreListeners: (() => void)[] = [];
   /** bumps on every refresh/clear so a slow, older refresh can't overwrite a newer one */
   private generation = 0;
+  /** bumps on every anchorAt/clear so a slow, older visit can't overwrite a newer one */
+  private anchorGeneration = 0;
   private chairView = false;
   private pollTimer = 0;
   private liveTimer = 0;
@@ -325,8 +327,12 @@ export class NeighborView {
       // which of the two is towards +x
       const upIsPos = this.xFor(e.index + 1) > this.xFor(e.index);
       const rowsJoined = sectionJoins(rows, upIsPos ? down : up, upIsPos ? up : down);
-      // sand rows straight behind are the beach's own sand, as deep as it's drawn now
-      const drawn = e.beach.id === this.liveId ? this.liveRenderer?.grid : e.slot?.renderer?.grid;
+      // sand rows straight behind are the beach's own sand, as deep as it's
+      // drawn. A beach just outside the window has no slot yet: use the depth
+      // it's loaded at (prefetched), so its rows aren't built once without
+      // the sand and again with it as it scrolls in and out.
+      const st = this.store.peek(e.beach.id);
+      const drawn = e.beach.id === this.liveId ? this.liveRenderer?.grid : (e.slot?.renderer?.grid ?? (st ? this.store.gridOf(st) : undefined));
       const from = Math.min(sandRowsOf(rows), drawn ? this.store.grids.sandRows(drawn.ny) : 0);
       want.push({ key: `${e.beach.id}@${e.index}`, x: this.xFor(e.index), rows: rowsJoined, from });
     }
@@ -512,8 +518,13 @@ export class NeighborView {
    * there's no such beach.
    */
   async anchorAt(code: string | null): Promise<void> {
+    const gen = ++this.anchorGeneration;
     if (code) {
       const shore = await this.api.shore(code, 0); // check it exists first
+      // a newer visit started while the check was in flight: it owns the
+      // anchor now, so this one stands down instead of overwriting it (the
+      // last call wins, not the last fetch to finish)
+      if (gen !== this.anchorGeneration) return;
       if (!shore.center) throw new Error('could not find that beach');
     }
     if (code === this.anchor && this.entries.size) {
@@ -617,6 +628,7 @@ export class NeighborView {
 
   clear(): void {
     this.generation++;
+    this.anchorGeneration++;
     // (no newer refresh to wait for: an overtaken one just stops)
     this.latest = Promise.resolve();
     window.clearTimeout(this.pollTimer);

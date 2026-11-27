@@ -331,6 +331,21 @@ accepted the repo's default branch, so the deploy job ran only there.
   `GET /api/inventory` for owned, unexpired non-free items. Nothing writes to
   it yet.
 
+## Smoother scrolling past deep beaches (2026-11-27)
+
+Scrolling past a beach with sand rows, inland sections or a pier hitched.
+Measured by panning along the shore: (1) section rows show one beach past
+the draw window but slots only exist inside it, and `from` came from the
+slot's grid, so a beach's rows were built with `from` 0 and again with its
+sand rows each time it crossed the window edge. `syncSections` now falls
+back to the depth the beach is loaded at (prefetched 2 out). (2)
+`SectionLayer` and `PierLayer` hide rows and piers that leave the view and
+reuse them (up to 6 beaches' rows, 3 piers) instead of disposing. (3) The
+sand/water grid arrays are cached by grid size (`gridArrays`, 4 sizes), so
+a slot no longer rebuilds them; they were most of a slot's CPU cost, and a
+deep beach's grid is up to ~1.75x a plain one. Slot creation roughly halved
+(e.g. 336 rows: 12-24 ms to 9-14 ms on the dev box).
+
 ## Seam streak fixed (2026-11-27)
 
 Where a deeper beach (sand rows or inland sections) met a shallower linked
@@ -1236,7 +1251,9 @@ here: it needs the service's URL on the web OAuth client.
   the last fetch to finish wins, not the last call — so going home in the
   first second after signing in from an invite link can be undone by the
   pending visit landing late (the e2e retry works around it; a fix would
-  serialise `anchorAt`).
+  serialise `anchorAt`). Fixed since: the thumbnail readback — the canvas
+  itself is the thumbnail now (`thumbnailCanvas`), so opening the
+  checkpoints panel no longer stalls the main thread.
 - **Permissions audit (2026-11-25):** every endpoint that changes a beach
   (its sand, name, place, code, neighbors, pet, checkpoints, restores,
   `/here`, `/away/seen`, the dev `age-beach`) resolves the beach through
