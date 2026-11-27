@@ -112,9 +112,9 @@ entirely server-side.
   restricted or banned in some countries (Belgium, the Netherlands at
   times; age rules elsewhere) — a country check before selling extra tries
   in those markets is still open, as is a review of the current
-  Apple/Google paid-random-item policies. If we ever add paid mystery
-  boxes, they need odds shown before buying, a pity limit, and a country
-  check.
+  Apple/Google paid-random-item policies. There are no separate mystery
+  boxes: the vending machine's paid balls are the mystery box (Mark,
+  2026-11-27).
 - **No subscriptions** for now. A later "Beach club" ($2.99/month: a monthly
   legendary item, a gold name tag, an extra claw go a day) is possible once
   there's enough to give each month.

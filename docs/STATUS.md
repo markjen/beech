@@ -285,7 +285,8 @@ accepted the repo's default branch, so the deploy job ran only there.
   free and unlimited. With an item in hand a tap sets it down (random size,
   shape and turn) and a tap on something already there picks it back up.
   Both are undoable. Shop, mystery box and claw machine tiles show as
-  "coming soon".
+  "coming soon". (Later: the claw and the vending machine replaced them;
+  the vending machine's paid balls are the mystery box, Mark 2026-11-27.)
 - **Signed out** (accounts build), the bag shows "You’re not signed in" with a
   sign-in button at the top (`InventoryTray.setSignIn`); the sandbox build
   doesn't.
