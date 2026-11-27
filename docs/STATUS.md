@@ -331,6 +331,15 @@ accepted the repo's default branch, so the deploy job ran only there.
   `GET /api/inventory` for owned, unexpired non-free items. Nothing writes to
   it yet.
 
+## Seam streak fixed (2026-11-27)
+
+Where a deeper beach (sand rows or inland sections) met a shallower linked
+neighbor, a long striped sliver shot from that corner to the top-right of
+the screen. The skirt shader hid a linked side's wall by moving its vertices
+outside clip space; the one quad with hidden and shown corners was clipped,
+not dropped. It now passes `vHide` and discards in the fragment shader (the
+mixed quad is cut at the neighbor's back edge). `tests/skirtShader.test.ts`.
+
 ## Inland rows on beechshore.com's pictures (2026-11-27)
 
 Mark: make the pictures taller. Thumbnails and a beach page's flat view
