@@ -30,6 +30,72 @@ interface LitMaterial {
 }
 
 /**
+ * The sand and water grid's vertices: the same for every beach of a size, so
+ * made once per size. A beach scrolling into view (a deep one, with sand rows
+ * inland, most of all) would otherwise rebuild them: a hitch mid-scroll.
+ */
+const gridCache = new Map<string, { positions: Float32Array; uvs: Float32Array; indices: Uint32Array }>();
+function gridArrays(grid: GridSpec): { positions: Float32Array; uvs: Float32Array; indices: Uint32Array } {
+  const { nx, ny, dx } = grid;
+  const key = `${nx}x${ny}x${dx}`;
+  const hit = gridCache.get(key);
+  if (hit) {
+    // most recently used last
+    gridCache.delete(key);
+    gridCache.set(key, hit);
+    return hit;
+  }
+  const positions = new Float32Array(nx * ny * 3);
+  const uvs = new Float32Array(nx * ny * 2);
+  for (let j = 0; j < ny; j++) {
+    for (let i = 0; i < nx; i++) {
+      const k = j * nx + i;
+      // outer columns reach the exact slab edge [-hx, +hx] so linked beaches meet with zero gap
+      positions[k * 3] = i === 0 ? ORIGIN_X : i === nx - 1 ? ORIGIN_X + WORLD_SIZE_X : ORIGIN_X + (i + 0.5) * dx;
+      positions[k * 3 + 1] = 0;
+      positions[k * 3 + 2] = ORIGIN_Z + (j + 0.5) * dx;
+      uvs[k * 2] = (i + 0.5) / nx;
+      uvs[k * 2 + 1] = (j + 0.5) / ny;
+    }
+  }
+  const indices = new Uint32Array((nx - 1) * (ny - 1) * 6);
+  let o = 0;
+  for (let j = 0; j < ny - 1; j++) {
+    for (let i = 0; i < nx - 1; i++) {
+      const a = j * nx + i;
+      const b = a + 1;
+      const c = a + nx;
+      const d = c + 1;
+      // alternate the diagonal for a less directional facet pattern
+      if ((i + j) & 1) {
+        indices[o] = a;
+        indices[o + 1] = c;
+        indices[o + 2] = b;
+        indices[o + 3] = b;
+        indices[o + 4] = c;
+        indices[o + 5] = d;
+      } else {
+        indices[o] = a;
+        indices[o + 1] = c;
+        indices[o + 2] = d;
+        indices[o + 3] = a;
+        indices[o + 4] = d;
+        indices[o + 5] = b;
+      }
+      o += 6;
+    }
+  }
+  const made = { positions, uvs, indices };
+  gridCache.set(key, made);
+  // a few sizes at most (beaches with and without sand rows inland)
+  for (const k of gridCache.keys()) {
+    if (gridCache.size <= 4) break;
+    gridCache.delete(k);
+  }
+  return made;
+}
+
+/**
  * Owns every mesh/material that draws the beach. The simulation fields arrive
  * as packed RGBA float frames; we keep the previous and current frame and blend
  * between them in the vertex shaders so 30 Hz sim updates look smooth at 60 fps.
@@ -383,37 +449,7 @@ export class BeachRenderer {
   // ---------------------------------------------------------------- meshes
 
   private gridMesh(name: string): Mesh {
-    const { nx, ny, dx } = this.grid;
-    const positions = new Float32Array(nx * ny * 3);
-    const uvs = new Float32Array(nx * ny * 2);
-    for (let j = 0; j < ny; j++) {
-      for (let i = 0; i < nx; i++) {
-        const k = j * nx + i;
-        // outer columns reach the exact slab edge [-hx, +hx] so linked beaches meet with zero gap
-        positions[k * 3] = i === 0 ? ORIGIN_X : i === nx - 1 ? ORIGIN_X + WORLD_SIZE_X : ORIGIN_X + (i + 0.5) * dx;
-        positions[k * 3 + 1] = 0;
-        positions[k * 3 + 2] = ORIGIN_Z + (j + 0.5) * dx;
-        uvs[k * 2] = (i + 0.5) / nx;
-        uvs[k * 2 + 1] = (j + 0.5) / ny;
-      }
-    }
-    const indices = new Uint32Array((nx - 1) * (ny - 1) * 6);
-    let o = 0;
-    for (let j = 0; j < ny - 1; j++) {
-      for (let i = 0; i < nx - 1; i++) {
-        const a = j * nx + i;
-        const b = a + 1;
-        const c = a + nx;
-        const d = c + 1;
-        // alternate the diagonal for a less directional facet pattern
-        if ((i + j) & 1) {
-          indices.set([a, c, b, b, c, d], o);
-        } else {
-          indices.set([a, c, d, a, d, b], o);
-        }
-        o += 6;
-      }
-    }
+    const { positions, uvs, indices } = gridArrays(this.grid);
     const vd = new VertexData();
     vd.positions = positions;
     vd.uvs = uvs;

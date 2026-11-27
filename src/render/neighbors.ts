@@ -325,8 +325,12 @@ export class NeighborView {
       // which of the two is towards +x
       const upIsPos = this.xFor(e.index + 1) > this.xFor(e.index);
       const rowsJoined = sectionJoins(rows, upIsPos ? down : up, upIsPos ? up : down);
-      // sand rows straight behind are the beach's own sand, as deep as it's drawn now
-      const drawn = e.beach.id === this.liveId ? this.liveRenderer?.grid : e.slot?.renderer?.grid;
+      // sand rows straight behind are the beach's own sand, as deep as it's
+      // drawn. A beach just outside the window has no slot yet: use the depth
+      // it's loaded at (prefetched), so its rows aren't built once without
+      // the sand and again with it as it scrolls in and out.
+      const st = this.store.peek(e.beach.id);
+      const drawn = e.beach.id === this.liveId ? this.liveRenderer?.grid : (e.slot?.renderer?.grid ?? (st ? this.store.gridOf(st) : undefined));
       const from = Math.min(sandRowsOf(rows), drawn ? this.store.grids.sandRows(drawn.ny) : 0);
       want.push({ key: `${e.beach.id}@${e.index}`, x: this.xFor(e.index), rows: rowsJoined, from });
     }
