@@ -75,6 +75,39 @@ check(d2 < d1 * 0.2 && d3 > d1 * 0.7, `smoothed ${d2.toFixed(1)}, then the check
 await page.evaluate(() => { const b = document.querySelector('.cp-row button[data-act^="cp-delete-"]'); b.click(); b.click(); });
 await page.waitForFunction(() => !document.querySelector('.cp-row'), null, { timeout: 5000 });
 check(true, 'deleted it (two taps)');
+// long-press a thing to pick it up, drag it, let go: it moves (in look mode,
+// palm only, and with a tool picked)
+const things = () => page.evaluate(() => window.__beech.info().objects.map((o) => ({ id: o.id, item: o.item, x: o.x, y: o.y })));
+await page.evaluate(() => window.__beech.sheet.hide());
+await page.waitForTimeout(300);
+await page.evaluate(() => window.__beech.setRail(true));
+await page.evaluate(() => window.__beech.inventory.select('rock'));
+await page.waitForTimeout(300);
+await page.mouse.click(500, 560);
+await page.waitForFunction(() => window.__beech.info().objects.some((o) => o.item === 'rock'), null, { timeout: 5000 }).catch(() => {});
+const rockOf = async () => (await things()).find((o) => o.item === 'rock');
+check(!!(await rockOf()), 'set a rock down');
+const longDrag = async (sx, sy) => {
+  await page.mouse.move(sx, sy);
+  await page.mouse.down();
+  await page.waitForTimeout(700);
+  for (let i = 1; i <= 20; i++) { await page.mouse.move(sx + i * 4, sy); await page.waitForTimeout(16); }
+  await page.mouse.up();
+  await page.waitForTimeout(800);
+};
+let pressAt = [500, 560];
+for (const mode of ['look', 'tool']) {
+  if (mode === 'look') await page.evaluate(() => { window.__beech.inventory.select(null); window.__beech.setRail(false); });
+  else await page.evaluate(() => { window.__beech.setRail(true); window.__beech.pickTool('dig'); });
+  await page.waitForTimeout(300);
+  const before = await rockOf();
+  // a dragged thing goes down under the pointer: the next press starts there
+  await longDrag(...pressAt);
+  pressAt = [pressAt[0] + 80, pressAt[1]];
+  const after = await rockOf();
+  const moved = Math.hypot(after.x - before.x, after.y - before.y);
+  check(after.id === before.id && moved > 0.5, `${mode} mode: long-press and drag moves the rock (${moved.toFixed(2)} m)`);
+}
 check(errors.length === 0, `no page errors ${errors.join(' | ')}`);
 await closeBrowser();
 console.log(failed ? `${failed} FAILED` : 'SANDBOX E2E PASS');
