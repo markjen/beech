@@ -151,6 +151,11 @@ quantity(i) = ceil(short(i) / grant(i))        e.g. 3 tiki torches short, sold i
 
 How the purchase works, by where you are:
 
+*History: before beech bucks. Since then "Buy what's missing" is one
+`POST /api/store/buy { basket }` in beech bucks on every platform, and the
+card, the stores and Steam only ever sell a pack (see "As built"), so the
+"one order with several lines" follow-up below has nothing left to do.*
+
 | Where | How | Notes |
 |---|---|---|
 | **Shop credit** (gift cards, web) | `POST /api/store/credit-purchase` for each product, when the credit covers it | No store sheet. |

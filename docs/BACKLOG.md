@@ -110,10 +110,6 @@ with their TLA+ spec ([STATE_MACHINES.md](STATE_MACHINES.md#model-first-workflow
 CLAUDE.md "Model first"). Gameplay ideas below get the same once they're
 picked up.
 
-- [ ] **Copy a beach, follow-ups** ([COPY_BEACH.md](COPY_BEACH.md)): one
-  web order holding every product "Buy what's missing" needs (Xsolla's
-  token takes several items; `web_orders` would need lines, and the
-  webhook would grant them all) instead of one card checkout each.
 - [ ] **Inland sections, follow-ups** ([INLAND_SECTIONS.md](INLAND_SECTIONS.md)):
   sand extensions behind a non-sand row are still scenery, and a sand
   row's sand stays with its position rather than its copy (playable sand
@@ -209,6 +205,10 @@ picked up.
 
 ## Done (recent)
 
+- [x] **Copy: one order for the whole basket** (2026-11-27): already true
+  since beech bucks. "Buy what's missing" is one `POST /store/buy { basket }`
+  in bb, and real money only buys a pack, so there is no multi-product card
+  order to build. COPY_BEACH.md's table marked as history.
 - [x] **Admin system messages** (2026-11-27): one message to every inbox,
   pushed to those with "news" on, at most one a day, a retry never sends
   twice (`specs/tla/SystemMessages.tla`). Admin console → News.
