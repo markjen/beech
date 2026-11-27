@@ -18,11 +18,14 @@ interface Agent {
   /** the areas it did most of */
   mostly: string[];
   did: string[];
+  /** accent colour for this agent, light then dark */
+  hue: [string, string];
 }
 
 const AGENTS: Agent[] = [
   {
     name: 'Mark',
+    hue: ['#d9624c', '#ee826c'],
     role: 'The one human. Owner, product lead, reviewer.',
     bestAt: 'Deciding. Short calls that every agent applied across the whole task.',
     mostly: ['Product calls', 'Merging', 'Accounts and consoles'],
@@ -34,6 +37,7 @@ const AGENTS: Agent[] = [
   },
   {
     name: 'Claude',
+    hue: ['#b8663e', '#e09468'],
     role: 'Claude Code in cloud sessions. Most of the code.',
     bestAt: 'Building whole features end to end: the model, server, client, tests, guide and release note, all in one change.',
     mostly: ['Simulation and rendering', 'Game features', 'Game server', 'Formal verification', 'Docs and process'],
@@ -46,6 +50,7 @@ const AGENTS: Agent[] = [
   },
   {
     name: 'Antigravity',
+    hue: ['#6b5bb5', '#a99ae6'],
     role: 'A second coding agent. Desktop, UI, performance, economy.',
     bestAt: 'Platform and performance: native shells, bundle size, hot loops, and tidying how the interface is laid out.',
     mostly: ['Steam and desktop', 'Performance', 'Navigation and UI', 'Admin tooling'],
@@ -58,6 +63,7 @@ const AGENTS: Agent[] = [
   },
   {
     name: 'Muse',
+    hue: ['#1a6f85', '#66c8d4'],
     role: 'The coordinating session. Review, release, players.',
     bestAt: 'Production. Getting beech live and keeping it running: domains, deploys, secrets, app stores, and the players.',
     mostly: ['Production setup', 'Releases and stores', 'Review and merge', 'Player feedback', 'Bug fixes'],
@@ -71,6 +77,7 @@ const AGENTS: Agent[] = [
   },
   {
     name: 'Codex',
+    hue: ['#4e606e', '#a7b6c3'],
     role: 'OpenAI’s coding agent. Notes still to come.',
     bestAt: 'Untangling client state: making the game keep each beach by id, with no single “active” beach.',
     mostly: ['Client architecture', 'Rendering'],
@@ -82,16 +89,29 @@ const AGENTS: Agent[] = [
   },
 ];
 
+interface Shot {
+  file: string;
+  label: string;
+  caption: string;
+}
+
 interface Day {
   date: string;
   title: string;
   points: string[];
+  /** screenshots of the game that day, in public/landing-assets/story/ */
+  shots: Shot[];
 }
 
 const DAYS: Day[] = [
   {
     date: '22 Nov',
     title: 'The game in a day',
+    shots: [
+      { file: 'state-1-waves.webp', label: 'Morning', caption: 'Waves, foam, wet sand and erosion on a slab of sand.' },
+      { file: 'state-2-toy.webp', label: 'Midday', caption: 'A sand toy: dig, build and smooth, with shells washing in.' },
+      { file: 'state-3-claw.webp', label: 'Night', caption: 'A real beach (Brighton) with a live sun and tide, and a tool rail.' },
+    ],
     points: [
       'It began with one file, PLAN.md: the look, the simulation, the input and the milestones.',
       'By evening it had: sand you can dig, waves with foam and erosion, procedural sound and haptics, day-cycle colours, a PWA, and iOS and Android shells.',
@@ -101,6 +121,7 @@ const DAYS: Day[] = [
   {
     date: '23 Nov',
     title: 'Going live',
+    shots: [{ file: 'state-4-live.webp', label: 'Evening', caption: 'The shop, more than one beach, checkpoints and beach files are in.' }],
     points: [
       'New domains: beech.games, play.beech.games and beechshore.com. The guide moved off the game screen and onto the website.',
       'The shop opened, with purchases checked with Apple and Google. More than one beach per player, checkpoints, and beach files you can export and import.',
@@ -110,6 +131,7 @@ const DAYS: Day[] = [
   {
     date: '24 Nov',
     title: 'Animals, Steam, live beaches',
+    shots: [{ file: 'state-5-palm.webp', label: 'Night', caption: 'The palm opens every tool. At rest the screen is just the beach.' }],
     points: [
       'The busiest day by commits. Animals landed in five steps: sand crab, snacks, resident pets, visitor feeding, dolphin.',
       'Steam S1 to S4: desktop shell, sign-in, wallet checkout, achievements and controller.',
@@ -119,6 +141,7 @@ const DAYS: Day[] = [
   {
     date: '25 Nov',
     title: 'Getting it right',
+    shots: [],
     points: [
       'The palm-first interface: at rest the screen is just the beach and a palm. Local weather follows the beach you’re looking at.',
       'A permissions audit, then formal verification: the game’s state machines were modelled in TLA+, which found five races, and from then on every new feature started with a model.',
@@ -128,6 +151,7 @@ const DAYS: Day[] = [
   {
     date: '26 Nov',
     title: 'Breadth',
+    shots: [],
     points: [
       'About 40 pull requests in one day: piers, inland rows, six pet species, real weather at 34 beaches, push notifications on web, phone and Steam.',
       'Sand bucks were renamed beech bucks, because a player asked on Discord. Sign-ins can now be linked, and two accounts merged.',
@@ -137,6 +161,7 @@ const DAYS: Day[] = [
   {
     date: '27 Nov',
     title: 'Polish',
+    shots: [{ file: 'state-7-today.webp', label: 'Today', caption: 'The palm open on today’s build. Weather, piers, inland rows, pets, beech bucks. The picture is still the beach.' }],
     points: [
       'Sign-in on beechshore.com. Promo codes changed to give bonus beech bucks only, built model first, as were multi-item trade-ins and admin system messages.',
       'Paid items got bigger and piers stand clear of storm waves. Flaky end-to-end tests were fixed.',
@@ -170,144 +195,282 @@ const WHO: [string, number[]][] = [
   ['Player feedback (Discord)', [1, 0, 0, 2, 0]],
 ];
 
-interface Shot {
-  file: string;
-  when: string;
-  title: string;
-  caption: string;
-}
-
-/** The game as it was, built from the commit named and screenshotted at midday. */
-const SHOTS: Shot[] = [
-  { file: 'state-1-waves.webp', when: '22 Nov, early', title: 'Waves on a slab of sand', caption: 'Milestones M3 and M4: the beach simulation, foam, wet sand and erosion. No interface yet beyond undo.' },
-  { file: 'state-2-toy.webp', when: '22 Nov, a few hours later', title: 'A sand toy', caption: 'M7: dig, build and smooth tools, shells washing in, a start screen and a settings sheet.' },
-  { file: 'state-3-claw.webp', when: '22 Nov, night', title: 'A real beach with things to do', caption: 'A live sun, moon and tide at a real place (Brighton here), a tool rail, the bag, and the claw machine.' },
-  { file: 'state-4-live.webp', when: '23 Nov', title: 'Going live', caption: 'A shop, more than one beach, checkpoints, beach files. The game moved to play.beech.games.' },
-  { file: 'state-5-palm.webp', when: '24 Nov', title: 'Palm first', caption: 'After animals, Steam and live beaches came a quieter screen: just the beach and a palm that opens every tool.' },
-  { file: 'state-6-today.webp', when: '27 Nov', title: 'Today', caption: 'Weather, piers, inland rows, pets, beech bucks. The picture is still the beach.' },
-];
 
 const STATS: [string, string][] = [
-  ['5', 'days, plan to TestFlight'],
+  ['5', 'days from a plan file to TestFlight'],
   ['~170', 'pull requests merged'],
-  ['320+', 'commits'],
-  ['4', 'AI agents, 1 person'],
+  ['320+', 'commits on main'],
+  ['4 + 1', 'AI agents and one person'],
 ];
+
+const FINISHED: string[] = [
+  'A beach simulation in a Web Worker',
+  'Web, Android, iOS and Steam builds',
+  'Accounts with Google, Apple and Steam',
+  'A shop on four payment systems',
+  'Live beaches and neighbours',
+  'beechshore.com, the public shore',
+  'Push notifications',
+  'TLA+ models and Dafny proofs',
+  'An admin console',
+  'Terraform for all of production',
+];
+
+const agentStyle = (a: Agent) => `--hue:${a.hue[0]};--hue-dark:${a.hue[1]}`;
+
+function shotFigure(x: Shot, size: 'big' | 'small'): string {
+  return `<figure class="shot ${size}">
+  <div class="frame"><img src="/landing-assets/story/${esc(x.file)}" alt="${esc(x.caption)}" width="1280" height="800" loading="lazy" decoding="async"></div>
+  <figcaption><span class="chip">${esc(x.label)}</span>${esc(x.caption)}</figcaption>
+</figure>`;
+}
 
 export function storyHtml(): string {
   const stats = STATS.map(([n, l]) => `<div class="stat"><b>${esc(n)}</b><span>${esc(l)}</span></div>`).join('');
-  const agents = AGENTS.map((a) => `<article class="agent">
-  <h3>${esc(a.name)}</h3>
-  <p class="role">${esc(a.role)}</p>
-  <p class="best"><b>Best at:</b> ${esc(a.bestAt)}</p>
+  const finished = FINISHED.map((f) => `<li>${esc(f)}</li>`).join('');
+  const cast = AGENTS.map((a) => `<article class="agent" style="${agentStyle(a)}">
+  <div class="agent-head"><span class="avatar" aria-hidden="true">${esc(a.name[0])}</span><div><h3>${esc(a.name)}</h3><p class="role">${esc(a.role)}</p></div></div>
+  <p class="best">${esc(a.bestAt)}</p>
   <p class="tags">${a.mostly.map((m) => `<span>${esc(m)}</span>`).join('')}</p>
-  <ul>${a.did.map((d) => `<li>${esc(d)}</li>`).join('')}</ul>
+  <details><summary>What ${esc(a.name)} did</summary><ul>${a.did.map((d) => `<li>${esc(d)}</li>`).join('')}</ul></details>
 </article>`).join('\n');
-  const days = DAYS.map((d) => `<li class="day">
-  <time>${esc(d.date)}</time>
-  <div><h3>${esc(d.title)}</h3><ul>${d.points.map((p) => `<li>${esc(p)}</li>`).join('')}</ul></div>
-</li>`).join('\n');
   const who = `<div class="tablewrap"><table class="who">
-<thead><tr><th></th>${AGENTS.map((a) => `<th>${esc(a.name)}</th>`).join('')}</tr></thead>
-<tbody>${WHO.map(([area, row]) => `<tr><th>${esc(area)}</th>${row.map((v) => `<td>${v === 2 ? '<span class="lead" title="led">●</span>' : v === 1 ? '<span class="help" title="helped">○</span>' : ''}</td>`).join('')}</tr>`).join('')}</tbody>
+<thead><tr><th scope="col"><span class="sr">Area</span></th>${AGENTS.map((a) => `<th scope="col" style="${agentStyle(a)}"><span class="avatar sm" aria-hidden="true">${esc(a.name[0])}</span><span class="who-name">${esc(a.name)}</span></th>`).join('')}</tr></thead>
+<tbody>${WHO.map(([area, row]) => `<tr><th scope="row">${esc(area)}</th>${row.map((v, i) => `<td style="${agentStyle(AGENTS[i])}">${v === 2 ? '<span class="dot lead" title="led"></span><span class="sr">led</span>' : v === 1 ? '<span class="dot help" title="helped"></span><span class="sr">helped</span>' : ''}</td>`).join('')}</tr>`).join('')}</tbody>
 </table></div>
-<p class="note">● led · ○ helped. Drawn from each agent’s log and the commit trailers.</p>`;
-  const shots = SHOTS.map((x) => `<figure>
-  <img src="/landing-assets/story/${esc(x.file)}" alt="${esc(x.title)}: beech on ${esc(x.when)}" width="1280" height="800" loading="lazy">
-  <figcaption><time>${esc(x.when)}</time><b>${esc(x.title)}</b>${esc(x.caption)}</figcaption>
-</figure>`).join('\n');
-  const practices = PRACTICES.map(([h, p]) => `<div class="practice"><h3>${esc(h)}</h3><p>${esc(p)}</p></div>`).join('');
+<p class="legend"><span class="dot lead"></span> led <span class="dot help"></span> helped</p>`;
+  const days = DAYS.map((d, i) => `<section class="day${d.shots.length > 1 ? ' wide' : ''}${d.shots.length === 0 ? ' noshot' : ''}">
+  <div class="day-text">
+    <p class="kicker">Day ${i + 1} · ${esc(d.date)}</p>
+    <h3>${esc(d.title)}</h3>
+    <ul>${d.points.map((p) => `<li>${esc(p)}</li>`).join('')}</ul>
+  </div>
+  ${d.shots.length ? `<div class="day-shots">${d.shots.map((x) => shotFigure(x, d.shots.length > 1 ? 'small' : 'big')).join('')}</div>` : ''}
+</section>`).join('\n');
+  const practices = PRACTICES.map(([h, p], i) => `<div class="practice"><span class="num">${String(i + 1).padStart(2, '0')}</span><h3>${esc(h)}</h3><p>${esc(p)}</p></div>`).join('');
   return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>How beech was built</title>
-<meta name="description" content="How one person and several AI agents built beech (game, server, apps and beechshore.com) in five days.">
+<meta name="description" content="How one person and four AI agents built beech (the game, server, apps and beechshore.com) in five days.">
 <meta property="og:title" content="How beech was built">
 <meta property="og:description" content="One person, four AI agents, five days: the story of building beech.">
-<link rel="icon" href="/icons/icon-192.png">
+<meta property="og:image" content="/landing-assets/story/state-7-today.webp">
+<link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+<link rel="icon" href="/icons/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..600;1,9..144,400..500&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap">
 <style>
-:root { --bg: #fbf3e6; --fg: #4a3f52; --muted: #7a6584; --line: #e8d8c2; --card: #fffaf2; --accent: #5f7287; --sand: #f1dcb8; }
-@media (prefers-color-scheme: dark) { :root { --bg: #1f2430; --fg: #efe6f0; --muted: #b8a9c0; --line: #3a4152; --card: #272d3b; --accent: #9fb4cc; --sand: #3a3a44; } }
+:root {
+  --bg: #fbf4e7; --bg-deep: #f2e5ce; --surface: #fffcf6; --surface-tint: #f6ecda;
+  --ink: #1d2d38; --ink-soft: #4e606e; --ink-faint: #758490;
+  --line: rgba(98, 82, 62, 0.14); --line-strong: rgba(98, 82, 62, 0.24);
+  --sea: #1a6f85; --sea-soft: rgba(26, 111, 133, 0.11); --sea-ink: #fffdf8;
+  --shadow-md: 0 14px 36px rgba(32, 48, 60, 0.10), 0 2px 8px rgba(32, 48, 60, 0.05);
+  --shadow-lg: 0 28px 68px rgba(24, 42, 54, 0.18), 0 6px 18px rgba(24, 42, 54, 0.08);
+  --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
+  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #131b26; --bg-deep: #0e151f; --surface: #1b2534; --surface-tint: #212e40;
+    --ink: #f3ede3; --ink-soft: #b2c0cc; --ink-faint: #7e90a1;
+    --line: rgba(226, 214, 196, 0.12); --line-strong: rgba(226, 214, 196, 0.22);
+    --sea: #66c8d4; --sea-soft: rgba(102, 200, 212, 0.14); --sea-ink: #0c1b23;
+    --shadow-md: 0 16px 40px rgba(0, 0, 0, 0.34); --shadow-lg: 0 30px 72px rgba(0, 0, 0, 0.5);
+  }
+  [style*="--hue"] { --hue: var(--hue-dark) !important; }
+}
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
-header, main, footer { max-width: 880px; margin: 0 auto; padding: 0 16px; }
-header { padding-top: 28px; }
-header a.home { color: var(--muted); text-decoration: none; font-size: 14px; }
-h1 { font-weight: 600; font-size: clamp(28px, 5vw, 40px); line-height: 1.2; margin: 10px 0 8px; }
-.lede { font-size: 18px; color: var(--muted); max-width: 640px; margin: 0; }
-h2 { margin: 48px 0 12px; font-weight: 600; font-size: 22px; }
-h3 { margin: 0 0 4px; font-size: 16px; }
-a { color: var(--accent); }
-.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 28px 0 0; }
-.stat { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
-.stat b { display: block; font-size: 28px; font-weight: 600; }
-.stat span { color: var(--muted); font-size: 14px; }
-.agents { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
-.agent, .practice { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
-.agent .role { color: var(--muted); font-size: 14px; margin: 0 0 8px; }
-.agent ul { margin: 0; padding-left: 18px; font-size: 15px; }
-.timeline { list-style: none; padding: 0; margin: 0; border-left: 2px solid var(--sand); }
-.day { display: grid; grid-template-columns: 76px 1fr; gap: 12px; padding: 0 0 20px 16px; position: relative; }
-.day::before { content: ""; position: absolute; left: -7px; top: 6px; width: 12px; height: 12px; border-radius: 50%; background: var(--accent); }
-.day time { color: var(--muted); font-size: 14px; padding-top: 1px; }
-.day ul { margin: 4px 0 0; padding-left: 18px; }
-.best { margin: 0 0 8px; font-size: 15px; }
-.tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
-.tags span { background: var(--sand); border-radius: 999px; padding: 1px 10px; font-size: 13px; }
-.tablewrap { overflow-x: auto; }
-.who { border-collapse: collapse; width: 100%; font-size: 14px; }
-.who th, .who td { padding: 7px 8px; border-bottom: 1px solid var(--line); text-align: center; }
-.who tbody th { text-align: left; font-weight: 400; }
-.who thead th { color: var(--muted); font-weight: 500; }
-.lead { color: var(--accent); font-size: 16px; } .help { color: var(--muted); }
-.shots { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 16px; }
-figure { margin: 0; background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
-figure img { display: block; width: 100%; height: auto; aspect-ratio: 16 / 10; object-fit: cover; }
-figcaption { padding: 10px 14px 14px; font-size: 15px; }
-figcaption time { display: block; color: var(--muted); font-size: 13px; }
-figcaption b { display: block; }
-.practices { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
-.practice p { margin: 0; font-size: 15px; }
-.note { color: var(--muted); font-size: 14px; }
-footer { color: var(--muted); font-size: 13px; padding: 48px 16px 32px; }
-@media (max-width: 560px) { .shots { grid-template-columns: 1fr; } .who { font-size: 13px; } .who th, .who td { padding: 6px 4px; } .stats { grid-template-columns: repeat(2, 1fr); } .day { grid-template-columns: 1fr; gap: 0; } }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.65 var(--font-sans); -webkit-font-smoothing: antialiased; }
+a { color: var(--sea); }
+img { max-width: 100%; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 0 20px; }
+h1, h2 { font-family: var(--font-display); font-weight: 500; letter-spacing: -0.01em; }
+
+/* top bar */
+.bar { position: absolute; inset: 0 0 auto; z-index: 2; }
+.bar .wrap { display: flex; justify-content: space-between; align-items: center; padding-top: 18px; }
+.bar a { color: #fffdf8; text-decoration: none; font-weight: 600; font-size: 15px; text-shadow: 0 1px 8px rgba(0,0,0,.25); }
+.bar .brand { display: flex; gap: 8px; align-items: center; font-family: var(--font-display); font-size: 20px; font-weight: 500; }
+.bar .brand img { width: 26px; height: 26px; border-radius: 7px; }
+.bar .play { background: rgba(255,253,248,.18); border: 1px solid rgba(255,253,248,.4); padding: 7px 16px; border-radius: 999px; backdrop-filter: blur(8px); }
+
+/* hero */
+.hero { position: relative; min-height: min(92vh, 860px); display: flex; align-items: flex-end; color: #fffdf8; overflow: hidden; }
+.hero > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 60% 50%; }
+.hero::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(14,24,32,.45) 0%, rgba(14,24,32,.25) 35%, rgba(14,24,32,.55) 65%, rgba(14,24,32,.86) 100%), linear-gradient(90deg, rgba(14,24,32,.45), rgba(14,24,32,0) 70%); }
+.hero .wrap { position: relative; z-index: 1; padding-bottom: 56px; width: 100%; }
+.eyebrow { text-transform: uppercase; letter-spacing: .14em; font-size: 13px; font-weight: 600; opacity: .9; margin: 0 0 12px; }
+.hero h1 { font-size: clamp(40px, 7.4vw, 88px); line-height: 1.02; margin: 0 0 18px; max-width: 900px; text-shadow: 0 2px 24px rgba(0,0,0,.25); }
+.hero h1 em { font-style: italic; font-weight: 400; }
+.hero .lede { font-size: clamp(17px, 2vw, 20px); max-width: 640px; margin: 0 0 32px; opacity: .95; }
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.stat { background: rgba(255,253,248,.14); border: 1px solid rgba(255,253,248,.28); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-radius: 16px; padding: 14px 16px; }
+.stat b { display: block; font-family: var(--font-display); font-size: clamp(28px, 4vw, 40px); font-weight: 500; line-height: 1.1; }
+.stat span { font-size: 14px; opacity: .9; }
+
+/* sections */
+section.block { padding: 88px 0 0; }
+.section-head { max-width: 680px; margin-bottom: 32px; }
+.section-head h2 { font-size: clamp(30px, 4.4vw, 48px); line-height: 1.1; margin: 0 0 10px; }
+.section-head p { color: var(--ink-soft); font-size: 18px; margin: 0; }
+.kicker { color: var(--sea); text-transform: uppercase; letter-spacing: .12em; font-size: 12px; font-weight: 700; margin: 0 0 8px; }
+
+/* what got built */
+.built { display: flex; flex-wrap: wrap; gap: 10px; list-style: none; padding: 0; margin: 0; }
+.built li { background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 8px 16px; font-size: 15px; font-weight: 500; box-shadow: 0 1px 0 var(--line); }
+
+/* days */
+.days { display: flex; flex-direction: column; gap: 72px; }
+.day { display: grid; grid-template-columns: 5fr 7fr; gap: 40px; align-items: center; }
+.day:nth-child(even) .day-text { order: 2; }
+.day.wide, .day.noshot { grid-template-columns: 1fr; }
+.day.wide .day-text, .day.noshot .day-text { max-width: 760px; order: 0; }
+.day.noshot { background: var(--surface-tint); border-radius: 22px; padding: 32px; }
+.day h3 { font-family: var(--font-display); font-weight: 500; font-size: clamp(26px, 3.2vw, 36px); line-height: 1.15; margin: 0 0 12px; }
+.day ul { margin: 0; padding: 0; list-style: none; color: var(--ink-soft); }
+.day li { position: relative; padding-left: 20px; margin: 0 0 10px; }
+.day li::before { content: ""; position: absolute; left: 0; top: .7em; width: 8px; height: 8px; border-radius: 50%; background: var(--sea); opacity: .6; }
+.day-shots { display: grid; gap: 16px; }
+.day.wide .day-shots { grid-template-columns: repeat(3, 1fr); }
+.shot { margin: 0; }
+.frame { border-radius: 18px; overflow: hidden; box-shadow: var(--shadow-lg); border: 1px solid var(--line); background: var(--bg-deep); aspect-ratio: 16 / 10; }
+.shot.small .frame { border-radius: 14px; box-shadow: var(--shadow-md); }
+.frame img { display: block; width: 100%; height: 100%; object-fit: cover; transition: transform .6s ease; }
+.shot:hover .frame img { transform: scale(1.03); }
+figcaption { color: var(--ink-soft); font-size: 14px; margin-top: 12px; display: flex; gap: 10px; align-items: baseline; }
+.chip { flex: none; background: var(--sea-soft); color: var(--sea); border-radius: 999px; padding: 2px 10px; font-size: 12px; font-weight: 700; }
+
+/* cast */
+.cast { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 18px; }
+.agent { background: var(--surface); border: 1px solid var(--line); border-top: 4px solid var(--hue); border-radius: 20px; padding: 22px; box-shadow: var(--shadow-md); }
+.agent-head { display: flex; gap: 14px; align-items: center; margin-bottom: 14px; }
+.avatar { flex: none; display: inline-grid; place-items: center; width: 44px; height: 44px; border-radius: 14px; background: var(--hue); color: #fffdf8; font-family: var(--font-display); font-size: 22px; }
+.avatar.sm { width: 28px; height: 28px; border-radius: 9px; font-size: 15px; }
+.agent h3 { margin: 0; font-size: 20px; }
+.role { margin: 0; color: var(--ink-faint); font-size: 14px; }
+.best { font-family: var(--font-display); font-size: 19px; line-height: 1.4; margin: 0 0 14px; }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; }
+.tags span { border: 1px solid var(--hue); color: var(--hue); border-radius: 999px; padding: 1px 10px; font-size: 13px; font-weight: 600; }
+details summary { cursor: pointer; color: var(--ink-soft); font-size: 14px; font-weight: 600; }
+details ul { margin: 10px 0 0; padding-left: 18px; color: var(--ink-soft); font-size: 15px; }
+details li { margin-bottom: 6px; }
+
+/* who did what */
+.tablewrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 20px; box-shadow: var(--shadow-md); }
+.who { border-collapse: collapse; width: 100%; font-size: 15px; }
+.who th, .who td { padding: 12px 10px; border-bottom: 1px solid var(--line); text-align: center; }
+.who tbody tr:last-child th, .who tbody tr:last-child td { border-bottom: 0; }
+.who tbody th { text-align: left; font-weight: 500; padding-left: 22px; }
+.who thead th { font-size: 13px; font-weight: 600; color: var(--ink-soft); vertical-align: bottom; }
+.who thead th .avatar { display: grid; margin: 0 auto 4px; }
+.dot { display: inline-block; width: 14px; height: 14px; border-radius: 50%; vertical-align: middle; }
+.dot.lead { background: var(--hue, var(--ink-soft)); }
+.dot.help { border: 2px solid var(--hue, var(--ink-soft)); width: 12px; height: 12px; opacity: .7; }
+.legend { color: var(--ink-faint); font-size: 14px; display: flex; gap: 8px; align-items: center; margin: 12px 4px 0; }
+.legend .dot { width: 11px; height: 11px; } .legend .dot.help { width: 9px; height: 9px; } .legend .dot.help { margin-left: 10px; }
+
+/* practices */
+.practices { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 18px; }
+.practice { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 24px; }
+.practice .num { font-family: var(--font-display); font-size: 34px; color: var(--sea); opacity: .5; line-height: 1; }
+.practice h3 { margin: 10px 0 6px; font-size: 18px; }
+.practice p { margin: 0; color: var(--ink-soft); font-size: 15px; }
+
+/* sources + cta */
+.sources { max-width: 760px; color: var(--ink-soft); }
+.cta { margin: 96px 0 0; background: linear-gradient(135deg, #1a6f85, #12485a); color: #fffdf8; border-radius: 28px; padding: 48px 32px; text-align: center; }
+.cta h2 { font-size: clamp(28px, 4vw, 44px); margin: 0 0 8px; }
+.cta p { margin: 0 0 24px; opacity: .9; }
+.cta a { display: inline-block; background: #fffdf8; color: #12485a; text-decoration: none; font-weight: 700; padding: 12px 26px; border-radius: 999px; margin: 4px; }
+.cta a.ghost { background: transparent; color: #fffdf8; border: 1px solid rgba(255,253,248,.5); }
+footer { color: var(--ink-faint); font-size: 13px; padding: 40px 20px 36px; text-align: center; }
+
+@media (max-width: 860px) {
+  .day { grid-template-columns: 1fr; gap: 20px; }
+  .day:nth-child(even) .day-text { order: 0; }
+  .day.wide .day-shots { grid-template-columns: 1fr 1fr; }
+  .stats { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 560px) {
+  .wrap { padding: 0 16px; }
+  .hero { min-height: 88vh; }
+  .hero .wrap { padding-bottom: 32px; }
+  .day.wide .day-shots { grid-template-columns: 1fr; }
+  .day.noshot { padding: 24px 20px; }
+  .cast, .practices { grid-template-columns: 1fr; }
+  section.block { padding-top: 64px; }
+  .who { font-size: 13px; } .who th, .who td { padding: 9px 4px; } .who tbody th { padding-left: 12px; }
+  .who-name { display: none; }
+  .cta { padding: 36px 20px; }
+}
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .frame img { transition: none; } }
 </style>
 </head>
 <body>
-<header>
-  <a class="home" href="/">← beech.games</a>
-  <h1>How beech was built</h1>
-  <p class="lede">Beech is a quiet beach you shape with your fingers. It runs in the browser, on phones and on Steam, and it has accounts, a shop, live neighbours and a public shore. One person and a handful of AI agents built all of it in five days, from a plan file to TestFlight. This is how.</p>
-  <div class="stats">${stats}</div>
+<div class="bar"><div class="wrap">
+  <a class="brand" href="/"><img src="/icons/icon-192.png" alt="">beech</a>
+  <a class="play" href="/">Play beech</a>
+</div></div>
+
+<header class="hero">
+  <img src="/landing-assets/hero-golden.webp" alt="A beech beach at golden hour" fetchpriority="high">
+  <div class="wrap">
+    <p class="eyebrow">The making of beech</p>
+    <h1>One beach, <em>five days</em>, four AI agents and one person.</h1>
+    <p class="lede">Beech is a quiet beach you shape with your fingers. It runs in the browser, on phones and on Steam, and it has accounts, a shop, live neighbours and a public shore. All of it went from a single plan file to TestFlight in five days. This is how.</p>
+    <div class="stats">${stats}</div>
+  </div>
 </header>
-<main>
-<h2>Who built it</h2>
-<div class="agents">
-${agents}
-</div>
 
-<h2>Who did what</h2>
-${who}
+<main class="wrap">
+<section class="block">
+  <div class="section-head"><p class="kicker">What got built</p><h2>Not a prototype. A whole product.</h2><p>By the end of the week beech had all of this, and it all shipped:</p></div>
+  <ul class="built">${finished}</ul>
+</section>
 
-<h2>Beech as it grew</h2>
-<p class="note">Each picture is the game built from that day’s commit, at midday on the same beach.</p>
-<div class="shots">
-${shots}
-</div>
-
-<h2>Day by day</h2>
-<ol class="timeline">
+<section class="block">
+  <div class="section-head"><p class="kicker">Beech as it grew</p><h2>Day by day</h2><p>Each picture is the game built from that day’s commit, at midday on the same beach.</p></div>
+  <div class="days">
 ${days}
-</ol>
+  </div>
+</section>
 
-<h2>How the agents worked together</h2>
-<div class="practices">${practices}</div>
+<section class="block">
+  <div class="section-head"><p class="kicker">The cast</p><h2>Who built it, and what each was best at</h2><p>The agents found their own specialities. Claude built most of the game, Antigravity took the platform and performance work, and Muse ran production.</p></div>
+  <div class="cast">
+${cast}
+  </div>
+</section>
 
-<h2>Where this comes from</h2>
-<p>Each agent wrote its own log from the repository’s history: commits, pull requests, release notes and status docs. This page puts them together. The git record shows what was built, but not always who wrote which line, because every pull request is opened under one account. So credit here follows the agents’ own logs and commit trailers. Codex’s log is still to come.</p>
-<p class="note">Want to see the result? <a href="/">Play beech</a> or read <a href="/guide/releases">what’s changed</a>.</p>
+<section class="block">
+  <div class="section-head"><p class="kicker">Division of labour</p><h2>Who did what</h2></div>
+  ${who}
+</section>
+
+<section class="block">
+  <div class="section-head"><p class="kicker">The method</p><h2>How the agents worked together</h2><p>No agent remembers yesterday. What kept many parallel sessions coherent were the habits below.</p></div>
+  <div class="practices">${practices}</div>
+</section>
+
+<section class="block">
+  <div class="section-head"><p class="kicker">Sources</p><h2>Where this comes from</h2></div>
+  <div class="sources">
+    <p>Each agent wrote its own log from the repository’s history: commits, pull requests, release notes and status docs. This page puts them together. Every pull request was opened under one account, so the git record shows what was built but not always who wrote which line. Credit here follows the agents’ own logs and commit trailers. Codex’s log is still to come.</p>
+  </div>
+</section>
+
+<section class="cta">
+  <h2>See the result</h2>
+  <p>The beach is open. Dig something.</p>
+  <a href="/">Play beech</a><a class="ghost" href="/guide/releases">What’s changed</a>
+</section>
 </main>
 <footer>beech · a quiet place by the sea</footer>
 </body>
