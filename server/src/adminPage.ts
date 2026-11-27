@@ -2,7 +2,7 @@
 //   - adminSignInHtml: all anyone gets until they sign in. A Google button
 //     and nothing else: no console code, no API paths beyond /auth/google.
 //   - adminConsoleHtml: only for a signed-in admin. Beaches, gift cards,
-//     promo codes, redemptions and the audit log.
+//     promo codes, redemptions, referrals, reports and the audit log.
 // Both run under a nonce-based Content-Security-Policy, so every <script>
 // and <style> carries the nonce and there are no inline handlers or style
 // attributes. A gift card code is rendered once, right after it is issued
@@ -128,6 +128,7 @@ export function adminConsoleHtml(opts: { nonce: string; email: string; appUrl: s
     <button type="button" role="tab" data-tab="gifts" aria-selected="false">Gift cards</button>
     <button type="button" role="tab" data-tab="promos" aria-selected="false">Promo codes</button>
     <button type="button" role="tab" data-tab="redemptions" aria-selected="false">Redemptions</button>
+    <button type="button" role="tab" data-tab="referrals" aria-selected="false">Referrals</button>
     <button type="button" role="tab" data-tab="reports" aria-selected="false">Reports</button>
     <button type="button" role="tab" data-tab="audit" aria-selected="false">Audit log</button>
   </nav>
@@ -244,6 +245,19 @@ export function adminConsoleHtml(opts: { nonce: string; email: string; appUrl: s
     <div class="panel"><div id="redemptions"><p class="muted">Loading…</p></div></div>
   </section>
 
+  <section id="tab-referrals" hidden>
+    <div id="ref-stats" class="stats"></div>
+    <div class="panel"><h2>Top inviters</h2><div id="ref-top"><p class="muted">Loading…</p></div></div>
+    <div class="panel">
+      <form id="ref-search" class="row">
+        <input name="q" type="search" placeholder="Name, email or invite code (either side)" aria-label="Search referrals">
+        <button type="submit" class="primary">Search</button>
+      </form>
+      <div id="ref-list"><p class="muted">Loading…</p></div>
+      <div class="row"><button id="ref-more" type="button" hidden>More</button></div>
+    </div>
+  </section>
+
   <section id="tab-reports" hidden>
     <div class="panel">
       <label><input type="checkbox" id="reports-all"> show resolved too</label>
@@ -277,7 +291,7 @@ const items = (m) => { const e = Object.entries(m || {}); return e.length ? e.ma
 
 // ---- tabs
 const loaded = {};
-const loaders = { beaches: loadBeachesTab, users: () => loadUsers(false), submissions: () => loadSubmissions(0), gifts: loadGifts, promos: loadPromos, redemptions: loadRedemptions, reports: loadReports, audit: loadAudit };
+const loaders = { beaches: loadBeachesTab, users: () => loadUsers(false), submissions: () => loadSubmissions(0), gifts: loadGifts, promos: loadPromos, redemptions: loadRedemptions, referrals: () => loadReferrals(false), reports: loadReports, audit: loadAudit };
 function show(tab) {
   document.querySelectorAll('nav [data-tab]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === tab)));
   for (const t of Object.keys(loaders)) $('tab-' + t).hidden = t !== tab;
@@ -700,6 +714,39 @@ async function loadRedemptions() {
   const rows = giftRows + promoRows + creditRows;
   $('redemptions').innerHTML = rows ? '<table><tr><th>What</th><th>Amount</th><th>Who</th><th>When</th></tr>' + rows + '</table>' : '<p class="muted">Nothing redeemed yet.</p>';
 }
+// ---- referrals: who invited whom
+let refSearch = { q: '', offset: 0 };
+const person = (p) => esc(p.name || '—') + (p.email ? '<br><span class="muted">' + esc(p.email) + '</span>' : '');
+async function loadReferrals(append) {
+  const r = await api('/referrals?' + new URLSearchParams({ q: refSearch.q, offset: String(refSearch.offset) }));
+  $('ref-stats').innerHTML = [['Referrals', r.totals.referrals], ['Settled in', r.totals.settled], ['In 24 h', r.totals.lastDay]]
+    .map(([k, v]) => '<div class="stat"><b>' + v + '</b><span>' + k + '</span></div>').join('');
+  $('ref-top').innerHTML = r.top.length ? '<table><thead><tr><th>Inviter</th><th>Invited</th><th>Settled</th><th>In 24 h</th><th>Same sign-in</th><th>Rewarded</th></tr></thead><tbody>' +
+    r.top.map((t) => '<tr class="pick" data-q="' + esc(t.id) + '"><td>' + person(t) + '</td><td>' + t.invited + '</td><td>' + t.settled + '</td><td>' + t.lastDay + '</td><td>' + t.sameProvider + '</td><td>' + t.rewarded + '</td></tr>').join('') +
+    '</tbody></table>' : '<p class="muted">No referrals yet.</p>';
+  const rows = r.referrals.map((x) => '<tr><td>' + when(x.at) + '</td><td class="pick" data-q="' + esc(x.inviter.id) + '">' + person(x.inviter) + '</td><td class="pick" data-q="' + esc(x.invitee.id) + '">' + person(x.invitee) +
+    '<br><span class="muted">' + esc(x.invitee.provider) + ', joined ' + when(x.invitee.joinedAt) + '</span></td><td class="mono">' + esc(x.code) + '</td><td>' +
+    (x.settledAt ? when(x.settledAt) : '<span class="muted">not yet</span>') + '</td><td>' +
+    [x.bonusBucks ? x.bonusBucks + ' bb' : '', x.rewardItem ? '#' + x.rewardRank + ' ' + esc(x.rewardItem) : ''].filter(Boolean).join(', ') + '</td></tr>').join('');
+  const el = $('ref-list');
+  if (!append) el.innerHTML = rows ? '<table><thead><tr><th>When</th><th>Inviter</th><th>Friend</th><th>Code</th><th>Settled</th><th>Reward</th></tr></thead><tbody>' + rows + '</tbody></table>' : '<p class="muted">No referrals match.</p>';
+  else el.querySelector('tbody').insertAdjacentHTML('beforeend', rows);
+  $('ref-more').hidden = !r.more;
+}
+$('ref-search').addEventListener('submit', (e) => {
+  e.preventDefault();
+  refSearch = { q: String(new FormData(e.target).get('q') || ''), offset: 0 };
+  loadReferrals(false).catch((err) => say(err.message));
+});
+$('ref-more').addEventListener('click', () => { refSearch.offset += 50; loadReferrals(true).catch((err) => say(err.message)); });
+// tap a player: just their referrals, either side
+$('tab-referrals').addEventListener('click', (e) => {
+  const t = e.target.closest('[data-q]');
+  if (!t) return;
+  refSearch = { q: t.dataset.q, offset: 0 };
+  $('ref-search').elements.q.value = t.dataset.q;
+  loadReferrals(false).catch((err) => say(err.message));
+});
 async function loadReports() {
   const { reports } = await api('/reports' + ($('reports-all').checked ? '?all=1' : ''));
   const el = $('reports');

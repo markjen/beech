@@ -191,6 +191,22 @@ referrals (invitee_id PRIMARY KEY, inviter_id, code, created_at,
 Deleting an account deletes its rows (`ON DELETE CASCADE`); a referral goes
 when either side is deleted.
 
+## Admin: the Referrals tab
+
+The admin console (GIFT_CARDS_PROMOS.md, "Admin console") has a
+**Referrals** tab, read-only, backed by `GET /api/referrals?q=&offset=`:
+
+- Totals: referrals, settled in, made in the last 24 hours.
+- **Top inviters** (the 20 with the most friends): invited, settled, in
+  the last 24 hours, how many friends signed in with the same provider as
+  the inviter, and how many earned a ladder reward. A burst in 24 hours or
+  a run of friends who never settle is what farming looks like.
+- The latest referrals, 50 at a time: when, inviter, friend (provider and
+  when the account was made), the code, when they settled in, and the
+  reward (bonus bb, ladder rank and item). The search matches either
+  side's name or email, the code, or a player id; tapping a player shows
+  just theirs.
+
 ## Tests
 
 - `server/test/referrals.test.ts`: guide steps are once-only with one gift;
@@ -198,6 +214,8 @@ when either side is deleted.
   lookup; claim rules (own code, unknown, twice, old account); welcome gift;
   settling in rewards the inviter once; the ladder order and the cap;
   concurrent settles take different ranks.
+- `server/test/admin.test.ts`: the referrals view (totals, top inviters,
+  search by name, code and id).
 - `server/test/shareMeta.test.ts`: invite previews.
 - `tests/guide.test.ts`: step order, next step, sandbox steps, the app and
   server step lists and gifts agree with the catalog.
@@ -219,7 +237,6 @@ when either side is deleted.
 - Universal Links / App Links, so an invite opens in the phone apps (the
   same gap as visit links).
 - An `og:image` for previews (the same gap as visit links).
-- Admin console: a referrals view (who invited whom) for disputes.
 - Push for "your friend settled in" instead of waiting for the next load.
 
 ## State machine

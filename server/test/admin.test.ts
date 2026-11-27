@@ -475,3 +475,37 @@ describe('reports (docs/INBOX_NOTIFICATIONS.md)', () => {
     expect((await areq('/api/reports')).status).toBe(401);
   });
 });
+
+describe('referrals (who invited whom)', () => {
+  type Ref = { code: string; inviter: { name: string }; invitee: { name: string; provider: string }; settledAt: number | null };
+  type Refs = { totals: { referrals: number; settled: number; lastDay: number }; top: { id: string; name: string; invited: number; lastDay: number; sameProvider: number }[]; referrals: Ref[]; more: boolean };
+  const codeOf = async (t: string) => ((await (await req('/neighbors', {}, t)).json()) as { code: string }).code;
+
+  it('lists referrals and the top inviters, and finds one player’s by name, code or id', async () => {
+    const ivy = await signInDev('Ivy Inviter');
+    const code = await codeOf(ivy);
+    for (const name of ['Fern Friend', 'Finn Friend']) {
+      const t = await signInDev(name);
+      expect((await req('/referrals/claim', json('POST', { code }), t)).status).toBe(200);
+    }
+    const all = (await (await areq('/api/referrals', {}, CLI_TOKEN)).json()) as Refs;
+    expect(all.totals.referrals).toBeGreaterThanOrEqual(2);
+    expect(all.totals.lastDay).toBeGreaterThanOrEqual(2);
+    const top = all.top.find((t) => t.name === 'Ivy Inviter')!;
+    expect(top).toMatchObject({ invited: 2, lastDay: 2, sameProvider: 2 });
+    expect(all.referrals.filter((r) => r.inviter.name === 'Ivy Inviter').map((r) => r.invitee.name).sort()).toEqual(['Fern Friend', 'Finn Friend']);
+
+    const byName = (await (await areq('/api/referrals?q=fern', {}, CLI_TOKEN)).json()) as Refs;
+    expect(byName.referrals.map((r) => r.invitee.name)).toEqual(['Fern Friend']);
+    expect(byName.referrals[0]).toMatchObject({ code, inviter: { name: 'Ivy Inviter' }, invitee: { provider: 'dev' }, settledAt: null });
+    const byCode = (await (await areq(`/api/referrals?q=${code}`, {}, CLI_TOKEN)).json()) as Refs;
+    expect(byCode.referrals).toHaveLength(2);
+    const byId = (await (await areq(`/api/referrals?q=${top.id}`, {}, CLI_TOKEN)).json()) as Refs;
+    expect(byId.referrals).toHaveLength(2);
+    // a LIKE wildcard is searched for as itself
+    expect(((await (await areq('/api/referrals?q=%25', {}, CLI_TOKEN)).json()) as Refs).referrals).toEqual([]);
+    expect((await areq('/api/referrals?offset=-1', {}, CLI_TOKEN)).status).toBe(400);
+    // players can't reach it
+    expect((await areq('/api/referrals')).status).toBe(401);
+  });
+});
