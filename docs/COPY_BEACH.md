@@ -3,7 +3,8 @@
 Status: **built** (2026-11-26, phases K1–K4). Built as designed, except
 (see [As built](#as-built)): the basket buys one product at a time through
 the existing purchase paths, the basket is worked out on the server only,
-and a new beach takes the original's place with no picker on the sheet.
+and a new beach's place picker came later (2026-11-27: the sheet shows the
+place picker for "+ a new beach", starting at the original's place).
 State machine:
 [`specs/tla/BeachCopy.tla`](../specs/tla/BeachCopy.tla), checked with TLC
 (see [State machine](#state-machine)).

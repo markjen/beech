@@ -7,7 +7,9 @@
 
 import { CopyChangedError, ShortError, type CopyApi, type CopyDone, type CopyFit, type MyBeach } from '../net/account';
 import { decodeSand, fitWorld } from '../sim/sandCodec';
-import { beachById } from '../world/locations';
+import { BEACHES, beachById, nearestBeach } from '../world/locations';
+import { nearbyCoordinates } from '../platform/location';
+import { PlacePicker } from './placePicker';
 import { itemById, prizeName } from '../world/items';
 import { drawMap } from './beachFileDialog';
 
@@ -62,6 +64,10 @@ export class CopySheet {
   /** which target the fit on show is for, and the newest fit asked for */
   private fitTarget: CopyTarget | null = null;
   private fitSeq = 0;
+  /** a new beach's real place, picked on the sheet (null: the original's) */
+  private place: string | null = null;
+  /** the place picker for a new beach: made once, put back after each render */
+  private picker: PlacePicker | null = null;
 
   constructor(
     parent: HTMLElement,
@@ -101,6 +107,8 @@ export class CopySheet {
     this.picked = !!target;
     this.status = '';
     this.fit = null;
+    this.place = null;
+    this.picker?.setOpen(false);
     this.root.classList.add('open');
     const mine = this.host.beaches();
     const own = mine.find((b) => b.code === code);
@@ -248,11 +256,32 @@ export class CopySheet {
     this.body.innerHTML = `
       <p class="shop-note">${esc(by)}</p>
       <div class="copy-onto"><span>Onto</span>${pills}</div>
+      ${this.target === 'new' ? '<div class="copy-place"></div>' : ''}
       ${this.rows(f)}
       ${lines.length && !this.loading ? `<p class="copy-status">${esc(bucks(f.bucks))}</p>` : ''}
       ${this.loading ? '<p class="copy-status" role="status">Looking…</p>' : this.status ? `<p class="copy-status" role="status">${esc(this.status)}</p>` : ''}
       <div class="beachfile-actions">${actions.join('')}</div>
       ${this.loading ? '' : '<button type="button" class="action beachfile-keep" data-act="copy-keep">keep it as a checkpoint</button>'}`;
+    // a new beach: where in the world (starts at the original's place)
+    const slot = this.body.querySelector('.copy-place');
+    if (slot) {
+      const picker = (this.picker ??= new PlacePicker(BEACHES, {
+        pick: (id) => {
+          this.place = id;
+          this.picker?.setCurrent(id);
+        },
+        nearMe: () => {
+          void nearbyCoordinates()
+            .then(({ latitude, longitude }) => {
+              this.place = nearestBeach(latitude, longitude).id;
+              this.picker?.setCurrent(this.place);
+            })
+            .catch(() => { /* denied or unavailable: keep the place */ });
+        },
+      }));
+      picker.setCurrent(this.place ?? f.location ?? undefined);
+      slot.appendChild(picker.el);
+    }
     this.body.querySelectorAll<HTMLButtonElement>('[data-target]').forEach((b) =>
       b.addEventListener('click', () => {
         if (this.busy || b.dataset.target === this.target) return;
@@ -291,7 +320,8 @@ export class CopySheet {
     await this.run(async () => {
       const target = this.target;
       let fit = f;
-      const go = () => this.host.api.copy({ from: this.code, version: fit.version, target, mode });
+      const location = target === 'new' && this.place ? this.place : undefined;
+      const go = () => this.host.api.copy({ from: this.code, version: fit.version, target, mode, ...(location ? { location } : {}) });
       if (t) await this.host.flush(t.id);
       let done: CopyDone;
       try {
