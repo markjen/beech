@@ -2,7 +2,8 @@ import { deflateSync, inflateSync } from 'node:zlib';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
 import { type Db } from '../src/db.js';
-import { liveConfig } from '../src/liveBeach.js';
+import { createLiveBeaches, liveConfig } from '../src/liveBeach.js';
+import { createRootApp } from '../src/rootApp.js';
 import { openTestDb } from './testDb.js';
 
 // Live beaches (docs/LIVE_SIM.md): a beach read after a gap is caught up first.
@@ -116,6 +117,26 @@ const events = (beach: string) =>
 
 // ---------------------------------------------------------------- tests
 describe('catch-up on read', () => {
+  it('the shore site shows it caught up too: its page and pictures carry the new version', async () => {
+    const { token, user } = await signIn('Shore');
+    expect((await save(token, beach([]))).status).toBe(200);
+    const saved = await load(token);
+    const code = (await db.query<{ code: string }>('SELECT code FROM beach WHERE id = $1', [user.id]))[0].code;
+    const root = createRootApp(db, app, '/no-static-files-needed', { live: createLiveBeaches(db, () => t, liveConfig()) });
+    t += 2 * 24 * H;
+    // nobody opens it in the game: the shore page is the first read
+    const page = await root.request(`http://localhost/shore/${code}`);
+    expect(page.status).toBe(200);
+    const version = Number((await db.query<{ version: number }>('SELECT version FROM beach WHERE id = $1', [user.id]))[0].version);
+    expect(version).toBe(saved.version + 1);
+    // its pictures' URLs carry the caught-up version, so a cached old one is never shown
+    const updatedAt = (await db.query<{ updated_at: string }>('SELECT updated_at FROM beach WHERE id = $1', [user.id]))[0].updated_at;
+    expect(await page.text()).toContain(`?v=${updatedAt}-${version}`);
+    const img = await root.request(`http://localhost/shore/img/${code}/thumb.png`);
+    expect(img.status).toBe(200);
+    expect(img.headers.get('content-type')).toContain('image/png');
+  });
+
   it('leaves a beach read soon after it was saved alone', async () => {
     const { token } = await signIn('Ana');
     expect((await save(token, beach([]))).status).toBe(200);

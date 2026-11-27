@@ -124,7 +124,7 @@ picked up.
   only useful in the shop). Tap-the-sand-to-close was left out:
   a tap is also how you stop a glide.
 - [ ] **Live beaches, next**: SSE instead of polling if the 5 s polls show up in
-  Cloud Run costs; catch up the beechshore.com page pictures too; one
+  Cloud Run costs; one
   saving device per owner (a lease) if two devices fighting shows up
   **(model first: extend `specs/tla/BeachEditing.tla`)**. See
   [LIVE_SIM.md](LIVE_SIM.md).
@@ -210,6 +210,9 @@ picked up.
 
 ## Done (recent)
 
+- [x] **beechshore.com shows beaches caught up** (2026-11-27): a beach's
+  page and pictures run the sea's catch-up first, like the game's read;
+  picture URLs carry the sand's `version`. LIVE_SIM.md.
 - [x] **Flaky e2e tests** (2026-11-27): the cause was SwiftShader drawing
   every frame on a CPU-only machine (a second device's sign-in: ~27 s, vs
   ~0.6 s without draws). The scripts skip draws unless asked for

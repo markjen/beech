@@ -135,6 +135,16 @@ it in Node. The server is a separate package and doesn't import `src/`
 today, so it gets the catch-up code as an esbuild bundle at build time, the
 way `scripts/beach-file.mjs` bundles `beachFile.ts`. One source, no copy.
 
+**The shore site catches up too (2026-11-27).** beechshore.com's beach
+page and its pictures (card, thumbnail, the 3D views and their neighbors)
+call the same `live.ensure` before reading the sand (`catchUp` in
+`ShoreSiteConfig`, wired in `rootApp.ts`), so a beach nobody has opened in
+the game still shows what the tides did. A catch-up bumps `version` but
+not `updated_at` (the shore's "recent" orders use that), so picture URLs
+carry both (`imageVersion(updated_at, pier, version)`): a caught-up beach
+gets new URLs and a cached old picture is never shown. List pages don't
+catch up (one beach per read is the rule); their thumbnails do when drawn.
+
 **Beaches nobody looks at cost nothing.** A beach unvisited for a month is
 caught up once, on the next read, with the gap capped (section 4).
 
