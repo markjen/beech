@@ -20,6 +20,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     title: 'Inland rows on beechshore.com, news from beech, beechshore.com keeps up with the tides, larger shop items, a higher pier, swap an inland row in place, pick a place for a copied beach, stars and finds in the status pane, multi-item trade-ins, promo bonus beech bucks, playable sand extensions, a quieter palm, more of the beach guide, ratings along the shore, a see-through pier preview and safer notes',
     changes: [
       'On beechshore.com, a beach’s picture now shows its inland rows (boardwalks, roads, playgrounds and the rest) behind the sand, in the beach lists and on its page.',
+      'Opening your checkpoints no longer freezes the game while the little beach pictures draw — they show up right away now.',
       'Now and then (never more than once a day) the beech team may send everyone a short note, like a new vending set. It lands in your inbox; switch off “news” under notifications if you’d rather not be pushed.',
       'A beach’s page and pictures on beechshore.com now show what the tides have done since it was last saved, the same as visiting it in the game.',
       'All paid shop centrepieces — deckchair, parasol, surfboard, tiki torches, sandcastle, beach hut, lighthouse, palm tree, lifeguard tower, bonfire, hammock and beach towel — are now 50% larger on the beach.',

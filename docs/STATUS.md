@@ -1227,7 +1227,9 @@ here: it needs the service's URL on the web OAuth client.
   the last fetch to finish wins, not the last call — so going home in the
   first second after signing in from an invite link can be undone by the
   pending visit landing late (the e2e retry works around it; a fix would
-  serialise `anchorAt`).
+  serialise `anchorAt`). Fixed since: the thumbnail readback — the canvas
+  itself is the thumbnail now (`thumbnailCanvas`), so opening the
+  checkpoints panel no longer stalls the main thread.
 - **Permissions audit (2026-11-25):** every endpoint that changes a beach
   (its sand, name, place, code, neighbors, pet, checkpoints, restores,
   `/here`, `/away/seen`, the dev `age-beach`) resolves the beach through

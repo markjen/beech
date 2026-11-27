@@ -11,29 +11,26 @@ import { drawMap } from './beachFileDialog';
 import { ownBeachLabel } from './shoreConnect';
 import { unlockSteamAchievement } from '../platform/steamFeatures';
 
-/** A checkpoint's thumbnail from its saved bytes (a small top-down map), as an image URL. */
-export async function thumbnailOf(bytes: Uint8Array, size = 72): Promise<string> {
+/** A checkpoint's thumbnail from its saved bytes: a small top-down map, drawn on a canvas. */
+export async function thumbnailCanvas(bytes: Uint8Array, size = 72): Promise<HTMLCanvasElement> {
   // No thumbnails when rendering is off (?norender, the e2e path): drawing
-  // the map is cheap, but reading the pixels back stalls the main thread
-  // for tens of seconds on software rendering (a single toBlob is 97% of
-  // profiler samples over a ~25 s stall), and the panel works fine without
-  // the picture. Callers already treat a missing thumbnail as optional,
-  // and thumbnails are covered by scripts/sandbox-e2e.mjs on a real device.
+  // the map is cheap, but the panel works fine without the picture. Callers
+  // already treat a missing thumbnail as optional, and thumbnails are
+  // covered by scripts/sandbox-e2e.mjs on a real device.
   if (new URLSearchParams(location.search).has('norender')) throw new Error('thumbnails off with ?norender');
   const b = fitWorld(await decodeSand(bytes));
   const c = document.createElement('canvas');
   c.width = c.height = size;
+  c.className = 'cp-thumb';
+  c.setAttribute('aria-hidden', 'true');
   drawMap(c, b, b.objects);
-  // toBlob, not toDataURL: the async API, and about twice as fast on a
-  // slow GPU. It still stalls the main thread while the pixels are read
-  // back and encoded (~25 s for one thumbnail on software rendering,
-  // CDP profiler: toBlob is 97% of samples over the stall), so this is
-  // only a stopgap: the real fix is to use the canvas itself as the
-  // thumbnail and never read the pixels back. Callers already treat a
-  // missing thumbnail as optional.
-  const blob = await new Promise<Blob | null>((resolve) => c.toBlob(resolve, 'image/png'));
-  if (!blob) throw new Error('could not draw the thumbnail');
-  return URL.createObjectURL(blob);
+  // The canvas itself is the thumbnail: it is appended to the row, so the
+  // pixels are never read back off the GPU. The old toBlob + <img> version
+  // stalled the main thread ~25 s per thumbnail on software rendering (CDP
+  // profiler: toBlob was 97% of samples over the stall) — the whole panel
+  // froze while the rows rendered.
+  c.dataset.drawn = '1';
+  return c;
 }
 
 export interface CheckpointHost {
@@ -87,7 +84,7 @@ export class CheckpointsSection {
   private busy = false;
   private confirmDelete: { id: string; at: number } | null = null;
   /** thumbnails drawn so far (by checkpoint id and size); drawn one at a time */
-  private thumbs = new Map<string, string>();
+  private thumbs = new Map<string, HTMLCanvasElement>();
   private thumbQueue: Promise<void> = Promise.resolve();
 
   constructor(
@@ -326,28 +323,30 @@ export class CheckpointsSection {
     const row = document.createElement('div');
     row.className = `cp-row${cp.kind !== 'named' ? ' auto' : ''}`;
     row.dataset.id = cp.id;
-    // a little top-down map of it, fetched and drawn on first sight
-    const img = document.createElement('img');
-    img.className = 'cp-thumb';
-    img.alt = '';
+    // a little top-down map of it, fetched and drawn on first sight. The
+    // drawn canvas itself is the thumbnail (no pixel readback), so a row
+    // re-render just moves the canvas from the discarded row.
     const key = `${cp.id}:${cp.bytes}:${cp.createdAt}`;
-    const cached = this.thumbs.get(key);
-    if (cached) img.src = cached;
-    else {
+    let thumb = this.thumbs.get(key);
+    if (!thumb) {
+      thumb = document.createElement('canvas');
+      thumb.className = 'cp-thumb';
+      thumb.width = thumb.height = 72;
+      thumb.setAttribute('aria-hidden', 'true');
       this.thumbQueue = this.thumbQueue.then(async () => {
         if (this.thumbs.has(key)) return;
         try {
-          const url = await thumbnailOf((await this.api.sand(cp.id)).bytes);
-          this.thumbs.set(key, url);
-          // the panel may have re-rendered meanwhile: find the row again
-          const live = document.querySelector<HTMLImageElement>(`.cp-row[data-id="${cp.id}"] .cp-thumb`);
-          if (live) live.src = url;
+          const drawn = await thumbnailCanvas((await this.api.sand(cp.id)).bytes);
+          this.thumbs.set(key, drawn);
+          // the panel may have re-rendered meanwhile: swap the drawn canvas in
+          const live = document.querySelector<HTMLCanvasElement>(`.cp-row[data-id="${cp.id}"] .cp-thumb`);
+          if (live && live !== drawn) live.replaceWith(drawn);
         } catch {
           /* no thumbnail: it's only a picture */
         }
       });
     }
-    row.appendChild(img);
+    row.appendChild(thumb);
     const title = document.createElement('div');
     title.className = 'cp-title';
     const name = document.createElement('b');

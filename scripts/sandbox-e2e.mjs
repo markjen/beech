@@ -52,7 +52,7 @@ await page.evaluate(() => window.__beech.sheet.show('checkpoints'));
 await page.waitForSelector('button[data-act="cp-save"]');
 await page.click('button[data-act="cp-save"]');
 await page.evaluate(() => window.__beech.sheet.setTab('checkpoints'));
-await page.waitForSelector('.cp-row .cp-thumb[src]', { timeout: 10000 });
+await page.waitForSelector('.cp-row .cp-thumb[data-drawn]', { timeout: 10000 });
 check((await page.textContent('.cp-row')).includes('castle'), 'saved a checkpoint on the device, with a thumbnail');
 if (process.argv[2]) await page.screenshot({ path: process.argv[2] });
 // smooth the beach, then restore
