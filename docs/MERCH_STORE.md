@@ -87,7 +87,11 @@ Printful makes it, webhook ────────► package_shipped → shipp
   fetch). Orders are made as drafts, then confirmed. The brand art is in
   `public/merch/` (drawn by `scripts/merch-art.mjs` from the app icon; dark
   garments get the light-ink version) and Printful fetches it from
-  `store.beech.games/merch-art/<file>`.
+  `store.beech.games/merch-art/<file>`. The hat is embroidered, not printed:
+  Printful's Orders API refuses an embroidered item without an item-level
+  `thread_colors` option, so the hat's order item carries one
+  (`HAT_THREAD_COLORS` in `merchCatalog.ts`: white, sky blue, black, old
+  gold — the logo-hat art's palette matched to Printful's allowed threads).
 - A **sweep** runs once a minute (`server.ts`): stale claims go back,
   orders left unconfirmed are confirmed, paid orders that couldn't reach
   Printful are retried.

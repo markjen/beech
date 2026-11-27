@@ -243,7 +243,25 @@ export interface PrintItem {
   name: string;
   /** placement → file URL */
   files?: { type: string; url: string }[];
+  /** Printful order-item options (embroidery thread colours, below) */
+  options?: { id: string; value: string[] }[];
 }
+
+/**
+ * Embroidery thread colours for the hat. Printful's Orders API refuses an
+ * embroidered item without them ("thread_colors option is missing or
+ * incorrect!"): the option is an item-level `thread_colors` (for the
+ * `embroidery_front` placement; other embroidery placements take
+ * `thread_colors_<placement>`, developers.printful.com/docs, "Ordering a
+ * Direct to Garment (DTG) and an Embroidery Product"). The four threads are
+ * the logo-hat art's palette matched to Printful's allowed threads: sand →
+ * white, teal → sky blue, the dark ink → black, tan → old gold. The light
+ * art swaps the dark ink for white, already in the set, so one set covers
+ * both inks and every hat colour.
+ */
+export const HAT_THREAD_COLORS = ['#FFFFFF', '#3399FF', '#000000', '#A67843'];
+
+const threadOptionId = (placement: string): string => (placement === 'embroidery_front' ? 'thread_colors' : `thread_colors_${placement.replace(/^embroidery_/, '')}`);
 
 /**
  * The Printful items for one priced line. `artUrl(file)` is the public URL
@@ -269,7 +287,14 @@ export function printItems(
     const dark = part.colors.find((x) => x.id === c.color)?.dark;
     const url = part.beachPrint ? beachUrl : artUrl(dark ? part.art!.replace(/\.png$/, '-light.png') : part.art!);
     if (!url) throw new Error(`no print file for ${part.id}`);
-    return { variantId, quantity: line.quantity, retailCents, name: part.name, files: [{ type: part.placement, url }] };
+    return {
+      variantId,
+      quantity: line.quantity,
+      retailCents,
+      name: part.name,
+      files: [{ type: part.placement, url }],
+      ...(part.placement.startsWith('embroidery') ? { options: [{ id: threadOptionId(part.placement), value: HAT_THREAD_COLORS }] } : {}),
+    };
   };
   if (!p.parts) return [one(p, line.choice, line.unitCents)];
   const parts = p.parts.map((id) => productById(id)!);
