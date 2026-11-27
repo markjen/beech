@@ -2,7 +2,7 @@
 //
 // Today every item is free and unlimited (rocks and driftwood). The fields
 // below are there for what's planned: shop items, items that are only around
-// for a while, and items won from mystery boxes or the claw machine, in
+// for a while, and items won from the vending machine or the claw machine, in
 // rarer tiers. The server's inventory table stores what a person owns of the
 // non-free ones (see docs/BACKEND.md); free items need no record.
 

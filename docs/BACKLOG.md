@@ -166,9 +166,10 @@ picked up.
 - [ ] **Promo codes on web card payments**: mirror codes into Xsolla and
   accept `order.promocodes` on `order_paid` (WEB_PAYMENTS.md, "Promo
   codes"). Only if Mark wants it (open question 2).
-- [ ] **Mystery boxes (paid pulls)**: reuse `draw()` and the pulls table
-  once billing exists. Before shipping, check the odds-disclosure rules and
-  country restrictions for paid random items.
+- [ ] **Paid balls: country check** ([PRICING.md](PRICING.md)): before
+  selling paid claw and vending goes where paid random items are restricted
+  (Belgium, the Netherlands at times), a country check, and a review of the
+  current Apple/Google paid-random-item policies.
 - [ ] **More prizes**: each pool item needs a catalog entry, a kind, a mesh
   and an icon; `tests/items.test.ts` keeps the pools and catalog in step.
 - [ ] **TV**: test on a real Android TV (D-pad focus on the settings sheet,
@@ -220,6 +221,9 @@ picked up.
 
 ## Done (recent)
 
+- [x] **Mystery boxes** (2026-11-27): Mark: "Mystery box is the same as
+  vending machine." The vending machine's paid balls are the paid pull; no
+  separate mystery box. The country check is its own item above.
 - [x] **The palm fades after idle** (2026-11-27; Mark: "fade after 5
   seconds"): outside ambient mode, with the rail closed, the palm fades
   after 5 s quiet and stays tappable (`IDLE_FADE` in `src/config.ts`).
