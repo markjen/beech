@@ -331,6 +331,16 @@ accepted the repo's default branch, so the deploy job ran only there.
   `GET /api/inventory` for owned, unexpired non-free items. Nothing writes to
   it yet.
 
+## Promo codes give bonus beech bucks (2026-11-27)
+
+Promo codes give bonus beech bucks (`bucks` or `percent` of a pack's bb),
+never a discount on the charged amount (replaces the account-loaded model
+from #148; migration 43, `specs/tla/PromoBucks.tla`, `server/src/giftCards.dfy`).
+A `bucks` code redeems on its own (`POST /codes/redeem`, or the gift card
+box) or rides on a pack bought on the web; a `percent` code rides on a pack
+bought on the web. Refunds claw back the bonus (`promo_bonus_refund`).
+GIFT_CARDS_PROMOS.md, WEB_PAYMENTS.md, STATE_MACHINES.md.
+
 ## Suspending a sender's notes (2026-11-27)
 
 From a report in the admin console: suspend the sender's notes for 1, 7,

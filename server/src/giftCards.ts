@@ -1,12 +1,13 @@
+//@ backend dafny
 // Gift cards and promo codes (docs/GIFT_CARDS_PROMOS.md).
 //
 // The shape follows the shop: purchases go through Apple / Google, whose
 // prices the server can't change, so neither feature touches the stores.
 // A gift card is prepaid credit (USD cents): redeeming one moves its whole
 // value into your account credit, and credit buys products server-side
-// (`POST /api/store/credit-purchase`) at full price. Promo codes never
-// discount a credit purchase: they add bonus bb to bb pack purchases,
-// applied automatically from the account (see promos.ts). The server always
+// (`POST /api/store/credit-purchase`). A promo code never discounts anything
+// (Mark, 2026-11-27): it gives bonus beech bucks, on its own or on top of a
+// pack bought on the web (specs/tla/PromoBucks.tla). The server always
 // prices from its own product list; the client never supplies a price.
 //
 // The two kinds of code are treated differently on purpose:
@@ -54,6 +55,19 @@ export function hashesEqual(a: string, b: string): boolean {
   return ba.length === bb.length && timingSafeEqual(ba, bb);
 }
 
+export interface Promo {
+  code: string;
+  /** 'bucks': `value` bonus beech bucks; 'percent': `value`% (1-100) of a pack's bucks on top of it */
+  kind: 'bucks' | 'percent';
+  value: number;
+  /** null: any product; otherwise one product id */
+  appliesTo: string | null;
+  maxUses: number | null;
+  uses: number;
+  active: boolean;
+  expiresAt: number | null;
+}
+
 /** "launch-20" -> "LAUNCH20". Promo codes are public, so this is only about
  *  treating the same code typed two ways as one code. */
 export function normalizePromoCode(raw: string): string {
@@ -63,6 +77,52 @@ export function normalizePromoCode(raw: string): string {
 export function isPromoCodeShape(raw: string): boolean {
   const code = normalizePromoCode(raw);
   return code.length >= 3 && code.length <= 32;
+}
+
+/**
+ * Why a promo can't be used for this product right now, or null if it can.
+ * Checked again inside the purchase statement, so a code can't be used
+ * twice in a race or after it expired mid-request.
+ */
+export function promoBlocked(promo: Promo, productId: string, now: number): string | null {
+  //@ verify
+  //@ ensures (\result === null) <==> (promo.active && (promo.expiresAt === null || promo.expiresAt > now) && (promo.maxUses === null || promo.uses < promo.maxUses) && (promo.appliesTo === null || promo.appliesTo === productId))
+  if (!promo.active) return 'that code is no longer active';
+  if (promo.expiresAt !== null && promo.expiresAt <= now) return 'that code has expired';
+  if (promo.maxUses !== null && promo.uses >= promo.maxUses) return 'that code has been used up';
+  if (promo.appliesTo !== null && promo.appliesTo !== productId) return 'that code is not for this product';
+  return null;
+}
+
+/**
+ * The bonus a promo gives, in cents (10 a buck): a bucks code its `value`
+ * in bucks; a percent code that share of the pack's bucks, rounded down to
+ * a whole buck, and nothing without a pack (`packBucks` 0: redeemed on its
+ * own). Never negative.
+ */
+export function promoBonusCents(promo: Promo, packBucks: number): number {
+  //@ verify
+  //@ requires packBucks >= 0
+  //@ ensures \result >= 0
+  //@ ensures promo.kind === 'bucks' ==> \result === Math.max(0, promo.value) * 10
+  //@ ensures promo.kind === 'percent' && packBucks === 0 ==> \result === 0
+  //@ ensures promo.kind === 'percent' ==> \result <= packBucks * 10
+  if (promo.kind === 'bucks') return Math.max(0, promo.value) * 10;
+  return Math.floor((packBucks * Math.min(100, Math.max(0, promo.value))) / 100) * 10;
+}
+
+/**
+ * Why this promo can't give its bonus this way, or null if it can: on its
+ * own (`packId` null: bucks codes for any pack only), or with a pack.
+ */
+export function promoBlockedFor(promo: Promo, packId: string | null, now: number): string | null {
+  if (packId === null) {
+    if (promo.kind !== 'bucks') return 'that code works with a beech-buck pack: enter it when you top up';
+    if (promo.appliesTo !== null) return 'that code works with a beech-buck pack: enter it when you top up';
+    return promoBlocked(promo, '', now);
+  }
+  const why = promoBlocked(promo, packId, now);
+  return why === 'that code is not for this product' ? 'that code is for a different pack' : why;
 }
 
 /** The admin allowlist: exact email match, case-insensitive. Empty list
@@ -80,10 +140,12 @@ export function formatCents(cents: number): string {
 
 /**
  * The credit purchase itself, as one statement: debit the credit, log the
- * spend, grant the items — all or nothing. The payment debits only if the
- * credit covers the price. Returns the granted inventory row IDs, or [] if
- * the credit changed after the handler's pre-checks. A [] return has changed
- * nothing: no credit debited without items.
+ * spend, grant the items — all or nothing. The payment is the anchor: it
+ * debits only if the credit covers the price, and the items are granted only
+ * when it went through. Returns the granted inventory row IDs, or [] if the
+ * credit changed after the handler's pre-checks; a [] return has changed
+ * nothing. (Promo codes never discount a purchase: they give bonus bucks,
+ * specs/tla/PromoBucks.tla.)
  */
 export async function claimCreditPurchase(
   db: Db,

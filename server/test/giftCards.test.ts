@@ -10,7 +10,23 @@ import {
   newGiftCardCode,
   normalizeGiftCode,
   normalizePromoCode,
+  promoBlocked,
+  promoBlockedFor,
+  promoBonusCents,
+  type Promo,
 } from '../src/giftCards.js';
+
+const promo = (over: Partial<Promo> = {}): Promo => ({
+  code: 'LAUNCH20',
+  kind: 'percent',
+  value: 20,
+  appliesTo: null,
+  maxUses: null,
+  uses: 0,
+  active: true,
+  expiresAt: null,
+  ...over,
+});
 
 describe('gift card codes', () => {
   it('generates 16 characters from the no-confusion alphabet, unique', () => {
@@ -48,6 +64,40 @@ describe('promo codes', () => {
     expect(isPromoCodeShape('LAUNCH20')).toBe(true);
     expect(isPromoCodeShape('ab')).toBe(false);
     expect(isPromoCodeShape('x'.repeat(33))).toBe(false);
+  });
+
+  it('blocks inactive, expired, used-up and wrong-product codes', () => {
+    const now = 1_000_000;
+    expect(promoBlocked(promo(), 'beach_1', now)).toBeNull();
+    expect(promoBlocked(promo({ active: false }), 'beach_1', now)).toMatch(/no longer active/);
+    expect(promoBlocked(promo({ expiresAt: now }), 'beach_1', now)).toMatch(/expired/);
+    expect(promoBlocked(promo({ maxUses: 2, uses: 2 }), 'beach_1', now)).toMatch(/used up/);
+    expect(promoBlocked(promo({ maxUses: 2, uses: 1 }), 'beach_1', now)).toBeNull();
+    expect(promoBlocked(promo({ appliesTo: 'item_lighthouse' }), 'beach_1', now)).toMatch(/not for this product/);
+    expect(promoBlocked(promo({ appliesTo: 'item_lighthouse' }), 'item_lighthouse', now)).toBeNull();
+  });
+
+  it('gives bonus bucks, never a discount: bucks codes their value, percent codes a share of the pack', () => {
+    expect(promoBonusCents(promo({ kind: 'bucks', value: 50 }), 0)).toBe(500);
+    expect(promoBonusCents(promo({ kind: 'bucks', value: 50 }), 130)).toBe(500); // the same with a pack
+    expect(promoBonusCents(promo({ kind: 'percent', value: 20 }), 130)).toBe(260); // 26 bb
+    expect(promoBonusCents(promo({ kind: 'percent', value: 20 }), 33)).toBe(60); // 6.6 bb rounds down to 6
+    expect(promoBonusCents(promo({ kind: 'percent', value: 150 }), 10)).toBe(100); // capped at 100%
+    expect(promoBonusCents(promo({ kind: 'percent', value: 20 }), 0)).toBe(0); // nothing without a pack
+  });
+
+  it('says which way a code works: bucks codes on their own or with a pack, percent codes with a pack only', () => {
+    const now = 1_000_000;
+    expect(promoBlockedFor(promo({ kind: 'bucks' }), null, now)).toBeNull();
+    expect(promoBlockedFor(promo({ kind: 'bucks' }), 'bucks_30', now)).toBeNull();
+    expect(promoBlockedFor(promo({ kind: 'percent' }), null, now)).toMatch(/top up/);
+    expect(promoBlockedFor(promo({ kind: 'percent' }), 'bucks_30', now)).toBeNull();
+    // a code for one pack: only with that pack
+    expect(promoBlockedFor(promo({ kind: 'bucks', appliesTo: 'bucks_100' }), null, now)).toMatch(/top up/);
+    expect(promoBlockedFor(promo({ kind: 'bucks', appliesTo: 'bucks_100' }), 'bucks_30', now)).toMatch(/different pack/);
+    expect(promoBlockedFor(promo({ kind: 'bucks', appliesTo: 'bucks_100' }), 'bucks_100', now)).toBeNull();
+    expect(promoBlockedFor(promo({ kind: 'bucks', active: false }), null, now)).toMatch(/no longer active/);
+    expect(promoBlockedFor(promo({ kind: 'bucks', maxUses: 1, uses: 1 }), 'bucks_30', now)).toMatch(/used up/);
   });
 });
 

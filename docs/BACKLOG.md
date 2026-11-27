@@ -221,6 +221,10 @@ picked up.
 
 ## Done (recent)
 
+- [x] **Promo codes give bonus beech bucks** (2026-11-27): `bucks` codes
+  redeem on their own or with a web pack; `percent` codes give a bonus on a
+  web pack; never a discount. Replaces account-loaded promos (#148).
+  `specs/tla/PromoBucks.tla`, migration 43, GIFT_CARDS_PROMOS.md.
 - [x] **Mystery boxes** (2026-11-27): Mark: "Mystery box is the same as
   vending machine." The vending machine's paid balls are the paid pull; no
   separate mystery box. The country check is its own item above.

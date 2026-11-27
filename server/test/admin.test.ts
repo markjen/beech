@@ -252,38 +252,35 @@ describe('gift cards', () => {
   });
 });
 
-describe('promo codes and credit purchases', () => {
-  it('creates a percent promo, rejects fixed kind and bad values, and credit purchases charge full price', async () => {
+describe('promo codes give bonus beech bucks, never a discount', () => {
+  const bucksOf = async (t: string) => ((await (await req('/credit', {}, t)).json()) as { bucks: number }).bucks;
+  const redeem = (t: string, code: string) => req('/codes/redeem', json('POST', { code }), t);
+
+  it('creates codes, refuses bad ones, and a code no longer takes anything off', async () => {
     const c = await areq('/api/promo-codes', json('POST', { code: 'launch20', kind: 'percent', value: 20 }), adminToken);
     expect(c.status).toBe(200);
     expect((await c.json()) as { promo: { code: string } }).toEqual(
       expect.objectContaining({ promo: expect.objectContaining({ code: 'LAUNCH20' }) }),
     );
+    expect((await areq('/api/promo-codes', json('POST', { code: 'WELCOME50', kind: 'bucks', value: 50 }), adminToken)).status).toBe(200);
     // a duplicate code is refused
     expect((await areq('/api/promo-codes', json('POST', { code: 'LAUNCH20', kind: 'percent', value: 10 }), adminToken)).status).toBe(409);
-    // bad definitions are refused: promo codes are percent-only
-    expect((await areq('/api/promo-codes', json('POST', { code: 'X', kind: 'percent', value: 10 }), adminToken)).status).toBe(400);
+    // bad definitions are refused, and the old discount kind is gone
+    expect((await areq('/api/promo-codes', json('POST', { code: 'X', kind: 'bucks', value: 10 }), adminToken)).status).toBe(400);
     expect((await areq('/api/promo-codes', json('POST', { code: 'BADPCT', kind: 'percent', value: 101 }), adminToken)).status).toBe(400);
-    expect((await areq('/api/promo-codes', json('POST', { code: 'BADKIND', kind: 'fixed', value: 100 }), adminToken)).status).toBe(400);
-    expect((await areq('/api/promo-codes', json('POST', { code: 'BADPROD', kind: 'percent', value: 100, appliesTo: 'nope' }), adminToken)).status).toBe(400);
-
-    // quoting is full price: promo codes never discount a credit purchase
+    expect((await areq('/api/promo-codes', json('POST', { code: 'OLDKIND', kind: 'fixed', value: 100 }), adminToken)).status).toBe(400);
+    expect((await areq('/api/promo-codes', json('POST', { code: 'BADPACK', kind: 'bucks', value: 5, appliesTo: 'beach_1' }), adminToken)).status).toBe(400);
+    // the shop prices and charges in full: a code there is refused
     const q = await req('/store/quote', json('POST', { productId: 'beach_1' }), playerToken);
-    expect(q.status).toBe(200);
     expect(await q.json()).toEqual({ product: 'beach_1', priceCents: 300, discountCents: 0, finalCents: 300, price: 30, final: 30 });
-
+    expect((await req('/store/quote', json('POST', { productId: 'beach_1', promoCode: 'LAUNCH20' }), playerToken)).status).toBe(400);
+    expect((await req('/store/credit-purchase', json('POST', { productId: 'beach_1', promoCode: 'LAUNCH20' }), playerToken)).status).toBe(400);
     const buy = await req('/store/credit-purchase', json('POST', { productId: 'beach_1' }), playerToken);
     expect(buy.status).toBe(200);
     const bought = (await buy.json()) as { paidCents: number; discountCents: number; creditCents: number };
-    expect(bought.paidCents).toBe(300);
-    expect(bought.discountCents).toBe(0);
-    expect(bought.creditCents).toBe(1000 - 300);
-    // the product was granted
-    const inv = await req('/inventory', {}, playerToken);
-    const items = ((await inv.json()) as { items: { item: string; quantity: number; source: string }[] }).items;
-    expect(items.find((i) => i.item === 'beach')?.quantity).toBe(1);
-    // bought in the shop (with credit), not a gift from someone
-    expect(items.find((i) => i.item === 'beach')?.source).toBe('shop');
+    expect(bought).toMatchObject({ paidCents: 300, discountCents: 0, creditCents: 1000 - 300 });
+    const items = ((await (await req('/inventory', {}, playerToken)).json()) as { items: { item: string; quantity: number; source: string }[] }).items;
+    expect(items.find((i) => i.item === 'beach')).toMatchObject({ quantity: 1, source: 'shop' });
   });
 
   it('refuses a purchase the credit does not cover', async () => {
@@ -292,43 +289,55 @@ describe('promo codes and credit purchases', () => {
     expect(r.status).toBe(402);
   });
 
-  it('a promo code sent to quote or credit-purchase is refused, never consumed', async () => {
-    await areq('/api/promo-codes', json('POST', { code: 'FREEPARA', kind: 'percent', value: 100, maxUses: 1 }), adminToken);
-    expect((await req('/store/quote', json('POST', { productId: 'item_parasol', promoCode: 'FREEPARA' }), playerToken)).status).toBe(400);
-    expect((await req('/store/credit-purchase', json('POST', { productId: 'item_parasol', promoCode: 'FREEPARA' }), playerToken)).status).toBe(400);
-    const list = await areq('/api/promo-codes', {}, adminToken);
-    const promos = ((await list.json()) as { promos: { code: string; uses: number }[] }).promos;
-    expect(promos.find((p) => p.code === 'FREEPARA')?.uses).toBe(0);
+  it('a bucks code redeems once per player for its bonus; a percent code needs a pack', async () => {
+    const pia = await signInDev('player-pia');
+    const before = await bucksOf(pia);
+    const r = await redeem(pia, 'welcome-50');
+    expect(r.status).toBe(200);
+    expect(await r.json()).toMatchObject({ credited: 50, promo: 'WELCOME50' });
+    expect(await bucksOf(pia)).toBe(before + 50);
+    expect((await redeem(pia, 'WELCOME50')).status).toBe(409); // once each
+    expect((await redeem(pia, 'LAUNCH20')).status).toBe(409); // a percent bonus is for a pack
+    expect((await redeem(pia, 'NOSUCHCODE')).status).toBe(404);
+    // the gift card route takes promo codes too (one box for both)
+    const quinn = await signInDev('player-quinn');
+    expect((await req('/gift-cards/redeem', json('POST', { code: 'WELCOME50' }), quinn)).status).toBe(200);
+    const ledger = await db.query<{ kind: string; amount_cents: number }>(
+      "SELECT l.kind, l.amount_cents FROM credit_ledger l JOIN users u ON u.id = l.user_id WHERE u.name = 'player-quinn'",
+    );
+    expect(ledger).toEqual([{ kind: 'promo_bonus', amount_cents: 500 }]);
   });
 
-  it('expired and disabled promos cannot be loaded onto an account', async () => {
-    await areq('/api/promo-codes',
-      json('POST', { code: 'SHORTLIVED', kind: 'percent', value: 100, expiresAt: Date.now() + 60_000 }),
-      adminToken,
-    );
-    await areq('/api/promo-codes', json('POST', { code: 'LIGHTONLY', kind: 'percent', value: 50, appliesTo: 'item_lighthouse' }), adminToken);
-    const late = await signInDev('player-late');
+  it('stops at its cap, and refuses expired, disabled and one-pack codes on their own', async () => {
+    await areq('/api/promo-codes', json('POST', { code: 'ONLYONE', kind: 'bucks', value: 5, maxUses: 1 }), adminToken);
+    expect((await redeem(await signInDev('player-r1'), 'ONLYONE')).status).toBe(200);
+    expect((await redeem(await signInDev('player-r2'), 'ONLYONE')).status).toBe(409);
+    await areq('/api/promo-codes', json('POST', { code: 'SHORTLIVED', kind: 'bucks', value: 5, expiresAt: Date.now() + 60_000 }), adminToken);
+    const t = await signInDev('player-r3');
     skew = 120_000;
     try {
-      expect((await req('/promo-codes/load', json('POST', { code: 'SHORTLIVED' }), late)).status).toBe(400);
+      expect((await redeem(t, 'SHORTLIVED')).status).toBe(409);
     } finally {
       skew = 0;
     }
-    // a disabled promo is refused too
-    const dis = await areq('/api/promo-codes/LIGHTONLY/disable', json('POST', {}), adminToken);
-    expect(dis.status).toBe(200);
-    expect((await req('/promo-codes/load', json('POST', { code: 'LIGHTONLY' }), late)).status).toBe(400);
+    await areq('/api/promo-codes', json('POST', { code: 'BIGPACK', kind: 'bucks', value: 20, appliesTo: 'bucks_100' }), adminToken);
+    expect((await redeem(t, 'BIGPACK')).status).toBe(409);
+    expect((await areq('/api/promo-codes/WELCOME50/disable', json('POST', {}), adminToken)).status).toBe(200);
+    expect((await redeem(t, 'WELCOME50')).status).toBe(409);
+    const promos = ((await (await areq('/api/promo-codes', {}, adminToken)).json()) as { promos: { code: string; uses: number }[] }).promos;
+    expect(promos.find((p) => p.code === 'ONLYONE')?.uses).toBe(1);
   });
 
   it('the CLI token can create promos and read redemptions', async () => {
-    const c = await areq('/api/promo-codes', json('POST', { code: 'CLICODE', kind: 'percent', value: 100 }), CLI_TOKEN);
+    const c = await areq('/api/promo-codes', json('POST', { code: 'CLICODE', kind: 'bucks', value: 10 }), CLI_TOKEN);
     expect(c.status).toBe(200);
     const red = await areq('/api/redemptions', {}, CLI_TOKEN);
     expect(red.status).toBe(200);
-    const body = (await red.json()) as { giftCards: { id: string }[]; promoUses: { code: string }[]; credit: { kind: string }[] };
+    const body = (await red.json()) as { giftCards: { id: string }[]; promoUses: { code: string; bonusBucks: number | null }[]; credit: { kind: string }[] };
     expect(body.giftCards.some((g) => g.id === issuedId)).toBe(true);
-    expect(Array.isArray(body.promoUses)).toBe(true);
+    expect(body.promoUses.some((u) => u.code === 'WELCOME50' && u.bonusBucks === 50)).toBe(true);
     expect(body.credit.some((l) => l.kind === 'gift_card')).toBe(true);
+    expect(body.credit.some((l) => l.kind === 'promo_bonus')).toBe(true);
     expect(body.credit.some((l) => l.kind === 'spend')).toBe(true);
   });
 

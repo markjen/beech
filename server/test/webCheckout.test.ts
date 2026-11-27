@@ -154,8 +154,8 @@ describe('web checkout', () => {
     const p = await signIn('web-buyer-1');
     expect((await req('/store/web-checkout', json('POST', { productId: 'bucks_30' }))).status).toBe(401);
     expect((await req('/store/web-checkout', json('POST', { productId: 'nope' }), p.token)).status).toBe(404);
-    // a promo can't discount a card payment (Xsolla charges its catalog price)
-    expect((await req('/store/web-checkout', json('POST', { productId: 'bucks_30', promoCode: 'LAUNCH20' }), p.token)).status).toBe(400);
+    // an unknown promo code is said before paying
+    expect((await req('/store/web-checkout', json('POST', { productId: 'bucks_30', promoCode: 'LAUNCH20' }), p.token)).status).toBe(404);
     tokenCalls = [];
     const o = await checkout(p.token);
     expect(o.url).toBe(`https://secure.xsolla.com/paystation4/?token=tok-${o.order}`);
@@ -323,5 +323,67 @@ describe('web checkout switched off', () => {
     const c = await off.request('/store/web-checkout', { ...json('POST', { productId: 'bucks_30' }), headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` } });
     expect(c.status).toBe(404);
     expect((await hook({ notification_type: 'user_validation' }, SECRET, off)).status).toBe(404);
+  });
+
+  // promo codes give bonus bucks on top of a pack, never money off
+  // (specs/tla/PromoBucks.tla: Checkout, Pay, Refund)
+  describe('a promo code with a pack', () => {
+    const promo = (code: string, kind: string, value: number, maxUses: number | null = null) =>
+      db.query('INSERT INTO promo_codes (code, kind, value, max_uses, active, created_at) VALUES ($1, $2, $3, $4, true, $5)', [code, kind, value, maxUses, Date.now()]);
+    const checkoutWith = async (token: string, promoCode: string, productId = 'bucks_30') => {
+      const r = await req('/store/web-checkout', json('POST', { productId, promoCode }), token);
+      return r;
+    };
+    const rowOf = async (order: string) =>
+      (await db.query<{ provider_order_id: string; promo_code: string | null; amount_cents: number }>('SELECT provider_order_id, promo_code, amount_cents FROM web_orders WHERE id = $1', [order]))[0];
+
+    it('checks the code, charges the full price, and adds the bonus when paid; a refund takes both back', async () => {
+      await promo('PACKPLUS', 'percent', 20);
+      const p = await signIn('web-promo-1');
+      const r = await checkoutWith(p.token, 'pack-plus');
+      expect(r.status).toBe(200);
+      const b = (await r.json()) as { order: string; promo: string; bonus: number };
+      expect(b).toMatchObject({ promo: 'PACKPLUS', bonus: 6 }); // 20% of 33, rounded down
+      const row = await rowOf(b.order);
+      expect(row).toMatchObject({ promo_code: 'PACKPLUS', amount_cents: 299 }); // the full price
+      // nothing used yet: an unpaid order holds no use
+      expect(Number((await db.query<{ uses: number }>("SELECT uses FROM promo_codes WHERE code = 'PACKPLUS'"))[0].uses)).toBe(0);
+      expect((await hook(paid({ order: b.order, xsollaOrder: row.provider_order_id }, p.id))).status).toBe(204);
+      expect(await owned(p.token, 'bucks')).toBe(33 + 6);
+      // a retried webhook changes nothing
+      expect((await hook(paid({ order: b.order, xsollaOrder: row.provider_order_id }, p.id))).status).toBe(204);
+      expect(await owned(p.token, 'bucks')).toBe(39);
+      // once each: the same code again is refused at checkout
+      expect((await checkoutWith(p.token, 'PACKPLUS')).status).toBe(400);
+      // a refund: the pack's bucks and the bonus come back out; the use stays spent
+      const refund = { notification_type: 'refund', items: [{ sku: 'bucks_30', quantity: 1 }], order: { id: Number(row.provider_order_id), status: 'refunded' }, user: { external_id: p.id }, custom_parameters: { web_order: b.order } };
+      expect((await hook(refund)).status).toBe(204);
+      expect(await owned(p.token, 'bucks')).toBe(0);
+      const ledger = await db.query<{ kind: string; amount_cents: number }>('SELECT kind, amount_cents FROM credit_ledger WHERE user_id = $1 ORDER BY id', [p.id]);
+      expect(ledger.map((l) => [l.kind, Number(l.amount_cents)])).toEqual([['pack', 330], ['promo_bonus', 60], ['pack_refund', -330], ['promo_bonus_refund', -60]]);
+      expect(Number((await db.query<{ uses: number }>("SELECT uses FROM promo_codes WHERE code = 'PACKPLUS'"))[0].uses)).toBe(1);
+    });
+
+    it('still grants the pack when the code ran out before the payment came in (no bonus)', async () => {
+      await promo('LASTONE', 'bucks', 10, 1);
+      const a = await signIn('web-promo-a');
+      const bee = await signIn('web-promo-b');
+      const r = await checkoutWith(a.token, 'LASTONE');
+      expect(r.status).toBe(200);
+      const b = (await r.json()) as { order: string };
+      // someone else takes the last use first
+      expect((await req('/codes/redeem', json('POST', { code: 'LASTONE' }), bee.token)).status).toBe(200);
+      const row = await rowOf(b.order);
+      expect((await hook(paid({ order: b.order, xsollaOrder: row.provider_order_id }, a.id))).status).toBe(204);
+      expect(await owned(a.token, 'bucks')).toBe(33);
+      expect(await owned(bee.token, 'bucks')).toBe(10);
+    });
+
+    it('refuses a code on something that is not a pack, and a code for a different pack', async () => {
+      await db.query("INSERT INTO promo_codes (code, kind, value, applies_to, active, created_at) VALUES ('BIGONLY', 'bucks', 20, 'bucks_100', true, $1)", [Date.now()]);
+      const p = await signIn('web-promo-c');
+      expect((await checkoutWith(p.token, 'BIGONLY')).status).toBe(400);
+      expect((await checkoutWith(p.token, 'BIGONLY', 'bucks_100')).status).toBe(200);
+    });
   });
 });

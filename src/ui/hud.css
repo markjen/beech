@@ -1628,6 +1628,12 @@
   display: none;
 }
 
+.shop-promo .action {
+  flex: 0 0 auto;
+  width: auto;
+  padding-inline: 16px;
+}
+
 .shop-promo label {
   display: flex;
   flex: 1;

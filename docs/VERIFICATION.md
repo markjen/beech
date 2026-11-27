@@ -19,7 +19,9 @@ All on the server, which has the final say:
 | `saveShortUnsorted` (behind `saveShort`) | `server/src/checkpoints.ts` | The save check ("within the bag"): an item is refused exactly when the save puts more on the beach than both what it already held and owned minus elsewhere, with the right counts, at most once each. Nothing kept at or below what was stored is ever refused. |
 | `nothingGrew` | `server/src/checkpoints.ts` | True exactly when no item went up. Together with the line above, that's why the save route may skip the bag lookup when it's true: such a save can't be short. |
 | `countIn`, `bagLeft` | `server/src/checkpoints.ts` | Helpers used in the specs; `bagLeft` is never negative. |
+| `promoBonusCents` | `server/src/giftCards.ts` | A promo's bonus is never negative; a bucks code gives exactly its value; a percent code gives nothing without a pack and never more than the pack's own bucks. |
 | `salePriceCents` | `server/src/creatorCredit.ts` | Given a creator offer, a returned shop price implies that the offer is approved and for sale, and that the price equals its approved price. |
+| `promoBlocked` | `server/src/giftCards.ts` | Returns nothing exactly when the code is active, not expired, not used up and meant for this product. |
 
 What this rests on (trusted, not proved):
 - Counts and prices are whole numbers. LemmaScript models `number` as an

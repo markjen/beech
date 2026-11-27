@@ -60,11 +60,11 @@ export function ledgerLabel(r: { kind: string; ref: string; product_id?: string 
     case 'invite_bonus':
       return r.ref.startsWith('invited_by:') ? `Joined through ${who}’s invite` : `${who} joined through your invite`;
     case 'promo_bonus': {
-      const code = r.ref.split(':')[2];
+      const code = r.ref.startsWith('promo:') ? r.ref.slice(6) : r.ref.split(':')[2];
       return code ? `Promo bonus (${code})` : 'Promo bonus';
     }
     case 'promo_bonus_refund': {
-      const code = r.ref.split(':')[2];
+      const code = r.ref.startsWith('promo:') ? r.ref.slice(6) : r.ref.split(':')[2];
       return code ? `Refund: promo bonus (${code})` : 'Refund: promo bonus';
     }
     case 'admin_adjustment':
