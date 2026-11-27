@@ -88,14 +88,21 @@ check(true, 'visiting Ana counts as the guide’s visit step');
 // Home, then three guide steps. Wait for the home simulation to bind
 // before hitting sand, and aim at dry land in the portrait viewport.
 await pf.bringToFront();
-await pf.evaluate(async () => {
-  await window.__beech.neighbors().visit(null);
-  window.__beech.cam.goTo(0, true);
-});
-await pf.waitForFunction(() => {
-  const app = window.__beech;
-  return !app.neighbors().visiting && app.beachId() === app.account().home?.id && app.sync().state === 'saved';
-});
+// (the invite link's visit is applied again once sign-in has opened the
+// shore, which can land after a quick "go home": go home until it sticks)
+for (let i = 0; i < 4; i++) {
+  await pf.evaluate(async () => {
+    await window.__beech.neighbors().visit(null);
+    window.__beech.cam.goTo(0, true);
+  });
+  const home = await pf
+    .waitForFunction(() => {
+      const app = window.__beech;
+      return !app.neighbors().visiting && app.beachId() === app.account().home?.id && app.sync().state === 'saved';
+    }, null, { timeout: 15000 })
+    .then(() => true, () => false);
+  if (home) break;
+}
 const drag = async (tool) => {
   const [from, to] = await pf.evaluate((tool) => {
     const app = window.__beech;

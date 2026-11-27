@@ -1580,9 +1580,11 @@ the HUD layout in the section above.
   GHA layer caching; `.github/workflows/perf.yml` caches the Playwright
   Chromium binary.
 - **E2E tests (`scripts/lib/e2e.mjs`, `scripts/run-e2e.mjs`, `npm run e2e`):**
-  the default run uses low quality with rendering enabled. Set
-  `E2E_RENDER=0` to skip continuous WebGL draws and speed up the claw for
-  runs without screenshots. The fast frame loop starts after app setup.
+  low quality, and since 2026-11-27 no continuous WebGL draws unless the
+  script was given a screenshot directory (`e2eRenders`: `E2E_RENDER=1`
+  forces drawing, `E2E_RENDER=0` never draws). On a CPU-only machine the
+  SwiftShader draws starved the page, and that was the "flaky" timeouts
+  (a second device's sign-in took ~27 s, ~0.6 s without draws). The fast frame loop starts after app setup.
   The live-viewer test waits for the scheduled heartbeat. `npm run e2e` runs all 9 server E2E scripts over one shared
   Chromium server, with 3 concurrent scripts by default. Set `E2E_JOBS` or
   pass `--jobs` to choose a positive integer concurrency limit.

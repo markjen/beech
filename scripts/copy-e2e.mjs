@@ -98,6 +98,9 @@ check((await pb.textContent('.copybeach [data-act="copy-drop"]')).includes('Copy
 check(!!(await pb.$('.copybeach .beach-pill.on')) && (await pb.textContent('.copybeach .beach-pill.on')).includes('⌂'), 'no room for a new beach: it goes onto his home');
 if (shots) await pb.screenshot({ path: `${shots}/copy-sheet.png` });
 const benHome = await pb.evaluate(() => window.__beech.account().home?.id);
+// his home's first save has to land before the copy: Undo is the "Before
+// copying" checkpoint of what's there, and an unsaved beach has none
+await pb.waitForFunction((h) => window.__beech.beachId() === h && window.__beech.sync().state === 'saved', benHome, { timeout: 60000 });
 const before = await api(pb, `/api/beaches/mine/${benHome}/sand`);
 
 // ---- copy without it, then undo
@@ -105,7 +108,8 @@ await pb.click('.copybeach [data-act="copy-drop"]');
 await pb.waitForFunction(() => [...document.querySelectorAll('.hint')].some((h) => h.textContent.includes('Copied')), null, { timeout: 60000 });
 check(true, 'copied, with a toast');
 // the toast lasts 10 s, and loading the beach can take most of that here: hold on to its Undo now
-const undo = await pb.$('.hint .hint-action');
+// (the copy's own toast: a welcome-gift toast with its own action can be up too)
+const undo = await pb.$('.hint:has-text("Copied") .hint-action');
 check(!!undo && (await undo.textContent()) === 'Undo', 'the toast offers Undo');
 await pb.waitForFunction(() => window.__beech.beachId() && window.__beech.sync().state === 'saved', null, { timeout: 30000 });
 await pb.waitForFunction(() => window.__beech.info().objects.filter((o) => o.item === 'rock' && !o.wild).length >= 2, null, { timeout: 30000 });
