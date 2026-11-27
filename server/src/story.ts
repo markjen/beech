@@ -108,9 +108,9 @@ const DAYS: Day[] = [
     date: '22 Nov',
     title: 'The game in a day',
     shots: [
-      { file: 'state-1-waves.webp', label: 'Morning', caption: 'Waves, foam, wet sand and erosion on a slab of sand.' },
-      { file: 'state-2-toy.webp', label: 'Midday', caption: 'A sand toy: dig, build and smooth, with shells washing in.' },
-      { file: 'state-3-claw.webp', label: 'Night', caption: 'A real beach (Brighton) with a live sun and tide, and a tool rail.' },
+      { file: 'state-1-waves.webp', label: 'Morning', caption: 'The simulation alone: waves, foam, wet sand and a few holes dug by hand.' },
+      { file: 'state-2-toy.webp', label: 'Midday', caption: 'A sand toy: a mound with a moat, a channel to the sea and a dune.' },
+      { file: 'state-3-claw.webp', label: 'Night', caption: 'Things in the bag: rocks, driftwood, shells, starfish and flags, on a real beach with a live tide.' },
     ],
     points: [
       'It began with one file, PLAN.md: the look, the simulation, the input and the milestones.',
@@ -121,7 +121,7 @@ const DAYS: Day[] = [
   {
     date: '23 Nov',
     title: 'Going live',
-    shots: [{ file: 'state-4-live.webp', label: 'Evening', caption: 'The shop, more than one beach, checkpoints and beach files are in.' }],
+    shots: [{ file: 'state-4-live.webp', label: 'Evening', caption: 'Neighbours: your beach between Ana’s and Cara’s, each with its own name tag. The shop is open too: a lighthouse, a hut, a deckchair and a parasol.' }],
     points: [
       'New domains: beech.games, play.beech.games and beechshore.com. The guide moved off the game screen and onto the website.',
       'The shop opened, with purchases checked with Apple and Google. More than one beach per player, checkpoints, and beach files you can export and import.',
@@ -131,7 +131,7 @@ const DAYS: Day[] = [
   {
     date: '24 Nov',
     title: 'Animals, Steam, live beaches',
-    shots: [{ file: 'state-5-palm.webp', label: 'Night', caption: 'The palm opens every tool. At rest the screen is just the beach.' }],
+    shots: [{ file: 'state-5-palm.webp', label: 'Night', caption: 'Linked beaches: neighbours join into one shore, with sand, water and waves running straight across. Palm trees, lifeguard towers and pets arrive.' }],
     points: [
       'The busiest day by commits. Animals landed in five steps: sand crab, snacks, resident pets, visitor feeding, dolphin.',
       'Steam S1 to S4: desktop shell, sign-in, wallet checkout, achievements and controller.',
@@ -161,7 +161,10 @@ const DAYS: Day[] = [
   {
     date: '27 Nov',
     title: 'Polish',
-    shots: [{ file: 'state-7-today.webp', label: 'Today', caption: 'The palm open on today’s build. Weather, piers, inland rows, pets, beech bucks. The picture is still the beach.' }],
+    shots: [
+      { file: 'state-7-today.webp', label: 'Today', caption: 'One beach today: a sandcastle and moat, a bonfire, deckchairs, a hammock and a pet.' },
+      { file: 'state-8-shore.webp', label: 'Today', caption: 'Three linked beaches along today’s shore.' },
+    ],
     points: [
       'Sign-in on beechshore.com. Promo codes changed to give bonus beech bucks only, built model first, as were multi-item trade-ins and admin system messages.',
       'Paid items got bigger and piers stand clear of storm waves. Flaky end-to-end tests were fixed.',
@@ -245,7 +248,7 @@ export function storyHtml(): string {
     <h3>${esc(d.title)}</h3>
     <ul>${d.points.map((p) => `<li>${esc(p)}</li>`).join('')}</ul>
   </div>
-  ${d.shots.length ? `<div class="day-shots">${d.shots.map((x) => shotFigure(x, d.shots.length > 1 ? 'small' : 'big')).join('')}</div>` : ''}
+  ${d.shots.length ? `<div class="day-shots" style="--cols:${d.shots.length}">${d.shots.map((x) => shotFigure(x, d.shots.length > 1 ? 'small' : 'big')).join('')}</div>` : ''}
 </section>`).join('\n');
   const practices = PRACTICES.map(([h, p], i) => `<div class="practice"><span class="num">${String(i + 1).padStart(2, '0')}</span><h3>${esc(h)}</h3><p>${esc(p)}</p></div>`).join('');
   return `<!doctype html>
@@ -338,7 +341,7 @@ section.block { padding: 88px 0 0; }
 .day li { position: relative; padding-left: 20px; margin: 0 0 10px; }
 .day li::before { content: ""; position: absolute; left: 0; top: .7em; width: 8px; height: 8px; border-radius: 50%; background: var(--sea); opacity: .6; }
 .day-shots { display: grid; gap: 16px; }
-.day.wide .day-shots { grid-template-columns: repeat(3, 1fr); }
+.day.wide .day-shots { grid-template-columns: repeat(var(--cols), 1fr); }
 .shot { margin: 0; }
 .frame { border-radius: 18px; overflow: hidden; box-shadow: var(--shadow-lg); border: 1px solid var(--line); background: var(--bg-deep); aspect-ratio: 16 / 10; }
 .shot.small .frame { border-radius: 14px; box-shadow: var(--shadow-md); }
@@ -395,7 +398,7 @@ footer { color: var(--ink-faint); font-size: 13px; padding: 40px 20px 36px; text
 @media (max-width: 860px) {
   .day { grid-template-columns: 1fr; gap: 20px; }
   .day:nth-child(even) .day-text { order: 0; }
-  .day.wide .day-shots { grid-template-columns: 1fr 1fr; }
+  .day.wide .day-shots { grid-template-columns: repeat(min(var(--cols), 2), 1fr); }
   .stats { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 560px) {
@@ -436,7 +439,7 @@ footer { color: var(--ink-faint); font-size: 13px; padding: 40px 20px 36px; text
 </section>
 
 <section class="block">
-  <div class="section-head"><p class="kicker">Beech as it grew</p><h2>Day by day</h2><p>Each picture is the game built from that day’s commit, at midday on the same beach.</p></div>
+  <div class="section-head"><p class="kicker">Beech as it grew</p><h2>Day by day</h2><p>Each picture is the game built from that day’s commit, at midday, with the same beach built up using what that version could do: sculpted sand first, then things from the bag, then the shop, then neighbours and linked beaches.</p></div>
   <div class="days">
 ${days}
   </div>
