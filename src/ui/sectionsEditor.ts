@@ -17,6 +17,14 @@ export function freeFor(type: string, counts: SectionCounts, saved: readonly str
   return (counts.owned[type] ?? 0) - (counts.placed[type] ?? 0) + n(saved) - n(draft);
 }
 
+/** Put `type` in row `i` instead of what's there (that copy goes back to the bag). */
+export function replaceRow(draft: readonly string[], i: number, type: string): string[] {
+  if (i < 0 || i >= draft.length) return [...draft];
+  const out = [...draft];
+  out[i] = type;
+  return out;
+}
+
 export interface SectionsEditorHooks {
   /** draw this draft behind the beach */
   preview: (rows: string[]) => void;
@@ -40,6 +48,8 @@ export class SectionsEditor {
   private draft: string[] = [];
   private counts: SectionCounts = { owned: {}, placed: {} };
   private busy = false;
+  /** the row being replaced: the add buttons put their type there instead of appending */
+  private replacing: number | null = null;
 
   constructor(parent: HTMLElement) {
     this.root = document.createElement('div');
@@ -79,6 +89,7 @@ export class SectionsEditor {
     this.draft = [...saved];
     this.counts = counts;
     this.status.textContent = '';
+    this.replacing = null;
     this.root.hidden = false;
     this.render();
   }
@@ -100,6 +111,7 @@ export class SectionsEditor {
 
   private change(next: string[]): void {
     this.draft = next;
+    this.replacing = null;
     this.hooks?.preview([...next]);
     this.render();
   }
@@ -120,20 +132,31 @@ export class SectionsEditor {
       down.setAttribute('aria-label', 'move inland');
       down.disabled = i === this.draft.length - 1;
       const off = this.button('to bag', 'sections-remove', () => this.change(this.draft.filter((_, k) => k !== i)));
-      li.append(label, up, down, off);
+      const swapBtn = this.button(this.replacing === i ? 'keep' : 'replace', 'sections-replace', () => {
+        this.replacing = this.replacing === i ? null : i;
+        this.render();
+      });
+      swapBtn.setAttribute('aria-pressed', String(this.replacing === i));
+      li.classList.toggle('replacing', this.replacing === i);
+      li.append(label, up, down, swapBtn, off);
       this.list.appendChild(li);
     });
     this.add.replaceChildren();
     const full = this.draft.length >= SECTION_ROWS;
+    const row = this.replacing;
     for (const s of SECTIONS) {
+      // replacing a row: its own type isn't offered (nothing would change)
+      if (row !== null && this.draft[row] === s.id) continue;
       const free = freeFor(s.id, this.counts, this.saved, this.draft);
       const name = s.name.toLowerCase();
       const btn =
         free > 0
-          ? this.button(`+ ${name}${free > 1 ? ` · ${free}` : ''}`, 'sections-add', () => this.change([...this.draft, s.id]))
+          ? row !== null
+            ? this.button(`→ ${name}${free > 1 ? ` · ${free}` : ''}`, 'sections-swap', () => this.change(replaceRow(this.draft, row, s.id)))
+            : this.button(`+ ${name}${free > 1 ? ` · ${free}` : ''}`, 'sections-add', () => this.change([...this.draft, s.id]))
           : this.button(`${name} · bb 15`, 'sections-buy', () => void this.buy(s.id));
       btn.dataset.type = s.id;
-      if (free > 0) btn.disabled = full;
+      if (free > 0 && row === null) btn.disabled = full;
       this.add.appendChild(btn);
     }
     this.saveBtn.disabled = same(this.draft, this.saved);
@@ -145,7 +168,9 @@ export class SectionsEditor {
     try {
       this.counts = await this.hooks.buy(type);
       this.status.textContent = '';
-      if (this.draft.length < SECTION_ROWS) this.change([...this.draft, type]);
+      // bought while replacing a row: it goes there
+      if (this.replacing !== null) this.change(replaceRow(this.draft, this.replacing, type));
+      else if (this.draft.length < SECTION_ROWS) this.change([...this.draft, type]);
       else this.render();
     } catch (e) {
       this.status.textContent = (e as Error).message;

@@ -331,6 +331,12 @@ accepted the repo's default branch, so the deploy job ran only there.
   `GET /api/inventory` for owned, unexpired non-free items. Nothing writes to
   it yet.
 
+## Inland sections: replace a row in place (2026-11-27)
+
+The sections editor's rows have **replace**: the add buttons become **→
+type** and swap that row (`replaceRow`), the rest stay put. Client only:
+the same `PUT …/sections { rows, rev }` saves it. `e2e:sections` covers it.
+
 ## Copy sheet: a place for a new beach (2026-11-27)
 
 "+ a new beach" on the copy sheet shows the place picker (the same one as
