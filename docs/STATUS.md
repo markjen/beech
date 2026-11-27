@@ -375,7 +375,8 @@ mixed quad is cut at the neighbor's back edge). `tests/skirtShader.test.ts`.
 ## Inland sections: just sand for now (2026-11-27)
 
 Only the sand extension is on sale (`SECTIONS_ON_SALE`, client and server,
-kept in step by tests/sections.test.ts), at 50 beech bucks (`SECTION_BUCKS`),
+kept in step by tests/sections.test.ts), at 50 beech bucks (`SECTION_BUCKS`, the price of every type, so also
+what any type trades in from),
 and the shop files it under **Beaches** (`offerCategory`). The other types
 keep their catalog, rendering and layouts; the editor shows them only when
 one is free in your bag, with no buy button. Prices on buttons (shop offers,

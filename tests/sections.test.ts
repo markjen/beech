@@ -26,7 +26,7 @@ describe('the section catalog', () => {
       expect(p!.grants).toEqual([{ item: s.id, quantity: 1 }]);
       expect(p!.bucksOnly).toBe(true);
       expect(!!p!.offSale).toBe(!SECTIONS_ON_SALE.includes(s.id));
-      if (!p!.offSale) expect(p!.bucks).toBe(SECTION_BUCKS);
+      expect(p!.bucks).toBe(SECTION_BUCKS);
       expect(PRIZE_NAMES[s.id]).toBe(s.name);
       expect(EXTRAS.find((e) => e.id === s.id)?.name).toBe(s.name);
     }

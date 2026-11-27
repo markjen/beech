@@ -6,13 +6,14 @@ playable sand since 2026-11-27 ("Playable sand: what was built", below).
 
 ## What was built, and how it differs from this design
 
-- **Bought with beech bucks** (50 each since 2026-11-27, was 15), not $1.49
+- **Bought with beech bucks** (50 each for every type since 2026-11-27, was 15), not $1.49
   purchases, like piers: one `item_section_*` product per type, granting a
   `section-*` bag item. **For now only the sand extension is on sale**
   (`SECTIONS_ON_SALE` in `server/src/sections.ts` and `src/world/sections.ts`),
   listed in the shop's **Beaches** tab. The other types keep their catalog
   entries and rendering; the editor offers one only if it's already in your
-  bag (bought before, or granted), with no buy button.
+  bag (bought before, or granted), with no buy button. All types trade in
+  from the same 50.
 - **Counted, not individual copies.** A placed row is counted against
   what's owned of its type across every beach (the pier model), instead of
   a stable section ID per purchase. Stored props and per-copy sand would
