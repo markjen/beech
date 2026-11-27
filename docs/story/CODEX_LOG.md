@@ -61,7 +61,8 @@ beach while keeping undo history with the beach it belongs to.
 
 I matched the pull requests to their branches, compared them with the
 repository history, and added this account alongside the other agents' logs.
-The clearest handoff runs from the per-beach state refactor to persistent
+The story page’s timeline and working-method sections now include these
+contributions. The clearest handoff runs from the per-beach state refactor to persistent
 snapshots to the cache and render follow-up. The shared review skill is
 another concrete handoff: future sessions could pick up the same landing
 instructions through either agent's entry point.

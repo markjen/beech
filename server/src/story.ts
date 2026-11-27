@@ -146,6 +146,7 @@ const DAYS: Day[] = [
     points: [
       'The palm-first interface: at rest the screen is just the beach and a palm. Local weather follows the beach you’re looking at.',
       'A permissions audit, then formal verification: the game’s state machines were modelled in TLA+, which found five races, and from then on every new feature started with a model.',
+      'Claude led the move, with help from Codex, to shore to state keyed by beach ID. The live waves could follow the camera while each beach kept its own edits (#100).',
       'The Android app became a hosted shell, so web changes reach phones without a new build. Copying beaches, and the first version of the currency.',
     ],
   },
@@ -156,6 +157,7 @@ const DAYS: Day[] = [
     points: [
       'About 40 pull requests in one day: piers, inland rows, six pet species, real weather at 34 beaches, push notifications on web, phone and Steam.',
       'Sand bucks were renamed beech bucks, because a player asked on Discord. Sign-ins can now be linked, and two accounts merged.',
+      'Codex made it easier to see how many beach slots were in use, filter checkpoints by where they came from, and find sign-in. Footprints started washing away when waves reached them (#119, #124, #126).',
       'Build 7, the first that could send push notifications, reached closed testing on Play. The iOS build went to TestFlight review.',
     ],
   },
@@ -176,9 +178,9 @@ const DAYS: Day[] = [
 const PRACTICES: [string, string][] = [
   ['Docs are the shared memory', 'No agent remembers the last session. CLAUDE.md, PLAN.md, STATUS.md and BACKLOG.md hold the state, and every change updates them in the same commit. Any agent can pick up any task cold.'],
   ['One branch per agent, one gate for all', 'Agents work in parallel on their own branches or worktrees and never share a checkout. Nothing reaches main unless tests, the build and the performance budget pass, and the game has to stay playable after every commit.'],
-  ['Review, then fix-up', 'A review agent gives every pull request READY or NEEDS WORK with specific blockers. A fix-up agent clears them, then the PR is reviewed again. That loop caught migration-number collisions, a verified datatype left stale, and a migration that would have dropped a ledger kind.'],
+  ['Review, then fix-up', 'A review agent gives every pull request READY or NEEDS WORK with specific blockers. A fix-up agent clears them, then the PR is reviewed again. That loop caught migration-number collisions, a verified datatype left stale, and a migration that would have dropped a ledger kind. Codex put the review and landing instructions in a shared skill both Codex and Claude could use (#130).'],
   ['Model first', 'Anything that changes state the server keeps (money, items, pets, limits) starts as a TLA+ spec that the TLC model checker must pass. The model decides what has to be one transaction and under which lock, and the tests replay what TLC found.'],
-  ['Agents finish each other’s work', 'A content PR from one agent was often finished by another, which fixed its renders, rebased it over a parallel rename, or extended its formal model (PromoCodes.tla became PromoBucks.tla).'],
+  ['Agents finish each other’s work', 'Claude made visited beaches load from a device cache and eased their snapshot water into live waves (#114). Codex followed up so tabs could update the cache together, a late fetch could not refill it after sign-out, and the first live frame came from the beach you had just reached (#132).'],
   ['Players in the loop', 'Discord bug reports became pull requests the same day, and the person who reported each bug got a reply when the fix shipped. Requests that clash with a shipped design go to Mark as a decision; they aren’t built quietly.'],
   ['People do the human parts', 'Agents write the code, review and deploy. Domains, store consoles, keys and money stay with a person, and the agents write the checklists for those steps.'],
 ];
@@ -186,13 +188,13 @@ const PRACTICES: [string, string][] = [
 /** Who led (2) or helped with (1) each area, in AGENTS order. */
 const WHO: [string, number[]][] = [
   ['The sand, waves and 3D look', [1, 2, 1, 0, 1]],
-  ['Gameplay features', [1, 2, 1, 1, 0]],
+  ['Gameplay features', [1, 2, 1, 1, 1]],
   ['Game server and database', [0, 2, 1, 1, 0]],
   ['Formal models (TLA+, Dafny)', [0, 2, 1, 0, 0]],
   ['Performance', [0, 2, 2, 0, 0]],
   ['Steam and desktop', [0, 1, 2, 0, 0]],
-  ['Menus and navigation', [0, 1, 2, 1, 0]],
-  ['Client state and structure', [0, 1, 0, 0, 2]],
+  ['Menus and navigation', [0, 1, 2, 1, 1]],
+  ['Client state and structure', [0, 2, 0, 0, 1]],
   ['Production: domains, deploys, secrets', [1, 1, 0, 2, 0]],
   ['App store releases', [1, 1, 0, 2, 0]],
   ['Review and merging', [2, 1, 0, 2, 1]],
