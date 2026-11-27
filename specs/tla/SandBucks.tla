@@ -1,6 +1,8 @@
 --------------------------- MODULE SandBucks ---------------------------
 (***************************************************************************)
 (* Sand bucks and trade-ins (docs/SAND_BUCKS.md, docs/STATE_MACHINES.md). *)
+(* (Values 1 and 2 also stand for two different things in a multi-line    *)
+(* trade-in, TradeMany: the rules are per unit, so that's enough.)        *)
 (*                                                                         *)
 (* Real money only buys sand-buck packs (an App Store / Play / Steam      *)
 (* receipt, a paid web order, a gift card). Bucks buy things in the shop. *)
@@ -138,8 +140,22 @@ TradeAtomic(v) ==
     /\ CreditIn(v)
     /\ UNCHANGED <<placed, packs, pc, pick, freeIn, giftOut, tradedPlaced>>
 
+(* POST /bag/trade-in { lines }: several things at once, Fixed: every line
+   checked (each value's units there, and that many free of the beaches in
+   all), taken and credited in the one transaction under the player lock, or
+   none of them (a short line refuses the whole request). *)
+TradeMany(a, b) ==
+    /\ Fixed
+    /\ a + b >= 2
+    /\ held[1] >= a /\ held[2] >= b
+    /\ Units - placed >= a + b
+    /\ held' = [held EXCEPT ![1] = @ - a, ![2] = @ - b]
+    /\ CreditIn(a * 1 + b * 2)
+    /\ UNCHANGED <<placed, packs, pc, pick, freeIn, giftOut, tradedPlaced>>
+
 Next ==
     \/ BuyPack \/ RefundPack \/ BonusIn
+    \/ \E a, b \in 0..MaxUnits : TradeMany(a, b)
     \/ \E v \in Values : Spend(v) \/ FreeGrant(v) \/ GiftOut(v) \/ TradeAtomic(v)
     \/ \E k \in 0..MaxUnits : Save(k)
     \/ \E r \in Requests : TradeWrite(r) \/ \E v \in Values : TradeCheck(r, v)

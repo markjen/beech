@@ -3368,8 +3368,23 @@ async function boot() {
       if (id === 'beach') void acct.loadBeaches().catch(() => {});
       return { credited: data.credited ?? 0 };
     };
+    // several things at once (select in the bag): every line or none
+    const tradeInMany = async (lines: { item: string; quantity: number }[]) => {
+      await store.flushAll();
+      const res = await acct.fetch('/api/bag/trade-in', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lines }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string; credited?: number };
+      if (!res.ok) throw new Error(data.error ?? 'that did not go through');
+      await loadOwned();
+      if (lines.some((l) => l.item === 'beach')) void acct.loadBeaches().catch(() => {});
+      return { credited: data.credited ?? 0 };
+    };
     inventory.setBagActions({
       tradeIn,
+      tradeInMany,
       giftable: (id) => id !== 'beach' && !(ITEMS.find((i) => i.id === id)?.unlimited ?? true) && inventory.ownedCount(id) > 0,
       gift: (id) => {
         inventory.setOpen(false);

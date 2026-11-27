@@ -503,11 +503,54 @@
   opacity: 0.5;
 }
 
-/* the bag's one line: long press a thing to trade it in */
+/* the bag's one line: long press a thing to trade it in, or select several */
 .inv-tip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   margin: -4px 2px 10px;
   font-size: 12px;
-  opacity: 0.75;
+}
+
+.inv-tip .inv-select {
+  flex: 0 0 auto;
+  width: auto;
+  padding: 4px 12px;
+  font-size: 12px;
+}
+
+/* selecting several to trade in: picked tiles, the ×n badge, the bar */
+.inv-item.picked {
+  outline: 2px solid currentColor;
+  outline-offset: -2px;
+}
+
+.inv-item.unpickable {
+  opacity: 0.4;
+}
+
+.inv-item {
+  position: relative;
+}
+
+.inv-item .inv-pick {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.inv-pickbar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 10px;
+  padding-top: 8px;
 }
 
 .inv-item {

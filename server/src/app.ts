@@ -3671,65 +3671,88 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     });
   });
 
-  // Trade a thing in for its beech bucks (TradeAtomic in specs/tla/SandBucks.tla):
-  // one transaction holding the player's lock (the one saves, restores,
-  // copies and gifts take), so a save placing it, or a second trade-in of the
-  // same last one, can't land in between. Only what isn't on a beach.
+  // Trade things in for their beech bucks (TradeAtomic, TradeMany in
+  // specs/tla/SandBucks.tla): one transaction holding the player's lock (the
+  // one saves, restores, copies and gifts take), so a save placing one, or a
+  // second trade-in of the same last one, can't land in between. Only what
+  // isn't on a beach. One thing (`{ item, quantity }`) or several
+  // (`{ lines: [{ item, quantity }] }`): every line or none.
   app.post('/bag/trade-in', requireUser, async (c) => {
     const me = c.get('user').id;
-    const { item, quantity = 1 } = await body<{ item?: string; quantity?: number }>(c);
-    if (typeof item !== 'string' || !item || item.length > 40) fail(400, 'say which thing to trade in');
-    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 50) fail(400, 'a quantity is 1 to 50');
-    if (!tradeable(item!) || (await db.query('SELECT 1 FROM unique_items WHERE item_id = $1', [item])).length) {
-      fail(400, "that can't be traded in");
+    const b = await body<{ item?: string; quantity?: number; lines?: { item?: string; quantity?: number }[] }>(c);
+    const raw = b.lines !== undefined ? b.lines : [{ item: b.item, quantity: b.quantity ?? 1 }];
+    if (!Array.isArray(raw) || raw.length < 1 || raw.length > 20) fail(400, 'a trade-in is 1 to 20 things');
+    // the same thing twice is one line
+    const want = new Map<string, number>();
+    for (const l of raw) {
+      const item = l?.item;
+      const quantity = l?.quantity ?? 1;
+      if (typeof item !== 'string' || !item || item.length > 40) fail(400, 'say which thing to trade in');
+      if (!Number.isInteger(quantity) || quantity < 1 || quantity > 50) fail(400, 'a quantity is 1 to 50');
+      want.set(item!, (want.get(item!) ?? 0) + quantity);
+    }
+    for (const [item, q] of want) {
+      if (q > 50) fail(400, 'a quantity is 1 to 50');
+      if (!tradeable(item) || (await db.query('SELECT 1 FROM unique_items WHERE item_id = $1', [item])).length) fail(400, "that can't be traded in");
     }
     if (!creditLimiter(me)) return c.json({ error: 'slow down' }, 429);
     const now = clock();
-    const list = bucksToCents(listBucks(item!)!);
     const out = await withPlayerWriteLock(me, async (tx) => {
-      const [{ n: ownedN }] = await tx.query<{ n: string | null }>(
-        `SELECT SUM(quantity) AS n FROM inventory WHERE user_id = $1 AND item_id = $2 AND quantity > 0 AND (expires_at IS NULL OR expires_at > $3)`,
-        [me, item, now],
-      );
-      const owned = Number(ownedN ?? 0);
-      let free: number;
-      if (item === 'beach') {
-        free = Math.min(owned, (await allowance(me, tx)) - (await beachCount(me, tx)));
-      } else {
-        const placed = (await itemsElsewhere(me, NO_BEACH, tx))[item!] ?? 0;
-        free = owned - placed;
+      // every line checked first: a short one refuses the lot, nothing taken
+      const placedNow = await itemsElsewhere(me, NO_BEACH, tx);
+      for (const [item, quantity] of want) {
+        const [{ n: ownedN }] = await tx.query<{ n: string | null }>(
+          `SELECT SUM(quantity) AS n FROM inventory WHERE user_id = $1 AND item_id = $2 AND quantity > 0 AND (expires_at IS NULL OR expires_at > $3)`,
+          [me, item, now],
+        );
+        const owned = Number(ownedN ?? 0);
+        const free = item === 'beach' ? Math.min(owned, (await allowance(me, tx)) - (await beachCount(me, tx))) : owned - (placedNow[item] ?? 0);
+        if (free < quantity) {
+          return {
+            error: free > 0 ? `only ${free} can be traded in` : item === 'beach' ? 'every extra beach is in use' : 'pick it up off your beach first',
+            item,
+            free: Math.max(0, free),
+          };
+        }
       }
-      if (free < quantity) return { error: free > 0 ? `only ${free} can be traded in` : item === 'beach' ? 'every extra beach is in use' : 'pick it up off your beach first', free: Math.max(0, free) };
-      // the newest first: "buy it, then change your mind" gives back exactly what was paid
-      const rows = await tx.query<{ id: string; quantity: number; unit_cents: number | null; royalty_ref: string }>(
-        `SELECT id, quantity, unit_cents,
-                COALESCE(royalty_ref, CASE WHEN purchase_id IS NOT NULL THEN 'store:' || purchase_id ELSE 'credit:' || id END) AS royalty_ref
-           FROM inventory
-          WHERE user_id = $1 AND item_id = $2 AND quantity > 0 AND (expires_at IS NULL OR expires_at > $3)
-          ORDER BY acquired_at DESC, id DESC FOR UPDATE`,
-        [me, item, now],
-      );
-      let left = quantity;
-      let cents = 0;
-      for (const r of rows) {
-        if (left <= 0) break;
-        const take = Math.min(left, Number(r.quantity));
-        const unit = r.unit_cents === null ? list : Number(r.unit_cents);
-        await tx.query('UPDATE inventory SET quantity = quantity - $2 WHERE id = $1 AND quantity >= $2', [r.id, take]);
-        await tx.query('INSERT INTO trade_ins (user_id, inventory_id, item_id, quantity, value_cents, created_at) VALUES ($1, $2, $3, $4, $5, $6)', [
-          me, r.id, item, take, unit * take, now,
-        ]);
-        // a community item's creator gives back the credit it earned
-        if (take === Number(r.quantity)) await reverseCreatorCreditByRef(tx, r.royalty_ref, now);
-        cents += unit * take;
-        left -= take;
+      const lines: { item: string; quantity: number; cents: number }[] = [];
+      for (const [item, quantity] of want) {
+        const list = bucksToCents(listBucks(item)!);
+        // the newest first: "buy it, then change your mind" gives back exactly what was paid
+        const rows = await tx.query<{ id: string; quantity: number; unit_cents: number | null; royalty_ref: string }>(
+          `SELECT id, quantity, unit_cents,
+                  COALESCE(royalty_ref, CASE WHEN purchase_id IS NOT NULL THEN 'store:' || purchase_id ELSE 'credit:' || id END) AS royalty_ref
+             FROM inventory
+            WHERE user_id = $1 AND item_id = $2 AND quantity > 0 AND (expires_at IS NULL OR expires_at > $3)
+            ORDER BY acquired_at DESC, id DESC FOR UPDATE`,
+          [me, item, now],
+        );
+        let left = quantity;
+        let cents = 0;
+        for (const r of rows) {
+          if (left <= 0) break;
+          const take = Math.min(left, Number(r.quantity));
+          const unit = r.unit_cents === null ? list : Number(r.unit_cents);
+          await tx.query('UPDATE inventory SET quantity = quantity - $2 WHERE id = $1 AND quantity >= $2', [r.id, take]);
+          await tx.query('INSERT INTO trade_ins (user_id, inventory_id, item_id, quantity, value_cents, created_at) VALUES ($1, $2, $3, $4, $5, $6)', [
+            me, r.id, item, take, unit * take, now,
+          ]);
+          // a community item's creator gives back the credit it earned
+          if (take === Number(r.quantity)) await reverseCreatorCreditByRef(tx, r.royalty_ref, now);
+          cents += unit * take;
+          left -= take;
+        }
+        await creditBalance(tx, me, cents, 'trade_in', item, now);
+        lines.push({ item, quantity, cents });
       }
-      await creditBalance(tx, me, cents, 'trade_in', item!, now);
       const [u] = await tx.query<{ credit_cents: number }>('SELECT credit_cents FROM users WHERE id = $1', [me]);
-      return { cents, balance: Number(u.credit_cents) };
+      return { lines, balance: Number(u.credit_cents) };
     });
-    if ('error' in out) return c.json({ error: out.error, free: out.free }, 409);
-    return c.json({ item, quantity, credited: centsToBucks(out.cents), bucks: centsToBucks(out.balance) });
+    if ('error' in out) return c.json({ error: out.error, item: out.item, free: out.free }, 409);
+    const total = out.lines.reduce((t, l) => t + l.cents, 0);
+    const res = { credited: centsToBucks(total), bucks: centsToBucks(out.balance) };
+    if (b.lines === undefined) return c.json({ item: out.lines[0].item, quantity: out.lines[0].quantity, ...res });
+    return c.json({ lines: out.lines.map((l) => ({ item: l.item, quantity: l.quantity, credited: centsToBucks(l.cents) })), ...res });
   });
 
   // (after /beaches/mine…, so 'mine' isn't taken for a code)

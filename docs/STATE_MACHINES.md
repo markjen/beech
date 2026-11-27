@@ -146,6 +146,7 @@ step.
 | `GiftOut` | `POST /gifts` | `giveOne` (moves `unit_cents`) |
 | `Save` | `PUT /beaches/mine/:id/sand` | `saveBeach` |
 | `TradeCheck` .. `TradeWrite` / `TradeAtomic` | `POST /bag/trade-in` | one transaction under `withPlayerWriteLock` |
+| `TradeMany` | `POST /bag/trade-in { lines }` | the same transaction: every line checked first (a short one refuses the lot, nothing taken), then each taken and credited |
 | `BonusIn` | `POST /referrals/claim` | `creditBalance(..., 'invite_bonus')` in the claim's transaction |
 
 Invariants: `ValueConserved`, `NoPhantomUnits`, `NeverTradePlaced`,

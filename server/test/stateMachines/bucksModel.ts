@@ -74,6 +74,15 @@ export class BucksModel {
     return { status: 200, credited: v };
   }
 
+  /** TradeMany: the newest `n` units not on the beach, all of them or none */
+  tradeMany(n: number): BucksAnswer & { credited?: number } {
+    if (this.units.length - this.placed < n) return { status: 409 };
+    let credited = 0;
+    for (let i = 0; i < n; i++) credited += this.units.pop()!;
+    this.creditIn(credited);
+    return { status: 200, credited };
+  }
+
   held(): number {
     return this.units.reduce((t, v) => t + v, 0);
   }

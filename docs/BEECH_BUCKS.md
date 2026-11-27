@@ -72,7 +72,9 @@ Existing balances round up to the next whole buck in the migration.
   discount a credit purchase; they add bonus bb to bb pack purchases
   (docs/GIFT_CARDS_PROMOS.md). Creator royalties: 30% of the bucks paid, rounded
   to the buck.
-- **Trade-ins** (`POST /api/bag/trade-in { item, quantity }`): one
+- **Trade-ins** (`POST /api/bag/trade-in { item, quantity }`, or several
+  things at once: `{ lines: [{ item, quantity }] }`, every line or none,
+  the same thing twice counted as one line; 409 names the short `item`): one
   transaction holding the player's lock (the one saves, restores, copies and
   gifts take). It checks that many units are free (owned − on your beaches,
   or allowance − beaches for an extra beach), takes the newest units first
@@ -123,7 +125,11 @@ the balance is short, the sheet offers a beech-buck pack first.
   (the newest n units' values, the order a trade-in takes them), **trade in**
   (`POST /bag/trade-in { item, quantity }`), and **gift**, which opens your
   account page on beechshore with that thing picked. Things on a beach can't
-  be traded until they're picked up (the dialog says so).
+  be traded until they're picked up (the dialog says so). **select** (next
+  to that line) trades several at once (2026-11-27): each tap on a thing adds
+  one, up to what's free, then back to none (×n on the tile); "trade in N ·
+  bb X" sends them all in one request. Snacks, pets and the machines hide
+  while selecting.
 - **Thing in hand:** the place bar has only the size slider and ×; no
   trade-in or gift buttons.
 
