@@ -58,12 +58,16 @@ placed, gifted and kept like anything else.
 | `undo` | undo | Tap ↶ to take back your last stroke. | Conch | app |
 | `place` | the bag | Open the bag, pick a rock or a shell, and tap the sand. | Sand dollar | app |
 | `chair` | chair view | Tap the chair to sit and look out to sea. Hold ‹ › to walk. | Conch | app |
+| `clear` | clearing tools | Drag the bulldozer, flatten or vacuum across the beach. | Sand dollar | app |
+| `calm` | wave strength | Manage → Settings → waves: calm. | Conch | app |
 | `claw` | claw machine | Open the bag and play the claw machine: it's free. | (the claw's own prize) | **server** (a pull exists) |
+| `vending` | vending machine | Open the bag and use the vending machine. | (the machine's own prize) | **server** (a vending pull exists) |
 | `visit` | the shore | Walk down the shore, or open the most-starred beaches. | Sand dollar | app |
 | `star` | stars | Tap ☆ on a beach you like. | Conch | **server** (a star exists) |
+| `checkpoint` | checkpoints | Manage → Beaches → save a checkpoint. | Sand dollar | **server** (a named checkpoint of your own beach or an import; not a copy, an automatic one or "Before the tide") |
 | `invite` | invites | Share your invite link. You each get a gift. | (the invite ladder) | **server** (a friend joined) |
 
-Finishing the first eight earns a **Starfish** as well.
+Finishing all but `invite` (twelve steps) earns a **Starfish** as well.
 
 - Steps are done **once per account**. `POST /api/guide/:step` inserts a
   row (`guide_steps`, primary key `(user_id, step)`) and grants the gift in
@@ -72,10 +76,10 @@ Finishing the first eight earns a **Starfish** as well.
 - App-checked steps trust the app. That's fine: the gifts are commons, each
   is once per account, and an account needs a Google or Apple sign-in.
 - The **sandbox build** (no accounts) runs the guide locally for teaching:
-  the five app-checked steps that don't need a server, no gifts, progress in
+  the seven app-checked steps that don't need a server, no gifts, progress in
   `localStorage`. With accounts, steps done before signing in are kept on
   the device and sent after sign-in, so they still earn their gifts.
-- The guide button (a compass) shows progress (`3/9`), and a small coach
+- The guide button (a compass) shows progress (`3/13`), and a small coach
   chip above the tools shows the next step with its hint. The chip can be
   dismissed ("hide the tips"); the button stays. `?nointro` and `?smoke`
   (the test scripts) leave the coach card out, like the start screen, so it

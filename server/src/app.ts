@@ -3758,6 +3758,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   const COUNTED = `step NOT IN ('invite', 'bonus')`;
   const serverCheck: Record<string, (user: string) => Promise<boolean>> = {
     claw: async (u) => (await db.query(`SELECT 1 FROM pulls WHERE user_id = $1 AND pool = 'daily' LIMIT 1`, [u])).length > 0,
+    vending: async (u) => (await db.query(`SELECT 1 FROM pulls WHERE user_id = $1 AND pool = 'vending' LIMIT 1`, [u])).length > 0,
+    checkpoint: async (u) => (await db.query(`SELECT 1 FROM checkpoints WHERE owner_id = $1 AND kind = 'named' AND source IN ('beach', 'import') LIMIT 1`, [u])).length > 0,
     star: async (u) => (await db.query('SELECT 1 FROM star_first WHERE user_id = $1 LIMIT 1', [u])).length > 0,
     invite: async (u) => (await db.query('SELECT 1 FROM referrals WHERE inviter_id = $1 LIMIT 1', [u])).length > 0,
   };

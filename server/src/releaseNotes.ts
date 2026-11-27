@@ -16,6 +16,13 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    date: '2026-11-27',
+    title: 'More of the beach guide',
+    changes: [
+      'The beach guide has four more steps, each with a small gift: clear some sand away, calm the waves, try the vending machine and save a checkpoint.',
+    ],
+  },
+  {
     date: '2026-11-26',
     title: 'Real weather, 21 new beaches, piers, sand bucks, trade-ins, copying a beach and notifications',
     changes: [

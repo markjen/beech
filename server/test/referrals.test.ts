@@ -25,6 +25,13 @@ async function signIn(name = `p${++seq}`) {
   const n = (await (await req('/neighbors', {}, s.token)).json()) as { code: string };
   return { ...s, code: n.code };
 }
+/** a checkpoint row as the save route writes it (the sand itself isn't looked at here) */
+const checkpoint = (owner: string, kind: string, source = 'beach') =>
+  db.query(
+    `INSERT INTO checkpoints (id, owner_id, name, kind, source, nx, ny, sand, bytes, objects, created_at)
+     VALUES (gen_random_uuid(), $1, 'cp', $2, $3, 1, 1, '\\x00', 1, 0, $4)`,
+    [owner, kind, source, Date.now()],
+  );
 async function owned(token: string, item: string): Promise<number> {
   const items = ((await (await req('/inventory', {}, token)).json()) as { items: { item: string; quantity: number; source: string }[] }).items;
   return items.filter((i) => i.item === item).reduce((s, i) => s + i.quantity, 0);
@@ -82,11 +89,30 @@ describe('the beach guide', () => {
     expect(done).toContain('invite');
   });
 
+  it('checks the vending and checkpoint steps on the server', async () => {
+    const a = await signIn();
+    for (const s of ['vending', 'checkpoint']) expect((await step(a.token, s)).status).toBe(409);
+    expect((await req('/pulls/vending', { method: 'POST' }, a.token)).status).toBe(200);
+    expect((await step(a.token, 'vending')).status).toBe(200);
+    // an automatic copy doesn't count: only one you saved yourself
+    // (nor a copy of someone else's beach)
+    await checkpoint(a.user.id, 'auto');
+    await checkpoint(a.user.id, 'tide');
+    await checkpoint(a.user.id, 'named', 'copy');
+    expect((await step(a.token, 'checkpoint')).status).toBe(409);
+    await checkpoint(a.user.id, 'named');
+    const cp = await step(a.token, 'checkpoint');
+    expect(cp.status).toBe(200);
+    expect(((await cp.json()) as { gift: string }).gift).toBe('sanddollar');
+  });
+
   it('gives the bonus once every step but invite is done', async () => {
     const a = await signIn();
     const b = await signIn();
     await req('/pulls/daily', { method: 'POST' }, a.token);
     await req(`/favorites/${b.code}`, { method: 'PUT' }, a.token);
+    await req('/pulls/vending', { method: 'POST' }, a.token);
+    await checkpoint(a.user.id, 'named');
     const order = GUIDE_STEPS.filter((s) => s.id !== 'invite').map((s) => s.id);
     let bonus: string | null = null;
     for (const [i, id] of order.entries()) {

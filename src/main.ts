@@ -916,6 +916,7 @@ async function boot() {
         if (key === 'haptics') haptics.enabled = s.haptics;
         if (key === 'ambient') ambient.setEnabled(s.ambient);
         if (key === 'waves') {
+          if (s.waves === 'calm') guide.mark('calm');
           sendWaves();
           updatePlace(true);
         }
@@ -1900,6 +1901,7 @@ async function boot() {
       const wasDig = strokeOpen && brushMode === 'dig';
       if (strokeOpen && brushMode === 'dig') guide.mark('dig');
       if (strokeOpen && brushMode === 'pile') guide.mark('pile');
+      if (strokeOpen && isClearingMode(brushMode)) guide.mark('clear');
       const pathM = digPathM;
       const durationMs = performance.now() - digStrokeStart;
       if (strokeOpen && strokeTarget) {
@@ -2858,6 +2860,7 @@ async function boot() {
       const cp = await cpApi.import(bytes, (b.name || fallback || 'Imported beach').slice(0, 40), b.location);
       showToast(uiRoot, `Kept “${cp.name}” as a checkpoint`);
       unlockSteamAchievement('CHECKPOINT_SAVED');
+      guide.mark('checkpoint');
       await checkpoints.load();
     };
     // beach files and checkpoints (BEACH_FILE.md, E5)
@@ -2939,6 +2942,7 @@ async function boot() {
           updateElsewhere();
         },
         toast: (text, undo) => (undo ? showActionToast(uiRoot, text, 'Undo', undo) : showToast(uiRoot, text)),
+        saved: () => guide.mark('checkpoint'),
         shop: () => {
           sheet.hide();
           void shopDialog?.open();
@@ -3443,6 +3447,7 @@ async function boot() {
     });
     const vending = new VendingMachine(uiRoot, new PullApi(acct), (item, place) => {
       unlockSteamAchievement('VENDING_PULL');
+      guide.mark('vending');
       void loadOwned().then(() => {
         if (place) inventory.select(item);
       });

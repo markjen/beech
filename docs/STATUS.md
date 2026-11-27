@@ -330,6 +330,15 @@ accepted the repo's default branch, so the deploy job ran only there.
   `GET /api/inventory` for owned, unexpired non-free items. Nothing writes to
   it yet.
 
+## More guide steps (2026-11-27)
+
+Four more steps in the beach guide (INVITES_GUIDE.md): `clear` (a stroke
+with the bulldozer, flatten or vacuum) and `calm` (waves set to calm) are
+app-checked and work in the sandbox; `vending` (a vending pull exists) and
+`checkpoint` (a named checkpoint of your own beach or an import) are
+server-checked. The bonus needs every step but `invite`, so players who
+finished the old nine get it once they do the new four.
+
 ## Your account on beechshore, bb, bag trade-ins, invite bonuses (2026-11-26)
 
 Owner request. Details in [BEECH_BUCKS.md](BEECH_BUCKS.md) ("App", "Your

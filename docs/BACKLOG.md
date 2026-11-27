@@ -205,9 +205,6 @@ picked up.
   kept in `localStorage`, so the claim works the same once it lands).
 - [ ] **Admin: referrals view**: who invited whom, for disputes and to
   spot farming (`referrals` table).
-- [ ] **More guide steps**: the clearing tool, calming the waves, the
-  vending machine, a checkpoint. Add to both `src/world/guide.ts` and
-  `server/src/referrals.ts` (`tests/guide.test.ts` keeps them in step).
 - [ ] **Long-press to pick up and drag items**: long-press on an item picks
   it up, then drag it somewhere else and release to put it down.
 
@@ -234,6 +231,10 @@ picked up.
 
 ## Done (recent)
 
+- [x] **More guide steps** (2026-11-27): clear some sand, calm the waves
+  (app-checked), try the vending machine and save a checkpoint
+  (server-checked). 13 steps; the starfish bonus now needs all twelve
+  but `invite`. INVITES_GUIDE.md.
 - [x] **Inland beach sections** (2026-11-26): up to four rows behind each
   beach, eight types (sand, boardwalk, path, playground, road, storefronts,
   dune garden, picnic grove), 15 beech bucks each; an editor with a live
