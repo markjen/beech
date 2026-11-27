@@ -1,8 +1,9 @@
 import { BEACH_STORE, type GridSpec } from '../config';
 import type { BeachSim } from '../sim/beachSim';
 import { applyRockCover, type PlacedObject } from '../sim/objects';
-import { decodeSand, encodeSand, fitWorld, objectsToSave, resampleField } from '../sim/sandCodec';
+import { decodeSand, encodeSand, fitDepth, fitWorld, objectsToSave, resampleWidth } from '../sim/sandCodec';
 import type { UndoHistory } from '../sim/undoStack';
+import { BeachGrids } from '../world/beachGrids';
 import { itemById } from '../world/items';
 
 type BeachSimCtor = typeof BeachSim;
@@ -159,13 +160,52 @@ export class BeachStore {
     largeEditUnprotected: [] as ((id: string) => void)[],
   };
 
+  /** this device's grids, deeper with sand rows inland (docs/INLAND_SECTIONS.md) */
+  readonly grids: BeachGrids;
+  /**
+   * How many sand rows a beach has straight behind it (its grid is that much
+   * deeper), or null when not known: a load keeps the depth it was saved at.
+   */
+  sandRows: (id: string) => number | null = () => null;
+
   constructor(
     private readonly grid: GridSpec,
-    private readonly rest: Float32Array,
+    rest: Float32Array,
     private backend: StoreBackend,
     private readonly seed = 1,
     readonly capacity = BEACH_STORE.capacity,
-  ) {}
+  ) {
+    this.grids = new BeachGrids(grid, seed, rest);
+  }
+
+  /** a beach's grid as held here (deeper with sand rows) */
+  gridOf(st: { delta: Float32Array }): GridSpec {
+    return this.grids.deep(st.delta.length / this.grid.nx);
+  }
+
+  /**
+   * The beach now has `k` sand rows behind it: its sand is made that deep
+   * (untouched sand added, or the rows taken away dropped with what's on
+   * them) and saved. Not for a beach a source holds (the caller resizes that).
+   */
+  setSandRows(id: string, k: number): void {
+    const st = this.states.get(id);
+    if (!st || this.sources.has(id)) return;
+    const ny = this.grids.withSand(k).ny;
+    if (st.delta.length === this.grid.nx * ny) return;
+    if (st.sim) {
+      st.delta = st.sim.sandDelta();
+      st.cover = st.sim.sandCover();
+      st.objects = st.sim.objects.persisted();
+      st.sim = undefined;
+    }
+    const fit = fitDepth({ nx: this.grid.nx, ny: st.delta.length / this.grid.nx, delta: st.delta, objects: st.objects, ...(st.cover ? { cover: st.cover } : {}) }, ny);
+    // (the undo history is for the old size: it doesn't carry over)
+    st.history = undefined;
+    this.applySand(st, { delta: fit.delta, objects: fit.objects, ...(fit.cover ? { cover: fit.cover } : {}) });
+    if (st.owned) this.markDirty(id, 0);
+    this.changed(id);
+  }
 
   setBackend(b: StoreBackend): void {
     this.backend = b;
@@ -310,16 +350,22 @@ export class BeachStore {
         return gen === this.generation ? this.states.get(ref.id) ?? null : null;
       }
       if (gen !== this.generation) return null;
-      const n = this.grid.nx * this.grid.ny;
+      const rows = this.sandRows(ref.id);
+      let n = this.grid.nx * this.grids.withSand(rows ?? 0).ny;
       let sand: Sand = { delta: new Float32Array(n), objects: [] };
+      /** the save was another depth than the beach's rows now: save it as it is now */
+      let refit = false;
       if (saved) {
         try {
-          const d = fitWorld(await decodeSand(saved.bytes));
-          sand = {
-            delta: resampleField(d.delta, d.nx, d.ny, this.grid.nx, this.grid.ny),
-            objects: d.objects,
-            ...(d.cover ? { cover: resampleField(d.cover, d.nx, d.ny, this.grid.nx, this.grid.ny) } : {}),
-          };
+          let d = resampleWidth(fitWorld(await decodeSand(saved.bytes)), this.grid.nx);
+          // as deep as its sand rows (a layout changed since the save), else as saved
+          if (rows !== null && d.ny !== this.grids.withSand(rows).ny) {
+            d = fitDepth(d, this.grids.withSand(rows).ny);
+            refit = true;
+          }
+          else if (d.ny < this.grid.ny) d = fitDepth(d, this.grid.ny);
+          n = d.nx * d.ny;
+          sand = { delta: d.delta, objects: d.objects, ...(d.cover ? { cover: d.cover } : {}) };
         } catch {
           // never make an unreadable save of yours editable as an empty beach
           if (ref.owned) return this.states.get(ref.id) ?? null;
@@ -359,6 +405,7 @@ export class BeachStore {
       if (st.sim) st.sim.loadDelta(sand.delta, sand.objects, sand.cover);
       this.states.set(ref.id, st);
       if (held) for (const fn of this.listeners.reloaded) fn(ref.id);
+      if (refit && ref.owned) this.markDirty(ref.id);
       this.changed(ref.id);
       return st;
     })().finally(() => {
@@ -375,22 +422,29 @@ export class BeachStore {
     this.refreshDisplay(st);
   }
 
+  /** the rest beach under a beach as held here */
+  restOf(st: { delta: Float32Array }): Float32Array {
+    return this.grids.rest(st.delta.length / this.grid.nx);
+  }
+
   private refreshDisplay(st: BeachState): void {
-    const n = this.grid.nx * this.grid.ny;
+    const n = st.delta.length;
+    const rest = this.restOf(st);
     if (st.sim) {
       if (st.display.length !== n) st.display = new Float32Array(n);
       const sand = st.sim.sand;
-      for (let k = 0; k < n; k++) st.display[k] = sand[k] - this.rest[k];
+      for (let k = 0; k < n; k++) st.display[k] = sand[k] - rest[k];
       return;
     }
     const display = st.delta.slice();
-    if (st.cover) applyRockCover(display, this.rest, this.grid.nx, this.grid.ny, this.grid.dx, st.objects, st.cover);
+    const g = this.gridOf(st);
+    if (st.cover) applyRockCover(display, rest, g.nx, g.ny, g.dx, st.objects, st.cover);
     st.display = display;
   }
 
   /** Put a beach into the store as given (the sandbox's device beach, a first sign-in's sand). */
   put(ref: BeachRef, sand: Sand, opts: { dirty?: boolean; epoch?: number; updatedAt?: number | null } = {}): BeachState {
-    const n = this.grid.nx * this.grid.ny;
+    const n = sand.delta.length;
     const st: BeachState = this.states.get(ref.id) ?? {
       id: ref.id,
       code: ref.code ?? null,
@@ -475,7 +529,7 @@ export class BeachStore {
         void loadEditSimCtor();
         return null;
       }
-      const sim = new editSimCtor(this.grid, this.seed, { waves: false, tide: false, erosion: false, healing: false, seep: false });
+      const sim = new editSimCtor(this.gridOf(st), this.seed, { waves: false, tide: false, erosion: false, healing: false, seep: false });
       sim.loadDelta(st.delta, st.objects, st.cover, st.history);
       st.history = undefined;
       st.sim = sim;
@@ -542,14 +596,15 @@ export class BeachStore {
     try {
       const sand = await this.current(id);
       if (!sand || gen !== this.generation) return;
-      const bytes = await encodeSand(sand.delta, this.grid.nx, this.grid.ny, sand.objects, sand.cover);
+      const ny = sand.delta.length / this.grid.nx;
+      const bytes = await encodeSand(sand.delta, this.grid.nx, ny, sand.objects, sand.cover);
       if (gen !== this.generation) return;
       const items = countItems(sand.objects);
       const ref: BeachRef = { id, code: st.code, owned: true, location: st.location };
       const r = await this.backend.save(ref, bytes, {
         location: st.location || 'santa-monica',
         nx: this.grid.nx,
-        ny: this.grid.ny,
+        ny,
         keepalive,
         items,
         epoch: st.epoch,

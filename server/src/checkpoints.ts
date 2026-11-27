@@ -6,7 +6,8 @@ import { sanitizeObjects } from './generated/catchup.js';
 
 /** a saved beach (and so a checkpoint) is never bigger than this */
 export const MAX_BEACH_BYTES = 768 * 1024;
-export const MAX_CELLS = 400 * 300;
+/** the largest grid saved: the finest tier, with four sand rows inland (docs/INLAND_SECTIONS.md) */
+export const MAX_CELLS = 400 * 800;
 /** the most things a saved beach holds (src/sim/sandCodec.ts MAX_OBJECTS) */
 export const MAX_OBJECTS = 2000;
 /** what apps before the raise kept (they send no X-Beach-Max) */

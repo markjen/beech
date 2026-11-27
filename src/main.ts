@@ -31,7 +31,7 @@ import { DIG_FIND_ROLL_COOLDOWN_MS, qualifiesForFind } from './sim/digFinds';
 import { POS_STRIDE, type ObjectState, type PlacedObject } from './sim/objects';
 import type { FrameInfo, FromWorker, ToWorker } from './sim/protocol';
 import { makeSwell } from './sim/waves';
-import { MAX_OBJECTS, decodeSand, encodeSand, fitWorld, resampleField } from './sim/sandCodec';
+import { MAX_OBJECTS, decodeSand, encodeSand, fitDepth, fitWorld, resampleField } from './sim/sandCodec';
 import type { UndoHistory } from './sim/undoStack';
 import { restHeight } from './sim/profile';
 import { Ambient, toggleFullscreen } from './ui/ambient';
@@ -61,7 +61,7 @@ import { idbSnapshotCache } from './net/snapshotCache';
 import { snapshotBeforeBigEdit } from './net/bigEditSnapshot';
 import type { AccountPanel } from './ui/accountPanel';
 import type { PierPreview } from './ui/pierPreview';
-import { sectionById } from './world/sections';
+import { sandRowsOf, sectionById } from './world/sections';
 import type { SectionsEditor } from './ui/sectionsEditor';
 import { ownBeachLabel } from './ui/shoreConnect';
 import type { Leaderboard } from './ui/leaderboard';
@@ -386,9 +386,45 @@ async function boot() {
       settling = null;
       dragging = null;
       awaitingLoad = ++loadId;
-      send({ type: 'setSand', loadId, delta: sand.delta, objects: sand.objects, ...(sand.cover ? { cover: sand.cover } : {}), ...(sand.history ? { history: sand.history } : {}) }, xfer);
+      // (a beach with sand rows inland is deeper: the worker makes its sim again at that size)
+      const g = store.grids.deep(sand.delta.length / grid.nx);
+      send({ type: 'setSand', loadId, grid: g, delta: sand.delta, objects: sand.objects, ...(sand.cover ? { cover: sand.cover } : {}), ...(sand.history ? { history: sand.history } : {}) }, xfer);
     },
   });
+  /**
+   * Every beach held here as deep as its sand rows: a layout changed (here, or
+   * on another device) and the beach gets the rows' sand, or loses it with
+   * what was on it (back to the bag when it saves).
+   */
+  let fittingRows = false;
+  const fitSandRows = async () => {
+    if (fittingRows) return;
+    fittingRows = true;
+    try {
+      for (const id of store.ids()) {
+        const k = store.sandRows(id);
+        if (k === null) continue;
+        const ny = store.grids.withSand(k).ny;
+        if (!isLive(id)) {
+          store.setSandRows(id, k);
+          continue;
+        }
+        if (picker.g.ny === ny || awaitingLoad) continue;
+        const sand = await getSand();
+        if (!isLive(id) || awaitingLoad) continue;
+        const fit = fitDepth({ nx: grid.nx, ny: sand.delta.length / grid.nx, delta: sand.delta, objects: sand.objects, ...(sand.cover ? { cover: sand.cover } : {}) }, ny);
+        const xfer: Transferable[] = [fit.delta.buffer];
+        if (fit.cover) xfer.push(fit.cover.buffer);
+        settling = null;
+        dragging = null;
+        awaitingLoad = ++loadId;
+        send({ type: 'setSand', loadId, grid: store.grids.deep(ny), delta: fit.delta, objects: fit.objects, ...(fit.cover ? { cover: fit.cover } : {}) }, xfer);
+        markDirty(0);
+      }
+    } finally {
+      fittingRows = false;
+    }
+  };
   /** is this the beach the worker simulates? */
   const isLive = (id: string) => id === sync.id;
   type DroppedSnack = { x: number; z: number; expiresAt: number };
@@ -416,6 +452,14 @@ async function boot() {
 
   worker.onmessage = (ev: MessageEvent<FromWorker>) => {
     const m = ev.data;
+    if (m.type === 'regrid') {
+      // the beach the worker has now is deeper or shallower (sand rows inland)
+      renderer.resize(m.grid, m.rest);
+      picker.resize(m.grid, m.rest);
+      pendingBuf = null;
+      neighbors?.depthChanged();
+      return;
+    }
     if (m.type === 'sand') {
       sandWaiters.get(m.id)?.({ delta: m.delta, objects: m.objects, ...(m.cover ? { cover: m.cover } : {}), ...(m.history ? { history: m.history } : {}) });
       sandWaiters.delete(m.id);
@@ -1157,8 +1201,10 @@ async function boot() {
       loadBeachFileMods(),
     ]);
     const name = myBeachName();
+    // a beach file is the beach itself, without sand rows inland (docs/BEACH_FILE.md)
+    const ny = delta.length / grid.nx;
     const text = await writeBeachFile(
-      { nx: grid.nx, ny: grid.ny, delta, objects, ...(cover ? { cover } : {}) },
+      fitDepth({ nx: grid.nx, ny, delta, objects, ...(cover ? { cover } : {}) }, grid.ny),
       { name, location: beach.id, createdWith: `beech ${APP_VERSION}` },
     );
     await saveText(beachFileName(name), text);
@@ -1169,7 +1215,10 @@ async function boot() {
     placedElsewhere: () => inventory.elsewhereItems(),
     hasBag: ACCOUNTS_ENABLED,
     shop: ACCOUNTS_ENABLED ? () => void shopDialog?.open() : undefined,
-    apply: (b) => {
+    apply: (file) => {
+      // onto a beach with sand rows inland: the rows behind come back untouched
+      const fit = fitDepth({ nx: grid.nx, ny: file.delta.length / grid.nx, delta: file.delta, objects: file.objects, ...(file.cover ? { cover: file.cover } : {}) }, picker.g.ny);
+      const b = { ...file, delta: fit.delta, objects: fit.objects, cover: fit.cover };
       const xfer: Transferable[] = [b.delta.buffer];
       if (b.cover) xfer.push(b.cover.buffer);
       send({ type: 'importBeach', delta: b.delta, objects: b.objects, ...(b.cover ? { cover: b.cover } : {}) }, xfer);
@@ -2712,6 +2761,12 @@ async function boot() {
     neighbors = new NeighborView(scene, grid, ready.rest, swell, cam, account, store);
     const nv = neighbors;
     nv.setLive(sync.id, renderer);
+    // sand rows straight behind a beach are part of it (docs/INLAND_SECTIONS.md): its grid is deeper
+    store.sandRows = (id) => {
+      const rows = acct.mine(id)?.sections ?? nv.sectionsOf(id);
+      return rows ? sandRowsOf(rows) : null;
+    };
+    nv.onShore(() => void fitSandRows());
     // a save of any beach of yours that can't go through: say so once, the same way for all of them
     store.onProblem((_id, kind) => {
       if (kind === 'fenced') {

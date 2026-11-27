@@ -8,13 +8,23 @@ import { ORIGIN_X, ORIGIN_Z } from '../render/beachRenderer';
  * actual (possibly dug) surface, not a flat plane.
  */
 export class SandPicker {
-  readonly sand: Float32Array;
+  sand: Float32Array;
   /** water depth per cell (latest frame) */
-  readonly water: Float32Array;
+  water: Float32Array;
   /** world X of the slab's centre (the beach the worker simulates sits anywhere along the shore) */
   offsetX = 0;
 
-  constructor(readonly g: GridSpec, rest: Float32Array) {
+  constructor(
+    public g: GridSpec,
+    rest: Float32Array,
+  ) {
+    this.sand = rest.slice();
+    this.water = new Float32Array(rest.length);
+  }
+
+  /** The beach the worker simulates has another depth now (sand rows inland). */
+  resize(g: GridSpec, rest: Float32Array): void {
+    this.g = g;
     this.sand = rest.slice();
     this.water = new Float32Array(rest.length);
   }
@@ -24,6 +34,7 @@ export class SandPicker {
     const s = this.sand;
     const w = this.water;
     const n = s.length;
+    if (buf.length !== n * 4) return; // a frame from before the beach changed depth
     const n4 = n & ~3;
     let k = 0;
     let o = 0;

@@ -548,6 +548,8 @@ export class Account {
         ...this.editHeaders(),
         // how many things this app keeps (the server refuses saves from apps that keep fewer than a beach holds)
         'X-Beach-Max': String(MAX_OBJECTS),
+        // this app keeps sand rows inland (a grid deeper than it is wide)
+        'X-Beach-Deep': '1',
         'X-App-Build': APP_BUILD,
       },
       body: bytes as BodyInit,

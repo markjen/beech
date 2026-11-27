@@ -16,7 +16,7 @@ import { BeachRenderer, OCEAN_REACH, ORIGIN_Z } from './beachRenderer';
 import { ObjectView } from './objects';
 import { PierLayer, type PierSpot } from './pier';
 import type { SectionLayer, SectionSpot } from './sections';
-import { sectionJoins } from '../world/sections';
+import { sandRowsOf, sectionJoins } from '../world/sections';
 import {
   boundaryLinked,
   indicesOverlapping,
@@ -140,7 +140,7 @@ export class NeighborView {
   constructor(
     private readonly scene: Scene,
     private readonly grid: GridSpec,
-    private readonly rest: Float32Array,
+    _rest: Float32Array,
     private readonly swell: Swell,
     private readonly cam: CameraController,
     private readonly account: Account,
@@ -267,6 +267,17 @@ export class NeighborView {
     return this.sections?.rows(beachId) ?? 0;
   }
 
+  /** A beach drawn here changed depth (sand rows inland): the scenery rows behind follow. */
+  depthChanged(): void {
+    this.syncSections();
+  }
+
+  /** A beach's saved inland rows, as the shore has them (null: not on the shore here). */
+  sectionsOf(beachId: string): string[] | null {
+    for (const e of this.entries.values()) if (e.beach.id === beachId) return e.beach.sections ?? [];
+    return null;
+  }
+
   /** Show this layout behind one of your beaches before it's saved (null: stop). */
   previewSections(beachId: string | null, rows: string[] = []): void {
     this.sectionsPreview = beachId ? { id: beachId, rows: [...rows] } : null;
@@ -314,7 +325,10 @@ export class NeighborView {
       // which of the two is towards +x
       const upIsPos = this.xFor(e.index + 1) > this.xFor(e.index);
       const rowsJoined = sectionJoins(rows, upIsPos ? down : up, upIsPos ? up : down);
-      want.push({ key: `${e.beach.id}@${e.index}`, x: this.xFor(e.index), rows: rowsJoined });
+      // sand rows straight behind are the beach's own sand, as deep as it's drawn now
+      const drawn = e.beach.id === this.liveId ? this.liveRenderer?.grid : e.slot?.renderer?.grid;
+      const from = Math.min(sandRowsOf(rows), drawn ? this.store.grids.sandRows(drawn.ny) : 0);
+      want.push({ key: `${e.beach.id}@${e.index}`, x: this.xFor(e.index), rows: rowsJoined, from });
     }
     this.sections.sync(want);
     const deepest = want.reduce((m, w) => Math.max(m, w.rows.length), 0);
@@ -762,7 +776,9 @@ export class NeighborView {
       s.snapshot = undefined;
     } else if (!live && !s.renderer) {
       const x = this.xFor(e.index);
-      s.renderer = new BeachRenderer(this.scene, this.grid, this.rest, this.swell, x);
+      const st = this.store.peek(e.beach.id);
+      const g = st ? this.store.gridOf(st) : this.grid;
+      s.renderer = new BeachRenderer(this.scene, g, this.store.grids.rest(g.ny), this.swell, x);
       s.renderer.setChairView(this.chairView);
       s.objects = new ObjectView(this.scene, s.renderer, x);
       this.repaint(e);
@@ -834,6 +850,12 @@ export class NeighborView {
     const base = this.store.objectsOf(e.beach.id) ?? d.objects;
     const objs = preview ? base.map((o) => (o.id === preview.id ? { ...o, x: preview.x, y: preview.y } : o)) : base;
     const display = d.display;
+    // (the beach changed depth: sand rows inland)
+    const g = this.store.gridOf(d);
+    if (g.ny !== s.renderer.grid.ny) {
+      s.renderer.resize(g, this.store.grids.rest(g.ny));
+      this.syncSections();
+    }
     s.objects.setStatic(objs, (x, y) => this.heightAt(display, x, y) + (preview && Math.abs(x - preview.x) < 1e-4 && Math.abs(y - preview.y) < 1e-4 ? 0.12 : 0));
     const previous = s.snapshot;
     const newerSave =
@@ -864,11 +886,11 @@ export class NeighborView {
     let best: OwnedPick | null = null;
     let bestD2 = Infinity;
     const o = ray.origin;
-    const maxZ = this.grid.ny * this.grid.dx;
     for (const e of this.entries.values()) {
       if (!e.slot?.renderer || !want(e.beach)) continue;
       const st = this.store.peek(e.beach.id);
       if (!st) continue;
+      const maxZ = (st.display.length / this.grid.nx) * this.grid.dx;
       const ox = this.xFor(e.index);
       const display = st.display;
       const hit = pickHeightfield(ray, this.grid.dx, (x, z) => {
@@ -1059,7 +1081,7 @@ export class NeighborView {
     if (!best || !st) return NaN;
     const sx = x - this.xFor(best.index) + WORLD_SIZE_X / 2;
     const sy = z - ORIGIN_Z;
-    if (sx < 0 || sx > WORLD_SIZE_X || sy < 0 || sy > this.grid.ny * this.grid.dx) return NaN;
+    if (sx < 0 || sx > WORLD_SIZE_X || sy < 0 || sy > (st.display.length / this.grid.nx) * this.grid.dx) return NaN;
     return this.heightAt(st.display, sx, sy);
   }
 
@@ -1071,25 +1093,28 @@ export class NeighborView {
 
   /** Their sand height at sim metres (bilinear). */
   private heightAt(delta: Float32Array, x: number, y: number): number {
-    const { nx, ny, dx } = this.grid;
+    const { nx, dx } = this.grid;
+    const ny = delta.length / nx;
+    const rest = this.store.grids.rest(ny);
     const fi = Math.min(nx - 1.001, Math.max(0, x / dx - 0.5));
     const fj = Math.min(ny - 1.001, Math.max(0, y / dx - 0.5));
     const i = fi | 0;
     const j = fj | 0;
     const tx = fi - i;
     const ty = fj - j;
-    const h = (k: number) => this.rest[k] + delta[k];
+    const h = (k: number) => rest[k] + delta[k];
     const k = j * nx + i;
     return (h(k) * (1 - tx) + h(k + 1) * tx) * (1 - ty) + (h(k + nx) * (1 - tx) + h(k + nx + 1) * tx) * ty;
   }
 
   /** Pack their sand with still water at the current tide into a field frame. */
   private paint(r: BeachRenderer, delta: Float32Array, easeMs = 0): void {
-    const n = this.grid.nx * this.grid.ny;
+    const n = delta.length;
+    const rest = this.store.grids.rest(n / this.grid.nx);
     if (!this.paintBuf || this.paintBuf.length !== n * 4) this.paintBuf = new Float32Array(n * 4);
     const buf = this.paintBuf;
     for (let k = 0, o = 0; k < n; k++, o += 4) {
-      const sand = this.rest[k] + delta[k];
+      const sand = rest[k] + delta[k];
       const water = Math.max(0, this.tide - sand);
       buf[o] = sand;
       buf[o + 1] = water;

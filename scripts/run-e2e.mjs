@@ -24,6 +24,7 @@ const ALL = [
   'push-e2e',
   'piers-e2e',
   'sections-e2e',
+  'sand-rows-e2e',
 ];
 
 let jobCount = process.env.E2E_JOBS ?? '3';

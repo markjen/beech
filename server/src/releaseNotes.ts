@@ -17,8 +17,9 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: '2026-11-27',
-    title: 'A quieter palm, more of the beach guide, ratings along the shore, a see-through pier preview and safer notes',
+    title: 'Playable sand extensions, a quieter palm, more of the beach guide, ratings along the shore, a see-through pier preview and safer notes',
     changes: [
+      'Sand extensions straight behind your beach are now part of it: the sand runs straight on from your beach, and you can dig, build, use molds and put things from your bag there, just like on the rest of your beach. It lines up with a linked neighbor’s sand extension in the same row.',
       'With the toolbar closed, the palm button fades away after 5 seconds without a touch, leaving just the beach. Tap where it was, or move the mouse, and it’s back.',
       'Someone whose notes keep getting reported can have their notes paused for a while. They can still rate and give.',
       'Before you place a pier, its preview is see-through and paler, so it’s clear it isn’t placed yet.',

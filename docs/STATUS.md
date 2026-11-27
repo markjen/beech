@@ -512,6 +512,14 @@ IDs, no editable sand yet).
   joins derived from the shore; the camera pans inland over them.
 - Tests: `server/test/stateMachines/sections.test.ts` (transitions,
   replays, random walk), `tests/sections.test.ts`, `npm run e2e:sections`.
+- **Playable sand (2026-11-27).** Sand extensions straight behind a beach
+  make the beach's own grid deeper (12 m a row), so they dig, sculpt, take
+  molds, undo and hold bag items exactly like the beach, and join a linked
+  neighbor's at the same row. Differs from the design (own 128 × 48 grid
+  per copy): leading sand rows only, sand goes with the row's position, and
+  taking a row away drops its sand (things on it back to the bag). Details
+  in INLAND_SECTIONS.md, "Playable sand: what was built". Tests: `tests/sim.test.ts`
+  ("sand rows inland"), `tests/sections.test.ts`, `npm run e2e:sandrows`.
 
 ## Piers (built 2026-11-26)
 

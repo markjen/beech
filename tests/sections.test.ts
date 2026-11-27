@@ -1,12 +1,14 @@
 // Inland beach sections (docs/INLAND_SECTIONS.md): the catalog mirrors, the
 // joins, the editor's counts, and each type's geometry.
 import { describe, expect, it } from 'vitest';
-import { PROFILE, SECTION, WORLD_SIZE_X } from '../src/config';
+import { GRID_TIERS, PROFILE, SECTION, WORLD_SIZE_X } from '../src/config';
+import type { PlacedObject } from '../src/sim/objects';
+import { fitDepth, resampleWidth } from '../src/sim/sandCodec';
 import { colorOf, sectionGeometry } from '../src/render/sections';
 import { restHeight } from '../src/sim/profile';
 import { freeFor } from '../src/ui/sectionsEditor';
 import { EXTRAS } from '../src/world/items';
-import { SECTIONS, SECTION_ROWS, sectionJoins } from '../src/world/sections';
+import { SECTIONS, SECTION_ROWS, gridWithSand, sandRowsInGrid, sandRowsOf, sectionJoins } from '../src/world/sections';
 import { SECTIONS as SERVER_SECTIONS, SECTION_ROWS as SERVER_ROWS } from '../server/src/sections';
 import { PRODUCTS } from '../server/src/products';
 import { PRIZE_NAMES } from '../server/src/prizeNames';
@@ -99,5 +101,42 @@ describe('section geometry', () => {
     const a = sectionGeometry('section-dunes', false, true, 2);
     const b = sectionGeometry('section-dunes', false, true, 2);
     expect([...a.values()].map((g) => g.P)).toEqual([...b.values()].map((g) => g.P));
+  });
+});
+
+describe('sand rows inland are part of the beach', () => {
+  it('counts only the sand rows straight behind the beach', () => {
+    expect(sandRowsOf([])).toBe(0);
+    expect(sandRowsOf(['section-sand', 'section-sand', 'section-road'])).toBe(2);
+    expect(sandRowsOf(['section-road', 'section-sand'])).toBe(0);
+  });
+
+  it('makes each tier’s grid deeper by whole rows', () => {
+    for (const g of Object.values(GRID_TIERS)) {
+      const d = gridWithSand(g, 3);
+      expect(d.nx).toBe(g.nx);
+      expect(d.ny * d.dx).toBeCloseTo(32 + 3 * SECTION.depth, 6);
+      expect(sandRowsInGrid(d.ny, g.ny, g.dx)).toBe(3);
+    }
+  });
+
+  it('fits a saved beach to its rows: untouched sand added, or the rows cut with what was on them', () => {
+    const g = GRID_TIERS.low;
+    const deep = gridWithSand(g, 2);
+    const delta = new Float32Array(deep.nx * deep.ny).fill(0.1);
+    const objects = [
+      { id: 1, kind: 'flag', item: 'flag', x: 5, y: 10, angle: 0, size: 0.4, variant: 0 },
+      { id: 2, kind: 'flag', item: 'flag', x: 5, y: 40, angle: 0, size: 0.4, variant: 0 },
+    ] as PlacedObject[];
+    const cut = fitDepth({ nx: deep.nx, ny: deep.ny, delta, objects }, gridWithSand(g, 0).ny);
+    expect(cut.delta.length).toBe(g.nx * g.ny);
+    expect(cut.objects.map((o) => o.id)).toEqual([1]);
+    const grown = fitDepth(cut, deep.ny);
+    expect(grown.delta.length).toBe(deep.nx * deep.ny);
+    expect(grown.delta[g.nx * g.ny - 1]).toBeCloseTo(0.1);
+    expect(grown.delta[g.nx * g.ny]).toBe(0);
+    // another device's grid: as deep, in metres
+    const wide = resampleWidth({ nx: deep.nx, ny: deep.ny, delta, objects }, GRID_TIERS.high.nx);
+    expect(wide.ny).toBe(gridWithSand(GRID_TIERS.high, 2).ny);
   });
 });

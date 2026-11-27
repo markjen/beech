@@ -21,6 +21,9 @@ uniform sampler2D posFieldPrev;
 uniform sampler2D posFieldCur;
 uniform float posMix;
 uniform float posStatic;
+/** how many rows the -X and +X neighbors' fields have (a beach is deeper with sand rows inland) */
+uniform float negRows;
+uniform float posRows;
 uniform vec3 swellA;
 uniform vec3 swellW;
 uniform vec3 swellP;
@@ -46,6 +49,13 @@ vec4 rawTex(sampler2D fPrev, sampler2D fCur, float fMix, vec2 c) {
   return mix(texture2D(fPrev, uv), texture2D(fCur, uv), fMix);
 }
 
+/** a neighbor's field, which has this many rows (the same width as ours) */
+vec4 rawTexR(float rows, sampler2D fPrev, sampler2D fCur, float fMix, vec2 c) {
+  vec2 g = vec2(gridSize.x, rows);
+  vec2 uv = (clamp(c, vec2(0.0), g - 1.0) + 0.5) / g;
+  return mix(texture2D(fPrev, uv), texture2D(fCur, uv), fMix);
+}
+
 float staticWet(float sandH, float d, float ampSum) {
   if (d > 0.004) return 1.0;
   float capRef = tide + ampSum * 0.06;
@@ -64,6 +74,14 @@ vec3 sandSample(sampler2D fPrev, sampler2D fCur, float fMix, float isStat, vec2 
   float d = max(0.0, tide - f.r);
   vec3 s = vec3(f.r, d, staticWet(f.r, d, ampSum));
   // between 0 and 1 only while the waves move onto a beach (a uniform: no divergence)
+  return isStat >= 1.0 ? s : mix(f.rgb, s, isStat);
+}
+
+vec3 sandSampleR(float rows, sampler2D fPrev, sampler2D fCur, float fMix, float isStat, vec2 c, float ampSum) {
+  vec4 f = rawTexR(rows, fPrev, fCur, fMix, c);
+  if (isStat <= 0.0) return f.rgb;
+  float d = max(0.0, tide - f.r);
+  vec3 s = vec3(f.r, d, staticWet(f.r, d, ampSum));
   return isStat >= 1.0 ? s : mix(f.rgb, s, isStat);
 }
 
@@ -190,70 +208,70 @@ void main() {
   float hu2 = sandSample(fieldPrev, fieldCur, frameMix, staticWater, vec2(c.x, cyU2), ampSum).x;
   float restH = texture2D(restTex, (c + 0.5) / gridSize).r;
 
-  if (linkedSides.x > 0.5 && c.x < blendCells + 2.5) {
+  if (linkedSides.x > 0.5 && c.y < negRows - 0.5 && c.x < blendCells + 2.5) {
     vec3 se = sandSample(fieldPrev, fieldCur, frameMix, staticWater, vec2(0.0, cy), ampSum);
-    vec3 oe = sandSample(negFieldPrev, negFieldCur, negMix, negStatic, vec2(nx - 1.0, cy), ampSum);
+    vec3 oe = sandSampleR(negRows, negFieldPrev, negFieldCur, negMix, negStatic, vec2(nx - 1.0, cy), ampSum);
     vec3 delta = oe - se;
     float w0 = seamW(c.x, blendCells);
     f = applySandDelta(f, delta, w0);
     if (c.x < 0.5) {
-      fl = applySandDelta(sandSample(negFieldPrev, negFieldCur, negMix, negStatic, vec2(nx - 2.0, cy), ampSum), -delta, seamW(1.0, blendCells));
+      fl = applySandDelta(sandSampleR(negRows, negFieldPrev, negFieldCur, negMix, negStatic, vec2(nx - 2.0, cy), ampSum), -delta, seamW(1.0, blendCells));
     } else {
       fl = applySandDelta(fl, delta, seamW(c.x - 1.0, blendCells));
     }
     fr = applySandDelta(fr, delta, seamW(c.x + 1.0, blendCells));
     if (c.x < 1.5) {
       float d2 = 2.0 - c.x;
-      hl2 = sandSample(negFieldPrev, negFieldCur, negMix, negStatic, vec2(nx - 1.0 - d2, cy), ampSum).x - delta.x * seamW(d2, blendCells);
+      hl2 = sandSampleR(negRows, negFieldPrev, negFieldCur, negMix, negStatic, vec2(nx - 1.0 - d2, cy), ampSum).x - delta.x * seamW(d2, blendCells);
     } else {
       hl2 += delta.x * seamW(c.x - 2.0, blendCells);
     }
     hr2 += delta.x * seamW(c.x + 2.0, blendCells);
     if (w0 > 0.0) {
-      vec3 dD1 = sandSample(negFieldPrev, negFieldCur, negMix, negStatic, vec2(nx - 1.0, cyD1), ampSum)
+      vec3 dD1 = sandSampleR(negRows, negFieldPrev, negFieldCur, negMix, negStatic, vec2(nx - 1.0, cyD1), ampSum)
                - sandSample(fieldPrev, fieldCur, frameMix, staticWater, vec2(0.0, cyD1), ampSum);
-      vec3 dU1 = sandSample(negFieldPrev, negFieldCur, negMix, negStatic, vec2(nx - 1.0, cyU1), ampSum)
+      vec3 dU1 = sandSampleR(negRows, negFieldPrev, negFieldCur, negMix, negStatic, vec2(nx - 1.0, cyU1), ampSum)
                - sandSample(fieldPrev, fieldCur, frameMix, staticWater, vec2(0.0, cyU1), ampSum);
       fd = applySandDelta(fd, dD1, w0);
       fu = applySandDelta(fu, dU1, w0);
-      hd2 += (sandSample(negFieldPrev, negFieldCur, negMix, negStatic, vec2(nx - 1.0, cyD2), ampSum).x
+      hd2 += (sandSampleR(negRows, negFieldPrev, negFieldCur, negMix, negStatic, vec2(nx - 1.0, cyD2), ampSum).x
             - sandSample(fieldPrev, fieldCur, frameMix, staticWater, vec2(0.0, cyD2), ampSum).x) * w0;
-      hu2 += (sandSample(negFieldPrev, negFieldCur, negMix, negStatic, vec2(nx - 1.0, cyU2), ampSum).x
+      hu2 += (sandSampleR(negRows, negFieldPrev, negFieldCur, negMix, negStatic, vec2(nx - 1.0, cyU2), ampSum).x
             - sandSample(fieldPrev, fieldCur, frameMix, staticWater, vec2(0.0, cyU2), ampSum).x) * w0;
       float rSelf = texture2D(restTex, vec2(0.5 / nx, (cy + 0.5) / ny)).r;
       float rOther = texture2D(restTex, vec2((nx - 0.5) / nx, (cy + 0.5) / ny)).r;
       restH += (rOther - rSelf) * w0;
     }
-  } else if (linkedSides.y > 0.5 && (nx - 1.0 - c.x) < blendCells + 2.5) {
+  } else if (linkedSides.y > 0.5 && c.y < posRows - 0.5 && (nx - 1.0 - c.x) < blendCells + 2.5) {
     float dist = nx - 1.0 - c.x;
     vec3 se = sandSample(fieldPrev, fieldCur, frameMix, staticWater, vec2(nx - 1.0, cy), ampSum);
-    vec3 oe = sandSample(posFieldPrev, posFieldCur, posMix, posStatic, vec2(0.0, cy), ampSum);
+    vec3 oe = sandSampleR(posRows, posFieldPrev, posFieldCur, posMix, posStatic, vec2(0.0, cy), ampSum);
     vec3 delta = oe - se;
     float w0 = seamW(dist, blendCells);
     f = applySandDelta(f, delta, w0);
     fl = applySandDelta(fl, delta, seamW(dist + 1.0, blendCells));
     if (dist < 0.5) {
-      fr = applySandDelta(sandSample(posFieldPrev, posFieldCur, posMix, posStatic, vec2(1.0, cy), ampSum), -delta, seamW(1.0, blendCells));
+      fr = applySandDelta(sandSampleR(posRows, posFieldPrev, posFieldCur, posMix, posStatic, vec2(1.0, cy), ampSum), -delta, seamW(1.0, blendCells));
     } else {
       fr = applySandDelta(fr, delta, seamW(dist - 1.0, blendCells));
     }
     hl2 += delta.x * seamW(dist + 2.0, blendCells);
     if (dist < 1.5) {
       float d2 = 2.0 - dist;
-      hr2 = sandSample(posFieldPrev, posFieldCur, posMix, posStatic, vec2(d2, cy), ampSum).x - delta.x * seamW(d2, blendCells);
+      hr2 = sandSampleR(posRows, posFieldPrev, posFieldCur, posMix, posStatic, vec2(d2, cy), ampSum).x - delta.x * seamW(d2, blendCells);
     } else {
       hr2 += delta.x * seamW(dist - 2.0, blendCells);
     }
     if (w0 > 0.0) {
-      vec3 dD1 = sandSample(posFieldPrev, posFieldCur, posMix, posStatic, vec2(0.0, cyD1), ampSum)
+      vec3 dD1 = sandSampleR(posRows, posFieldPrev, posFieldCur, posMix, posStatic, vec2(0.0, cyD1), ampSum)
                - sandSample(fieldPrev, fieldCur, frameMix, staticWater, vec2(nx - 1.0, cyD1), ampSum);
-      vec3 dU1 = sandSample(posFieldPrev, posFieldCur, posMix, posStatic, vec2(0.0, cyU1), ampSum)
+      vec3 dU1 = sandSampleR(posRows, posFieldPrev, posFieldCur, posMix, posStatic, vec2(0.0, cyU1), ampSum)
                - sandSample(fieldPrev, fieldCur, frameMix, staticWater, vec2(nx - 1.0, cyU1), ampSum);
       fd = applySandDelta(fd, dD1, w0);
       fu = applySandDelta(fu, dU1, w0);
-      hd2 += (sandSample(posFieldPrev, posFieldCur, posMix, posStatic, vec2(0.0, cyD2), ampSum).x
+      hd2 += (sandSampleR(posRows, posFieldPrev, posFieldCur, posMix, posStatic, vec2(0.0, cyD2), ampSum).x
             - sandSample(fieldPrev, fieldCur, frameMix, staticWater, vec2(nx - 1.0, cyD2), ampSum).x) * w0;
-      hu2 += (sandSample(posFieldPrev, posFieldCur, posMix, posStatic, vec2(0.0, cyU2), ampSum).x
+      hu2 += (sandSampleR(posRows, posFieldPrev, posFieldCur, posMix, posStatic, vec2(0.0, cyU2), ampSum).x
             - sandSample(fieldPrev, fieldCur, frameMix, staticWater, vec2(nx - 1.0, cyU2), ampSum).x) * w0;
       float rSelf = texture2D(restTex, vec2((nx - 0.5) / nx, (cy + 0.5) / ny)).r;
       float rOther = texture2D(restTex, vec2(0.5 / nx, (cy + 0.5) / ny)).r;
@@ -348,14 +366,14 @@ void main() {
   vec4 dn = evalFromWave(rawTex(fieldPrev, fieldCur, frameMix, vec2(c.x, cyD1)), staticWater, wpC, ampSum);
   vec4 up = evalFromWave(rawTex(fieldPrev, fieldCur, frameMix, vec2(c.x, cyU1)), staticWater, wpC, ampSum);
 
-  if (linkedSides.x > 0.5 && c.x < blendCells + 1.5) {
+  if (linkedSides.x > 0.5 && c.y < negRows - 0.5 && c.x < blendCells + 1.5) {
     vec4 wpS = (staticWater > 0.0 || negStatic > 0.0) ? waveParams(centerX - halfW, wz) : vec4(0.0);
     vec4 se = evalFromWave(rawTex(fieldPrev, fieldCur, frameMix, vec2(0.0, cy)), staticWater, wpS, ampSum);
-    vec4 oe = evalFromWave(rawTex(negFieldPrev, negFieldCur, negMix, vec2(nx - 1.0, cy)), negStatic, wpS, ampSum);
+    vec4 oe = evalFromWave(rawTexR(negRows, negFieldPrev, negFieldCur, negMix, vec2(nx - 1.0, cy)), negStatic, wpS, ampSum);
     float w0 = seamW(c.x, blendCells);
     f = seamBlend(f, se, oe, w0);
     if (c.x < 0.5) {
-      vec4 oL = evalFromWave(rawTex(negFieldPrev, negFieldCur, negMix, vec2(nx - 2.0, cy)), negStatic, wpS, ampSum);
+      vec4 oL = evalFromWave(rawTexR(negRows, negFieldPrev, negFieldCur, negMix, vec2(nx - 2.0, cy)), negStatic, wpS, ampSum);
       l = seamBlend(oL, oe, se, seamW(1.0, blendCells));
     } else {
       l = seamBlend(l, se, oe, seamW(c.x - 1.0, blendCells));
@@ -363,31 +381,31 @@ void main() {
     r = seamBlend(r, se, oe, seamW(c.x + 1.0, blendCells));
     if (w0 > 0.0) {
       vec4 seD = evalFromWave(rawTex(fieldPrev, fieldCur, frameMix, vec2(0.0, cyD1)), staticWater, wpS, ampSum);
-      vec4 oeD = evalFromWave(rawTex(negFieldPrev, negFieldCur, negMix, vec2(nx - 1.0, cyD1)), negStatic, wpS, ampSum);
+      vec4 oeD = evalFromWave(rawTexR(negRows, negFieldPrev, negFieldCur, negMix, vec2(nx - 1.0, cyD1)), negStatic, wpS, ampSum);
       vec4 seU = evalFromWave(rawTex(fieldPrev, fieldCur, frameMix, vec2(0.0, cyU1)), staticWater, wpS, ampSum);
-      vec4 oeU = evalFromWave(rawTex(negFieldPrev, negFieldCur, negMix, vec2(nx - 1.0, cyU1)), negStatic, wpS, ampSum);
+      vec4 oeU = evalFromWave(rawTexR(negRows, negFieldPrev, negFieldCur, negMix, vec2(nx - 1.0, cyU1)), negStatic, wpS, ampSum);
       dn = seamBlend(dn, seD, oeD, w0);
       up = seamBlend(up, seU, oeU, w0);
     }
-  } else if (linkedSides.y > 0.5 && (nx - 1.0 - c.x) < blendCells + 1.5) {
+  } else if (linkedSides.y > 0.5 && c.y < posRows - 0.5 && (nx - 1.0 - c.x) < blendCells + 1.5) {
     float dist = nx - 1.0 - c.x;
     vec4 wpS = (staticWater > 0.0 || posStatic > 0.0) ? waveParams(centerX + halfW, wz) : vec4(0.0);
     vec4 se = evalFromWave(rawTex(fieldPrev, fieldCur, frameMix, vec2(nx - 1.0, cy)), staticWater, wpS, ampSum);
-    vec4 oe = evalFromWave(rawTex(posFieldPrev, posFieldCur, posMix, vec2(0.0, cy)), posStatic, wpS, ampSum);
+    vec4 oe = evalFromWave(rawTexR(posRows, posFieldPrev, posFieldCur, posMix, vec2(0.0, cy)), posStatic, wpS, ampSum);
     float w0 = seamW(dist, blendCells);
     f = seamBlend(f, se, oe, w0);
     l = seamBlend(l, se, oe, seamW(dist + 1.0, blendCells));
     if (dist < 0.5) {
-      vec4 oR = evalFromWave(rawTex(posFieldPrev, posFieldCur, posMix, vec2(1.0, cy)), posStatic, wpS, ampSum);
+      vec4 oR = evalFromWave(rawTexR(posRows, posFieldPrev, posFieldCur, posMix, vec2(1.0, cy)), posStatic, wpS, ampSum);
       r = seamBlend(oR, oe, se, seamW(1.0, blendCells));
     } else {
       r = seamBlend(r, se, oe, seamW(dist - 1.0, blendCells));
     }
     if (w0 > 0.0) {
       vec4 seD = evalFromWave(rawTex(fieldPrev, fieldCur, frameMix, vec2(nx - 1.0, cyD1)), staticWater, wpS, ampSum);
-      vec4 oeD = evalFromWave(rawTex(posFieldPrev, posFieldCur, posMix, vec2(0.0, cyD1)), posStatic, wpS, ampSum);
+      vec4 oeD = evalFromWave(rawTexR(posRows, posFieldPrev, posFieldCur, posMix, vec2(0.0, cyD1)), posStatic, wpS, ampSum);
       vec4 seU = evalFromWave(rawTex(fieldPrev, fieldCur, frameMix, vec2(nx - 1.0, cyU1)), staticWater, wpS, ampSum);
-      vec4 oeU = evalFromWave(rawTex(posFieldPrev, posFieldCur, posMix, vec2(0.0, cyU1)), posStatic, wpS, ampSum);
+      vec4 oeU = evalFromWave(rawTexR(posRows, posFieldPrev, posFieldCur, posMix, vec2(0.0, cyU1)), posStatic, wpS, ampSum);
       dn = seamBlend(dn, seD, oeD, w0);
       up = seamBlend(up, seU, oeU, w0);
     }
@@ -572,7 +590,9 @@ varying float vWet;
 varying float vDepth;
 void main() {
   vNormal = normal;
-  if ((normal.x < -0.5 && linkedSides.x > 0.5) || (normal.x > 0.5 && linkedSides.y > 0.5)) {
+  // a linked side has no skirt, except where this beach runs deeper inland than its neighbor
+  float skirtRow = floor(uv.y * gridSize.y);
+  if ((normal.x < -0.5 && linkedSides.x > 0.5 && skirtRow < negRows - 0.5) || (normal.x > 0.5 && linkedSides.y > 0.5 && skirtRow < posRows - 0.5)) {
     vWorld = vec3(0.0);
     vTop = 0.0;
     vWet = 0.0;
@@ -590,16 +610,16 @@ void main() {
   float ampSum = swellA.x + swellA.y + swellA.z;
   vec4 wpC = staticWater > 0.0 ? waveParams(wx, wz) : vec4(0.0);
   vec4 f = evalFromWave(rawTex(fieldPrev, fieldCur, frameMix, c), staticWater, wpC, ampSum);
-  if (linkedSides.x > 0.5 && c.x < blendCells) {
+  if (linkedSides.x > 0.5 && c.y < negRows - 0.5 && c.x < blendCells) {
     vec4 wpS = (staticWater > 0.0 || negStatic > 0.0) ? waveParams(centerX - halfW, wz) : vec4(0.0);
     vec4 se = evalFromWave(rawTex(fieldPrev, fieldCur, frameMix, vec2(0.0, cy)), staticWater, wpS, ampSum);
-    vec4 oe = evalFromWave(rawTex(negFieldPrev, negFieldCur, negMix, vec2(nx - 1.0, cy)), negStatic, wpS, ampSum);
+    vec4 oe = evalFromWave(rawTexR(negRows, negFieldPrev, negFieldCur, negMix, vec2(nx - 1.0, cy)), negStatic, wpS, ampSum);
     f = seamBlend(f, se, oe, seamW(c.x, blendCells));
-  } else if (linkedSides.y > 0.5 && (nx - 1.0 - c.x) < blendCells) {
+  } else if (linkedSides.y > 0.5 && c.y < posRows - 0.5 && (nx - 1.0 - c.x) < blendCells) {
     float dist = nx - 1.0 - c.x;
     vec4 wpS = (staticWater > 0.0 || posStatic > 0.0) ? waveParams(centerX + halfW, wz) : vec4(0.0);
     vec4 se = evalFromWave(rawTex(fieldPrev, fieldCur, frameMix, vec2(nx - 1.0, cy)), staticWater, wpS, ampSum);
-    vec4 oe = evalFromWave(rawTex(posFieldPrev, posFieldCur, posMix, vec2(0.0, cy)), posStatic, wpS, ampSum);
+    vec4 oe = evalFromWave(rawTexR(posRows, posFieldPrev, posFieldCur, posMix, vec2(0.0, cy)), posStatic, wpS, ampSum);
     f = seamBlend(f, se, oe, seamW(dist, blendCells));
   }
   float y;
