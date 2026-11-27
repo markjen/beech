@@ -136,13 +136,14 @@ markjen@gmail.com); uptime checks `beech-web-3XEbuoHRxM8` (site) and
 | Client + database errors | log-based counters `beech_client_errors_total`, `beech_db_errors_total` |
 | Slow database queries (>500 ms) | log-based counter `beech_db_slow_queries_total` |
 | Client telemetry events | log-based counter `beech_client_events_total` (by `name` and `platform`) |
+| Push ticks | log-based counter `beech_push_tick_errors_total` (`push_tick_error`), and distribution `beech_push_failed` (each pushing tick's `failed` count) |
 
 The log-based metrics are defined in `infra/monitoring.tf`
 (`google_logging_metric`).
 
 ## Alerts
 
-All ten go to `markjen@gmail.com` (var `alert_email`):
+All twelve go to `markjen@gmail.com` (var `alert_email`):
 
 | Alert | Fires when |
 |---|---|
@@ -153,6 +154,8 @@ All ten go to `markjen@gmail.com` (var `alert_email`):
 | beech: slow responses (p95 latency) | p95 latency over 1 s for 5 minutes |
 | beech: database errors | any `db_error` in 10 minutes |
 | beech: slow database queries | more than 5 queries over 500 ms in 10 minutes |
+| beech: push tick failing | more than one `push_tick_error` in 15 minutes (Cloud Scheduler's `POST /api/push/tick` or the server's timer threw) |
+| beech: many push sends failing | ticks that pushed averaged more than 5 failed sends over 30 minutes |
 | beech: Cloud Run memory high | Cloud Run `beech` memory usage over 80% of its 512Mi limit for 5 minutes (metric `container/memory/usage`, p95) |
 | beech: Cloud SQL CPU high | SQL CPU over 80% for 5 minutes |
 | beech: Cloud SQL connections high | over 20 backends for 5 minutes (the db-f1-micro allows 25; each Cloud Run instance pools at most 5) |
@@ -198,9 +201,9 @@ room to spare:
 - Uptime checks: $0.30/1,000 executions, first 1M/project/month free.
   Two checks at 1/min is ~86k executions a month: free (up to five
   checks, ~216k/month, still free).
-- Alerting: $0.10/month per condition. Eleven conditions (the uptime
+- Alerting: $0.10/month per condition. Thirteen conditions (the uptime
   policy has two, plus one per conditional check once it exists) =
-  **$1.10/month**, up to $1.40/month with all three conditional uptime
+  **$1.30/month**, up to $1.60/month with all three conditional uptime
   checks.
 - Dashboards, notification channels and the built-in Cloud Run / Cloud
   SQL metrics: free.

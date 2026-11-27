@@ -183,8 +183,7 @@ picked up.
   [INBOX_NOTIFICATIONS.md](INBOX_NOTIFICATIONS.md), "Push: as built".
 - [ ] **Push follow-ups**: try a real device on each platform once the
   owner setup is done (headless Chromium can't subscribe, so delivery is
-  tested against a fake push service only); a monitoring alert on
-  `push_tick_error` and on a high `failed` count; an admin `system` push
+  tested against a fake push service only); an admin `system` push
   ("week 2's vending set"), which needs its own pref and rate.
 - [ ] **Flaky tests**: `npm run e2e:checkpoints` times out at varying
   steps in the cloud container, also on main (so do `neighbors`, `live`,
@@ -219,6 +218,9 @@ picked up.
 
 ## Done (recent)
 
+- [x] **Push alerts** (2026-11-27): `beech: push tick failing` and `beech:
+  many push sends failing` in `infra/monitoring.tf` (apply with
+  `terraform apply`). OBSERVABILITY.md.
 - [x] **Trade in several at once** (2026-11-27): select in the bag,
   `POST /bag/trade-in { lines }`, all or nothing (`TradeMany` in
   `specs/tla/SandBucks.tla`). BEECH_BUCKS.md.
