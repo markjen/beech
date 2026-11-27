@@ -97,11 +97,11 @@ if (ONLY) {
  */
 const HALF_H = {
   driftwood: 1.5, flag: 1.7, footprints: 1.1,
-  deckchair: 1.9, parasol: 2.7, surfboard: 2.5, tikitorch: 2.0,
-  sandcastle: 2.2, beachhut: 2.6, lighthouse: 3.4,
-  palmtree: 3.4, lifeguardtower: 3.0, bonfire: 1.6, hammock: 1.8, towel: 1.6,
+  deckchair: 2.8, parasol: 4.0, surfboard: 3.7, tikitorch: 3.0,
+  sandcastle: 3.3, beachhut: 3.9, lighthouse: 5.1,
+  palmtree: 5.1, lifeguardtower: 4.5, bonfire: 2.4, hammock: 2.7, towel: 2.4,
 };
-const CLOSE_UP_LIFT = { palmtree: 1.2, lifeguardtower: 1.2 };
+const CLOSE_UP_LIFT = { palmtree: 1.8, lifeguardtower: 1.8, lighthouse: 1.5 };
 const halfHFor = (it) => HALF_H[it.kind] ?? Math.min(1.6, Math.max(0.55, Math.sqrt(it.size[0] * it.size[1]) * 2.2));
 
 // Keep the rows on dry sand as the catalog grows. Widen the grid before

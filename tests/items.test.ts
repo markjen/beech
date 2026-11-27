@@ -103,6 +103,14 @@ describe('item catalog', () => {
     }
   });
 
+  it('every paid shop item is scaled up by SHOP_SCALE (1.5×), and non-shop items are not', async () => {
+    const { SHOP_SCALE, isShopKind } = await import('../src/render/storeMeshes');
+    expect(SHOP_SCALE).toBe(1.5);
+    for (const it of ITEMS) {
+      expect(isShopKind(it.kind), it.id).toBe(it.source === 'shop');
+    }
+  });
+
   it('every catalog item has a render, and a copy served by the shore', () => {
     for (const it of ITEMS) {
       expect(fs.existsSync(`docs/items/renders/${it.id}.png`), it.id).toBe(true);

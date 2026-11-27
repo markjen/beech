@@ -9,6 +9,7 @@ import '@babylonjs/core/Meshes/thinInstanceMesh';
 import type { Scene } from '@babylonjs/core/scene';
 
 import { RARITY_GLOW, type RGB } from '../palette';
+import { SHOP_SCALE } from './storeMeshes';
 
 // Makes rare, legendary and shop things stand out on the beach: a soft glow
 // on the sand around them, and a few sparkles that twinkle above (rare: sea
@@ -270,7 +271,7 @@ export class Glow {
     }
     const lamps = lights.length ? this.layer('lamp', WARM, 2) : null;
     // a lighthouse lamp (high up) throws a big glow; a torch flame a small one
-    for (const p of lights) spot(lamps!, p.clone(), 1, 0, 0, p.y > 2 ? 1.25 : 0.45);
+    for (const p of lights) spot(lamps!, p.clone(), 1, 0, 0, p.y > 2 * SHOP_SCALE ? 1.25 : 0.45);
     return {
       setPose: (pos, yaw) => {
         const c = Math.cos(yaw);

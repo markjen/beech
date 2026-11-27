@@ -386,6 +386,10 @@ export const STORE_BUILDERS = { parasol, surfboard, sandcastle, beachhut, lighth
 export type StoreKind = keyof typeof STORE_BUILDERS;
 export const isStoreKind = (k: string): k is StoreKind => k in STORE_BUILDERS;
 
+/** All paid shop centrepieces (STORE_BUILDERS plus deckchair) render at this scale so they stand out on the 32 m beach. */
+export const SHOP_SCALE = 1.5;
+export const isShopKind = (k: string): boolean => isStoreKind(k) || k === 'deckchair';
+
 /** How far an item reaches from its centre (m), for its glow on the sand. */
 export const STORE_REACH: Record<StoreKind, number> = {
   parasol: 1.1,

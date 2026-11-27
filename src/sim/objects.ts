@@ -124,6 +124,14 @@ export const BEHAVIOUR: Record<ObjectKind, Behaviour> = {
   footprints: 'wash',
 };
 
+/** Paid shop centrepieces render at 1.5× scale (SHOP_SCALE in src/render/storeMeshes.ts); match their picking reach. */
+const SHOP_KINDS: ReadonlySet<ObjectKind> = new Set([
+  'deckchair', 'parasol', 'surfboard', 'sandcastle', 'beachhut', 'lighthouse',
+  'tikitorch', 'palmtree', 'lifeguardtower', 'bonfire', 'hammock', 'towel',
+]);
+const objectReach = (o: { kind: ObjectKind; size: number }): number =>
+  o.kind === 'driftwood' ? o.size / 2 : SHOP_KINDS.has(o.kind) ? o.size * 1.5 : o.size;
+
 /** Mobile sediment and footprints need water above the thin film left by flow. */
 export const sandWashDepth = () => WATER.dryDepth * 2;
 
@@ -388,7 +396,7 @@ export class BeachObjects {
     let best: PlacedObject | null = null;
     let bestD = radius;
     for (const l of this.live.values()) {
-      const reach = l.data.kind === 'driftwood' ? l.data.size / 2 : l.data.size;
+      const reach = objectReach(l.data);
       const d = Math.sqrt((l.data.x - x) * (l.data.x - x) + (l.data.y - y) * (l.data.y - y)) - reach * 0.6;
       if (d < bestD) {
         bestD = d;
@@ -402,7 +410,7 @@ export class BeachObjects {
   within(x: number, y: number, radius: number): PlacedObject[] {
     const out: PlacedObject[] = [];
     for (const l of this.live.values()) {
-      const reach = l.data.kind === 'driftwood' ? l.data.size / 2 : l.data.size;
+      const reach = objectReach(l.data);
       if (Math.sqrt((l.data.x - x) * (l.data.x - x) + (l.data.y - y) * (l.data.y - y)) - reach * 0.6 <= radius) out.push({ ...l.data });
     }
     return out;

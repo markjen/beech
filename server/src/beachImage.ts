@@ -852,11 +852,11 @@ function drawThings(img: Uint8Array, W: number, H: number, things: Thing[], look
         parts.push([[[px, py], [px + m(0.5, 7), py - m(0.17, 3)], [px, py - m(0.34, 6)]], FLAGS[v % FLAGS.length]]);
         break;
       case 'deckchair':
-        parts.push([rect(px, py, m(0.3, 3), m(0.6, 5), a), C('#3f7fc4')]);
-        parts.push([rect(px, py, m(0.3, 3) * 0.45, m(0.6, 5), a), C('#ffffff')]);
+        parts.push([rect(px, py, m(0.45, 4.5), m(0.9, 7.5), a), C('#3f7fc4')]);
+        parts.push([rect(px, py, m(0.45, 4.5) * 0.45, m(0.9, 7.5), a), C('#ffffff')]);
         break;
       case 'parasol': {
-        const r = m(1, 7);
+        const r = m(1.5, 10.5);
         for (let i = 0; i < 8; i++) {
           const t0 = (i / 8) * Math.PI * 2 + a;
           const t1 = ((i + 1) / 8) * Math.PI * 2 + a;
@@ -865,11 +865,11 @@ function drawThings(img: Uint8Array, W: number, H: number, things: Thing[], look
         break;
       }
       case 'surfboard':
-        parts.push([rect(px, py, m(1, 7), m(0.26, 2.2), a).map((p, i) => (i % 2 ? p : p)) as Pt[], C('#f2c14e')]);
-        parts.push([rect(px, py, m(1, 7), m(0.04, 0.8), a), C('#e2574c')]);
+        parts.push([rect(px, py, m(1.5, 10.5), m(0.39, 3.3), a).map((p, i) => (i % 2 ? p : p)) as Pt[], C('#f2c14e')]);
+        parts.push([rect(px, py, m(1.5, 10.5), m(0.06, 1.2), a), C('#e2574c')]);
         break;
       case 'sandcastle': {
-        const r = m(0.6, 5);
+        const r = m(0.9, 7.5);
         parts.push([rect(px, py, r, r, a), lighten(look.sandDeep, 0.1)]);
         for (const [ox, oy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]] as Pt[])
           parts.push([circle(px + ox * r, py + oy * r, r * 0.38, 10), lighten(look.sandDry, 0.2)]);
@@ -877,61 +877,61 @@ function drawThings(img: Uint8Array, W: number, H: number, things: Thing[], look
         break;
       }
       case 'beachhut':
-        parts.push([rect(px, py, m(0.9, 6), m(0.75, 5), a), C('#4a90d9')]);
-        parts.push([rect(px, py, m(0.9, 6), m(0.12, 1), a), C('#ffffff')]);
+        parts.push([rect(px, py, m(1.35, 9), m(1.125, 7.5), a), C('#4a90d9')]);
+        parts.push([rect(px, py, m(1.35, 9), m(0.18, 1.5), a), C('#ffffff')]);
         break;
       case 'lighthouse':
-        parts.push([circle(px, py, m(0.55, 4.5), 16), C('#ffffff')]);
-        parts.push([circle(px, py, m(0.38, 3), 16), C('#e2574c')]);
-        parts.push([circle(px, py, m(0.16, 1.5), 10), C('#f7d774')]);
+        parts.push([circle(px, py, m(0.825, 6.75), 16), C('#ffffff')]);
+        parts.push([circle(px, py, m(0.57, 4.5), 16), C('#e2574c')]);
+        parts.push([circle(px, py, m(0.24, 2.25), 10), C('#f7d774')]);
         break;
       case 'tikitorch':
-        parts.push([circle(px, py, m(0.12, 2), 8), C('#7a5a3a')]);
-        parts.push([circle(px, py, m(0.07, 1.2), 8), C('#ffb347')]);
+        parts.push([circle(px, py, m(0.18, 3), 8), C('#7a5a3a')]);
+        parts.push([circle(px, py, m(0.105, 1.8), 8), C('#ffb347')]);
         break;
       case 'palmtree': {
         // seen from above: a fan of green fronds around the trunk
-        const r = m(1, 7);
+        const r = m(1.5, 10.5);
         for (let i = 0; i < 6; i++) {
           const t0 = (i / 6) * Math.PI * 2 + a;
           const t1 = ((i + 1) / 6) * Math.PI * 2 + a;
           parts.push([[[px, py], [px + Math.cos(t0) * r, py + Math.sin(t0) * r], [px + Math.cos(t1) * r, py + Math.sin(t1) * r]], i % 2 ? C('#4a9e5c') : C('#3f8f4f')]);
         }
-        parts.push([circle(px, py, m(0.1, 1.5), 8), C('#6b4a2f')]);
+        parts.push([circle(px, py, m(0.15, 2.25), 8), C('#6b4a2f')]);
         break;
       }
       case 'lifeguardtower': {
         // a cabin on legs, with the ramp running down toward the sea
-        parts.push([rect(px, py, m(0.9, 6), m(0.75, 5), a), C('#f2f0e8')]);
-        const off = m(1.05, 4.5);
-        parts.push([rect(px - Math.sin(a) * off, py + Math.cos(a) * off, m(0.25, 2.5), m(0.55, 4), a), C('#f2f0e8')]);
-        parts.push([rect(px, py, m(0.55, 4), m(0.5, 3.5), a), C('#2f4a6b')]);
+        parts.push([rect(px, py, m(1.35, 9), m(1.125, 7.5), a), C('#f2f0e8')]);
+        const off = m(1.575, 6.75);
+        parts.push([rect(px - Math.sin(a) * off, py + Math.cos(a) * off, m(0.375, 3.75), m(0.825, 6), a), C('#f2f0e8')]);
+        parts.push([rect(px, py, m(0.825, 6), m(0.75, 5.25), a), C('#2f4a6b')]);
         break;
       }
       case 'bonfire': {
         // a ring of stones with a flame in the middle
-        parts.push([circle(px, py, m(0.42, 3.5), 12), C('#9aa0a8')]);
-        parts.push([circle(px, py, m(0.3, 2.5), 10), C('#3d2716')]);
-        parts.push([circle(px, py, m(0.14, 1.8), 8), C('#ff8c2e')]);
+        parts.push([circle(px, py, m(0.63, 5.25), 12), C('#9aa0a8')]);
+        parts.push([circle(px, py, m(0.45, 3.75), 10), C('#3d2716')]);
+        parts.push([circle(px, py, m(0.21, 2.7), 8), C('#ff8c2e')]);
         break;
       }
       case 'hammock': {
         // two posts and the slung cloth between them
-        const off = m(0.85, 6);
+        const off = m(1.275, 9);
         const ox = Math.cos(a) * off;
         const oy = Math.sin(a) * off;
-        parts.push([circle(px - ox, py - oy, m(0.07, 1.2), 6), C('#8a6b4a')]);
-        parts.push([circle(px + ox, py + oy, m(0.07, 1.2), 6), C('#8a6b4a')]);
-        parts.push([rect(px, py, off, m(0.25, 3), a), C('#e86a5a')]);
+        parts.push([circle(px - ox, py - oy, m(0.105, 1.8), 6), C('#8a6b4a')]);
+        parts.push([circle(px + ox, py + oy, m(0.105, 1.8), 6), C('#8a6b4a')]);
+        parts.push([rect(px, py, off, m(0.375, 4.5), a), C('#e86a5a')]);
         break;
       }
       case 'towel': {
         // a striped towel lying flat
-        const halfLength = m(0.575, 7);
-        parts.push([rect(px, py, halfLength, m(0.31, 4), a), C('#2f8f7a')]);
+        const halfLength = m(0.8625, 10.5);
+        parts.push([rect(px, py, halfLength, m(0.465, 6), a), C('#2f8f7a')]);
         for (const side of [-1, 1]) {
-          const off = side * m(0.2, 2.5);
-          parts.push([rect(px - Math.sin(a) * off, py + Math.cos(a) * off, halfLength, m(0.05, 1.2), a), C('#fbf3e4')]);
+          const off = side * m(0.3, 3.75);
+          parts.push([rect(px - Math.sin(a) * off, py + Math.cos(a) * off, halfLength, m(0.075, 1.8), a), C('#fbf3e4')]);
         }
         break;
       }
@@ -1381,18 +1381,19 @@ function drawIsoThing(img: Uint8Array, W: number, H: number, pl: { t: Thing; bx:
   const color = itemColor(t.item, v);
   const shadow = (w: number) => fillPoly(img, W, H, ellipsePts(bx + 2, by + 1, w * 0.55, w * 0.26), ISO_SHADOW, 0.25);
   // [height factor, width factor, minimum height px] for tall things
+  // (all 12 paid shop centrepieces render at 1.5× scale to match SHOP_SCALE)
   const tall: Record<string, [number, number, number]> = {
-    lighthouse: [2.2, 0.5, 20],
-    parasol: [1.0, 1.8, 12],
-    palmtree: [2.4, 1.5, 20],
-    sandcastle: [1.1, 1.3, 12],
-    beachhut: [1.4, 1.4, 14],
-    lifeguardtower: [2.0, 1.2, 18],
-    deckchair: [0.8, 1.3, 9],
+    lighthouse: [3.3, 0.75, 30],
+    parasol: [1.5, 2.7, 18],
+    palmtree: [3.6, 2.25, 30],
+    sandcastle: [1.65, 1.95, 18],
+    beachhut: [2.1, 2.1, 21],
+    lifeguardtower: [3.0, 1.8, 27],
+    deckchair: [1.2, 1.95, 14],
     flag: [2.0, 0.5, 14],
-    tikitorch: [1.8, 0.35, 12],
-    bonfire: [0.9, 1.1, 10],
-    hammock: [1.0, 2.0, 10],
+    tikitorch: [2.7, 0.525, 18],
+    bonfire: [1.35, 1.65, 15],
+    hammock: [1.5, 3.0, 15],
   };
   const spec = tall[t.kind];
   if (!spec) {
@@ -1454,7 +1455,8 @@ function drawIsoThing(img: Uint8Array, W: number, H: number, pl: { t: Thing; bx:
       default:
         c = C('#d9c7a8');
     }
-    const rx = Math.max(2.5, t.size * bs * 0.5);
+    const flatScale = t.kind === 'towel' || t.kind === 'surfboard' ? 1.5 : 1;
+    const rx = Math.max(2.5, t.size * flatScale * bs * 0.5);
     const ry = rx * 0.45;
     if (t.kind === 'starfish') {
       fillPoly(img, W, H, star(bx, by, rx, -t.angle), c);
@@ -1464,8 +1466,8 @@ function drawIsoThing(img: Uint8Array, W: number, H: number, pl: { t: Thing; bx:
     return;
   }
   const [kf, wf, minH] = spec;
-  const h = Math.min(56, Math.max(minH, t.size * bs * kf));
-  const w = Math.min(48, Math.max(6, t.size * bs * wf));
+  const h = Math.min(72, Math.max(minH, t.size * bs * kf));
+  const w = Math.min(64, Math.max(6, t.size * bs * wf));
   const top = by - h;
   shadow(w);
   const R = (x: number, y: number, hw: number, hh: number): Pt[] => [
