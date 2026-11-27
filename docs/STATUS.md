@@ -331,6 +331,13 @@ accepted the repo's default branch, so the deploy job ran only there.
   `GET /api/inventory` for owned, unexpired non-free items. Nothing writes to
   it yet.
 
+## beechshore.com shows beaches caught up (2026-11-27)
+
+A beach's page and pictures on the shore site run the sea's catch-up first
+(the game's `live.ensure`), and picture URLs carry the sand's `version`
+too, so a beach nobody opened in the game shows what the tides did, with no
+stale cached picture. LIVE_SIM.md.
+
 ## Pier deck vs storms (2026-11-27)
 
 Simulated the worst case (the sim's highest tide, surf, the biggest real

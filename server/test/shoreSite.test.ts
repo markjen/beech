@@ -204,7 +204,7 @@ describe('the shore site', () => {
 
   it('draws pictures: the card, the thumbnail, the site card; cached for good with the save time', async () => {
     const page = await (await root.request(`/shore/${people.Ana.code}`)).text();
-    const src = page.match(/og:image" content="[^"]*?(\/shore\/img\/[A-Z0-9]{6}\.png\?v=\d+)"/)![1];
+    const src = page.match(/og:image" content="[^"]*?(\/shore\/img\/[A-Z0-9]{6}\.png\?v=[0-9-]+)"/)![1];
     const card = await root.request(src);
     expect(card.status).toBe(200);
     expect(card.headers.get('Content-Type')).toBe('image/png');
@@ -505,8 +505,8 @@ describe('piers on the shore site (docs/PIERS.md)', () => {
       sides.push(id);
     }
     const page = async () => (await root.request(`/${ana.code}`, shoreHost)).text();
-    const thumbUrl = (html: string) => html.match(new RegExp(`/img/${ana.code}/thumb\\.png\\?v=([0-9a-z]+)`))![1];
-    const isoUrl = (html: string) => html.match(new RegExp(`/img/${ana.code}/iso\\.png\\?v=([0-9a-z.]+)`))![1];
+    const thumbUrl = (html: string) => html.match(new RegExp(`/img/${ana.code}/thumb\\.png\\?v=([0-9a-z-]+)`))![1];
+    const isoUrl = (html: string) => html.match(new RegExp(`/img/${ana.code}/iso\\.png\\?v=([0-9a-z.-]+)`))![1];
     const before = await page();
     expect(thumbUrl(before)).not.toMatch(/p$/);
     const plainThumb = Buffer.from(await (await root.request(`/img/${ana.code}/thumb.png?v=${thumbUrl(before)}`, shoreHost)).arrayBuffer());

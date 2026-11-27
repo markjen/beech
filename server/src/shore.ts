@@ -28,6 +28,8 @@ export interface NodeRow {
   created_at: string;
   location: string | null;
   updated_at: string | null;
+  /** bumped by every change to the sand: saves, restores, and the sea's catch-up (docs/LIVE_SIM.md) */
+  version: string | number;
   on_shore: boolean;
   saved: boolean;
   /** a pier is attached and its beach qualifies, so it shows (docs/PIERS.md) */
@@ -55,7 +57,7 @@ export const PIER_SHOWN = `(EXISTS (SELECT 1 FROM beach_piers bp WHERE bp.beach_
 export const SECTIONS_OF = `(SELECT string_agg(bs.item_id, ',' ORDER BY bs.row) FROM beach_sections bs WHERE bs.beach_id = b.id)`;
 /** `b`'s ratings, how many and their average (ratings_beach index) */
 export const RATING_OF = `(SELECT COUNT(*) FROM ratings rt WHERE rt.beach_id = b.id) AS rating_count, (SELECT AVG(rt.shells) FROM ratings rt WHERE rt.beach_id = b.id) AS rating_avg`;
-export const NODE = `b.id, u.name, b.name AS beach_name, b.owner_id, b.code, b.created_at, b.location, b.updated_at, b.on_shore, (b.sand IS NOT NULL) AS saved, ${PIER_SHOWN} AS pier, ${SECTIONS_OF} AS sections, ${RATING_OF}`;
+export const NODE = `b.id, u.name, b.name AS beach_name, b.owner_id, b.code, b.created_at, b.location, b.updated_at, b.version, b.on_shore, (b.sand IS NOT NULL) AS saved, ${PIER_SHOWN} AS pier, ${SECTIONS_OF} AS sections, ${RATING_OF}`;
 
 /** A beach's average for its name tag: shown once it has RATING_SHOWN_AT ratings, to one decimal. */
 export function ratingShown(count: string | number | null | undefined, avg: string | number | null | undefined): { average: number; count: number } | null {
@@ -74,6 +76,8 @@ export const beachJson = (r: NodeRow) => ({
   beachName: r.beach_name || undefined,
   location: r.location,
   updatedAt: r.updated_at === null ? null : Number(r.updated_at),
+  /** the sand's version: a catch-up moves it without a save (pictures carry it) */
+  version: Number(r.version ?? 0),
   /** it shows a pier (left out when it doesn't) */
   ...(r.pier ? { pier: true as const } : {}),
   /** its inland sections' types, front row first (left out when it has none) */
@@ -90,8 +94,8 @@ export type Step = BeachJson & { linked: boolean };
  * pictures without a save (docs/PIERS.md). Picture URLs are cached for
  * good, so anything drawn has to be in here.
  */
-export const imageVersion = (updatedAt: number | string | null | undefined, pier: boolean | undefined): string =>
-  `${updatedAt ?? 0}${pier ? PIER_LOOK : ''}`;
+export const imageVersion = (updatedAt: number | string | null | undefined, pier: boolean | undefined, version?: number | string | null): string =>
+  `${updatedAt ?? 0}${version ? `-${version}` : ''}${pier ? PIER_LOOK : ''}`;
 /** the pier's look in pictures: bump when its shape changes (2: the higher deck, 2026-11-27) */
 const PIER_LOOK = 'p2';
 

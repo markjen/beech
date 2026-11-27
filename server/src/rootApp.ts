@@ -12,7 +12,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { guideHtml, releaseNotesHtml } from './guide.js';
-import { createRateLimiter, httpLogger } from './observability.js';
+import { createRateLimiter, httpLogger, logEvent } from './observability.js';
+import { createLiveBeaches, liveConfig, type LiveBeaches } from './liveBeach.js';
 import { landingHtml } from './landingSite.js';
 import { createSharePageHandler } from './shareMeta.js';
 import { createShoreSite } from './shoreSite.js';
@@ -56,6 +57,8 @@ export const DEFAULT_LANDING: LandingOptions = {
 
 /** Both sites' options; each defaults to its DEFAULT_* when omitted. */
 export interface RootAppOptions {
+  /** the sea's catch-up (docs/LIVE_SIM.md), shared with the game API when given; tests pass their own */
+  live?: Pick<LiveBeaches, 'ensure'>;
   shore?: ShoreOptions;
   landing?: LandingOptions;
 }
@@ -78,9 +81,13 @@ export function createRootApp(db: Db, api: Hono<any, any, any>, publicDir: strin
   const shoreHosts = new Set(shore.hosts.map((h) => h.toLowerCase()));
   const apex = new URL(shore.url).host.toLowerCase();
   const imageLimiter = createRateLimiter(shore.imageDrawsPerMinute ?? 60);
-  const shoreHere = createShoreSite(db, { base: '', gameUrl: shore.gameUrl, publicUrl: shore.url, imageLimiter, publicDir, api, googleClientId: shore.googleClientId, appleClientId: shore.appleClientId });
+  // the shore's pictures and pages show a beach the way the game would: caught
+  // up with the sea since its last save (docs/LIVE_SIM.md)
+  const live = opts.live ?? createLiveBeaches(db, Date.now, liveConfig(), (e) => logEvent(String(e.event), e));
+  const catchUp = (id: string) => live.ensure(id);
+  const shoreHere = createShoreSite(db, { base: '', gameUrl: shore.gameUrl, publicUrl: shore.url, imageLimiter, publicDir, api, googleClientId: shore.googleClientId, appleClientId: shore.appleClientId, catchUp });
   const shoreUnder = createShoreSite(db, {
-    base: '/shore', gameUrl: shore.gameUrl, imageLimiter, canonicalOrigin: new URL(shore.url).origin, publicDir, api, googleClientId: shore.googleClientId, appleClientId: shore.appleClientId,
+    base: '/shore', gameUrl: shore.gameUrl, imageLimiter, canonicalOrigin: new URL(shore.url).origin, publicDir, api, googleClientId: shore.googleClientId, appleClientId: shore.appleClientId, catchUp,
   });
   root.use('*', async (c, next) => {
     const host = (c.req.header('host') ?? '').toLowerCase().replace(/:\d+$/, '');

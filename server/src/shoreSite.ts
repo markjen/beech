@@ -84,6 +84,12 @@ export interface ShoreSiteConfig {
   /** Sign in with Apple Services ID (public) for the account page's sign-in button; unset hides it */
   appleClientId?: string;
   now?: () => number;
+  /**
+   * Catch a beach up with the sea before showing it (docs/LIVE_SIM.md: the
+   * game's own read does the same). Safe to call on every read: it does
+   * nothing while the owner has it open or when it caught up lately.
+   */
+  catchUp?: (beachId: string) => Promise<unknown>;
 }
 
 const PAGE = 24;
@@ -105,6 +111,8 @@ export interface ShoreBeach {
   beachName?: string;
   location: string | null;
   updatedAt: number | null;
+  /** the sand's version (a catch-up moves it without a save): in picture URLs */
+  version?: number;
   stars: number;
   recent: number;
   /** it shows a pier (docs/PIERS.md): drawn in its pictures */
@@ -167,8 +175,8 @@ export function createShoreSite(db: Db, cfg: ShoreSiteConfig): Hono<any, any, an
     return `${cfg.canonicalOrigin}${pathname.slice(base.length) || '/'}${search}`;
   };
   const visitUrl = (code: string) => `${game}/?visit=${code}`;
-  const imgPath = (b: Pick<ShoreBeach, 'code' | 'updatedAt' | 'pier'>, kind: 'card' | 'thumb') =>
-    `/img/${b.code}${kind === 'thumb' ? '/thumb' : ''}.png?v=${imageVersion(b.updatedAt, b.pier)}`;
+  const imgPath = (b: Pick<ShoreBeach, 'code' | 'updatedAt' | 'pier' | 'version'>, kind: 'card' | 'thumb') =>
+    `/img/${b.code}${kind === 'thumb' ? '/thumb' : ''}.png?v=${imageVersion(b.updatedAt, b.pier, b.version)}`;
 
   // ------------------------------------------------------------ data
   const SCORE = `
@@ -191,6 +199,7 @@ export function createShoreSite(db: Db, cfg: ShoreSiteConfig): Hono<any, any, an
     beachName: r.beach_name || undefined,
     location: r.location,
     updatedAt: r.updated_at === null ? null : Number(r.updated_at),
+    version: Number(r.version ?? 0),
     stars: Number(r.stars),
     recent: Number(r.recent),
     pier: !!r.pier,
@@ -262,6 +271,16 @@ export function createShoreSite(db: Db, cfg: ShoreSiteConfig): Hono<any, any, an
   // are rate-limited per client IP so a crawler walking every code can't burn
   // the CPU (cache hits are free).
   const imageCache = new Map<string, Buffer>();
+  /** run the catch-up if there is one; true when the sand moved (read it again) */
+  const caughtUp = async (beachId: string): Promise<boolean> => {
+    if (!cfg.catchUp) return false;
+    try {
+      return (await cfg.catchUp(beachId)) === 'caught-up';
+    } catch (e) {
+      logEvent('catchup_failed', { beach: beachId, error: String(e), via: 'shore' }, 'ERROR');
+      return false;
+    }
+  };
   const IMAGE_CACHE = 64;
   const imageDrawLimiter = cfg.imageLimiter ?? createRateLimiter(cfg.imageDrawsPerMinute ?? 60);
   const remember = (k: string, v: Buffer) => {
@@ -291,13 +310,13 @@ export function createShoreSite(db: Db, cfg: ShoreSiteConfig): Hono<any, any, an
 
   async function image(c: Context, raw: string, kind: 'card' | 'thumb' | 'iso' | 'iso-ocean') {
     const code = normalizeCode(raw);
-    const rows = await db.query<NodeRow & { sand: unknown }>(
-      `SELECT ${NODE}, b.sand FROM ${BEACH} WHERE b.code = $1 AND ${PUBLIC}`,
-      [code],
-    );
+    const read = () => db.query<NodeRow & { sand: unknown }>(`SELECT ${NODE}, b.sand FROM ${BEACH} WHERE b.code = $1 AND ${PUBLIC}`, [code]);
+    let rows = await read();
+    // the sea kept working since it was saved: draw it as it is now
+    if (rows[0] && (await caughtUp(rows[0].id))) rows = await read();
     const row = rows[0];
     if (!row) return c.text('no such beach on the shore', 404);
-    const v = imageVersion(row.updated_at, row.pier);
+    const v = imageVersion(row.updated_at, row.pier, row.version);
     // The 3D views also show the beaches either side, so their cache key
     // carries their save times too: a neighbour rebuilding changes the
     // picture even though this beach did not.
@@ -308,6 +327,7 @@ export function createShoreSite(db: Db, cfg: ShoreSiteConfig): Hono<any, any, an
       const { left: wl, right: wr } = await graph.walk(row, ['left', 'right'], 1, new Set([row.id]), isPublic);
       const fetchOne = async (s: Step | undefined) => {
         if (!s) return null;
+        await caughtUp(s.id);
         const r = await db.query<NodeRow & { sand: unknown }>(`SELECT ${NODE}, b.sand FROM ${BEACH} WHERE b.code = $1 AND ${PUBLIC}`, [s.code]);
         if (!r[0]) return null; // walked past it, or it went private since
         return {
@@ -315,7 +335,7 @@ export function createShoreSite(db: Db, cfg: ShoreSiteConfig): Hono<any, any, an
           location: r[0].location,
           linked: s.linked,
           pier: !!r[0].pier,
-          version: imageVersion(r[0].updated_at, r[0].pier),
+          version: imageVersion(r[0].updated_at, r[0].pier, r[0].version),
         };
       };
       const l = await fetchOne(wl[0]);
@@ -957,7 +977,9 @@ ${
 
   app.get('/:code{[A-Za-z0-9]{6}}', async (c) => {
     const raw = c.req.param('code');
-    const found = await one(raw);
+    let found = await one(raw);
+    // its pictures' URLs carry the caught-up version
+    if (found && (await caughtUp(found.node.id))) found = await one(raw);
     if (!found) {
       // A beach kept off the shore (or not saved yet) isn't shown here, but
       // its owner may still have shared its link on purpose: send them to
@@ -984,7 +1006,7 @@ ${
     const cardHref = href(imgPath(b, 'card'));
     const thumbHref = href(imgPath(b, 'thumb'));
     // the same version the image route works out: each beach's save time and pier
-    const isoVersion = `${imageVersion(b.updatedAt, b.pier)}.${left[0] ? imageVersion(left[0].updatedAt, left[0].pier) : 0}.${right[0] ? imageVersion(right[0].updatedAt, right[0].pier) : 0}`;
+    const isoVersion = `${imageVersion(b.updatedAt, b.pier, b.version)}.${left[0] ? imageVersion(left[0].updatedAt, left[0].pier, left[0].version) : 0}.${right[0] ? imageVersion(right[0].updatedAt, right[0].pier, right[0].version) : 0}`;
     const isoHref = href(`/img/${b.code}/iso.png?v=${isoVersion}`);
     const oceanHref = href(`/img/${b.code}/iso-ocean.png?v=${isoVersion}`);
     const n = now();
@@ -1005,7 +1027,7 @@ ${
         ? `<a class="walk ${dir}" href="${href(`/${s.code}`)}" rel="${dir === 'left' ? 'prev' : 'next'}" data-key="${dir === 'left' ? 'ArrowLeft' : 'ArrowRight'}" title="Walk ${dir} to ${esc(beachTitle(s))}" aria-label="Walk ${dir} to ${esc(beachTitle(s))}">${dir === 'left' ? '‹' : '›'}</a>`
         : '';
     const strip = (s: Step) =>
-      `<li><a href="${href(`/${s.code}`)}"><span class="sthumb"><img src="${esc(href(`/img/${s.code}/thumb.png?v=${imageVersion(s.updatedAt, s.pier)}`))}" width="${THUMB.width}" height="${THUMB.height}" loading="lazy" alt="${esc(beachTitle(s))}"></span><span class="slabel"><span>${esc(beachTitle(s))}</span>${s.linked ? '<span class="linked-dot">Neighbor</span>' : ''}</span></a></li>`;
+      `<li><a href="${href(`/${s.code}`)}"><span class="sthumb"><img src="${esc(href(`/img/${s.code}/thumb.png?v=${imageVersion(s.updatedAt, s.pier, s.version)}`))}" width="${THUMB.width}" height="${THUMB.height}" loading="lazy" alt="${esc(beachTitle(s))}"></span><span class="slabel"><span>${esc(beachTitle(s))}</span>${s.linked ? '<span class="linked-dot">Neighbor</span>' : ''}</span></a></li>`;
     // left is on the left, the way you'd see it facing the sea
     const hereItem = `<li class="here"><div class="here-inner"><span class="sthumb"><img src="${esc(thumbHref)}" width="${THUMB.width}" height="${THUMB.height}" alt=""></span><span class="slabel"><span>${esc(title)}</span></span></div></li>`;
     const shore = [...left].reverse().map(strip).join('') + hereItem + right.map(strip).join('');
