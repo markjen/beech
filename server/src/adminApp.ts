@@ -47,8 +47,7 @@ import { toBytes, type Db } from './db.js';
 import { formatCents, hashesEqual, hashGiftCode, isAdminEmail, isPromoCodeShape, newGiftCardCode, normalizePromoCode } from './giftCards.js';
 import { ledgerLabel } from './ledger.js';
 import { createRateLimiter, logEvent, routeLabel } from './observability.js';
-import { PACKS, PRODUCTS, bucksIn, packById, productById, storeProductById } from './products.js';
-import { accountPromos } from './promos.js';
+import { PACKS, PRODUCTS, bucksIn, packById, storeProductById } from './products.js';
 import { revokePurchaseById } from './store.js';
 import { adminSubmission, adminSubmissions, eligibleProduct, limitUpload, multipart, reviewSubmission, UUID_PATTERN } from './itemSubmissions.js';
 
@@ -416,11 +415,16 @@ export function createAdminApp(db: Db, cfg: AdminConfig): Hono<Env> {
     }>(c);
     const clean = normalizePromoCode(code ?? '');
     if (!isPromoCodeShape(code ?? '')) fail(400, 'codes are 3-32 letters and numbers');
-    if (kind !== 'percent') fail(400, 'kind must be percent: promo codes are a percentage bonus on bb packs');
+    // codes give bonus beech bucks, never a discount (specs/tla/PromoBucks.tla):
+    // 'bucks' gives `value` bb (on its own, or with a pack); 'percent' gives
+    // `value`% of a pack's bb on top of it
+    if (kind !== 'bucks' && kind !== 'percent') fail(400, 'kind must be bucks or percent');
     const v = Math.floor(Number(value ?? NaN));
-    if (!Number.isInteger(v) || v <= 0 || v > 100) fail(400, 'percent is 1-100');
+    if (!Number.isInteger(v) || v <= 0 || (kind === 'percent' && v > 100) || (kind === 'bucks' && v > 10000)) {
+      fail(400, 'bucks is 1-10000 beech bucks; percent is 1-100 (a bonus on a pack)');
+    }
     const applies = appliesTo ? String(appliesTo) : null;
-    if (applies && !packById(applies) && !productById(applies)) fail(400, 'no such pack or product');
+    if (applies && !packById(applies)) fail(400, 'a code can be for one beech-buck pack, or any');
     const max = maxUses == null ? null : Math.floor(Number(maxUses));
     if (max !== null && (!Number.isInteger(max) || max <= 0)) fail(400, 'maxUses must be a positive number');
     const exp = expiresAt == null ? null : Math.floor(Number(expiresAt));
@@ -479,8 +483,8 @@ export function createAdminApp(db: Db, cfg: AdminConfig): Hono<Env> {
       `SELECT g.id, g.amount_cents, g.redeemed_at, g.note, u.name AS redeemed_name
          FROM gift_cards g JOIN users u ON u.id = g.redeemed_by WHERE g.status = 'redeemed' ORDER BY g.redeemed_at DESC LIMIT 50`,
     );
-    const promos = await db.query<{ code: string; product_id: string; discount_cents: number; bonus_bucks: number; purchase_id: string | null; created_at: string; user_name: string | null }>(
-      `SELECT p.code, p.product_id, p.discount_cents, p.bonus_bucks, p.purchase_id, p.created_at, u.name AS user_name
+    const promos = await db.query<{ code: string; product_id: string | null; discount_cents: number; bonus_cents: number | null; purchase_id: string | null; created_at: string; user_name: string | null }>(
+      `SELECT p.code, p.product_id, p.discount_cents, p.bonus_cents, p.purchase_id, p.created_at, u.name AS user_name
          FROM promo_uses p JOIN users u ON u.id = p.user_id ORDER BY p.created_at DESC LIMIT 50`,
     );
     const ledger = await db.query<{ kind: string; amount_cents: number; ref: string; created_at: string; user_name: string | null }>(
@@ -493,7 +497,8 @@ export function createAdminApp(db: Db, cfg: AdminConfig): Hono<Env> {
         code: r.code,
         productId: r.product_id,
         discountCents: Number(r.discount_cents),
-        bonusBucks: Number(r.bonus_bucks),
+        /** bonus beech bucks given (null: an old discount use) */
+        bonusBucks: r.bonus_cents === null ? null : Number(r.bonus_cents) / 10,
         purchaseId: r.purchase_id ? String(r.purchase_id) : null,
         usedAt: Number(r.created_at),
         user: r.user_name,
@@ -946,7 +951,7 @@ export function createAdminApp(db: Db, cfg: AdminConfig): Hono<Env> {
       created_at: string;
     }>('SELECT id, name, email, provider, credit_cents, creator_credit_debt_cents, created_at FROM users WHERE id = $1', [id]);
     if (!u) fail(404, 'no such user');
-    const [beaches, ledgerRows, purchases, promos] = await Promise.all([
+    const [beaches, ledgerRows, purchases] = await Promise.all([
       db.query<{ id: string; code: string; name: string; home: boolean; on_shore: boolean }>(
         'SELECT id, code, name, home, on_shore FROM beach WHERE owner_id = $1 ORDER BY home DESC, created_at',
         [id],
@@ -985,18 +990,17 @@ export function createAdminApp(db: Db, cfg: AdminConfig): Hono<Env> {
         granted_at: string;
         refunded_at: string | null;
         promo_code: string | null;
-        bonus_bucks: number | null;
+        bonus_cents: number | null;
       }>(
         `SELECT p.id, p.store, p.transaction_id, p.product_id, p.environment, p.purchased_at, p.granted_at, p.refunded_at,
-                a.code AS promo_code, a.bonus_bucks
+                a.code AS promo_code, a.bonus_cents
            FROM purchases p
-           LEFT JOIN account_promo_codes a ON a.purchase_id = p.id
+           LEFT JOIN promo_uses a ON a.purchase_id = p.id
           WHERE p.user_id = $1
           ORDER BY p.granted_at DESC, p.id DESC
           LIMIT 100`,
         [id],
       ),
-      accountPromos(db, id, clock()),
     ]);
     return c.json({
       user: {
@@ -1027,14 +1031,14 @@ export function createAdminApp(db: Db, cfg: AdminConfig): Hono<Env> {
           productName: prod?.name ?? p.product_id,
           bucks: prod ? bucksIn(prod) : 0,
           promoCode: p.promo_code,
-          bonusBucks: Number(p.bonus_bucks ?? 0),
+          bonusBucks: p.bonus_cents === null ? 0 : centsToBucks(Number(p.bonus_cents)),
           environment: p.environment,
           purchasedAt: Number(p.purchased_at),
           grantedAt: Number(p.granted_at),
           refundedAt: p.refunded_at === null ? null : Number(p.refunded_at),
         };
       }),
-      promos,
+      promos: [],
     });
   });
 

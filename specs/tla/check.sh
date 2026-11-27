@@ -24,7 +24,7 @@ specs=()
 for a in "$@"; do
   if [ "$a" = "--bugs" ]; then bugs=true; else specs+=("$a"); fi
 done
-[ ${#specs[@]} -eq 0 ] && specs=(Snacks Pets Neighbors BeachEditing Piers BeachCopy SandBucks Push Invites InlandSections PromoCodes NoteSuspension)
+[ ${#specs[@]} -eq 0 ] && specs=(Snacks Pets Neighbors BeachEditing Piers BeachCopy SandBucks Push Invites InlandSections PromoBucks NoteSuspension)
 
 meta="$(mktemp -d)"
 trap 'rm -rf "$meta"' EXIT

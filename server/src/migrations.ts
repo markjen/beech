@@ -1034,6 +1034,27 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE users ADD COLUMN notes_suspended_until BIGINT;
   `,
+
+  // 43: promo codes give bonus beech bucks, never a discount (Mark,
+  // 2026-11-27; docs/GIFT_CARDS_PROMOS.md, specs/tla/PromoBucks.tla). Replaces
+  // the account-loaded promo table from migration 40 with a 'bucks' code
+  // (redeemed on its own or with a pack bought on the web) and a 'percent'
+  // code (bonus on top of a pack bought on the web). Each player uses a code
+  // once: checked under the code's row lock (not a unique index, so merging
+  // two accounts that both used a code still works).
+  `
+  DROP TABLE IF EXISTS account_promo_codes;
+  ALTER TABLE promo_codes DROP CONSTRAINT promo_codes_kind_check;
+  UPDATE promo_codes SET kind = 'bucks', value = GREATEST(1, ROUND(value / 10.0)) WHERE kind = 'fixed';
+  ALTER TABLE promo_codes ADD CONSTRAINT promo_codes_kind_check CHECK (kind IN ('bucks', 'percent'));
+  UPDATE promo_codes SET applies_to = NULL WHERE applies_to IS NOT NULL AND applies_to NOT LIKE 'bucks_%';
+  ALTER TABLE promo_uses ALTER COLUMN product_id DROP NOT NULL;
+  ALTER TABLE promo_uses ALTER COLUMN discount_cents SET DEFAULT 0;
+  ALTER TABLE promo_uses ADD COLUMN IF NOT EXISTS bonus_cents INTEGER CHECK (bonus_cents IS NULL OR bonus_cents >= 0);
+  ALTER TABLE promo_uses ADD COLUMN IF NOT EXISTS purchase_id BIGINT REFERENCES purchases (id) ON DELETE SET NULL;
+  CREATE INDEX IF NOT EXISTS promo_uses_user ON promo_uses (code, user_id) WHERE bonus_cents IS NOT NULL;
+  ALTER TABLE web_orders ADD COLUMN IF NOT EXISTS promo_code TEXT;
+  `,
 ];
 
 /** Apply migrations up to `upTo` (default: all). Tests use `upTo` to check a migration on older data. */

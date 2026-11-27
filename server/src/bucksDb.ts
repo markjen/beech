@@ -6,7 +6,6 @@
 import type { Db } from './db.js';
 import { bucksIn, type Product } from './products.js';
 import { BUCK } from './bucks.js';
-import { claimBestPromoForPack } from './promos.js';
 
 /**
  * Bucks in (CreditIn): pay off debt first, credit the rest, log it. The
@@ -51,56 +50,44 @@ export async function clawBack(db: Db, user: string, cents: number, kind: string
 
 /**
  * What a recorded real-money purchase grants (BuyPack): a pack's beech bucks
- * to the balance (plus the best eligible account-loaded promo code's bonus bb,
- * if any); an old app version's offer, its things to the bag (at their list
- * value for a later trade-in). Run in the same transaction that recorded the
- * purchase row.
+ * to the balance; an old app version's offer, its things to the bag (at their
+ * list value for a later trade-in). Run in the same transaction that recorded
+ * the purchase row.
  */
-export async function grantPurchase(
-  db: Db,
-  args: { userId: string; purchaseId: string; product: Product; now: number },
-): Promise<{ promo: { code: string; bonusBucks: number } | null }> {
+export async function grantPurchase(db: Db, args: { userId: string; purchaseId: string; product: Product; now: number }): Promise<void> {
   const { userId, purchaseId, product, now } = args;
   const bucks = bucksIn(product);
-  let promo: { code: string; bonusBucks: number } | null = null;
-  if (bucks > 0) {
-    await creditBalance(db, userId, bucks * BUCK, 'pack', `purchase:${purchaseId}`, now);
-    promo = await claimBestPromoForPack(db, { userId, purchaseId, product, now });
-    if (promo && promo.bonusBucks > 0) {
-      await creditBalance(db, userId, promo.bonusBucks * BUCK, 'promo_bonus', `purchase:${purchaseId}:${promo.code}`, now);
-    }
-  }
+  if (bucks > 0) await creditBalance(db, userId, bucks * BUCK, 'pack', `purchase:${purchaseId}`, now);
   const things = product.grants.filter((g) => g.item !== 'bucks');
-  if (!things.length) return { promo };
+  if (!things.length) return;
   await db.query(
     `INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at, purchase_id)
      SELECT $1, g.item, g.qty, 'shop', $2, $3 FROM unnest($4::text[], $5::int[]) AS g(item, qty)`,
     [userId, now, purchaseId, things.map((g) => g.item), things.map((g) => g.quantity)],
   );
-  return { promo };
 }
 
 /**
- * A refund of a recorded purchase (RefundPack): a pack's bucks (and any promo
- * bonus bucks it granted) come back out (debt for what was spent); an old
- * offer's things expire, and the bucks of any that were traded in (by the
- * buyer, or by whoever they were gifted to) come back out too.
+ * A refund of a recorded purchase (RefundPack): a pack's bucks come back out
+ * (debt for what was spent); an old offer's things expire, and the bucks of
+ * any that were traded in (by the buyer, or by whoever they were gifted to)
+ * come back out too. Any promo bonus on top of the pack comes back out too.
  */
 export async function revokeGrant(db: Db, args: { purchaseId: string; userId: string; product: Product | undefined; now: number }): Promise<void> {
   const { purchaseId, userId, product, now } = args;
   const bucks = product ? bucksIn(product) : 0;
   if (bucks > 0) await clawBack(db, userId, bucks * BUCK, 'pack_refund', `purchase:${purchaseId}`, now);
-  const promos = await db.query<{ code: string; bonus_bucks: number }>(
-    `SELECT code, bonus_bucks FROM account_promo_codes WHERE purchase_id = $1 AND bonus_bucks > 0`,
-    [purchaseId],
-  );
-  for (const pr of promos) {
-    await clawBack(db, userId, Number(pr.bonus_bucks) * BUCK, 'promo_bonus_refund', `purchase:${purchaseId}:${pr.code}`, now);
-  }
   const traded = await db.query<{ user_id: string; cents: string }>(
     `SELECT t.user_id, SUM(t.value_cents) AS cents FROM trade_ins t JOIN inventory i ON i.id = t.inventory_id
       WHERE i.purchase_id = $1 GROUP BY t.user_id ORDER BY t.user_id`,
     [purchaseId],
   );
   for (const t of traded) await clawBack(db, t.user_id, Number(t.cents), 'trade_in_refund', `purchase:${purchaseId}`, now);
+  // a promo's bonus on top of this pack comes back out too; the use stays spent
+  // (specs/tla/PromoBucks.tla, Refund)
+  const bonus = await db.query<{ user_id: string; bonus_cents: number }>(
+    'SELECT user_id, bonus_cents FROM promo_uses WHERE purchase_id = $1 AND bonus_cents IS NOT NULL ORDER BY id',
+    [purchaseId],
+  );
+  for (const b of bonus) await clawBack(db, b.user_id, Number(b.bonus_cents), 'promo_bonus_refund', `purchase:${purchaseId}`, now);
 }

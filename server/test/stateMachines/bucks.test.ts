@@ -37,8 +37,10 @@ async function buyPack(w: Who, product = 'bucks_10') {
   return token;
 }
 const refund = (token: string) => revokeStorePurchase(s.db, 'dev' as 'apple', token, s.clock.now);
-const spend = (w: Who) =>
-  s.post('/store/credit-purchase', w.token, { productId: 'item_parasol', requestId: crypto.randomUUID() });
+const spend = (w: Who) => s.post('/store/credit-purchase', w.token, { productId: 'item_parasol', requestId: crypto.randomUUID() });
+/** a parasol bought at half price before promo codes stopped discounting (2026-11-27): worth 5 */
+const oldDiscountUnit = (w: Who) =>
+  s.db.query("INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at, unit_cents) VALUES ($1, 'parasol', 1, 'shop', $2, 50)", [w.id, s.clock.now]);
 const tradeIn = (w: Who, item = ITEM, quantity = 1) => s.post('/bag/trade-in', w.token, { item, quantity });
 const gift = (from: Who, to: Who) => s.post('/gifts', from.token, { code: to.code, item: ITEM });
 async function save(w: Who, k: number) {
@@ -93,15 +95,14 @@ describe('beech bucks: one transition at a time', () => {
     expect(await units(w)).toEqual([]);
   });
 
-  it('a free thing is worth its shop price', async () => {
+  it('what was paid is what comes back, and a free thing is worth its shop price', async () => {
     const w = await person();
-    await buyPack(w);
-    expect((await spend(w)).status).toBe(200);
+    await oldDiscountUnit(w);
     await s.grant(w.token, ITEM);
-    expect(await units(w)).toEqual([10, 10]);
+    expect(await units(w)).toEqual([5, 10]);
     expect(await (await tradeIn(w)).json()).toMatchObject({ credited: 10 });
-    expect(await (await tradeIn(w)).json()).toMatchObject({ credited: 10 });
-    expect(await balance(w)).toEqual({ bal: 20, debt: 0 });
+    expect(await (await tradeIn(w)).json()).toMatchObject({ credited: 5 });
+    expect(await balance(w)).toEqual({ bal: 15, debt: 0 });
   });
 
   it('only what is not on a beach can be traded in', async () => {
@@ -136,14 +137,13 @@ describe('beech bucks: one transition at a time', () => {
     expect(await balance(w)).toEqual({ bal: 23, debt: 0 });
   });
 
-  it('a gift carries its value', async () => {
+  it('a gift carries its value: a discount can’t be cashed out by gifting', async () => {
     const a = await person();
     const b = await person();
-    await buyPack(a);
-    expect((await spend(a)).status).toBe(200);
+    await oldDiscountUnit(a);
     expect((await gift(a, b)).status).toBe(200);
-    expect(await units(b)).toEqual([10]);
-    expect(await (await tradeIn(b)).json()).toMatchObject({ credited: 10 });
+    expect(await units(b)).toEqual([5]);
+    expect(await (await tradeIn(b)).json()).toMatchObject({ credited: 5 });
   });
 
   it('an old app’s item receipt still grants the thing; its refund takes back the bucks of a trade-in', async () => {

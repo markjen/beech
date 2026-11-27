@@ -52,26 +52,19 @@ export function accountContent(config: { api: string; connect: string; game: str
 <section class="submission-panel" id="top-up">
   <h2>Top up</h2>
   <p class="muted" id="account-topup-note"></p>
+  <form class="account-row" id="account-topup-code">
+    <input name="code" type="text" placeholder="Promo code (optional)" autocomplete="off" aria-label="Promo code for bonus beech bucks">
+  </form>
   <div class="account-packs" id="account-packs"></div>
   <p class="account-status" id="account-topup-status" role="status"></p>
 </section>
 <section class="submission-panel" id="gift-card">
-  <h2>Redeem a gift card</h2>
+  <h2>Redeem a code</h2>
   <form class="account-row" id="account-redeem">
-    <input name="code" type="text" placeholder="Gift card code" autocomplete="off" aria-label="Gift card code" required>
+    <input name="code" type="text" placeholder="Gift card or promo code" autocomplete="off" aria-label="Gift card or promo code" required>
     <button class="btn" type="submit">Redeem</button>
   </form>
   <p class="account-status" id="account-redeem-status" role="status"></p>
-</section>
-<section class="submission-panel" id="promo-codes">
-  <h2>Promo codes</h2>
-  <p class="muted">Add promo codes to your account. When you buy a beech-buck pack, the one that gives you the largest bonus applies automatically.</p>
-  <form class="account-row" id="account-promo">
-    <input name="code" type="text" placeholder="Promo code" autocomplete="off" aria-label="Promo code" required>
-    <button class="btn" type="submit">Add code</button>
-  </form>
-  <p class="account-status" id="account-promo-status" role="status"></p>
-  <ul class="account-friends" id="account-promos"></ul>
 </section>
 <section class="submission-panel" id="gift">
   <h2>Gift something</h2>
@@ -143,7 +136,6 @@ export function accountContent(config: { api: string; connect: string; game: str
     const d = data;
     document.getElementById('top-up').hidden = fromApp;
     document.getElementById('gift-card').hidden = fromApp;
-    document.getElementById('promo-codes').hidden = fromApp;
     $('bucks').innerHTML = '<img src="/icons/beech-bucks.webp" alt="" class="bucks-icon" width="18" height="18"> ' + d.bucks + ' beech ' + (d.bucks === 1 ? 'buck' : 'bucks');
     $('debt').hidden = !d.debt;
     $('debt').textContent = d.debt ? S(d.debt) + ' owed from a refund: the next beech bucks in pay it off first.' : '';
@@ -160,29 +152,12 @@ export function accountContent(config: { api: string; connect: string; game: str
       b.disabled = !d.webCheckout;
       b.dataset.pack = p.id;
       const big = document.createElement('span');
-      big.textContent = p.bonusBucks ? S(p.bucks) + ' + ' + p.bonusBucks + ' bonus' : S(p.bucks);
+      big.textContent = S(p.bucks);
       const small = document.createElement('small');
-      small.textContent = '$' + p.usd.toFixed(2) + (p.promoCode ? ' · ' + p.promoCode : p.featured ? ' · best value' : '');
+      small.textContent = '$' + p.usd.toFixed(2) + (p.featured ? ' · best value' : '');
       b.append(big, small);
       b.addEventListener('click', () => topUp(p, b));
       packs.append(b);
-    }
-    // promo codes
-    const promosEl = $('promos');
-    promosEl.replaceChildren();
-    const promoList = d.promos || [];
-    for (const pr of promoList) {
-      const li = document.createElement('li');
-      const deal = pr.kind === 'percent' ? '+' + pr.value + '% bonus bb' : '+' + pr.value + ' bonus bb';
-      const statusLabel = pr.status === 'ready'
-        ? 'ready'
-        : pr.status === 'used'
-          ? 'used' + (pr.bonusBucks ? ' (+' + S(pr.bonusBucks) + ')' : '')
-          : pr.status === 'exhausted' ? 'used up' : pr.status;
-      const packNote = pr.appliesTo ? ' · ' + (d.packs.find((x) => x.id === pr.appliesTo)?.name || pr.appliesTo) : '';
-      const expNote = pr.status === 'ready' && pr.expiresAt ? ' · expires ' + when(pr.expiresAt) : '';
-      li.textContent = pr.code + ' · ' + deal + packNote + ' · ' + statusLabel + expNote;
-      promosEl.append(li);
     }
     // gift
     const select = $('gift').elements.thing;
@@ -275,7 +250,8 @@ export function accountContent(config: { api: string; connect: string; game: str
     btn.disabled = true;
     $('topup-status').textContent = 'Opening the secure checkout…';
     try {
-      const r = await call('/top-up', 'POST', { productId: p.id, mount: location.pathname.startsWith('/shore/') ? 'game' : 'shore' });
+      const promo = $('topup-code').elements.code.value.trim();
+      const r = await call('/top-up', 'POST', { productId: p.id, mount: location.pathname.startsWith('/shore/') ? 'game' : 'shore', ...(promo ? { promoCode: promo } : {}) });
       location.assign(r.url);
     } catch (err) {
       $('topup-status').textContent = err.message;
@@ -312,6 +288,8 @@ export function accountContent(config: { api: string; connect: string; game: str
     $('topup-status').textContent = 'Your payment is still on its way. Your beech bucks will arrive when it completes.';
   }
 
+  // the top-up's promo code rides on the pack you pick (Enter alone does nothing)
+  $('topup-code').addEventListener('submit', (e) => e.preventDefault());
   $('redeem').addEventListener('submit', async (e) => {
     e.preventDefault();
     const input = $('redeem').elements.code;
@@ -319,25 +297,10 @@ export function accountContent(config: { api: string; connect: string; game: str
     try {
       const r = await call('/redeem', 'POST', { code: input.value.trim() });
       input.value = '';
-      $('redeem-status').textContent = 'Gift card redeemed: +' + S(r.credited);
+      $('redeem-status').textContent = (r.promo ? 'Code redeemed: +' : 'Gift card redeemed: +') + S(r.credited);
       await load();
     } catch (err) {
       $('redeem-status').textContent = err.message;
-    }
-  });
-
-  $('promo').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const input = $('promo').elements.code;
-    $('promo-status').textContent = 'Adding…';
-    try {
-      const r = await call('/promo-codes', 'POST', { code: input.value.trim() });
-      input.value = '';
-      const deal = r.promo.kind === 'percent' ? '+' + r.promo.value + '% bonus bb' : '+' + r.promo.value + ' bonus bb';
-      $('promo-status').textContent = 'Added ' + r.promo.code + ' (' + deal + ' on your next matching pack).';
-      await load();
-    } catch (err) {
-      $('promo-status').textContent = err.message;
     }
   });
 

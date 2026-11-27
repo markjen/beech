@@ -48,7 +48,6 @@ export class Shop {
   private readonly getBucksBtn: HTMLButtonElement;
   private readonly note: HTMLParagraphElement;
   private readonly balanceLine: HTMLParagraphElement;
-  private readonly promoForm: HTMLFormElement;
   private readonly promoInput: HTMLInputElement;
   private busy = false;
   private bucks = 0;
@@ -57,7 +56,6 @@ export class Shop {
   private readonly codes = codesAllowed();
   private packs: ShopPack[] = [];
   private offers: ShopOffer[] = [];
-  private packBonuses: Record<string, { code: string; bonusBucks: number }> = {};
   /** false in the apps when the store offers none of the packs (they aren't created there yet) */
   private storePacksAvailable = true;
 
@@ -91,10 +89,7 @@ export class Shop {
           <div class="shop-list"></div>
           <div class="shop-foot">
             <a class="shop-account" data-act="shop-account" target="_blank" rel="noopener">your account · gift cards · history ↗</a>
-            <form class="shop-promo">
-              <label>Promo code <input name="promo" type="text" autocomplete="off" aria-label="Promo code"></label>
-              <button type="submit" class="shop-buy">Add</button>
-            </form>
+            <form class="shop-promo"><label>Code <input name="promo" type="text" autocomplete="off" aria-label="Gift card or promo code"></label><button type="submit" class="action" data-act="shop-redeem">redeem</button></form>
           </div>
         </div>
       </div>`;
@@ -106,7 +101,6 @@ export class Shop {
     this.note = this.root.querySelector('.shop-note')!;
     this.balanceLine = this.root.querySelector('.shop-bucks')!;
     this.root.querySelector<HTMLAnchorElement>('.shop-account')!.href = shoreAccountUrl({}, 'balance');
-    this.promoForm = this.root.querySelector('.shop-promo')!;
     this.promoInput = this.root.querySelector('.shop-promo input')!;
     this.root.querySelector('.claw-close')!.addEventListener('click', () => this.close());
     this.getBucksBtn.addEventListener('click', () => this.setTab('packs'));
@@ -117,13 +111,15 @@ export class Shop {
       if (e.key === 'Escape' && this.isOpen) this.close();
     });
     // the apps sell through the stores only: no code fields there
-    this.promoForm.hidden = !this.codes;
+    this.root.querySelector<HTMLElement>('.shop-promo')!.hidden = !this.codes;
     // and no link out to paying on the web (store rules)
     this.root.querySelector<HTMLElement>('.shop-account')!.hidden = !this.codes;
     this.root.querySelector<HTMLElement>('.shop-foot')!.hidden = !this.codes;
-    this.promoForm.addEventListener('submit', (e) => {
+    // a gift card or promo code: bonus beech bucks now (a promo never takes
+    // money off; typed before buying a pack on the web, it rides on that pack)
+    this.root.querySelector<HTMLFormElement>('.shop-promo')!.addEventListener('submit', (e) => {
       e.preventDefault();
-      void this.addPromo();
+      void this.redeem(this.root.querySelector<HTMLButtonElement>('[data-act="shop-redeem"]')!);
     });
     this.tabsEl.addEventListener('keydown', (e) => this.onTabKey(e));
     this.renderTabs();
@@ -150,7 +146,7 @@ export class Shop {
         if (n) void this.afterPack('');
       });
     try {
-      const [{ packs, offers, storePacksAvailable }] = await Promise.all([this.api.catalog(), this.refreshBucks(), this.refreshPromos()]);
+      const [{ packs, offers, storePacksAvailable }] = await Promise.all([this.api.catalog(), this.refreshBucks()]);
       this.packs = packs;
       this.offers = offers;
       this.storePacksAvailable = storePacksAvailable;
@@ -239,26 +235,20 @@ export class Shop {
     this.renderBalance();
   }
 
-  private async refreshPromos(): Promise<void> {
-    try {
-      this.packBonuses = (await this.api.myPromos()).packBonuses;
-    } catch {
-      /* offline or signed out: keep what we had */
-    }
+  private async redeem(btn: HTMLButtonElement): Promise<void> {
+    const code = this.promoCode();
+    if (!code) return;
+    await this.run(btn, async () => {
+      const r = await this.api.redeemCode(code);
+      this.promoInput.value = '';
+      this.note.textContent = `+${r.credited} bb`;
+      await this.refreshBucks();
+    });
   }
 
-  private async addPromo(): Promise<void> {
+  private promoCode(): string | undefined {
     const code = this.promoInput.value.trim();
-    if (!code || this.busy) return;
-    const btn = this.promoForm.querySelector('button')!;
-    await this.run(btn, async () => {
-      const r = await this.api.loadPromo(code);
-      this.promoInput.value = '';
-      this.packBonuses = r.packBonuses;
-      const deal = r.promo.kind === 'percent' ? `+${r.promo.value}% bb` : `+${r.promo.value} bb`;
-      this.note.textContent = `${r.promo.code} added (${deal})`;
-      await this.render();
-    });
+    return code ? code : undefined;
   }
 
   private async render(): Promise<void> {
@@ -320,9 +310,7 @@ export class Shop {
         packs.appendChild(p);
       }
       for (const p of this.packs) {
-        const bonus = this.packBonuses[p.id];
-        const title = bonus ? `${sd(p.bucks)} + ${bonus.bonusBucks} bonus` : sd(p.bucks);
-        const row = this.row('bucket', title, p.blurb, bonus ? bonus.code : '', p.featured);
+        const row = this.row('bucket', sd(p.bucks), p.blurb, '', p.featured);
         const btn = this.button(p.id, p.price ?? `$${p.usd.toFixed(2)}`);
         if (mode === 'web' && this.api.webCheckout) btn.addEventListener('click', () => void this.payOnWeb(p, btn));
         else if (mode === 'web') btn.addEventListener('click', () => this.getTheApp());
@@ -406,7 +394,7 @@ export class Shop {
   /** Web checkout: off to Xsolla's Pay Station; the return lands back on the beach (main.ts). */
   private async payOnWeb(p: ShopPack, btn: HTMLButtonElement): Promise<void> {
     await this.run(btn, async () => {
-      const url = await this.api.startWebCheckout(p.id);
+      const url = await this.api.startWebCheckout(p.id, this.codes ? this.promoCode() : undefined);
       this.note.textContent = 'Opening the secure checkout…';
       location.assign(url);
     });
@@ -425,7 +413,7 @@ export class Shop {
   }
 
   private async afterPack(id: string): Promise<void> {
-    await Promise.all([this.refreshBucks(), this.refreshPromos()]);
+    await this.refreshBucks();
     if (this.isOpen && this.offers.length) await this.render();
     this.bought(id);
   }

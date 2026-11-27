@@ -18,20 +18,35 @@ Instead they work on **account credit**, which the server owns end to end.
   (`server/src/products.ts`), checks the credit balance, and — in one SQL
   statement — deducts the credit, logs the movement and grants the product.
   A client-supplied price is never trusted; there is no price field to
-  supply. Credit purchases are always full price: promo codes never
-  discount them.
-- **Promo code** — a public code (`LAUNCH20`) that a player loads onto
-  their account (`POST /promo-codes/load`); it then adds bonus beech bucks
-  to bb pack purchases. When a pack is bought (Apple, Google, Steam, Xsolla
-  or dev), the loaded code that gives the biggest extra bonus applies
-  automatically, at most once per account, claimed atomically with the
-  purchase so it can't be spent twice or after expiring. A code is a
-  percent bonus (1–100, of the pack's bb, rounded up), optionally for one
-  pack, with an optional usage cap and expiry. There is no fixed-value
-  kind: `promo_codes.kind` is always `'percent'`. Bonus rows also write
-  the bonus (in cents) into `promo_uses.discount_cents` alongside
-  `bonus_bucks`; nothing sums that column, and the admin redemption display
-  keys off `bonus_bucks`.
+  supply. A promo code there is refused (400): codes never take money off.
+- **Promo code** — a public code (`WELCOME50`) that gives **bonus beech
+  bucks, never a discount** (Mark, 2026-11-27). Two kinds:
+  - `bucks`: `value` bb, either **redeemed on its own** (the same
+    "redeem a code" box as gift cards) or **with a pack** bought on the web;
+  - `percent`: `value`% of a pack's bb on top of it (rounded down to a
+    whole buck), **with a pack** only.
+
+  Optionally for one pack, with an optional usage cap and expiry; **each
+  player uses a code once**, whichever way. Modelled in
+  `specs/tla/PromoBucks.tla` (docs/STATE_MACHINES.md): every claim is one
+  transaction holding the code's row lock, so two players can't both take
+  the last use and one player can't use it twice.
+  - **Redeem** (`POST /api/codes/redeem { code }`, also
+    `/api/gift-cards/redeem` and beechshore's `/account/api/redeem`): a
+    gift card if the code is one, else a promo; the bonus goes straight to
+    the balance (`credit_ledger` kind `promo_bonus`).
+  - **With a pack** (`POST /api/store/web-checkout { productId, promoCode }`):
+    the code is checked at checkout (so a bad one is said before paying) and
+    kept on the order, but not used. Xsolla charges the full price. When the
+    payment comes in, the pack is granted and then, in the same
+    transaction, the code is claimed if it's still good (the bonus on top).
+    If it ran out, was disabled or expired meanwhile, the pack still arrives
+    without the bonus (the webhook log says why).
+  - **A refund** of that pack takes its bucks and its bonus back out
+    (`promo_bonus_refund`, debt for what was spent); the use stays spent.
+  - **Old codes** (migration 40): a fixed-amount code became a bucks code
+    (its cents ÷ 10, at least 1 bb); a percent code kept its number as a
+    pack bonus; a code for a non-pack product became one for any pack.
 
 Gift cards and promos are the only way to get something without the store:
 that is the point (a gift from Mark, a launch code, a press copy), and it
@@ -130,15 +145,15 @@ the console as its own process locally, point both at one Postgres with
 |---|---|---|
 | `POST /api/gift-cards/redeem { code }` | session | Claims the card atomically (active, unexpired, not yet redeemed), credits the player, logs it. Unknown code: 404; used/disabled/expired: 409. Rate-limited per user. |
 | `GET /api/credit` | session | Current credit in cents. |
-| `POST /api/promo-codes/load { code }` | session | Loads a promo code onto the account (active, unexpired, under its cap); the biggest-bonus loaded code then applies automatically to pack purchases. Unknown code: 404; used/disabled/expired/exhausted: 409. |
-| `GET /api/promo-codes/mine` | session | The account's loaded codes with their per-pack bonuses. |
-| `POST /api/store/quote { productId }` | session | Price and final price, without spending anything. Promo codes never discount a credit purchase. |
-| `POST /api/store/credit-purchase { productId }` | session | The purchase, at full price. 402 when the credit doesn't cover it. A `promoCode` in the body is refused (400): promo codes are for bb pack bonuses, loaded onto the account. |
+| `POST /api/codes/redeem { code }` | session | A gift card or a promo code, whichever it is: bucks in. A promo: 404 unknown, 409 used up, expired, disabled, already used by you, or one that needs a pack. |
+| `POST /api/store/quote { productId }` | session | The price, without spending anything (`discountCents` is always 0; a promo code is refused). |
+| `POST /api/store/credit-purchase { productId }` | session | The purchase. 402 when the credit doesn't cover it. |
 
-The shop dialog shows the credit balance, a gift card redeem box, a promo
-code field that loads a code onto the account (its bonus then shows on
-packs as "+ N bonus"), and a "Buy with credit" button on products the
-credit covers (`src/ui/shop.ts`, `src/net/shop.ts`).
+The shop dialog (web only) shows the balance and a "code" box with
+**redeem**; a code typed there before buying a pack by card rides on that
+pack. Your account page on beechshore has "Redeem a code" and a promo code
+field on top-ups (`src/ui/shop.ts`, `src/net/shop.ts`,
+`server/src/accountPage.ts`).
 
 **Web only.** In the iOS and Android apps the shop shows none of these:
 digital items there must be bought through the store (App Store
@@ -188,5 +203,6 @@ up for IAP, and the CLI would need an IAP identity token too.
 - **No refunds of credit.** A credit purchase grants immediately; there is
   no refund path (unlike store purchases, which the stores refund and the
   server then revokes).
-- **No per-beach or per-item promos beyond one product.** `applies_to` is
-  one product id or any product.
+- **No discounts, ever.** A promo gives bucks; prices are always charged in
+  full, by card and in bucks.
+- **No per-beach or per-item promos.** `applies_to` is one pack or any.

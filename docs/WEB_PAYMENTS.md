@@ -26,9 +26,8 @@ most of the catalog, while Xsolla charges a percentage only.
 - The price comes from `server/src/products.ts`, mirrored as SKUs in the
   Xsolla catalog. The client never supplies a price, and the server checks
   what Xsolla charged against its own list before granting.
-- **Promo codes never discount a card payment** (see "Promo codes").
-  A code loaded on the account applies automatically as bonus bb when a
-  bb pack grants, whichever store the pack came from.
+- **Promo codes never discount** (Mark, 2026-11-27): with a pack, a code
+  gives bonus beech bucks on top, at the full price (see "Promo codes").
 - The native apps are unchanged: StoreKit / Play Billing only, and they
   never link or steer to web checkout (App Store anti-steering, Play
   payments policy). `shopMode()` is `'web'` only in a browser production
@@ -188,7 +187,7 @@ granted, because the player paid.
 
 | Endpoint | Auth | |
 |---|---|---|
-| `POST /api/store/web-checkout { productId }` | session; 10/min per player | → `{ order, url }`. 404 unknown product or checkout off; 400 with a promo code; 502 if Xsolla refuses. |
+| `POST /api/store/web-checkout { productId, promoCode? }` | session; 10/min per player | → `{ order, url }`. 404 unknown product, unknown code or checkout off; 400 with a code that can't give a bonus with this pack; 502 if Xsolla refuses. |
 | `GET /api/store/web-orders/:id` | session, owner only | → `{ order: { id, productId, amountCents, status, createdAt, paidAt, grants } }`; 404 otherwise. |
 | `POST /api/store/xsolla/webhook` | Xsolla signature | See "Webhooks handled". 404 while checkout is off. |
 | `GET /api/store/products` | none | now also `webCheckout: boolean`. |
@@ -214,15 +213,13 @@ granted, because the player paid.
 
 ### Promo codes
 
-Xsolla charges its catalog price for a SKU; the In-Game Store token has no
-price override (the older merchant `/token` call that accepts a custom
-amount opens Pay Station for subscriptions only). So a beech promo can't
-discount a card payment. It doesn't need to: promo codes are percent-only
-bonus bb on bb packs (docs/GIFT_CARDS_PROMOS.md), and the loaded code
-applies automatically when the pack grants through the webhook — the same
-grant an App Store or Play purchase gives. A `promoCode` sent to web
-checkout is refused with a clear message telling the player to load the
-code on their account first.
+Codes never take money off (Mark, 2026-11-27), so nothing is mirrored into
+Xsolla and Xsolla always charges its catalog price. `web-checkout` takes an
+optional `promoCode` for a pack: it's checked then (404/400 with the
+reason), kept on the order (`web_orders.promo_code`) and claimed for its
+bonus beech bucks in `order_paid`'s grant transaction if it's still good,
+or skipped (the pack still arrives). A refund takes the bonus back with
+the pack. docs/GIFT_CARDS_PROMOS.md, `specs/tla/PromoBucks.tla`.
 
 ## Turning it on
 
@@ -280,9 +277,8 @@ What changed from the plan in PR 21, and why:
   token charges the catalog price by SKU, and the custom-amount token only
   opens Pay Station for subscriptions, so web prices live in the Xsolla
   catalog (mirroring `products.ts`) and the webhook checks them.
-- **Promos are account-loaded bonus bb, not a price override** (see "Promo codes");
-  the reservation scheme in the draft isn't needed: the loaded code applies
-  at grant time, after Xsolla charges its catalog price.
+- **Promos give bonus bucks** instead of a discount (see "Promo codes"),
+  so no reservation and no Xsolla promo campaigns.
 - **Schema fixes.** `users.id` is a UUID, not TEXT (the draft's foreign
   key wouldn't have applied); `purchases.store` has a CHECK that rejected
   `'xsolla'`, so migration 15 widens it.
@@ -307,8 +303,8 @@ What changed from the plan in PR 21, and why:
 
 1. **Web prices:** same USD list converted by Xsolla (built this way), or
    per-country prices in the Xsolla catalog?
-2. **Promos on card payments:** worth mirroring codes into Xsolla, or keep
-   promos for credit only?
+2. ~~**Promos on card payments**~~ Answered (Mark, 2026-11-27): codes only
+   give bonus bb, never a discount on the charged amount.
 3. **Refunds:** who answers a refund request — Mark, or Xsolla support?
    (Either way the item leaves the bag automatically.)
 4. **Gift cards on the web** (later phase), or admin-issued only?

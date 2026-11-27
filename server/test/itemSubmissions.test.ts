@@ -171,7 +171,7 @@ it('credits only completed credit orders, including an order retried concurrentl
   const attempts = await Promise.all([json('/store/credit-purchase', buy, buyer.token), json('/store/credit-purchase', buy, buyer.token)]);
   for (const res of attempts) {
     expect(res.status, await res.clone().text()).toBe(200);
-    // beech bucks (docs/BEECH_BUCKS.md): 25 bucks at full price, no promo discount
+    // beech bucks (docs/BEECH_BUCKS.md): 25 bucks, the full price (codes never discount)
     expect(await res.json()).toMatchObject({ paidCents: 250, discountCents: 0, creditCents: 750 });
   }
   expect(await credit(creator.token)).toBe(80);
@@ -181,8 +181,7 @@ it('credits only completed credit orders, including an order retried concurrentl
   expect(await (await shoreRequest('/submit/items', creator.scoped)).json()).toMatchObject({
     submissions: [{ id, sales_count: 1, total_credit_earned_cents: 80 }],
   });
-  // the same request ID reused for a different product is refused
-  expect((await json('/store/credit-purchase', { productId: 'item_parasol', requestId: buy.requestId }, buyer.token)).status).toBe(409);
+  expect((await json('/store/credit-purchase', { ...buy, productId: 'item_parasol' }, buyer.token)).status).toBe(409);
   // 0 is free: listed at $0, claimed with no credit spent and no royalty
   await approve(id, 'deckchair', '0');
   const listed = await (await root.request('/api/store/products')).json() as { products: { id: string; usd: number }[] };

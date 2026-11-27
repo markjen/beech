@@ -229,12 +229,11 @@ export function adminConsoleHtml(opts: { nonce: string; email: string; appUrl: s
   <section id="tab-promos" hidden>
     <div class="panel">
       <h2>New promo code</h2>
-      <p class="muted">Players load promo codes onto their account (at most once per account). Pack prices stay the same; buying a matching bb pack automatically applies the loaded code that gives the largest extra bonus bb.</p>
       <form id="promo-form">
         <label><span>Code</span><input name="code" type="text" required minlength="3" maxlength="32" placeholder="LAUNCH20"></label>
-        <label><span>Kind</span><select name="kind"><option value="percent">Bonus percent (+% bb)</option></select></label>
-        <label><span>Value</span><input name="value" type="number" min="1" max="100" step="1" required placeholder="20 = +20% bb"></label>
-        <label><span>Pack</span><select name="appliesTo"><option value="">Any bb pack</option></select></label>
+        <label><span>Kind</span><select name="kind"><option value="bucks">Bonus beech bucks</option><option value="percent">Percent bonus on a pack</option></select></label>
+        <label><span>Value</span><input name="value" type="number" min="1" step="1" required placeholder="50 = 50 bb, or 20 = +20% of the pack"></label>
+        <label><span>Pack</span><select name="appliesTo"><option value="">Any pack (or on its own)</option></select></label>
         <label><span>Max uses</span><input name="maxUses" type="number" min="1" step="1" placeholder="unlimited"></label>
         <label><span>Expires</span><input name="expires" type="date"></label>
         <button type="submit" class="primary">Create promo code</button>
@@ -700,8 +699,8 @@ async function loadPromos() {
   for (const p of (packs || [])) { const o = document.createElement('option'); o.value = p.id; o.textContent = p.name + ' (' + money(Math.round(p.usd * 100)) + ')'; sel.appendChild(o); }
   const el = $('promo-list');
   if (!list.length) { el.innerHTML = '<p class="muted">No promo codes yet.</p>'; return; }
-  el.innerHTML = '<table><tr><th>Code</th><th>Bonus</th><th>Pack</th><th>Uses</th><th>Active</th><th>Expires</th><th></th></tr>' +
-    list.map((p) => '<tr><td><b>' + esc(p.code) + '</b></td><td>+' + p.value + '% bb</td><td>' + esc(p.appliesTo || 'any pack') + '</td><td>' + p.uses + (p.maxUses ? ' / ' + p.maxUses : '') + '</td><td>' + (p.active ? 'yes' : 'no') + '</td><td>' + when(p.expiresAt) + '</td>' +
+  el.innerHTML = '<table><tr><th>Code</th><th>Gives</th><th>For</th><th>Uses</th><th>Active</th><th>Expires</th><th></th></tr>' +
+    list.map((p) => '<tr><td><b>' + esc(p.code) + '</b></td><td>' + (p.kind === 'percent' ? '+' + p.value + '% of the pack' : p.value + ' bb') + '</td><td>' + esc(p.appliesTo || (p.kind === 'percent' ? 'any pack' : 'any pack, or on its own')) + '</td><td>' + p.uses + (p.maxUses ? ' / ' + p.maxUses : '') + '</td><td>' + (p.active ? 'yes' : 'no') + '</td><td>' + when(p.expiresAt) + '</td>' +
       (p.active ? '<td><button type="button" data-disable-promo="' + esc(p.code) + '">Disable</button></td>' : '<td></td>') + '</tr>').join('') + '</table>';
   el.querySelectorAll('[data-disable-promo]').forEach((b) => b.addEventListener('click', async () => {
     try { await post('/promo-codes/' + encodeURIComponent(b.dataset.disablePromo) + '/disable'); say('Promo code disabled.', true); await loadPromos(); }
@@ -725,7 +724,7 @@ $('promo-form').addEventListener('submit', async (e) => {
 async function loadRedemptions() {
   const red = await api('/redemptions');
   const giftRows = red.giftCards.map((g) => '<tr><td>Gift card</td><td>' + money(g.amountCents) + '</td><td>' + esc(g.redeemedBy || '') + '</td><td>' + when(g.redeemedAt) + '</td></tr>').join('');
-  const promoRows = red.promoUses.map((p) => '<tr><td>Promo ' + esc(p.code) + '</td><td>' + (p.bonusBucks ? '+bb ' + p.bonusBucks : '−' + money(p.discountCents)) + ' on ' + esc(p.productId) + '</td><td>' + esc(p.user || '') + '</td><td>' + when(p.usedAt) + '</td></tr>').join('');
+  const promoRows = red.promoUses.map((p) => '<tr><td>Promo ' + esc(p.code) + '</td><td>' + (p.bonusBucks !== null ? '+' + p.bonusBucks + ' bb' + (p.productId ? ' with ' + esc(p.productId) : '') : '−' + money(p.discountCents) + ' on ' + esc(p.productId) + ' (old discount)') + '</td><td>' + esc(p.user || '') + '</td><td>' + when(p.usedAt) + '</td></tr>').join('');
   const creditRows = red.credit.map((l) => '<tr><td>Ledger ' + esc(l.kind) + '</td><td>' + (l.bucks >= 0 ? '+' : '−') + 'bb ' + Math.abs(l.bucks) + ' (' + esc(l.ref) + ')</td><td>' + esc(l.user || '') + '</td><td>' + when(l.createdAt) + '</td></tr>').join('');
   const rows = giftRows + promoRows + creditRows;
   $('redemptions').innerHTML = rows ? '<table><tr><th>What</th><th>Amount</th><th>Who</th><th>When</th></tr>' + rows + '</table>' : '<p class="muted">Nothing redeemed yet.</p>';

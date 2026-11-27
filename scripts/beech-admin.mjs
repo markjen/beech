@@ -6,8 +6,8 @@
 //   beech-admin.mjs gift-card issue --amount 9.99 [--expires 2027-06-01] [--note "for Ana"]
 //   beech-admin.mjs gift-card list
 //   beech-admin.mjs gift-card disable <id>
-//   beech-admin.mjs promo create --code LAUNCH20 --percent 20 [--product beach_1] [--max-uses 100] [--expires 2027-01-01]
-//   beech-admin.mjs promo create --code WELCOME2 --fixed-cents 200
+//   beech-admin.mjs promo create --code WELCOME50 --bucks 50 [--pack bucks_30] [--max-uses 100] [--expires 2027-01-01]
+//   beech-admin.mjs promo create --code LAUNCH20 --percent 20 [--pack bucks_100]   (+20% of a pack's bb)
 //   beech-admin.mjs promo list
 //   beech-admin.mjs promo disable <code>
 //   beech-admin.mjs redemptions
@@ -36,7 +36,7 @@ const usage = `usage:
   beech-admin.mjs gift-card issue --amount <dollars> [--expires YYYY-MM-DD] [--note "..."]
   beech-admin.mjs gift-card list
   beech-admin.mjs gift-card disable <id>
-  beech-admin.mjs promo create --code <CODE> (--percent <1-100> | --fixed-cents <cents>) [--product <id>] [--max-uses <n>] [--expires YYYY-MM-DD]
+  beech-admin.mjs promo create --code <CODE> (--bucks <bb> | --percent <1-100>) [--pack <id>] [--max-uses <n>] [--expires YYYY-MM-DD]
   beech-admin.mjs promo list
   beech-admin.mjs promo disable <CODE>
   beech-admin.mjs redemptions
@@ -139,23 +139,24 @@ if (group === 'whoami') {
 } else if (group === 'promo' && cmd === 'create') {
   const code = flags.code;
   if (!code) die('--code is required');
-  const kind = flags.percent ? 'percent' : flags['fixed-cents'] ? 'fixed' : null;
-  if (!kind) die('give --percent <1-100> or --fixed-cents <cents>');
-  const value = Number(flags.percent ?? flags['fixed-cents']);
+  // codes give bonus beech bucks, never money off
+  const kind = flags.bucks ? 'bucks' : flags.percent ? 'percent' : null;
+  if (!kind) die('give --bucks <bb> (on its own or with a pack) or --percent <1-100> (a bonus on a pack)');
+  const value = Number(flags.bucks ?? flags.percent);
   const p = await call('/api/promo-codes', 'POST', {
     code,
     kind,
     value,
-    appliesTo: flags.product ?? null,
+    appliesTo: flags.pack ?? null,
     maxUses: flags['max-uses'] ? Number(flags['max-uses']) : null,
     expiresAt: toExpiry(flags.expires),
   });
-  console.log(`promo ${p.promo.code} created: ${kind === 'percent' ? `${value}% off` : `${money(value)} off`}${p.promo.appliesTo ? ` on ${p.promo.appliesTo}` : ''}${p.promo.maxUses ? `, max ${p.promo.maxUses} uses` : ''}`);
+  console.log(`promo ${p.promo.code} created: ${kind === 'percent' ? `+${value}% of a pack's bb` : `${value} bb`}${p.promo.appliesTo ? ` with ${p.promo.appliesTo}` : ''}${p.promo.maxUses ? `, max ${p.promo.maxUses} uses` : ''}`);
 } else if (group === 'promo' && cmd === 'list') {
   const { promos } = await call('/api/promo-codes');
   if (!promos.length) console.log('no promo codes yet');
   for (const p of promos) {
-    console.log(`${p.code}  ${p.kind === 'percent' ? `${p.value}%` : money(p.value)}  ${p.appliesTo ?? 'any product'}  uses ${p.uses}${p.maxUses ? `/${p.maxUses}` : ''}  ${p.active ? 'active' : 'disabled'}  expires ${when(p.expiresAt)}`);
+    console.log(`${p.code}  ${p.kind === 'percent' ? `+${p.value}%` : `${p.value} bb`}  ${p.appliesTo ?? 'any pack'}  uses ${p.uses}${p.maxUses ? `/${p.maxUses}` : ''}  ${p.active ? 'active' : 'disabled'}  expires ${when(p.expiresAt)}`);
   }
 } else if (group === 'promo' && cmd === 'disable') {
   if (!arg) die('promo disable needs a code');
@@ -166,7 +167,7 @@ if (group === 'whoami') {
   console.log('gift cards redeemed:');
   for (const g of r.giftCards) console.log(`  ${money(g.amountCents)} by ${g.redeemedBy ?? '?'} at ${when(g.redeemedAt)}${g.note ? ` — ${g.note}` : ''}`);
   console.log('promo uses:');
-  for (const p of r.promoUses) console.log(`  ${p.code}: -${money(p.discountCents)} on ${p.productId} by ${p.user ?? '?'} at ${when(p.usedAt)}`);
+  for (const p of r.promoUses) console.log(`  ${p.code}: ${p.bonusBucks !== null ? `+${p.bonusBucks} bb${p.productId ? ` with ${p.productId}` : ''}` : `-${money(p.discountCents)} on ${p.productId} (old discount)`} by ${p.user ?? '?'} at ${when(p.usedAt)}`);
   console.log('credit movements:');
   for (const l of r.credit) console.log(`  ${l.kind} ${l.amountCents >= 0 ? '+' : ''}${money(l.amountCents)} (${l.ref}) by ${l.user ?? '?'} at ${when(l.createdAt)}`);
 } else if (group === 'beach' && cmd === 'find') {

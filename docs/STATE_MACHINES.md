@@ -20,7 +20,7 @@ rest of `npm test` in `server/`. No E2E, no rendering.
 | Piers | `Piers.tla` | `piers.test.ts` | a pier landed after an unlink, two on one beach, a placed pier traded in or given away |
 | Inland sections | `InlandSections.tla` | `sections.test.ts` | a reorder from one device silently undone by another, one section placed on two beaches, a placed section traded in |
 | Push notifications | `Push.tla` | `push.test.ts` | a push sent twice, two in an hour, a push after unsubscribing, signing out, blocking or muting |
-| Account promo codes | `PromoCodes.tla` | `accountPromos.test.ts` | a code used twice on one account, global `max_uses` exceeded in a race, a worse code applied instead of the best deal |
+| Promo codes | `PromoBucks.tla` | `promo.test.ts` | a capped code oversold, a player using a code twice (standalone + pack race), a bonus not clawed back on refund |
 
 ## How it fits together
 
