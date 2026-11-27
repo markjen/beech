@@ -19,5 +19,7 @@ export const SECTIONS = [
 export type SectionId = (typeof SECTIONS)[number]['id'];
 export const SECTION_IDS: readonly string[] = SECTIONS.map((s) => s.id);
 export const isSection = (id: string): id is SectionId => SECTION_IDS.includes(id);
-/** beech bucks each (the design's $1.49) */
-export const SECTION_BUCKS = 15;
+/** beech bucks each, every type (on sale or not: it's also what one trades in from) */
+export const SECTION_BUCKS = 50;
+/** the types the shop sells for now: the others are hidden (existing ones stay placeable) */
+export const SECTIONS_ON_SALE: readonly string[] = ['section-sand'];

@@ -44,6 +44,8 @@ export interface CopyHost {
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const bucks = (n: number) => `bb ${n}`;
+/** a price as HTML: the beech-buck coin, then the number */
+const coin = (n: number) => `<img class="bucks-icon" src="/icons/beech-bucks.webp" alt="beech bucks" width="16" height="16">${n}`;
 const isFree = (id: string) => itemById(id)?.unlimited === true;
 const beachLabel = (b: MyBeach) => b.name || (b.home ? 'Home' : 'Beach');
 
@@ -206,9 +208,9 @@ export class CopySheet {
         const missing = short.need - short.have;
         const line = f.basket.lines.find((l) => l.item === id);
         const placed = (f.elsewhere[id] ?? 0) > 0 && (f.owned[id] ?? 0) > 0 ? ' · on your other beaches' : '';
-        state = `${missing} short${placed} · ${line ? bucks(line.bucks * line.quantity) : 'not in shop'}`;
+        state = `${esc(`${missing} short${placed}`)} · ${line ? coin(line.bucks * line.quantity) : 'not in shop'}`;
       }
-      out.push(`<li class="${short ? 'short' : ''}"><span>${esc(prizeName(id))} × ${n}</span><span>${esc(state)}</span></li>`);
+      out.push(`<li class="${short ? 'short' : ''}"><span>${esc(prizeName(id))} × ${n}</span><span>${state}</span></li>`);
     }
     const bag = items.reduce((t, [, n]) => t + n, 0);
     const free = Math.max(0, f.objects - bag);
@@ -248,7 +250,7 @@ export class CopySheet {
       if (lines.length) {
         const all = buyable === shortItems;
         actions.push(
-          `<button type="button" class="claw-go" data-act="copy-buy">${all || !shortItems ? 'Buy what’s missing' : `Buy the ${buyable} you can`} · ${bucks(f.basket.bucks)}</button>`,
+          `<button type="button" class="claw-go" data-act="copy-buy">${all || !shortItems ? 'Buy what’s missing' : `Buy the ${buyable} you can`} · ${coin(f.basket.bucks)}</button>`,
         );
       }
       if (shortItems && !noRoom) actions.push(`<button type="button" class="shop-buy" data-act="copy-drop">Copy without them (${left} left out)</button>`);

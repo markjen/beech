@@ -385,6 +385,18 @@ outside clip space; the one quad with hidden and shown corners was clipped,
 not dropped. It now passes `vHide` and discards in the fragment shader (the
 mixed quad is cut at the neighbor's back edge). `tests/skirtShader.test.ts`.
 
+## Inland sections: just sand for now (2026-11-27)
+
+Only the sand extension is on sale (`SECTIONS_ON_SALE`, client and server,
+kept in step by tests/sections.test.ts), at 50 beech bucks (`SECTION_BUCKS`, the price of every type, so also
+what any type trades in from),
+and the shop files it under **Beaches** (`offerCategory`). The other types
+keep their catalog, rendering and layouts; the editor shows them only when
+one is free in your bag, with no buy button. Prices on buttons (shop offers,
+rows editor, buy pier, copy sheet) are the gold coin and a number
+(`priceTag`/`setPriceLabel` in `src/ui/inventory.ts`); amounts in status
+lines and toasts still say "bb".
+
 ## Inland rows on beechshore.com's pictures (2026-11-27)
 
 Mark: make the pictures taller. Thumbnails and a beach page's flat view

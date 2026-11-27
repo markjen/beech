@@ -3558,6 +3558,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
 
   /** An offer's price in cents of beech bucks (whole bucks): a community item's approved price, rounded; else its bucks price. */
   const offerCents = (product: Product, offer: Awaited<ReturnType<typeof creatorOffer>>): number | null => {
+    if (product.offSale) return null;
     if (!offer) return bucksToCents(product.bucks);
     const cents = salePriceCents(product, offer);
     return cents === null ? null : roundToBuck(cents);

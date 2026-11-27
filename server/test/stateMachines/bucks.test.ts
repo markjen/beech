@@ -188,6 +188,21 @@ describe('beech bucks: one transition at a time', () => {
     expect(await balance(w)).toEqual({ bal: 0, debt: 0 });
   });
 
+  it('inland sections: only the sand extension is on sale, at 50; the others are off sale but still trade in', async () => {
+    const w = await person();
+    const cat = (await (await s.req('/store/catalog', {}, w.token)).json()) as { offers: { id: string; bucks: number }[] };
+    const sections = cat.offers.filter((o) => o.id.startsWith('item_section_'));
+    expect(sections).toEqual([expect.objectContaining({ id: 'item_section_sand', bucks: 50 })]);
+    await buyPack(w, 'bucks_100');
+    const off = await s.post('/store/buy', w.token, { basket: [{ product: 'item_section_boardwalk' }], requestId: crypto.randomUUID() });
+    expect(off.status).toBe(404);
+    const sand = await s.post('/store/buy', w.token, { basket: [{ product: 'item_section_sand' }], requestId: crypto.randomUUID() });
+    expect(sand.status, await sand.clone().text()).toBe(200);
+    expect(await sand.json()).toMatchObject({ paid: 50 });
+    await s.grant(w.token, 'section-boardwalk');
+    expect((await tradeIn(w, 'section-boardwalk')).status).toBe(200);
+  });
+
   it('a basket is one purchase, and each thing keeps its share of the price', async () => {
     const w = await person();
     await buyPack(w, 'bucks_100');

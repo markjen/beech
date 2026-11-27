@@ -5,7 +5,8 @@
 // notes in the game UI).
 
 import type { SectionCounts } from '../net/account';
-import { SECTIONS, SECTION_ROWS, sectionById } from '../world/sections';
+import { SECTIONS, SECTIONS_ON_SALE, SECTION_BUCKS, SECTION_ROWS, sectionById } from '../world/sections';
+import { setPriceLabel } from './inventory';
 
 /**
  * How many of `type` you could still add to this draft: owned, less what's
@@ -109,6 +110,12 @@ export class SectionsEditor {
     return b;
   }
 
+  private priced(text: string, act: string, fn: () => void): HTMLButtonElement {
+    const b = this.button(text, act, fn);
+    setPriceLabel(b, SECTION_BUCKS, text);
+    return b;
+  }
+
   private change(next: string[]): void {
     this.draft = next;
     this.replacing = null;
@@ -148,13 +155,15 @@ export class SectionsEditor {
       // replacing a row: its own type isn't offered (nothing would change)
       if (row !== null && this.draft[row] === s.id) continue;
       const free = freeFor(s.id, this.counts, this.saved, this.draft);
+      // only sand extensions are on sale for now: the other types show only if you have one
+      if (free <= 0 && !SECTIONS_ON_SALE.includes(s.id)) continue;
       const name = s.name.toLowerCase();
       const btn =
         free > 0
           ? row !== null
             ? this.button(`→ ${name}${free > 1 ? ` · ${free}` : ''}`, 'sections-swap', () => this.change(replaceRow(this.draft, row, s.id)))
             : this.button(`+ ${name}${free > 1 ? ` · ${free}` : ''}`, 'sections-add', () => this.change([...this.draft, s.id]))
-          : this.button(`${name} · bb 15`, 'sections-buy', () => void this.buy(s.id));
+          : this.priced(`buy ${name}`, 'sections-buy', () => void this.buy(s.id));
       btn.dataset.type = s.id;
       if (free > 0 && row === null) btn.disabled = full;
       this.add.appendChild(btn);

@@ -17,8 +17,10 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: '2026-11-27',
-    title: 'Inland rows on beechshore.com, news from beech, beechshore.com keeps up with the tides, larger shop items, a higher pier, swap an inland row in place, pick a place for a copied beach, stars and finds in the status pane, multi-item trade-ins, promo bonus beech bucks, playable sand extensions, a quieter palm, more of the beach guide, ratings along the shore, a see-through pier preview and safer notes',
+    title: 'Sand extensions in the shop, coin prices, inland rows on beechshore.com, news from beech, beechshore.com keeps up with the tides, larger shop items, a higher pier, swap an inland row in place, pick a place for a copied beach, stars and finds in the status pane, multi-item trade-ins, promo bonus beech bucks, playable sand extensions, a quieter palm, more of the beach guide, ratings along the shore, a see-through pier preview and safer notes',
     changes: [
+      'Inland rows are simpler for now: the sand extension is the one to buy, at 50 beech bucks, and it’s in the shop’s Beaches tab. Rows of other kinds you already have stay on your beaches.',
+      'Prices in the shop, the inland rows editor, the pier button and the copy sheet now show the gold beech-buck coin instead of “bb”.',
       'Moving along the shore between your own beaches no longer leaves one of them blank for a moment, with the edges of the others showing, as the waves move over to the next.',
       'Scrolling past a beach with sand extensions, inland rows or a pier is smoother: its scenery is no longer rebuilt every time it comes back into view.',
       'Fixed a long striped streak that could shoot across the sky from where a beach with inland rows meets a shallower beach next to it.',
