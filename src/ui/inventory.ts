@@ -574,6 +574,19 @@ export function bucksIcon(size = 18): HTMLImageElement {
   return img;
 }
 
+/** A price: the beech-buck coin, then the number (shop buttons, buy buttons). */
+export function priceTag(n: number, size = 16): DocumentFragment {
+  const f = document.createDocumentFragment();
+  f.append(bucksIcon(size), document.createTextNode(String(n)));
+  return f;
+}
+
+/** Set a button's label to `text` (if any) and a coin price, e.g. "buy pier ·" + coin 30. */
+export function setPriceLabel(el: HTMLElement, n: number, text = ''): void {
+  el.replaceChildren(...(text ? [document.createTextNode(`${text} `)] : []), priceTag(n));
+  el.setAttribute('aria-label', `${text ? `${text} ` : ''}${bucksWord(n)}`);
+}
+
 /**
  * The trade-in dialog (long press a thing in the bag): how many to trade
  * in, what that gives back in bb, trade in, and gift. Labels and status only.

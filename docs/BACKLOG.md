@@ -205,6 +205,11 @@ picked up.
 
 ## Done (recent)
 
+- [x] **Inland sections: just sand for now, and coin prices** (2026-11-27;
+  Mark): only the sand extension is sold, at 50 beech bucks, in the shop's
+  Beaches tab; the other types are hidden unless already in your bag. Prices
+  (shop, rows editor, pier, copy sheet) show the gold coin instead of "bb".
+  INLAND_SECTIONS.md.
 - [x] **Inland rows on beechshore.com's pictures** (2026-11-27; Mark: "make
   pictures taller"): the thumbnail and the beach page's flat view are taller
   by the rows, drawn from the app's own shapes; the link-preview card stays

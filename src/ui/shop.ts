@@ -1,7 +1,7 @@
 import { APP_LINKS, codesAllowed, shopMode, type ShopApi, type ShopOffer, type ShopPack } from '../net/shop';
 import { prizeName } from '../world/items';
 import { icon, type IconName } from './hud';
-import { bucksIcon, bucksWord, sd } from './inventory';
+import { bucksIcon, bucksWord, sd, setPriceLabel } from './inventory';
 import { shoreAccountUrl } from '../net/share';
 
 /**
@@ -35,7 +35,7 @@ const GROUP_LABELS: { id: OfferCategory; label: string }[] = [
 /** Which shop section an offer belongs to. */
 export function offerCategory(o: Pick<ShopOffer, 'grants' | 'featured'>): OfferCategory {
   if (o.featured || o.grants.length > 1) return 'featured';
-  if (o.grants.length > 0 && o.grants.every((g) => g.item === 'beach' || g.item === 'pier')) return 'beaches';
+  if (o.grants.length > 0 && o.grants.every((g) => g.item === 'beach' || g.item === 'pier' || g.item.startsWith('section-'))) return 'beaches';
   if (o.grants.length > 0 && o.grants.every((g) => g.item.startsWith('pet-') || g.item === 'crab-treat')) return 'pets';
   return 'items';
 }
@@ -330,10 +330,10 @@ export class Shop {
       ? o.grants.map((g) => `${g.quantity > 1 ? `${g.quantity} × ` : ''}${prizeName(g.item)}`).join(', ')
       : '';
     const row = this.row(o.grants[0]?.item ?? 'bag', o.featured ? `${o.name} · best value` : o.name, o.blurb, what, o.featured);
-    const btn = this.button(o.id, price === 0 ? 'Free' : sd(price));
+    const btn = this.button(o.id, 'Free');
+    if (price > 0) setPriceLabel(btn, price);
     btn.classList.add('shop-bucks-buy');
     if (price > this.bucks) {
-      btn.textContent = sd(price);
       btn.classList.add('short');
       btn.addEventListener('click', () => this.setTab('packs'));
     } else {
@@ -377,7 +377,7 @@ export class Shop {
   private async run(btn: HTMLButtonElement, fn: () => Promise<void>): Promise<void> {
     if (this.busy) return;
     this.busy = true;
-    const label = btn.textContent;
+    const label = [...btn.childNodes];
     btn.textContent = '…';
     btn.disabled = true;
     try {
@@ -386,7 +386,7 @@ export class Shop {
       this.note.textContent = (e as Error).message;
     } finally {
       this.busy = false;
-      btn.textContent = label;
+      btn.replaceChildren(...label);
       btn.disabled = false;
     }
   }

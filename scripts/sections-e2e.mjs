@@ -60,7 +60,7 @@ await click(a, '.sections-editor [data-act="sections-add"][data-type="section-bo
 await click(a, '.sections-editor [data-act="sections-add"][data-type="section-picnic"]');
 await a.waitForTimeout(800);
 check((await drawn(a)) === 2, 'the preview draws two rows');
-check((await a.locator('.sections-editor [data-act="sections-add"][data-type="section-picnic"]').count()) === 0, 'the only picnic grove is used: it offers to buy one');
+check((await a.locator('.sections-editor [data-act="sections-add"][data-type="section-picnic"]').count()) === 0, 'the only picnic grove is used: no more to add (and it is off sale)');
 await click(a, '.sections-editor [data-act="sections-cancel"]');
 await a.waitForTimeout(300);
 check((await drawn(a)) === 0, 'cancel takes the preview away');
