@@ -13,11 +13,16 @@ beforeEach(() => {
     'fetch',
     async (url: string, init: RequestInit = {}) => {
       const body = init.body ? JSON.parse(init.body as string) : undefined;
-      calls.push({ url, body });
-      if (url === '/api/account/identities' && (!init.method || init.method === 'GET')) {
+      // Account.call() prefixes import.meta.env.VITE_API_URL (set to the
+      // production origin by the release workflow, which also runs these
+      // tests), so route on the request path, not the absolute URL. Record
+      // the path so the assertions below still see the exact request.
+      const path = String(url).replace(/^https?:\/\/[^/]*/, '');
+      calls.push({ url: path, body });
+      if (path === '/api/account/identities' && (!init.method || init.method === 'GET')) {
         return new Response(JSON.stringify({ identities }), { status: 200 });
       }
-      if (url === '/api/account/identities' && init.method === 'POST') {
+      if (path === '/api/account/identities' && init.method === 'POST') {
         if (body.provider === 'apple' && body.credential === 'taken-token') {
           return new Response(
             JSON.stringify({ error: 'that apple sign-in is already linked to another Beech account. To use it here, sign in with that account and delete this one first, or link this account to it with a link code from the other device.' }),
