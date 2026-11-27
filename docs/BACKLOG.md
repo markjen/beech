@@ -119,9 +119,9 @@ picked up.
 - [ ] **Piers, follow-ups** ([PIERS.md](PIERS.md)): check the deck against big real tides and storm
   waves (it's 1.35 m above still water).
 - [ ] **Inland sections, follow-ups** ([INLAND_SECTIONS.md](INLAND_SECTIONS.md)):
-  editable sand in a Sand Extension (dig, sculpt, molds, props; needs a
-  section ID per copy and a sand revision, extend `InlandSections.tla`
-  first); draw the rows on beechshore.com's pictures and 3D views (and put
+  sand extensions behind a non-sand row are still scenery, and a sand
+  row's sand stays with its position rather than its copy (playable sand
+  is the leading sand rows, INLAND_SECTIONS.md); draw the rows on beechshore.com's pictures and 3D views (and put
   them in the pictures' `?v=`); a replace-in-place control in the editor.
 - [ ] **Palm-first UI, follow-ups**: stars and finds-today chips in
   the expanded pane (they need their own requests; no credit/sand-bucks

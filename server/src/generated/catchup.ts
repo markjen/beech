@@ -657,7 +657,7 @@ function sanitizeObjects(raw) {
     if (typeof p.kind !== "string" || !KINDS.has(p.kind)) continue;
     if (typeof p.item !== "string" || p.item.length > 64) continue;
     if (!num(p.id, 1, 1e9) || ids.has(p.id)) continue;
-    if (!num(p.x, 0, 64) || !num(p.y, 0, 64) || !num(p.angle, -1e4, 1e4) || !num(p.size, 0.05, 4) || !num(p.variant, 0, 1e6)) continue;
+    if (!num(p.x, 0, 64) || !num(p.y, 0, 96) || !num(p.angle, -1e4, 1e4) || !num(p.size, 0.05, 4) || !num(p.variant, 0, 1e6)) continue;
     ids.add(p.id);
     out.push({
       id: p.id,
@@ -696,15 +696,16 @@ function fitWorld(b) {
     const shift = inNewWorld ? 0 : pad * dx;
     out = { nx: b.nx, ny, delta, objects: b.objects.map((o) => ({ ...o, y: o.y + shift })), ...cover ? { cover } : {} };
   }
-  const stray = (o) => o.y > WORLD_SIZE_Z - EDGE || o.x > WORLD_SIZE_X - EDGE || o.x < EDGE || o.y < EDGE;
+  const depth = Math.max(WORLD_SIZE_Z, savedZ);
+  const stray = (o) => o.y > depth - EDGE || o.x > WORLD_SIZE_X - EDGE || o.x < EDGE || o.y < EDGE;
   if (!out.objects.some(stray)) return out;
   const step = WORLD_SIZE_Z - OLD_WORLD_Z;
   const clamp = (v, hi) => Math.min(hi - EDGE, Math.max(EDGE, v));
   const objects = out.objects.map((o) => {
     if (!stray(o)) return o;
     let y = o.y;
-    while (y > WORLD_SIZE_Z - EDGE) y -= step;
-    return { ...o, x: clamp(o.x, WORLD_SIZE_X), y: clamp(y, WORLD_SIZE_Z) };
+    while (y > depth - EDGE) y -= step;
+    return { ...o, x: clamp(o.x, WORLD_SIZE_X), y: clamp(y, depth) };
   });
   return { ...out, objects };
 }

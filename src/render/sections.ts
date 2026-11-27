@@ -363,6 +363,8 @@ export interface SectionSpot {
   key: string;
   x: number;
   rows: { type: string; neg: boolean; pos: boolean }[];
+  /** the rows before this one are sand the beach itself draws (its grid runs that deep) */
+  from?: number;
 }
 
 /** The world z of the front of row `i` (row 0 meets the back of the sand). */
@@ -394,6 +396,7 @@ export class SectionLayer {
     const root = new Mesh(`sections:${spot.key}`, this.scene);
     const byColor = new Map<string, { key: ColorKey; P: number[]; I: number[] }>();
     spot.rows.forEach((row, i) => {
+      if (i < (spot.from ?? 0)) return;
       const z0 = rowZ(i);
       for (const [key, g] of sectionGeometry(row.type, row.neg, row.pos, i + 1)) {
         const ck = colorOf(key).join(',');
@@ -413,7 +416,11 @@ export class SectionLayer {
   }
 
   sync(want: SectionSpot[]): void {
-    const sigOf = (w: SectionSpot) => w.rows.map((r) => `${r.type}${r.neg ? '<' : ''}${r.pos ? '>' : ''}`).join('|');
+    const sigOf = (w: SectionSpot) =>
+      w.rows
+        .slice(w.from ?? 0)
+        .map((r) => `${r.type}${r.neg ? '<' : ''}${r.pos ? '>' : ''}`)
+        .join('|') + `@${w.from ?? 0}`;
     const keep = new Map(want.map((w) => [w.key, sigOf(w)]));
     for (const [key, s] of this.shown) {
       if (keep.get(key) === s.sig) continue;
@@ -421,7 +428,7 @@ export class SectionLayer {
       this.shown.delete(key);
     }
     for (const w of want) {
-      if (!w.rows.length) continue;
+      if (w.rows.length <= (w.from ?? 0)) continue;
       let s = this.shown.get(w.key);
       if (!s) {
         s = { sig: sigOf(w), x: Number.NaN, root: this.build(w) };
@@ -437,7 +444,7 @@ export class SectionLayer {
   /** how many rows are drawn (e2e), behind every beach or one beach */
   rows(beachId?: string): number {
     let n = 0;
-    for (const [key, s] of this.shown) if (!beachId || key.startsWith(`${beachId}@`)) n += s.sig.split('|').length;
+    for (const [key, s] of this.shown) if (!beachId || key.startsWith(`${beachId}@`)) n += s.sig.split('@')[0].split('|').length;
     return n;
   }
 

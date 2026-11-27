@@ -1,8 +1,8 @@
 # Inland beach sections
 
 Status: **built** for the account-enabled game (2026-11-26) as scenery,
-with the differences below. Editable sand in a Sand Extension is not built
-yet (BACKLOG.md).
+with the differences below. Sand extensions straight behind a beach are
+playable sand since 2026-11-27 ("Playable sand: what was built", below).
 
 ## What was built, and how it differs from this design
 
@@ -32,6 +32,53 @@ yet (BACKLOG.md).
 - **Not yet:** beechshore.com pictures don't draw the rows; the access
   points are drawn per type (a crossing, a ramp, a gap in a fence) rather
   than one shared connector.
+
+## Playable sand: what was built (2026-11-27)
+
+The design's own grid per Sand Extension copy (128 × 48, saved by section
+ID) was not built. Instead **sand rows straight behind the beach make the
+beach's own grid deeper**, so they are the same simulation, renderer,
+picking, brushes, molds, undo and bag placement as the rest of the sand,
+and line up with it exactly (one surface, the same cells).
+
+- **Which rows.** The leading run of `section-sand` rows (`sandRowsOf` in
+  `src/world/sections.ts`). A grid with `k` of them is
+  `ny = nx + k · round(12 m / dx)` (`gridWithSand`; 72, 96 or 120 cells a
+  row on the low, medium and high tiers); its width, cell size and front
+  edge are unchanged. A sand extension behind another type stays scenery.
+  `SectionLayer` skips the rows the beach draws itself (`SectionSpot.from`,
+  from the depth drawn now, so a preview still shows them as scenery).
+- **The ground.** The rest profile carries on past 32 m (the back of the
+  beach rises to about 0.93 m within the first metres and stays there),
+  so the sand runs straight on. The sea never reaches it. The sim's cost is
+  flat in the dry rows (4.4 ms a tick at 32 m, 4.3 ms at 80 m, medium).
+- **The save.** The saved beach (BCH1–3) is just deeper: `ny > nx`. Loads
+  keep the depth in metres on any tier (`resampleWidth`) and fit it to the
+  beach's rows now (`fitDepth`): rows added get untouched sand, rows taken
+  away lose their sand, and the things on them drop out of the save, so
+  they are back in the bag on the next save (a load that had to refit
+  saves at once). Sand travels with the row's position, not with a copy.
+  The undo history doesn't survive a change of depth.
+- **Changing depth.** After the shore refreshes (the editor's save, or
+  another device's), `fitSandRows` in `main.ts` refits every beach held:
+  the store's (`BeachStore.setSandRows`), and the live one by asking the
+  worker for its sand and sending it back with the new grid
+  (`setSand {grid}`); the worker makes its sim again at that size (same
+  time and sea) and posts `regrid`, and the live renderer and picker
+  `resize`. Snapshot renderers resize on repaint.
+- **Seams.** The shaders take each neighbor's row count (`negRows`,
+  `posRows`): the sand, water and wave seams blend only over rows both
+  beaches have, and a side skirt shows where this beach runs deeper.
+- **Server.** Saves accept `ny >= nx` (a shallower grid is still the old
+  app's 426); grids up to 400 × 800 cells; things up to 96 m inland. Apps
+  from before send no `X-Beach-Deep`, and their save of a beach stored
+  deeper is refused (426: they would squeeze it into the square). Pictures
+  on beechshore.com crop to the beach itself. Beach files are the beach
+  itself (export crops, import keeps the rows behind untouched);
+  checkpoints keep the whole grid.
+- **State machine.** No new server state: the layout is still the one
+  `PUT /sections` write, and what's on a beach is still counted from its
+  saved sand, so `InlandSections.tla` is unchanged (see STATE_MACHINES.md).
 
 ## Player experience
 

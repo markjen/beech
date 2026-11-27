@@ -20,6 +20,9 @@ let acc = 0;
 let statsEvery = 0;
 /** the roster version the main thread has (-1: none yet) */
 let rosterSent = -1;
+let seed = 1;
+/** the last real-world sea state, for a sim made again at another size */
+let sea: { tide: number; waves: number } | null = null;
 const DT = 1 / SIM_HZ;
 
 function post(msg: FromWorker, transfer: Transferable[] = []) {
@@ -93,6 +96,7 @@ self.onmessage = (ev: MessageEvent<ToWorker>) => {
   switch (m.type) {
     case 'init': {
       sim = new BeachSim(m.grid, m.seed, m.flags);
+      seed = m.seed;
       rosterSent = -1;
       pool.length = 0;
       posPool.length = 0;
@@ -114,6 +118,19 @@ self.onmessage = (ev: MessageEvent<ToWorker>) => {
       }
       break;
     case 'setSand':
+      if (sim && m.grid && m.grid.ny !== sim.ny && m.grid.nx === sim.nx && m.delta.length === m.grid.nx * m.grid.ny) {
+        // a beach with a different number of sand rows inland: the same sea, a deeper (or shallower) grid
+        const prev = sim;
+        sim = new BeachSim(m.grid, seed, prev.flags);
+        sim.time = prev.time;
+        if (sea) sim.setSea(sea.tide, sea.waves);
+        rosterSent = -1;
+        pool.length = 0;
+        posPool.length = 0;
+        for (let i = 0; i < 3; i++) pool.push(new Float32Array(sim.n * 4));
+        const rest = sim.rest.slice();
+        post({ type: 'regrid', grid: m.grid, rest }, [rest.buffer]);
+      }
       if (sim && m.delta.length === sim.n) {
         sim.loadDelta(m.delta, m.objects ?? [], m.cover, m.history);
         loadId = m.loadId ?? 0;
@@ -132,6 +149,7 @@ self.onmessage = (ev: MessageEvent<ToWorker>) => {
       sim?.moveObject(m.id, m.x, m.y);
       break;
     case 'sea':
+      sea = { tide: m.tide, waves: m.waves };
       sim?.setSea(m.tide, m.waves);
       break;
     case 'bench': {

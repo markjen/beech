@@ -2,6 +2,8 @@
 // beach, each a bag item bought with beech bucks. Mirrors server/src/sections.ts
 // (tests/sections.test.ts keeps them in step).
 
+import { SECTION } from '../config';
+
 export const SECTION_ROWS = 4;
 
 export type SectionId =
@@ -49,4 +51,29 @@ export function sectionJoins(
   pos: readonly string[] | null,
 ): { type: string; neg: boolean; pos: boolean }[] {
   return rows.map((type, i) => ({ type, neg: neg?.[i] === type, pos: pos?.[i] === type }));
+}
+
+/**
+ * Sand extensions straight behind the beach are part of the beach itself:
+ * its grid runs this many rows (of SECTION.depth) further inland, so they
+ * look and work like the rest of the sand (dig, sculpt, molds, things from
+ * the bag). A sand extension behind another type of row is scenery.
+ */
+export function sandRowsOf(rows: readonly string[] | null | undefined): number {
+  let k = 0;
+  while (rows && k < rows.length && rows[k] === 'section-sand') k++;
+  return k;
+}
+
+/** grid cells in one section row's depth, on a grid with cells `dx` wide */
+export const rowCells = (dx: number): number => Math.round(SECTION.depth / dx);
+
+/** the beach's grid with `k` sand rows behind it (`base` is the 32 m square beach) */
+export function gridWithSand<G extends { nx: number; ny: number; dx: number }>(base: G, k: number): G {
+  return { ...base, ny: base.ny + k * rowCells(base.dx) };
+}
+
+/** how many sand rows a grid `ny` deep holds, on a beach whose square grid is `baseNy` */
+export function sandRowsInGrid(ny: number, baseNy: number, dx: number): number {
+  return Math.max(0, Math.round((ny - baseNy) / rowCells(dx)));
 }

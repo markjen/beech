@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { BeachSim } from '../src/sim/beachSim';
 import { BRUSH, GRID_TIERS } from '../src/config';
-import { PROFILE } from '../src/config';
+import { PROFILE, SECTION } from '../src/config';
+import { gridWithSand } from '../src/world/sections';
 
 const grid = GRID_TIERS.low;
 const DT = 1 / 30;
@@ -417,5 +418,52 @@ describe('the sea takes owned things out past the offshore edge (docs/LIVE_SIM.m
     expect(sandPlusSediment(sim)).toBeCloseTo(before, 6);
     for (let s = 0; s < 30 * 5; s++) sim.step(DT);
     for (let k = 0; k < sim.n; k++) expect(Number.isFinite(sim.sand[k]) && Number.isFinite(sim.water[k])).toBe(true);
+  });
+});
+
+describe('sand rows inland (docs/INLAND_SECTIONS.md)', () => {
+  const k = 2;
+  const deep = gridWithSand(grid, k);
+  const DEPTH = deep.ny * deep.dx;
+
+  it('runs on a deeper grid: the rows behind are dry sand at the scenery rows’ grade, and the beach is the same', () => {
+    const square = new BeachSim(grid, 4);
+    const sim = new BeachSim(deep, 4);
+    expect(DEPTH).toBeCloseTo(32 + k * SECTION.depth, 5);
+    // the square beach's cells are the deep one's first rows, exactly
+    for (let q = 0; q < square.n; q += 97) expect(sim.rest[q]).toBe(square.rest[q]);
+    for (let j = grid.ny; j < deep.ny; j++) {
+      // (it carries on rising gently from the beach's back edge, within 10 cm)
+      for (let i = 0; i < deep.nx; i += 17) expect(Math.abs(sim.rest[j * deep.nx + i] - SECTION.ground)).toBeLessThan(0.1);
+    }
+    // the sea never reaches them
+    for (let s = 0; s < 240; s++) sim.step(DT);
+    let wet = 0;
+    for (let q = grid.ny * deep.nx; q < sim.n; q++) wet = Math.max(wet, sim.water[q]);
+    expect(wet).toBe(0);
+  });
+
+  it('digs and builds there like on the beach, conserving sand, and stays stable', () => {
+    const sim = new BeachSim(deep, 2, { closed: false, healing: false, seep: false });
+    const s0 = sandPlusSediment(sim);
+    const y = 32 + SECTION.depth * 1.5; // the middle of the second row
+    sim.beginStroke(12, y, 0.5);
+    for (let s = 0; s < 20; s++) sim.step(DT);
+    sim.endStroke();
+    const j = Math.round(y / sim.dx - 0.5);
+    const i = Math.round(12 / sim.dx - 0.5);
+    expect(sim.sand[j * sim.nx + i]).toBeLessThan(sim.rest[j * sim.nx + i] - 0.05);
+    for (let s = 0; s < 200; s++) sim.step(DT);
+    expect(Math.abs(sandPlusSediment(sim) - s0) / Math.abs(s0)).toBeLessThan(1e-3);
+    for (let q = 0; q < sim.n; q++) expect(Number.isFinite(sim.sand[q])).toBe(true);
+  });
+
+  it('keeps things put down on the rows behind', () => {
+    const sim = new BeachSim(deep, 1);
+    const y = 32 + SECTION.depth * (k - 0.5);
+    sim.placeObject({ kind: 'flag', item: 'flag', x: 16, y, angle: 0, size: 0.4, variant: 1 });
+    for (let s = 0; s < 120; s++) sim.step(DT);
+    const [flag] = sim.objects.persisted();
+    expect(flag.y).toBeCloseTo(y, 3);
   });
 });

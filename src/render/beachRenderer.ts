@@ -35,7 +35,7 @@ interface LitMaterial {
  * between them in the vertex shaders so 30 Hz sim updates look smooth at 60 fps.
  */
 export class BeachRenderer {
-  readonly grid: GridSpec;
+  grid: GridSpec;
   private texPrev: RawTexture;
   private texCur: RawTexture;
   private restTex: RawTexture;
@@ -50,6 +50,8 @@ export class BeachRenderer {
   private readonly rockMat: ShaderMaterial;
   readonly meshes: Mesh[] = [];
   private apronMesh!: Mesh;
+  /** the meshes made from the grid (made again when the beach changes depth) */
+  private gridMeshes: Mesh[] = [];
   private waterSkirt!: Mesh;
   private brush = new Vector4(0, 0, 0.3, 0);
   private brushCol = new Color3(1, 1, 1);
@@ -158,6 +160,8 @@ export class BeachRenderer {
       'negStatic',
       'posMix',
       'posStatic',
+      'negRows',
+      'posRows',
       ...swellUniforms,
     ];
     const fieldSamplers = ['fieldPrev', 'fieldCur', 'negFieldPrev', 'negFieldCur', 'posFieldPrev', 'posFieldCur'];
@@ -262,6 +266,8 @@ export class BeachRenderer {
       m.setFloat('negStatic', 0);
       m.setFloat('posMix', 1);
       m.setFloat('posStatic', 0);
+      m.setFloat('negRows', grid.ny);
+      m.setFloat('posRows', grid.ny);
       m.setVector3('swellW', swellW);
       m.setVector3('swellP', swellP);
       m.setVector3('swellK', swellK);
@@ -508,10 +514,7 @@ export class BeachRenderer {
     return m;
   }
 
-  private buildMeshes(): void {
-    const hx = WORLD_SIZE_X / 2;
-    const hz = WORLD_SIZE_Z / 2;
-
+  private buildGridMeshes(): Mesh[] {
     const sand = this.gridMesh('sand');
     sand.material = this.sandMat;
 
@@ -525,6 +528,56 @@ export class BeachRenderer {
     const wskirt = this.skirtMesh('waterSkirt', ['left', 'right']);
     wskirt.material = this.waterSkirtMat;
     wskirt.alphaIndex = 3;
+    this.waterSkirt = wskirt;
+    this.gridMeshes = [sand, water, skirt, wskirt];
+    return this.gridMeshes;
+  }
+
+  /**
+   * The beach has another depth now (sand rows inland, docs/INLAND_SECTIONS.md):
+   * the field textures and the grid's meshes are made again at the new size.
+   */
+  resize(grid: GridSpec, rest: Float32Array): void {
+    if (grid.nx === this.grid.nx && grid.ny === this.grid.ny) return;
+    this.grid = grid;
+    const { nx, ny } = grid;
+    this.texPrev.dispose();
+    this.texCur.dispose();
+    this.restTex.dispose();
+    const empty = new Float32Array(nx * ny * 4);
+    this.texPrev = this.makeFieldTexture(empty, 'fieldA');
+    this.texCur = this.makeFieldTexture(empty, 'fieldB');
+    const restPacked = new Float32Array(nx * ny * 4);
+    for (let k = 0; k < nx * ny; k++) restPacked[k * 4] = rest[k];
+    this.restTex = this.makeFieldTexture(restPacked, 'rest');
+    this.sandMat.setTexture('restTex', this.restTex);
+    for (const m of this.gridMeshes) {
+      const i = this.meshes.indexOf(m);
+      if (i >= 0) this.meshes.splice(i, 1);
+      m.dispose();
+    }
+    for (const m of this.buildGridMeshes()) {
+      m.position.x = this._offsetX;
+      m.alwaysSelectAsActiveMesh = true;
+      m.isPickable = false;
+      m.freezeWorldMatrix();
+      this.meshes.push(m);
+    }
+    const gs = new Vector2(nx, ny);
+    for (const m of this.fieldMats) m.setVector2('gridSize', gs);
+    this.texGen++;
+    this.bindFieldTextures();
+    this.syncNeighborUniforms(performance.now(), true);
+    this.applyVisibility();
+  }
+
+  private buildMeshes(): void {
+    const hx = WORLD_SIZE_X / 2;
+    const hz = WORLD_SIZE_Z / 2;
+    // (with sand rows inland the slab runs deeper; the rock base stays under
+    // the beach itself, like the scenery rows, which stand on their own soil)
+
+    const [sand, water, skirt, wskirt] = this.buildGridMeshes();
 
     // tuck half a cell under the opaque deep offshore edge of water to seal T-junction pinholes
     const edgeZ = this.edgeZ;
@@ -542,7 +595,6 @@ export class BeachRenderer {
     this.oceanMat.setVector4('slabB', new Vector4(1e7, 1e7, 1e7, 1e7));
     this.oceanMat.setFloat('slabHalf', 0);
     this.apronMesh = ocean;
-    this.waterSkirt = wskirt;
     this.oceanMat.setFloat('waveSpeed', WAVES.farSpeed);
 
     // stepped rock base under the slab: the floating-diorama look
@@ -602,6 +654,7 @@ export class BeachRenderer {
     }
     if (negChanged) {
       this.lastNegGen = negGen;
+      for (const m of this.fieldMats) m.setFloat('negRows', neg ? neg.grid.ny : this.grid.ny);
       const np = neg ? neg.texPrev : this.texPrev;
       const nc = neg ? neg.texCur : this.texCur;
       for (const m of this.fieldMats) {
@@ -611,6 +664,7 @@ export class BeachRenderer {
     }
     if (posChanged) {
       this.lastPosGen = posGen;
+      for (const m of this.fieldMats) m.setFloat('posRows', pos ? pos.grid.ny : this.grid.ny);
       const pp = pos ? pos.texPrev : this.texPrev;
       const pc = pos ? pos.texCur : this.texCur;
       for (const m of this.fieldMats) {
@@ -723,6 +777,7 @@ export class BeachRenderer {
 
   /** Upload a new sim frame (becomes "current"; the old current becomes "previous"). */
   uploadFrame(buf: Float32Array, startsBeach = false): void {
+    if (buf.length !== this.grid.nx * this.grid.ny * 4) return; // from before the beach changed depth
     const t = this.texPrev;
     this.texPrev = this.texCur;
     this.texCur = t;

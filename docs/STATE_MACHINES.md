@@ -206,7 +206,14 @@ counted against what's owned, per type, across every beach.
 | `DeleteBeach` | `DELETE /beaches/mine/:id` | unchanged: its rows cascade (the sections are back in the bag) |
 
 Joins with neighbors are derived from the shore (same type, same row, a
-direct link) and never stored, so they need no state. The design passes
+direct link) and never stored, so they need no state. Sand rows straight
+behind a beach (playable sand, INLAND_SECTIONS.md) add no state either: the
+beach's saved sand is just deeper, written by the existing sand save
+(`PUT /beaches/mine/:id/sand`, its edit token, epoch and bag check), and
+what's on the rows is counted from it like the rest of the beach. A layout
+change and a sand save don't need to be one step: the client fits the sand
+to the layout on load and saves it, so a stale deeper save is refit by the
+next load. The design passes
 with 60,530 distinct states (`PaidPlacement`, `RowsBound`, `NoOrphan`,
 `NoLostUpdate`). The other form, which checks the bag and the rows before
 the write's transaction and keeps no revision, breaks `PaidPlacement` (the

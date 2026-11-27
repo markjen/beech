@@ -22,8 +22,9 @@ export type ToWorker =
   | { type: 'bench' }
   /** ask for the beach's sand (minus the rest beach) for saving; `history`: hand its undo history over too (it leaves the worker) */
   | { type: 'getSand'; id: number; history?: boolean }
-  /** replace the sand with another beach (same grid size), with that beach's own undo history */
-  | { type: 'setSand'; loadId?: number; delta: Float32Array; objects?: PlacedObject[]; cover?: Float32Array; history?: UndoHistory }
+  /** replace the sand with another beach, with that beach's own undo history. `grid`: that
+   * beach's grid when it has a different number of sand rows inland (the sim is made again at that size) */
+  | { type: 'setSand'; loadId?: number; grid?: GridSpec; delta: Float32Array; objects?: PlacedObject[]; cover?: Float32Array; history?: UndoHistory }
   /** replace the whole beach with an imported one, as one undo step */
   | { type: 'importBeach'; delta: Float32Array; objects: PlacedObject[]; cover?: Float32Array }
   /** put an inventory item on the beach (undoable). `group` ties placements
@@ -59,6 +60,8 @@ export interface FrameInfo {
 /** Messages from the worker to the main thread. */
 export type FromWorker =
   | { type: 'ready'; grid: GridSpec; rest: Float32Array; seed: number }
+  /** the sim was made again at another depth (sand rows inland): its grid and rest beach */
+  | { type: 'regrid'; grid: GridSpec; rest: Float32Array }
   | { type: 'bench'; msPerTickLow: number }
   | { type: 'sand'; id: number; delta: Float32Array; objects: PlacedObject[]; cover?: Float32Array; history?: UndoHistory }
   | ({

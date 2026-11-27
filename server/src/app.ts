@@ -236,7 +236,7 @@ class CopyShort extends Error {
 }
 const BEACH_HEADERS = ['X-Beach-Location', 'X-Beach-Nx', 'X-Beach-Ny', 'X-Beach-Version', 'X-Beach-Updated', 'X-Beach-Epoch', 'X-Beach-Simulated-Until'];
 /** request-only headers the app sends cross-origin (the phone apps) */
-const REQUEST_HEADERS = ['X-Beach-Items', 'X-Beach-Max', 'X-Checkpoint-Name', 'X-App-Build', 'X-Edit-Token'];
+const REQUEST_HEADERS = ['X-Beach-Items', 'X-Beach-Max', 'X-Beach-Deep', 'X-Checkpoint-Name', 'X-App-Build', 'X-Edit-Token'];
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O or 1/I
 
 const fail = (status: 400 | 401 | 403 | 404 | 409 | 413 | 426 | 429 | 500, message: string): never => {
@@ -1020,10 +1020,11 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const ny = Number(c.req.header('X-Beach-Ny'));
     if (!/^[a-z0-9-]+$/.test(location)) fail(400, 'bad X-Beach-Location');
     if (!Number.isInteger(nx) || !Number.isInteger(ny) || nx < 8 || ny < 8 || nx * ny > MAX_CELLS) fail(400, 'bad grid size');
-    // the world is square (32 m x 32 m). A non-square grid is an out-of-date app
-    // (the old 32 x 24 world): its save would squeeze the sand and shift the
+    // the world is square (32 m x 32 m), deeper only with sand rows inland
+    // (docs/INLAND_SECTIONS.md). A shallower grid is an out-of-date app (the
+    // old 32 x 24 world): its save would squeeze the sand and shift the
     // things on it, so refuse it until the app reloads.
-    if (nx !== ny) outdated(c, 'non-square grid');
+    if (ny < nx) outdated(c, 'non-square grid');
     if (Number(c.req.header('Content-Length') ?? 0) > MAX_BEACH_BYTES) fail(413, 'beach too large');
     const bytes = new Uint8Array(await c.req.arrayBuffer());
     if (bytes.byteLength === 0 || bytes.byteLength > MAX_BEACH_BYTES) fail(413, 'beach too large');
@@ -1055,6 +1056,12 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     if (!c.req.header('X-Beach-Max')) {
       const cur = (await db.query<{ sand: unknown }>('SELECT sand FROM beach WHERE id = $1 AND sand IS NOT NULL', [beachId]))[0];
       if (cur && countObjects(toBytes(cur.sand)) > OLD_MAX_OBJECTS) outdated(c, 'no X-Beach-Max');
+    }
+    // Apps from before sand rows inland send no X-Beach-Deep. Loading a beach
+    // saved deeper, they squeezed it into the square: refuse their save.
+    if (!c.req.header('X-Beach-Deep')) {
+      const cur = (await db.query<{ nx: number; ny: number }>('SELECT nx, ny FROM beach WHERE id = $1 AND sand IS NOT NULL', [beachId]))[0];
+      if (cur && Number(cur.ny) > Number(cur.nx)) outdated(c, 'no X-Beach-Deep');
     }
     const epochHeader = c.req.header('X-Beach-Epoch');
     const epoch = epochHeader === undefined || epochHeader === '' ? null : Number(epochHeader);
@@ -2503,7 +2510,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const bytes = new Uint8Array(await c.req.arrayBuffer());
     if (bytes.byteLength === 0 || bytes.byteLength > MAX_BEACH_BYTES) fail(413, 'beach too large');
     const info = inspect(bytes);
-    if (info.nx !== info.ny) fail(400, 'not a saved beach (the grid must be square)');
+    // (square, or deeper with sand rows inland)
+    if (info.ny < info.nx) fail(400, 'not a saved beach (the grid must be square)');
     if (!makeLimiter(me)) fail(429, 'too many checkpoints at once: try again later');
     await checkRoom(me, bytes.byteLength);
     const id = crypto.randomUUID();

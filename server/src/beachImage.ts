@@ -216,7 +216,7 @@ export interface SavedSand {
 }
 
 const MAX_BYTES = 768 * 1024;
-const MAX_CELLS = 400 * 400;
+const MAX_CELLS = 400 * 800;
 const MAX_THINGS = 2000;
 
 /** BCH1 / BCH2 / BCH3 (src/sim/sandCodec.ts) → heights and things. Throws on anything malformed. */
@@ -280,7 +280,7 @@ export function decodeSavedBeach(bytes: Uint8Array): SavedSand {
       if (!o || typeof o !== 'object') continue;
       const p = o as Record<string, unknown>;
       if (typeof p.kind !== 'string' || typeof p.item !== 'string') continue;
-      if (!num(p.x, 0, 64) || !num(p.y, 0, 64)) continue;
+      if (!num(p.x, 0, 64) || !num(p.y, 0, 96)) continue;
       things.push({
         kind: p.kind,
         item: p.item,
@@ -292,6 +292,12 @@ export function decodeSavedBeach(bytes: Uint8Array): SavedSand {
         ...(p.kind === 'rock' && num(p.base, -10, 10) ? { base: p.base as number } : {}),
       });
     }
+  }
+  // the pictures show the beach itself: sand rows inland (a deeper grid) are left out
+  if (ny > nx) {
+    const sq = (f: Float32Array) => f.slice(0, nx * nx);
+    const keep = things.filter((t) => t.y <= WORLD);
+    return { nx, ny: nx, delta: sq(delta), things: keep, ...(cover ? { cover: sq(cover) } : {}) };
   }
   return { nx, ny, delta, things, ...(cover ? { cover } : {}) };
 }

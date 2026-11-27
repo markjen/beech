@@ -214,7 +214,7 @@ export function sanitizeObjects(raw: unknown): PlacedObject[] {
     if (typeof p.kind !== 'string' || !KINDS.has(p.kind)) continue;
     if (typeof p.item !== 'string' || p.item.length > 64) continue;
     if (!num(p.id, 1, 1e9) || ids.has(p.id as number)) continue;
-    if (!num(p.x, 0, 64) || !num(p.y, 0, 64) || !num(p.angle, -1e4, 1e4) || !num(p.size, 0.05, 4) || !num(p.variant, 0, 1e6)) continue;
+    if (!num(p.x, 0, 64) || !num(p.y, 0, 96) || !num(p.angle, -1e4, 1e4) || !num(p.size, 0.05, 4) || !num(p.variant, 0, 1e6)) continue;
     ids.add(p.id as number);
     out.push({
       id: p.id as number,
@@ -272,15 +272,17 @@ export function fitWorld(b: SavedBeach): SavedBeach {
     const shift = inNewWorld ? 0 : pad * dx;
     out = { nx: b.nx, ny, delta, objects: b.objects.map((o) => ({ ...o, y: o.y + shift })), ...(cover ? { cover } : {}) };
   }
-  const stray = (o: PlacedObject) => o.y > WORLD_SIZE_Z - EDGE || o.x > WORLD_SIZE_X - EDGE || o.x < EDGE || o.y < EDGE;
+  // a beach with sand rows inland (docs/INLAND_SECTIONS.md) is deeper than the world
+  const depth = Math.max(WORLD_SIZE_Z, savedZ);
+  const stray = (o: PlacedObject) => o.y > depth - EDGE || o.x > WORLD_SIZE_X - EDGE || o.x < EDGE || o.y < EDGE;
   if (!out.objects.some(stray)) return out;
   const step = WORLD_SIZE_Z - OLD_WORLD_Z;
   const clamp = (v: number, hi: number) => Math.min(hi - EDGE, Math.max(EDGE, v));
   const objects = out.objects.map((o) => {
     if (!stray(o)) return o;
     let y = o.y;
-    while (y > WORLD_SIZE_Z - EDGE) y -= step;
-    return { ...o, x: clamp(o.x, WORLD_SIZE_X), y: clamp(y, WORLD_SIZE_Z) };
+    while (y > depth - EDGE) y -= step;
+    return { ...o, x: clamp(o.x, WORLD_SIZE_X), y: clamp(y, depth) };
   });
   return { ...out, objects };
 }
@@ -306,4 +308,42 @@ export function resampleField(src: Float32Array, nx: number, ny: number, toNx: n
     }
   }
   return out;
+}
+
+/**
+ * A saved beach on a grid `toNx` wide, keeping its depth: a beach with sand
+ * rows inland (docs/INLAND_SECTIONS.md) stays as deep as it was saved.
+ */
+export function resampleWidth(b: SavedBeach, toNx: number): SavedBeach {
+  if (b.nx === toNx) return b;
+  const toNy = Math.round((b.ny * toNx) / b.nx);
+  return {
+    ...b,
+    nx: toNx,
+    ny: toNy,
+    delta: resampleField(b.delta, b.nx, b.ny, toNx, toNy),
+    ...(b.cover ? { cover: resampleField(b.cover, b.nx, b.ny, toNx, toNy) } : {}),
+  };
+}
+
+/**
+ * The same beach `toNy` rows deep (same width): sand rows inland were added
+ * (untouched sand behind) or taken away (what was there is gone, and the
+ * things on it go back to the bag, as they're not in the save any more).
+ */
+export function fitDepth(b: SavedBeach, toNy: number): SavedBeach {
+  if (b.ny === toNy) return b;
+  const cut = (f: Float32Array) => {
+    const out = new Float32Array(b.nx * toNy);
+    out.set(f.subarray(0, b.nx * Math.min(b.ny, toNy)));
+    return out;
+  };
+  const depth = toNy * (WORLD_SIZE_X / b.nx);
+  return {
+    nx: b.nx,
+    ny: toNy,
+    delta: cut(b.delta),
+    objects: b.objects.filter((o) => o.y <= depth - EDGE),
+    ...(b.cover ? { cover: cut(b.cover) } : {}),
+  };
 }

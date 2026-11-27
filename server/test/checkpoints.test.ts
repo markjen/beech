@@ -18,15 +18,15 @@ afterAll(() => db.close());
 // ---------------------------------------------------------------- helpers
 type Obj = { id: number; item: string; wild?: boolean };
 /** a BCH2 beach as the app writes it: sand filled with `fill` mm, plus things */
-function blob(objects: Obj[], fill = 0, n = 16): Uint8Array {
-  const q = new Int16Array(n * n).fill(fill);
+function blob(objects: Obj[], fill = 0, n = 16, ny = n): Uint8Array {
+  const q = new Int16Array(n * ny).fill(fill);
   const sand = deflateSync(Buffer.from(q.buffer));
   const objs = deflateSync(Buffer.from(JSON.stringify(objects.map((o) => ({ kind: 'rock', x: 5, y: 20, angle: 0, size: 0.3, variant: 1, ...o })))));
   const out = new Uint8Array(12 + sand.length + objs.length);
   out.set(Buffer.from('BCH2', 'latin1'), 0);
   const dv = new DataView(out.buffer);
   dv.setUint16(4, n, true);
-  dv.setUint16(6, n, true);
+  dv.setUint16(6, ny, true);
   dv.setUint32(8, sand.length, true);
   out.set(sand, 12);
   out.set(objs, 12 + sand.length);
@@ -366,10 +366,37 @@ describe('checkpoints', () => {
     expect((await put(blob([{ id: 1, item: 'rock' }]))).status).toBe(200);
   });
 
+  it('saves a beach deeper than it is wide (sand rows inland), and an app from before can not squeeze it', async () => {
+    const { token: t, user } = await signIn('cp-deep');
+    const put = (bytes: Uint8Array, ny: number, deep: boolean) =>
+      reqE(
+        `/beaches/mine/${user.id}/sand`,
+        {
+          method: 'PUT',
+          body: bytes,
+          headers: { 'X-Beach-Location': 'bondi', 'X-Beach-Nx': '16', 'X-Beach-Ny': String(ny), 'X-Beach-Max': String(MAX_OBJECTS), ...(deep ? { 'X-Beach-Deep': '1' } : {}) },
+        },
+        t,
+      );
+    // a thing on the row behind (40 m from the sea edge) is counted like any other
+    const deepBeach = blob([{ id: 1, item: 'rock', y: 40 }], 0, 16, 28);
+    expect((await put(deepBeach, 28, true)).status).toBe(200);
+    expect((await sandOf(t, user.id)).bytes.length).toBe(deepBeach.length);
+    // shallower than wide is still the old 32 x 24 app
+    expect((await put(blob([], 0, 16, 12), 12, true)).status).toBe(426);
+    // an app from before sand rows would have squeezed it into the square: refused
+    expect((await put(blob([]), 16, false)).status).toBe(426);
+    expect((await sandOf(t, user.id)).bytes.length).toBe(deepBeach.length);
+    // this app can take the rows away
+    expect((await put(blob([]), 16, true)).status).toBe(200);
+    // and with a square beach stored, an old app saves as before
+    expect((await put(blob([]), 16, false)).status).toBe(200);
+  });
+
   it('lets the phone apps send its headers and PATCH', async () => {
     const r = await req('/checkpoints', { method: 'OPTIONS', headers: { Origin: 'capacitor://localhost' } });
     const allow = r.headers.get('Access-Control-Allow-Headers') ?? '';
-    for (const h of ['X-Beach-Items', 'X-Beach-Epoch', 'X-Beach-Max', 'X-Checkpoint-Name', 'X-Edit-Token']) expect(allow).toContain(h);
+    for (const h of ['X-Beach-Items', 'X-Beach-Epoch', 'X-Beach-Max', 'X-Beach-Deep', 'X-Checkpoint-Name', 'X-Edit-Token']) expect(allow).toContain(h);
     expect(r.headers.get('Access-Control-Allow-Methods')).toContain('PATCH');
     expect(r.headers.get('Access-Control-Expose-Headers')).toContain('X-Beach-Epoch');
   });
