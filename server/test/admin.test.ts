@@ -509,3 +509,41 @@ describe('referrals (who invited whom)', () => {
     expect((await areq('/api/referrals')).status).toBe(401);
   });
 });
+
+describe('beech bucks: trade-ins and debts', () => {
+  type Bucks = {
+    totals: { tradeInsDay: number; bucksDay: number; tradeInsWeek: number; bucksWeek: number; debtors: number; debtBucks: number; balanceBucks: number };
+    tradeIns: { item: string; quantity: number; bucks: number; player: { id: string; name: string } }[];
+    debts: { player: { name: string }; debtBucks: number; balanceBucks: number }[];
+    more: boolean;
+  };
+  const idOf = async (t: string) => ((await (await req('/me', {}, t)).json()) as { user: { id: string } }).user.id;
+
+  it('lists recent trade-ins, searchable, and who owes bucks', async () => {
+    const tess = await idOf(await signInDev('Tess Trader'));
+    const dan = await idOf(await signInDev('Dan Debtor'));
+    const now = Date.now() + skew;
+    const trade = (user: string, item: string, quantity: number, cents: number, at: number) =>
+      db.query('INSERT INTO trade_ins (user_id, item_id, quantity, value_cents, created_at) VALUES ($1, $2, $3, $4, $5)', [user, item, quantity, cents, at]);
+    await trade(tess, 'parasol', 1, 100, now - 1000);
+    await trade(tess, 'surfboard', 2, 300, now - 3 * 86400000);
+    await db.query('UPDATE users SET creator_credit_debt_cents = 250, credit_cents = 0 WHERE id = $1', [dan]);
+
+    const all = (await (await areq('/api/bucks', {}, CLI_TOKEN)).json()) as Bucks;
+    expect(all.totals.tradeInsDay).toBeGreaterThanOrEqual(1);
+    expect(all.totals.tradeInsWeek).toBeGreaterThanOrEqual(2);
+    expect(all.totals.bucksWeek).toBeGreaterThanOrEqual(40);
+    expect(all.totals.debtors).toBeGreaterThanOrEqual(1);
+    expect(all.debts.find((d) => d.player.name === 'Dan Debtor')).toMatchObject({ debtBucks: 25, balanceBucks: 0 });
+
+    const mine = (await (await areq('/api/bucks?q=tess', {}, CLI_TOKEN)).json()) as Bucks;
+    expect(mine.tradeIns.map((t) => [t.item, t.quantity, t.bucks])).toEqual([
+      ['parasol', 1, 10],
+      ['surfboard', 2, 30],
+    ]);
+    expect(((await (await areq('/api/bucks?q=surfboard', {}, CLI_TOKEN)).json()) as Bucks).tradeIns.every((t) => t.item === 'surfboard')).toBe(true);
+    expect(((await (await areq(`/api/bucks?q=${tess}`, {}, CLI_TOKEN)).json()) as Bucks).tradeIns).toHaveLength(2);
+    expect((await areq('/api/bucks?offset=x', {}, CLI_TOKEN)).status).toBe(400);
+    expect((await areq('/api/bucks')).status).toBe(401);
+  });
+});

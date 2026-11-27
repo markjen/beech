@@ -330,6 +330,11 @@ accepted the repo's default branch, so the deploy job ran only there.
   `GET /api/inventory` for owned, unexpired non-free items. Nothing writes to
   it yet.
 
+## Admin: trade-ins and debts (2026-11-27)
+
+A read-only Beech bucks tab in the admin console (`GET /api/bucks`):
+trade-in totals, debts and the latest trade-ins. BEECH_BUCKS.md.
+
 ## Pier preview is a ghost (2026-11-27)
 
 The pier preview is drawn see-through and paler until it's placed
