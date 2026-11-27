@@ -29,7 +29,11 @@ export interface MerchConfig {
 
 /** Settings from the environment; null (with what's missing) until all four secrets are there. */
 export function merchFromEnv(env: Record<string, string | undefined>): { cfg: MerchConfig | null; missing: string[] } {
-  const need = ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'PRINTFUL_TOKEN', 'PRINTFUL_WEBHOOK_SECRET'] as const;
+  // The merch webhook has its own signing secret (and env var): the game's
+  // Stripe checkout (docs/STRIPE_PAYMENTS.md, PR #191) uses
+  // STRIPE_WEBHOOK_SECRET / beech-stripe-webhook-secret for a different
+  // endpoint, and one Stripe signing secret verifies only its own endpoint.
+  const need = ['STRIPE_SECRET_KEY', 'STRIPE_MERCH_WEBHOOK_SECRET', 'PRINTFUL_TOKEN', 'PRINTFUL_WEBHOOK_SECRET'] as const;
   const missing = need.filter((k) => !env[k]);
   if (missing.length) return { cfg: null, missing };
   const glasses = Number(env.MERCH_SUNGLASSES_VARIANT);
@@ -37,7 +41,7 @@ export function merchFromEnv(env: Record<string, string | undefined>): { cfg: Me
     missing: [],
     cfg: {
       stripeSecretKey: env.STRIPE_SECRET_KEY!,
-      stripeWebhookSecret: env.STRIPE_WEBHOOK_SECRET!,
+      stripeWebhookSecret: env.STRIPE_MERCH_WEBHOOK_SECRET!,
       printfulToken: env.PRINTFUL_TOKEN!,
       printfulStoreId: env.PRINTFUL_STORE_ID || undefined,
       printfulWebhookSecret: env.PRINTFUL_WEBHOOK_SECRET!,

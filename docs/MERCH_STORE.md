@@ -1,7 +1,9 @@
 # The merch store (store.beech.games)
 
-Status: **built, switched off until Stripe and Printful are set up**
-(2026-11-27). The store page is live at `/merch-store` on any host (and at
+Status: **built, switched off until the secrets and Printful are set up**
+(2026-11-27). The Stripe account and test-mode catalog are done (see
+"Turning it on"); the Printful token and the four secrets are still open.
+The store page is live at `/merch-store` on any host (and at
 store.beech.games once the domain is mapped): it shows the catalog and says
 it opens soon. Orders turn on by themselves when the four secrets are set
 (see "Turning it on").
@@ -73,8 +75,12 @@ Printful makes it, webhook ────────► package_shipped → shipp
   drawn as an SVG in the chosen colour with its real print file on it.
 - **Payments: Stripe Checkout** (hosted by Stripe: card, Apple Pay, Google
   Pay; no card data reaches us). It collects the shipping address and
-  phone, adds the flat shipping, and optionally Stripe Tax
-  (`MERCH_STRIPE_TAX=1`). Stripe sends its own receipt email.
+  phone, adds the flat shipping, and adds Stripe Tax
+  (`MERCH_STRIPE_TAX=1`; Tax is active for CA). Stripe sends its own
+  receipt email. Sessions are made with inline `price_data` from
+  `merchCatalog.ts`, not by referencing Stripe Price IDs — the Stripe
+  catalog (see "Turning it on") is the record/receipt side and must be
+  kept in sync with the catalog's prices by hand.
 - **Fulfilment: Printful's API** (`server/src/merchProviders.ts`, plain
   fetch). Orders are made as drafts, then confirmed. The brand art is in
   `public/merch/` (drawn by `scripts/merch-art.mjs` from the app icon; dark
@@ -131,13 +137,46 @@ expired; a refunded order never looks live. What the model decided:
    Warehousing, and set the Actions variable `MERCH_SUNGLASSES_VARIANT` to
    their warehouse variant id. Without it everything else sells; the
    sunglasses and the set show sold out.
-3. **Stripe**: make the account, a secret key → `beech-stripe-secret-key`.
-   Add a webhook endpoint `https://store.beech.games/api/stripe-webhook`
-   with events `checkout.session.completed`,
+3. **Stripe**: ✅ the account is set up — Jenerator Labs
+   (`acct_14FIlH4IbcjUfc8t`), charges and payouts on, daily payouts to Bank
+   of America ending 8659. Stripe Tax is active with a US–CA registration,
+   so set the Actions variable `MERCH_STRIPE_TAX=1` (prices below are
+   tax-exclusive; Stripe adds tax on top at checkout). The secret key goes
+   in Secret Manager as `beech-stripe-secret-key` — the same key the game's
+   web checkout uses (PR #191), so one secret serves both. Add a webhook
+   endpoint `https://store.beech.games/api/stripe-webhook` with events
+   `checkout.session.completed`,
    `checkout.session.async_payment_succeeded`, `checkout.session.expired`
-   and `charge.refunded`; its signing secret → `beech-stripe-webhook-secret`.
-   Optional: turn on Stripe Tax and set `MERCH_STRIPE_TAX=1`. Turn on
-   "Successful payments" customer emails for receipts.
+   and `charge.refunded`; its signing secret → **`beech-stripe-merch-webhook-secret`**
+   (its own secret — the game's endpoint
+   `/api/store/stripe/webhook` has a different signing secret in
+   `beech-stripe-webhook-secret`, and one Stripe signing secret verifies
+   only its own endpoint). Turn on "Successful payments" customer emails
+   for receipts.
+   - **Catalog (test mode, done 2026-11-27)** — every product exists with a
+     default price matching `merchCatalog.ts` exactly. The checkout code
+     sends inline `price_data`, not these Price IDs, so this catalog is the
+     record/receipt side: if a price changes in `merchCatalog.ts`, change
+     the matching Price here too, by hand.
+
+     | Product | Price | Test-mode price id |
+     | --- | --- | --- |
+     | Beech T-Shirt (`prod_Vhp2DyHw5C6IG7`) | $30.00 | `price_1UgQGK4IbcjUfc8tSBqA6gYk` |
+     | Beech Hoodie (`prod_Vhp2OiUR1wLtsv`) | $55.00 | `price_1UgQGM4IbcjUfc8tdEcxp6BI` |
+     | Beech Hat (`prod_Vhp2JZnhpjs0Rx`) | $28.00 | `price_1UgQGN4IbcjUfc8tKWNztsXL` |
+     | Beech Flip Flops (`prod_Vhp2mhGLOqLJh1`) | $30.00 | `price_1UgQGP4IbcjUfc8tB47117yz` |
+     | Beech Beach Towel (`prod_Vhp2nbZ5Ky0sGs`) | $45.00 | `price_1UgQGR4IbcjUfc8tzLnosN8E` |
+     | Beech Sunglasses (`prod_Vhp2nKNk8Ha8za`) | $22.00 | `price_1UgQGU4IbcjUfc8tSHsBsldI` |
+     | Beech Merch Set (`prod_Vhp2rlrkX6n0p2`) | $179.00 | `price_1UgQGW4IbcjUfc8t1RRXfCxQ` |
+     | Your Beach Tee (`prod_VhpwfdcKos7z6l`) | $36.00 | `price_1UgQGX4IbcjUfc8tvcXlVpiu` |
+     | Your Beach Hoodie (`prod_Vhpw6RneSazepM`) | $62.00 | `price_1UgQGZ4IbcjUfc8t7B6QQ11B` |
+
+     All shippable, tax code `txcd_10000000`. **Still open:** create the
+     two secrets (`beech-stripe-secret-key`, `beech-stripe-merch-webhook-secret`,
+     TEST keys) and grant the game service's account access; register the
+     webhook endpoint above in the Stripe dashboard (test mode); at launch,
+     create the same nine products + prices in **live** mode and swap the
+     secrets for live keys.
 4. **Printful webhook**: make up a long random secret →
    `beech-printful-webhook-secret`, then register
    `https://store.beech.games/api/printful-webhook?s=<that secret>` for

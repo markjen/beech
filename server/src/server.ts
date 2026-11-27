@@ -31,10 +31,13 @@
 //                        set: the web shop takes card payments. Any missing: it doesn't.
 //   XSOLLA_SANDBOX       "1": test payments only (Xsolla sandbox, test cards)
 //   WEB_CHECKOUT_RETURN_URL  where Pay Station returns to (default https://play.beech.games/)
-//   STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, PRINTFUL_TOKEN, PRINTFUL_WEBHOOK_SECRET
+//   STRIPE_SECRET_KEY, STRIPE_MERCH_WEBHOOK_SECRET, PRINTFUL_TOKEN, PRINTFUL_WEBHOOK_SECRET
 //                        the merch store (docs/MERCH_STORE.md; all from Secret Manager).
 //                        All four set: store.beech.games takes orders. Any missing:
-//                        it shows the catalog and "opening soon".
+//                        it shows the catalog and "opening soon". The secret key
+//                        is shared with the game's Stripe checkout (PR #191);
+//                        the webhook secret is the merch endpoint's own —
+//                        STRIPE_WEBHOOK_SECRET belongs to the game checkout.
 //   PRINTFUL_STORE_ID    Printful store id, for an account-level token
 //   MERCH_SUNGLASSES_VARIANT  Printful Warehousing variant id of the sunglasses; unset:
 //                        sunglasses and the set show sold out

@@ -70,8 +70,8 @@ describe('merch providers', () => {
 
   it('is off until all four secrets are set; reads the sunglasses variant', () => {
     expect(merchFromEnv({}).cfg).toBeNull();
-    expect(merchFromEnv({ STRIPE_SECRET_KEY: 'k' }).missing).toEqual(['STRIPE_WEBHOOK_SECRET', 'PRINTFUL_TOKEN', 'PRINTFUL_WEBHOOK_SECRET']);
-    const env = { STRIPE_SECRET_KEY: 'k', STRIPE_WEBHOOK_SECRET: 'w', PRINTFUL_TOKEN: 'p', PRINTFUL_WEBHOOK_SECRET: 's' };
+    expect(merchFromEnv({ STRIPE_SECRET_KEY: 'k' }).missing).toEqual(['STRIPE_MERCH_WEBHOOK_SECRET', 'PRINTFUL_TOKEN', 'PRINTFUL_WEBHOOK_SECRET']);
+    const env = { STRIPE_SECRET_KEY: 'k', STRIPE_MERCH_WEBHOOK_SECRET: 'w', PRINTFUL_TOKEN: 'p', PRINTFUL_WEBHOOK_SECRET: 's' };
     expect(merchFromEnv(env).cfg).toMatchObject({ storeUrl: 'https://store.beech.games', sunglassesVariant: null });
     expect(merchFromEnv({ ...env, MERCH_SUNGLASSES_VARIANT: '123' }).cfg?.sunglassesVariant).toBe(123);
   });
