@@ -103,7 +103,19 @@ check(!(mine.body.beaches[0].items?.nautilus > 0), 'the server counts no nautilu
 // (the same restore the checkpoints panel runs; slow here: a restore, then
 // the beach reloads)
 const beachId = mine.body.beaches[0].id;
-const restoredRes = await api(`/beaches/mine/${beachId}/restore`, json('POST', { checkpoint: tide.payload.checkpoint, mode: 'strict' }), token);
+// through the page: it's the editor now (a restore needs its X-Edit-Token)
+const restoredRes = await page.evaluate(
+  async ([id, checkpoint]) => {
+    const a = window.__beech.account();
+    const r = await a.fetch(`/api/beaches/mine/${id}/restore`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...a.editHeaders() },
+      body: JSON.stringify({ checkpoint, mode: 'strict' }),
+    });
+    return { status: r.status };
+  },
+  [beachId, tide.payload.checkpoint],
+);
 check(restoredRes.status === 200, `restoring "Before the tide" works (${restoredRes.status})`);
 const restored = (await api('/checkpoints', {}, token)).body.checkpoints.some((c) => c.kind === 'auto' && /Before the tide/.test(c.name));
 check(restored, 'the beach was restored from "Before the tide" (its own "Before restoring" copy is there for Undo)');

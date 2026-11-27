@@ -183,12 +183,6 @@ picked up.
   owner setup is done (headless Chromium can't subscribe, so delivery is
   tested against a fake push service only); an admin `system` push
   ("week 2's vending set"), which needs its own pref and rate.
-- [ ] **Flaky tests**: `npm run e2e:checkpoints` times out at varying
-  steps in the cloud container, also on main (so do `neighbors`, `live`,
-  `shore`, `beaches` and `leaderboard`: signing a second device in).
-  `shore` also times out at its first sign-in: the first save lands ~10 s
-  after `signInDev` in the container, against a 15 s wait that includes
-  the shore loading.
 - [ ] **Invites: open in the apps**: Universal Links / App Links so
   `?invite=` and `?visit=` links open the phone apps (the invite code is
   kept in `localStorage`, so the claim works the same once it lands).
@@ -216,6 +210,12 @@ picked up.
 
 ## Done (recent)
 
+- [x] **Flaky e2e tests** (2026-11-27): the cause was SwiftShader drawing
+  every frame on a CPU-only machine (a second device's sign-in: ~27 s, vs
+  ~0.6 s without draws). The scripts skip draws unless asked for
+  screenshots. Three stale tests fixed on the way: `live` (restore needs the
+  page's edit token), `invites` (the invite's visit re-applied after
+  sign-in), `copy` (the welcome toast's action, and Ben's first save).
 - [x] **Pier deck vs storms and big tides** (2026-11-27): measured in the
   sim (a day's worst set, surf, the highest tide): 1.33 m of water under the
   seaward end, over the old 1.35 m deck. Raised to 1.65 m (ramp foot to
