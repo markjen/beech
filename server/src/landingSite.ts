@@ -1161,6 +1161,7 @@ footer nav a:hover { color: var(--sea); text-decoration: underline; }
     <a href="${esc(GOOGLE_PLAY_URL)}" target="_blank" rel="noopener">Google Play</a>
     <a href="/guide">Guide</a>
     <a href="/guide/releases">Release notes</a>
+    <a href="/story">How it was built</a>
     <a href="${esc(LANDING_SHORE_URL)}">Shore</a>
     <a href="/privacy.html">Privacy</a>
     <a href="${esc(DISCORD_INVITE_URL)}" target="_blank" rel="noopener">Discord</a>

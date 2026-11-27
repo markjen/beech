@@ -331,6 +331,23 @@ accepted the repo's default branch, so the deploy job ran only there.
   `GET /api/inventory` for owned, unexpired non-free items. Nothing writes to
   it yet.
 
+## Live handover: no blank beach (2026-11-27)
+
+Panning between your own beaches, the one you left went blank (the
+neighbors' slab edges showing) for up to a second while the worker took the
+next one. `chooseLive` placed the live renderer at `sync.id` every frame,
+and `bind` sets that before the worker's first frame of the new beach: the
+renderer, still holding the old beach's frames, moved onto the new beach
+while the neighbors view still counted the old one as live (no snapshot
+slot). It now stays put while `awaitingLoad`; `liveArrived` moves it at the
+handover. Also: a `regrid` (the next beach is deeper or shallower) is held
+until that first frame instead of resizing the renderer still drawing the
+old beach to empty fields; and the draw window counts the inland rows in the
+camera's footprint (beaches whose rows are in view are drawn). Measured with
+a per-frame probe of beaches in the window: 6 undrawn frames over 6
+switches before, 0 after. Not the pier or inland rows (it happened without
+them; only your own beaches go live).
+
 ## Smoother scrolling past deep beaches (2026-11-27)
 
 Scrolling past a beach with sand rows, inland sections or a pier hitched.
@@ -1251,7 +1268,9 @@ here: it needs the service's URL on the web OAuth client.
   the last fetch to finish wins, not the last call — so going home in the
   first second after signing in from an invite link can be undone by the
   pending visit landing late (the e2e retry works around it; a fix would
-  serialise `anchorAt`).
+  serialise `anchorAt`). Fixed since: the thumbnail readback — the canvas
+  itself is the thumbnail now (`thumbnailCanvas`), so opening the
+  checkpoints panel no longer stalls the main thread.
 - **Permissions audit (2026-11-25):** every endpoint that changes a beach
   (its sand, name, place, code, neighbors, pet, checkpoints, restores,
   `/here`, `/away/seen`, the dev `age-beach`) resolves the beach through
@@ -1875,3 +1894,7 @@ Five findings, all fixed with a test each:
 - New offers are beech bucks only (`Product.bucksOnly`): the five new pets and
   the pier (its Steam id 1019 was never set up and is dropped). Real money
   only buys beech-buck packs, plus the old item products for old app versions.
+
+## How beech was built: /story (2026-11-27)
+
+https://beech.games/story (`server/src/story.ts`) tells how beech was built in a few days by Mark and the agents (Claude, Antigravity, Muse, Codex). It is linked from the landing footer as "How it was built" and served on the landing host. The source logs, one per agent, are in `docs/story/`. Codex's log is still to come; add it to `docs/story/` and the page when it exists.
