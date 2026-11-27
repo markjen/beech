@@ -4,7 +4,7 @@ import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { Scene } from '@babylonjs/core/scene';
 
 import { Ambience } from './audio/ambience';
-import { ANIMALS, BEACH_CAP, BEACH_STORE, GRID_TIERS, SECTION, SIM_HZ, WAVES, WORLD_SIZE_X, WORLD_SIZE_Z, type QualityTier } from './config';
+import { ANIMALS, BEACH_CAP, BEACH_STORE, GRID_TIERS, SECTION, SIM_HZ, WAVES, WORLD_SIZE_X, WORLD_SIZE_Z, type GridSpec, type QualityTier } from './config';
 import { CameraController } from './input/cameraController';
 import { Gestures, HOLD_SLOP_PX, LONG_PRESS_MS } from './input/gestures';
 import { SandPicker } from './input/sandPicker';
@@ -450,14 +450,23 @@ async function boot() {
     shownSnackBeach = id;
   };
 
+  /** the worker's next beach is deeper or shallower: resize when its first frame comes */
+  let pendingRegrid: { grid: GridSpec; rest: Float32Array } | null = null;
+  const applyRegrid = (r: { grid: GridSpec; rest: Float32Array }) => {
+    renderer.resize(r.grid, r.rest);
+    picker.resize(r.grid, r.rest);
+    pendingBuf = null;
+    neighbors?.depthChanged();
+  };
   worker.onmessage = (ev: MessageEvent<FromWorker>) => {
     const m = ev.data;
     if (m.type === 'regrid') {
-      // the beach the worker has now is deeper or shallower (sand rows inland)
-      renderer.resize(m.grid, m.rest);
-      picker.resize(m.grid, m.rest);
-      pendingBuf = null;
-      neighbors?.depthChanged();
+      // the beach the worker has now is deeper or shallower (sand rows inland).
+      // While it loads (and catches up), the live renderer still draws the
+      // beach it had: resizing now would draw that one from empty fields
+      // (sunk flat, the neighbors' edges showing) until the first frame.
+      if (awaitingLoad) pendingRegrid = { grid: m.grid, rest: m.rest };
+      else applyRegrid(m);
       return;
     }
     if (m.type === 'sand') {
@@ -475,6 +484,10 @@ async function boot() {
       // the worker has the new beach now: move the live renderer there and
       // let the snapshot take the old one, in the same frame
       awaitingLoad = 0;
+      if (pendingRegrid) {
+        applyRegrid(pendingRegrid);
+        pendingRegrid = null;
+      }
       pendingBeachHandoff = true;
       liveArrived();
     }
@@ -2188,7 +2201,11 @@ async function boot() {
   const chooseLive = () => {
     const nv = neighbors;
     if (!nv) return;
-    if (sync.id) {
+    // (not while the worker loads a beach: the renderer still holds the last
+    // one's frames, so it stays where that one is until the first frame of
+    // the new one arrives, liveArrived moves it then. Moving it early left the
+    // beach being left undrawn, and its sand over the next, for up to a second)
+    if (sync.id && !awaitingLoad) {
       const x = nv.xForBeach(sync.id);
       if (x !== null) placeLive(x);
     }

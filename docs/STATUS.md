@@ -331,6 +331,23 @@ accepted the repo's default branch, so the deploy job ran only there.
   `GET /api/inventory` for owned, unexpired non-free items. Nothing writes to
   it yet.
 
+## Live handover: no blank beach (2026-11-27)
+
+Panning between your own beaches, the one you left went blank (the
+neighbors' slab edges showing) for up to a second while the worker took the
+next one. `chooseLive` placed the live renderer at `sync.id` every frame,
+and `bind` sets that before the worker's first frame of the new beach: the
+renderer, still holding the old beach's frames, moved onto the new beach
+while the neighbors view still counted the old one as live (no snapshot
+slot). It now stays put while `awaitingLoad`; `liveArrived` moves it at the
+handover. Also: a `regrid` (the next beach is deeper or shallower) is held
+until that first frame instead of resizing the renderer still drawing the
+old beach to empty fields; and the draw window counts the inland rows in the
+camera's footprint (beaches whose rows are in view are drawn). Measured with
+a per-frame probe of beaches in the window: 6 undrawn frames over 6
+switches before, 0 after. Not the pier or inland rows (it happened without
+them; only your own beaches go live).
+
 ## Smoother scrolling past deep beaches (2026-11-27)
 
 Scrolling past a beach with sand rows, inland sections or a pier hitched.

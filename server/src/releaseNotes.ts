@@ -19,6 +19,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     date: '2026-11-27',
     title: 'Inland rows on beechshore.com, news from beech, beechshore.com keeps up with the tides, larger shop items, a higher pier, swap an inland row in place, pick a place for a copied beach, stars and finds in the status pane, multi-item trade-ins, promo bonus beech bucks, playable sand extensions, a quieter palm, more of the beach guide, ratings along the shore, a see-through pier preview and safer notes',
     changes: [
+      'Moving along the shore between your own beaches no longer leaves one of them blank for a moment, with the edges of the others showing, as the waves move over to the next.',
       'Scrolling past a beach with sand extensions, inland rows or a pier is smoother: its scenery is no longer rebuilt every time it comes back into view.',
       'Fixed a long striped streak that could shoot across the sky from where a beach with inland rows meets a shallower beach next to it.',
       'On beechshore.com, a beach’s picture now shows its inland rows (boardwalks, roads, playgrounds and the rest) behind the sand, in the beach lists and on its page.',

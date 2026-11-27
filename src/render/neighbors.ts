@@ -138,6 +138,8 @@ export class NeighborView {
   private sectionsLoading = false;
   /** a beach of yours showing a layout you haven't saved yet (the Inland sections preview) */
   private sectionsPreview: { id: string; rows: string[] } | null = null;
+  /** how far inland (m) the deepest rows drawn reach past the sand: the view's footprint counts them */
+  private inland = 0;
 
   constructor(
     private readonly scene: Scene,
@@ -339,6 +341,7 @@ export class NeighborView {
     this.sections.sync(want);
     const deepest = want.reduce((m, w) => Math.max(m, w.rows.length), 0);
     this.cam.maxZ = WORLD_SIZE_Z / 2 + deepest * SECTION.depth;
+    this.inland = deepest * SECTION.depth;
   }
 
   /** The piers that should show: on beaches that have one, and the preview. */
@@ -719,7 +722,9 @@ export class NeighborView {
     const max = Math.min(left, c + RENDER_MAX);
     const fallback: [number, number] = [Math.max(-right, c - RENDER), Math.min(left, c + RENDER)];
     const foot = this.cam.groundFootprint();
-    const span = foot ? visibleShoreSpan(foot, ORIGIN_Z - OCEAN_REACH, ORIGIN_Z + WORLD_SIZE_Z) : null;
+    // (to the back of the deepest inland rows: looking at them, the beaches
+    // they stand behind are in view too, even with their sand off screen)
+    const span = foot ? visibleShoreSpan(foot, ORIGIN_Z - OCEAN_REACH, ORIGIN_Z + WORLD_SIZE_Z + this.inland) : null;
     if (!span) return fallback;
     const xFor = (i: number) => this.xFor(i);
     const need = indicesOverlapping(span[0], span[1], min, max, xFor) ?? [c, c];
