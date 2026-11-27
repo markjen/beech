@@ -107,6 +107,8 @@ export class NeighborView {
   private shoreListeners: (() => void)[] = [];
   /** bumps on every refresh/clear so a slow, older refresh can't overwrite a newer one */
   private generation = 0;
+  /** bumps on every anchorAt/clear so a slow, older visit can't overwrite a newer one */
+  private anchorGeneration = 0;
   private chairView = false;
   private pollTimer = 0;
   private liveTimer = 0;
@@ -512,8 +514,13 @@ export class NeighborView {
    * there's no such beach.
    */
   async anchorAt(code: string | null): Promise<void> {
+    const gen = ++this.anchorGeneration;
     if (code) {
       const shore = await this.api.shore(code, 0); // check it exists first
+      // a newer visit started while the check was in flight: it owns the
+      // anchor now, so this one stands down instead of overwriting it (the
+      // last call wins, not the last fetch to finish)
+      if (gen !== this.anchorGeneration) return;
       if (!shore.center) throw new Error('could not find that beach');
     }
     if (code === this.anchor && this.entries.size) {
@@ -617,6 +624,7 @@ export class NeighborView {
 
   clear(): void {
     this.generation++;
+    this.anchorGeneration++;
     // (no newer refresh to wait for: an overtaken one just stops)
     this.latest = Promise.resolve();
     window.clearTimeout(this.pollTimer);
