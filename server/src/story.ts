@@ -108,9 +108,9 @@ const DAYS: Day[] = [
     date: '22 Nov',
     title: 'The game in a day',
     shots: [
-      { file: 'state-1-waves.webp', label: 'Morning', caption: 'The simulation alone: waves, foam, wet sand and a few holes dug by hand.' },
+      { file: 'state-1-waves.webp', label: 'Morning', caption: 'The simulation alone: waves, foam, wet sand and a few holes dug by hand. No sky yet, and no time of day.' },
       { file: 'state-2-toy.webp', label: 'Midday', caption: 'A sand toy: a mound with a moat, a channel to the sea and a dune.' },
-      { file: 'state-3-claw.webp', label: 'Night', caption: 'Things in the bag: rocks, driftwood, shells, starfish and flags, on a real beach with a live tide.' },
+      { file: 'state-3-claw.webp', label: 'Night', caption: 'Brighton at sunset, with a live sun and tide. Things from the bag: rocks, driftwood, shells, starfish and flags.' },
     ],
     points: [
       'It began with one file, PLAN.md: the look, the simulation, the input and the milestones.',
@@ -121,7 +121,7 @@ const DAYS: Day[] = [
   {
     date: '23 Nov',
     title: 'Going live',
-    shots: [{ file: 'state-4-live.webp', label: 'Evening', caption: 'Neighbours: your beach between Ana’s and Cara’s, each with its own name tag. The shop is open too: a lighthouse, a hut, a deckchair and a parasol.' }],
+    shots: [{ file: 'state-4-live.webp', label: 'Evening', caption: 'Neighbours at dusk: your beach between Ana’s and Cara’s, each with its own name tag. The shop is open too: a lighthouse, a hut, a deckchair and a parasol.' }],
     points: [
       'New domains: beech.games, play.beech.games and beechshore.com. The guide moved off the game screen and onto the website.',
       'The shop opened, with purchases checked with Apple and Google. More than one beach per player, checkpoints, and beach files you can export and import.',
@@ -131,7 +131,7 @@ const DAYS: Day[] = [
   {
     date: '24 Nov',
     title: 'Animals, Steam, live beaches',
-    shots: [{ file: 'state-5-palm.webp', label: 'Night', caption: 'Linked beaches: neighbours join into one shore, with sand, water and waves running straight across. Palm trees, lifeguard towers and pets arrive.' }],
+    shots: [{ file: 'state-5-palm.webp', label: 'Night', caption: 'Linked beaches on a bright morning: neighbours join into one shore, with sand, water and waves running straight across. Palm trees and lifeguard towers arrive.' }],
     points: [
       'The busiest day by commits. Animals landed in five steps: sand crab, snacks, resident pets, visitor feeding, dolphin.',
       'Steam S1 to S4: desktop shell, sign-in, wallet checkout, achievements and controller.',
@@ -162,8 +162,8 @@ const DAYS: Day[] = [
     date: '27 Nov',
     title: 'Polish',
     shots: [
-      { file: 'state-7-today.webp', label: 'Today', caption: 'One beach today: a sandcastle and moat, a bonfire, deckchairs, a hammock and a pet.' },
-      { file: 'state-8-shore.webp', label: 'Today', caption: 'Three linked beaches along today’s shore.' },
+      { file: 'state-8-pier.webp', label: 'Today', caption: 'Three of one player’s beaches linked side by side at golden hour, every one furnished, with a timber pier off the middle one.' },
+      { file: 'state-7-today.webp', label: 'Tonight', caption: 'The same beach after dark: torches lit, a bonfire, deckchairs, a hammock, a sandcastle in its moat.' },
     ],
     points: [
       'Sign-in on beechshore.com. Promo codes changed to give bonus beech bucks only, built model first, as were multi-item trade-ins and admin system messages.',
@@ -260,7 +260,7 @@ export function storyHtml(): string {
 <meta name="description" content="How one person and four AI agents built beech (the game, server, apps and beechshore.com) in five days.">
 <meta property="og:title" content="How beech was built">
 <meta property="og:description" content="One person, four AI agents, five days: the story of building beech.">
-<meta property="og:image" content="/landing-assets/story/state-7-today.webp">
+<meta property="og:image" content="/landing-assets/story/state-8-pier.webp">
 <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
 <link rel="icon" href="/icons/favicon-32.png" sizes="32x32" type="image/png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -423,7 +423,7 @@ footer { color: var(--ink-faint); font-size: 13px; padding: 40px 20px 36px; text
 </div></div>
 
 <header class="hero">
-  <img src="/landing-assets/hero-golden.webp" alt="A beech beach at golden hour" fetchpriority="high">
+  <img src="/landing-assets/story/state-8-pier.webp" alt="Three linked beech beaches at golden hour with a pier" fetchpriority="high">
   <div class="wrap">
     <p class="eyebrow">The making of beech</p>
     <h1>One beach, <em>five days</em>, four AI agents and one person.</h1>
@@ -439,7 +439,7 @@ footer { color: var(--ink-faint); font-size: 13px; padding: 40px 20px 36px; text
 </section>
 
 <section class="block">
-  <div class="section-head"><p class="kicker">Beech as it grew</p><h2>Day by day</h2><p>Each picture is the game built from that day’s commit, at midday, with the same beach built up using what that version could do: sculpted sand first, then things from the bag, then the shop, then neighbours and linked beaches.</p></div>
+  <div class="section-head"><p class="kicker">Beech as it grew</p><h2>Day by day</h2><p>Each picture is the game built from that day’s commit, with the same beach built up using what that version could do: sculpted sand first, then things from the bag, then the shop, then neighbours, linked beaches and a pier. The clock is set to a different time of day for each one.</p></div>
   <div class="days">
 ${days}
   </div>
