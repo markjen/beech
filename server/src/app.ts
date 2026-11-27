@@ -90,12 +90,15 @@ import {
 } from './animals.js';
 import { PETS } from './petCatalog.js';
 import {
+  exchangeAppleAuthorizationCode,
   hashToken,
   newSessionToken,
+  revokeAppleToken,
   SESSION_DAYS,
   verifyAppleIdToken,
   verifyGoogleIdToken,
   verifySteamTicket,
+  type AppleAuthKeyConfig,
   type SteamAuthConfig,
   type VerifiedIdentity,
 } from './auth.js';
@@ -159,6 +162,11 @@ export interface AppConfig {
   verifyGoogle?: typeof verifyGoogleIdToken;
   verifyApple?: typeof verifyAppleIdToken;
   verifySteam?: typeof verifySteamTicket;
+  /** Sign in with Apple private key (APPLE_AUTH_KEY / KEY_ID / TEAM_ID); enables token exchange and revocation on account delete */
+  appleAuthKey?: AppleAuthKeyConfig;
+  /** injectable for tests */
+  appleTokenExchange?: (code: string, clientId: string, redirectUri?: string) => Promise<string>;
+  appleTokenRevoke?: (refreshToken: string, clientId: string) => Promise<void>;
   /** Steam Web API auth config (STEAM_APP_ID + STEAM_WEB_API_KEY); unset disables /auth/steam */
   steamAuth?: SteamAuthConfig;
   /** Steam Wallet microtransactions (ISteamMicroTxn); unset disables /store/steam/* */
@@ -257,6 +265,35 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   const verifyGoogle = cfg.verifyGoogle ?? verifyGoogleIdToken;
   const verifyApple = cfg.verifyApple ?? verifyAppleIdToken;
   const verifySteam = cfg.verifySteam ?? verifySteamTicket;
+  const exchangeAppleCode =
+    cfg.appleTokenExchange ??
+    (cfg.appleAuthKey
+      ? (code: string, clientId: string, redirectUri?: string) =>
+          exchangeAppleAuthorizationCode(code, clientId, cfg.appleAuthKey!, redirectUri, fetch, (cfg.now ?? Date.now)())
+      : undefined);
+  const revokeApple =
+    cfg.appleTokenRevoke ??
+    (cfg.appleAuthKey
+      ? (refreshToken: string, clientId: string) =>
+          revokeAppleToken(refreshToken, clientId, cfg.appleAuthKey!, fetch, (cfg.now ?? Date.now)())
+      : undefined);
+  const saveAppleRefreshToken = async (
+    sub: string,
+    clientId: string | undefined,
+    authorizationCode: string | undefined,
+    redirectUri: string | undefined,
+  ): Promise<void> => {
+    if (!exchangeAppleCode || !authorizationCode || !clientId) return;
+    try {
+      const refreshToken = await exchangeAppleCode(authorizationCode, clientId, redirectUri);
+      await db.query(
+        "UPDATE user_identities SET apple_refresh_token = $1, apple_client_id = $2 WHERE provider = 'apple' AND provider_sub = $3",
+        [refreshToken, clientId, sub],
+      );
+    } catch (e) {
+      logEvent('apple_token_exchange_failed', { message: (e as Error).message }, 'WARNING');
+    }
+  };
   const app = new Hono<Env>();
   // the sea keeps working while nobody has a beach open (docs/LIVE_SIM.md)
   const liveClock = () => cfg.now?.() ?? Date.now();
@@ -477,7 +514,12 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   });
 
   app.post('/auth/apple', async (c) => {
-    const { identityToken, name } = await body<{ identityToken?: string; name?: string }>(c);
+    const { identityToken, name, authorizationCode, redirectUri } = await body<{
+      identityToken?: string;
+      name?: string;
+      authorizationCode?: string;
+      redirectUri?: string;
+    }>(c);
     if (!identityToken) fail(400, 'missing identityToken');
     let who: VerifiedIdentity;
     try {
@@ -485,7 +527,9 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     } catch (e) {
       return fail(401, `apple sign-in failed: ${(e as Error).message}`);
     }
-    return startSession(c, who);
+    const res = await startSession(c, who);
+    await saveAppleRefreshToken(who.sub, who.clientId, authorizationCode, redirectUri);
+    return res;
   });
 
   const submissionConnections = createRateLimiter(10);
@@ -701,8 +745,23 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   });
 
   app.delete('/account', requireUser, async (c) => {
+    const userId = c.get('user').id;
+    if (revokeApple) {
+      const tokens = await db.query<{ apple_refresh_token: string; apple_client_id: string }>(
+        "SELECT apple_refresh_token, apple_client_id FROM user_identities WHERE user_id = $1 AND provider = 'apple' AND apple_refresh_token IS NOT NULL AND apple_client_id IS NOT NULL",
+        [userId],
+      );
+      for (const row of tokens) {
+        try {
+          await revokeApple(row.apple_refresh_token, row.apple_client_id);
+          logEvent('apple_token_revoked', { clientId: row.apple_client_id });
+        } catch (e) {
+          logEvent('apple_token_revoke_failed', { message: (e as Error).message }, 'WARNING');
+        }
+      }
+    }
     // sessions, beach and neighbor links go with it (ON DELETE CASCADE)
-    await db.query('DELETE FROM users WHERE id = $1', [c.get('user').id]);
+    await db.query('DELETE FROM users WHERE id = $1', [userId]);
     return c.body(null, 204);
   });
 
@@ -725,7 +784,13 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     return c.json({ identities: await identitiesOf(c.get('user').id) });
   });
   app.post('/api/account/identities', requireUser, async (c) => {
-    const { provider, credential, name } = await body<{ provider?: string; credential?: string; name?: string }>(c);
+    const { provider, credential, name, authorizationCode, redirectUri } = await body<{
+      provider?: string;
+      credential?: string;
+      name?: string;
+      authorizationCode?: string;
+      redirectUri?: string;
+    }>(c);
     if (!provider || !(ATTACHABLE as readonly string[]).includes(provider)) fail(400, 'unknown provider: use google, apple, or steam');
     if (!credential) fail(400, 'missing credential');
     let who: VerifiedIdentity;
@@ -763,6 +828,9 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     // a Google attach refreshes the verified email, as a Google sign-in does
     if (attached && 'email' in who && who.email) {
       await db.query('UPDATE users SET email = $1 WHERE id = $2 AND (email IS NULL OR email <> $1)', [who.email, me]);
+    }
+    if (who.provider === 'apple') {
+      await saveAppleRefreshToken(who.sub, who.clientId, authorizationCode, redirectUri);
     }
     return c.json({ identities: await identitiesOf(me) });
   });

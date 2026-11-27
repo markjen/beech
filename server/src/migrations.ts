@@ -1015,6 +1015,18 @@ const MIGRATIONS: string[] = [
   ALTER TABLE promo_codes DROP CONSTRAINT promo_codes_kind_check;
   ALTER TABLE promo_codes ADD CONSTRAINT promo_codes_kind_check CHECK (kind = 'percent');
   `,
+
+  // 41: Apple token revocation on account delete (App Store guideline
+  // 5.1.1(v)). When a player signs in with or attaches Apple and the server
+  // has a Sign in with Apple key configured, it exchanges the short-lived
+  // authorization code for a refresh token and keeps it on user_identities
+  // alongside the token's audience (bundle ID or Services ID) so
+  // DELETE /api/account can call Apple's /auth/revoke. Account merges move
+  // user_identities rows intact, preserving these columns.
+  `
+  ALTER TABLE user_identities ADD COLUMN apple_refresh_token TEXT;
+  ALTER TABLE user_identities ADD COLUMN apple_client_id TEXT;
+  `,
 ];
 
 /** Apply migrations up to `upTo` (default: all). Tests use `upTo` to check a migration on older data. */

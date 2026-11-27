@@ -798,6 +798,18 @@ Design and decisions in [INVITES_GUIDE.md](INVITES_GUIDE.md).
   validates and logs `client_error`, `client_perf`, and `client_event`;
   `infra/monitoring.tf` adds `beech_client_events_total` and an email alert on
   client error spikes (`beech: client errors`). See [OBSERVABILITY.md](OBSERVABILITY.md).
+- **Web Sign in with Apple & token revocation on delete (2026-11-26):**
+  `src/net/account.ts` adds Apple JS SDK popup sign-in (`webAppleSignIn`,
+  gated on `VITE_APPLE_CLIENT_ID`), wired into the web sign-in screen and
+  Settings → connected sign-ins (`src/ui/accountPanel.ts`), plus
+  `Dockerfile` and `.github/workflows/deploy-gcp.yml`. Native iOS Apple
+  sign-in (`src/net/nativeAuth.ts`) now enables `useProperTokenExchange` and
+  forwards `authorizationCode` alongside web Apple sign-in. On the server,
+  migration 41 adds `apple_refresh_token` and `apple_client_id` to
+  `user_identities` (preserved across account merges), `server/src/auth.ts`
+  exchanges authorization codes at `/auth/token` and revokes refresh tokens
+  at `/auth/revoke` on `DELETE /api/account` (App Store guideline 5.1.1(v))
+  once `APPLE_AUTH_KEY` / `APPLE_AUTH_KEY_ID` / `APPLE_AUTH_TEAM_ID` are set.
 - Not verified on devices yet: that needs the OAuth clients and the Apple
   capability (DevOps; see BACKEND.md, "Phone apps").
 

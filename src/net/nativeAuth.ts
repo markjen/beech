@@ -32,6 +32,8 @@ export interface NativeIdentity {
   idToken: string;
   /** first name, when the provider tells us (Apple: only on the very first sign-in) */
   name: string;
+  /** Apple only: short-lived authorization code for server-side refresh token exchange (revoked on account delete) */
+  authorizationCode?: string;
 }
 
 const platform = () => Capacitor.getPlatform();
@@ -67,7 +69,7 @@ function plugin(): Promise<{ plugin: Plugin }> {
             ? { iOSClientId: IOS_CLIENT_ID, iOSServerClientId: WEB_CLIENT_ID }
             : { webClientId: WEB_CLIENT_ID, skipAuthOnlyAuthorizationAfterSignIn: true }
           : undefined,
-        apple: ios ? { clientId: 'app', redirectUrl: '' } : undefined,
+        apple: ios ? { clientId: 'app', redirectUrl: '', useProperTokenExchange: true } : undefined,
       });
       return { plugin: SocialLogin };
     })();
@@ -101,10 +103,21 @@ export async function nativeSignIn(provider: NativeProvider): Promise<NativeIden
       return { provider, idToken: r.idToken, name: r.profile?.givenName ?? '' };
     }
     const res = await SocialLogin.login({ provider: 'apple', options: { scopes: ['name', 'email'] } });
-    const r = res.result as { idToken?: string | null; profile?: { givenName?: string | null } };
+    const r = res.result as {
+      idToken?: string | null;
+      authorizationCode?: string | null;
+      accessToken?: { token?: string | null } | null;
+      profile?: { givenName?: string | null };
+    };
     if (!r.idToken) throw new Error('Apple did not return an ID token');
     await finishSignInAttempt(attempt, 'success');
-    return { provider, idToken: r.idToken, name: r.profile?.givenName ?? '' };
+    const authorizationCode = r.authorizationCode || r.accessToken?.token || undefined;
+    return {
+      provider,
+      idToken: r.idToken,
+      name: r.profile?.givenName ?? '',
+      ...(authorizationCode ? { authorizationCode } : {}),
+    };
   } catch (e) {
     const cancelled = looksCancelled(e);
     const done = await finishSignInAttempt(attempt, cancelled ? 'cancelled' : 'failed', e);

@@ -4,7 +4,7 @@ import { MAX_OBJECTS } from '../sim/sandCodec';
 import { renderBeachMap, sortBeachesWestToEast } from './beachMap';
 import { SECTION_ROWS } from '../world/sections';
 import { buildOwnStretches, connectableBeaches, hasSparePierWithoutSite, ownBeachLabel } from './shoreConnect';
-import { DEV_AUTH, googleSignInAvailable, MergeNeedsConfirmError, renderGoogleButton, type Account, type LinkedProvider, type MergePreview, type MyBeach, type Neighbors, type Side } from '../net/account';
+import { appleSignInAvailable, DEV_AUTH, googleSignInAvailable, MergeNeedsConfirmError, renderGoogleButton, webAppleSignIn, type Account, type LinkedProvider, type MergePreview, type MyBeach, type Neighbors, type Side } from '../net/account';
 import { beachShareText, shareUrl, shoreAccountUrl, shoreBeachUrl } from '../net/share';
 import { codesAllowed } from '../net/shop';
 import { bucksIcon } from './inventory';
@@ -873,15 +873,31 @@ export class AccountPanel {
         buttons.appendChild(steamBtn);
       } else if (native.length) {
         /* native sign-in sheets */
-      } else if (googleSignInAvailable()) {
-        const gis = document.createElement('div');
-        gis.className = 'gis';
-        buttons.appendChild(gis);
-        renderGoogleButton(gis, (credential) => void this.signIn(() => this.account.signInWithGoogle(credential), 'web_google')).catch((e) => {
-          reportError('auth', e, { source: 'web_google:gis_load' });
-          this.error = 'Google sign-in could not load. Check your connection.';
-          this.render();
-        });
+      } else if (googleSignInAvailable() || appleSignInAvailable()) {
+        if (googleSignInAvailable()) {
+          const gis = document.createElement('div');
+          gis.className = 'gis';
+          buttons.appendChild(gis);
+          renderGoogleButton(gis, (credential) => void this.signIn(() => this.account.signInWithGoogle(credential), 'web_google')).catch((e) => {
+            reportError('auth', e, { source: 'web_google:gis_load' });
+            this.error = 'Google sign-in could not load. Check your connection.';
+            this.render();
+          });
+        }
+        if (appleSignInAvailable()) {
+          const appleBtn = document.createElement('button');
+          appleBtn.type = 'button';
+          appleBtn.className = 'native-signin apple';
+          appleBtn.dataset.act = 'web-apple';
+          appleBtn.innerHTML = `${APPLE_LOGO}<span>Sign in with Apple</span>`;
+          appleBtn.addEventListener('click', () =>
+            void this.signIn(async () => {
+              const who = await webAppleSignIn();
+              return this.account.signInWithApple(who.idToken, who.name, who.authorizationCode, who.redirectUri);
+            }, 'web_apple'),
+          );
+          buttons.appendChild(appleBtn);
+        }
       } else if (!DEV_AUTH) {
         const note = document.createElement('div');
         note.className = 'status';
@@ -1054,7 +1070,10 @@ export class AccountPanel {
       note.className = 'status';
       note.textContent = 'Link another sign-in here and the same beaches follow you everywhere.';
       wrap.appendChild(note);
-      const attach = (provider: LinkedProvider, get: () => Promise<{ credential: string; name?: string }>) => {
+      const attach = (
+        provider: LinkedProvider,
+        get: () => Promise<{ credential: string; name?: string; authorizationCode?: string; redirectUri?: string }>,
+      ) => {
         const b = document.createElement('button');
         b.type = 'button';
         b.className = 'action';
@@ -1062,14 +1081,17 @@ export class AccountPanel {
         b.textContent = `link ${label(provider)}`;
         b.addEventListener('click', () =>
           void this.guard(async () => {
-            let cred: { credential: string; name?: string };
+            let cred: { credential: string; name?: string; authorizationCode?: string; redirectUri?: string };
             try {
               cred = await get();
             } catch (e) {
               if (e instanceof SignInCancelled) return;
               throw e;
             }
-            await this.account.attachIdentity(provider, cred.credential, cred.name ?? '');
+            await this.account.attachIdentity(provider, cred.credential, cred.name ?? '', {
+              authorizationCode: cred.authorizationCode,
+              redirectUri: cred.redirectUri,
+            });
             await refresh();
           }),
         );
@@ -1084,7 +1106,7 @@ export class AccountPanel {
         row.appendChild(
           attach(p, async () => {
             const who = await nativeSignIn(p);
-            return { credential: who.idToken, name: who.name };
+            return { credential: who.idToken, name: who.name, authorizationCode: who.authorizationCode };
           }),
         );
       }
@@ -1099,8 +1121,24 @@ export class AccountPanel {
           }),
         );
       }
+      if (!nativeProviders().length && !isSteam() && appleSignInAvailable() && !linked.includes('apple')) {
+        offered = true;
+        row.appendChild(
+          attach('apple', async () => {
+            const who = await webAppleSignIn();
+            return {
+              credential: who.idToken,
+              name: who.name,
+              authorizationCode: who.authorizationCode,
+              redirectUri: who.redirectUri,
+            };
+          }),
+        );
+      }
       if (row.children.length) wrap.appendChild(row);
-      if (!offered && !nativeProviders().length && googleSignInAvailable() && !linked.includes('google')) {
+      let googleOffered = false;
+      if (!nativeProviders().length && !isSteam() && googleSignInAvailable() && !linked.includes('google')) {
+        googleOffered = true;
         // web: Google's own button, as on the sign-in screen
         const gis = document.createElement('div');
         gis.className = 'gis';
@@ -1117,7 +1155,7 @@ export class AccountPanel {
           wrap.appendChild(fail);
         });
       }
-      if (!offered && linked.includes('google')) {
+      if (!offered && !googleOffered && linked.length > 0) {
         // nothing left to offer on this device
         const done = document.createElement('div');
         done.className = 'status';
@@ -1223,7 +1261,9 @@ export class AccountPanel {
       void this.signIn(
         async () => {
           const who = await nativeSignIn(p);
-          return p === 'apple' ? this.account.signInWithApple(who.idToken, who.name) : this.account.signInWithGoogle(who.idToken);
+          return p === 'apple'
+            ? this.account.signInWithApple(who.idToken, who.name, who.authorizationCode)
+            : this.account.signInWithGoogle(who.idToken);
         },
         `native_${p}`,
       ),
