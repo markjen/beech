@@ -330,6 +330,15 @@ accepted the repo's default branch, so the deploy job ran only there.
   `GET /api/inventory` for owned, unexpired non-free items. Nothing writes to
   it yet.
 
+## Ratings in the shore bar (2026-11-27)
+
+Every beach in the shore walk (`/shore`, `/shore/more`, `/public/shore`,
+and anything else built on `NODE`/`beachJson` in `server/src/shore.ts`)
+carries `rating: { average, count }` once it has 3 ratings. The expanded
+status pane's shore bar shows it with a shell ("4.6 · 12") while you look
+at someone else's beach; the floating name tags it was planned for were
+replaced by the shore bar on 2026-11-25.
+
 ## Admin: referrals view (2026-11-27)
 
 The admin console has a read-only Referrals tab (`GET /api/referrals`):

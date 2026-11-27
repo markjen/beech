@@ -868,6 +868,26 @@ body.ambient-idle {
   white-space: nowrap;
 }
 
+/* the beach's average in shells, and how many rated it */
+.shore-bar .sb-rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.shore-bar .sb-rating[hidden] {
+  display: none;
+}
+
+.shore-bar .sb-rating svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+}
+
 .shore-bar .sb-fav {
   border: 1.5px solid currentColor;
   border-radius: 999px;

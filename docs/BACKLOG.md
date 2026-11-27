@@ -190,8 +190,6 @@ picked up.
   tested against a fake push service only); a monitoring alert on
   `push_tick_error` and on a high `failed` count; an admin `system` push
   ("week 2's vending set"), which needs its own pref and rate.
-- [ ] **Ratings on name tags**: the shore walk's JSON carries each beach's
-  average, shown on the name tags along the shore (today: in the visitor card).
 - [ ] **Admin: suspend a sender's notes** after repeated reports (today
   the admin can hide a note or dismiss the report).
 - [ ] **Flaky tests**: `npm run e2e:checkpoints` times out at varying
@@ -229,6 +227,9 @@ picked up.
 
 ## Done (recent)
 
+- [x] **Ratings on name tags** (2026-11-27): the shore walk's JSON carries
+  each beach's average (from 3 ratings), shown with a shell in the shore
+  bar while you look at someone's beach. INBOX_NOTIFICATIONS.md.
 - [x] **Admin: referrals view** (2026-11-27): a Referrals tab in the admin
   console: totals, top inviters (with 24-hour and settled counts) and who
   invited whom, searchable. INVITES_GUIDE.md, "Admin: the Referrals tab".

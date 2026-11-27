@@ -1430,9 +1430,10 @@ async function boot() {
   // home (leave something, ask to be neighbors, feed pet, star)
   const shoreBar = document.createElement('div');
   shoreBar.className = 'shore-bar';
-  shoreBar.innerHTML = `<span class="sb-where"></span><button type="button" class="sb-leave" hidden>leave something</button><button type="button" class="sb-ask" hidden>ask to be neighbors</button><button type="button" class="sb-pet" hidden>Feed pet</button><button type="button" class="sb-fav"></button><button type="button" class="sb-copy" hidden>copy</button>`;
+  shoreBar.innerHTML = `<span class="sb-where"></span><span class="sb-rating" hidden></span><button type="button" class="sb-leave" hidden>leave something</button><button type="button" class="sb-ask" hidden>ask to be neighbors</button><button type="button" class="sb-pet" hidden>Feed pet</button><button type="button" class="sb-fav"></button><button type="button" class="sb-copy" hidden>copy</button>`;
   spMore.appendChild(shoreBar);
   const sbWhere = shoreBar.querySelector<HTMLElement>('.sb-where')!;
+  const sbRating = shoreBar.querySelector<HTMLElement>('.sb-rating')!;
   const sbLeave = shoreBar.querySelector<HTMLButtonElement>('.sb-leave')!;
   const sbAsk = shoreBar.querySelector<HTMLButtonElement>('.sb-ask')!;
   const sbPet = shoreBar.querySelector<HTMLButtonElement>('.sb-pet')!;
@@ -1620,7 +1621,7 @@ async function boot() {
     const canLeave = !!b && !!leaveBeach && !isMine;
     const askSide = b && neighbors ? neighbors.askSideAt(idx) : null;
     if (feedSpot && (!signedIn || b?.code !== feedSpot)) endFeedSpot();
-    const key = `${away}|${here?.code}|${here?.name}|${fav}|${!!neighbors?.visiting}|${signedIn}|${canLeave}|${!!copyBeach}|${askSide}|${askingCode === b?.code}|${feedSpot}`;
+    const key = `${away}|${here?.code}|${here?.name}|${fav}|${!!neighbors?.visiting}|${signedIn}|${canLeave}|${!!copyBeach}|${askSide}|${askingCode === b?.code}|${feedSpot}|${b?.rating?.average}|${b?.rating?.count}`;
     if (key === shoreKey) return;
     shoreKey = key;
     shoreBar.classList.toggle('shown', away);
@@ -1630,6 +1631,13 @@ async function boot() {
     const placeBeach = b?.location ? beachById(b.location) : undefined;
     sbWhere.textContent = b ? `${neighbors?.visiting ? 'Visiting ' : ''}${b.name || 'a beach'}${placeBeach ? ` · ${placeBeach.name}` : ''}` : 'Down the shore';
     updatePlace(true);
+    // its average in shells, once it has a few ratings ("4.6 · 12")
+    const rating = b?.rating;
+    sbRating.hidden = !rating;
+    if (rating) {
+      sbRating.innerHTML = `${icon('shell')}<span>${rating.average} · ${rating.count}</span>`;
+      sbRating.setAttribute('aria-label', `rated ${rating.average} shells by ${rating.count}`);
+    }
     sbLeave.hidden = !canLeave;
     if (b) sbLeave.dataset.act = `leave-${b.code}`;
     else delete sbLeave.dataset.act;

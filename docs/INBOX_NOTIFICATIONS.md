@@ -88,8 +88,11 @@ available, and a later tick skips the claim. Tests: `server/test/stateMachines/p
 - **"Leave something" is on each beach's name tag**, not the shore bar:
   main's viewing mode hides the shore bar while you're visiting and shows
   the name tags in the "i" card instead. The beach's **average shows in
-  the visitor card** (from 3 ratings); on the name tags is a follow-up (it
-  needs the rating in the shore walk's JSON).
+  the visitor card** (from 3 ratings), and in the shore bar of the
+  expanded status pane while you look at that beach (a shell, "4.6 · 12";
+  2026-11-27). The shore walk's JSON (`/shore`, `/shore/more`,
+  `/public/shore`) carries it as `rating: { average, count }` on each
+  beach, left out under 3 ratings (`ratingShown` in `server/src/shore.ts`).
 - The **blocked list** is at the bottom of the inbox, not in settings.
 - The admin can **hide** a reported note or **dismiss** the report.
   "Suspend the sender's notes" isn't built: block-by-admin is a follow-up.

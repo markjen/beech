@@ -9,6 +9,7 @@
 // either way and meet everyone.
 
 import type { Db } from './db.js';
+import { RATING_SHOWN_AT } from './inbox.js';
 
 export const SIDES = ['left', 'right'] as const;
 export type Side = (typeof SIDES)[number];
@@ -33,6 +34,9 @@ export interface NodeRow {
   pier: boolean;
   /** its inland sections' types, front row first, comma-separated (docs/INLAND_SECTIONS.md); null: none */
   sections: string | null;
+  /** its ratings: how many, and their average in shells (docs/INBOX_NOTIFICATIONS.md) */
+  rating_count: string | number;
+  rating_avg: string | number | null;
 }
 /**
  * A beach of `b`'s owner is linked on `b`'s `side` (docs/PIERS.md): the
@@ -49,7 +53,16 @@ export const PIER_SHOWN = `(EXISTS (SELECT 1 FROM beach_piers bp WHERE bp.beach_
 /** a beach and its owner's first name (select list, with `BEACH` as the FROM) */
 /** `b`'s inland sections, front row first (docs/INLAND_SECTIONS.md). Rows are kept packed from 0. */
 export const SECTIONS_OF = `(SELECT string_agg(bs.item_id, ',' ORDER BY bs.row) FROM beach_sections bs WHERE bs.beach_id = b.id)`;
-export const NODE = `b.id, u.name, b.name AS beach_name, b.owner_id, b.code, b.created_at, b.location, b.updated_at, b.on_shore, (b.sand IS NOT NULL) AS saved, ${PIER_SHOWN} AS pier, ${SECTIONS_OF} AS sections`;
+/** `b`'s ratings, how many and their average (ratings_beach index) */
+export const RATING_OF = `(SELECT COUNT(*) FROM ratings rt WHERE rt.beach_id = b.id) AS rating_count, (SELECT AVG(rt.shells) FROM ratings rt WHERE rt.beach_id = b.id) AS rating_avg`;
+export const NODE = `b.id, u.name, b.name AS beach_name, b.owner_id, b.code, b.created_at, b.location, b.updated_at, b.on_shore, (b.sand IS NOT NULL) AS saved, ${PIER_SHOWN} AS pier, ${SECTIONS_OF} AS sections, ${RATING_OF}`;
+
+/** A beach's average for its name tag: shown once it has RATING_SHOWN_AT ratings, to one decimal. */
+export function ratingShown(count: string | number | null | undefined, avg: string | number | null | undefined): { average: number; count: number } | null {
+  const n = Number(count ?? 0);
+  if (!(n >= RATING_SHOWN_AT) || avg === null || avg === undefined) return null;
+  return { average: Math.round(Number(avg) * 10) / 10, count: n };
+}
 export const BEACH = `beach b JOIN users u ON u.id = b.owner_id`;
 
 export const beachJson = (r: NodeRow) => ({
@@ -65,6 +78,8 @@ export const beachJson = (r: NodeRow) => ({
   ...(r.pier ? { pier: true as const } : {}),
   /** its inland sections' types, front row first (left out when it has none) */
   ...(r.sections ? { sections: r.sections.split(',') } : {}),
+  /** its average in shells and how many rated it, once there are enough (left out before) */
+  ...((rating) => (rating ? { rating } : {}))(ratingShown(r.rating_count, r.rating_avg)),
 });
 export type BeachJson = ReturnType<typeof beachJson>;
 export type Step = BeachJson & { linked: boolean };

@@ -120,6 +120,10 @@ describe('visitors', () => {
       expect(card.count).toBe(i + 1);
       expect(card.mine).toBe(shells[i]);
       expect(card.average).toBe(i < 2 ? null : 4);
+      // the shore walk carries it for the name tags, from three as well
+      type Walk = { center: { code: string; rating?: { average: number; count: number } } };
+      const walk = (await (await req(`/shore?code=${ana.code}&depth=0`, {}, r.token)).json()) as Walk;
+      expect(walk.center.rating).toEqual(i < 2 ? undefined : { average: 4, count: 3 });
     }
     const box = await inbox(ana);
     expect(box.entries).toHaveLength(1);
