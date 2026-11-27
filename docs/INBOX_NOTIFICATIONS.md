@@ -211,7 +211,7 @@ shell). It opens one card for everything a visitor can leave:
 | `star` | someone stars your beach (batched, below) | "3 people starred Moat Beach today" |
 | `rating` | ratings with no note (batched) | "Moat Beach got 4 new ratings: 4.5 average" |
 | `invite_joined`, `invite_settled` | invites | "Fran joined through your link", "Fran settled in: a parasol is in your bag" |
-| `system` | the admin console | "Welcome to week 2's vending set" (rare, audited) |
+| `system` | the admin console (News tab, `POST /api/system-messages { text, requestId }`) | the admin's words, up to 140 characters ("Week 2's vending set is in"). Everyone with an account then gets one; at most one a UTC day, and a retried request never sends twice (one statement: `system_messages`' unique day and request id decide, and the inbox rows come from what it inserted; `specs/tla/SystemMessages.tla`). Announced over the beach as "News from beech"; pushed (its words) to those whose **news** switch is on (`notify_prefs.news`, on by default). Audited. |
 | `tide` | the sea worked on your beach while you were away (batched, below) | "The sea worked on Moat Beach: 4 high tides, the sea took 1 thing (back in your bag)" |
 | `pet_fed` | a visitor fed your beach's pet | "Ben fed Shelly on Moat Beach" |
 

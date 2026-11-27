@@ -314,7 +314,7 @@ describe('Push: the races TLC found, replayed', () => {
     }
     expect(await gifts).toBe(200);
     const prefs = await w.s.req('/notify-prefs', {}, w.ana.token);
-    expect(await prefs.json()).toEqual({ gifts: false, neighbors: false, invites: true, beach: true });
+    expect(await prefs.json()).toEqual({ gifts: false, neighbors: false, invites: true, beach: true, news: true });
   });
 });
 

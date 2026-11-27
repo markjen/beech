@@ -265,8 +265,8 @@ describe('the push routes', () => {
     expect(r.gone).toBeGreaterThanOrEqual(1);
     expect(await db.query('SELECT 1 FROM push_subscriptions WHERE endpoint = $1', [dead.endpoint])).toHaveLength(0);
 
-    expect(await (await req('/notify-prefs', {}, ana.token)).json()).toEqual({ gifts: true, neighbors: true, invites: true, beach: true });
-    expect(await (await req('/notify-prefs', json('PUT', { gifts: false }), ana.token)).json()).toEqual({ gifts: false, neighbors: true, invites: true, beach: true });
+    expect(await (await req('/notify-prefs', {}, ana.token)).json()).toEqual({ gifts: true, neighbors: true, invites: true, beach: true, news: true });
+    expect(await (await req('/notify-prefs', json('PUT', { gifts: false }), ana.token)).json()).toEqual({ gifts: false, neighbors: true, invites: true, beach: true, news: true });
     expect((await req('/notify-prefs', json('PUT', { gifts: 'no' }), ana.token)).status).toBe(400);
     const phone = web();
     await req('/push/subscribe', json('POST', phone), ana.token);

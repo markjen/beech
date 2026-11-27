@@ -1255,6 +1255,50 @@ export function createAdminApp(db: Db, cfg: AdminConfig): Hono<Env> {
     return c.json({ id, notesSuspendedUntil: null });
   });
 
+  // ---------------------------------------------------------------- system messages
+  // One message to every player's inbox, pushed to those with "news" on
+  // (specs/tla/SystemMessages.tla). At most one a UTC day, and a retried
+  // request never sends twice: one statement, whose INSERT ... ON CONFLICT
+  // on the unique day and request id decides, and writes the inbox rows
+  // only from what it inserted.
+  api.post('/system-messages', async (c) => {
+    const { text, requestId } = await body<{ text?: string; requestId?: string }>(c);
+    const words = typeof text === 'string' ? text.trim().replace(/\s+/g, ' ') : '';
+    if (!words || [...words].length > 140) fail(400, 'a message is 1 to 140 characters');
+    if (typeof requestId !== 'string' || !UUID_PATTERN.test(requestId)) fail(400, 'a requestId (a UUID) is needed');
+    const now = clock();
+    const day = new Date(now).toISOString().slice(0, 10);
+    const actor = c.get('actor');
+    const rows = await db.query<{ id: string | null; n: string }>(
+      `WITH m AS (
+         INSERT INTO system_messages (day, request_id, text, created_by, created_at) VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT DO NOTHING
+         RETURNING id
+       ), r AS (
+         INSERT INTO inbox (user_id, kind, payload, created_at)
+         SELECT u.id, 'system', jsonb_build_object('text', $3::text, 'message', (SELECT id FROM m)), $5 FROM users u
+          WHERE EXISTS (SELECT 1 FROM m)
+         RETURNING 1
+       )
+       SELECT (SELECT id FROM m) AS id, (SELECT COUNT(*) FROM r) AS n`,
+      [day, requestId, words, actor, now],
+    );
+    const id = rows[0]?.id;
+    if (!id) {
+      const same = (await db.query('SELECT 1 FROM system_messages WHERE request_id = $1', [requestId])).length > 0;
+      fail(409, same ? 'that message was already sent' : 'one message a day: today’s has been sent');
+    }
+    await audit(actor, 'system.send', 'system_message', String(id), { day, recipients: Number(rows[0].n), text: words });
+    return c.json({ id: Number(id), day, recipients: Number(rows[0].n) });
+  });
+
+  api.get('/system-messages', async (c) => {
+    const rows = await db.query<{ id: string; day: string; text: string; created_by: string; created_at: string }>(
+      'SELECT id, day, text, created_by, created_at FROM system_messages ORDER BY created_at DESC LIMIT 30',
+    );
+    return c.json({ messages: rows.map((r) => ({ id: Number(r.id), day: r.day, text: r.text, by: r.created_by, at: Number(r.created_at) })) });
+  });
+
   api.post('/reports/:id/resolve', async (c) => {
     const id = Number(c.req.param('id'));
     if (!Number.isSafeInteger(id)) fail(404, 'no such report');

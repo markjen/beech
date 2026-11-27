@@ -4537,12 +4537,12 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   });
 
   const prefsOf = async (user: string, conn = db) => {
-    const r = (await conn.query<Record<NotifyPref, boolean>>('SELECT gifts, neighbors, invites, beach FROM notify_prefs WHERE user_id = $1', [user]))[0];
-    return { gifts: r?.gifts ?? true, neighbors: r?.neighbors ?? true, invites: r?.invites ?? true, beach: r?.beach ?? true };
+    const r = (await conn.query<Record<NotifyPref, boolean>>('SELECT gifts, neighbors, invites, beach, news FROM notify_prefs WHERE user_id = $1', [user]))[0];
+    return { gifts: r?.gifts ?? true, neighbors: r?.neighbors ?? true, invites: r?.invites ?? true, beach: r?.beach ?? true, news: r?.news ?? true };
   };
   app.get('/notify-prefs', requireUser, async (c) => c.json(await prefsOf(c.get('user').id)));
 
-  // PUT /notify-prefs { gifts?, neighbors?, invites?, beach? }: under the push lock (Push.tla, Mute)
+  // PUT /notify-prefs { gifts?, neighbors?, invites?, beach?, news? }: under the push lock (Push.tla, Mute)
   app.put('/notify-prefs', requireUser, async (c) => {
     const b = await body<Partial<Record<NotifyPref, unknown>>>(c);
     const me = c.get('user').id;
@@ -4557,9 +4557,9 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       await lockPush(tx, me);
       const prefs = { ...(await prefsOf(me, tx)), ...patch };
       await tx.query(
-        `INSERT INTO notify_prefs (user_id, gifts, neighbors, invites, beach) VALUES ($1, $2, $3, $4, $5)
-         ON CONFLICT (user_id) DO UPDATE SET gifts = EXCLUDED.gifts, neighbors = EXCLUDED.neighbors, invites = EXCLUDED.invites, beach = EXCLUDED.beach`,
-        [me, prefs.gifts, prefs.neighbors, prefs.invites, prefs.beach],
+        `INSERT INTO notify_prefs (user_id, gifts, neighbors, invites, beach, news) VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (user_id) DO UPDATE SET gifts = EXCLUDED.gifts, neighbors = EXCLUDED.neighbors, invites = EXCLUDED.invites, beach = EXCLUDED.beach, news = EXCLUDED.news`,
+        [me, prefs.gifts, prefs.neighbors, prefs.invites, prefs.beach, prefs.news],
       );
       return prefs;
     });
