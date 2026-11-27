@@ -832,6 +832,12 @@ body.ambient-idle {
   cursor: none;
 }
 
+/* outside ambient mode: with the rail closed, the lone palm fades after a few
+   quiet seconds (src/ui/ambient.ts) but can still be tapped */
+body.palm-idle .ui-collapsed .hud {
+  opacity: 0;
+}
+
 .shore-bar .sb-fav.on {
   color: #e0a43a;
 }

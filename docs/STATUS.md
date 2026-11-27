@@ -1451,7 +1451,9 @@ the HUD layout in the section above.
   the palm becomes the × at the bottom of the rail. Closing puts any item
   in hand away. Opening always picks the hand. `H` toggles it, like the
   palm. The eye button is gone. Ambient/TV mode still fades everything
-  after idle. The rail's open state isn't saved: every load starts
+  after idle. Outside it, the lone palm fades after 5 s quiet (Mark,
+  2026-11-27; `palm-idle`, `IDLE_FADE.palmMs`) and stays tappable; an open
+  rail never fades. The rail's open state isn't saved: every load starts
   minimal.
 - **The rail** (`Hud` in `src/ui/hud.ts`) is one frosted pill in three
   groups: Inbox (signed-in builds) · Hand · Dirt | Bag · Store (signed-in
