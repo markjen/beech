@@ -330,6 +330,13 @@ accepted the repo's default branch, so the deploy job ran only there.
   `GET /api/inventory` for owned, unexpired non-free items. Nothing writes to
   it yet.
 
+## Pier preview is a ghost (2026-11-27)
+
+The pier preview is drawn see-through and paler until it's placed
+(`GHOST` define in the prop shader; `PierLayer` keeps solid and ghost
+materials and swaps them in place). `npm run e2e:piers` checks it's a ghost
+in preview and solid once placed. Perf within budget.
+
 ## Ratings in the shore bar (2026-11-27)
 
 Every beach in the shore walk (`/shore`, `/shore/more`, `/public/shore`,

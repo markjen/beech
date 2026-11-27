@@ -117,8 +117,7 @@ picked up.
   webhook would grant them all) instead of one card checkout each; a place
   picker for a new beach on the copy sheet.
 - [ ] **Piers, follow-ups** ([PIERS.md](PIERS.md)): check the deck against big real tides and storm
-  waves (it's 1.35 m above still water); a ghostly look for the preview
-  so it reads as not placed yet.
+  waves (it's 1.35 m above still water).
 - [ ] **Inland sections, follow-ups** ([INLAND_SECTIONS.md](INLAND_SECTIONS.md)):
   editable sand in a Sand Extension (dig, sculpt, molds, props; needs a
   section ID per copy and a sand revision, extend `InlandSections.tla`
@@ -227,6 +226,8 @@ picked up.
 
 ## Done (recent)
 
+- [x] **Pier preview looks like a ghost** (2026-11-27): see-through
+  (screen-door) and paler until placed. PIERS.md.
 - [x] **Ratings on name tags** (2026-11-27): the shore walk's JSON carries
   each beach's average (from 3 ratings), shown with a shell in the shore
   bar while you look at someone's beach. INBOX_NOTIFICATIONS.md.

@@ -251,6 +251,11 @@ export class NeighborView {
     return this.piers?.count ?? 0;
   }
 
+  /** How many of those are the preview's see-through look (e2e). */
+  get piersGhost(): number {
+    return this.piers?.ghosts ?? 0;
+  }
+
   /** Show a pier on this beach before it's placed (null: stop). */
   previewPier(beachId: string | null): void {
     this.piersPreview = beachId;
@@ -321,12 +326,13 @@ export class NeighborView {
     if (!this.piers) {
       const r = this.liveRenderer;
       if (!r) return;
-      this.piers = new PierLayer(this.scene, (c) => r.createPropMaterial(c));
+      this.piers = new PierLayer(this.scene, (c, ghost) => r.createPropMaterial(c, 0, ghost));
     }
     const want: PierSpot[] = [];
     for (const e of this.entries.values()) {
       if (e.index < this.win[0] - 1 || e.index > this.win[1] + 1) continue;
-      if (e.beach.pier || e.beach.id === this.piersPreview) want.push({ key: `${e.beach.id}@${e.index}`, x: this.xFor(e.index) });
+      // the preview is a ghost until the beach really has one
+      if (e.beach.pier || e.beach.id === this.piersPreview) want.push({ key: `${e.beach.id}@${e.index}`, x: this.xFor(e.index), ghost: !e.beach.pier });
     }
     this.piers.sync(want);
   }

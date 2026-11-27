@@ -287,11 +287,13 @@ export class BeachRenderer {
   }
 
   /** A flat-shaded lit material with a fixed colour (props such as shells). `shine` is its specular strength, 0 for matte. */
-  createPropMaterial(color: RGB, shine = 0): ShaderMaterial {
+  /** `ghost`: a see-through, paler look for something shown before it's placed (the pier preview) */
+  createPropMaterial(color: RGB, shine = 0, ghost = false): ShaderMaterial {
     const m = this.material('beachFlat', {
       attributes: ['position', 'normal'],
       uniforms: ['sunDir', 'sunCol', 'ambCol', 'shadowCol', 'cameraDir', 'windTime', 'baseCol', 'fogCol', 'fadeTop', 'fadeBottom', 'shine'],
       samplers: [],
+      ...(ghost ? { defines: ['#define GHOST'] } : {}),
     });
     m.setFloat('windTime', 0);
     m.setColor3('baseCol', c3(color));
@@ -354,12 +356,13 @@ export class BeachRenderer {
 
   private material(
     shader: string,
-    opts: { attributes: string[]; uniforms: string[]; samplers: string[] },
+    opts: { attributes: string[]; uniforms: string[]; samplers: string[]; defines?: string[] },
   ): ShaderMaterial {
     const mat = new ShaderMaterial(shader, this.scene, shader, {
       attributes: opts.attributes,
       uniforms: ['world', 'viewProjection', ...opts.uniforms],
       samplers: opts.samplers,
+      ...(opts.defines ? { defines: opts.defines } : {}),
     });
     this.lit.push({ mat });
     return mat;

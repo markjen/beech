@@ -39,6 +39,7 @@ const api = (page, path, init = {}) =>
     [path, init],
   );
 const drawn = (page) => page.evaluate(() => window.__beech.neighbors().piersDrawn);
+const ghosts = (page) => page.evaluate(() => window.__beech.neighbors().piersGhost);
 
 // A: three beaches, home in the middle: left - home - right
 const a = await device('A');
@@ -74,6 +75,7 @@ await buyPier();
 await a.waitForSelector('.pier-preview:not([hidden])', { timeout: 10000 });
 await a.waitForTimeout(1500);
 check((await drawn(a)) === 1, 'the preview draws the pier');
+check((await ghosts(a)) === 1, 'the preview is drawn see-through');
 check((await a.evaluate(() => window.__beech.account().piers)).owned === 1, 'the pier is in the bag');
 if (shots) await a.screenshot({ path: `${shots}/pier-preview.png` });
 
@@ -90,6 +92,7 @@ await a.waitForSelector('.pier-preview', { state: 'hidden', timeout: 10000 });
 await a.waitForTimeout(800);
 check((await a.evaluate((id) => window.__beech.account().mine(id)?.pier, home.id)) === 'active', 'the pier is placed');
 check((await drawn(a)) === 1, 'the placed pier is drawn');
+check((await ghosts(a)) === 0, 'the placed pier is drawn solid');
 if (shots) {
   await a.evaluate(() => window.__beech.view('chair'));
   await a.waitForTimeout(1500);
