@@ -48,6 +48,15 @@ describe('merch catalog', () => {
     expect(items.every((i) => i.quantity === 2)).toBe(true);
     expect(() => printItems({ product: 'beach-tee', quantity: 1, unitCents: 3600, choice: { color: 'white', size: 'M' } }, ON, (f) => f)).toThrow(/no print file/);
   });
+
+  it('gives the embroidered hat Printful’s thread colours, and nothing else any options', () => {
+    const hat = printItems({ product: 'hat', quantity: 1, unitCents: 2800, choice: { color: 'khaki', size: 'One size' } }, ON, (f) => `https://x/${f}`);
+    expect(hat).toHaveLength(1);
+    expect(hat[0].files).toEqual([{ type: 'embroidery_front', url: 'https://x/logo-hat.png' }]);
+    expect(hat[0].options).toEqual([{ id: 'thread_colors', value: ['#FFFFFF', '#3399FF', '#000000', '#A67843'] }]);
+    const tee = printItems({ product: 'tee', quantity: 1, unitCents: 3000, choice: { color: 'white', size: 'M' } }, ON, (f) => `https://x/${f}`);
+    expect(tee[0].options).toBeUndefined();
+  });
 });
 
 describe('merch providers', () => {

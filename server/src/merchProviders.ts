@@ -237,6 +237,7 @@ export async function printfulDraft(cfg: MerchConfig, orderId: string, recipient
       name: i.name,
       retail_price: dollars(i.retailCents),
       ...(i.files ? { files: i.files } : {}),
+      ...(i.options ? { options: i.options } : {}),
     })),
     retail_costs: { shipping: dollars(shippingCents) },
   });
