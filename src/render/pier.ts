@@ -96,6 +96,8 @@ export class PierLayer {
   /** the materials, solid and ghost, made when first needed */
   private mats = new Map<boolean, Record<keyof PierGeometry, ShaderMaterial>>();
   private shown = new Map<string, { x: number; ghost: boolean; root: Mesh; parts: Record<keyof PierGeometry, Mesh> }>();
+  /** piers that left the view, hidden, to show again without a rebuild (they're all alike) */
+  private spare: { x: number; ghost: boolean; root: Mesh; parts: Record<keyof PierGeometry, Mesh> }[] = [];
 
   constructor(
     private readonly scene: Scene,
@@ -140,8 +142,11 @@ export class PierLayer {
     const keep = new Set(want.map((w) => w.key));
     for (const [key, s] of this.shown) {
       if (keep.has(key)) continue;
-      s.root.dispose(false, false);
       this.shown.delete(key);
+      if (this.spare.length < 3) {
+        s.root.setEnabled(false);
+        this.spare.push(s);
+      } else s.root.dispose(false, false);
     }
     for (const w of want) {
       const ghost = !!w.ghost;
@@ -153,7 +158,15 @@ export class PierLayer {
         s.ghost = ghost;
       }
       if (!s) {
-        s = { x: Number.NaN, ghost, ...this.build(w.key, ghost) };
+        s = this.spare.pop();
+        if (s) {
+          s.root.setEnabled(true);
+          if (s.ghost !== ghost) {
+            const mats = this.matsFor(ghost);
+            for (const name of ['deck', 'pilings', 'rails'] as const) s.parts[name].material = mats[name];
+            s.ghost = ghost;
+          }
+        } else s = { x: Number.NaN, ghost, ...this.build(w.key, ghost) };
         this.shown.set(w.key, s);
       }
       if (s.x !== w.x) {
@@ -169,6 +182,8 @@ export class PierLayer {
 
   dispose(): void {
     this.sync([]);
+    for (const s of this.spare) s.root.dispose(false, false);
+    this.spare = [];
     for (const set of this.mats.values()) for (const m of Object.values(set)) m.dispose();
     this.mats.clear();
   }
