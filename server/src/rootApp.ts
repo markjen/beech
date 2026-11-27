@@ -12,6 +12,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { guideHtml, releaseNotesHtml } from './guide.js';
+import { storyHtml } from './story.js';
 import { createRateLimiter, httpLogger, logEvent } from './observability.js';
 import { createLiveBeaches, liveConfig, type LiveBeaches } from './liveBeach.js';
 import { landingHtml } from './landingSite.js';
@@ -128,7 +129,7 @@ export function createRootApp(db: Db, api: Hono<any, any, any>, publicDir: strin
     if (
       p === '/guide' || p === '/guide/' || p.startsWith('/guide/') ||
       p === '/help' || p === '/releases' ||
-      p === '/privacy.html' || p === '/privacy' ||
+      p === '/privacy.html' || p === '/privacy' || p === '/story' ||
       p.startsWith('/icons/') || p.startsWith('/landing-assets/') ||
       p === '/hero-beach.jpg' ||
       p === '/favicon-32.png' || p === '/apple-touch-icon.png'
@@ -149,6 +150,7 @@ export function createRootApp(db: Db, api: Hono<any, any, any>, publicDir: strin
   root.get('/guide', guide(() => guideHtml(Date.now())));
   root.get('/guide/', guide(() => guideHtml(Date.now())));
   root.get('/guide/releases', guide(releaseNotesHtml));
+  root.get('/story', guide(storyHtml));
   root.get('/help', (c) => c.redirect('/guide', 301));
   root.get('/releases', (c) => c.redirect('/guide/releases', 301));
   root.get('/privacy', (c) => c.redirect('/privacy.html', 301));

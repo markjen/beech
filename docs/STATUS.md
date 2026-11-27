@@ -1860,3 +1860,7 @@ Five findings, all fixed with a test each:
 - New offers are beech bucks only (`Product.bucksOnly`): the five new pets and
   the pier (its Steam id 1019 was never set up and is dropped). Real money
   only buys beech-buck packs, plus the old item products for old app versions.
+
+## How beech was built: /story (2026-11-27)
+
+https://beech.games/story (`server/src/story.ts`) tells how beech was built in a few days by Mark and the agents (Claude, Antigravity, Muse, Codex). It is linked from the landing footer as "How it was built" and served on the landing host. The source logs, one per agent, are in `docs/story/`. Codex's log is still to come; add it to `docs/story/` and the page when it exists.

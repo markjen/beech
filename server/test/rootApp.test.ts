@@ -160,6 +160,15 @@ describe('the landing page and host routing', () => {
     expect(await r.text()).toContain('id="claw"');
   });
 
+  it('/story (how beech was built) answers on a landing host, linked from the landing footer', async () => {
+    const r = await on('/story', 'beech.games');
+    expect(r.status).toBe(200);
+    const html = await r.text();
+    expect(html).toContain('How beech was built');
+    for (const agent of ['Claude', 'Antigravity', 'Muse', 'Codex']) expect(html).toContain(agent);
+    expect(await (await on('/', 'beech.games')).text()).toContain('href="/story"');
+  });
+
   it('landing artwork under /landing-assets/ answers on a landing host', async () => {
     const r = await on('/landing-assets/hero-day.webp', 'beech.games');
     expect(r.status).toBe(200);
