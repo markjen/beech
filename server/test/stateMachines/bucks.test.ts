@@ -42,6 +42,7 @@ const spend = (w: Who) => s.post('/store/credit-purchase', w.token, { productId:
 const oldDiscountUnit = (w: Who) =>
   s.db.query("INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at, unit_cents) VALUES ($1, 'parasol', 1, 'shop', $2, 50)", [w.id, s.clock.now]);
 const tradeIn = (w: Who, item = ITEM, quantity = 1) => s.post('/bag/trade-in', w.token, { item, quantity });
+const tradeLines = (w: Who, lines: { item: string; quantity: number }[]) => s.post('/bag/trade-in', w.token, { lines });
 const gift = (from: Who, to: Who) => s.post('/gifts', from.token, { code: to.code, item: ITEM });
 async function save(w: Who, k: number) {
   const epoch = Number((await s.db.query<{ epoch: number }>('SELECT epoch FROM beach WHERE id = $1', [w.id]))[0].epoch);
@@ -82,6 +83,38 @@ async function answer(r: Response): Promise<BucksAnswer> {
 }
 
 describe('beech bucks: one transition at a time', () => {
+  it('TradeMany: several things at once, each at its value, in one go', async () => {
+    const w = await person();
+    await s.grant(w.token, ITEM, 2);
+    await s.grant(w.token, 'deckchair');
+    const r = await tradeLines(w, [{ item: ITEM, quantity: 2 }, { item: 'deckchair', quantity: 1 }]);
+    expect(r.status).toBe(200);
+    const got = (await r.json()) as { lines: { item: string; quantity: number; credited: number }[]; credited: number };
+    expect(got.lines).toEqual([
+      { item: ITEM, quantity: 2, credited: 20 },
+      { item: 'deckchair', quantity: 1, credited: 10 },
+    ]);
+    expect(got.credited).toBe(30);
+    expect(await balance(w)).toEqual({ bal: 30, debt: 0 });
+  });
+
+  it('TradeMany: one short line refuses the lot, and nothing is taken', async () => {
+    const w = await person();
+    await s.grant(w.token, ITEM, 2);
+    await s.grant(w.token, 'deckchair');
+    expect((await save(w, 2)).status).toBe(200); // both parasols on the beach
+    const r = await tradeLines(w, [{ item: 'deckchair', quantity: 1 }, { item: ITEM, quantity: 1 }]);
+    expect(r.status).toBe(409);
+    expect(await r.json()).toMatchObject({ item: ITEM, free: 0, error: 'pick it up off your beach first' });
+    expect(await balance(w)).toEqual({ bal: 0, debt: 0 });
+    expect(await units(w)).toEqual([10, 10]);
+    // the same thing twice counts as one line: 2 of 1 free is short too
+    expect((await save(w, 1)).status).toBe(200);
+    expect((await tradeLines(w, [{ item: ITEM, quantity: 1 }, { item: ITEM, quantity: 1 }])).status).toBe(409);
+    expect((await tradeLines(w, [])).status).toBe(400);
+    expect((await tradeLines(w, [{ item: 'rock', quantity: 1 }])).status).toBe(400);
+  });
+
   it('a pack fills the balance; spending moves it into the bag; trading in gives exactly that back', async () => {
     const w = await person();
     await buyPack(w, 'bucks_30');
@@ -209,8 +242,8 @@ describe('beech bucks: TLC counterexamples, replayed against the server', () => 
 });
 
 describe('beech bucks: random walks, server vs model', () => {
-  type Action = 'pack' | 'refund' | 'spend' | 'free' | 'gift' | 'save' | 'trade';
-  const actions: Action[] = ['pack', 'pack', 'refund', 'spend', 'spend', 'free', 'gift', 'save', 'save', 'trade', 'trade', 'trade'];
+  type Action = 'pack' | 'refund' | 'spend' | 'free' | 'gift' | 'save' | 'trade' | 'trades';
+  const actions: Action[] = ['pack', 'pack', 'refund', 'spend', 'spend', 'free', 'free', 'gift', 'save', 'save', 'trade', 'trade', 'trades', 'trades'];
 
   for (const seed of [31, 32, 33, 34, 35, 36]) {
     it(`seed ${seed}: 40 steps agree with the model and keep its invariants`, async () => {
@@ -246,6 +279,10 @@ describe('beech bucks: random walks, server vs model', () => {
           const k = r.int(3);
           trace[trace.length - 1] = `save(${k})`;
           [got, want] = [await answer(await save(w, k)), m.save(k)];
+        } else if (a === 'trades') {
+          // several at once (TradeMany): two lines, merged into one
+          const res = await tradeLines(w, [{ item: ITEM, quantity: 1 }, { item: ITEM, quantity: 1 }]);
+          [got, want] = [{ status: res.status }, { status: m.tradeMany(2).status }];
         } else {
           const res = await tradeIn(w);
           const wanted = m.tradeIn();

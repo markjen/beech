@@ -174,9 +174,97 @@ export class InventoryTray {
     this.dialog.open(id, name, this.tradeInfo.get(id));
   }
 
+  /** select several to trade in at once: how many of each are picked (null: not selecting) */
+  private picks: Map<string, number> | null = null;
+  private pickStatus = '';
+  private pickBusy = false;
+
+  /** Select mode: tap things to pick them (each tap one more, up to what's free, then back to none). */
+  setSelecting(on: boolean): void {
+    this.picks = on ? new Map() : null;
+    this.pickStatus = '';
+    this.render();
+  }
+
+  get selecting(): boolean {
+    return this.picks !== null;
+  }
+
+  /** what the picks give back: each thing's newest units first, the order a trade-in takes them */
+  private picksValue(): number {
+    let total = 0;
+    for (const [id, n] of this.picks ?? []) total += (this.tradeInfo.get(id)?.values ?? []).slice(0, n).reduce((t, v) => t + v, 0);
+    return total;
+  }
+
+  private pickTap(id: string): void {
+    if (!this.picks) return;
+    const free = this.tradeInfo.get(id)?.free ?? 0;
+    if (free < 1) return;
+    const n = ((this.picks.get(id) ?? 0) + 1) % (free + 1);
+    if (n) this.picks.set(id, n);
+    else this.picks.delete(id);
+    this.pickStatus = '';
+    this.render();
+  }
+
+  private async tradePicks(): Promise<void> {
+    const a = this.bagActions;
+    if (!a || !this.picks || !this.picks.size || this.pickBusy) return;
+    this.pickBusy = true;
+    this.pickStatus = 'trading in…';
+    this.render();
+    try {
+      const r = await a.tradeInMany([...this.picks].map(([item, quantity]) => ({ item, quantity })));
+      this.picks = new Map();
+      this.pickStatus = `+${sd(r.credited)}`;
+    } catch (e) {
+      this.pickStatus = (e as Error).message;
+    } finally {
+      this.pickBusy = false;
+      this.render();
+    }
+  }
+
+  /** at the bottom while selecting: what the picks give back, and trade in */
+  private pickBar(): HTMLElement {
+    const bar = document.createElement('div');
+    bar.className = 'inv-pickbar';
+    const count = [...(this.picks ?? [])].reduce((t, [, n]) => t + n, 0);
+    const go = document.createElement('button');
+    go.type = 'button';
+    go.className = 'action trade-go';
+    go.dataset.act = 'bag-trade-picks';
+    go.textContent = count ? `trade in ${count} · ${sd(this.picksValue())}` : 'trade in';
+    go.disabled = !count || this.pickBusy;
+    go.addEventListener('click', () => void this.tradePicks());
+    const status = document.createElement('p');
+    status.className = 'trade-status';
+    status.setAttribute('role', 'status');
+    status.textContent = this.pickStatus;
+    bar.append(go, status);
+    return bar;
+  }
+
+  /** the tile's ×n badge and look while selecting */
+  private markPick(b: HTMLElement, id: string): void {
+    if (!this.picks) return;
+    const n = this.picks.get(id) ?? 0;
+    const can = (this.tradeInfo.get(id)?.free ?? 0) > 0;
+    b.classList.toggle('picked', n > 0);
+    b.classList.toggle('unpickable', !can);
+    b.setAttribute('aria-pressed', String(n > 0));
+    if (n > 0) {
+      const badge = document.createElement('i');
+      badge.className = 'inv-pick';
+      badge.textContent = `×${n}`;
+      b.appendChild(badge);
+    }
+  }
+
   /** Long press (or right click) on a tile opens the trade-in dialog. */
   private longPress(el: HTMLElement, id: string): void {
-    if (!this.bagActions || this.signIn) return;
+    if (!this.bagActions || this.signIn || this.picks) return;
     // the press is tracked on the bag, not the tile: the bag re-renders its
     // tiles while you hold, which would lose a per-tile timer's events
     el.addEventListener('pointerdown', (e) => {
@@ -297,7 +385,14 @@ export class InventoryTray {
     if (this.bagActions && !this.signIn) {
       const tip = document.createElement('p');
       tip.className = 'inv-tip';
-      tip.textContent = 'long press item to trade in';
+      tip.textContent = this.picks ? 'tap items to trade in' : 'long press item to trade in';
+      const sel = document.createElement('button');
+      sel.type = 'button';
+      sel.className = 'action inv-select';
+      sel.dataset.act = 'bag-select';
+      sel.textContent = this.picks ? 'cancel' : 'select';
+      sel.addEventListener('click', () => this.setSelecting(!this.picks));
+      tip.appendChild(sel);
       this.tray.appendChild(tip);
     }
     const signIn = this.signIn;
@@ -317,7 +412,7 @@ export class InventoryTray {
       n.appendChild(b);
       this.tray.appendChild(n);
     }
-    if (this.machines.length) {
+    if (this.machines.length && !this.picks) {
       const row = document.createElement('div');
       row.className = 'inv-machines';
       for (const m of this.machines) {
@@ -357,6 +452,13 @@ export class InventoryTray {
         b.title = `${it.name}: one of a kind${finder ? `, first found by ${finder}` : ''}`;
       }
       if (!it.unlimited && left <= 0 && it.id !== this.selected) b.classList.add('used');
+      if (this.picks) {
+        if (it.unlimited) continue; // free things never trade in
+        this.markPick(b, it.id);
+        b.addEventListener('click', () => this.pickTap(it.id));
+        grid.appendChild(b);
+        continue;
+      }
       b.addEventListener('click', () => {
         this.select(it.id === this.selected ? null : it.id);
         this.setOpen(false);
@@ -365,12 +467,14 @@ export class InventoryTray {
       grid.appendChild(b);
     }
     this.tray.appendChild(grid);
-    this.tray.appendChild(this.foundSection());
+    if (this.picks) this.tray.appendChild(this.pickBar());
+    else this.tray.appendChild(this.foundSection());
     // things you own that don't go on the sand (an extra beach, beach snacks)
     for (const x of EXTRAS) {
       const n = this.ownedOf(x.id);
       if (!n) continue;
       if (x.id === 'crab-treat' || x.id.startsWith('pet-')) {
+        if (this.picks) continue; // snacks and pets never trade in
         const b = document.createElement('button');
         b.type = 'button';
         b.className = `inv-item extra rarity-${x.rarity}`;
@@ -391,11 +495,17 @@ export class InventoryTray {
         b.innerHTML = `${icon(x.id as IconName)}<b>${x.name}</b><span>${count}</span>`;
         // an extra beach you aren't using can be traded in (long press)
         if (x.id === 'beach') this.longPress(b, x.id);
+        if (this.picks && x.id === 'beach') {
+          this.markPick(b, x.id);
+          b.addEventListener('click', () => this.pickTap(x.id));
+          b.setAttribute('role', 'button');
+          b.tabIndex = 0;
+        }
         grid.appendChild(b);
       }
     }
     // your pets in the bag (docs/PETS.md): tap one, then tap a beach of yours to set it down
-    for (const p of this.bagPets) {
+    for (const p of this.picks ? [] : this.bagPets) {
       const b = document.createElement('button');
       b.type = 'button';
       const kind = petKind(p.species);
@@ -437,6 +547,8 @@ export interface TradeInfo {
 export interface BagActions {
   /** Trade `quantity` in. Resolves with the beech bucks credited; throws with the reason it didn't. */
   tradeIn: (id: string, quantity: number) => Promise<{ credited: number }>;
+  /** Trade several things in at once (all of them or none). */
+  tradeInMany: (lines: { item: string; quantity: number }[]) => Promise<{ credited: number }>;
   /** Gift one: opens your account page on beechshore with it picked. */
   gift: (id: string) => void;
   /** can this one be gifted? */

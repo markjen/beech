@@ -103,8 +103,6 @@ _(nothing right now)_
 
 - [x] **Apple sign-in on the web** (2026-11-26): added Apple JS SDK popup sign-in (`webAppleSignIn` in `src/net/account.ts`) to the web sign-in screen and Settings → connected sign-ins when `VITE_APPLE_CLIENT_ID` is set (`Dockerfile`, `deploy-gcp.yml`). Owner setup: create a Sign in with Apple Services ID for `play.beech.games` and set `vars.APPLE_CLIENT_ID` + include it in `vars.APPLE_CLIENT_IDS`.
 
-- [ ] **Beech bucks, follow-ups** ([BEECH_BUCKS.md](BEECH_BUCKS.md)): trade in
-  several at once from the bag **(model first: `SandBucks.tla`)**.
 
 Items marked **(model first)** change state the server keeps: they start
 with their TLA+ spec ([STATE_MACHINES.md](STATE_MACHINES.md#model-first-workflow),
@@ -221,6 +219,9 @@ picked up.
 
 ## Done (recent)
 
+- [x] **Trade in several at once** (2026-11-27): select in the bag,
+  `POST /bag/trade-in { lines }`, all or nothing (`TradeMany` in
+  `specs/tla/SandBucks.tla`). BEECH_BUCKS.md.
 - [x] **Promo codes give bonus beech bucks** (2026-11-27): `bucks` codes
   redeem on their own or with a web pack; `percent` codes give a bonus on a
   web pack; never a discount. Replaces account-loaded promos (#148).
