@@ -146,11 +146,13 @@ await a.click(`button[data-act="cp-restore-${one.id}"]`);
 await a.waitForFunction(() => window.__beech.info().objects.some((o) => o.item === 'lighthouse'), null, { timeout: 20000 });
 check(dialogs.some((d) => d.startsWith('A confirm: Replace')), 'it asked before replacing the beach');
 check((await things(a)) === 'lighthouse,rock', 'restored in full');
-await a.waitForSelector('.hint.with-action .hint-action', { timeout: 5000 });
+await a.waitForSelector('.hint:has-text("Restored") .hint-action', { timeout: 5000 });
 check(true, 'an Undo toast appeared');
 if (process.env.SHOT_DIR) await a.screenshot({ path: `${process.env.SHOT_DIR}/restored.png` });
 await a.evaluate(() => window.__beech.sheet.hide());
-await a.click('.hint-action');
+// scoped to the Restored toast: another action toast on the page (a welcome
+// gift, a new-version prompt) has its own button under `.hint-action`
+await a.click('.hint:has-text("Restored") .hint-action');
 await a.waitForFunction(() => !window.__beech.info().objects.some((o) => o.item === 'lighthouse'), null, { timeout: 20000 });
 check((await things(a)) === 'rock', 'Undo put the beach back as it was before');
 

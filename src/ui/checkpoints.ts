@@ -13,11 +13,27 @@ import { unlockSteamAchievement } from '../platform/steamFeatures';
 
 /** A checkpoint's thumbnail from its saved bytes (a small top-down map), as an image URL. */
 export async function thumbnailOf(bytes: Uint8Array, size = 72): Promise<string> {
+  // No thumbnails when rendering is off (?norender, the e2e path): drawing
+  // the map is cheap, but reading the pixels back stalls the main thread
+  // for tens of seconds on software rendering (a single toBlob is 97% of
+  // profiler samples over a ~25 s stall), and the panel works fine without
+  // the picture. Callers already treat a missing thumbnail as optional,
+  // and thumbnails are covered by scripts/sandbox-e2e.mjs on a real device.
+  if (new URLSearchParams(location.search).has('norender')) throw new Error('thumbnails off with ?norender');
   const b = fitWorld(await decodeSand(bytes));
   const c = document.createElement('canvas');
   c.width = c.height = size;
   drawMap(c, b, b.objects);
-  return c.toDataURL('image/png');
+  // toBlob, not toDataURL: the async API, and about twice as fast on a
+  // slow GPU. It still stalls the main thread while the pixels are read
+  // back and encoded (~25 s for one thumbnail on software rendering,
+  // CDP profiler: toBlob is 97% of samples over the stall), so this is
+  // only a stopgap: the real fix is to use the canvas itself as the
+  // thumbnail and never read the pixels back. Callers already treat a
+  // missing thumbnail as optional.
+  const blob = await new Promise<Blob | null>((resolve) => c.toBlob(resolve, 'image/png'));
+  if (!blob) throw new Error('could not draw the thumbnail');
+  return URL.createObjectURL(blob);
 }
 
 export interface CheckpointHost {

@@ -1186,6 +1186,40 @@ here: it needs the service's URL on the web OAuth client.
   the same page; making a new beach), and `checkpoints` sometimes misses
   its Undo toast on the software-GPU runner: those scripts need a look,
   separately from this work.
+- e2e on 2026-11-27 (the look): all 14 scripts pass, run one at a time
+  (`E2E_JOBS=1 npm run e2e`, `E2E_RENDER=0` on the software-GPU runner;
+  the 3-job default starves a 1.5-CPU VM and the same scripts time out
+  there). Fixed on the way: `waitForFunction` defaults to rAF polling,
+  which stalls in `?norender` mode, so `scripts/lib/e2e.mjs` now defaults
+  it to a 100 ms interval; `thumbnailOf` blocked the main thread ~50 s on
+  `canvas.toDataURL`, now async `toBlob` (still ~25 s of readback + encode
+  on the main thread, so thumbnails are skipped under `?norender` — the
+  e2e path — and covered by `scripts/sandbox-e2e.mjs` on a real device;
+  the real fix is to use the canvas itself as the thumbnail and never
+  read the pixels back); navigations and boots are slow on the software
+  renderer (a goto after an import took 62 s to commit), so the harness
+  gives them 120 s / 60 s; `live` restored without an edit token (426 since
+  the single-editor fencing of #95); `copy` grabbed the welcome-gift
+  toast's button instead of the Copied toast's Undo (both toasts share the
+  page — lookups are now scoped to their toast); `invites` went home while
+  the invite's pending visit was still applying (the signed-out visit
+  already shows Ana, so the waits didn't prove the sign-in visit finished
+  — it retries going home until the anchor stays home) and its dig drag
+  can land before the home beach is pickable (the wait now also requires
+  the shore drawn around home: `liveVisible` and a beach at the centre —
+  before that, `pickAt` finds nothing and the stroke never opens; the drag
+  itself retries as a safety net); `sections` and `piers` waited a fixed
+  1.5 s for the second device instead of waiting for the rows / pier;
+  `sand-rows` (new in #168) sent all its brush moves at once, so the
+  worker only ever dug at the stroke's final position — the moves are
+  now spread over time, like a real drag. Underlying all of it: rAF runs
+  at ~1 fps in the headless shell with rendering off, so anything that
+  waits on frames (waits, click stability) needs an interval or a retry.
+  Still open: two `visit()` calls racing each other are not serialised —
+  the last fetch to finish wins, not the last call — so going home in the
+  first second after signing in from an invite link can be undone by the
+  pending visit landing late (the e2e retry works around it; a fix would
+  serialise `anchorAt`).
 - **Permissions audit (2026-11-25):** every endpoint that changes a beach
   (its sand, name, place, code, neighbors, pet, checkpoints, restores,
   `/here`, `/away/seen`, the dev `age-beach`) resolves the beach through

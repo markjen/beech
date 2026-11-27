@@ -88,20 +88,30 @@ check(true, 'visiting Ana counts as the guide’s visit step');
 // Home, then three guide steps. Wait for the home simulation to bind
 // before hitting sand, and aim at dry land in the portrait viewport.
 await pf.bringToFront();
-// (the invite link's visit is applied again once sign-in has opened the
-// shore, which can land after a quick "go home": go home until it sticks)
-for (let i = 0; i < 4; i++) {
+// Going home races the invite's pending visit, which is still applying:
+// the signed-out visit already shows Ana, so the waits above don't prove
+// the sign-in visit finished, and a visit(null) issued while it is still
+// in flight is undone when it lands. Keep asking until the anchor stays
+// home (the pending visit applies once, so the next ask sticks).
+for (let attempt = 0; ; attempt++) {
   await pf.evaluate(async () => {
     await window.__beech.neighbors().visit(null);
     window.__beech.cam.goTo(0, true);
   });
-  const home = await pf
-    .waitForFunction(() => {
+  try {
+    // home AND pickable: the beach id and the save prove the account side,
+    // but a drag also needs the shore drawn around home (liveVisible, and
+    // a beach at the centre) — before that, pickAt finds nothing and the
+    // stroke never opens.
+    await pf.waitForFunction(() => {
       const app = window.__beech;
-      return !app.neighbors().visiting && app.beachId() === app.account().home?.id && app.sync().state === 'saved';
-    }, null, { timeout: 15000 })
-    .then(() => true, () => false);
-  if (home) break;
+      const nv = app.neighbors();
+      return !nv.visiting && app.beachId() === app.account().home?.id && app.sync().state === 'saved' && nv.liveVisible && !!nv.beachAt(0);
+    }, null, { timeout: 10000 });
+    break;
+  } catch {
+    if (attempt >= 4) throw new Error('could not go home: the invite visit keeps coming back');
+  }
 }
 const drag = async (tool) => {
   const [from, to] = await pf.evaluate((tool) => {
@@ -133,7 +143,18 @@ const drag = async (tool) => {
   await pf.mouse.up();
 };
 await drag('dig');
-await pf.waitForFunction(() => window.__beech.guide.done.has('dig'), null, { timeout: 60000 });
+// the drag can land before the home simulation has bound (the wait above
+// proves the beach is home and saved, not that the sim is driving it), so
+// a stroke that registers nothing is dragged again instead of failing
+for (let attempt = 0; ; attempt++) {
+  try {
+    await pf.waitForFunction(() => window.__beech.guide.done.has('dig'), null, { timeout: 20000 });
+    break;
+  } catch {
+    if (attempt >= 2) throw new Error('the dig step never registered');
+    await drag('dig');
+  }
+}
 await drag('pile');
 await pf.waitForTimeout(300);
 await pf.keyboard.press('Control+z');

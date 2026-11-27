@@ -93,11 +93,15 @@ check(Math.abs(h[2] - h[1] - (h[1] - h[0])) < 0.01, `the sand runs straight on f
 // dig in the second row, and put a conch down in the first
 const y = 50;
 const before = await height(a, 12, y);
-await a.evaluate(([sy]) => {
-  const send = window.__beech.send;
-  send({ type: 'brush', phase: 'start', x: 12, y: sy, r: 0.6, mode: 'dig' });
-  for (let i = 1; i <= 6; i++) send({ type: 'brush', phase: 'move', x: 12 + i * 0.2, y: sy, r: 0.6 });
-}, [y]);
+// spread the moves over time, like a real drag: the worker applies the
+// brush at the stroke's current position each tick, so moves sent all at
+// once only ever dig at the final position (the measurement point, mid
+// path, barely moves)
+await a.evaluate(([sy]) => window.__beech.send({ type: 'brush', phase: 'start', x: 12, y: sy, r: 0.6, mode: 'dig' }), [y]);
+for (let i = 1; i <= 6; i++) {
+  await a.evaluate(([sx, sy]) => window.__beech.send({ type: 'brush', phase: 'move', x: sx, y: sy, r: 0.6 }), [12 + i * 0.2, y]);
+  await a.waitForTimeout(150);
+}
 await a.waitForTimeout(800);
 await a.evaluate(() => window.__beech.send({ type: 'brush', phase: 'end' }));
 await a.evaluate(() => window.__beech.send({ type: 'placeObject', obj: { kind: 'conch', item: 'conch', x: 20, y: 38, angle: 0, size: 0.3, variant: 1 } }));
