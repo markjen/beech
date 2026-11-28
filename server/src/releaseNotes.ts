@@ -25,6 +25,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       'Picking things up off your beach now counts toward trade-ins right away — the bag no longer says “0 of 0” until your next sign-in.',
       'A new sand extension now previews as beach sand right away, instead of showing as pale scenery with dune lips and grass until you save.',
       'A boardwalk row’s sand now matches the beach’s sand, and the stray grass tufts around the deck are gone.',
+      'Your octopus is readable from above now — its eyes sit on top of the mantle and its arms fan out at the waterline, instead of hiding underwater.',
     ],
   },
   {
