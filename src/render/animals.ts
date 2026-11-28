@@ -260,8 +260,11 @@ function buildSandpiperMesh(scene: Scene): Mesh {
  * instead of trailing along the seabed — from above the animal reads as a
  * domed mantle, two dark eyes, and eight arms, at any facing. Eyes and
  * glints pass alpha 0 so the camo tint never washes them out.
+ *
+ * Exported for tests/octopusReadability.test.ts, which pins the
+ * above-the-waterline geometry.
  */
-function buildOctopusMesh(scene: Scene): Mesh {
+export function buildOctopusMesh(scene: Scene): Mesh {
   const b = makeBuilder();
   const c = ANIMAL_COLORS.octopus;
   // bulbous mantle, tipped back a little; the crown is narrower than the
