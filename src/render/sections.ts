@@ -6,9 +6,10 @@ import { SECTION, WORLD_SIZE_Z } from '../config';
 import type { RGB } from '../palette';
 import { ORIGIN_Z } from './beachRenderer';
 import { finish } from './meshKit';
-import { colorOf, sectionGeometry, type ColorKey, type SectionParts } from './sectionShapes';
+import { colorOf, SAND_GROUND_KEY, sectionGeometry, type ColorKey, type SectionParts } from './sectionShapes';
+import { sandRowsOf } from '../world/sections';
 
-export { colorOf, sectionGeometry, type SectionParts };
+export { colorOf, SAND_GROUND_KEY, sectionGeometry, type SectionParts };
 
 // Inland beach sections (docs/INLAND_SECTIONS.md): rows of scenery behind a
 // beach, each a slab as wide as the beach and SECTION.depth deep. Row 0
@@ -46,6 +47,9 @@ const SPARE = 6;
 
 export class SectionLayer {
   private mats = new Map<string, ShaderMaterial>();
+  /** the ground that is beach sand: one material, painted with the live
+      sandDry by the renderer instead of the fixed fallback colour */
+  private sandMat?: ShaderMaterial;
   private shown = new Map<string, { sig: string; x: number; root: Mesh }>();
   /** rows that left the view, by key and layout, oldest first */
   private spare = new Map<string, { sig: string; x: number; root: Mesh }>();
@@ -53,9 +57,20 @@ export class SectionLayer {
   constructor(
     private readonly scene: Scene,
     private readonly material: (color: RGB) => ShaderMaterial,
+    private readonly sandMaterial?: () => ShaderMaterial,
   ) {}
 
   private mat(key: ColorKey): ShaderMaterial {
+    if (key === SAND_GROUND_KEY) {
+      // without a live-sand material, fall back to the fixed colour
+      if (!this.sandMaterial) return this.propMat(key);
+      if (!this.sandMat) this.sandMat = this.sandMaterial();
+      return this.sandMat;
+    }
+    return this.propMat(key);
+  }
+
+  private propMat(key: ColorKey): ShaderMaterial {
     const c = colorOf(key);
     const k = c.join(',');
     let m = this.mats.get(k);
@@ -67,10 +82,15 @@ export class SectionLayer {
   private build(spot: SectionSpot): Mesh {
     const root = new Mesh(`sections:${spot.key}`, this.scene);
     const byColor = new Map<string, { key: ColorKey; P: number[]; I: number[] }>();
+    // sand rows straight behind the beach are the beach's own sand, not
+    // scenery: the ones the grid hasn't drawn yet (a preview, or a beach
+    // still refitting after a save) show as plain sand, like they will be
+    const sandRows = sandRowsOf(spot.rows.map((r) => r.type));
     spot.rows.forEach((row, i) => {
       if (i < (spot.from ?? 0)) return;
       const z0 = rowZ(i);
-      for (const [key, g] of sectionGeometry(row.type, row.neg, row.pos, i + 1)) {
+      const plainSand = row.type === 'section-sand' && i < sandRows;
+      for (const [key, g] of sectionGeometry(row.type, row.neg, row.pos, i + 1, plainSand ? { plainSand: true } : undefined)) {
         const ck = colorOf(key).join(',');
         let out = byColor.get(ck);
         if (!out) byColor.set(ck, (out = { key, P: [], I: [] }));
@@ -143,5 +163,7 @@ export class SectionLayer {
     this.spare.clear();
     for (const m of this.mats.values()) m.dispose();
     this.mats.clear();
+    this.sandMat?.dispose();
+    this.sandMat = undefined;
   }
 }

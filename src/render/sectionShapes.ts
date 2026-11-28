@@ -27,6 +27,12 @@ export { SECTION, PROP_COLORS };
 export type ColorKey = keyof typeof PROP_COLORS | `${'secWall' | 'secAwning'}${number}`;
 export type SectionParts = Map<ColorKey, { P: number[]; I: number[] }>;
 
+/** The ground of a row that is beach sand (boardwalk, dunes, sand): the
+    layer paints this with the live sandDry, so the row's sand matches the
+    beach's instead of the fixed secSand. The fixed colour behind the key is
+    only the fallback for the shore site's pictures. */
+export const SAND_GROUND_KEY: ColorKey = 'secSandGround';
+
 const HALF = WORLD_SIZE_X / 2;
 
 export function colorOf(key: ColorKey): RGB {
@@ -38,8 +44,11 @@ export function colorOf(key: ColorKey): RGB {
   return PROP_COLORS[key as keyof typeof PROP_COLORS] as RGB;
 }
 
-/** One row's geometry (pure, so a test can measure it). */
-export function sectionGeometry(type: string, joinNeg: boolean, joinPos: boolean, seed = 1): SectionParts {
+/** One row's geometry (pure, so a test can measure it). `plainSand` renders
+    a sand row as the beach's own sand: just the slab, no dune lip or grass
+    at its finished edges — the preview of rows the grid will draw after
+    save, so the preview looks like the sand they will become. */
+export function sectionGeometry(type: string, joinNeg: boolean, joinPos: boolean, seed = 1, opts: { plainSand?: boolean } = {}): SectionParts {
   const D = SECTION.depth;
   const G = SECTION.ground;
   const parts: SectionParts = new Map();
@@ -94,18 +103,21 @@ export function sectionGeometry(type: string, joinNeg: boolean, joinPos: boolean
 
   // the slab: earth sides, and the type's ground on top
   const groundColor: ColorKey =
-    type === 'section-path' || type === 'section-picnic' || type === 'section-playground' ? 'secGrass' : type === 'section-road' || type === 'section-shops' ? 'secCurb' : 'secSand';
+    type === 'section-path' || type === 'section-picnic' || type === 'section-playground' ? 'secGrass' : type === 'section-road' || type === 'section-shops' ? 'secCurb' : SAND_GROUND_KEY;
   put('secSoil', 0, (G - 0.05 + SECTION.bottom) / 2, D / 2, WORLD_SIZE_X, G - 0.05 - SECTION.bottom, D);
   flat(groundColor, -HALF, HALF, 0, D, 0.05, -0.05);
 
   switch (type) {
     case 'section-sand': {
-      // dry sand at the beach's grade; a finished edge is a low dune lip with grass
-      ends((s, e) => {
-        put('secTrail', e - s * 0.9, G + 0.12, D / 2, 1.8, 0.24, D);
-        put('secTrail', e - s * 0.5, G + 0.3, D / 2, 1.0, 0.25, D - 0.6);
-        for (let z = 0.6; z < D; z += 0.9 + r() * 0.6) tuft(e - s * (0.3 + r() * 1.2), z);
-      });
+      // dry sand at the beach's grade; a finished edge is a low dune lip with grass.
+      // Plain sand is the beach's own sand, not scenery, so it has no finished edge.
+      if (!opts.plainSand) {
+        ends((s, e) => {
+          put('secTrail', e - s * 0.9, G + 0.12, D / 2, 1.8, 0.24, D);
+          put('secTrail', e - s * 0.5, G + 0.3, D / 2, 1.0, 0.25, D - 0.6);
+          for (let z = 0.6; z < D; z += 0.9 + r() * 0.6) tuft(e - s * (0.3 + r() * 1.2), z);
+        });
+      }
       break;
     }
     case 'section-boardwalk': {
