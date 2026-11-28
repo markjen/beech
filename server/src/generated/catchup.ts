@@ -517,9 +517,17 @@ var MAGIC2 = [66, 67, 72, 50];
 var MAGIC3 = [66, 67, 72, 51];
 var KINDS = new Set(OBJECT_KINDS);
 var MAX_OBJECTS = 2e3;
+function yoursOf(objects) {
+  return objects.filter((o) => o.wild !== true);
+}
+function wildOf(objects) {
+  return objects.filter((o) => o.wild === true);
+}
 function objectsToSave(objects) {
-  const mine = objects.filter((o) => !o.wild);
-  const keep = [...mine, ...objects.filter((o) => o.wild)].slice(0, MAX_OBJECTS);
+  const mine = yoursOf(objects);
+  const wild = wildOf(objects);
+  const all = [...mine, ...wild];
+  const keep = all.slice(0, MAX_OBJECTS);
   return { keep, dropped: Math.max(0, mine.length - MAX_OBJECTS) };
 }
 var MM = 1e3;

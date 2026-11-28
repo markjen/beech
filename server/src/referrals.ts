@@ -1,3 +1,4 @@
+//@ backend dafny
 // The beach guide and invites (docs/INVITES_GUIDE.md).
 //
 // The guide is a short checklist that teaches each mechanic by doing it once;
@@ -58,11 +59,31 @@ export const REWARD_CAP = 10;
 
 /** What the inviter gets for their nth settled friend (1-based); null past the cap. */
 export function ladderReward(rank: number): string | null {
-  if (!Number.isInteger(rank) || rank < 1 || rank > REWARD_CAP) return null;
-  return LADDER[rank - 1] ?? LADDER_REST;
+  if (!Number.isInteger(rank)) return null;
+  return ladderAt(rank);
 }
-const LADDER = ['parasol', 'surfboard', 'beach', 'tikitorch', 'sandcastle'];
-const LADDER_REST = 'starfish';
+/** the ladder's first rungs, in order; every rank after them up to the cap gives LADDER_REST */
+export const LADDER = ['parasol', 'surfboard', 'beach', 'tikitorch', 'sandcastle'];
+export const LADDER_REST = 'starfish';
+/** the ladder's one extra beach: the rank it sits at */
+export const LADDER_BEACH_RANK = 3;
+
+/**
+ * The verified core of `ladderReward` (docs/VERIFICATION.md), for a whole
+ * number. Proved: a reward exactly for ranks 1 to REWARD_CAP; the first
+ * rungs in order, then LADDER_REST; the extra beach at LADDER_BEACH_RANK
+ * and at no other rank, so the ladder gives at most one extra beach.
+ */
+export function ladderAt(rank: number): string | null {
+  //@ verify
+  //@ ensures (\result === null) <==> (rank < 1 || rank > REWARD_CAP)
+  //@ ensures rank >= 1 && rank <= LADDER.length && rank <= REWARD_CAP ==> \result === LADDER[rank - 1]
+  //@ ensures rank > LADDER.length && rank <= REWARD_CAP ==> \result === LADDER_REST
+  //@ ensures (\result === 'beach') <==> (rank === LADDER_BEACH_RANK)
+  if (rank < 1 || rank > REWARD_CAP) return null;
+  if (rank <= LADDER.length) return LADDER[rank - 1];
+  return LADDER_REST;
+}
 
 /** The whole ladder, for the invite panel. */
 export function ladder(): { rank: number; item: string }[] {

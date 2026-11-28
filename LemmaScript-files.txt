@@ -1,3 +1,7 @@
 server/src/checkpoints.ts
 server/src/creatorCredit.ts
 server/src/giftCards.ts
+server/src/limits.ts
+server/src/referrals.ts
+src/sim/sandCodec.ts
+src/world/checkpointFit.ts

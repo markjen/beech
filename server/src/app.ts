@@ -49,6 +49,7 @@ import { ledgerOf } from './ledger.js';
 import { displayName } from './prizeNames.js';
 import { createWeather } from './weather.js';
 import { creditBalance, grantPurchase } from './bucksDb.js';
+import { autoSlotFits, BEACH_CAP, beachAllowance, checkpointLimit, checkpointRoom } from './limits.js';
 import { SECTION_IDS, SECTION_ROWS, isSection } from './sections.js';
 import { BUCK, bucksToCents, centsToBucks, listBucks, roundToBuck, shareOut, tradeable, unitsOf } from './bucks.js';
 import { issueSubmissionSession, UUID_PATTERN } from './itemSubmissions.js';
@@ -114,7 +115,6 @@ import {
   BadBlob,
   CHECKPOINT_BYTES_PER_USER,
   CHECKPOINT_NAME_MAX,
-  CHECKPOINTS_PER_BEACH,
   MAX_BEACH_BYTES,
   MAX_CELLS,
   OLD_MAX_OBJECTS,
@@ -243,7 +243,7 @@ export interface User {
 type Env = { Variables: { user: User; tokenHash: string; shore: boolean } };
 
 /** most beaches one person can have */
-export const BEACH_CAP = 8;
+export { BEACH_CAP } from './limits.js';
 
 /** A strict copy that's short: thrown inside the transaction so a new beach made for it rolls back too. */
 class CopyShort extends Error {
@@ -990,7 +990,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
           [userId, beachId],
         )
       )[0];
-      if (Number(use.total) - Number(use.auto_bytes) + bytes.byteLength > CHECKPOINT_BYTES_PER_USER) return false;
+      if (!autoSlotFits(Number(use.total), Number(use.auto_bytes), bytes.byteLength)) return false;
       await tx.query(
         `INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at, origin_beach_id)
          SELECT $1, owner_id, $2, 'auto', 'beach', id, name, location, nx, ny, sand, octet_length(sand), $3, $4, $5, id
@@ -1263,7 +1263,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       `SELECT SUM(quantity) AS n FROM inventory WHERE user_id = $1 AND item_id = 'beach' AND (expires_at IS NULL OR expires_at > $2)`,
       [user, Date.now()],
     );
-    return Math.min(BEACH_CAP, 1 + Number(rows[0]?.n ?? 0));
+    return beachAllowance(Number(rows[0]?.n ?? 0));
   };
   /** my home beach (its id is mine unless I've made another beach home) */
   const homeOf = async (user: string): Promise<string> =>
@@ -2471,7 +2471,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     return name;
   };
   /** named checkpoints you may keep: 5 for each beach of your allowance */
-  const checkpointLimit = async (user: string, q: Db = db) => CHECKPOINTS_PER_BEACH * (await allowance(user, q));
+  const checkpointLimitOf = async (user: string, q: Db = db) => checkpointLimit(await allowance(user, q));
   const checkpointUse = async (user: string, q: Db = db) => {
     const rows = await q.query<{ named: string; bytes: string | null }>(
       `SELECT COUNT(*) FILTER (WHERE kind = 'named') AS named, SUM(bytes) FILTER (WHERE kind <> 'tide') AS bytes FROM checkpoints WHERE owner_id = $1`,
@@ -2486,9 +2486,10 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
    */
   const checkRoom = async (user: string, adding: number, q: Db) => {
     const use = await checkpointUse(user, q);
-    const limit = await checkpointLimit(user, q);
-    if (use.named >= limit) fail(409, `you have ${limit} checkpoints, the most you can keep: delete one first`);
-    if (use.bytes + adding > CHECKPOINT_BYTES_PER_USER) fail(413, 'your checkpoints are full: delete some first');
+    const limit = await checkpointLimitOf(user, q);
+    const full = checkpointRoom(use.named, limit, use.bytes, adding);
+    if (full === 'count') fail(409, `you have ${limit} checkpoints, the most you can keep: delete one first`);
+    if (full === 'bytes') fail(413, 'your checkpoints are full: delete some first');
   };
   const inspect = (bytes: Uint8Array) => {
     try {
@@ -2550,7 +2551,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
         `SELECT ${CHECKPOINT_COLS} FROM checkpoints c LEFT JOIN beach b ON b.id = c.from_beach WHERE c.owner_id = $1 ORDER BY c.created_at DESC, c.name`,
         [me],
       ),
-      checkpointLimit(me),
+      checkpointLimitOf(me),
       checkpointUse(me),
     ]);
     return c.json({ limit, named: use.named, bytesUsed: use.bytes, bytesLimit: CHECKPOINT_BYTES_PER_USER, checkpoints: rows.map(checkpointJson) });
@@ -2576,7 +2577,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const r = await withPlayerWriteLock(me, async (tx) => {
       if (auto) {
         const total = await checkpointUse(me, tx);
-        if (total.bytes + bytes.byteLength > CHECKPOINT_BYTES_PER_USER) fail(413, 'your checkpoints are full: delete some first');
+        // counts the slot it replaces too: stricter than the save path's copy
+        if (!autoSlotFits(total.bytes, 0, bytes.byteLength)) fail(413, 'your checkpoints are full: delete some first');
       } else await checkRoom(me, bytes.byteLength, tx);
       return tx.query<{ id: string }>(
         `INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at, origin_beach_id)
