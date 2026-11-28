@@ -63,17 +63,26 @@ deploys reach it without a rebuild.
 `scripts/set-version.mjs` and never committed back to main, so there is
 no push loop. Run numbers are monotonic across manual and auto runs, so
 Apple never sees a duplicate. The trade-off: the checked-in
-`CURRENT_PROJECT_VERSION` (7 at the time of writing) lags what is in
-TestFlight, and the version in the repo no longer says which build is
-live — the Actions tab does.
+`CURRENT_PROJECT_VERSION` lags what is in TestFlight, and the version in
+the repo no longer says which build is live — the Actions tab does.
 
 **Manual releases after auto-build exists.** A manual dispatch runs a
-guard first: the checked-in build number must be ahead of the run
-number, or the job fails fast with the bump command instead of failing
-five minutes into the archive with an Apple duplicate error. Prefer
-bumping the **marketing version** (e.g. 1.0.0 → 1.0.1) for a manual
-release: build numbers restart per version, while a build-number-only
-bump collides with a future auto-build once the run counter reaches it.
+guard first, but only when the checked-in marketing version is the one
+auto-builds have been uploading: it reads the marketing version at the
+head of the last successful auto-build run and, if the versions match,
+requires the checked-in build number to be ahead of the run number, or
+the job fails fast with the bump command instead of failing five
+minutes into the archive with an Apple duplicate error. A manual
+release that bumps the **marketing version** (e.g. 1.0.0 → 1.0.1)
+skips the check entirely, because build numbers restart per version —
+that is the preferred manual-release path. (If no auto-build has ever
+succeeded, there is nothing to collide with and the check is skipped
+too.) A build-number-only bump also works, but it collides with a
+future auto-build once the run counter reaches it, so prefer the
+marketing-version bump. Known edge: the guard compares against the
+last auto-build's version, so dispatching a manual release from an
+older marketing version than the last auto-build is not protected —
+don't re-release an old version that way.
 
 **What "auto" does and does not mean.** A new build lands in TestFlight
 for internal testers right away, but it does **not** reach external
@@ -83,12 +92,12 @@ added to the group. And the trigger itself is only proven after merge:
 `workflow_run` does not fire from a PR branch, so the first auto-build
 run after landing needs watching.
 
-**Cost.** Every deploy now also spends macOS runner time: the build-7
-run's iOS job took ~5 minutes, and GitHub bills macOS at ~$0.08/min
-(10× Linux), so roughly $0.40 per build — at ~5 deploys a day, on the
-order of $2/day. If deploys get much more frequent, or a deploy lands
-while a build is still running (each run builds its own commit), revisit
-whether every deploy needs its own build.
+**Cost.** $0 — the repo is public and GitHub Actions is free for
+public repos, including macOS runners. The only cost is time: the
+build-7 run's iOS job took ~5 minutes, and a deploy landing while a
+build is still running means each run builds its own commit, so runs
+can pile up if deploys get much more frequent — revisit whether every
+deploy needs its own build then.
 
 ## Icons and splash screens
 

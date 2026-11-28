@@ -94,16 +94,36 @@ jobs:
         run: |
           node scripts/set-version.mjs "$(node -p "require('./package.json').version")" "${{ github.run_number }}"
           echo "iOS build number is ${{ github.run_number }} (this workflow's run number)"
-      # Manual releases must bump first: the checked-in build number has
-      # to be ahead of every auto-build number already uploaded, or Apple
-      # rejects the upload as a duplicate. Fails fast here instead of
-      # five minutes into the archive.
+      # Manual releases must bump first when the checked-in marketing
+      # version is the one auto-builds have been uploading: the build
+      # number has to be ahead of every auto-build number already
+      # uploaded for that version, or Apple rejects the upload as a
+      # duplicate. Build numbers restart per marketing version, so a
+      # manual release that bumps the marketing version skips the check.
+      # Fails fast here instead of five minutes into the archive.
       - name: Manual build number must be ahead of auto builds
         if: ${{ github.event_name == 'workflow_dispatch' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          checked_in=$(grep -m1 'CURRENT_PROJECT_VERSION =' ios/App/App.xcodeproj/project.pbxproj | grep -Eo '[0-9]+')
-          if [ "$checked_in" -le $(( ${{ github.run_number }} - 1 )) ]; then
-            echo "::error::CURRENT_PROJECT_VERSION is $checked_in, but auto-builds have already uploaded up to release-mobile run $(( ${{ github.run_number }} - 1 )). Bump it first: node scripts/set-version.mjs <version> <build> with a build number above $(( ${{ github.run_number }} - 1 )). Prefer bumping the marketing version (e.g. 1.0.0 -> 1.0.1): build numbers restart per version, while a build-number-only bump collides with a future auto-build once the run counter reaches it. See docs/MOBILE.md, 'iOS auto-build'."
+          checked_in_build=$(grep -m1 'CURRENT_PROJECT_VERSION =' ios/App/App.xcodeproj/project.pbxproj | grep -Eo '[0-9]+')
+          checked_in_version=$(grep -m1 'MARKETING_VERSION =' ios/App/App.xcodeproj/project.pbxproj | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+')
+          # The marketing version auto-builds have been uploading: the
+          # package.json version at the head of the last successful
+          # auto-build run. No successful auto-build yet means nothing
+          # can collide, so the check is skipped.
+          last_auto_sha=$(gh api "repos/${{ github.repository }}/actions/workflows/release-mobile.yml/runs?event=workflow_run&per_page=5" --jq '[.workflow_runs[] | select(.conclusion == "success")] | first | .head_sha // empty')
+          if [ -z "$last_auto_sha" ]; then
+            echo "No successful auto-build yet; the run-number check does not apply."
+            exit 0
+          fi
+          auto_version=$(gh api "repos/${{ github.repository }}/contents/package.json?ref=${last_auto_sha}" -H "Accept: application/vnd.github.raw" | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).version")
+          if [ "$checked_in_version" != "$auto_version" ]; then
+            echo "Checked-in marketing version $checked_in_version differs from the version auto-builds have been uploading ($auto_version); build numbers restart per version, so no collision check applies."
+            exit 0
+          fi
+          if [ "$checked_in_build" -le $(( ${{ github.run_number }} - 1 )) ]; then
+            echo "::error::CURRENT_PROJECT_VERSION is $checked_in_build for $checked_in_version, but run numbers up to $(( ${{ github.run_number }} - 1 )) are already spoken for by earlier release-mobile runs (auto-builds upload the run number as the build number). Bump it first: node scripts/set-version.mjs <version> <build> with a build number above $(( ${{ github.run_number }} - 1 )), or bump the marketing version (e.g. 1.0.0 -> 1.0.1) to restart build numbers. See docs/MOBILE.md, 'iOS auto-build'."
             exit 1
           fi
       - run: npm ci && npm test && npm run build && npx cap sync ios
