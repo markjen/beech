@@ -356,6 +356,8 @@ export const ANIMAL_COLORS = {
     /** what it blends to when still (sandy shallows) */
     camo: hex('#c9b48c'),
     eyes: hex('#231e24'),
+    /** pale dot on each eye, so the eyes still read against the dark pupil from above */
+    eyeGlint: hex('#f7f3e8'),
     ink: hex('#2a2433'),
   },
   seal: {

@@ -249,25 +249,40 @@ function buildSandpiperMesh(scene: Scene): Mesh {
   return finishAnimal(scene, b, 'petSandpiper');
 }
 
-/** Octopus: mantle up to y ≈ 0.55 at unit size, eight arms spread around y = 0 (uv.x = ±1: they ripple). */
+/**
+ * Octopus: mantle up to y ≈ 0.55 at unit size, eight arms spread around y = 0 (uv.x = ±1: they ripple).
+ *
+ * Readability from the default top-down play camera: the swimmer sits so
+ * only local y ≈ 0.50 and up breaks the water surface (see `swimY`), so the
+ * features that have to read as an octopus live at the top of the mesh. The
+ * eyes sit on the front of the mantle crown, tipped up-forward, with a pale
+ * glint on each, and the arms fan out at the waterline (tops at y ≈ 0.52)
+ * instead of trailing along the seabed — from above the animal reads as a
+ * domed mantle, two dark eyes, and eight arms, at any facing. Eyes and
+ * glints pass alpha 0 so the camo tint never washes them out.
+ */
 function buildOctopusMesh(scene: Scene): Mesh {
   const b = makeBuilder();
   const c = ANIMAL_COLORS.octopus;
-  // bulbous mantle, tipped back a little
+  // bulbous mantle, tipped back a little; the crown is narrower than the
+  // base so the top reads as a dome, not a flat slab
   addBox(b, 0, 0.3, -0.06, 0.42, 0.34, 0.46, c.body, 0, 0, 0.25, 0, 0);
-  addBox(b, 0, 0.47, -0.12, 0.32, 0.16, 0.34, c.body, 0, 0, 0.3, 0, 0);
+  addBox(b, 0, 0.47, -0.12, 0.3, 0.16, 0.32, c.body, 0, 0, 0.3, 0, 0);
   addBox(b, 0, 0.14, 0.08, 0.36, 0.14, 0.3, c.body, 0, 0, 0, 0, 0);
+  // two big eyes on the front of the crown, tipped up-forward so they read
+  // from the top-down camera, each with a pale glint on top
   for (const side of [-1, 1]) {
-    addBox(b, side * 0.13, 0.22, 0.2, 0.08, 0.08, 0.06, c.eyes, 0, 0, 0, 0, 0, 0);
+    addBox(b, side * 0.13, 0.53, 0.08, 0.12, 0.11, 0.12, c.eyes, 0, 0, -0.4, 0, 0, 0);
+    addBox(b, side * 0.13, 0.58, 0.06, 0.045, 0.02, 0.045, c.eyeGlint, 0, 0, -0.4, 0, 0, 0);
   }
-  // eight arms curling outward
+  // eight arms fanning out at the waterline, thick enough to read from above
   for (let i = 0; i < 8; i++) {
     const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
     const g = i % 2 === 0 ? 1 : -1;
     const ca = Math.cos(a);
     const sa = Math.sin(a);
-    addBox(b, ca * 0.3, 0.04, sa * 0.3 + 0.04, 0.32, 0.06, 0.09, c.arms, g, 0, 0, -a, 0);
-    addBox(b, ca * 0.55, 0.03, sa * 0.55 + 0.04, 0.24, 0.045, 0.07, c.arms, g, 0, 0, -a + 0.4, 0);
+    addBox(b, ca * 0.3, 0.47, sa * 0.3 + 0.04, 0.34, 0.1, 0.14, c.arms, g, 0, 0, -a, 0);
+    addBox(b, ca * 0.55, 0.48, sa * 0.55 + 0.04, 0.26, 0.08, 0.11, c.arms, g, 0, 0, -a + 0.4, 0);
   }
   return finishAnimal(scene, b, 'petOctopus');
 }
