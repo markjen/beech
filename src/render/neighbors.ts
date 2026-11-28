@@ -307,7 +307,7 @@ export class NeighborView {
       this.sectionsLoading = true;
       void import('./sections')
         .then(({ SectionLayer }) => {
-          this.sections = new SectionLayer(this.scene, (c) => r.createPropMaterial(c));
+          this.sections = new SectionLayer(this.scene, (c) => r.createPropMaterial(c), () => r.createSandGroundMaterial());
           this.syncSections();
         })
         .finally(() => (this.sectionsLoading = false));
