@@ -93,7 +93,7 @@ describe('claw: transitions', () => {
     expect([...(await pulled(u.id)).values()].reduce((x, y) => x + y, 0)).toBe(1);
   });
 
-  it('a free ball and a paid one in the same millisecond both land (migration 46: pulls have their own id)', async () => {
+  it('a free ball and a paid one in the same millisecond both land (migration 47: pulls have their own id)', async () => {
     rand = () => 0.5;
     const u = await person(CLAW_EXTRA_GO_BUCKS);
     const got = await Promise.all([pull(u.token, 'vending'), pull(u.token, 'vending', true)]);

@@ -219,8 +219,8 @@ picked up.
   of the claw and vending machines, buried finds, shop orders and refunds
   (app stores, Xsolla, Steam) and checkpoints, each with transition tests,
   replays and random walks (STATE_MACHINES.md). They found and fixed four
-  bugs: same-millisecond pulls (migration 46), a refunded app-store purchase
-  granted (`store_refunds`, migration 47), a Steam purchase charged but not
+  bugs: same-millisecond pulls (migration 47), a refunded app-store purchase
+  granted (`store_refunds`, migration 48), a Steam purchase charged but not
   granted after a cancel, and checkpoints over the limit. LemmaScript proofs
   of the referral ladder, the beach and checkpoint limits (`limits.ts`), what
   a save keeps (`objectsToSave`) and the app's restore check

@@ -365,7 +365,7 @@ Invariants: `OneGoPerRest`, `StarterOnce`, `UniqueOnce`, `PaidInFull`,
 fourth. `claw.test.ts` replays each, and the random walk found a real bug:
 pulls were keyed by `(user_id, pool, created_at)`, so two goes on one
 machine in the same millisecond collided, the second answered 500 and its
-unique stayed claimed for nobody (migration 46; see "Bugs found
+unique stayed claimed for nobody (migration 47; see "Bugs found
 (2026-11-28)").
 
 ## Buried finds (`DigFinds.tla`)
@@ -430,12 +430,12 @@ build broke both; `checkpoints.test.ts` replays them.
 6. **A pull lost in the same millisecond** (found by the claw walk, not
    TLC). Two goes by one player on one machine in the same millisecond
    collided on the `pulls` key; the second answered 500, and a unique
-   claimed for it stayed claimed (`NoStrandedUnique`). Fix: migration 46
+   claimed for it stayed claimed (`NoStrandedUnique`). Fix: migration 47
    gives each pull its own id, and a claim that throws releases its unique.
 7. **A refunded app-store purchase granted** (`RefundIsFinal`). A refund
    notification for a purchase not recorded yet changed nothing, so a
    purchase checked just before its refund was recorded just after. Fix:
-   `store_refunds` (migration 47) keeps the refund, and recording and
+   `store_refunds` (migration 48) keeps the refund, and recording and
    refunding take the same per-transaction lock.
 8. **A Steam purchase charged but not granted** (`PaidIsGranted`). A cancel
    while finalize was at Steam made the grant refuse. Fix: a finalize
