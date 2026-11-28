@@ -1812,14 +1812,15 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     // won, so there is nothing to log or give — only the claim runs. (The
     // miss claim has its own numbering: every parameter must be used, or
     // Postgres can't tell its type.)
-    const rows = missed
-      ? await db.query(
+    // a claim that fails or throws lets its unique go again (NoStrandedUnique)
+    const rows = await (missed
+      ? db.query(
           `UPDATE pull_state SET count = count + 1, next_at = $3 + $4
             WHERE user_id = $1 AND pool = $2 AND next_at <= $3 AND count = $5
             RETURNING user_id`,
           [me, poolId, now, wait, count],
         )
-      : await db.query<{ item_id: string }>(
+      : db.query<{ item_id: string }>(
           `WITH claim AS (
              UPDATE pull_state SET count = count + 1, next_at = $6 + $7
               WHERE user_id = $1 AND pool = $2 AND next_at <= $6 AND count = $8
@@ -1831,7 +1832,11 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
            INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at, expires_at)
            SELECT user_id, $4, 1, 'pull', $6, NULL FROM logged RETURNING item_id`,
           [me, poolId, pullDay(now), got.item, got.rarity, now, wait, count],
-        );
+        )
+    ).catch(async (e) => {
+      await unique.release();
+      throw e;
+    });
     if (!rows[0]) await unique.release();
     const st = (await freeAt(me)).get(poolId);
     if (!rows[0])
@@ -1878,6 +1883,9 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       item: missed ? null : got.item,
       rarity: missed ? null : got.rarity,
       now,
+    }).catch(async (e) => {
+      await unique.release();
+      throw e;
     });
     if (!paid) {
       await unique.release();
@@ -1985,7 +1993,10 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
        INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at, expires_at)
        SELECT user_id, $6, 1, 'pull', $5, NULL FROM logged RETURNING item_id`,
       [me, today, DIG_FIND_DAILY_CAP, DIG_FIND_ROLL_COOLDOWN_MS, now, drawn.item, drawn.rarity],
-    );
+    ).catch(async (e) => {
+      await unique.release();
+      throw e;
+    });
     if (!rows[0]) {
       await unique.release();
       return c.json({ error: 'slow down', nextRollAt: now + DIG_FIND_ROLL_COOLDOWN_MS }, 409);
