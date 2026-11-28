@@ -24,7 +24,7 @@ export interface StoreSiteConfig {
   appleClientId?: string;
 }
 
-const API = /^\/api\/(catalog|sample-beach\.png|my-beaches|beach-preview\/[0-9a-f-]{36}|checkout|orders\/[0-9a-f-]{36}|stripe-webhook|printful-webhook|print\/[0-9a-f]{32}\.png)$/;
+const API = /^\/api\/(catalog|my-beaches|beach-preview\/[0-9a-f-]{36}|checkout|orders\/[0-9a-f-]{36}|stripe-webhook|printful-webhook|print\/[0-9a-f]{32}\.png)$/;
 const AUTH = /^\/api\/auth\/(google|apple)$/;
 
 export function createStoreSite(cfg: StoreSiteConfig): Hono {
