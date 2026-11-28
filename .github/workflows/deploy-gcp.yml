@@ -35,6 +35,8 @@ name: Deploy production (Google Cloud Run)
 #   vars.FCM_PROJECT_ID                         Android app push (the service's own identity sends)
 #   vars.PUSH_TICK_SERVICE_ACCOUNT              Cloud Scheduler's account for POST /api/push/tick
 #   vars.PUSH_TICK_AUDIENCE                     its OIDC audience (the tick URL)
+#   vars.MERCH_TICK_SERVICE_ACCOUNT             Cloud Scheduler's account for POST /api/merch/tick
+#   vars.MERCH_TICK_AUDIENCE                    its OIDC audience (the tick URL)
 #   vars.OPEN_METEO_ENABLED=1                   real weather on Open-Meteo's paid plan (+ secret beech-open-meteo-api-key)
 # Secret Manager: beech-db-password, beech-admin-token (admin service only),
 #   beech-gift-code-pepper (both: the game redeems, the admin service issues),
@@ -113,6 +115,8 @@ jobs:
           FCM_PROJECT_ID: ${{ vars.FCM_PROJECT_ID }}
           PUSH_TICK_SERVICE_ACCOUNT: ${{ vars.PUSH_TICK_SERVICE_ACCOUNT }}
           PUSH_TICK_AUDIENCE: ${{ vars.PUSH_TICK_AUDIENCE }}
+          MERCH_TICK_SERVICE_ACCOUNT: ${{ vars.MERCH_TICK_SERVICE_ACCOUNT }}
+          MERCH_TICK_AUDIENCE: ${{ vars.MERCH_TICK_AUDIENCE }}
           OPEN_METEO_ENABLED: ${{ vars.OPEN_METEO_ENABLED }}
           GOOGLE_RTDN_AUDIENCE: ${{ vars.GOOGLE_RTDN_AUDIENCE }}
           GOOGLE_RTDN_SERVICE_ACCOUNT: ${{ vars.GOOGLE_RTDN_SERVICE_ACCOUNT }}
@@ -141,6 +145,9 @@ jobs:
           if [ -n "$OPEN_METEO_ENABLED" ]; then PUSH_SECRETS="$PUSH_SECRETS,OPEN_METEO_API_KEY=beech-open-meteo-api-key:latest"; fi
           if [ -n "$PUSH_TICK_SERVICE_ACCOUNT" ]; then
             PUSH_ENV="$PUSH_ENV;PUSH_TICK_SERVICE_ACCOUNT=$PUSH_TICK_SERVICE_ACCOUNT;PUSH_TICK_AUDIENCE=$PUSH_TICK_AUDIENCE"
+          fi
+          if [ -n "$MERCH_TICK_SERVICE_ACCOUNT" ]; then
+            PUSH_ENV="$PUSH_ENV;MERCH_TICK_SERVICE_ACCOUNT=$MERCH_TICK_SERVICE_ACCOUNT;MERCH_TICK_AUDIENCE=$MERCH_TICK_AUDIENCE"
           fi
           if [ -n "$GOOGLE_RTDN_AUDIENCE" ]; then
             PUSH_ENV="$PUSH_ENV;GOOGLE_RTDN_AUDIENCE=$GOOGLE_RTDN_AUDIENCE;GOOGLE_RTDN_SERVICE_ACCOUNT=$GOOGLE_RTDN_SERVICE_ACCOUNT"

@@ -147,9 +147,13 @@ Printful makes it, webhook ────────► package_shipped → shipp
   `thread_colors` option, so the hat's order item carries one
   (`HAT_THREAD_COLORS` in `merchCatalog.ts`: white, sky blue, black, old
   gold — the logo-hat art's palette matched to Printful's allowed threads).
-- A **sweep** runs once a minute (`server.ts`): stale claims go back,
-  orders left unconfirmed are confirmed, paid orders that couldn't reach
-  Printful are retried.
+- A **sweep** runs once a minute: stale claims go back, orders left
+  unconfirmed are confirmed, paid orders that couldn't reach Printful are
+  retried. Cloud Scheduler calls `POST /api/merch/tick` — the server only
+  ticks itself when Scheduler isn't configured (local dev), because on
+  Cloud Run an idle instance's CPU is throttled and its timer's query
+  looked slow, ~1 s wall-clock, tripping the slow-database-queries alert
+  (the same reason the push tick moved to Scheduler).
 
 ## State machine
 
@@ -254,6 +258,20 @@ expired; a refunded order never looks live. What the model decided:
    and the hat's embroidery in Printful's preview) and are never made.
    Order one of each for real before telling anyone.
 8. Then a line in the release notes (`server/src/releaseNotes.ts`).
+9. **The sweep, on Cloud Scheduler** (same account as the push tick —
+   `beech-scheduler@beech-prod.iam.gserviceaccount.com`, which already has
+   `roles/run.invoker` on the game service):
+   ```bash
+   SCHED_SA=beech-scheduler@$PROJECT.iam.gserviceaccount.com
+   URL=$(gcloud run services describe beech --region=$REGION --format='value(status.url)')
+   gcloud scheduler jobs create http beech-merch-tick --location=$REGION \
+     --schedule='* * * * *' --http-method=POST --uri="$URL/api/merch/tick" \
+     --oidc-service-account-email=$SCHED_SA --oidc-token-audience="$URL/api/merch/tick"
+   ```
+   Then the variables `MERCH_TICK_SERVICE_ACCOUNT` = `$SCHED_SA` and
+   `MERCH_TICK_AUDIENCE` = `$URL/api/merch/tick`. Until the next deploy
+   the job gets 404s; that's fine. Without these variables the server
+   ticks the sweep itself with its in-process timer (local dev).
 
 **Later: sunglasses.** Not a launch step. Order logo sunglasses in bulk,
 send them to Printful Warehousing, and set the Actions variable

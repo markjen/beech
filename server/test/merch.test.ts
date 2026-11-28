@@ -7,8 +7,8 @@ import { createApp } from '../src/app.js';
 import { type Db } from '../src/db.js';
 import { MERCH, PRODUCTS, atCost, costCents, positionFor, priceCart, printItems, productById, setCents, unitCents } from '../src/merchCatalog.js';
 import { PRINTFUL_DATA } from '../src/generated/merchCatalogData.js';
-import { recipientOf as recipientOfForTest } from '../src/merch.js';
-import { merchFromEnv, signStripe, stripeForm, verifyStripeSignature } from '../src/merchProviders.js';
+import { createMerch, recipientOf as recipientOfForTest } from '../src/merch.js';
+import { merchFromEnv, merchTickFromEnv, signStripe, stripeForm, verifyStripeSignature } from '../src/merchProviders.js';
 import { createRootApp } from '../src/rootApp.js';
 import { openTestDb } from './testDb.js';
 
@@ -131,6 +131,35 @@ describe('merch providers', () => {
     expect(recipientOfForTest({ id: 'cs', shipping_details: { name: 'A', address }, customer_details: { email: 'a@b.c' } })).toEqual({ name: 'A', address1: '1 Sea St', city: 'Brighton', country_code: 'GB', zip: 'BN1', email: 'a@b.c' });
     expect(recipientOfForTest({ id: 'cs', collected_information: { shipping_details: { name: 'B', address } } })?.name).toBe('B');
     expect(recipientOfForTest({ id: 'cs' })).toBeNull();
+  });
+});
+
+describe('merch tick (Cloud Scheduler)', () => {
+  it('reads the Scheduler tick from the environment: both variables, or neither counts', () => {
+    expect(merchTickFromEnv({})).toBeUndefined();
+    expect(merchTickFromEnv({ MERCH_TICK_AUDIENCE: 'https://beech.test/api/merch/tick' })).toBeUndefined();
+    expect(merchTickFromEnv({ MERCH_TICK_SERVICE_ACCOUNT: 'scheduler@beech.test' })).toBeUndefined();
+    expect(
+      merchTickFromEnv({ MERCH_TICK_AUDIENCE: 'https://beech.test/api/merch/tick', MERCH_TICK_SERVICE_ACCOUNT: 'scheduler@beech.test' }),
+    ).toEqual({ audience: 'https://beech.test/api/merch/tick', email: 'scheduler@beech.test' });
+  });
+
+  it('the tick endpoint 404s without the Scheduler variables, and rejects a call with no token', async () => {
+    const db = await openTestDb();
+    try {
+      const noTick = createApp(db, { googleClientIds: [], appleClientIds: [], allowedOrigins: [], devAuth: true });
+      expect((await noTick.request('/merch/tick', { method: 'POST' })).status).toBe(404);
+      const withTick = createApp(db, {
+        googleClientIds: [],
+        appleClientIds: [],
+        allowedOrigins: [],
+        devAuth: true,
+        merch: createMerch(db, { now: () => Date.now(), tick: { audience: 'https://beech.test/api/merch/tick', email: 'scheduler@beech.test' } }),
+      });
+      expect((await withTick.request('/merch/tick', { method: 'POST' })).status).toBe(401);
+    } finally {
+      await db.close();
+    }
   });
 });
 
