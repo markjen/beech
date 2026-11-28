@@ -3,8 +3,9 @@
 // tells us, never printed unpaid or after an early refund, always the beach
 // as it was at checkout, and a late "completed" wins over "expired".
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { beachPng } from '../../src/beachImage.js';
-import { MERCH } from '../../src/merchCatalog.js';
+import { beachPrintPng } from '../../src/merchPrint.js';
+import { PRINTFUL_DATA } from '../../src/generated/merchCatalogData.js';
+import { MERCH, productById, unitCents } from '../../src/merchCatalog.js';
 import { beachBytes, rng, startServer, type Server } from './harness.js';
 import { fakeServices, PRINTFUL_SECRET } from './merchFakes.js';
 import { MerchModel, type Status } from './merchModel.js';
@@ -55,24 +56,24 @@ describe('merch orders: transitions', () => {
     expect(o.status).toBe(200);
     expect(o.url).toMatch(/^https:\/\/checkout\.stripe\.com\//);
     const [row] = await s.db.query<{ status: string; subtotal_cents: number; shipping_cents: number }>('SELECT * FROM merch_orders WHERE id = $1', [o.id]);
-    expect(row).toMatchObject({ status: 'open', subtotal_cents: 6000, shipping_cents: MERCH.shippingCents });
+    expect(row).toMatchObject({ status: 'open', subtotal_cents: 2 * unitCents(productById('tee')!, 'white', 'M')!, shipping_cents: MERCH.shippingCents });
     // refusals
     expect((await checkout([])).status).toBe(400);
-    expect((await checkout([{ ...TEE, size: 'XS' }])).error).toBe('pick a size for the beech tee');
+    expect((await checkout([{ ...TEE, size: 'XXS' }])).error).toBe('pick a size for the beech tee');
     expect((await checkout([{ ...TEE, quantity: 11 }])).status).toBe(400);
     expect((await checkout([{ product: 'yacht', quantity: 1 }])).status).toBe(400);
   });
 
-  it('Completed: the webhook pays it, the send drafts and confirms it at Printful, with the logo for the colour', async () => {
-    const o = await checkout([TEE, { product: 'hoodie', quantity: 1, color: 'navy', size: 'L' }]);
+  it('Completed: the webhook pays it, the send drafts and confirms it at Printful, with the ink for the colour', async () => {
+    const o = await checkout([TEE, { product: 'hat', quantity: 1, color: 'navy' }]);
     const sid = await sessionOf(o.id!);
     expect((await hook('checkout.session.completed', f.pay(sid))).status).toBe(200);
     expect(await statusOf(o.id!)).toBe('sent');
     const pf = f.printful.get(ext(o.id!))!;
     expect(pf.status).toBe('pending');
     expect(pf.body.items.map((i) => [i.variant_id, i.files?.[0].url])).toEqual([
-      [4012, 'https://store.example/merch-art/logo-front.png'],
-      [5596, 'https://store.example/merch-art/logo-front-light.png'],
+      [PRINTFUL_DATA.tee.variants['white/M'][0], 'https://store.example/merch-art/mark.png'],
+      [PRINTFUL_DATA.hat.variants['navy/One size'][0], 'https://store.example/merch-art/mark-wide-light.png'],
     ]);
     expect(pf.body.recipient).toMatchObject({ name: 'Sandy Shore', country_code: 'AU', zip: '2026' });
     // Ships
@@ -174,28 +175,29 @@ describe('merch orders: your beach', () => {
     const me = await shopper();
     const before = beachBytes({ rock: 2 });
     await s.db.query('UPDATE beach SET sand = $1 WHERE id = $2', [before, me.beach]);
-    const o = await checkout([{ product: 'beach-tee', quantity: 1, color: 'cream', size: 'L', beachId: me.beach }], me.shore);
+    const o = await checkout([{ product: 'top-tee', quantity: 1, color: 'heather', size: 'L', beachId: me.beach }], me.shore);
     expect(o.status).toBe(200);
     // they keep building
     await s.db.query('UPDATE beach SET sand = $1 WHERE id = $2', [beachBytes({ rock: 9 }), me.beach]);
     await hook('checkout.session.completed', f.pay(await sessionOf(o.id!)));
     const item = f.printful.get(ext(o.id!))!.body.items[0];
-    expect(item.variant_id).toBe(4153);
-    const url = new URL(item.files![0].url);
+    expect(item.variant_id).toBe(PRINTFUL_DATA.tee.variants['heather/L'][0]);
+    expect(item.files![0].url).toBe('https://store.example/merch-art/word.png'); // the front: the small word
+    const url = new URL(item.files![1].url); // the back: their beach, from above, in a square
     expect(url.origin).toBe('https://store.example');
     const key = url.pathname.replace('/api/print/', '');
     const png = new Uint8Array(await (await s.req(`/merch/print/${key}`)).arrayBuffer());
-    const want = beachPng(before, { width: MERCH.printWidth, height: MERCH.printHeight, location: 'bondi', pier: false, sections: [] });
+    const want = beachPrintPng(before, { location: 'bondi', pier: false, sections: [] }, 'square');
     expect(Buffer.from(png).equals(want)).toBe(true);
   });
 
   it('a beach print needs you signed in, and your own beach', async () => {
     const me = await shopper();
     const other = await shopper();
-    const line = { product: 'beach-hoodie', quantity: 1, color: 'sand', size: 'M', beachId: other.beach };
+    const line = { product: 'top-hoodie', quantity: 1, color: 'ash', size: 'M', beachId: other.beach };
     expect((await checkout([line])).status).toBe(401);
     expect((await checkout([line], me.shore)).status).toBe(403);
-    expect((await checkout([{ ...line, beachId: undefined }], me.shore)).status).toBe(400);
+    expect((await checkout([{ ...line, beachId: 'not-an-id' }], me.shore)).status).toBe(400);
     const mine = (await (await s.req('/merch/my-beaches', {}, me.shore)).json()) as { beaches: { id: string }[] };
     expect(mine.beaches.map((b) => b.id)).toEqual([me.beach]);
     expect((await s.req(`/merch/beach-preview/${other.beach}`, {}, me.shore)).status).toBe(404);
@@ -204,14 +206,16 @@ describe('merch orders: your beach', () => {
 
   it('the set expands to all five, its price split so the slip adds up', async () => {
     const o = await checkout([
-      { product: 'set', quantity: 1, parts: { tee: { color: 'aqua', size: 'S' }, hoodie: { color: 'sand', size: 'XL' }, hat: { color: 'navy' }, flipflops: { size: 'M' } } },
+      { product: 'set', quantity: 1, parts: { tee: { color: 'iceblue', size: 'S' }, hoodie: { color: 'sand', size: 'XL' }, hat: { color: 'navy' }, flipflops: { size: 'M' } } },
     ]);
     expect(o.status).toBe(200);
     await hook('checkout.session.completed', f.pay(await sessionOf(o.id!)));
     const items = f.printful.get(ext(o.id!))!.body.items;
-    expect(items.map((i) => i.variant_id ?? `warehouse:${i.warehouse_product_variant_id}`)).toEqual([4021, 13000, 7857, 10171, 8874]);
-    expect(items.reduce((sum, i) => sum + Math.round(Number(i.retail_price) * 100), 0)).toBe(16000);
-    expect(items[2].files?.[0]).toEqual({ type: 'embroidery_front', url: 'https://store.example/merch-art/logo-hat-light.png' });
+    const D = PRINTFUL_DATA;
+    expect(items.map((i) => i.variant_id)).toEqual([D.tee.variants['iceblue/S'][0], D.hoodie.variants['sand/XL'][0], D.hat.variants['navy/One size'][0], D.flipflops.variants['white/M'][0], D.towel.variants['white/30″×60″'][0]]);
+    const [row] = await s.db.query<{ subtotal_cents: number }>('SELECT subtotal_cents FROM merch_orders WHERE id = $1', [o.id]);
+    expect(items.reduce((sum, i) => sum + Math.round(Number(i.retail_price) * 100), 0)).toBe(row.subtotal_cents);
+    expect(items[2].files?.[0]).toMatchObject({ type: 'embroidery_front', url: 'https://store.example/merch-art/mark-wide-light.png' });
   });
 });
 
@@ -234,7 +238,7 @@ describe('merch orders: random walk against the model', () => {
         switch (act) {
           case 'checkout': {
             if (ids.length >= 6) break;
-            const out = await checkout([{ product: 'beach-tee', quantity: 1, color: 'white', size: 'M', beachId: me.beach }], me.shore);
+            const out = await checkout([{ product: 'top-tee', quantity: 1, color: 'white', size: 'M', beachId: me.beach }], me.shore);
             expect(out.status).toBe(200);
             ids.push(out.id!);
             sids.set(out.id!, await sessionOf(out.id!));

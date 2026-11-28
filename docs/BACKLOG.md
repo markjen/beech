@@ -81,6 +81,13 @@ The single list of what's left to do, for the owner and for agents.
   Warehousing, set `MERCH_SUNGLASSES_VARIANT`. The sunglasses then come
   back as their own product; the set stays the five printed things.
 
+- [ ] **Check the new merch lineup's placements with Printful drafts**
+  (2026-11-28): with `PRINTFUL_DRAFTS_ONLY=1`, order one of each new
+  product. In Printful's preview, check where the chest word, back square,
+  side square, badge, the sweatpants' leg prints, the bucket hat's DTF mark
+  and the wraps land, and the single-thread embroidery on the hat and
+  beanie. Then add the live Stripe records for the new products.
+
 ## Owner decisions
 
 - [ ] **Invite rewards** (2026-11-23): check the ladder (parasol,
@@ -195,6 +202,13 @@ picked up.
 
 ## Ideas
 
+- [ ] **Merch: a buyer's beach from the side** (2026-11-28): a side-view
+  renderer (profile of their beach, items as line drawings on the ground
+  line) for the side view tee, the bottle, the tumbler and the mug.
+- [ ] **Merch: all-over panel items and Tapstitch** (2026-11-28): board
+  shorts, swim trunks, the reversible bucket hat and fanny pack need art per
+  panel template; Tapstitch's heavyweight line needs an order API (ask their
+  Enterprise team) or hand-placed orders.
 - [ ] **Store: Printful mockups, your beach on the towel, store links in
   the game and on beechshore** (docs/MERCH_STORE.md, "Not built").
 - Model more state machines the same way: the app's BeachStore save
@@ -215,6 +229,9 @@ picked up.
 
 ## Done (recent)
 
+- [x] **Merch lineup, round 2** (2026-11-28; Mark): straight-on beach
+  designs, the line mark, at-cost pricing per size from Printful's catalog,
+  27 products. MERCH_STORE.md.
 - [x] **More state machines and proofs** (2026-11-28; agent): TLA+ models
   of the claw and vending machines, buried finds, shop orders and refunds
   (app stores, Xsolla, Steam) and checkpoints, each with transition tests,

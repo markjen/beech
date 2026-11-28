@@ -5,57 +5,99 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createApp } from '../src/app.js';
 import { type Db } from '../src/db.js';
-import { MERCH, PRODUCTS, priceCart, printItems, productById } from '../src/merchCatalog.js';
+import { MERCH, PRODUCTS, atCost, costCents, positionFor, priceCart, printItems, productById, setCents, unitCents } from '../src/merchCatalog.js';
+import { PRINTFUL_DATA } from '../src/generated/merchCatalogData.js';
 import { recipientOf as recipientOfForTest } from '../src/merch.js';
 import { merchFromEnv, signStripe, stripeForm, verifyStripeSignature } from '../src/merchProviders.js';
 import { createRootApp } from '../src/rootApp.js';
 import { openTestDb } from './testDb.js';
 
-const ON = { sunglassesVariant: 5 };
-const OFF = { sunglassesVariant: null };
+const ON = { sunglassesVariant: null };
 
 describe('merch catalog', () => {
-  it('every colour and size of every printed product has a Printful variant, and its art exists in both inks', () => {
+  it('every colour and size has a Printful variant and a cost, every print a placement Printful prints, and every brand file exists', () => {
     for (const p of PRODUCTS) {
-      if (p.parts || p.warehouse) continue;
-      for (const c of p.colors) for (const s of p.sizes) expect(p.variants[`${c.id}/${s}`], `${p.id} ${c.id}/${s}`).toBeGreaterThan(0);
-      if (p.art) {
-        expect(fs.existsSync(path.join('..', 'public', 'merch', p.art)), p.art).toBe(true);
-        if (p.colors.some((c) => c.dark)) expect(fs.existsSync(path.join('..', 'public', 'merch', p.art.replace('.png', '-light.png')))).toBe(true);
+      if (p.parts) continue;
+      const d = PRINTFUL_DATA[p.data];
+      for (const c of p.colors) for (const s of p.sizes) expect(d.variants[`${c.id}/${s}`], `${p.id} ${c.id}/${s}`).toBeTruthy();
+      for (const pr of [...p.prints, ...(p.own?.prints ?? [])]) {
+        expect(d.printfiles[pr.placement] ?? (pr.placement === 'embroidery_front' ? [1, 1] : undefined), `${p.id} ${pr.placement}`).toBeTruthy();
+        if ('file' in pr.art) for (const f of [pr.art.file, pr.art.light].filter(Boolean) as string[]) expect(fs.existsSync(path.join('..', 'public', 'merch', f)), f).toBe(true);
       }
     }
   });
 
-  it('prices a cart on the server: quantities, free shipping, sold out', () => {
+  it('sells anything that shows off beech at cost: Printful’s price, extra placements, Stripe’s fee and about $1, per size', () => {
+    const tee = productById('tee')!;
+    const cost = PRINTFUL_DATA.tee.variants['white/M'][1];
+    expect(unitCents(tee, 'white', 'M')).toBe(atCost(cost));
+    expect(atCost(cost) - cost - Math.round(atCost(cost) * 0.029 + 30)).toBeGreaterThanOrEqual(100); // we keep about $1
+    expect(atCost(cost) - cost - Math.round(atCost(cost) * 0.029 + 30)).toBeLessThan(200);
+    // a bigger size costs Printful more, so it costs more
+    expect(unitCents(tee, 'white', '3XL')!).toBeGreaterThan(unitCents(tee, 'white', 'M')!);
+    // front and back: the back placement is added
+    const top = productById('top-tee')!;
+    expect(costCents(top, 'white', 'M')).toBe(cost + PRINTFUL_DATA.tee.placementCents.back);
+    // with their own beach: its own price at the cheapest size, plus what a bigger size costs more
+    expect(unitCents(top, 'white', 'S', true)).toBe(3800);
+    expect(unitCents(top, 'white', '3XL', true)!).toBeGreaterThan(3800);
+    expect(unitCents(productById('side-tee')!, 'white', 'M', true)).toBeNull(); // no side view of their beach yet
+  });
+
+  it('prices a cart on the server, and refuses what it can’t make', () => {
     const tee = { product: 'tee', quantity: 2, color: 'white', size: 'M' };
-    const a = priceCart([tee], ON);
-    expect(a).toMatchObject({ ok: true, subtotalCents: 6000, shippingCents: MERCH.shippingCents });
-    const b = priceCart([{ ...tee, quantity: 4 }], ON);
-    expect(b).toMatchObject({ ok: true, subtotalCents: 12000, shippingCents: 0 });
-    expect(priceCart([{ product: 'sunglasses', quantity: 1 }], OFF)).toEqual({ ok: false, error: 'something in your bag isn’t sold any more' }); // out of the store for now
-    expect(priceCart([{ product: 'set', quantity: 1, parts: {} }], OFF)).toMatchObject({ ok: false });
+    const one = unitCents(productById('tee')!, 'white', 'M')!;
+    expect(priceCart([tee], ON)).toMatchObject({ ok: true, subtotalCents: 2 * one, shippingCents: MERCH.shippingCents });
+    expect(priceCart([{ ...tee, quantity: 10 }], ON)).toMatchObject({ ok: true, subtotalCents: 10 * one, shippingCents: 0 });
+    expect(priceCart([{ product: 'sunglasses', quantity: 1 }], ON)).toEqual({ ok: false, error: 'something in your bag isn’t sold any more' });
     expect(priceCart([{ product: 'set', quantity: 1, parts: { tee: { color: 'white', size: 'M' } } }], ON)).toEqual({ ok: false, error: 'pick a color for the beech hoodie' });
-    expect(priceCart([{ product: 'beach-tee', quantity: 1, color: 'white', size: 'M' }], ON)).toEqual({ ok: false, error: 'pick a beach for your tee' });
+    expect(priceCart([{ ...tee, beachId: 'nope' }], ON)).toEqual({ ok: false, error: 'the beech tee can’t print your beach' });
+    expect(priceCart([{ product: 'top-tee', quantity: 1, color: 'white', size: 'M', beachId: 'nope' }], ON)).toEqual({ ok: false, error: 'pick a beach for your top view tee' });
+    expect(priceCart([{ ...tee, color: 'aqua' }], ON)).toEqual({ ok: false, error: 'pick a color for the beech tee' });
     expect(priceCart('nope', ON)).toEqual({ ok: false, error: 'your bag is empty' });
   });
 
-  it('splits the set’s price over its parts so they add up to what was paid', () => {
+  it('prices the set at cost as one, and splits it over its parts so the slip adds up', () => {
     const set = productById('set')!;
-    const parts = { tee: { color: 'white', size: 'M' }, hoodie: { color: 'sand', size: 'L' }, hat: { color: 'khaki', size: 'One size' }, flipflops: { color: 'white', size: 'S' }, towel: { color: 'white', size: '30″ × 60″' } };
-    const items = printItems({ product: 'set', quantity: 2, unitCents: set.cents, choice: {}, parts }, ON, (f) => `https://x/${f}`);
+    const parts = { tee: { color: 'white', size: 'M' }, hoodie: { color: 'sand', size: 'L' }, hat: { color: 'khaki', size: 'One size' }, flipflops: { color: 'white', size: 'S' }, towel: { color: 'white', size: '30″×60″' } };
+    const price = setCents(set, parts)!;
+    const each = Object.entries(parts).map(([id, c]) => unitCents(productById(id)!, c.color, c.size)!);
+    expect(price).toBeLessThan(each.reduce((s, x) => s + x, 0)); // one Stripe fee and one $1, not five
+    const items = printItems({ product: 'set', quantity: 2, unitCents: price, choice: {}, parts }, ON, (f) => `https://x/${f}`);
     expect(items).toHaveLength(5);
-    expect(items.reduce((s, i) => s + i.retailCents, 0)).toBe(set.cents);
+    expect(items.reduce((s, i) => s + i.retailCents, 0)).toBe(price);
     expect(items.every((i) => i.quantity === 2)).toBe(true);
-    expect(() => printItems({ product: 'beach-tee', quantity: 1, unitCents: 3600, choice: { color: 'white', size: 'M' } }, ON, (f) => f)).toThrow(/no print file/);
   });
 
-  it('gives the embroidered hat Printful’s thread colours, and nothing else any options', () => {
-    const hat = printItems({ product: 'hat', quantity: 1, unitCents: 2800, choice: { color: 'khaki', size: 'One size' } }, ON, (f) => `https://x/${f}`);
-    expect(hat).toHaveLength(1);
-    expect(hat[0].files).toEqual([{ type: 'embroidery_front', url: 'https://x/logo-hat.png' }]);
-    expect(hat[0].options).toEqual([{ id: 'thread_colors', value: ['#FFFFFF', '#3399FF', '#000000', '#A67843'] }]);
-    const tee = printItems({ product: 'tee', quantity: 1, unitCents: 3000, choice: { color: 'white', size: 'M' } }, ON, (f) => `https://x/${f}`);
-    expect(tee[0].options).toBeUndefined();
+  it('places each print in its area: a small word on the chest, a 10″ square high on the back', () => {
+    const [item] = printItems({ product: 'top-tee', quantity: 1, unitCents: 2100, choice: { color: 'heather', size: 'M' } }, ON, (f) => `https://x/${f}`);
+    expect(item.variantId).toBe(PRINTFUL_DATA.tee.variants['heather/M'][0]);
+    const [front, back] = item.files!;
+    expect(front).toMatchObject({ type: 'front', url: 'https://x/word.png' });
+    expect(front.position!.width).toBeLessThan(front.position!.area_width / 3);
+    expect(front.position!.left).toBeGreaterThan(front.position!.area_width / 2); // the wearer’s left
+    expect(back).toMatchObject({ type: 'back', url: 'https://x/sample-square.png', position: { area_width: 1800, area_height: 2400, width: 1500, height: 1500, left: 150 } });
+    // with their own beach, the back is their beach
+    const [own] = printItems({ product: 'top-tee', quantity: 1, unitCents: 3800, choice: { color: 'heather', size: 'M' } }, ON, (f) => `https://x/${f}`, 'https://x/print/abc.png');
+    expect(own.files![1].url).toBe('https://x/print/abc.png');
+    expect(() => printItems({ product: 'side-tee', quantity: 1, unitCents: 2100, choice: { color: 'white', size: 'M' } }, ON, (f) => f, 'https://x/p.png')).toThrow();
+  });
+
+  it('gives embroidery one thread: black on light hats, white on dark; nothing else gets options', () => {
+    const hat = (color: string) => printItems({ product: 'hat', quantity: 1, unitCents: 2000, choice: { color, size: 'One size' } }, ON, (f) => `https://x/${f}`)[0];
+    expect(hat('khaki').files![0]).toMatchObject({ type: 'embroidery_front', url: 'https://x/mark-wide.png' });
+    expect(hat('khaki').options).toEqual([{ id: 'thread_colors', value: ['#000000'] }]);
+    expect(hat('navy').files![0].url).toBe('https://x/mark-wide-light.png');
+    expect(hat('navy').options).toEqual([{ id: 'thread_colors', value: ['#FFFFFF'] }]);
+    expect(printItems({ product: 'tee', quantity: 1, unitCents: 1400, choice: { color: 'white', size: 'M' } }, ON, (f) => f)[0].options).toBeUndefined();
+  });
+
+  it('positions keep the art’s shape inside the area', () => {
+    const p = positionFor('contain', 2700, 1140, [3000, 760]);
+    expect(p.width / p.height).toBeCloseTo(3000 / 760, 1);
+    expect(p.left).toBeGreaterThanOrEqual(0);
+    expect(p.top + p.height).toBeLessThanOrEqual(1140);
+    expect(positionFor('fill', 100, 50, [1, 1])).toMatchObject({ width: 100, height: 50, top: 0, left: 0 });
   });
 });
 
