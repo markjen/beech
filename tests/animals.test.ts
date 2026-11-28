@@ -290,3 +290,73 @@ describe('AnimalController (visited beach pet)', () => {
   });
 
 });
+
+describe('turtle tracks (Discord #bugs, rosejen 2026-11-27)', () => {
+  function petTurtle(seed = 7): { ctrl: AnimalController; env: AnimalEnv } {
+    const ctrl = new AnimalController(seeded(seed));
+    const env = flatBeach();
+    ctrl.setPet({ species: 'turtle', name: 'Shelly', mood: 'happy', home: { x: 0, z: 8 } }, env);
+    return { ctrl, env };
+  }
+
+  it('keeps only a short fresh trail: prints expire instead of piling up behind a resident pet', () => {
+    const { ctrl, env } = petTurtle();
+    const s = ctrl.snapshot();
+    let maxCount = 0;
+    let totalDistance = 0;
+    let prevX = s.x;
+    let prevZ = s.z;
+    let maxOldestAge = 0;
+    // the rendered trail must follow the turtle, so every time the oldest
+    // print moves the track generation must have moved too — the count alone
+    // can't tell the renderer, because the ring turns once it is full
+    let prevOldest: [number, number] | null = null;
+    let prevGen = s.trackGen;
+    for (let i = 0; i < 300 / 0.05; i++) {
+      ctrl.update(0.05, env);
+      totalDistance += Math.hypot(s.x - prevX, s.z - prevZ);
+      prevX = s.x;
+      prevZ = s.z;
+      maxCount = Math.max(maxCount, s.trackCount);
+      expect(s.trackCount).toBeLessThanOrEqual(ANIMALS.turtleTracks);
+      for (let j = 0; j < s.trackCount; j++) {
+        expect(s.trackAge[j]).toBeLessThan(ANIMALS.turtleTrackLife);
+        maxOldestAge = Math.max(maxOldestAge, s.trackAge[0]);
+      }
+      if (s.trackCount > 0) {
+        const oldest: [number, number] = [s.tracks[0], s.tracks[1]];
+        if (prevOldest && (oldest[0] !== prevOldest[0] || oldest[1] !== prevOldest[1])) {
+          expect(s.trackGen).not.toBe(prevGen);
+        }
+        prevOldest = oldest;
+      }
+      prevGen = s.trackGen;
+    }
+    expect(totalDistance).toBeGreaterThan(20); // the turtle really walked
+    expect(maxCount).toBeGreaterThan(2); // and it really left prints
+    expect(maxCount).toBeLessThan(ANIMALS.turtleTracks); // but the trail stays short, never a full frozen ring
+    expect(maxOldestAge).toBeLessThan(ANIMALS.turtleTrackLife);
+    // the oldest surviving print is close behind the turtle, not a stale scatter
+    if (s.trackCount > 0) {
+      expect(Math.hypot(s.tracks[0] - s.x, s.tracks[1] - s.z)).toBeLessThan(12);
+    }
+  });
+
+  it('clears the trail when the turtle goes back into the water', () => {
+    const deep = { on: false };
+    const ctrl = new AnimalController(seeded(7));
+    const env = flatBeach({ waterAt: (_x, z) => (deep.on ? 0.5 : z < 1 ? 0.25 : 0) });
+    ctrl.setPet({ species: 'turtle', name: 'Shelly', mood: 'happy', home: { x: 0, z: 8 } }, env);
+    const s = ctrl.snapshot();
+    advance(ctrl, env, 60);
+    expect(s.trackCount).toBeGreaterThan(2);
+    deep.on = true;
+    let inWater = false;
+    for (let i = 0; i < 10 / 0.05 && !inWater; i++) {
+      ctrl.update(0.05, env);
+      inWater = s.inWater;
+    }
+    expect(inWater).toBe(true);
+    expect(s.trackCount).toBe(0);
+  });
+});
