@@ -78,14 +78,16 @@ const AGENTS: Agent[] = [
   {
     name: 'Codex',
     hue: ['#4e606e', '#a7b6c3'],
-    role: 'OpenAI’s coding agent. Worked on the shore, player controls, and the shared review workflow.',
+    role: 'OpenAI’s coding agent. Worked on the shore, player controls, the Android app and the shared review workflow.',
     bestAt: 'Keeping state, saves, and rendering attached to the right beach as players move along the shore.',
-    mostly: ['Client architecture', 'Rendering', 'Player controls'],
+    mostly: ['Client architecture', 'Rendering', 'Player controls', 'Android app'],
     did: [
+      'Regrouped the controls, kept the bag and shop on a phone screen, added cylinder and square sandcastle molds, and let one stroke edit across two of your linked beaches (#94).',
       'Helped keep the shore cache and undo history in sync with the view during the move to beach IDs (#100).',
+      'Turned the Android app into a hosted shell that loads play.beech.games, so web changes reach phones without a new build (#115).',
       'Followed Claude’s device-cache work with fixes for concurrent tabs, account transitions, and the first live frame on a new beach (#114, #132).',
       'Made beach slots and checkpoint sources easier to see, let waves wash away footprints, and made sign-in easier to find (#119, #124, #126).',
-      'Gave Codex and Claude sessions the same pull request review and landing instructions (#130).',
+      'Gave Codex and Claude sessions the same pull request review and landing instructions (#130), and tidied how search engines see beechshore.com (#131).',
     ],
   },
 ];
@@ -147,7 +149,7 @@ const DAYS: Day[] = [
       'The palm-first interface: at rest the screen is just the beach and a palm. Local weather follows the beach you’re looking at.',
       'A permissions audit, then formal verification: the game’s state machines were modelled in TLA+, which found five races, and from then on every new feature started with a model.',
       'Claude, with help from Codex, moved the game to keeping each beach’s state by its ID, so the live waves could follow the camera while each beach kept its own edits (#100).',
-      'The Android app became a hosted shell, so web changes reach phones without a new build. Copying beaches, and the first version of the currency.',
+      'Codex made the Android app a hosted shell, so web changes reach phones without a new build (#115). Copying beaches, and the first version of the currency.',
     ],
   },
   {
@@ -196,7 +198,7 @@ const WHO: [string, number[]][] = [
   ['Menus and navigation', [0, 1, 2, 1, 1]],
   ['Client state and structure', [0, 2, 0, 0, 1]],
   ['Production: domains, deploys, secrets', [1, 1, 0, 2, 0]],
-  ['App store releases', [1, 1, 0, 2, 0]],
+  ['App store releases', [1, 1, 0, 2, 1]],
   ['Review and merging', [2, 1, 0, 2, 1]],
   ['Player feedback (Discord)', [1, 0, 0, 2, 0]],
 ];
