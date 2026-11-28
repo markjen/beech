@@ -8,54 +8,109 @@ store.beech.games once the domain is mapped): it shows the catalog and says
 it opens soon. Orders turn on by themselves when the four secrets are set
 (see "Turning it on").
 
-## What it sells
+## What it sells (2026-11-28 lineup)
 
-| Product | Price | Made by | Printful product / variants |
-| --- | --- | --- | --- |
-| Beech tee | $30 | printed on demand (DTG front) | 71 Bella + Canvas 3001; white, soft cream, ocean blue, aqua, black; S–3XL |
-| Beech hoodie | $55 | printed on demand (DTG front) | 146 Gildan 18500; sand, white, light blue, navy, black; S–3XL |
-| Beech dad hat | $28 | embroidered on demand | 206 Yupoong 6245CM; khaki, stone, light blue, navy, white |
-| Beech flip flops | $30 | sublimated on demand | 359 Sublimation flip flops; S, M, L |
-| Beech beach towel | $45 | sublimated on demand | 259 Beach towel 30″ × 60″ |
-| The whole beach set | $160 (vs $188) | one of each of the five, colours and sizes chosen per piece | — |
-| Your beach tee | $36 | your own beach printed on the front | 71, same colours and sizes |
-| Your beach hoodie | $62 | your own beach printed on the front | 146, same colours and sizes |
+Reviewed with Mark over seven rounds (the review page was a claude.ai
+artifact). The rules that came out of it:
 
-Shipping is a flat $8, free from $100, to the countries in
-`MERCH.countries` (`server/src/merchCatalog.ts`). Every price, variant id
-and the shipping rule live in `merchCatalog.ts`; the server prices every
-cart from there and never trusts the browser's numbers. Variant ids were
-read from Printful's public catalog API on 2026-11-27.
+- **Pictures are straight on**: the beach seen from above, or from the side.
+  Never slanted (diagonals look rumpled once worn).
+- **The picture sits in a shape** (a square or a circle), never across the
+  whole garment.
+- **Soft, neutral bases** (white, ash, light heather gray, pale blue, dust),
+  and muted colours in the prints.
+- **Minimal**: one-colour line drawings over full pictures.
+
+| Section | Products (Printful product) | With your beach |
+| --- | --- | --- |
+| Designs | Top view tee (71, word front + 10″ square back), Side view tee (71, side-view square front + line badge back), Top view hoodie (146), Beech sweatpants (895, word by one pocket, crab outline by the other), Layers bottle (382), Layers tumbler (909) | top view tee/hoodie: their beach as the back square |
+| The launch five | Beech tee (71), hoodie (146), dad hat (206, embroidered), flip flops (359), beach towel (259); **the whole beach set** of those five | towel |
+| More to wear | Oversized heavyweight hoodie (892), boxy tee (1592), tank (248) | — |
+| Beach day | Cuffed beanie (266, embroidered), bucket hat (1688, DTF), tote (84), socks (882), sticker (358) | tote, sticker |
+| Home and wall | Layers mug (19), poster (1), framed poster (172), framed canvas (614), puzzle (534), sherpa blanket (711), outdoor pillow (1742) | all of them |
+
+**Pricing (Mark, 2026-11-28).** Anything that shows off beech (the line
+mark, the wordmark, or the sample beach) is sold **at cost**:
+- Printful's price for that colour and size, plus each extra placement;
+- plus Stripe's 2.9% + 30¢ and about $1 (`MERCH.atCostMarginCents`);
+- rounded up to the dollar.
+
+Per size, so a 3XL costs what Printful charges for it. With the buyer's own
+beach, an item keeps a normal margin: its own price at the cheapest size
+(`own.cents`) plus what a bigger size costs Printful more. The set is at
+cost as one line: one Stripe fee and one $1, not five. Shipping is a flat
+$8, free from $100.
+
+**Where the numbers come from.** `scripts/merch-catalog.mjs` reads
+Printful's catalog with this store's own pricing and writes
+`server/src/generated/merchCatalogData.ts`. It records:
+- every colour/size's variant id and cost;
+- what each extra placement costs (a back print on the tee is $6.75);
+- each placement's print-area size.
+
+Rerun it when Printful's prices change:
+`PRINTFUL_TOKEN=… PRINTFUL_STORE_ID=19138894 node scripts/merch-catalog.mjs`
+(in a cloud session, `NODE_USE_ENV_PROXY=1` and the token placeholder
+`proxy-injected`). The products, their colours, prints and own-beach prices
+are in `merchCatalog.ts`.
+
+**Print files.**
+- **The brand files** in `public/merch/` are drawn by
+  `scripts/merch-art.mjs`: the line mark, the wordmark, the crab, the wide
+  mark for hats, the muted side view, the line badge, the wrap, and the sea
+  and sand for the towel, flip flops, tote and socks.
+- **The sample beach's top-view prints** (`sample-square.png`,
+  `sample-flat.png`) come from `scripts/merch-sample.mts`, which renders
+  `docs/examples/sunny-cove.beach.json`.
+- **A buyer's beach** is drawn the same way per order
+  (`server/src/merchPrint.ts`): the top-down picture, muted, cut to a square
+  or the whole width.
+
+Each print names its placement and a spot (chest, wearer's left, back
+square, …). `positionFor` turns that into Printful's file `position` inside
+that placement's print area.
+
+**Not sold yet:**
+- **The sunglasses:** stocked goods, `MERCH_SUNGLASSES_VARIANT`; see below.
+- **All-over-print panel items** (board shorts, swim trunks, the reversible
+  bucket hat, the fanny pack): they need art drawn to each panel template.
+- **Tapstitch's heavyweight line:** Tapstitch has no order API, so each
+  order would have to be placed by hand.
+- **A buyer's own beach from the side** (side view tee, bottle, tumbler):
+  needs a side-view renderer.
+- **The phone case.**
 
 **Sunglasses, for later.** The sunglasses were in the first catalog and
-are out for now (2026-11-27): Printful (and Printify, Gooten) don't print
-sunglasses on demand. The few who do (Contrado, Bags of Love) have no
-order API that fits. So the sunglasses are ordered once in bulk with the
-beech logo on the arm (any promo supplier; 50–100 units, a few dollars
-each), sent to Printful's warehouse (Printful Warehousing), and picked into
-the same box as the printed things. When that is done and the Actions
-variable `MERCH_SUNGLASSES_VARIANT` is set to their warehouse variant id,
-the sunglasses come back as their own product in the store. The set does
-not wait on that: it stays the five printed things.
+are out for now (2026-11-27). Printful (and Printify, Gooten) don't print
+sunglasses on demand, and the few who do (Contrado, Bags of Love) have no
+order API that fits. The plan:
+1. Order them once in bulk with the beech logo on the arm (any promo
+   supplier; 50–100 units, a few dollars each).
+2. Send them to Printful's warehouse (Printful Warehousing), which picks
+   them into the same box as the printed things.
+3. Set the Actions variable `MERCH_SUNGLASSES_VARIANT` to their warehouse
+   variant id.
+
+The sunglasses then come back as their own product.
 
 ## One-off prints of your beach
 
-Yes, it's possible, and it's built for the tee and the hoodie. Printful's
-order API takes a print file URL per order item, so every order can carry
-its own picture: there's no product to set up per beach.
+Printful's order API takes a print file URL per order item, so every order
+can carry its own picture: there's no product to set up per beach.
 
 - The shopper signs in on the store with Google or Apple (the same shore
-  token as beechshore.com's account page, docs/SHORE_SITE.md), sees their
-  saved beaches with a preview of each, and picks one.
-- At checkout the server copies that beach (its saved sand, its place, its
-  pier and its inland rows) onto the order line, in the same transaction
-  that checks the shopper still owns it. Building on afterwards doesn't
-  change the print.
-- The print file is the shore's top-down picture of that copy
-  (`beachPng`, the same drawing as beechshore.com's cards), 1800 × 945
-  pixels: 12″ wide at 150 dpi, which fills the width of Printful's 12″ × 16″
-  DTG front area. It is served at `store.beech.games/api/print/<key>.png`;
-  the key is random per line, so only Printful (and the order) know it.
+  token as beechshore.com's account page, docs/SHORE_SITE.md), picks one of
+  their saved beaches, then chooses "My beach" on a product marked "Your
+  beach".
+- At checkout the server copies that beach onto the order line, in the same
+  transaction that checks the shopper still owns it: its saved sand, its
+  place, its pier and its inland rows. Building on afterwards doesn't change
+  the print.
+- The print file is drawn from that copy by `merchPrint.ts`: the square
+  (1500 px, a 10″ square on a shirt's back) or the flat cut (2400 × 1260
+  plus any rows), muted.
+- It is served at `store.beech.games/api/print/<key>.png`. The key is random
+  per line, so only Printful (and the order) know it.
 - Only your own beaches: printing someone else's beach is refused (403).
 
 ## How an order goes
@@ -97,6 +152,9 @@ Printful makes it, webhook ────────► package_shipped → shipp
   Printful are retried.
 
 ## State machine
+
+No model change for the 2026-11-28 lineup: it changed what is sold, its
+prices and its print files, not how an order moves.
 
 `specs/tla/MerchOrders.tla`; the action-to-route table is in
 [STATE_MACHINES.md](STATE_MACHINES.md), "Merch store orders". The rules:

@@ -26,9 +26,9 @@ import { HTTPException } from 'hono/http-exception';
 import { timingSafeEqual } from 'node:crypto';
 
 import { hashToken } from './auth.js';
-import { beachPng } from './beachImage.js';
 import { toBytes, type Db } from './db.js';
-import { MERCH, PRODUCTS, isAvailable, priceCart, printItems, productById, type Availability, type Choice } from './merchCatalog.js';
+import { MERCH, PRODUCTS, isAvailable, priceCart, priceTable, printItems, productById, type Availability, type Choice } from './merchCatalog.js';
+import { beachPrintPng, type PrintCut } from './merchPrint.js';
 import {
   createCheckoutSession,
   printfulConfirm,
@@ -130,14 +130,18 @@ export function createMerch(db: Db, deps: MerchDeps) {
     c.json({
       open: !!cfg,
       shipping: { cents: MERCH.shippingCents, freeFromCents: MERCH.freeShippingFromCents, countries: MERCH.countries },
+      atCostMarginCents: MERCH.atCostMarginCents,
       products: PRODUCTS.map((p) => ({
         id: p.id,
         name: p.name,
         blurb: p.blurb,
-        cents: p.cents,
+        section: p.section,
+        kind: p.kind,
         colors: p.colors,
         sizes: p.sizes,
-        beachPrint: !!p.beachPrint,
+        ...priceTable(p),
+        /** with the buyer's beach: which cut of it prints */
+        ownCut: p.own ? p.own.prints.map((x) => ('beach' in x.art ? x.art.beach : null)).find(Boolean) ?? null : null,
         parts: p.parts ?? null,
         available: isAvailable(p, avail),
       })),
@@ -158,19 +162,14 @@ export function createMerch(db: Db, deps: MerchDeps) {
     const rows = await ownBeaches(me!.id);
     return c.json({ user: { name: me!.name }, beaches: rows.map((b) => ({ id: b.id, name: b.name || `${me!.name}’s beach`, code: b.code })) });
   });
-  // a beach print before you've picked yours: the untouched beach
-  let sample: Buffer | null = null;
-  app.get('/sample-beach.png', (c) => {
-    sample ??= beachPng(null, { width: 600, height: Math.round((600 * MERCH.printHeight) / MERCH.printWidth), location: 'bondi' });
-    return c.body(new Uint8Array(sample), 200, { 'Content-Type': 'image/png' });
-  });
-  // what the print will look like (the shopper's own beach as it is now)
+  // what a print of one of their beaches looks like (the square or the flat cut, muted, small)
   app.get('/beach-preview/:id', async (c) => {
     const me = await shoreUser(db, c, now());
     if (!me) fail(401, 'Sign in to print your beach.');
     const b = (await ownBeaches(me!.id)).find((r) => r.id === c.req.param('id'));
     if (!b) fail(404, 'not your beach');
-    const png = beachPng(toBytes(b!.sand), { width: 600, height: Math.round((600 * MERCH.printHeight) / MERCH.printWidth), location: b!.location, pier: !!b!.pier, sections: b!.sections?.split(',') ?? [] });
+    const cut: PrintCut = c.req.query('cut') === 'flat' ? 'flat' : 'square';
+    const png = beachPrintPng(toBytes(b!.sand), { location: b!.location, pier: !!b!.pier, sections: b!.sections?.split(',') ?? [] }, cut, cut === 'flat' ? 0.25 : 0.4);
     return c.body(new Uint8Array(png), 200, { 'Content-Type': 'image/png', 'Cache-Control': 'private, no-store' });
   });
 
@@ -346,19 +345,15 @@ export function createMerch(db: Db, deps: MerchDeps) {
     if (!/^[0-9a-f]{32}$/.test(key)) fail(404, 'not found');
     let png = printCache.get(key);
     if (!png) {
-      const [l] = await db.query<{ design: unknown; design_location: string | null; design_pier: boolean | null; design_sections: string | null }>(
-        'SELECT design, design_location, design_pier, design_sections FROM merch_lines WHERE print_key = $1 AND design IS NOT NULL',
+      const [l] = await db.query<{ product: string; design: unknown; design_location: string | null; design_pier: boolean | null; design_sections: string | null }>(
+        'SELECT product, design, design_location, design_pier, design_sections FROM merch_lines WHERE print_key = $1 AND design IS NOT NULL',
         [key],
         'merch.print',
       );
       if (!l) fail(404, 'not found');
-      png = beachPng(toBytes(l!.design), {
-        width: MERCH.printWidth,
-        height: MERCH.printHeight,
-        location: l!.design_location,
-        pier: !!l!.design_pier,
-        sections: l!.design_sections?.split(',') ?? [],
-      });
+      const own = productById(l!.product)?.own?.prints.find((x) => 'beach' in x.art)?.art;
+      const cut: PrintCut = own && 'beach' in own ? own.beach : 'flat';
+      png = beachPrintPng(toBytes(l!.design), { location: l!.design_location, pier: !!l!.design_pier, sections: l!.design_sections?.split(',') ?? [] }, cut);
       if (printCache.size > 50) printCache.delete(printCache.keys().next().value!);
       printCache.set(key, png);
     }

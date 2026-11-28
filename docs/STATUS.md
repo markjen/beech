@@ -354,6 +354,31 @@ checkpoint limits (`server/src/limits.ts`, which now holds `BEACH_CAP`),
 what a save keeps (`objectsToSave`) and the app's restore check. Item
 sizes are floating point, so they aren't proved.
 
+## Merch store lineup (2026-11-28)
+
+The store's second lineup, reviewed with Mark:
+- shirt designs with the beach straight from above or from the side, in a
+  square or a circle on soft neutral bases;
+- a one-colour line mark instead of the 3D block logo;
+- line drawings that wrap round a bottle, a tumbler and a mug;
+- 27 products in all.
+
+Anything with beech on it is sold at cost, per size, from Printful's own
+prices for this store (`scripts/merch-catalog.mjs` →
+`generated/merchCatalogData.ts`). With a buyer's own beach (top view
+square, or the whole beach on wall art), items keep a margin.
+
+Print files come from three places:
+- `scripts/merch-art.mjs` draws the brand files;
+- `scripts/merch-sample.mts` renders the sample beach, Sunny cove;
+- `merchPrint.ts` renders a buyer's beach.
+
+Each print is placed with Printful file positions.
+
+Not yet: the sunglasses, all-over panel items, Tapstitch (no API), a
+buyer's beach from the side. No order-model change. See
+[MERCH_STORE.md](MERCH_STORE.md).
+
 ## Merch store (2026-11-27)
 
 store.beech.games sells a beech tee, hoodie, dad hat, flip flops and

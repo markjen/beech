@@ -24,7 +24,7 @@ export interface StoreSiteConfig {
   appleClientId?: string;
 }
 
-const API = /^\/api\/(catalog|sample-beach\.png|my-beaches|beach-preview\/[0-9a-f-]{36}|checkout|orders\/[0-9a-f-]{36}|stripe-webhook|printful-webhook|print\/[0-9a-f]{32}\.png)$/;
+const API = /^\/api\/(catalog|my-beaches|beach-preview\/[0-9a-f-]{36}|checkout|orders\/[0-9a-f-]{36}|stripe-webhook|printful-webhook|print\/[0-9a-f]{32}\.png)$/;
 const AUTH = /^\/api\/auth\/(google|apple)$/;
 
 export function createStoreSite(cfg: StoreSiteConfig): Hono {
@@ -110,14 +110,19 @@ export function storeHtml(o: { base: string; gameUrl: string; googleClientId: st
     <div class="hero-copy">
       <p class="kicker">The beech store</p>
       <h1>Wear the beach.</h1>
-      <p class="lede">Soft tees and hoodies, an embroidered hat, flip flops and a big beach towel. Or put your own beach on a shirt.</p>
+      <p class="lede">Simple things with the beach on them, seen from above or from the side. Anything with beech on it is sold at cost. Or print your own beach.</p>
       <div class="hero-actions">
-        <a class="btn" href="#set">Get the whole set</a>
+        <a class="btn" href="#designs-wrap">See the designs</a>
         <a class="btn ghost" href="#yours">Print your beach</a>
       </div>
       <p class="status" id="store-status" role="status"></p>
     </div>
     <div class="hero-art" id="hero-art" aria-hidden="true"></div>
+  </section>
+
+  <section class="grid-wrap" id="designs-wrap">
+    <h2>Designs</h2>
+    <div class="grid" id="designs"></div>
   </section>
 
   <section class="set" id="set"></section>
@@ -127,10 +132,25 @@ export function storeHtml(o: { base: string; gameUrl: string; googleClientId: st
     <div class="grid" id="grid"></div>
   </section>
 
+  <section class="grid-wrap">
+    <h2>More to wear</h2>
+    <div class="grid" id="grid-wear"></div>
+  </section>
+
+  <section class="grid-wrap">
+    <h2>Beach day</h2>
+    <div class="grid" id="grid-day"></div>
+  </section>
+
+  <section class="grid-wrap">
+    <h2>Home and wall</h2>
+    <div class="grid" id="grid-home"></div>
+  </section>
+
   <section class="yours" id="yours">
     <div class="yours-copy">
       <h2>Your beach, printed</h2>
-      <p>The beach you built, drawn big on the front of a tee or a hoodie. We print it as it is when you order, so keep building.</p>
+      <p>Anything marked “Your beach” can print a beach you built, seen from above, instead of Sunny cove. Sign in, pick a beach, then choose “My beach” on the product. We print it as it is when you order, so keep building.</p>
       <div id="signin">
         <div class="signin-buttons">
           <span id="google-button"></span>
@@ -143,7 +163,6 @@ export function storeHtml(o: { base: string; gameUrl: string; googleClientId: st
         <div class="beaches" id="beaches" role="radiogroup" aria-label="Your beaches"></div>
       </div>
     </div>
-    <div class="yours-products" id="yours-products"></div>
   </section>
 </main>
 
@@ -237,7 +256,7 @@ main{max-width:1160px;margin:0 auto;padding:0 16px}
 .kicker{text-transform:uppercase;letter-spacing:.14em;font-size:13px;font-weight:700;color:var(--coral);margin:0 0 10px}
 .lede{font-size:19px;color:var(--ink-soft);max-width:34em}
 .hero-actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:22px}
-.hero-art{aspect-ratio:1;border-radius:32px;background:radial-gradient(circle at 30% 25%,#cfe9ee,#8fd0e6 60%,#2fa4bb);position:relative;overflow:hidden;box-shadow:var(--shadow)}
+.hero-art{aspect-ratio:1;border-radius:32px;background:radial-gradient(circle at 30% 25%,#f4f6f4,#e3ecec 60%,#d3e2e3);position:relative;overflow:hidden;box-shadow:var(--shadow)}
 .hero-art svg{position:absolute}
 .status{min-height:1.5em;color:var(--ink-soft);font-size:15px;margin:10px 0 0}
 .status.bad{color:var(--coral)}
@@ -250,6 +269,10 @@ main{max-width:1160px;margin:0 auto;padding:0 16px}
 .grid-wrap{margin:56px 0}
 .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
 .card{appearance:none;border:0;text-align:left;font:inherit;color:inherit;background:var(--surface);border-radius:24px;padding:14px 14px 18px;box-shadow:0 2px 10px rgba(38,49,58,.06);cursor:pointer;transition:transform .15s,box-shadow .15s;display:flex;flex-direction:column}
+.card.wide{grid-column:span 2}
+#designs{grid-template-columns:repeat(4,1fr)}
+@media (max-width:820px){#designs{grid-template-columns:1fr 1fr}}
+.card.wide .pic{aspect-ratio:400/250}
 .card:hover{transform:translateY(-3px);box-shadow:var(--shadow)}
 .card[aria-disabled="true"]{cursor:default;opacity:.7}
 .card[aria-disabled="true"]:hover{transform:none}
@@ -262,14 +285,14 @@ main{max-width:1160px;margin:0 auto;padding:0 16px}
 .tag{display:inline-block;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;background:var(--sea-soft);color:var(--sea);border-radius:999px;padding:2px 10px;margin-left:6px;vertical-align:middle}
 .swatches{display:flex;gap:6px;margin:10px 4px 0}
 .swatches i{width:14px;height:14px;border-radius:50%;box-shadow:inset 0 0 0 1px rgba(0,0,0,.18)}
-.yours{margin:56px 0;display:grid;grid-template-columns:1fr 1.1fr;gap:32px;align-items:start;background:linear-gradient(160deg,var(--sea-soft),transparent 60%);border-radius:32px;padding:36px}
+.yours{margin:56px 0;display:grid;grid-template-columns:1fr;gap:32px;align-items:start;background:linear-gradient(160deg,var(--sea-soft),transparent 60%);border-radius:32px;padding:36px}
 .yours-products{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 .signin-buttons{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:8px}
 .who{color:var(--ink-soft)}
 .beaches{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
 .beach{appearance:none;border:0;font:inherit;color:inherit;background:var(--surface);border-radius:16px;padding:8px;cursor:pointer;text-align:left;box-shadow:inset 0 0 0 2px transparent}
 .beach[aria-checked="true"]{box-shadow:inset 0 0 0 2px var(--sea)}
-.beach img{width:100%;aspect-ratio:1800/945;object-fit:cover;border-radius:10px;display:block;background:var(--bg-deep)}
+.beach img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:10px;display:block;background:var(--bg-deep)}
 .beach span{display:block;font-size:14px;font-weight:600;margin:6px 2px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .foot{display:flex;gap:20px;justify-content:center;flex-wrap:wrap;padding:40px 16px 56px;color:var(--ink-faint);font-size:14px}
 .foot a{color:var(--ink-soft)}
@@ -326,7 +349,7 @@ legend small{color:var(--ink-faint);font-weight:500;margin-left:6px}
   .sheet-body{padding:20px}
   .quiet{display:none}
 }
-@media (max-width:420px){.grid{grid-template-columns:1fr 1fr}.card p{display:none}.yours-products{grid-template-columns:1fr 1fr}}
+@media (max-width:420px){.grid{grid-template-columns:1fr 1fr}.card p{display:none}}
 `;
 
 function storeScript(settings: string): string {
@@ -348,46 +371,127 @@ let bag = store.get(BAG_KEY, []);
 let beaches = [];
 let chosenBeach = null;
 const previews = new Map();
-const SAMPLE = B + '/api/sample-beach.png';
 
 // ------------------------------------------------------------ pictures
-// Each product is drawn here: its shape in the chosen colour, with the print
-// on it (the brand art, or the shopper's beach).
-const art = (file, dark) => B + '/merch-art/' + (dark ? file.replace('.png', '-light.png') : file);
+// Each product is drawn here: its shape in the chosen colour, with its real
+// print files on it (the line mark, the side view, the sample beach), or the
+// shopper's own beach seen from above when they pick it.
+const A = (f) => B + '/merch-art/' + f;
+const IMG = {
+  mark: A('mark.png'), markLight: A('mark-light.png'), word: A('word.png'), crab: A('crab.png'),
+  wide: A('mark-wide.png'), wideLight: A('mark-wide-light.png'), side: A('side-square.png'), badge: A('badge.png'), wrap: A('wrap.png'),
+  towel: A('towel.png'), flip: A('flipflops.png'), tote: A('tote.png'), socks: A('socks.png'),
+  square: A('sample-square.png'), flat: A('sample-flat.png'),
+};
 const shade = (hex, f) => {
   const n = parseInt(hex.slice(1), 16);
   const ch = (s) => Math.max(0, Math.min(255, Math.round(((n >> s) & 255) * f)));
   return 'rgb(' + ch(16) + ',' + ch(8) + ',' + ch(0) + ')';
 };
 let uid = 0;
-function picture(id, color, print) {
-  const c = color ? color.hex : '#ffffff';
-  const dark = !!(color && color.dark);
-  const edge = shade(c, 0.86);
+const TEE = (b) => 'M' + (140 - b) + ' 52 L' + (88 - b) + ' 72 L' + (34 - b) + ' 132 L' + (74 - b) + ' 176 L' + (108 - b) + ' 150 L' + (108 - b) + ' 346 L' + (292 + b) + ' 346 L' + (292 + b) + ' 150 L' + (326 + b) + ' 176 L' + (366 + b) + ' 132 L' + (312 + b) + ' 72 L' + (260 + b) + ' 52 Q200 92 ' + (140 - b) + ' 52 Z';
+const HOOD = 'M150 60 Q200 10 250 60 L300 74 L340 140 L372 330 L326 340 L300 196 L300 360 L100 360 L100 196 L74 340 L28 330 L60 140 L100 74 Z';
+const img = (href, x, y, w, h, slice) => '<image href="' + href + '" x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '"' + (slice ? ' preserveAspectRatio="xMidYMid slice"' : '') + '/>';
+const frame = (href, x, y, w, h) => img(href, x, y, w, h, true) + '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" fill="none" stroke="rgba(29,45,56,.25)" stroke-width="1.5"/>';
+const sv = (inner, vb) => '<svg viewBox="' + (vb || '0 0 400 400') + '" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">' + inner + '</svg>';
+const lbl = (x, t) => '<text x="' + x + '" y="240" text-anchor="middle" font-family="Plus Jakarta Sans, sans-serif" font-size="11" font-weight="700" letter-spacing="1.5" fill="#758490">' + t + '</text>';
+/** p: product, color: its colour, own: { square, flat } image urls of the shopper's beach, or null */
+function picture(p, color, own) {
   const k = 'p' + (++uid);
-  switch (id) {
-    case 'tee': case 'beach-tee': {
-      const img = print || art('logo-front.png', dark);
-      const box = print ? 'x="122" y="128" width="156" height="82"' : 'x="140" y="108" width="120" height="120"';
-      return '<svg viewBox="0 0 400 400"><path d="M140 52 L92 70 L36 128 L76 172 L108 146 L108 352 L292 352 L292 146 L324 172 L364 128 L308 70 L260 52 Q200 92 140 52 Z" fill="' + c + '" stroke="' + edge + '" stroke-width="3" stroke-linejoin="round"/><path d="M140 52 Q200 92 260 52" fill="none" stroke="' + edge + '" stroke-width="5"/><image href="' + img + '" ' + box + ' preserveAspectRatio="xMidYMid meet"' + (print ? ' style="border-radius:6px"' : '') + '/></svg>';
+  const c = color ? color.hex : '#ffffff';
+  const e = shade(c, 0.82);
+  const dark = !!(color && color.dark);
+  const mark = dark ? IMG.markLight : IMG.mark;
+  const sq = own ? own.square : IMG.square;
+  const fl = own ? own.flat : IMG.flat;
+  const tee = (x, front, inner, b) => '<g transform="translate(' + x + ' 40) scale(.5)"><path d="' + TEE(b || 0) + '" fill="' + c + '" stroke="' + e + '" stroke-width="4" stroke-linejoin="round"/>' +
+    (front ? '<path d="M140 52 Q200 92 260 52" fill="none" stroke="' + e + '" stroke-width="6"/>' : '<path d="M150 54 Q200 66 250 54" fill="none" stroke="' + e + '" stroke-width="6"/>') + inner + '</g>';
+  const hood = (x, front, inner, s) => '<g transform="translate(' + x + ' ' + (s ? 34 : 40) + ') scale(' + (s || 0.5) + ')"><path d="' + HOOD + '" fill="' + c + '" stroke="' + e + '" stroke-width="4" stroke-linejoin="round"/>' +
+    (front ? '<path d="M150 60 Q200 120 250 60" fill="' + e + '" opacity=".5"/><path d="M140 262 L260 262 L276 320 L124 320 Z" fill="none" stroke="' + e + '" stroke-width="4"/>' : '<path d="M150 60 Q200 10 250 60 Q200 80 150 60 Z" fill="' + e + '" opacity=".35"/>') + inner + '</g>';
+  const wrapOn = (shape, x, y, w, h) => '<clipPath id="' + k + '"><path d="' + shape + '"/></clipPath><path d="' + shape + '" fill="#fbfbfa" stroke="#cfd4d8" stroke-width="3"/><g clip-path="url(#' + k + ')">' + img(IMG.wrap, x, y, w, h) + '</g>';
+  const pat = (href, w, h, x, y) => '<defs><pattern id="' + k + '" patternUnits="userSpaceOnUse" x="' + (x || 0) + '" y="' + (y || 0) + '" width="' + w + '" height="' + h + '"><image href="' + href + '" width="' + w + '" height="' + h + '" preserveAspectRatio="xMidYMid slice"/></pattern></defs>';
+  switch (p.kind) {
+    case 'tee-top':
+      return sv(tee(0, true, img(IMG.word, 220, 112, 56, 19)) + tee(200, false, frame(sq, 140, 100, 120, 120)) + lbl(100, 'FRONT') + lbl(300, 'BACK'), '0 0 400 250');
+    case 'tee-side':
+      return sv(tee(0, true, frame(IMG.side, 146, 110, 108, 108)) + tee(200, false, img(IMG.badge, 124, 94, 152, 152)) + lbl(100, 'FRONT') + lbl(300, 'BACK'), '0 0 400 250');
+    case 'hoodie-top':
+      return sv(hood(0, true, img(IMG.word, 214, 126, 52, 17)) + hood(200, false, frame(sq, 145, 104, 110, 110)) + lbl(100, 'FRONT') + lbl(300, 'BACK'), '0 0 400 250');
+    case 'pants':
+      return sv('<path d="M120 40 L280 40 L296 360 L216 360 L200 150 L184 360 L104 360 Z" fill="' + c + '" stroke="' + e + '" stroke-width="3" stroke-linejoin="round"/><rect x="120" y="40" width="160" height="26" fill="' + shade(c, 0.92) + '"/>' + img(IMG.word, 214, 84, 64, 21) + img(IMG.crab, 132, 80, 40, 28));
+    case 'bottle': case 'tumbler': case 'mug': {
+      const shape = p.kind === 'bottle' ? 'M156 96 L244 96 Q266 108 266 140 L266 360 Q266 382 244 382 L156 382 Q134 382 134 360 L134 140 Q134 108 156 96 Z'
+        : p.kind === 'tumbler' ? 'M112 64 L288 64 L268 370 Q266 380 256 380 L144 380 Q134 380 132 370 Z' : 'M70 120 L300 120 L300 340 Q300 356 284 356 L86 356 Q70 356 70 340 Z';
+      const top = p.kind === 'bottle' ? '<rect x="170" y="26" width="60" height="40" rx="10" fill="#c8ced3"/><rect x="178" y="62" width="44" height="36" fill="#e3e7ea"/>'
+        : p.kind === 'tumbler' ? '<rect x="104" y="40" width="192" height="28" rx="8" fill="#e8ecef" stroke="#c8ced3" stroke-width="3"/>' : '<path d="M296 170 Q356 170 356 230 Q356 290 296 290" fill="none" stroke="#e6e2da" stroke-width="22"/>';
+      if (own && p.kind === 'mug') return sv(top + '<path d="' + shape + '" fill="#fbfbfa" stroke="#ddd6c8" stroke-width="3"/>' + img(own.flat, 82, 170, 206, 108));
+      return sv(top + wrapOn(shape, -160, 170, 640, 162));
     }
-    case 'hoodie': case 'beach-hoodie': {
-      const img = print || art('logo-front.png', dark);
-      const box = print ? 'x="128" y="140" width="144" height="76"' : 'x="148" y="124" width="104" height="104"';
-      return '<svg viewBox="0 0 400 400"><path d="M150 60 Q200 10 250 60 L300 74 L340 140 L372 330 L326 340 L300 196 L300 360 L100 360 L100 196 L74 340 L28 330 L60 140 L100 74 Z" fill="' + c + '" stroke="' + edge + '" stroke-width="3" stroke-linejoin="round"/><path d="M150 60 Q200 120 250 60" fill="' + edge + '" opacity=".55"/><path d="M178 92 L174 140 M222 92 L226 140" stroke="' + edge + '" stroke-width="3" stroke-linecap="round"/><path d="M140 262 L260 262 L276 320 L124 320 Z" fill="none" stroke="' + edge + '" stroke-width="3"/><image href="' + img + '" ' + box + ' preserveAspectRatio="xMidYMid meet"/></svg>';
+    case 'tee': case 'tee-boxy': {
+      const b = p.kind === 'tee-boxy' ? 14 : 0;
+      return sv('<path d="' + TEE(b) + '" fill="' + c + '" stroke="' + e + '" stroke-width="3" stroke-linejoin="round"/><path d="M140 52 Q200 92 260 52" fill="none" stroke="' + e + '" stroke-width="5"/>' + img(mark, 172, 104, 56, 50));
     }
-    case 'hat':
-      return '<svg viewBox="0 0 400 400"><path d="M70 236 Q74 108 200 102 Q326 108 330 236 Z" fill="' + c + '" stroke="' + edge + '" stroke-width="3"/><path d="M200 102 L200 236 M130 120 Q150 180 152 236 M270 120 Q250 180 248 236" stroke="' + edge + '" stroke-width="2.5" fill="none"/><path d="M58 236 Q200 214 342 236 Q360 300 200 300 Q40 300 58 236 Z" fill="' + edge + '"/><circle cx="200" cy="104" r="7" fill="' + edge + '"/><image href="' + art('logo-hat.png', dark) + '" x="128" y="150" width="144" height="63" preserveAspectRatio="xMidYMid meet"/></svg>';
-    case 'flipflops':
-      return '<svg viewBox="0 0 400 400"><defs><pattern id="' + k + '" patternUnits="userSpaceOnUse" width="400" height="400"><image href="' + art('flipflops.png') + '" width="400" height="400"/></pattern></defs><g transform="rotate(-8 140 200)"><path d="M140 40 C 200 40 214 120 200 200 C 190 280 196 360 140 364 C 84 360 92 280 82 200 C 70 120 80 40 140 40 Z" fill="url(#' + k + ')" stroke="#2a3a46" stroke-width="10"/><path d="M90 170 Q140 110 192 170" fill="none" stroke="#1d2d38" stroke-width="12" stroke-linecap="round"/><path d="M140 118 L140 130" stroke="#1d2d38" stroke-width="12" stroke-linecap="round"/></g><g transform="rotate(8 270 200)"><path d="M270 40 C 330 40 340 120 328 200 C 318 280 326 360 270 364 C 214 360 222 280 210 200 C 200 120 210 40 270 40 Z" fill="url(#' + k + ')" stroke="#2a3a46" stroke-width="10"/><path d="M218 170 Q270 110 320 170" fill="none" stroke="#1d2d38" stroke-width="12" stroke-linecap="round"/><path d="M270 118 L270 130" stroke="#1d2d38" stroke-width="12" stroke-linecap="round"/></g></svg>';
+    case 'tank':
+      return sv('<path d="M150 40 L150 70 Q150 140 116 160 L116 352 L284 352 L284 160 Q250 140 250 70 L250 40 L228 40 Q222 110 200 110 Q178 110 172 40 Z" fill="' + c + '" stroke="' + e + '" stroke-width="3" stroke-linejoin="round"/>' + img(mark, 174, 140, 52, 46));
+    case 'hoodie':
+      return sv('<path d="' + HOOD + '" fill="' + c + '" stroke="' + e + '" stroke-width="3" stroke-linejoin="round"/><path d="M150 60 Q200 120 250 60" fill="' + e + '" opacity=".55"/><path d="M178 92 L174 140 M222 92 L226 140" stroke="' + e + '" stroke-width="3" stroke-linecap="round"/><path d="M140 262 L260 262 L276 320 L124 320 Z" fill="none" stroke="' + e + '" stroke-width="3"/>' + img(mark, 174, 140, 52, 46));
+    case 'cap':
+      return sv('<path d="M70 236 Q74 108 200 102 Q326 108 330 236 Z" fill="' + c + '" stroke="' + e + '" stroke-width="3"/><path d="M200 102 L200 236 M130 120 Q150 180 152 236 M270 120 Q250 180 248 236" stroke="' + e + '" stroke-width="2.5" fill="none"/><path d="M58 236 Q200 214 342 236 Q360 300 200 300 Q40 300 58 236 Z" fill="' + e + '"/><circle cx="200" cy="104" r="7" fill="' + e + '"/>' + img(dark ? IMG.wideLight : IMG.wide, 134, 156, 132, 48));
+    case 'beanie':
+      return sv('<path d="M90 290 L90 200 Q90 70 200 70 Q310 70 310 200 L310 290 Z" fill="' + c + '"/><rect x="80" y="230" width="240" height="70" rx="12" fill="' + shade(c, 0.92) + '"/>' + img(dark ? IMG.wideLight : IMG.wide, 140, 244, 120, 44));
+    case 'bucket':
+      return sv('<path d="M110 250 L136 120 Q200 96 264 120 L290 250 Z" fill="' + c + '" stroke="' + e + '" stroke-width="3"/><path d="M40 262 Q200 220 360 262 Q370 300 200 304 Q30 300 40 262 Z" fill="' + c + '" stroke="' + e + '" stroke-width="3"/>' + img(IMG.wide, 144, 180, 112, 41));
+    case 'flipflops': {
+      const href = own ? own.flat : IMG.flip;
+      const sole = (x) => '<path d="M' + x + ' 40 C ' + (x + 60) + ' 40 ' + (x + 74) + ' 120 ' + (x + 60) + ' 200 C ' + (x + 50) + ' 280 ' + (x + 56) + ' 360 ' + x + ' 364 C ' + (x - 56) + ' 360 ' + (x - 48) + ' 280 ' + (x - 58) + ' 200 C ' + (x - 70) + ' 120 ' + (x - 60) + ' 40 ' + x + ' 40 Z" fill="url(#' + k + ')" stroke="#2a3a46" stroke-width="10"/><path d="M' + (x - 50) + ' 170 Q' + x + ' 110 ' + (x + 52) + ' 170" fill="none" stroke="#1d2d38" stroke-width="12" stroke-linecap="round"/>';
+      return sv(pat(href, 340, 400, 0, 20) + '<g transform="rotate(-8 140 200)">' + sole(140) + '</g><g transform="rotate(8 270 200)">' + sole(270) + '</g>');
+    }
     case 'towel':
-      return '<svg viewBox="0 0 400 400"><defs><clipPath id="' + k + '"><rect x="110" y="20" width="180" height="360" rx="14"/></clipPath></defs><g transform="rotate(-6 200 200)"><g clip-path="url(#' + k + ')"><image href="' + art('towel.png') + '" x="110" y="20" width="180" height="360" preserveAspectRatio="none"/></g><rect x="110" y="20" width="180" height="360" rx="14" fill="none" stroke="#e8dcc6" stroke-width="5"/><path d="M110 352 L290 352" stroke="#fff" stroke-width="4" stroke-dasharray="6 6" opacity=".7"/></g></svg>';
-      return '<svg viewBox="0 0 400 400"><path d="M44 178 Q40 150 70 148 L168 148 Q186 150 182 176 L174 226 Q168 254 136 254 L92 254 Q62 254 56 226 Z" fill="#1d2d38"/><path d="M356 178 Q360 150 330 148 L232 148 Q214 150 218 176 L226 226 Q232 254 264 254 L308 254 Q338 254 344 226 Z" fill="#1d2d38"/><path d="M70 160 L160 160 L150 220 Q146 240 124 240 L94 240 Q76 240 72 220 Z" fill="#2fa4bb" opacity=".85"/><path d="M330 160 L240 160 L250 220 Q254 240 276 240 L306 240 Q324 240 328 220 Z" fill="#2fa4bb" opacity=".85"/><path d="M78 168 L120 168" stroke="#8ff0de" stroke-width="6" stroke-linecap="round" opacity=".8"/><path d="M282 168 L322 168" stroke="#8ff0de" stroke-width="6" stroke-linecap="round" opacity=".8"/><path d="M182 168 Q200 156 218 168" fill="none" stroke="#1d2d38" stroke-width="10"/><path d="M44 160 L14 150 M356 160 L386 150" stroke="#1d2d38" stroke-width="10" stroke-linecap="round"/></svg>';
+      return sv('<clipPath id="' + k + '"><rect x="40" y="110" width="320" height="180" rx="12"/></clipPath><g clip-path="url(#' + k + ')">' + img(own ? own.flat : IMG.towel, 40, 110, 320, 180, true) + '</g><rect x="40" y="110" width="320" height="180" rx="12" fill="none" stroke="#e8dcc6" stroke-width="5"/>');
+    case 'tote':
+      return sv('<path d="M150 130 Q150 50 200 50 Q250 50 250 130" fill="none" stroke="#1d2d38" stroke-width="12"/><clipPath id="' + k + '"><rect x="80" y="120" width="240" height="240" rx="8"/></clipPath><g clip-path="url(#' + k + ')">' + img(own ? own.flat : IMG.tote, 80, 120, 240, 240, true) + '</g><rect x="80" y="120" width="240" height="240" rx="8" fill="none" stroke="#2a3a46" stroke-width="4"/>');
+    case 'socks':
+      return sv(pat(IMG.socks, 100, 420, 0, 30) + ['<g transform="translate(90 30) rotate(-6)">', '<g transform="translate(210 40) rotate(6)">'].map((g) => g + '<path d="M20 0 L120 0 L120 220 Q120 300 60 300 L0 300 Q-30 300 -30 270 Q-30 240 20 230 Z" fill="url(#' + k + ')" stroke="#2a3a46" stroke-width="4"/></g>').join(''));
+    case 'sticker':
+      return sv('<rect x="70" y="70" width="260" height="260" rx="40" fill="#fffdf8" stroke="#e0d6c4" stroke-width="3"/>' + (own ? '<clipPath id="' + k + '"><rect x="86" y="86" width="228" height="228" rx="30"/></clipPath><g clip-path="url(#' + k + ')">' + img(sq, 86, 86, 228, 228, true) + '</g>' : img(IMG.mark, 110, 104, 180, 160)));
+    case 'poster':
+      return sv('<rect x="60" y="70" width="280" height="260" fill="#fffdf8" stroke="#e0d6c4" stroke-width="3"/>' + img(fl, 74, 96, 252, 208));
+    case 'frame':
+      return sv('<rect x="44" y="76" width="312" height="248" fill="' + c + '"/><rect x="58" y="90" width="284" height="220" fill="#fffdf8"/>' + img(fl, 74, 104, 252, 192));
+    case 'canvas':
+      return sv('<rect x="40" y="86" width="320" height="228" fill="' + c + '"/><rect x="50" y="96" width="300" height="208" fill="#fffdf8"/>' + img(fl, 50, 96, 300, 208, true));
+    case 'puzzle':
+      return sv(img(fl, 50, 96, 300, 208, true) + [148, 200, 252].map((y) => '<path d="M50 ' + y + ' H350" stroke="rgba(255,255,255,.5)" stroke-width="2"/>').join('') + [110, 170, 230, 290].map((x) => '<path d="M' + x + ' 96 V304" stroke="rgba(255,255,255,.5)" stroke-width="2"/>').join(''));
+    case 'blanket':
+      return sv(pat(fl, 420, 220, 20, 80) + '<path d="M60 80 H340 V300 Q300 340 260 300 Q220 340 180 300 Q140 340 100 300 Q60 340 60 300 Z" fill="url(#' + k + ')" stroke="#e3d7c2" stroke-width="6"/>');
+    case 'pillow':
+      return sv(pat(sq, 300, 300, 50, 50) + '<path d="M70 80 Q200 60 330 80 Q350 200 330 320 Q200 340 70 320 Q50 200 70 80 Z" fill="url(#' + k + ')" stroke="#d8cab0" stroke-width="4"/>');
   }
-  return '';
+  return sv('');
 }
 const firstColor = (p) => p.colors[0];
 const productOf = (id) => catalog.products.find((p) => p.id === id);
+const keyOf = (c, s) => c + '/' + s;
+const ownOf = () => (chosenBeach && previews.get(chosenBeach)) || null;
+
+// ------------------------------------------------------------ prices
+const atCost = (cost) => Math.ceil((cost + 30 + catalog.atCostMarginCents) / 0.971 / 100) * 100;
+/** a line's unit price, as the server will charge it */
+function priceOf(p, l) {
+  if (p.parts) {
+    let cost = 0;
+    for (const x of p.parts.map(productOf)) {
+      const c = (l.parts && l.parts[x.id]) || {};
+      const v = x.costs[keyOf(c.color || firstColor(x).id, c.size || x.sizes[0])];
+      if (v == null) return null;
+      cost += v;
+    }
+    return atCost(cost);
+  }
+  const t = l.beachId ? p.ownPrices : p.prices;
+  return t ? t[keyOf(l.color || firstColor(p).id, l.size || p.sizes[0])] ?? null : null;
+}
+const fromPrice = (p) => p.parts ? priceOf(p, {}) : Math.min(...Object.values(p.prices));
 
 // ------------------------------------------------------------ the shop
 function setStatus(id, text, bad) {
@@ -395,37 +499,38 @@ function setStatus(id, text, bad) {
   el.textContent = text || '';
   el.classList.toggle('bad', !!bad);
 }
-
+const SECTIONS = [['designs', 'designs'], ['launch', 'grid'], ['wear', 'grid-wear'], ['day', 'grid-day'], ['home', 'grid-home']];
 function renderShop() {
+  uid = 0;
+  for (const [section, el] of SECTIONS) {
+    $(el).innerHTML = catalog.products.filter((p) => p.section === section && !p.parts).map(card).join('');
+  }
   const set = productOf('set');
   const parts = set.parts.map(productOf);
-  const full = parts.reduce((s, p) => s + p.cents, 0);
+  const full = parts.reduce((s, p) => s + Math.min(...Object.values(p.prices)), 0);
+  const price = fromPrice(set);
   $('set').innerHTML =
-    '<div class="set-art">' + parts.map((p) => '<div class="pic">' + picture(p.id, firstColor(p)) + '</div>').join('') + '</div>' +
+    '<div class="set-art">' + parts.map((p) => '<div class="pic">' + picture(p, firstColor(p), null) + '</div>').join('') + '</div>' +
     '<div class="set-copy"><p class="kicker">The whole beach set</p><h2>Everything, together</h2><p class="lede">' + esc(set.blurb) + '. Pick your colours and sizes for each.</p>' +
-    '<p class="price">' + money(set.cents) + '<span class="was">' + money(full) + '</span></p>' +
+    '<p class="price">from ' + money(price) + (full > price ? '<span class="was">' + money(full) + '</span>' : '') + '</p>' +
     '<button class="btn" type="button" id="set-open"' + (set.available ? '' : ' disabled') + '>' + (set.available ? 'Choose the set' : 'Sold out') + '</button></div>';
   $('set-open').onclick = () => openSheet('set');
   const place = (svg, style) => svg.replace('<svg ', '<svg style="' + style + '" ');
   $('hero-art').innerHTML =
-    place(picture('hoodie', productOf('hoodie').colors[0]), 'left:4%;top:8%;width:62%') +
-    place(picture('tee', productOf('tee').colors[2]), 'right:2%;bottom:4%;width:54%;transform:rotate(6deg)') +
-    place(picture('hat', productOf('hat').colors[0]), 'right:6%;top:4%;width:34%;transform:rotate(-10deg)');
-  const grid = ['tee', 'hoodie', 'hat', 'flipflops', 'towel'].map(productOf);
-  $('grid').innerHTML = grid.map(card).join('');
-  $('yours-products').innerHTML = ['beach-tee', 'beach-hoodie'].map(productOf).map(card).join('');
+    place(picture(productOf('top-tee'), productOf('top-tee').colors[0], null), 'left:2%;top:6%;width:96%') +
+    place(picture(productOf('hat'), productOf('hat').colors[0], null), 'right:4%;bottom:2%;width:36%');
   document.querySelectorAll('.card').forEach((el) => {
     el.onclick = () => { if (el.getAttribute('aria-disabled') !== 'true') openSheet(el.dataset.id); };
   });
   if (!catalog.open) setStatus('store-status', 'The store opens soon. Have a look around.');
 }
 function card(p) {
-  const print = p.beachPrint ? (chosenBeach && previews.get(chosenBeach)) || SAMPLE : null;
+  const wide = p.section === 'designs' && /-(top|side)$/.test(p.kind);
   const sw = p.colors.length > 1 ? '<span class="swatches">' + p.colors.map((c) => '<i style="background:' + c.hex + '"></i>').join('') + '</span>' : '';
-  return '<button type="button" class="card" data-id="' + p.id + '"' + (p.available ? '' : ' aria-disabled="true"') + '>' +
-    '<span class="pic">' + picture(p.id, firstColor(p), print) + '</span>' +
-    '<h3>' + esc(p.name) + (p.available ? '' : '<span class="tag">Sold out</span>') + '</h3><p>' + esc(p.blurb) + '</p>' + sw +
-    '<span class="price">' + money(p.cents) + '</span></button>';
+  return '<button type="button" class="card' + (wide ? ' wide' : '') + '" data-id="' + p.id + '"' + (p.available ? '' : ' aria-disabled="true"') + '>' +
+    '<span class="pic">' + picture(p, firstColor(p), null) + '</span>' +
+    '<h3>' + esc(p.name) + (p.available ? '' : '<span class="tag">Sold out</span>') + (p.ownPrices ? '<span class="tag">Your beach</span>' : '') + '</h3><p>' + esc(p.blurb) + '</p>' + sw +
+    '<span class="price">' + (Object.keys(p.prices).length > 1 ? 'from ' : '') + money(fromPrice(p)) + '</span></button>';
 }
 const esc = (s) => String(s).replace(/[&<>"']/g, (ch) => '&#' + ch.charCodeAt(0) + ';');
 
@@ -434,62 +539,73 @@ let sheetProduct = null;
 function optionsFor(p, prefix) {
   let h = '';
   if (p.colors.length > 1) {
-    h += '<fieldset><legend>Colour <small data-for="' + prefix + 'color"></small></legend><div class="chips">' +
+    h += '<fieldset><legend>Colour</legend><div class="chips">' +
       p.colors.map((c, i) => '<label class="chip"><input type="radio" name="' + prefix + 'color" value="' + c.id + '"' + (i === 0 ? ' checked' : '') + '><span><i style="background:' + c.hex + '"></i>' + esc(c.name) + '</span></label>').join('') + '</div></fieldset>';
   }
   if (p.sizes.length > 1) {
+    const mid = p.sizes.includes('M') ? 'M' : p.sizes[0];
     h += '<fieldset><legend>Size</legend><div class="chips">' +
-      p.sizes.map((s) => '<label class="chip"><input type="radio" name="' + prefix + 'size" value="' + esc(s) + '"' + (s === 'M' ? ' checked' : '') + '><span>' + esc(s) + '</span></label>').join('') + '</div></fieldset>';
+      p.sizes.map((s) => '<label class="chip"><input type="radio" name="' + prefix + 'size" value="' + esc(s) + '"' + (s === mid ? ' checked' : '') + '><span>' + esc(s) + '</span></label>').join('') + '</div></fieldset>';
+  }
+  if (!prefix && p.ownPrices) {
+    h += '<fieldset><legend>Print</legend><div class="chips">' +
+      '<label class="chip"><input type="radio" name="print" value="sample" checked><span>Sunny cove</span></label>' +
+      '<label class="chip"><input type="radio" name="print" value="own"><span>My beach</span></label></div></fieldset>';
   }
   return h;
 }
 const picked = (name) => document.querySelector('input[name="' + name + '"]:checked')?.value;
+function sheetLine() {
+  const p = sheetProduct;
+  const l = { product: p.id, quantity: Math.max(1, Math.min(10, parseInt($('sheet-qty').value, 10) || 1)) };
+  if (p.parts) {
+    l.parts = {};
+    for (const x of p.parts.map(productOf)) l.parts[x.id] = { color: picked(x.id + '-color') || firstColor(x).id, size: picked(x.id + '-size') || x.sizes[0] };
+    return l;
+  }
+  l.color = picked('color') || firstColor(p).id;
+  l.size = picked('size') || p.sizes[0];
+  if (picked('print') === 'own') {
+    l.beachId = chosenBeach || '';
+    l.beachName = (beaches.find((b) => b.id === chosenBeach) || {}).name || 'your beach';
+  }
+  return l;
+}
 function openSheet(id) {
   const p = productOf(id);
   sheetProduct = p;
   $('sheet-name').textContent = p.name;
-  $('sheet-price').textContent = money(p.cents);
   $('sheet-qty').value = 1;
-  setStatus('sheet-status', '');
   if (p.parts) {
     $('sheet-options').innerHTML = p.parts.map(productOf).filter((x) => x.colors.length > 1 || x.sizes.length > 1)
       .map((x) => '<div class="part"><h4 style="margin:0 0 8px;font:600 16px var(--sans)">' + esc(x.name.replace('Beech ', '')) + '</h4>' + optionsFor(x, x.id + '-') + '</div>').join('');
   } else {
     $('sheet-options').innerHTML = optionsFor(p, '');
   }
-  if (p.beachPrint && !chosenBeach) setStatus('sheet-status', token ? 'Pick one of your beaches first.' : 'Sign in to pick your beach.');
-  $('sheet-add').disabled = !p.available || !catalog.open || (p.beachPrint && !chosenBeach);
-  $('sheet-add').textContent = !catalog.open ? 'Opening soon' : 'Add to bag';
   drawSheet();
   $('sheet-options').onchange = drawSheet;
+  $('sheet-qty').oninput = drawSheet;
   $('sheet').showModal();
 }
 function drawSheet() {
   const p = sheetProduct;
+  const l = sheetLine();
+  const own = !!l.beachId || picked('print') === 'own';
   if (p.parts) {
     $('sheet-art').innerHTML = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;width:100%">' +
-      p.parts.map(productOf).map((x) => picture(x.id, x.colors.find((c) => c.id === picked(x.id + '-color')) || firstColor(x))).join('') + '</div>';
-    return;
+      p.parts.map(productOf).map((x) => picture(x, x.colors.find((c) => c.id === l.parts[x.id].color) || firstColor(x), null)).join('') + '</div>';
+  } else {
+    $('sheet-art').innerHTML = picture(p, p.colors.find((c) => c.id === l.color) || firstColor(p), own ? ownOf() : null);
   }
-  const color = p.colors.find((c) => c.id === picked('color')) || firstColor(p);
-  $('sheet-art').innerHTML = picture(p.id, color, p.beachPrint ? (chosenBeach && previews.get(chosenBeach)) || SAMPLE : null);
+  const price = priceOf(p, own ? { ...l, beachId: chosenBeach || 'x' } : l);
+  $('sheet-price').textContent = price == null ? '' : money(price);
+  const needBeach = own && !chosenBeach;
+  setStatus('sheet-status', needBeach ? (token ? 'Pick one of your beaches below the shop first.' : 'Sign in below the shop to pick your beach.') : '');
+  $('sheet-add').disabled = !p.available || !catalog.open || needBeach || price == null;
+  $('sheet-add').textContent = !catalog.open ? 'Opening soon' : 'Add to bag';
 }
 $('sheet-add').onclick = () => {
-  const p = sheetProduct;
-  const quantity = Math.max(1, Math.min(10, parseInt($('sheet-qty').value, 10) || 1));
-  const line = { product: p.id, quantity };
-  if (p.parts) {
-    line.parts = {};
-    for (const x of p.parts.map(productOf)) line.parts[x.id] = { color: picked(x.id + '-color') || firstColor(x).id, size: picked(x.id + '-size') || x.sizes[0] };
-  } else {
-    line.color = picked('color') || firstColor(p).id;
-    line.size = picked('size') || p.sizes[0];
-    if (p.beachPrint) {
-      line.beachId = chosenBeach;
-      line.beachName = (beaches.find((b) => b.id === chosenBeach) || {}).name || 'your beach';
-    }
-  }
-  bag.push(line);
+  bag.push(sheetLine());
   saveBag();
   $('sheet').close();
   openBag();
@@ -517,18 +633,18 @@ function lineLabel(l) {
   return bits.join(' · ');
 }
 function openBag() {
-  bag = bag.filter((l) => productOf(l.product));
+  bag = bag.filter((l) => productOf(l.product) && priceOf(productOf(l.product), l) != null);
   const list = $('bag-lines');
   if (!bag.length) list.innerHTML = '<li class="empty">Your bag is empty.</li>';
   else list.innerHTML = bag.map((l, i) => {
     const p = productOf(l.product);
     const color = p.colors.find((c) => c.id === l.color) || firstColor(p);
-    const pic = p.parts ? picture('towel') : picture(p.id, color, p.beachPrint ? previews.get(l.beachId) : null);
+    const pic = p.parts ? picture(productOf(p.parts[0]), firstColor(productOf(p.parts[0])), null) : picture(p, color, l.beachId ? previews.get(l.beachId) || null : null);
     return '<li><span class="mini">' + pic + '</span><span><strong>' + esc(p.name) + (l.quantity > 1 ? ' × ' + l.quantity : '') + '</strong><small>' + esc(lineLabel(l)) + '</small>' +
-      '<button class="link" type="button" data-remove="' + i + '">Remove</button></span><strong>' + money(p.cents * l.quantity) + '</strong></li>';
+      '<button class="link" type="button" data-remove="' + i + '">Remove</button></span><strong>' + money(priceOf(p, l) * l.quantity) + '</strong></li>';
   }).join('');
   list.querySelectorAll('[data-remove]').forEach((b) => (b.onclick = () => { bag.splice(+b.dataset.remove, 1); saveBag(); openBag(); }));
-  const sub = bag.reduce((s, l) => s + productOf(l.product).cents * l.quantity, 0);
+  const sub = bag.reduce((s, l) => s + priceOf(productOf(l.product), l) * l.quantity, 0);
   const ship = !bag.length ? 0 : sub >= catalog.shipping.freeFromCents ? 0 : catalog.shipping.cents;
   $('bag-subtotal').textContent = money(sub);
   $('bag-shipping').textContent = !bag.length ? '—' : ship ? money(ship) : 'Free';
@@ -583,7 +699,7 @@ async function signedIn(t) {
     if (!beaches.length) { el.innerHTML = '<p>Build a beach in the game first, then come back.</p>'; return; }
     el.innerHTML = beaches.map((b) => '<button class="beach" type="button" role="radio" aria-checked="false" data-id="' + b.id + '"><img alt=""><span>' + esc(b.name) + '</span></button>').join('');
     el.querySelectorAll('.beach').forEach((btn) => (btn.onclick = () => chooseBeach(btn.dataset.id)));
-    for (const b of beaches) loadPreview(b.id).then((url) => { const img = el.querySelector('[data-id="' + b.id + '"] img'); if (img && url) img.src = url; });
+    for (const b of beaches) loadPreview(b.id).then((v) => { const img = el.querySelector('[data-id="' + b.id + '"] img'); if (img && v) img.src = v.square; });
     await chooseBeach(beaches[0].id);
   } catch (e) {
     setStatus('signin-status', e.message, true);
@@ -591,19 +707,21 @@ async function signedIn(t) {
 }
 async function loadPreview(id) {
   if (previews.has(id)) return previews.get(id);
+  const one = async (cut) => {
+    const blob = await (await api('/beach-preview/' + id + '?cut=' + cut)).blob();
+    return new Promise((res) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(blob); });
+  };
   try {
-    const blob = await (await api('/beach-preview/' + id)).blob();
-    const url = await new Promise((res) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(blob); });
-    previews.set(id, url);
-    return url;
+    const v = { square: await one('square'), flat: await one('flat') };
+    previews.set(id, v);
+    return v;
   } catch { return null; }
 }
 async function chooseBeach(id) {
   chosenBeach = id;
   document.querySelectorAll('.beach').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.id === id)));
   await loadPreview(id);
-  $('yours-products').innerHTML = ['beach-tee', 'beach-hoodie'].map(productOf).map(card).join('');
-  $('yours-products').querySelectorAll('.card').forEach((el) => (el.onclick = () => openSheet(el.dataset.id)));
+  if ($('sheet').open) drawSheet();
 }
 $('sign-out').onclick = signedOut;
 
