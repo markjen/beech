@@ -220,7 +220,7 @@ async function revokePurchaseEffects(
 
 export async function revokeStorePurchase(
   db: Db,
-  store: 'apple' | 'google' | 'xsolla' | 'steam',
+  store: 'apple' | 'google' | 'xsolla' | 'steam' | 'stripe',
   transactionId: string,
   now: number,
 ): Promise<void> {
@@ -250,7 +250,7 @@ export async function revokePurchaseById(
     [purchaseId, now],
   );
   if (!purchase) return null;
-  if (purchase.store === 'xsolla') {
+  if (purchase.store === 'xsolla' || purchase.store === 'stripe') {
     await tx.query(`UPDATE web_orders SET status = 'refunded' WHERE provider_order_id = $1 AND status = 'paid'`, [purchase.transaction_id]);
   } else if (purchase.store === 'steam') {
     await tx.query(`UPDATE steam_orders SET status = 'refunded' WHERE trans_id = $1 AND status = 'paid'`, [purchase.transaction_id]);

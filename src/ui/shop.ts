@@ -297,7 +297,7 @@ export class Shop {
         packs.appendChild(h);
       }
       const mode = shopMode();
-      if (mode === 'web' && !this.api.webCheckout) {
+      if (mode === 'web' && !this.api.webCheckout && !this.api.stripeCheckout) {
         const p = document.createElement('p');
         p.className = 'shop-note';
         p.textContent = 'Get these in the beech app:';
@@ -312,7 +312,7 @@ export class Shop {
       for (const p of this.packs) {
         const row = this.row('bucket', sd(p.bucks), p.blurb, '', p.featured);
         const btn = this.button(p.id, p.price ?? `$${p.usd.toFixed(2)}`);
-        if (mode === 'web' && this.api.webCheckout) btn.addEventListener('click', () => void this.payOnWeb(p, btn));
+        if (mode === 'web' && (this.api.webCheckout || this.api.stripeCheckout)) btn.addEventListener('click', () => void this.payOnWeb(p, btn));
         else if (mode === 'web') btn.addEventListener('click', () => this.getTheApp());
         else btn.addEventListener('click', () => void this.buyPack(p, btn));
         row.querySelector('.shop-actions')!.appendChild(btn);
@@ -391,10 +391,12 @@ export class Shop {
     }
   }
 
-  /** Web checkout: off to Xsolla's Pay Station; the return lands back on the beach (main.ts). */
+  /** Web checkout: off to the card checkout (Xsolla first, Stripe when Xsolla is off); the return lands back on the beach (main.ts). */
   private async payOnWeb(p: ShopPack, btn: HTMLButtonElement): Promise<void> {
     await this.run(btn, async () => {
-      const url = await this.api.startWebCheckout(p.id, this.codes ? this.promoCode() : undefined);
+      const url = this.api.webCheckout
+        ? await this.api.startWebCheckout(p.id, this.codes ? this.promoCode() : undefined)
+        : await this.api.startStripeCheckout(p.id, this.codes ? this.promoCode() : undefined);
       this.note.textContent = 'Opening the secure checkout…';
       location.assign(url);
     });

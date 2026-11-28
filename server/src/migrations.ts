@@ -1127,6 +1127,15 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX merch_lines_order ON merch_lines (order_id);
   `,
+
+  // 46: Stripe web checkout (docs/STRIPE_PAYMENTS.md) — the backup to
+  // Xsolla. Stripe payments are purchases with store 'stripe', granted and
+  // revoked through the same plumbing. (Numbered 46, not 45, because main's
+  // 45 is the merch store, which landed while this branch was open.)
+  `
+  ALTER TABLE purchases DROP CONSTRAINT purchases_store_check;
+  ALTER TABLE purchases ADD CONSTRAINT purchases_store_check CHECK (store IN ('apple', 'google', 'dev', 'xsolla', 'steam', 'stripe'));
+  `,
 ];
 
 /** Apply migrations up to `upTo` (default: all). Tests use `upTo` to check a migration on older data. */

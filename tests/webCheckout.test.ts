@@ -24,6 +24,18 @@ describe('web checkout country', () => {
   });
 });
 
+describe('stripe checkout', () => {
+  it('posts the product to the Stripe endpoint, with no country', async () => {
+    const account = new Account();
+    const fetch = vi.spyOn(account, 'fetch').mockResolvedValue(Response.json({ order: 'o1', url: 'https://checkout.stripe.test/pay/cs_test_o1' }));
+    const url = await new ShopApi(account).startStripeCheckout('bucks_30', 'PACKPLUS');
+    expect(url).toBe('https://checkout.stripe.test/pay/cs_test_o1');
+    expect(fetch).toHaveBeenCalledWith('/api/store/stripe-checkout', expect.objectContaining({
+      body: JSON.stringify({ productId: 'bucks_30', promoCode: 'PACKPLUS' }),
+    }));
+  });
+});
+
 // Coming back from Xsolla's Pay Station (docs/WEB_PAYMENTS.md): the return
 // link carries our order id, plus parameters Xsolla adds.
 describe('web checkout return link', () => {
@@ -31,12 +43,14 @@ describe('web checkout return link', () => {
 
   it('reads our order id, and nothing that is not one', () => {
     expect(webOrderFromUrl(`?web_order=${id}&status=done&invoice_id=1`)).toBe(id);
+    expect(webOrderFromUrl(`?web_order=${id}&session_id=cs_test_1`)).toBe(id);
     expect(webOrderFromUrl('?web_order=../../admin')).toBeNull();
     expect(webOrderFromUrl('?visit=K7F2QX')).toBeNull();
   });
 
   it('removes the return parameters and keeps the rest', () => {
     expect(withoutWebOrderParams(`?web_order=${id}&user_id=u&foreignInvoice=f&invoice_id=1&status=done`)).toBe('');
+    expect(withoutWebOrderParams(`?web_order=${id}&session_id=cs_test_1`)).toBe('');
     expect(withoutWebOrderParams(`?visit=K7F2QX&web_order=${id}`)).toBe('?visit=K7F2QX');
   });
 });

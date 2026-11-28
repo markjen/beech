@@ -13,7 +13,8 @@ every device — no app install, and no card details ever reach us.
 **Provider: Xsolla Pay Station** (In-Game Store API). The comparison with
 FastSpring is below; the short version is that beech's items cost
 $0.99–$9.99 and FastSpring's reported $0.95 fixed fee per transaction eats
-most of the catalog, while Xsolla charges a percentage only.
+most of the catalog, while Xsolla charges a percentage only. Stripe is
+the backup, not a second primary: docs/STRIPE_PAYMENTS.md.
 
 ## What it does
 
@@ -96,11 +97,14 @@ migration (past purchases stay valid; their `store` value just says
 `xsolla`). The one thing that doesn't transfer is the Xsolla catalog
 and any player payment methods saved with Xsolla.
 
-Stripe was considered and not recommended: with Stripe we are the
+Stripe was considered and not recommended as the primary: with Stripe we are the
 merchant of record, so tax/VAT filings, PCI scope and chargeback
 liability all land on us — the whole point of this change is to
 offload exactly that. Revisit only if web volume ever justifies
-running our own tax operation.
+running our own tax operation. **Update (Nov 2026):** Stripe now
+exists as the backup (docs/STRIPE_PAYMENTS.md) — same products, same
+grant plumbing, test mode only, Xsolla still the primary whenever it
+works. It may also serve a future online merch store.
 
 ## How it works (as built)
 
