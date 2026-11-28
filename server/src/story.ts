@@ -3,8 +3,8 @@
 // A public page telling how the whole of beech (the game, the server, the
 // apps, beechshore.com) was built in a few days by one person steering
 // several AI agents. The source logs, one per agent, live in docs/story/
-// (CLAUDE_LOG.md, ANTIGRAVITY_LOG.md, MUSE_LOG.md); keep this page in step
-// with them. Codex has no log yet.
+// (CLAUDE_LOG.md, ANTIGRAVITY_LOG.md, MUSE_LOG.md, CODEX_LOG.md). Keep this
+// page in step with them.
 //
 // Never mention the claw's starter gifts here (#9).
 
@@ -78,13 +78,16 @@ const AGENTS: Agent[] = [
   {
     name: 'Codex',
     hue: ['#4e606e', '#a7b6c3'],
-    role: 'OpenAI’s coding agent. Notes still to come.',
-    bestAt: 'Untangling client state: making the game keep each beach by id, with no single “active” beach.',
-    mostly: ['Client architecture', 'Rendering'],
+    role: 'OpenAI’s coding agent. Worked on the shore, player controls, the Android app and the shared review workflow.',
+    bestAt: 'Keeping state, saves, and rendering attached to the right beach as players move along the shore.',
+    mostly: ['Client architecture', 'Rendering', 'Player controls', 'Android app'],
     did: [
-      'Uses the same review-pr skill as the Claude sessions (#130), so every PR got the same review.',
-      'Co-wrote the switch to keeping beach state by id, so waves follow the view (#100).',
-      'Its own log hasn’t been written yet. This section will grow when it is.',
+      'Regrouped the controls, kept the bag and shop on a phone screen, added cylinder and square sandcastle molds, and let one stroke edit across two of your linked beaches (#94).',
+      'Helped keep the shore cache and undo history in sync with the view during the move to beach IDs (#100).',
+      'Turned the Android app into a hosted shell that loads play.beech.games, so web changes reach phones without a new build (#115).',
+      'Followed Claude’s device-cache work with fixes for concurrent tabs, account transitions, and the first live frame on a new beach (#114, #132).',
+      'Made beach slots and checkpoint sources easier to see, let waves wash away footprints, and made sign-in easier to find (#119, #124, #126).',
+      'Gave Codex and Claude sessions the same pull request review and landing instructions (#130), and tidied how search engines see beechshore.com (#131).',
     ],
   },
 ];
@@ -108,9 +111,9 @@ const DAYS: Day[] = [
     date: '22 Nov',
     title: 'The game in a day',
     shots: [
-      { file: 'state-1-waves.webp', label: 'Morning', caption: 'The simulation alone: waves, foam, wet sand and a few holes dug by hand. No sky yet, and no time of day.' },
-      { file: 'state-2-toy.webp', label: 'Midday', caption: 'A sand toy: a mound with a moat, a channel to the sea and a dune.' },
-      { file: 'state-3-claw.webp', label: 'Night', caption: 'Brighton at sunset, with a live sun and tide. Things from the bag: rocks, driftwood, shells, starfish and flags.' },
+      { file: 'state-1-waves.webp', label: 'Morning', caption: 'The simulation alone: waves, foam, wet sand and a few holes dug by hand. No sun, tide or time of day yet.' },
+      { file: 'state-2-toy.webp', label: 'Midday', caption: 'Tools to dig, build up and smooth the sand: a raised ridge drawn by hand, and foam on the breaking waves.' },
+      { file: 'state-3-claw.webp', label: 'Sunset', caption: 'Brighton late in the afternoon, with a live sun and tide. A mound in a moat with a channel to the sea, and things from the bag: rocks, driftwood, shells, a starfish and flags.' },
     ],
     points: [
       'It began with one file, PLAN.md: the look, the simulation, the input and the milestones.',
@@ -131,7 +134,7 @@ const DAYS: Day[] = [
   {
     date: '24 Nov',
     title: 'Animals, Steam, live beaches',
-    shots: [{ file: 'state-5-palm.webp', label: 'Night', caption: 'Linked beaches on a bright morning: neighbours join into one shore, with sand, water and waves running straight across. Palm trees and lifeguard towers arrive.' }],
+    shots: [{ file: 'state-5-palm.webp', label: 'Morning', caption: 'Linked beaches on a bright morning: neighbours join into one shore, with sand, water and waves running straight across. Palm trees and lifeguard towers arrive.' }],
     points: [
       'The busiest day by commits. Animals landed in five steps: sand crab, snacks, resident pets, visitor feeding, dolphin.',
       'Steam S1 to S4: desktop shell, sign-in, wallet checkout, achievements and controller.',
@@ -145,7 +148,8 @@ const DAYS: Day[] = [
     points: [
       'The palm-first interface: at rest the screen is just the beach and a palm. Local weather follows the beach you’re looking at.',
       'A permissions audit, then formal verification: the game’s state machines were modelled in TLA+, which found five races, and from then on every new feature started with a model.',
-      'The Android app became a hosted shell, so web changes reach phones without a new build. Copying beaches, and the first version of the currency.',
+      'Claude, with help from Codex, moved the game to keeping each beach’s state by its ID, so the live waves could follow the camera while each beach kept its own edits (#100).',
+      'Codex made the Android app a hosted shell, so web changes reach phones without a new build (#115). Copying beaches, and the first version of the currency.',
     ],
   },
   {
@@ -155,6 +159,7 @@ const DAYS: Day[] = [
     points: [
       'About 40 pull requests in one day: piers, inland rows, six pet species, real weather at 34 beaches, push notifications on web, phone and Steam.',
       'Sand bucks were renamed beech bucks, because a player asked on Discord. Sign-ins can now be linked, and two accounts merged.',
+      'Codex made it easier to see how many beach slots were in use, filter checkpoints by where they came from, and find sign-in. Footprints started washing away when waves reached them (#119, #124, #126).',
       'Build 7, the first that could send push notifications, reached closed testing on Play. The iOS build went to TestFlight review.',
     ],
   },
@@ -163,7 +168,7 @@ const DAYS: Day[] = [
     title: 'Polish',
     shots: [
       { file: 'state-8-pier.webp', label: 'Today', caption: 'Three of one player’s beaches linked side by side at golden hour, every one furnished, with a timber pier off the middle one.' },
-      { file: 'state-7-today.webp', label: 'Tonight', caption: 'The same beach after dark: torches lit, a bonfire, deckchairs, a hammock, a sandcastle in its moat.' },
+      { file: 'state-7-today.webp', label: 'Tonight', caption: 'One of those beaches after dark: torches lit, a bonfire, deckchairs, a hammock, a sandcastle in its moat.' },
     ],
     points: [
       'Sign-in on beechshore.com. Promo codes changed to give bonus beech bucks only, built model first, as were multi-item trade-ins and admin system messages.',
@@ -175,9 +180,9 @@ const DAYS: Day[] = [
 const PRACTICES: [string, string][] = [
   ['Docs are the shared memory', 'No agent remembers the last session. CLAUDE.md, PLAN.md, STATUS.md and BACKLOG.md hold the state, and every change updates them in the same commit. Any agent can pick up any task cold.'],
   ['One branch per agent, one gate for all', 'Agents work in parallel on their own branches or worktrees and never share a checkout. Nothing reaches main unless tests, the build and the performance budget pass, and the game has to stay playable after every commit.'],
-  ['Review, then fix-up', 'A review agent gives every pull request READY or NEEDS WORK with specific blockers. A fix-up agent clears them, then the PR is reviewed again. That loop caught migration-number collisions, a verified datatype left stale, and a migration that would have dropped a ledger kind.'],
+  ['Review, then fix-up', 'A review agent gives every pull request READY or NEEDS WORK with specific blockers. A fix-up agent clears them, then the PR is reviewed again. That loop caught migration-number collisions, a verified datatype left stale, and a migration that would have dropped a ledger kind. Codex put the review and landing instructions in a shared skill both Codex and Claude could use (#130).'],
   ['Model first', 'Anything that changes state the server keeps (money, items, pets, limits) starts as a TLA+ spec that the TLC model checker must pass. The model decides what has to be one transaction and under which lock, and the tests replay what TLC found.'],
-  ['Agents finish each other’s work', 'A content PR from one agent was often finished by another, which fixed its renders, rebased it over a parallel rename, or extended its formal model (PromoCodes.tla became PromoBucks.tla).'],
+  ['Agents finish each other’s work', 'A content PR from one agent was often finished by another, which fixed its renders, rebased it over a parallel rename, or extended its formal model (PromoCodes.tla became PromoBucks.tla). Claude made visited beaches load from a device cache and eased their snapshot water into live waves (#114). Codex followed up so tabs could update the cache together, a late fetch could not refill it after sign-out, and the first live frame came from the beach you had just reached (#132).'],
   ['Players in the loop', 'Discord bug reports became pull requests the same day, and the person who reported each bug got a reply when the fix shipped. Requests that clash with a shipped design go to Mark as a decision; they aren’t built quietly.'],
   ['People do the human parts', 'Agents write the code, review and deploy. Domains, store consoles, keys and money stay with a person, and the agents write the checklists for those steps.'],
 ];
@@ -185,15 +190,15 @@ const PRACTICES: [string, string][] = [
 /** Who led (2) or helped with (1) each area, in AGENTS order. */
 const WHO: [string, number[]][] = [
   ['The sand, waves and 3D look', [1, 2, 1, 0, 1]],
-  ['Gameplay features', [1, 2, 1, 1, 0]],
+  ['Gameplay features', [1, 2, 1, 1, 1]],
   ['Game server and database', [0, 2, 1, 1, 0]],
   ['Formal models (TLA+, Dafny)', [0, 2, 1, 0, 0]],
   ['Performance', [0, 2, 2, 0, 0]],
   ['Steam and desktop', [0, 1, 2, 0, 0]],
-  ['Menus and navigation', [0, 1, 2, 1, 0]],
-  ['Client state and structure', [0, 1, 0, 0, 2]],
+  ['Menus and navigation', [0, 1, 2, 1, 1]],
+  ['Client state and structure', [0, 2, 0, 0, 1]],
   ['Production: domains, deploys, secrets', [1, 1, 0, 2, 0]],
-  ['App store releases', [1, 1, 0, 2, 0]],
+  ['App store releases', [1, 1, 0, 2, 1]],
   ['Review and merging', [2, 1, 0, 2, 1]],
   ['Player feedback (Discord)', [1, 0, 0, 2, 0]],
 ];
@@ -219,11 +224,30 @@ const FINISHED: string[] = [
   'Terraform for all of production',
 ];
 
+/**
+ * A short content hash for each picture in public/landing-assets/story/,
+ * added to its URL. Landing artwork is cached for a day, so a picture that is
+ * replaced under the same name would otherwise keep showing the old version.
+ * When a picture changes, update its hash: `sha256sum <file> | cut -c1-8`
+ * (server/test/story.test.ts checks them).
+ */
+export const SHOT_VERSIONS: Record<string, string> = {
+  'state-1-waves.webp': '788c42ec',
+  'state-2-toy.webp': '3dc46e9d',
+  'state-3-claw.webp': 'ae928fce',
+  'state-4-live.webp': '0e12b894',
+  'state-5-palm.webp': 'ba8d7449',
+  'state-7-today.webp': 'f36100a4',
+  'state-8-pier.webp': '9326ac15',
+};
+
+const shotSrc = (file: string) => `/landing-assets/story/${file}?v=${SHOT_VERSIONS[file]}`;
+
 const agentStyle = (a: Agent) => `--hue:${a.hue[0]};--hue-dark:${a.hue[1]}`;
 
 function shotFigure(x: Shot, size: 'big' | 'small'): string {
   return `<figure class="shot ${size}">
-  <div class="frame"><img src="/landing-assets/story/${esc(x.file)}" alt="${esc(x.caption)}" width="1280" height="800" loading="lazy" decoding="async"></div>
+  <div class="frame"><img src="${esc(shotSrc(x.file))}" alt="${esc(x.caption)}" width="1280" height="800" loading="lazy" decoding="async"></div>
   <figcaption><span class="chip">${esc(x.label)}</span>${esc(x.caption)}</figcaption>
 </figure>`;
 }
@@ -260,7 +284,7 @@ export function storyHtml(): string {
 <meta name="description" content="How one person and four AI agents built beech (the game, server, apps and beechshore.com) in five days.">
 <meta property="og:title" content="How beech was built">
 <meta property="og:description" content="One person, four AI agents, five days: the story of building beech.">
-<meta property="og:image" content="/landing-assets/story/state-8-pier.webp">
+<meta property="og:image" content="${shotSrc('state-8-pier.webp')}">
 <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
 <link rel="icon" href="/icons/favicon-32.png" sizes="32x32" type="image/png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -423,7 +447,7 @@ footer { color: var(--ink-faint); font-size: 13px; padding: 40px 20px 36px; text
 </div></div>
 
 <header class="hero">
-  <img src="/landing-assets/story/state-8-pier.webp" alt="Three linked beech beaches at golden hour with a pier" fetchpriority="high">
+  <img src="${shotSrc('state-8-pier.webp')}" alt="Three linked beech beaches at golden hour with a pier" fetchpriority="high">
   <div class="wrap">
     <p class="eyebrow">The making of beech</p>
     <h1>One beach, <em>five days</em>, four AI agents and one person.</h1>
@@ -439,14 +463,14 @@ footer { color: var(--ink-faint); font-size: 13px; padding: 40px 20px 36px; text
 </section>
 
 <section class="block">
-  <div class="section-head"><p class="kicker">Beech as it grew</p><h2>Day by day</h2><p>Each picture is the game built from that day’s commit, with the same beach built up using what that version could do: sculpted sand first, then things from the bag, then the shop, then neighbours, linked beaches and a pier. The clock is set to a different time of day for each one.</p></div>
+  <div class="section-head"><p class="kicker">Beech as it grew</p><h2>Day by day</h2><p>Each picture is the game built from that day’s commit, with the same beach built up using what that version could do: sculpted sand first, then things from the bag, then the shop and neighbours, then linked beaches and a pier. The clock moves around the day from picture to picture.</p></div>
   <div class="days">
 ${days}
   </div>
 </section>
 
 <section class="block">
-  <div class="section-head"><p class="kicker">The cast</p><h2>Who built it, and what each was best at</h2><p>The agents found their own specialities. Claude built most of the game, Antigravity took the platform and performance work, and Muse ran production.</p></div>
+  <div class="section-head"><p class="kicker">The cast</p><h2>Who built it, and what each was best at</h2><p>The agents found their own specialities. Claude built most of the game, Antigravity took the platform and performance work, Muse ran production, and Codex kept each beach’s state, saves and rendering straight as players move along the shore.</p></div>
   <div class="cast">
 ${cast}
   </div>
@@ -465,7 +489,7 @@ ${cast}
 <section class="block">
   <div class="section-head"><p class="kicker">Sources</p><h2>Where this comes from</h2></div>
   <div class="sources">
-    <p>Each agent wrote its own log from the repository’s history: commits, pull requests, release notes and status docs. This page puts them together. Every pull request was opened under one account, so the git record shows what was built but not always who wrote which line. Credit here follows the agents’ own logs and commit trailers. Codex’s log is still to come.</p>
+    <p>Each agent wrote its own log from the repository’s history: commits, pull requests, release notes and status docs. This page puts them together. Every pull request was opened under one account, so the git record shows what was built but not always who wrote which line. Credit here follows the agents’ own logs and commit trailers.</p>
   </div>
 </section>
 
