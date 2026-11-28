@@ -53,6 +53,19 @@ export function merchFromEnv(env: Record<string, string | undefined>): { cfg: Me
   };
 }
 
+/**
+ * Cloud Scheduler's merch tick (POST /api/merch/tick), when its variables
+ * are set (see deploy-gcp.yml); without them the endpoint 404s and the
+ * in-process timer in server.ts takes over. The decision is a function so
+ * the gating rule is pinned by a test (server/test/merch.test.ts) — the
+ * push tick's equivalent is an inline ternary in server.ts, untested.
+ */
+export function merchTickFromEnv(env: Record<string, string | undefined>): { audience: string; email: string } | undefined {
+  return env.MERCH_TICK_AUDIENCE && env.MERCH_TICK_SERVICE_ACCOUNT
+    ? { audience: env.MERCH_TICK_AUDIENCE, email: env.MERCH_TICK_SERVICE_ACCOUNT }
+    : undefined;
+}
+
 // ------------------------------------------------------------------ Stripe
 
 const STRIPE = 'https://api.stripe.com/v1';

@@ -94,7 +94,7 @@ import { stripeFromEnv } from './stripe.js';
 import { devVapidKeys, makeSender, pushFromEnv, pushTick } from './push.js';
 import { xsollaFromEnv } from './xsolla.js';
 import { createMerch } from './merch.js';
-import { merchFromEnv } from './merchProviders.js';
+import { merchFromEnv, merchTickFromEnv } from './merchProviders.js';
 
 const env = process.env;
 const list = (v?: string) => (v ?? '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -206,13 +206,21 @@ if ((pushConfig.web || pushConfig.apns || pushConfig.fcm) && !schedulerTick) {
 
 // The merch store (docs/MERCH_STORE.md): orders on only when Stripe and
 // Printful are both set up. The sweep sends paid orders on and recovers
-// stale claims once a minute (specs/tla/MerchOrders.tla, Recover).
+// stale claims once a minute (specs/tla/MerchOrders.tla, Recover) — ticked
+// by Cloud Scheduler (POST /api/merch/tick) once configured, the
+// in-process timer below only runs when Scheduler isn't (local dev),
+// because on Cloud Run an instance's CPU is throttled between requests
+// and the timer's query looked slow (~1 s wall-clock on an idle instance).
+// Same reason as the push tick (docs/INBOX_NOTIFICATIONS.md).
 const merchEnv = merchFromEnv(env);
 if (!merchEnv.cfg && merchEnv.missing.length < 4)
   logEvent('merch_config', { warning: `the merch store is off: ${merchEnv.missing.join(', ')} not set` }, 'WARNING');
 logEvent('merch_config', { enabled: !!merchEnv.cfg, sunglasses: !!merchEnv.cfg?.sunglassesVariant, drafts_only: !!merchEnv.cfg?.printfulDraftsOnly });
-const merch = createMerch(db, { cfg: merchEnv.cfg ?? undefined, now: Date.now });
-if (merchEnv.cfg) {
+// The Scheduler tick, when its variables are set (see deploy-gcp.yml);
+// without them the endpoint 404s and the in-process timer below takes over.
+const merchSchedulerTick = merchTickFromEnv(env);
+const merch = createMerch(db, { cfg: merchEnv.cfg ?? undefined, now: Date.now, tick: merchSchedulerTick });
+if (merchEnv.cfg && !merchSchedulerTick) {
   let sweeping = false;
   const merchTimer = setInterval(() => {
     if (sweeping) return;

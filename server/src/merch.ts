@@ -41,6 +41,7 @@ import {
 } from './merchProviders.js';
 import { logEvent } from './observability.js';
 import { PIER_SHOWN, SECTIONS_OF } from './shore.js';
+import { verifyGoogleOidc } from './store.js';
 
 export type MerchStatus = 'open' | 'expired' | 'paid' | 'sending' | 'sent' | 'shipped' | 'canceled' | 'refunded';
 
@@ -49,6 +50,12 @@ export interface MerchDeps {
   now: () => number;
   /** tests: run the send in line instead of in the background */
   awaitSend?: boolean;
+  /**
+   * Cloud Scheduler's merch tick (docs/MERCH_STORE.md): who may call
+   * POST /merch/tick. Unset: the endpoint 404s and server.ts ticks the
+   * sweep itself with its in-process timer.
+   */
+  tick?: { audience: string; email: string };
 }
 
 interface OrderRow {
@@ -440,6 +447,26 @@ export function createMerch(db: Db, deps: MerchDeps) {
     }
     return { recovered: recovered.length, confirmed, sent };
   }
+
+  // POST /tick: Cloud Scheduler, once a minute, with an OIDC token
+  app.post('/tick', async (c) => {
+    if (!deps.tick) fail(404, 'not set up');
+    try {
+      await verifyGoogleOidc(c.req.header('Authorization'), deps.tick!);
+    } catch {
+      fail(401, 'not allowed');
+    }
+    let r: Awaited<ReturnType<typeof tick>>;
+    try {
+      r = await tick();
+    } catch (e) {
+      // the same event the server's own timer logs
+      logEvent('merch_tick_error', { message: (e as Error).message }, 'WARNING');
+      throw e;
+    }
+    if (r.recovered || r.confirmed || r.sent) logEvent('merch_tick', { ...r });
+    return c.json(r);
+  });
 
   // ---------------------------------------------- Printful: shipped
   app.post('/printful-webhook', async (c) => {
