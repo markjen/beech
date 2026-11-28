@@ -971,17 +971,6 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     )[0];
     if (!cur) return false; // first save: nothing to keep
     const bytes = toBytes(cur.sand);
-    // the one auto slot's bytes already count toward the total; only
-    // snapshot if the replacement still fits
-    const use = (
-      await db.query<{ total: string; auto_bytes: string }>(
-        `SELECT COALESCE(SUM(bytes), 0) AS total,
-                COALESCE(SUM(bytes) FILTER (WHERE kind = 'auto' AND from_beach = $2), 0) AS auto_bytes
-           FROM checkpoints WHERE owner_id = $1`,
-        [userId, beachId],
-      )
-    )[0];
-    if (Number(use.total) - Number(use.auto_bytes) + bytes.byteLength > CHECKPOINT_BYTES_PER_USER) return false;
     let items: Record<string, number> = {};
     let objects = 0;
     try {
@@ -989,17 +978,31 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     } catch {
       /* an unreadable old save: keep the bytes, uncounted */
     }
-    await db.query(
-      `INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at, origin_beach_id)
-       SELECT $1, owner_id, $2, 'auto', 'beach', id, name, location, nx, ny, sand, octet_length(sand), $3, $4, $5, id
-         FROM beach WHERE id = $6 AND sand IS NOT NULL
-       ON CONFLICT (from_beach) WHERE kind = 'auto' DO UPDATE SET
-         name = EXCLUDED.name, from_name = EXCLUDED.from_name, location = EXCLUDED.location, nx = EXCLUDED.nx, ny = EXCLUDED.ny,
-         sand = EXCLUDED.sand, bytes = EXCLUDED.bytes, items = EXCLUDED.items, objects = EXCLUDED.objects, created_at = EXCLUDED.created_at,
-         origin_beach_id = EXCLUDED.origin_beach_id`,
-      [crypto.randomUUID(), name, JSON.stringify(items), objects, now, beachId],
-    );
-    return true;
+    // the measure and the write together, under the player lock (Checkpoints.tla)
+    return withPlayerWriteLock(userId, async (tx) => {
+      // the one auto slot's bytes already count toward the total; only
+      // snapshot if the replacement still fits
+      const use = (
+        await tx.query<{ total: string; auto_bytes: string }>(
+          `SELECT COALESCE(SUM(bytes), 0) AS total,
+                  COALESCE(SUM(bytes) FILTER (WHERE kind = 'auto' AND from_beach = $2), 0) AS auto_bytes
+             FROM checkpoints WHERE owner_id = $1`,
+          [userId, beachId],
+        )
+      )[0];
+      if (Number(use.total) - Number(use.auto_bytes) + bytes.byteLength > CHECKPOINT_BYTES_PER_USER) return false;
+      await tx.query(
+        `INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at, origin_beach_id)
+         SELECT $1, owner_id, $2, 'auto', 'beach', id, name, location, nx, ny, sand, octet_length(sand), $3, $4, $5, id
+           FROM beach WHERE id = $6 AND sand IS NOT NULL
+         ON CONFLICT (from_beach) WHERE kind = 'auto' DO UPDATE SET
+           name = EXCLUDED.name, from_name = EXCLUDED.from_name, location = EXCLUDED.location, nx = EXCLUDED.nx, ny = EXCLUDED.ny,
+           sand = EXCLUDED.sand, bytes = EXCLUDED.bytes, items = EXCLUDED.items, objects = EXCLUDED.objects, created_at = EXCLUDED.created_at,
+           origin_beach_id = EXCLUDED.origin_beach_id`,
+        [crypto.randomUUID(), name, JSON.stringify(items), objects, now, beachId],
+      );
+      return true;
+    });
   };
 
   /**
@@ -2468,16 +2471,22 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     return name;
   };
   /** named checkpoints you may keep: 5 for each beach of your allowance */
-  const checkpointLimit = async (user: string) => CHECKPOINTS_PER_BEACH * (await allowance(user));
-  const checkpointUse = async (user: string) => {
-    const rows = await db.query<{ named: string; bytes: string | null }>(
+  const checkpointLimit = async (user: string, q: Db = db) => CHECKPOINTS_PER_BEACH * (await allowance(user, q));
+  const checkpointUse = async (user: string, q: Db = db) => {
+    const rows = await q.query<{ named: string; bytes: string | null }>(
       `SELECT COUNT(*) FILTER (WHERE kind = 'named') AS named, SUM(bytes) FILTER (WHERE kind <> 'tide') AS bytes FROM checkpoints WHERE owner_id = $1`,
       [user],
     );
     return { named: Number(rows[0]?.named ?? 0), bytes: Number(rows[0]?.bytes ?? 0) };
   };
-  const checkRoom = async (user: string, adding: number) => {
-    const [use, limit] = await Promise.all([checkpointUse(user), checkpointLimit(user)]);
+  /**
+   * Is there room for another named checkpoint? Run it inside
+   * withPlayerWriteLock with the INSERT (specs/tla/Checkpoints.tla): two
+   * checkpoints made at once otherwise both pass and go over the limit.
+   */
+  const checkRoom = async (user: string, adding: number, q: Db) => {
+    const use = await checkpointUse(user, q);
+    const limit = await checkpointLimit(user, q);
     if (use.named >= limit) fail(409, `you have ${limit} checkpoints, the most you can keep: delete one first`);
     if (use.bytes + adding > CHECKPOINT_BYTES_PER_USER) fail(413, 'your checkpoints are full: delete some first');
   };
@@ -2563,35 +2572,38 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     if (!rows[0]) fail(404, 'that beach has nothing saved yet');
     const bytes = toBytes(rows[0].sand);
     const info = inspect(bytes);
-    if (auto) {
-      const total = await checkpointUse(me);
-      if (total.bytes + bytes.byteLength > CHECKPOINT_BYTES_PER_USER) fail(413, 'your checkpoints are full: delete some first');
-    } else await checkRoom(me, bytes.byteLength);
-    const r = await db.query<{ id: string }>(
-      `INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at, origin_beach_id)
-       VALUES ($1, $2, $3, $14, 'beach', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $4)
-       ON CONFLICT (from_beach) WHERE kind = 'auto' DO UPDATE SET
-         name = EXCLUDED.name, from_name = EXCLUDED.from_name, location = EXCLUDED.location, nx = EXCLUDED.nx, ny = EXCLUDED.ny,
-         sand = EXCLUDED.sand, bytes = EXCLUDED.bytes, items = EXCLUDED.items, objects = EXCLUDED.objects, created_at = EXCLUDED.created_at,
-         origin_beach_id = EXCLUDED.origin_beach_id
-       RETURNING id`,
-      [
-        crypto.randomUUID(),
-        me,
-        label,
-        beachId,
-        rows[0].name,
-        rows[0].location,
-        rows[0].nx,
-        rows[0].ny,
-        bytes,
-        bytes.byteLength,
-        JSON.stringify(info.items),
-        info.objects,
-        clock(),
-        auto ? 'auto' : 'named',
-      ],
-    );
+    // the room check and the write together, under the player lock (Checkpoints.tla)
+    const r = await withPlayerWriteLock(me, async (tx) => {
+      if (auto) {
+        const total = await checkpointUse(me, tx);
+        if (total.bytes + bytes.byteLength > CHECKPOINT_BYTES_PER_USER) fail(413, 'your checkpoints are full: delete some first');
+      } else await checkRoom(me, bytes.byteLength, tx);
+      return tx.query<{ id: string }>(
+        `INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at, origin_beach_id)
+         VALUES ($1, $2, $3, $14, 'beach', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $4)
+         ON CONFLICT (from_beach) WHERE kind = 'auto' DO UPDATE SET
+           name = EXCLUDED.name, from_name = EXCLUDED.from_name, location = EXCLUDED.location, nx = EXCLUDED.nx, ny = EXCLUDED.ny,
+           sand = EXCLUDED.sand, bytes = EXCLUDED.bytes, items = EXCLUDED.items, objects = EXCLUDED.objects, created_at = EXCLUDED.created_at,
+           origin_beach_id = EXCLUDED.origin_beach_id
+         RETURNING id`,
+        [
+          crypto.randomUUID(),
+          me,
+          label,
+          beachId,
+          rows[0].name,
+          rows[0].location,
+          rows[0].nx,
+          rows[0].ny,
+          bytes,
+          bytes.byteLength,
+          JSON.stringify(info.items),
+          info.objects,
+          clock(),
+          auto ? 'auto' : 'named',
+        ],
+      );
+    });
     return c.json({ checkpoint: checkpointJson((await myCheckpoint(c, r[0].id)) as CheckpointRow) }, 201);
   });
 
@@ -2614,13 +2626,15 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     // (square, or deeper with sand rows inland)
     if (info.ny < info.nx) fail(400, 'not a saved beach (the grid must be square)');
     if (!makeLimiter(me)) fail(429, 'too many checkpoints at once: try again later');
-    await checkRoom(me, bytes.byteLength);
     const id = crypto.randomUUID();
-    await db.query(
-      `INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at)
-       VALUES ($1, $2, $3, 'named', 'import', NULL, '', NULLIF($4, ''), $5, $6, $7, $8, $9, $10, $11)`,
-      [id, me, label, location, info.nx, info.ny, bytes, bytes.byteLength, JSON.stringify(info.items), info.objects, clock()],
-    );
+    await withPlayerWriteLock(me, async (tx) => {
+      await checkRoom(me, bytes.byteLength, tx);
+      await tx.query(
+        `INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at)
+         VALUES ($1, $2, $3, 'named', 'import', NULL, '', NULLIF($4, ''), $5, $6, $7, $8, $9, $10, $11)`,
+        [id, me, label, location, info.nx, info.ny, bytes, bytes.byteLength, JSON.stringify(info.items), info.objects, clock()],
+      );
+    });
     return c.json({ checkpoint: checkpointJson((await myCheckpoint(c, id)) as CheckpointRow) }, 201);
   });
 
@@ -2906,14 +2920,16 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     if (p.version !== undefined && Number(src.version) !== p.version) return c.json({ error: 'changed', version: Number(src.version) }, 409);
     const bytes = toBytes(src.sand);
     const info = inspect(bytes);
-    await checkRoom(me, bytes.byteLength);
     const id = crypto.randomUUID();
     const label = (src.name || src.code).slice(0, CHECKPOINT_NAME_MAX);
-    await db.query(
-      `INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at)
-       VALUES ($1, $2, $3, 'named', 'copy', NULL, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-      [id, me, label, `${src.owner_name?.trim() || 'Someone'} · ${src.code}`, src.location, info.nx, info.ny, bytes, bytes.byteLength, JSON.stringify(info.items), info.objects, clock()],
-    );
+    await withPlayerWriteLock(me, async (tx) => {
+      await checkRoom(me, bytes.byteLength, tx);
+      await tx.query(
+        `INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at)
+         VALUES ($1, $2, $3, 'named', 'copy', NULL, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+        [id, me, label, `${src.owner_name?.trim() || 'Someone'} · ${src.code}`, src.location, info.nx, info.ny, bytes, bytes.byteLength, JSON.stringify(info.items), info.objects, clock()],
+      );
+    });
     return c.json({ checkpoint: checkpointJson((await myCheckpoint(c, id)) as CheckpointRow) }, 201);
   });
 
