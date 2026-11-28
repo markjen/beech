@@ -257,7 +257,7 @@ export function guideHtml(now: number): string {
 <h3>Mouse and keyboard</h3>
 <ul>
   <li>Drag to look around or use the tool; the wheel zooms; right-drag turns and tilts.</li>
-  <li><kbd>1</kbd>–<kbd>5</kbd> pick a tool; <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or the arrow keys pan; <kbd>Q</kbd>/<kbd>E</kbd> turn 45°; <kbd>R</kbd>/<kbd>F</kbd> tilt; <kbd>+</kbd>/<kbd>-</kbd> zoom.</li>
+  <li><kbd>1</kbd>–<kbd>5</kbd> pick a tool; <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or the arrow keys pan (or walk in the chair view); <kbd>Q</kbd>/<kbd>E</kbd> turn; <kbd>R</kbd>/<kbd>F</kbd> tilt; <kbd>+</kbd>/<kbd>-</kbd> zoom.</li>
   <li><kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Z</kbd> undo, with <kbd>Shift</kbd> (or <kbd>Ctrl</kbd>+<kbd>Y</kbd>) to redo.</li>
   <li><kbd>V</kbd> cycles the view; <kbd>H</kbd> opens or closes the toolbar, like the palm.</li>
 </ul>
@@ -268,7 +268,7 @@ export function guideHtml(now: number): string {
 <h3>Views</h3>
 <p>The View button cycles: <b>chair</b> → <b>isometric</b> → <b>reverse isometric</b> (looking back at the beach from the sea) → chair. A label beside it names the view for a moment.</p>
 <h3>The chair view</h3>
-<p>The chair view sits you on the sand facing the open sea. Hold ‹ › (or <kbd>Q</kbd>/<kbd>E</kbd>) to walk along the beach and on across your neighbors’; after a second of holding you walk faster.</p>
+<p>The chair view puts you on the sand facing the open sea. Drag to look all the way around, and hold the directional arrows (or <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / arrow keys) to walk around the beach and across your neighbors’ — the waterline keeps you on dry sand. After a second of holding you walk faster.</p>
 
 <h2 id="tools">Tools</h2>
 <p>The <b>Hand</b> moves the view without touching the sand. All the dirt work is behind one button, <b>Dirt</b> (the bulldozer): it opens a column of tools beside the toolbar, and picks up the tool you used last.</p>

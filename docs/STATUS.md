@@ -268,12 +268,18 @@ accepted the repo's default branch, so the deploy job ran only there.
   haze over about 900 m) plus static shore either side, built from the same
   rest profile. Sun and moon discs are projected exactly. The brush radius
   depends on distance so it stays the same size on screen.
-- **Walking the chair:** hold the ‹ › buttons (chair view only) or Q/E to
-  move along the beach at 1.8 m/s (eased), across your neighbors' beaches
-  too. The seat height follows your sand, then a neighbor's, then the rest
-  profile. The static shore shader (`shoreFragment`) paints the swash: a wet
-  band and a foam edge that rises and falls with the swell, phase-shifted
-  along the shore.
+- **Walking the chair:** hold the 4-way directional buttons (chair view only)
+  or WASD / arrow keys to walk anywhere around the beach (forward, back, left,
+  right relative to where you're looking, with full 360° turning and Q/E to
+  turn) at 1.8 m/s (ramping up to 4× when held), across your neighbors' beaches
+  and inland sand rows too. Walking checks `cam.waterDepth` (live swash, tide,
+  dug pools, neighbor water, rest profile) with a 0.35 m foot clearance so the
+  waterline blocks you from going in the water (sliding along the shore when
+  walking diagonally, and nudging you back inland if a wave or rising tide
+  reaches your feet). The seat height follows your sand, then a neighbor's,
+  then the rest profile. The static shore shader (`shoreFragment`) paints the
+  swash: a wet band and a foam edge that rises and falls with the swell,
+  phase-shifted along the shore.
 - **Ambient/TV:** `src/ui/ambient.ts` hides idle controls and holds a screen
   wake lock. There's a full-screen button. Android TV gets the leanback
   launcher, optional touchscreen, and `res/drawable-xhdpi/banner.png`

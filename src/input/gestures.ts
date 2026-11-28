@@ -397,7 +397,7 @@ export class Gestures {
     else if (k === 'h') this.h.toggleCollapse?.();
     else if (k === 'escape') this.h.exitCollapse?.();
     else if (k === 'r' || k === 'f') this.cam.held.add(k);
-    else if ((k === 'q' || k === 'e') && this.cam.mode === 'chair') this.cam.held.add(k); // walk along the beach
+    else if ((k === 'q' || k === 'e') && this.cam.mode === 'chair') this.cam.held.add(k); // turn head in chair view
     else if (k === 'q') this.cam.snapRotation(-1);
     else if (k === 'e') this.cam.snapRotation(1);
     else if (['w', 'a', 's', 'd'].includes(k)) this.cam.held.add(k);
