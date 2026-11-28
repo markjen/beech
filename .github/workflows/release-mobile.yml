@@ -137,6 +137,53 @@ jobs:
       - name: Push entitlement
         if: ${{ vars.NATIVE_PUSH == '1' }}
         run: /usr/libexec/PlistBuddy -c "Add :aps-environment string production" ios/App/App/App.entitlements
+      # Stored signing identity (docs/MOBILE.md, "Stored iOS signing
+      # identity"): automatic signing mints a new certificate on every
+      # ephemeral runner, and the team hit Apple's cap (2 dev / 3
+      # distribution) on 2026-11-28, so every auto-build failed at
+      # archive. The .p12 and provisioning profile below are stored as
+      # repo secrets and reused every run, so CI never creates a
+      # certificate. No -allowProvisioningUpdates: that flag only
+      # applies to automatic signing.
+      # Fail fast naming the missing secret, instead of a confusing
+      # error minutes into the archive.
+      - name: Check signing secrets are set
+        env:
+          P12_B64: ${{ secrets.IOS_DIST_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.IOS_DIST_P12_PASSWORD }}
+          PROFILE_B64: ${{ secrets.IOS_PROFILE_BASE64 }}
+        run: |
+          [ -n "$P12_B64" ] || { echo "::error::IOS_DIST_P12_BASE64 is not set"; exit 1; }
+          [ -n "$P12_PASSWORD" ] || { echo "::error::IOS_DIST_P12_PASSWORD is not set"; exit 1; }
+          [ -n "$PROFILE_B64" ] || { echo "::error::IOS_PROFILE_BASE64 is not set"; exit 1; }
+      - name: Import distribution certificate
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.IOS_DIST_P12_BASE64 }}
+          p12-password: ${{ secrets.IOS_DIST_P12_PASSWORD }}
+          # the action needs a keychain password; reuse the .p12 one so
+          # there is one fewer secret to rotate
+          keychain-password: ${{ secrets.IOS_DIST_P12_PASSWORD }}
+      # The archive signs with CODE_SIGN_IDENTITY="Apple Distribution",
+      # which is ambiguous if the .p12 holds more than one identity,
+      # so pin that down here with a clear error instead.
+      - name: Assert exactly one distribution identity
+        run: |
+          COUNT=$(security find-identity -v -p codesigning | grep -c "Apple Distribution" || true)
+          if [ "$COUNT" -ne 1 ]; then echo "::error::expected exactly 1 Apple Distribution identity, found $COUNT"; security find-identity -v -p codesigning; exit 1; fi
+      - name: Install provisioning profile
+        env:
+          PROFILE_B64: ${{ secrets.IOS_PROFILE_BASE64 }}
+        run: |
+          PROFILE_PATH="$RUNNER_TEMP/Beech.mobileprovision"
+          echo "$PROFILE_B64" | base64 -d > "$PROFILE_PATH"
+          PLIST_PATH="$RUNNER_TEMP/Beech.mobileprovision.plist"
+          security cms -D -i "$PROFILE_PATH" > "$PLIST_PATH"
+          PROFILE_UUID=$(/usr/libexec/PlistBuddy -c "Print :UUID" "$PLIST_PATH")
+          PROFILE_NAME=$(/usr/libexec/PlistBuddy -c "Print :Name" "$PLIST_PATH")
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          cp "$PROFILE_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
+          echo "PROFILE_NAME=$PROFILE_NAME" >> "$GITHUB_ENV"
       - name: Archive and upload to App Store Connect
         env:
           API_KEY_ID: ${{ secrets.APPSTORE_API_KEY_ID }}
@@ -148,10 +195,9 @@ jobs:
           echo "$API_KEY_P8_B64" | base64 -d > ~/private_keys/AuthKey_$API_KEY_ID.p8
           xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release \
             -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/App.xcarchive" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath ~/private_keys/AuthKey_$API_KEY_ID.p8 \
-            -authenticationKeyID "$API_KEY_ID" -authenticationKeyIssuerID "$API_ISSUER_ID" \
-            DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGN_STYLE=Automatic archive
+            DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" archive
           cat > "$RUNNER_TEMP/export.plist" <<PLIST
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -159,11 +205,17 @@ jobs:
             <key>method</key><string>app-store-connect</string>
             <key>destination</key><string>upload</string>
             <key>teamID</key><string>$TEAM_ID</string>
-            <key>signingStyle</key><string>automatic</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>app.beech.beach</key><string>$PROFILE_NAME</string>
+            </dict>
           </dict></plist>
           PLIST
+          # the API-key flags stay: with manual signing they no longer
+          # manage signing assets, but the upload still authenticates
+          # to App Store Connect through them
           xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/App.xcarchive" \
             -exportOptionsPlist "$RUNNER_TEMP/export.plist" -exportPath "$RUNNER_TEMP/export" \
-            -allowProvisioningUpdates \
             -authenticationKeyPath ~/private_keys/AuthKey_$API_KEY_ID.p8 \
             -authenticationKeyID "$API_KEY_ID" -authenticationKeyIssuerID "$API_ISSUER_ID"
