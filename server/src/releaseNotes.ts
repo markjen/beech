@@ -22,6 +22,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       'A Steam purchase you cancelled just as it went through, from another device or by closing the overlay, now always arrives in your balance. Before, Steam could take the money without the beech bucks showing up.',
       'Two checkpoints saved at the same moment, from two devices, can no longer take you past your checkpoint limit.',
       'Using the claw or vending machine from two devices at the very same moment no longer fails with an error.',
+      'Picking things up off your beach now counts toward trade-ins right away — the bag no longer says “0 of 0” until your next sign-in.',
     ],
   },
   {

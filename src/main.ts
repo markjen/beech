@@ -3618,6 +3618,13 @@ async function boot() {
     refreshOwned = () => {
       void loadOwned();
     };
+    // the trade-in counts go stale while you pick things up off the beach
+    // (the server counts what's on it as last saved): save first, then
+    // re-fetch, so the bag shows what's actually off the beach now
+    inventory.onOpen = () => {
+      if (!acct.user) return;
+      void store.flushAll().then(() => refreshOwned());
+    };
     acct.onChange(() => void loadOwned());
     inventory.setSignIn(acct.user ? null : showSignIn);
     // ---- the beach guide and invites (docs/INVITES_GUIDE.md)
