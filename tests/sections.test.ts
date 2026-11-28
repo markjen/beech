@@ -1,11 +1,17 @@
 // Inland beach sections (docs/INLAND_SECTIONS.md): the catalog mirrors, the
 // joins, the editor's counts, and each type's geometry.
 import { describe, expect, it } from 'vitest';
+import { NullEngine } from '@babylonjs/core/Engines/nullEngine';
+import type { ShaderMaterial } from '@babylonjs/core/Materials/shaderMaterial';
+import { Mesh } from '@babylonjs/core/Meshes/mesh';
+import { Scene } from '@babylonjs/core/scene';
 import { GRID_TIERS, PROFILE, SECTION, WORLD_SIZE_X } from '../src/config';
 import type { PlacedObject } from '../src/sim/objects';
 import { fitDepth, resampleWidth } from '../src/sim/sandCodec';
-import { colorOf, SAND_GROUND_KEY, sectionGeometry } from '../src/render/sections';
+import { BeachRenderer } from '../src/render/beachRenderer';
+import { colorOf, SAND_GROUND_KEY, sectionGeometry, SectionLayer } from '../src/render/sections';
 import { restHeight } from '../src/sim/profile';
+import { makeSwell } from '../src/sim/waves';
 import { freeFor, replaceRow } from '../src/ui/sectionsEditor';
 import { EXTRAS } from '../src/world/items';
 import { SECTIONS, SECTIONS_ON_SALE, SECTION_BUCKS, SECTION_ROWS, gridWithSand, sandRowsInGrid, sandRowsOf, sectionJoins } from '../src/world/sections';
@@ -132,6 +138,63 @@ describe('section geometry', () => {
     expect(scenery.has('secTrail')).toBe(true);
     expect(scenery.has('secGrass') || scenery.has('secGrassDark')).toBe(true);
   });
+
+  it('a boardwalk row sits on beach sand, with no grass tufts on it', () => {
+    // Discord #bugs, kt22chute75: the row's sand was a pale flat colour that
+    // didn't match the beach, with grass tufts scattered on it at both ends
+    for (const [neg, pos] of [
+      [false, false],
+      [true, true],
+      [true, false],
+    ]) {
+      const parts = sectionGeometry('section-boardwalk', neg, pos);
+      // the ground is beach sand (painted with the live sandDry by the
+      // layer), not the fixed secSand
+      expect(parts.has(SAND_GROUND_KEY)).toBe(true);
+      expect(parts.has('secSand')).toBe(false);
+      // no grass tufts growing on the sand around the deck
+      expect(parts.has('secGrass')).toBe(false);
+      expect(parts.has('secGrassDark')).toBe(false);
+      // the deck itself is always there; the viewing deck with its bench
+      // only at a finished end
+      expect(parts.has('secPlank')).toBe(true);
+      if (!neg || !pos) expect(parts.has('secTable')).toBe(true);
+    }
+  });
+
+  it('sand-grounded rows share the beach-sand ground', () => {
+    for (const type of ['section-sand', 'section-dunes']) {
+      expect(sectionGeometry(type, false, false).has(SAND_GROUND_KEY)).toBe(true);
+    }
+  });
+});
+
+describe('the section layer', () => {
+  it('paints a boardwalk row’s sand with the live-sand material, not a prop colour', () => {
+    const engine = new NullEngine();
+    const scene = new Scene(engine);
+    try {
+      const renderer = new BeachRenderer(scene, { nx: 4, ny: 4, dx: 8 }, new Float32Array(16), makeSwell(1));
+      let sandMat: ShaderMaterial | undefined;
+      const layer = new SectionLayer(
+        scene,
+        (c) => renderer.createPropMaterial(c),
+        () => (sandMat = renderer.createSandGroundMaterial()),
+      );
+      layer.sync([{ key: 'b@0', x: 0, rows: [{ type: 'section-boardwalk', neg: false, pos: false }] }]);
+      const root = scene.getMeshByName('sections:b@0');
+      expect(root).toBeTruthy();
+      const mats = root!.getChildren().map((m) => (m as Mesh).material);
+      expect(sandMat).toBeTruthy();
+      expect(mats).toContain(sandMat); // the ground
+      // the deck, rails and bench still use ordinary prop materials
+      expect(mats.length).toBeGreaterThan(1);
+      expect(mats.some((m) => m !== sandMat)).toBe(true);
+      layer.dispose();
+    } finally {
+      scene.dispose();
+      engine.dispose();
+    }  });
 });
 
 describe('sand rows inland are part of the beach', () => {
