@@ -2460,6 +2460,9 @@ async function boot() {
       animals.setPet(pet ? { species: pet.species, name: pet.name, mood: pet.mood, home: pet.home ?? null } : null, animalEnv);
       petForReminder = pet && { name: pet.name, lastFedAt: pet.lastFedAt };
       if (settings.petReminders) updatePetReminder();
+      // the bag shows the live beach's placed pet, with a vacuum button
+      const bId = sync.id && sync.id !== LOCAL_BEACH ? sync.id : undefined;
+      inventory.setPlacedPet(pet && bId ? { species: pet.species, name: pet.name, beachId: bId } : null);
     };
     const refreshPet = () => {
       const userId = account.user?.id;
@@ -2546,6 +2549,25 @@ async function boot() {
           showToast(uiRoot, err instanceof Error ? err.message : 'Couldn’t put the pet away.');
         });
     };
+    /** Vacuum the placed pet off a beach and back into the bag (docs/PETS.md):
+     * the bag's vacuum button (two taps to confirm), so a different pet can
+     * take its place. The bag stays open: the swap happens right there. */
+    const vacuumPet = (beachId: string) => {
+      if (!animalsApi) return;
+      cancelPetHand();
+      void animalsApi
+        .stowPet(beachId)
+        .then((r) => {
+          if (isLive(beachId)) applyPet(null);
+          inventory.setBagPets(r.bag);
+          haptics.impact('medium');
+          showPaneToast(placeWrap, `${r.pet.name || petKind(r.pet.species).name} is in your bag`);
+        })
+        .catch((err: unknown) => {
+          showToast(uiRoot, err instanceof Error ? err.message : 'Couldn’t vacuum the pet up.');
+        });
+    };
+    inventory.onVacuumPet = (beachId) => vacuumPet(beachId);
     let petBusy = false;
     setPetDown = (hit) => {
       const p = petInHand;
@@ -2576,7 +2598,7 @@ async function boot() {
         return;
       }
       if (animals.snapshot().isPet) {
-        showToast(uiRoot, 'This beach has a pet.');
+        showToast(uiRoot, 'This beach already has a pet — vacuum it up from your bag to swap.');
         return;
       }
       petBusy = true;

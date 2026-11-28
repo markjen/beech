@@ -504,6 +504,27 @@ export class InventoryTray {
         grid.appendChild(b);
       }
     }
+    // the placed pet of the beach you're looking at (docs/PETS.md): vacuum
+    // it up to put it back in the bag, then place a different pet
+    if (!this.picks && this.placedPet) {
+      const p = this.placedPet;
+      const kind = petKind(p.species);
+      const armed = this.vacuumArmed === p.beachId;
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'inv-item extra rarity-rare';
+      b.dataset.extra = 'placedpet';
+      b.innerHTML = `${icon(kind.item as IconName)}<b>${escapeText(p.name || kind.name)}</b><span>${armed ? `tap again to vacuum up ${escapeText(p.name || kind.name)}` : `${kind.name.toLowerCase()} · on this beach · vacuum up`}</span>`;
+      b.addEventListener('click', () => {
+        if (this.vacuumArmed === p.beachId) {
+          this.disarmVacuum();
+          this.onVacuumPet(p.beachId);
+        } else {
+          this.armVacuum(p.beachId);
+        }
+      });
+      grid.appendChild(b);
+    }
     // your pets in the bag (docs/PETS.md): tap one, then tap a beach of yours to set it down
     for (const p of this.picks ? [] : this.bagPets) {
       const b = document.createElement('button');
@@ -527,6 +548,42 @@ export class InventoryTray {
     const same = pets.length === this.bagPets.length && pets.every((p, i) => p.id === this.bagPets[i].id && p.name === this.bagPets[i].name);
     this.bagPets = pets.map((p) => ({ id: p.id, species: p.species, name: p.name }));
     if (!same) this.render();
+  }
+
+  /** the placed pet of the beach you're looking at, if it has one (docs/PETS.md) */
+  private placedPet: { species: PetSpecies; name: string; beachId: string } | null = null;
+  /** first tap on "vacuum up" arms it; the second tap vacuums (docs/PETS.md) */
+  private vacuumArmed: string | null = null;
+  private vacuumTimer: number | null = null;
+  /** vacuum the placed pet of a beach back into the bag (docs/PETS.md) */
+  onVacuumPet: (beachId: string) => void = () => {};
+
+  setPlacedPet(pet: { species: PetSpecies; name: string; beachId: string } | null): void {
+    const same =
+      (this.placedPet?.beachId ?? null) === (pet?.beachId ?? null) &&
+      (this.placedPet?.species ?? null) === (pet?.species ?? null) &&
+      (this.placedPet?.name ?? null) === (pet?.name ?? null);
+    if (same) return;
+    this.placedPet = pet;
+    if (!pet) this.disarmVacuum();
+    this.render();
+  }
+
+  private armVacuum(beachId: string): void {
+    this.vacuumArmed = beachId;
+    if (this.vacuumTimer !== null) window.clearTimeout(this.vacuumTimer);
+    this.vacuumTimer = window.setTimeout(() => this.disarmVacuum(), 3000);
+    this.render();
+  }
+
+  private disarmVacuum(): void {
+    if (this.vacuumTimer !== null) {
+      window.clearTimeout(this.vacuumTimer);
+      this.vacuumTimer = null;
+    }
+    if (this.vacuumArmed === null) return;
+    this.vacuumArmed = null;
+    this.render();
   }
 
   bagPet(id: number): { id: number; species: PetSpecies; name: string } | undefined {
