@@ -24,6 +24,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       'Using the claw or vending machine from two devices at the very same moment no longer fails with an error.',
       'Picking things up off your beach now counts toward trade-ins right away — the bag no longer says “0 of 0” until your next sign-in.',
       'A new sand extension now previews as beach sand right away, instead of showing as pale scenery with dune lips and grass until you save.',
+      'A boardwalk row’s sand now matches the beach’s sand, and the stray grass tufts around the deck are gone.',
     ],
   },
   {

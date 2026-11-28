@@ -500,7 +500,6 @@ function sectionGeometry(type, joinNeg, joinPos, seed = 1, opts = {}) {
         for (const z of [D / 2 - 3.15, D / 2, D / 2 + 3.15]) post("secRail", x - s * 0.05, z, 0.9, 0.08, top);
         put("secTable", x - s * 1.2, top + 0.45, D / 2, 0.45, 0.07, 1.6);
         put("secTrunk", x - s * 1.2, top + 0.22, D / 2, 0.4, 0.44, 1.2);
-        for (let z = 1; z < D; z += 1.5) tuft(e - s * (0.6 + r() * 2.4), z);
       });
       break;
     }
