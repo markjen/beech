@@ -44,6 +44,7 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       'The beach guide has four more steps, each with a small gift: clear some sand away, calm the waves, try the vending machine and save a checkpoint.',
       'Going home right after following an invite link no longer gets undone when the visit you left behind finishes loading.',
       'The beech merch store is open at store.beech.games: tees, hoodies, embroidered dad hats, flip flops and beach towels, the whole set, and your own beach printed big on a tee or a hoodie.',
+      'Want a different pet on your beach? In your bag, the pet that’s there has a “vacuum up” button — tap it twice and it goes back in the bag, so you can place another one.',
     ],
   },
   {
