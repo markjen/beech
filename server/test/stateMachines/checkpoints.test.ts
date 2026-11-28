@@ -94,7 +94,7 @@ describe('checkpoints: random walks, server vs model', () => {
       const r = rng(seed);
       const room = 3 + r.int(4);
       const w = await player(room);
-      const m = new CheckpointsModel(CHECKPOINTS_PER_BEACH, room);
+      let m = new CheckpointsModel(CHECKPOINTS_PER_BEACH, room);
       const ids: string[] = [];
       const trace: string[] = [];
       const keep = async (res: Response) => {
@@ -120,9 +120,20 @@ describe('checkpoints: random walks, server vs model', () => {
           const kinds = Array.from({ length: r.next() < 0.4 ? 2 : 1 }, () => r.pick(['import', 'beach', 'auto'] as const));
           const got = await Promise.all(kinds.map((k) => (k === 'import' ? makeImport(w) : makeFromBeach(w, k === 'auto')).then(keep)));
           trace.push(kinds.map((k, i) => `${k}=${got[i]}`).join(' '));
-          // successes first: a refusal must be one the model gives after them
-          const order = kinds.map((k, i) => ({ k, g: got[i] })).sort((a, b) => (a.g === 201 ? 0 : 1) - (b.g === 201 ? 0 : 1));
-          for (const { k, g } of order) expect(g, trace.join(' ')).toBe(k === 'auto' ? m.autoCopy() : m.make());
+          // requests at once may land in either order: the answers must match
+          // the model run in one of them (an automatic copy that only replaces
+          // the beach's slot can go first and leave room for a named one)
+          const outcomes = [kinds.map((k, i) => ({ k, g: got[i] }))];
+          if (kinds.length === 2) outcomes.push([...outcomes[0]].reverse());
+          const fits = outcomes
+            .map((order) => {
+              const t = Object.assign(new CheckpointsModel(m.limit, m.cap), m);
+              const ok = order.every(({ k, g }) => g === (k === 'auto' ? t.autoCopy() : t.make()));
+              return ok ? t : null;
+            })
+            .find((t) => t !== null);
+          expect(fits ? got : 'no order fits', trace.join(' ')).toEqual(got);
+          m = fits!;
         }
         expect(m.check()).toEqual([]);
         expect(await stored(w), trace.join(' ')).toEqual({ named: m.named, slot: m.slot });
