@@ -1,3 +1,5 @@
+//@ backend dafny
+//@ option safe-slice true
 // Compact storage for a player's beach.
 //
 // We store the sand *relative to the untouched beach* (sand - rest), rounded
@@ -45,14 +47,39 @@ export const MAX_OBJECTS = 2000;
 /** what apps before the raise kept: saving from one of those would lose the rest */
 export const OLD_MAX_OBJECTS = 400;
 
+/** your own things (put down by you, not brought in by the sea), in order */
+export function yoursOf(objects: PlacedObject[]): PlacedObject[] {
+  //@ verify
+  //@ pure
+  return objects.filter((o) => o.wild !== true);
+}
+/** what the sea brought in, in order */
+export function wildOf(objects: PlacedObject[]): PlacedObject[] {
+  //@ verify
+  //@ pure
+  return objects.filter((o) => o.wild === true);
+}
+
 /**
  * What a save keeps: things you put down first (oldest first), then what the
  * sea brought in, up to MAX_OBJECTS. `dropped` counts your own things that
  * didn't fit (the app warns about those; the wild ones don't matter).
+ * Proved (docs/VERIFICATION.md): never more than MAX_OBJECTS; as many as
+ * fit; your things first and in order, so none of yours is dropped while a
+ * wild one is kept; nothing that wasn't there; `dropped` is exactly how many
+ * of yours didn't fit.
  */
 export function objectsToSave(objects: PlacedObject[]): { keep: PlacedObject[]; dropped: number } {
-  const mine = objects.filter((o) => !o.wild);
-  const keep = [...mine, ...objects.filter((o) => o.wild)].slice(0, MAX_OBJECTS);
+  //@ verify
+  //@ ensures \result.keep.length <= MAX_OBJECTS
+  //@ ensures \result.keep.length === Math.min(objects.length, MAX_OBJECTS)
+  //@ ensures \result.dropped === Math.max(0, yoursOf(objects).length - MAX_OBJECTS)
+  //@ ensures forall(i: nat, i < \result.keep.length && i < yoursOf(objects).length ==> \result.keep[i] === yoursOf(objects)[i])
+  //@ ensures forall(i: nat, i < \result.keep.length ==> \result.keep[i] in objects)
+  const mine: PlacedObject[] = yoursOf(objects);
+  const wild: PlacedObject[] = wildOf(objects);
+  const all: PlacedObject[] = [...mine, ...wild];
+  const keep: PlacedObject[] = all.slice(0, MAX_OBJECTS);
   return { keep, dropped: Math.max(0, mine.length - MAX_OBJECTS) };
 }
 const MM = 1000;

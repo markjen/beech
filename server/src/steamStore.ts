@@ -185,7 +185,7 @@ export async function syncSteamRefunds(
     const res = await db.withTransaction(async (txDb) => {
       const rows = await txDb.query<{ id: string }>(
         `UPDATE steam_orders SET status = 'refunded'
-          WHERE trans_id = $1 AND status IN ('created', 'paid')
+          WHERE trans_id = $1 AND status IN ('created', 'paid', 'canceled')
          RETURNING order_id::text AS id`,
         [tx],
       );

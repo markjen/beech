@@ -49,6 +49,7 @@ import { ledgerOf } from './ledger.js';
 import { displayName } from './prizeNames.js';
 import { createWeather } from './weather.js';
 import { creditBalance, grantPurchase } from './bucksDb.js';
+import { autoSlotFits, BEACH_CAP, beachAllowance, checkpointLimit, checkpointRoom } from './limits.js';
 import { SECTION_IDS, SECTION_ROWS, isSection } from './sections.js';
 import { BUCK, bucksToCents, centsToBucks, listBucks, roundToBuck, shareOut, tradeable, unitsOf } from './bucks.js';
 import { issueSubmissionSession, UUID_PATTERN } from './itemSubmissions.js';
@@ -64,7 +65,7 @@ import {
   promoBonusCents,
   type Promo,
 } from './giftCards.js';
-import { appleRefund, googleVoided, revokeStorePurchase, verifyAppleTransaction, verifyGoogleOidc, verifyGooglePurchase, type VerifiedPurchase } from './store.js';
+import { appleRefund, googleVoided, lockStoreTransaction, revokeStorePurchase, storeRefunded, verifyAppleTransaction, verifyGoogleOidc, verifyGooglePurchase, type VerifiedPurchase } from './store.js';
 import { NOTIFY_PREFS, PUSH_DEVICES, lockPush, makeSender, pushTick, validEndpoint, validTz, type NotifyPref, type PushConfig, type PushSender } from './push.js';
 import { POOLS, GRAB_CHANCE, COOLDOWN_MAX_MS, COOLDOWN_MIN_MS, cooldownAfter, cryptoRandom, draw, grab, pullDay, starterPrize, STARTER, type Rarity } from './pulls.js';
 import { currentSet, drawVending, nextUtcMidnight } from './vending.js';
@@ -114,7 +115,6 @@ import {
   BadBlob,
   CHECKPOINT_BYTES_PER_USER,
   CHECKPOINT_NAME_MAX,
-  CHECKPOINTS_PER_BEACH,
   MAX_BEACH_BYTES,
   MAX_CELLS,
   OLD_MAX_OBJECTS,
@@ -243,7 +243,7 @@ export interface User {
 type Env = { Variables: { user: User; tokenHash: string; shore: boolean } };
 
 /** most beaches one person can have */
-export const BEACH_CAP = 8;
+export { BEACH_CAP } from './limits.js';
 
 /** A strict copy that's short: thrown inside the transaction so a new beach made for it rolls back too. */
 class CopyShort extends Error {
@@ -971,17 +971,6 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     )[0];
     if (!cur) return false; // first save: nothing to keep
     const bytes = toBytes(cur.sand);
-    // the one auto slot's bytes already count toward the total; only
-    // snapshot if the replacement still fits
-    const use = (
-      await db.query<{ total: string; auto_bytes: string }>(
-        `SELECT COALESCE(SUM(bytes), 0) AS total,
-                COALESCE(SUM(bytes) FILTER (WHERE kind = 'auto' AND from_beach = $2), 0) AS auto_bytes
-           FROM checkpoints WHERE owner_id = $1`,
-        [userId, beachId],
-      )
-    )[0];
-    if (Number(use.total) - Number(use.auto_bytes) + bytes.byteLength > CHECKPOINT_BYTES_PER_USER) return false;
     let items: Record<string, number> = {};
     let objects = 0;
     try {
@@ -989,17 +978,31 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     } catch {
       /* an unreadable old save: keep the bytes, uncounted */
     }
-    await db.query(
-      `INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at, origin_beach_id)
-       SELECT $1, owner_id, $2, 'auto', 'beach', id, name, location, nx, ny, sand, octet_length(sand), $3, $4, $5, id
-         FROM beach WHERE id = $6 AND sand IS NOT NULL
-       ON CONFLICT (from_beach) WHERE kind = 'auto' DO UPDATE SET
-         name = EXCLUDED.name, from_name = EXCLUDED.from_name, location = EXCLUDED.location, nx = EXCLUDED.nx, ny = EXCLUDED.ny,
-         sand = EXCLUDED.sand, bytes = EXCLUDED.bytes, items = EXCLUDED.items, objects = EXCLUDED.objects, created_at = EXCLUDED.created_at,
-         origin_beach_id = EXCLUDED.origin_beach_id`,
-      [crypto.randomUUID(), name, JSON.stringify(items), objects, now, beachId],
-    );
-    return true;
+    // the measure and the write together, under the player lock (Checkpoints.tla)
+    return withPlayerWriteLock(userId, async (tx) => {
+      // the one auto slot's bytes already count toward the total; only
+      // snapshot if the replacement still fits
+      const use = (
+        await tx.query<{ total: string; auto_bytes: string }>(
+          `SELECT COALESCE(SUM(bytes), 0) AS total,
+                  COALESCE(SUM(bytes) FILTER (WHERE kind = 'auto' AND from_beach = $2), 0) AS auto_bytes
+             FROM checkpoints WHERE owner_id = $1`,
+          [userId, beachId],
+        )
+      )[0];
+      if (!autoSlotFits(Number(use.total), Number(use.auto_bytes), bytes.byteLength)) return false;
+      await tx.query(
+        `INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at, origin_beach_id)
+         SELECT $1, owner_id, $2, 'auto', 'beach', id, name, location, nx, ny, sand, octet_length(sand), $3, $4, $5, id
+           FROM beach WHERE id = $6 AND sand IS NOT NULL
+         ON CONFLICT (from_beach) WHERE kind = 'auto' DO UPDATE SET
+           name = EXCLUDED.name, from_name = EXCLUDED.from_name, location = EXCLUDED.location, nx = EXCLUDED.nx, ny = EXCLUDED.ny,
+           sand = EXCLUDED.sand, bytes = EXCLUDED.bytes, items = EXCLUDED.items, objects = EXCLUDED.objects, created_at = EXCLUDED.created_at,
+           origin_beach_id = EXCLUDED.origin_beach_id`,
+        [crypto.randomUUID(), name, JSON.stringify(items), objects, now, beachId],
+      );
+      return true;
+    });
   };
 
   /**
@@ -1260,7 +1263,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       `SELECT SUM(quantity) AS n FROM inventory WHERE user_id = $1 AND item_id = 'beach' AND (expires_at IS NULL OR expires_at > $2)`,
       [user, Date.now()],
     );
-    return Math.min(BEACH_CAP, 1 + Number(rows[0]?.n ?? 0));
+    return beachAllowance(Number(rows[0]?.n ?? 0));
   };
   /** my home beach (its id is mine unless I've made another beach home) */
   const homeOf = async (user: string): Promise<string> =>
@@ -1812,14 +1815,15 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     // won, so there is nothing to log or give — only the claim runs. (The
     // miss claim has its own numbering: every parameter must be used, or
     // Postgres can't tell its type.)
-    const rows = missed
-      ? await db.query(
+    // a claim that fails or throws lets its unique go again (NoStrandedUnique)
+    const rows = await (missed
+      ? db.query(
           `UPDATE pull_state SET count = count + 1, next_at = $3 + $4
             WHERE user_id = $1 AND pool = $2 AND next_at <= $3 AND count = $5
             RETURNING user_id`,
           [me, poolId, now, wait, count],
         )
-      : await db.query<{ item_id: string }>(
+      : db.query<{ item_id: string }>(
           `WITH claim AS (
              UPDATE pull_state SET count = count + 1, next_at = $6 + $7
               WHERE user_id = $1 AND pool = $2 AND next_at <= $6 AND count = $8
@@ -1831,7 +1835,11 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
            INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at, expires_at)
            SELECT user_id, $4, 1, 'pull', $6, NULL FROM logged RETURNING item_id`,
           [me, poolId, pullDay(now), got.item, got.rarity, now, wait, count],
-        );
+        )
+    ).catch(async (e) => {
+      await unique.release();
+      throw e;
+    });
     if (!rows[0]) await unique.release();
     const st = (await freeAt(me)).get(poolId);
     if (!rows[0])
@@ -1878,6 +1886,9 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       item: missed ? null : got.item,
       rarity: missed ? null : got.rarity,
       now,
+    }).catch(async (e) => {
+      await unique.release();
+      throw e;
     });
     if (!paid) {
       await unique.release();
@@ -1985,7 +1996,10 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
        INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at, expires_at)
        SELECT user_id, $6, 1, 'pull', $5, NULL FROM logged RETURNING item_id`,
       [me, today, DIG_FIND_DAILY_CAP, DIG_FIND_ROLL_COOLDOWN_MS, now, drawn.item, drawn.rarity],
-    );
+    ).catch(async (e) => {
+      await unique.release();
+      throw e;
+    });
     if (!rows[0]) {
       await unique.release();
       return c.json({ error: 'slow down', nextRollAt: now + DIG_FIND_ROLL_COOLDOWN_MS }, 409);
@@ -2457,18 +2471,25 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     return name;
   };
   /** named checkpoints you may keep: 5 for each beach of your allowance */
-  const checkpointLimit = async (user: string) => CHECKPOINTS_PER_BEACH * (await allowance(user));
-  const checkpointUse = async (user: string) => {
-    const rows = await db.query<{ named: string; bytes: string | null }>(
+  const checkpointLimitOf = async (user: string, q: Db = db) => checkpointLimit(await allowance(user, q));
+  const checkpointUse = async (user: string, q: Db = db) => {
+    const rows = await q.query<{ named: string; bytes: string | null }>(
       `SELECT COUNT(*) FILTER (WHERE kind = 'named') AS named, SUM(bytes) FILTER (WHERE kind <> 'tide') AS bytes FROM checkpoints WHERE owner_id = $1`,
       [user],
     );
     return { named: Number(rows[0]?.named ?? 0), bytes: Number(rows[0]?.bytes ?? 0) };
   };
-  const checkRoom = async (user: string, adding: number) => {
-    const [use, limit] = await Promise.all([checkpointUse(user), checkpointLimit(user)]);
-    if (use.named >= limit) fail(409, `you have ${limit} checkpoints, the most you can keep: delete one first`);
-    if (use.bytes + adding > CHECKPOINT_BYTES_PER_USER) fail(413, 'your checkpoints are full: delete some first');
+  /**
+   * Is there room for another named checkpoint? Run it inside
+   * withPlayerWriteLock with the INSERT (specs/tla/Checkpoints.tla): two
+   * checkpoints made at once otherwise both pass and go over the limit.
+   */
+  const checkRoom = async (user: string, adding: number, q: Db) => {
+    const use = await checkpointUse(user, q);
+    const limit = await checkpointLimitOf(user, q);
+    const full = checkpointRoom(use.named, limit, use.bytes, adding);
+    if (full === 'count') fail(409, `you have ${limit} checkpoints, the most you can keep: delete one first`);
+    if (full === 'bytes') fail(413, 'your checkpoints are full: delete some first');
   };
   const inspect = (bytes: Uint8Array) => {
     try {
@@ -2530,7 +2551,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
         `SELECT ${CHECKPOINT_COLS} FROM checkpoints c LEFT JOIN beach b ON b.id = c.from_beach WHERE c.owner_id = $1 ORDER BY c.created_at DESC, c.name`,
         [me],
       ),
-      checkpointLimit(me),
+      checkpointLimitOf(me),
       checkpointUse(me),
     ]);
     return c.json({ limit, named: use.named, bytesUsed: use.bytes, bytesLimit: CHECKPOINT_BYTES_PER_USER, checkpoints: rows.map(checkpointJson) });
@@ -2552,35 +2573,39 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     if (!rows[0]) fail(404, 'that beach has nothing saved yet');
     const bytes = toBytes(rows[0].sand);
     const info = inspect(bytes);
-    if (auto) {
-      const total = await checkpointUse(me);
-      if (total.bytes + bytes.byteLength > CHECKPOINT_BYTES_PER_USER) fail(413, 'your checkpoints are full: delete some first');
-    } else await checkRoom(me, bytes.byteLength);
-    const r = await db.query<{ id: string }>(
-      `INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at, origin_beach_id)
-       VALUES ($1, $2, $3, $14, 'beach', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $4)
-       ON CONFLICT (from_beach) WHERE kind = 'auto' DO UPDATE SET
-         name = EXCLUDED.name, from_name = EXCLUDED.from_name, location = EXCLUDED.location, nx = EXCLUDED.nx, ny = EXCLUDED.ny,
-         sand = EXCLUDED.sand, bytes = EXCLUDED.bytes, items = EXCLUDED.items, objects = EXCLUDED.objects, created_at = EXCLUDED.created_at,
-         origin_beach_id = EXCLUDED.origin_beach_id
-       RETURNING id`,
-      [
-        crypto.randomUUID(),
-        me,
-        label,
-        beachId,
-        rows[0].name,
-        rows[0].location,
-        rows[0].nx,
-        rows[0].ny,
-        bytes,
-        bytes.byteLength,
-        JSON.stringify(info.items),
-        info.objects,
-        clock(),
-        auto ? 'auto' : 'named',
-      ],
-    );
+    // the room check and the write together, under the player lock (Checkpoints.tla)
+    const r = await withPlayerWriteLock(me, async (tx) => {
+      if (auto) {
+        const total = await checkpointUse(me, tx);
+        // counts the slot it replaces too: stricter than the save path's copy
+        if (!autoSlotFits(total.bytes, 0, bytes.byteLength)) fail(413, 'your checkpoints are full: delete some first');
+      } else await checkRoom(me, bytes.byteLength, tx);
+      return tx.query<{ id: string }>(
+        `INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at, origin_beach_id)
+         VALUES ($1, $2, $3, $14, 'beach', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $4)
+         ON CONFLICT (from_beach) WHERE kind = 'auto' DO UPDATE SET
+           name = EXCLUDED.name, from_name = EXCLUDED.from_name, location = EXCLUDED.location, nx = EXCLUDED.nx, ny = EXCLUDED.ny,
+           sand = EXCLUDED.sand, bytes = EXCLUDED.bytes, items = EXCLUDED.items, objects = EXCLUDED.objects, created_at = EXCLUDED.created_at,
+           origin_beach_id = EXCLUDED.origin_beach_id
+         RETURNING id`,
+        [
+          crypto.randomUUID(),
+          me,
+          label,
+          beachId,
+          rows[0].name,
+          rows[0].location,
+          rows[0].nx,
+          rows[0].ny,
+          bytes,
+          bytes.byteLength,
+          JSON.stringify(info.items),
+          info.objects,
+          clock(),
+          auto ? 'auto' : 'named',
+        ],
+      );
+    });
     return c.json({ checkpoint: checkpointJson((await myCheckpoint(c, r[0].id)) as CheckpointRow) }, 201);
   });
 
@@ -2603,13 +2628,15 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     // (square, or deeper with sand rows inland)
     if (info.ny < info.nx) fail(400, 'not a saved beach (the grid must be square)');
     if (!makeLimiter(me)) fail(429, 'too many checkpoints at once: try again later');
-    await checkRoom(me, bytes.byteLength);
     const id = crypto.randomUUID();
-    await db.query(
-      `INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at)
-       VALUES ($1, $2, $3, 'named', 'import', NULL, '', NULLIF($4, ''), $5, $6, $7, $8, $9, $10, $11)`,
-      [id, me, label, location, info.nx, info.ny, bytes, bytes.byteLength, JSON.stringify(info.items), info.objects, clock()],
-    );
+    await withPlayerWriteLock(me, async (tx) => {
+      await checkRoom(me, bytes.byteLength, tx);
+      await tx.query(
+        `INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at)
+         VALUES ($1, $2, $3, 'named', 'import', NULL, '', NULLIF($4, ''), $5, $6, $7, $8, $9, $10, $11)`,
+        [id, me, label, location, info.nx, info.ny, bytes, bytes.byteLength, JSON.stringify(info.items), info.objects, clock()],
+      );
+    });
     return c.json({ checkpoint: checkpointJson((await myCheckpoint(c, id)) as CheckpointRow) }, 201);
   });
 
@@ -2895,14 +2922,16 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     if (p.version !== undefined && Number(src.version) !== p.version) return c.json({ error: 'changed', version: Number(src.version) }, 409);
     const bytes = toBytes(src.sand);
     const info = inspect(bytes);
-    await checkRoom(me, bytes.byteLength);
     const id = crypto.randomUUID();
     const label = (src.name || src.code).slice(0, CHECKPOINT_NAME_MAX);
-    await db.query(
-      `INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at)
-       VALUES ($1, $2, $3, 'named', 'copy', NULL, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-      [id, me, label, `${src.owner_name?.trim() || 'Someone'} · ${src.code}`, src.location, info.nx, info.ny, bytes, bytes.byteLength, JSON.stringify(info.items), info.objects, clock()],
-    );
+    await withPlayerWriteLock(me, async (tx) => {
+      await checkRoom(me, bytes.byteLength, tx);
+      await tx.query(
+        `INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at)
+         VALUES ($1, $2, $3, 'named', 'copy', NULL, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+        [id, me, label, `${src.owner_name?.trim() || 'Someone'} · ${src.code}`, src.location, info.nx, info.ny, bytes, bytes.byteLength, JSON.stringify(info.items), info.objects, clock()],
+      );
+    });
     return c.json({ checkpoint: checkpointJson((await myCheckpoint(c, id)) as CheckpointRow) }, 201);
   });
 
@@ -2984,7 +3013,12 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const now = clock();
     // Record it once, then grant (a pack's beech bucks, or an old app's
     // things) and any creator credit in the same transaction.
-    const { rows, promo } = await db.withTransaction(async (tx) => {
+    const { rows, promo, refunded } = await db.withTransaction(async (tx) => {
+      // a refund notification may have come first (specs/tla/ShopOrders.tla, NRecord)
+      await lockStoreTransaction(tx, v.store, v.transactionId);
+      // (a purchase recorded before its refund answers "already", as before)
+      const known = await tx.query('SELECT 1 FROM purchases WHERE store = $1 AND transaction_id = $2', [v.store, v.transactionId]);
+      if (!known.length && (await storeRefunded(tx, v.store, v.transactionId))) return { rows: [], promo: null, refunded: true };
       const granted = await tx.query<{ purchase_id: string }>(
         `INSERT INTO purchases (user_id, store, transaction_id, product_id, environment, purchased_at, granted_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (store, transaction_id) DO NOTHING
@@ -3005,8 +3039,9 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
           });
         }
       }
-      return { rows: granted, promo: appliedPromo };
+      return { rows: granted, promo: appliedPromo, refunded: false };
     });
+    if (refunded) return c.json({ error: 'the store did not confirm this purchase: purchase was refunded' }, 402);
     if (!rows.length) {
       const prev = (await db.query<{ user_id: string }>('SELECT user_id FROM purchases WHERE store = $1 AND transaction_id = $2', [v!.store, v!.transactionId]))[0];
       if (prev && prev.user_id !== me) fail(409, 'that purchase was already used by another account');
@@ -3568,7 +3603,10 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const granted = await db.withTransaction(async (tx) => {
       const [order] = await tx.query<{ status: string }>('SELECT status FROM steam_orders WHERE order_id = $1 FOR NO KEY UPDATE', [oid]);
       if (order?.status === 'paid') return { rows: [] as { purchase_id: string }[], promo: null };
-      if (order?.status !== 'created') fail(409, 'the order is no longer open');
+      // Steam has taken the money: a cancel that landed meanwhile (another
+      // device, the overlay closing) doesn't stop the grant; a refund does
+      // (specs/tla/ShopOrders.tla, SFinGrant)
+      if (order?.status !== 'created' && order?.status !== 'canceled') fail(409, 'the order is no longer open');
       const rows = await tx.query<{ purchase_id: string }>(
         `WITH p AS (
            INSERT INTO purchases (user_id, store, transaction_id, product_id, environment, purchased_at, granted_at)
@@ -3577,7 +3615,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
            RETURNING id, user_id
          ), o AS (
            UPDATE steam_orders SET status = 'paid', trans_id = $2, paid_at = $5
-            WHERE order_id = $6 AND status = 'created' AND EXISTS (SELECT 1 FROM p)
+            WHERE order_id = $6 AND status IN ('created', 'canceled') AND EXISTS (SELECT 1 FROM p)
            RETURNING order_id
          )
          SELECT p.id AS purchase_id FROM p`,

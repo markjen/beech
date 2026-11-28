@@ -218,6 +218,21 @@ async function revokePurchaseEffects(
   await revokeGrant(tx, { purchaseId: purchase.id, userId: purchase.user_id, product: storeProductById(purchase.product_id), now });
 }
 
+/**
+ * Inside a transaction: one store transaction's purchase at a time. Recording
+ * a purchase and its refund notification both take this lock, so a refund
+ * that lands while the purchase is being recorded is seen by one or the other
+ * (specs/tla/ShopOrders.tla, NRecord and NNote).
+ */
+export async function lockStoreTransaction(tx: Db, store: string, transactionId: string): Promise<void> {
+  await tx.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`store:${store}:${transactionId}`]);
+}
+
+/** Inside lockStoreTransaction: did the store already tell us this one was refunded? */
+export async function storeRefunded(tx: Db, store: string, transactionId: string): Promise<boolean> {
+  return (await tx.query('SELECT 1 FROM store_refunds WHERE store = $1 AND transaction_id = $2', [store, transactionId])).length > 0;
+}
+
 export async function revokeStorePurchase(
   db: Db,
   store: 'apple' | 'google' | 'xsolla' | 'steam' | 'stripe',
@@ -225,6 +240,13 @@ export async function revokeStorePurchase(
   now: number,
 ): Promise<void> {
   await db.withTransaction(async (tx) => {
+    // the same lock as recording the purchase (lockStoreTransaction), and the
+    // refund kept even if the purchase isn't recorded yet (specs/tla/ShopOrders.tla)
+    await lockStoreTransaction(tx, store, transactionId);
+    await tx.query(
+      'INSERT INTO store_refunds (store, transaction_id, refunded_at) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
+      [store, transactionId, now],
+    );
     const [purchase] = await tx.query<{ id: string; user_id: string; product_id: string }>(
       `UPDATE purchases SET refunded_at = $3 WHERE store = $1 AND transaction_id = $2 AND refunded_at IS NULL RETURNING id, user_id, product_id`,
       [store, transactionId, now],

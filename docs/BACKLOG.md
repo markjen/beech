@@ -197,14 +197,11 @@ picked up.
 
 - [ ] **Store: Printful mockups, your beach on the towel, store links in
   the game and on beechshore** (docs/MERCH_STORE.md, "Not built").
-- Model more state machines the same way: the claw machine (goes,
-  cooldowns, starter gifts), dig finds (daily cap), shop orders and refunds
-  (Xsolla, Steam, Apple and Google), checkpoints (limits, the auto slot),
-  and the app's BeachStore save pipeline (see STATE_MACHINES.md).
+- Model more state machines the same way: the app's BeachStore save
+  pipeline (see STATE_MACHINES.md).
 
-- Verify more with LemmaScript: the app's copy of the restore check
-  (`src/world/checkpointFit.ts`), item-size and beach-capacity limits,
-  referral ladder rewards. See [VERIFICATION.md](VERIFICATION.md).
+- Verify more with LemmaScript: item sizes need a different tool (they're
+  floating point); see [VERIFICATION.md](VERIFICATION.md).
 - [ ] Sand-castle bucket stamps as a fourth tool.
 - [ ] Per-beach slope and sand-grain colour for the real beaches.
 - [ ] More real beaches where a tide gauge is near enough. Reynisfjara,
@@ -218,6 +215,16 @@ picked up.
 
 ## Done (recent)
 
+- [x] **More state machines and proofs** (2026-11-28; agent): TLA+ models
+  of the claw and vending machines, buried finds, shop orders and refunds
+  (app stores, Xsolla, Steam) and checkpoints, each with transition tests,
+  replays and random walks (STATE_MACHINES.md). They found and fixed four
+  bugs: same-millisecond pulls (migration 47), a refunded app-store purchase
+  granted (`store_refunds`, migration 48), a Steam purchase charged but not
+  granted after a cancel, and checkpoints over the limit. LemmaScript proofs
+  of the referral ladder, the beach and checkpoint limits (`limits.ts`), what
+  a save keeps (`objectsToSave`) and the app's restore check
+  (VERIFICATION.md).
 - [x] **Merch store** (2026-11-27; Mark): store.beech.games with the six
   beech things, the set, and your-beach tees and hoodies; Stripe Checkout +
   Printful, `specs/tla/MerchOrders.tla`. MERCH_STORE.md.

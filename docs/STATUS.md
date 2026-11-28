@@ -331,6 +331,23 @@ accepted the repo's default branch, so the deploy job ran only there.
   `GET /api/inventory` for owned, unexpired non-free items. Nothing writes to
   it yet.
 
+## More state machines and proofs (2026-11-28)
+
+Four more machines are modelled in TLA+ and tested against the real
+server (docs/STATE_MACHINES.md): `Claw.tla`, `DigFinds.tla`,
+`ShopOrders.tla` and `Checkpoints.tla`. They found four bugs, all fixed:
+pulls in the same millisecond collided (migration 47 gives each pull an
+id); an app-store refund that arrived before the purchase was recorded
+didn't stick (`store_refunds`, migration 48, and a lock per store
+transaction); a Steam cancel during finalize left a charged order
+ungranted (finalize now grants it; the refund sync refunds canceled
+orders); and checkpoint room checks raced their inserts (now one
+transaction under the player lock). New LemmaScript proofs
+(docs/VERIFICATION.md): the referral ladder (`ladderAt`), the beach and
+checkpoint limits (`server/src/limits.ts`, which now holds `BEACH_CAP`),
+what a save keeps (`objectsToSave`) and the app's restore check. Item
+sizes are floating point, so they aren't proved.
+
 ## Merch store (2026-11-27)
 
 store.beech.games sells a beech tee, hoodie, dad hat, flip flops and

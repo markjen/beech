@@ -1127,7 +1127,6 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX merch_lines_order ON merch_lines (order_id);
   `,
-
   // 46: Stripe web checkout (docs/STRIPE_PAYMENTS.md) — the backup to
   // Xsolla. Stripe payments are purchases with store 'stripe', granted and
   // revoked through the same plumbing. (Numbered 46, not 45, because main's
@@ -1135,6 +1134,28 @@ const MIGRATIONS: string[] = [
   `
   ALTER TABLE purchases DROP CONSTRAINT purchases_store_check;
   ALTER TABLE purchases ADD CONSTRAINT purchases_store_check CHECK (store IN ('apple', 'google', 'dev', 'xsolla', 'steam', 'stripe'));
+  `,
+  // 47: each pull gets its own id (specs/tla/Claw.tla). The key was
+  // (user_id, pool, created_at), so two goes by one player on one machine in
+  // the same millisecond (a free ball and a paid one from two devices)
+  // collided: the second failed with a 500, and a unique prize claimed for it
+  // was left owned by nobody's bag. An account merge could collide the same way.
+  `
+  ALTER TABLE pulls DROP CONSTRAINT pulls_pkey;
+  ALTER TABLE pulls ADD COLUMN id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY;
+  CREATE INDEX pulls_user_pool ON pulls (user_id, pool, created_at);
+  `,
+  // 48: refunds the stores told us about (specs/tla/ShopOrders.tla). A refund
+  // notification can come for a purchase the app hasn't posted yet (checked
+  // with the store just before the refund, recorded just after): kept here,
+  // so recording it then refuses instead of granting a refunded purchase.
+  `
+  CREATE TABLE store_refunds (
+    store TEXT NOT NULL,
+    transaction_id TEXT NOT NULL,
+    refunded_at BIGINT NOT NULL,
+    PRIMARY KEY (store, transaction_id)
+  );
   `,
 ];
 

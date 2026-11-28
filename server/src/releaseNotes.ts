@@ -16,6 +16,15 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    date: '2026-11-28',
+    title: 'Fewer rare purchase and checkpoint mix-ups',
+    changes: [
+      'A Steam purchase you cancelled just as it went through, from another device or by closing the overlay, now always arrives in your balance. Before, Steam could take the money without the beech bucks showing up.',
+      'Two checkpoints saved at the same moment, from two devices, can no longer take you past your checkpoint limit.',
+      'Using the claw or vending machine from two devices at the very same moment no longer fails with an error.',
+    ],
+  },
+  {
     date: '2026-11-27',
     title: 'Sand extensions in the shop, coin prices, inland rows on beechshore.com, news from beech, beechshore.com keeps up with the tides, larger shop items, a higher pier, swap an inland row in place, pick a place for a copied beach, stars and finds in the status pane, multi-item trade-ins, promo bonus beech bucks, playable sand extensions, a quieter palm, more of the beach guide, ratings along the shore, a see-through pier preview, safer notes and the beech merch store',
     changes: [
