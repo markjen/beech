@@ -339,6 +339,15 @@ async function boot() {
     objects: [],
     tickMs: 0,
   };
+  // water depth at world (x, z) so chair walking stays on dry sand (Infinity past the back of a beach without inland rows)
+  cam.waterDepth = (x, z) => {
+    const h = picker.heightAt(x, z);
+    if (Number.isFinite(h)) return Math.max(picker.waterAt(x, z), info.tide - h);
+    const n = neighbors?.heightAtWorld(x, z) ?? NaN;
+    if (Number.isFinite(n)) return Math.max(neighbors!.waterAtWorld(x, z), info.tide - n);
+    if (z > WORLD_SIZE_Z / 2) return Infinity;
+    return Math.max(0, info.tide - restHeight(x + WORLD_SIZE_X / 2, z - ORIGIN_Z, seed));
+  };
   let prevT = 0;
   let frameAt = performance.now();
   let frames = 0;
@@ -1765,19 +1774,27 @@ async function boot() {
     return { title: `${mine || 'Your beach'} · ${beach.name}` };
   };
 
-  // chair: hold ‹ or › to walk the chair along the beach (and over to the neighbors)
+  // chair: hold the arrows to walk around the beach (and over to the neighbors)
   const walkGroup = document.createElement('div');
   walkGroup.className = 'hud-walk';
-  for (const [dir, icon, label] of [[-1, 'left', 'Walk left'], [1, 'right', 'Walk right']] as const) {
+  const walkDirs: readonly [axis: 'x' | 'z', dir: -1 | 1, icon: 'up' | 'down' | 'left' | 'right', label: string, area: string][] = [
+    ['z', 1, 'up', 'Walk forward', 'up'],
+    ['x', -1, 'left', 'Walk left', 'left'],
+    ['z', -1, 'down', 'Walk back', 'down'],
+    ['x', 1, 'right', 'Walk right', 'right'],
+  ];
+  for (const [axis, dir, icon, label, area] of walkDirs) {
     const b = hud.button(icon, label);
-    b.dataset.walk = String(dir);
+    b.dataset.walk = area;
     const stop = () => {
-      if (cam.walk === dir) cam.walk = 0;
+      if (axis === 'x' && cam.walk === dir) cam.walk = 0;
+      if (axis === 'z' && cam.walkFwd === dir) cam.walkFwd = 0;
       b.classList.remove('pressed');
     };
     b.addEventListener('pointerdown', (e) => {
       e.preventDefault();
-      cam.walk = dir;
+      if (axis === 'x') cam.walk = dir;
+      else cam.walkFwd = dir;
       b.classList.add('pressed');
     });
     b.addEventListener('pointerup', stop);
