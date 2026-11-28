@@ -348,6 +348,8 @@ export const ANIMALS = {
   homeRadius: 4,
   /** turtle flipper tracks kept on the sand */
   turtleTracks: 32,
+  /** seconds a turtle flipper print stays on the sand before it fades out */
+  turtleTrackLife: 30,
   /** reach (m) of a long-press on your pet, to pick it up */
   petReach: 1.2,
 };

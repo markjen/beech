@@ -120,6 +120,10 @@ export interface AnimalSnapshot {
   /** turtle flipper tracks on the sand (x, z pairs, oldest first), `trackCount` of them */
   tracks: Float32Array;
   trackCount: number;
+  /** seconds since each flipper print was laid, parallel to `tracks` */
+  trackAge: Float32Array;
+  /** bumps on every change to the tracks (laid, expired, cleared), so the renderer can tell the ring moved even when `trackCount` doesn't */
+  trackGen: number;
 }
 
 const HALF_X = WORLD_SIZE_X / 2;
@@ -209,6 +213,8 @@ export class AnimalController {
       carried: false,
       tracks: new Float32Array(ANIMALS.turtleTracks * 2),
       trackCount: 0,
+      trackAge: new Float32Array(ANIMALS.turtleTracks),
+      trackGen: 0,
     };
   }
 
@@ -501,8 +507,18 @@ export class AnimalController {
     s.calmTimer = 0;
     s.carried = false;
     s.inWater = false;
+    this.clearTracks();
     this.waitTimer = this.rollWait();
     s.nextSpawnIn = this.waitTimer;
+  }
+
+  /** Drop every flipper print (the turtle is back in the sea, or gone). */
+  private clearTracks(): void {
+    const s = this.snap;
+    if (s.trackCount === 0) return;
+    s.trackCount = 0;
+    s.trackAge.fill(0);
+    s.trackGen++;
   }
 
   private resetExtras(): void {
@@ -511,7 +527,7 @@ export class AnimalController {
     s.ink = 0;
     s.flap = 0;
     s.carried = false;
-    s.trackCount = 0;
+    this.clearTracks();
     this.lastTrackX = NaN;
     this.headingAshore = false;
   }
@@ -543,6 +559,7 @@ export class AnimalController {
       }
     }
     if (s.ink > 0) s.ink = Math.max(0, s.ink - step);
+    this.ageTracks(step);
 
     if (s.happyTimer > 0) s.happyTimer = Math.max(0, s.happyTimer - step);
     if (s.calmTimer > 0) s.calmTimer = Math.max(0, s.calmTimer - step);
@@ -1167,6 +1184,7 @@ export class AnimalController {
   /** Seals and turtles: slide from the sand into the sea. */
   private enterWater(env: AnimalEnv): void {
     const s = this.snap;
+    this.clearTracks();
     s.inWater = true;
     s.phase = 'swimming';
     s.pitch = 0;
@@ -1397,11 +1415,36 @@ export class AnimalController {
     const n = ANIMALS.turtleTracks;
     if (s.trackCount >= n) {
       s.tracks.copyWithin(0, 2);
+      s.trackAge.copyWithin(0, 1);
       s.trackCount = n - 1;
     }
     s.tracks[s.trackCount * 2] = px;
     s.tracks[s.trackCount * 2 + 1] = pz;
+    s.trackAge[s.trackCount] = 0;
     s.trackCount++;
+    s.trackGen++;
+  }
+
+  /**
+   * Age the turtle's flipper prints and drop the ones older than
+   * `turtleTrackLife`, so the trail stays a short fresh one behind the turtle
+   * instead of piling up permanently behind a resident pet.
+   */
+  private ageTracks(step: number): void {
+    const s = this.snap;
+    if (s.species !== 'turtle' || s.trackCount === 0) return;
+    const life = ANIMALS.turtleTrackLife;
+    for (let i = 0; i < s.trackCount; i++) s.trackAge[i] += step;
+    let expired = 0;
+    while (expired < s.trackCount && s.trackAge[expired] >= life) expired++;
+    if (expired === 0) return;
+    const keep = s.trackCount - expired;
+    if (keep > 0) {
+      s.tracks.copyWithin(0, expired * 2);
+      s.trackAge.copyWithin(0, expired);
+    }
+    s.trackCount = keep;
+    s.trackGen++;
   }
 
   /** The sandpiper's favourite spot: just below where the last wave reached, as it pulls back. */

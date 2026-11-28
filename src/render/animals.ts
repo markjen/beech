@@ -337,7 +337,8 @@ class TrackMarks {
   /** where every print's vertices start (all parked out of sight at y = -1000) */
   private readonly template: Float32Array;
   private readonly pos: Float32Array;
-  private shown = -1;
+  /** last track generation rendered: the ring keeps turning once full, so the count alone can't tell us the marks moved */
+  private shownGen = -1;
 
   constructor(scene: Scene, private readonly max: number) {
     const b = makeBuilder();
@@ -349,9 +350,9 @@ class TrackMarks {
     this.mesh.markVerticesDataAsUpdatable('position', true);
   }
 
-  update(tracks: Float32Array, count: number, heightAt: (x: number, z: number) => number, offsetX: number): void {
-    if (count === this.shown) return;
-    this.shown = count;
+  update(tracks: Float32Array, count: number, gen: number, heightAt: (x: number, z: number) => number, offsetX: number): void {
+    if (gen === this.shownGen) return;
+    this.shownGen = gen;
     const per = this.template.length / this.max;
     for (let i = 0; i < this.max; i++) {
       const on = i < count;
@@ -596,7 +597,7 @@ export class AnimalView {
     }
     if (this.tracks) {
       this.tracks.mesh.setEnabled(tracked);
-      if (tracked) this.tracks.update(snap.tracks, snap.trackCount, this.heightAt, this.offsetX);
+      if (tracked) this.tracks.update(snap.tracks, snap.trackCount, snap.trackGen, this.heightAt, this.offsetX);
     }
   }
 
