@@ -64,7 +64,7 @@ import {
   promoBonusCents,
   type Promo,
 } from './giftCards.js';
-import { appleRefund, googleVoided, revokeStorePurchase, verifyAppleTransaction, verifyGoogleOidc, verifyGooglePurchase, type VerifiedPurchase } from './store.js';
+import { appleRefund, googleVoided, lockStoreTransaction, revokeStorePurchase, storeRefunded, verifyAppleTransaction, verifyGoogleOidc, verifyGooglePurchase, type VerifiedPurchase } from './store.js';
 import { NOTIFY_PREFS, PUSH_DEVICES, lockPush, makeSender, pushTick, validEndpoint, validTz, type NotifyPref, type PushConfig, type PushSender } from './push.js';
 import { POOLS, GRAB_CHANCE, COOLDOWN_MAX_MS, COOLDOWN_MIN_MS, cooldownAfter, cryptoRandom, draw, grab, pullDay, starterPrize, STARTER, type Rarity } from './pulls.js';
 import { currentSet, drawVending, nextUtcMidnight } from './vending.js';
@@ -2995,7 +2995,12 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const now = clock();
     // Record it once, then grant (a pack's beech bucks, or an old app's
     // things) and any creator credit in the same transaction.
-    const { rows, promo } = await db.withTransaction(async (tx) => {
+    const { rows, promo, refunded } = await db.withTransaction(async (tx) => {
+      // a refund notification may have come first (specs/tla/ShopOrders.tla, NRecord)
+      await lockStoreTransaction(tx, v.store, v.transactionId);
+      // (a purchase recorded before its refund answers "already", as before)
+      const known = await tx.query('SELECT 1 FROM purchases WHERE store = $1 AND transaction_id = $2', [v.store, v.transactionId]);
+      if (!known.length && (await storeRefunded(tx, v.store, v.transactionId))) return { rows: [], promo: null, refunded: true };
       const granted = await tx.query<{ purchase_id: string }>(
         `INSERT INTO purchases (user_id, store, transaction_id, product_id, environment, purchased_at, granted_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (store, transaction_id) DO NOTHING
@@ -3016,8 +3021,9 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
           });
         }
       }
-      return { rows: granted, promo: appliedPromo };
+      return { rows: granted, promo: appliedPromo, refunded: false };
     });
+    if (refunded) return c.json({ error: 'the store did not confirm this purchase: purchase was refunded' }, 402);
     if (!rows.length) {
       const prev = (await db.query<{ user_id: string }>('SELECT user_id FROM purchases WHERE store = $1 AND transaction_id = $2', [v!.store, v!.transactionId]))[0];
       if (prev && prev.user_id !== me) fail(409, 'that purchase was already used by another account');
@@ -3579,7 +3585,10 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const granted = await db.withTransaction(async (tx) => {
       const [order] = await tx.query<{ status: string }>('SELECT status FROM steam_orders WHERE order_id = $1 FOR NO KEY UPDATE', [oid]);
       if (order?.status === 'paid') return { rows: [] as { purchase_id: string }[], promo: null };
-      if (order?.status !== 'created') fail(409, 'the order is no longer open');
+      // Steam has taken the money: a cancel that landed meanwhile (another
+      // device, the overlay closing) doesn't stop the grant; a refund does
+      // (specs/tla/ShopOrders.tla, SFinGrant)
+      if (order?.status !== 'created' && order?.status !== 'canceled') fail(409, 'the order is no longer open');
       const rows = await tx.query<{ purchase_id: string }>(
         `WITH p AS (
            INSERT INTO purchases (user_id, store, transaction_id, product_id, environment, purchased_at, granted_at)
@@ -3588,7 +3597,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
            RETURNING id, user_id
          ), o AS (
            UPDATE steam_orders SET status = 'paid', trans_id = $2, paid_at = $5
-            WHERE order_id = $6 AND status = 'created' AND EXISTS (SELECT 1 FROM p)
+            WHERE order_id = $6 AND status IN ('created', 'canceled') AND EXISTS (SELECT 1 FROM p)
            RETURNING order_id
          )
          SELECT p.id AS purchase_id FROM p`,

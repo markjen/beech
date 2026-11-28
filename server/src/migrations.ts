@@ -1145,6 +1145,18 @@ const MIGRATIONS: string[] = [
   ALTER TABLE pulls ADD COLUMN id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY;
   CREATE INDEX pulls_user_pool ON pulls (user_id, pool, created_at);
   `,
+  // 47: refunds the stores told us about (specs/tla/ShopOrders.tla). A refund
+  // notification can come for a purchase the app hasn't posted yet (checked
+  // with the store just before the refund, recorded just after): kept here,
+  // so recording it then refuses instead of granting a refunded purchase.
+  `
+  CREATE TABLE store_refunds (
+    store TEXT NOT NULL,
+    transaction_id TEXT NOT NULL,
+    refunded_at BIGINT NOT NULL,
+    PRIMARY KEY (store, transaction_id)
+  );
+  `,
 ];
 
 /** Apply migrations up to `upTo` (default: all). Tests use `upTo` to check a migration on older data. */
