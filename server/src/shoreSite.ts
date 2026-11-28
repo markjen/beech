@@ -797,7 +797,7 @@ ${
       ),
     );
   });
-  const ACCOUNT_API = /^\/account\/api\/(summary|identities|top-up|redeem|promo-codes|gift|web-orders\/[0-9a-f-]{36})$/;
+  const ACCOUNT_API = /^\/account\/api\/(summary|name|identities|top-up|redeem|promo-codes|gift|web-orders\/[0-9a-f-]{36})$/;
   const SHORE_AUTH_API = /^\/account\/auth\/(google|apple)$/;
   /** Forward a shore page call to the game API, same-origin so no CORS is needed. */
   const forwardToApi = async (c: Context, target: string) => {
@@ -808,12 +808,13 @@ ${
       if (v) headers.set(h, v);
     }
     const method = c.req.method;
+    const hasBody = method === 'POST' || method === 'PATCH';
     const res = await cfg.api.fetch(
-      new Request(`http://api.internal/${target}`, { method, headers, body: method === 'POST' ? await c.req.arrayBuffer() : undefined }),
+      new Request(`http://api.internal/${target}`, { method, headers, body: hasBody ? await c.req.arrayBuffer() : undefined }),
     );
     return new Response(res.body, { status: res.status, headers: { 'Content-Type': res.headers.get('content-type') ?? 'application/json', 'Cache-Control': 'no-store' } });
   };
-  app.on(['GET', 'POST'], '/account/api/*', async (c) => {
+  app.on(['GET', 'POST', 'PATCH'], '/account/api/*', async (c) => {
     const p = c.req.path.slice(base.length);
     const m = ACCOUNT_API.exec(p);
     if (!m) return c.json({ error: 'not found' }, 404);
