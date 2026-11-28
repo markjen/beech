@@ -37,6 +37,8 @@ export class InventoryTray {
   private elsewhere = new Map<string, number>();
   /** uses an actionable extra from the bag (e.g. tossing a beach snack) */
   onUseExtra: (id: string) => void = () => {};
+  /** opening the bag (main.ts): save first, then re-fetch what's tradable */
+  onOpen: () => void = () => {};
   /** what each thing trades in for (docs/BEECH_BUCKS.md): how many can be, and each unit's value, newest first */
   private tradeInfo = new Map<string, TradeInfo>();
   /** trading in and gifting from the bag (signed in): long press a thing */
@@ -328,6 +330,7 @@ export class InventoryTray {
   }
 
   setOpen(on: boolean): void {
+    const wasOpen = this.open;
     this.open = on;
     this.modal.classList.toggle('open', on);
     this.tray.classList.toggle('open', on);
@@ -335,6 +338,10 @@ export class InventoryTray {
     this.button.setAttribute('aria-expanded', String(on));
     if (!on) this.dialog.close();
     if (on) this.tray.querySelector<HTMLButtonElement>('.inv-item')?.focus({ preventScroll: true });
+    // opening it (not re-opening it) is the moment to refresh: things
+    // picked up off the beach since the last refresh aren't tradable
+    // in the counts the bag is showing until then
+    if (on && !wasOpen) this.onOpen();
   }
 
   /** Another tool was chosen: nothing is in hand any more. */

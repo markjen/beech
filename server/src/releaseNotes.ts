@@ -17,12 +17,17 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: '2026-11-28',
-    title: 'Choose your own screen name, and fewer rare purchase and checkpoint mix-ups',
+    title: 'Walk around the beach in chair view, choose your own screen name, and fewer rare purchase and checkpoint mix-ups',
     changes: [
+      'In the chair view, you can now walk anywhere across the beach — forward, back, left and right — using the on-screen arrows or WASD/arrow keys, and look all the way around, while staying out of the water.',
       'You can now choose a screen name instead of using your real name — set it under Manage → Settings or on your beechshore.com account page, and it stays put the next time you sign in.',
       'A Steam purchase you cancelled just as it went through, from another device or by closing the overlay, now always arrives in your balance. Before, Steam could take the money without the beech bucks showing up.',
       'Two checkpoints saved at the same moment, from two devices, can no longer take you past your checkpoint limit.',
       'Using the claw or vending machine from two devices at the very same moment no longer fails with an error.',
+      'Picking things up off your beach now counts toward trade-ins right away — the bag no longer says “0 of 0” until your next sign-in.',
+      'A new sand extension now previews as beach sand right away, instead of showing as pale scenery with dune lips and grass until you save.',
+      'A boardwalk row’s sand now matches the beach’s sand, and the stray grass tufts around the deck are gone.',
+      'Your octopus is readable from above now — its eyes sit on top of the mantle and its arms fan out at the waterline, instead of hiding underwater.',
     ],
   },
   {

@@ -248,6 +248,12 @@ var PROP_COLORS = {
   /** inland sections (docs/INLAND_SECTIONS.md, src/render/sections.ts) */
   secSoil: hex("#c9a985"),
   secSand: hex("#f2dcbc"),
+  /** a section row's ground where it is beach sand (boardwalk, dunes, sand):
+      the fixed colour here is only the fallback for the shore site's
+      pictures, which draw the beach in the day palette's sand (#f6e3c3,
+      server/src/beachImage.ts). In the game the layer paints this ground
+      with the live sandDry, so it matches the beach in every theme. */
+  secSandGround: hex("#f6e3c3"),
   secTrail: hex("#e6c9a2"),
   secGrass: hex("#9dbb7a"),
   secGrassDark: hex("#7c9f62"),
@@ -326,6 +332,8 @@ var ANIMAL_COLORS = {
     /** what it blends to when still (sandy shallows) */
     camo: hex("#c9b48c"),
     eyes: hex("#231e24"),
+    /** pale dot on each eye, so the eyes still read against the dark pupil from above */
+    eyeGlint: hex("#f7f3e8"),
     ink: hex("#2a2433")
   },
   seal: {
@@ -392,6 +400,7 @@ function box(P, I, cx, cy, cz, sx, sy, sz, tilt = 0) {
     for (const k of f) I.push(b + k);
 }
 
+var SAND_GROUND_KEY = "secSandGround";
 var HALF = WORLD_SIZE_X / 2;
 function colorOf(key) {
   const m = /^(secWall|secAwning)(\d+)$/.exec(key);
@@ -401,7 +410,7 @@ function colorOf(key) {
   }
   return PROP_COLORS[key];
 }
-function sectionGeometry(type, joinNeg, joinPos, seed = 1) {
+function sectionGeometry(type, joinNeg, joinPos, seed = 1, opts = {}) {
   const D = SECTION.depth;
   const G = SECTION.ground;
   const parts = /* @__PURE__ */ new Map();
@@ -448,16 +457,18 @@ function sectionGeometry(type, joinNeg, joinPos, seed = 1) {
     if (!joinNeg) fn(-1, -HALF);
     if (!joinPos) fn(1, HALF);
   };
-  const groundColor = type === "section-path" || type === "section-picnic" || type === "section-playground" ? "secGrass" : type === "section-road" || type === "section-shops" ? "secCurb" : "secSand";
+  const groundColor = type === "section-path" || type === "section-picnic" || type === "section-playground" ? "secGrass" : type === "section-road" || type === "section-shops" ? "secCurb" : SAND_GROUND_KEY;
   put("secSoil", 0, (G - 0.05 + SECTION.bottom) / 2, D / 2, WORLD_SIZE_X, G - 0.05 - SECTION.bottom, D);
   flat(groundColor, -HALF, HALF, 0, D, 0.05, -0.05);
   switch (type) {
     case "section-sand": {
-      ends((s, e) => {
-        put("secTrail", e - s * 0.9, G + 0.12, D / 2, 1.8, 0.24, D);
-        put("secTrail", e - s * 0.5, G + 0.3, D / 2, 1, 0.25, D - 0.6);
-        for (let z = 0.6; z < D; z += 0.9 + r() * 0.6) tuft(e - s * (0.3 + r() * 1.2), z);
-      });
+      if (!opts.plainSand) {
+        ends((s, e) => {
+          put("secTrail", e - s * 0.9, G + 0.12, D / 2, 1.8, 0.24, D);
+          put("secTrail", e - s * 0.5, G + 0.3, D / 2, 1, 0.25, D - 0.6);
+          for (let z = 0.6; z < D; z += 0.9 + r() * 0.6) tuft(e - s * (0.3 + r() * 1.2), z);
+        });
+      }
       break;
     }
     case "section-boardwalk": {
@@ -491,7 +502,6 @@ function sectionGeometry(type, joinNeg, joinPos, seed = 1) {
         for (const z of [D / 2 - 3.15, D / 2, D / 2 + 3.15]) post("secRail", x - s * 0.05, z, 0.9, 0.08, top);
         put("secTable", x - s * 1.2, top + 0.45, D / 2, 0.45, 0.07, 1.6);
         put("secTrunk", x - s * 1.2, top + 0.22, D / 2, 0.4, 0.44, 1.2);
-        for (let z = 1; z < D; z += 1.5) tuft(e - s * (0.6 + r() * 2.4), z);
       });
       break;
     }
@@ -689,6 +699,7 @@ function sectionGeometry(type, joinNeg, joinPos, seed = 1) {
 }
 export {
   PROP_COLORS,
+  SAND_GROUND_KEY,
   SECTION,
   colorOf,
   sectionGeometry

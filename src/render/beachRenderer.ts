@@ -13,6 +13,7 @@ import type { Scene } from '@babylonjs/core/scene';
 
 import { WAVES, WORLD_SIZE_X, WORLD_SIZE_Z, type GridSpec } from '../config';
 import type { Palette, RGB } from '../palette';
+import { PROP_COLORS } from '../palette';
 import { swellEnvelope, type Swell } from '../sim/waves';
 import * as S from './shaders';
 
@@ -108,6 +109,9 @@ export class BeachRenderer {
   private frameMix = 1;
   private skipFrameInterpolation = false;
   private readonly lit: LitMaterial[] = [];
+  /** section-ground materials painted with the live sandDry (see
+      createSandGroundMaterial): refreshed with the palette, like sandMat */
+  private readonly sandGroundMats: ShaderMaterial[] = [];
   readonly sandMat: ShaderMaterial;
   readonly waterMat: ShaderMaterial;
   readonly oceanMat: ShaderMaterial;
@@ -356,6 +360,23 @@ export class BeachRenderer {
     this.buildMeshes();
     this.bindFieldTextures();
     this.syncNeighborUniforms(performance.now(), true);
+  }
+
+  /**
+   * A flat-shaded lit material for the section ground that is beach sand
+   * (SAND_GROUND_KEY): its colour is the live sandDry, so a boardwalk row's
+   * sand matches the beach in every theme and time of day instead of the
+   * fixed secSand. The fixed colour is only the starting point before the
+   * first palette update; update() keeps it on the live sandDry after that.
+   */
+  createSandGroundMaterial(): ShaderMaterial {
+    const m = this.createPropMaterial(PROP_COLORS.secSandGround);
+    if (this.hasLitState) {
+      m.setColor3('baseCol', this._sandDry);
+      m.setColor3('fogCol', this._sandDry);
+    }
+    this.sandGroundMats.push(m);
+    return m;
   }
 
   /** A flat-shaded lit material with a fixed colour (props such as shells). `shine` is its specular strength, 0 for matte. */
@@ -930,6 +951,12 @@ export class BeachRenderer {
       this.sandMat.setColor3('sandDry', this._sandDry);
       this.sandMat.setColor3('sandWet', this._sandWet);
       this.sandMat.setColor3('sandDeep', this._sandDeep);
+
+      // the section ground that is beach sand follows the live sandDry
+      for (const m of this.sandGroundMats) {
+        m.setColor3('baseCol', this._sandDry);
+        m.setColor3('fogCol', this._sandDry);
+      }
 
       this.waterMat.setColor3('shallowCol', this._shallowCol);
       this.waterMat.setColor3('deepCol', this._deepCol);
