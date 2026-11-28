@@ -1,17 +1,16 @@
-# Web payments: buy store items on the web with Stripe (backup)
+# Web payments: buy store items on the web with Stripe
 
-Status: **live in test mode.** The server code, the web shop and the
-tests are in, and the deploy wires the test secrets (see "Turning it
-on"). The web shop offers Stripe only when Xsolla is off — Xsolla
-stays the primary whenever it works.
+Status: **live.** Stripe is the web checkout since Nov 27, 2026,
+with live keys in the two game secrets (see "Turning it on"). Xsolla
+is off until partner support resolves its sandbox token error (generic
+422 [0401-2000] "Exception with PayStation service"); the client still
+prefers Xsolla whenever it is on, so re-adding Xsolla restores it as
+primary with no code change.
 
-Stripe is the **backup** to Xsolla (docs/WEB_PAYMENTS.md), built while
-Xsolla's sandbox token creation was blocked on a generic 422
-[0401-2000] "Exception with PayStation service". Xsolla stays the
-primary whenever it works: the client uses Xsolla when it is on, and
-falls back to Stripe only when Xsolla is off and Stripe is on. The
-merch store (docs/MERCH_STORE.md) is a separate Stripe integration
-with its own keys and webhook — it does not use this one.
+Stripe was built as the **backup** to Xsolla (docs/WEB_PAYMENTS.md)
+while Xsolla's sandbox token creation was blocked. The merch store
+(docs/MERCH_STORE.md) is a separate Stripe integration with its own
+keys and webhook — it does not use this one.
 
 ## The tradeoff, stated plainly
 
@@ -150,7 +149,7 @@ payment that still arrives for it is granted, because the player paid.
   page takes the card); logs carry the event type, outcome and session
   id only, never payer details or keys.
 
-## Turning it on (test mode)
+## Turning it on
 
 1. **Stripe account.** Jenerator Labs' Stripe account is connected to
    Muse (Stripe connector, test mode available). Nothing in this PR
@@ -193,12 +192,16 @@ payment that still arrives for it is granted, because the player paid.
    XSOLLA_PROJECT_ID,XSOLLA_SANDBOX` (the web shop's checkout is
    already non-functional on Xsolla's broken sandbox, and test-mode
    Stripe can't charge a real card); a later deploy restores Xsolla.
-6. **Live** (a separate decision, not this PR): put live keys
-   (`sk_live_`, `whsec_` for a live endpoint) in as **new versions of
-   the same two secrets** (`beech-stripe-game-secret-key`,
-   `beech-stripe-webhook-secret`), drop `STRIPE_SANDBOX` from
-   `deploy-gcp.yml`, redeploy, buy the $0.99 parasol with a real card,
-   refund it, and check it leaves the bag. Going live also means
+   Done Nov 27, 2026: bb 10 pack $0.99, balance 287→297, Parasol
+   bought in-game, `stripe_webhook granted` in the logs.
+6. **Live** — DONE Nov 27, 2026: live keys (`sk_live_`, `whsec_` for
+   the live endpoint we_1Ugdkb4IbcjUfc8tsgwxbcEy) went in as **new
+   versions (V2) of the same two secrets**
+   (`beech-stripe-game-secret-key`, `beech-stripe-webhook-secret`),
+   `STRIPE_SANDBOX` was dropped from `deploy-gcp.yml` and Xsolla was
+   switched off there (its sandbox token error 0401-2000 is still open
+   with partner support). Remaining: buy the $0.99 parasol with a real
+   card, refund it, and check it leaves the bag. Going live means
    owning tax/VAT, PCI scope and chargebacks — see "The tradeoff"
    above. (Do not point the game at `beech-stripe-secret-key` for the
    live key: the merch store already mounts it, and the two checkouts
@@ -226,8 +229,8 @@ warning if only one of the two settings is present. Each checkout logs
 
 ## What this deliberately does not do
 
-- No live keys and no live endpoint — test mode only; the live flip is
-  a separate decision in "Turning it on".
+- No live keys and no live endpoint — that was test mode only; the live
+  flip is recorded in "Turning it on" step 6 (Nov 27, 2026).
 - No merch store: the same Checkout Sessions could sell merch later,
   but this PR sells only the existing `products.ts` catalog.
 - No subscriptions, no paid random draws, no gift-card sales on the

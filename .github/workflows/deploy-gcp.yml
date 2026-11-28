@@ -39,20 +39,21 @@ name: Deploy production (Google Cloud Run)
 # Secret Manager: beech-db-password, beech-admin-token (admin service only),
 #   beech-gift-code-pepper (both: the game redeems, the admin service issues),
 #   beech-xsolla-api-key and beech-xsolla-webhook-secret (game service only,
-#   web checkout; XSOLLA_SANDBOX=1 until the live launch)
+#   web checkout — OFF since Nov 27, 2026: Xsolla's sandbox token creation
+#   is blocked on 0401-2000 and Stripe is the web checkout for now;
+#   re-adding XSOLLA_PROJECT_ID=324072;XSOLLA_SANDBOX=1 below restores it)
 # The merch store (docs/MERCH_STORE.md), only once vars.MERCH_ENABLED=1:
 #   secrets beech-stripe-secret-key, beech-stripe-merch-webhook-secret,
 #   beech-printful-token, beech-printful-webhook-secret; optional vars
 #   MERCH_SUNGLASSES_VARIANT, PRINTFUL_STORE_ID, MERCH_STRIPE_TAX=1,
 #   PRINTFUL_DRAFTS_ONLY=1 (orders reach Printful as drafts: the first test)
-# The game's Stripe web checkout (docs/STRIPE_PAYMENTS.md), test mode:
-#   secrets beech-stripe-game-secret-key (the game's own test key — NOT
-#   the merch store's beech-stripe-secret-key, which went live Nov 27,
-#   2026 while the game checkout is still in test mode) and
+# The game's Stripe web checkout (docs/STRIPE_PAYMENTS.md), LIVE since
+#   Nov 27, 2026 — Stripe is the web checkout for now, Xsolla off (see
+#   above). Secrets beech-stripe-game-secret-key (the game's own key —
+#   NOT the merch store's beech-stripe-secret-key) and
 #   beech-stripe-webhook-secret (the game endpoint's signing secret —
-#   not the merch endpoint's beech-stripe-merch-webhook-secret);
-#   STRIPE_SANDBOX=1 until the live launch (then drop it and put live
-#   keys in as new versions of the same two secrets).
+#   not the merch endpoint's beech-stripe-merch-webhook-secret); both
+#   hold live keys as Version 2 (Version 1 was the test keys).
 # No keys are stored in GitHub: authentication is Workload Identity Federation,
 # and the database password lives in Secret Manager (beech-db-password).
 on:
@@ -156,7 +157,7 @@ jobs:
             --allow-unauthenticated \
             --service-account "${{ vars.GCP_RUNTIME_SA }}" \
             --add-cloudsql-instances "${{ vars.GCP_SQL_INSTANCE }}" \
-            --set-env-vars "^;^DB_SOCKET=/cloudsql/${{ vars.GCP_SQL_INSTANCE }};DB_NAME=beech;DB_USER=beech;GOOGLE_CLIENT_IDS=${{ vars.GOOGLE_CLIENT_IDS }};GOOGLE_CLIENT_ID=${{ vars.GOOGLE_CLIENT_ID }};APPLE_CLIENT_IDS=${{ vars.APPLE_CLIENT_IDS }};APPLE_CLIENT_ID=${{ vars.APPLE_CLIENT_ID }};ALLOWED_ORIGINS=https://play.beech.games,capacitor://localhost,https://localhost,app://beech;XSOLLA_PROJECT_ID=324072;XSOLLA_SANDBOX=1;STRIPE_SANDBOX=1$PUSH_ENV" \
+            --set-env-vars "^;^DB_SOCKET=/cloudsql/${{ vars.GCP_SQL_INSTANCE }};DB_NAME=beech;DB_USER=beech;GOOGLE_CLIENT_IDS=${{ vars.GOOGLE_CLIENT_IDS }};GOOGLE_CLIENT_ID=${{ vars.GOOGLE_CLIENT_ID }};APPLE_CLIENT_IDS=${{ vars.APPLE_CLIENT_IDS }};APPLE_CLIENT_ID=${{ vars.APPLE_CLIENT_ID }};ALLOWED_ORIGINS=https://play.beech.games,capacitor://localhost,https://localhost,app://beech$PUSH_ENV" \
             --set-secrets "DB_PASSWORD=beech-db-password:latest,GIFT_CODE_PEPPER=beech-gift-code-pepper:latest,XSOLLA_API_KEY=beech-xsolla-api-key:latest,XSOLLA_WEBHOOK_SECRET=beech-xsolla-webhook-secret:latest,STRIPE_GAME_SECRET_KEY=beech-stripe-game-secret-key:latest,STRIPE_WEBHOOK_SECRET=beech-stripe-webhook-secret:latest$PUSH_SECRETS" \
             --cpu 1 --memory 512Mi --concurrency 80 \
             --min-instances 0 --max-instances 10
