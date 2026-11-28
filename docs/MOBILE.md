@@ -99,6 +99,63 @@ build is still running means each run builds its own commit, so runs
 can pile up if deploys get much more frequent — revisit whether every
 deploy needs its own build then.
 
+### Stored iOS signing identity
+
+The release workflow signs iOS with a stored identity, not Xcode
+automatic signing. Automatic signing mints a new certificate on every
+ephemeral runner, and the team hit Apple's cap (2 development / 3
+distribution certificates per team) on 2026-11-28 — every auto-build
+after that failed at archive with "maximum number of certificates".
+The workflow now imports one distribution `.p12` and one provisioning
+profile from repo secrets and reuses them every run, so CI never
+creates a certificate. Nothing here changes the Android signing setup.
+
+Secrets (Settings → Secrets and variables → Actions; never paste the
+values in chat or in a PR):
+
+| Secret | How to produce it |
+|---|---|
+| `IOS_DIST_P12_BASE64` | `base64 -w0` of the exported `.p12` below |
+| `IOS_DIST_P12_PASSWORD` | the password set when exporting the `.p12` |
+| `IOS_PROFILE_BASE64` | `base64 -w0` of the downloaded `.mobileprovision` below |
+
+**The certificate (.p12).** On the Mac whose Keychain holds the
+private key of an existing Apple Distribution certificate for team
+EP7RMU38ZM: Keychain Access → My Certificates → right-click the
+"Apple Distribution: …" identity → Export → save as `.p12` with a
+password. Exporting an existing certificate creates nothing new, so
+it does not need a portal revocation first. How to tell which case
+applies: in Keychain Access → My Certificates, if an "Apple
+Distribution" entry expands to show its private key, export that one.
+If no Mac has one — every certificate on the account was minted by
+ephemeral CI runners, whose keys are lost — the fallback is: revoke
+one certificate in the Developer portal (Certificates, Identifiers &
+Profiles → Certificates), then in Xcode on the Mac go to Settings →
+Accounts → Manage Certificates → + → Apple Distribution, and export
+the fresh identity as above.
+
+**The provisioning profile.** Developer portal → Certificates,
+Identifiers & Profiles → Profiles → + → App Store → App ID
+`app.beech.beach` → select the distribution certificate from the step
+above → download the `.mobileprovision`. It must be an App Store
+profile for that App ID, and it must include the Push Notifications
+entitlement (the App ID has push on; the profile carries whatever the
+App ID has enabled). If the profile names a different certificate
+than the `.p12`, the archive fails with a signing-identity mismatch —
+regenerate the profile against the right certificate.
+
+**Expiry and rotation.** Distribution certificates last about a year
+(Apple shows the expiry in the portal and in Keychain); provisioning
+profiles last about a year too. When the **profile** expires:
+regenerate it in the portal against the same certificate, download,
+and replace `IOS_PROFILE_BASE64`. When the **certificate** expires:
+create a new distribution certificate, export a new `.p12`, replace
+`IOS_DIST_P12_BASE64` and `IOS_DIST_P12_PASSWORD`, and regenerate the
+profile (profiles embed the certificate, so a new certificate needs a
+new profile). A build failing with "no signing certificate found" or
+"profile has expired" means one of the two needs rotating, not a code
+change.
+
 ## Icons and splash screens
 
 The artwork is generated from code (`scripts/make-icons.mjs`: an isometric
@@ -231,6 +288,8 @@ Repository secrets used (Settings → Secrets and variables → Actions):
 | `APPSTORE_API_KEY_ID`, `APPSTORE_API_ISSUER_ID` | App Store Connect → Users and Access → Integrations → App Store Connect API (role: App Manager) |
 | `APPSTORE_API_KEY_P8_BASE64` | `base64 -i AuthKey_XXXX.p8` |
 | `APPLE_TEAM_ID` | the 10-character team ID |
+| `IOS_DIST_P12_BASE64`, `IOS_DIST_P12_PASSWORD` | the exported distribution `.p12` and its password (see "Stored iOS signing identity") |
+| `IOS_PROFILE_BASE64` | the App Store provisioning profile for `app.beech.beach` (see "Stored iOS signing identity") |
 
 The release workflow's first run against the real Play account succeeded
 (2026-11-23, run 45192537104): the signed AAB uploaded to the internal
