@@ -240,6 +240,12 @@ export const PROP_COLORS = {
   /** inland sections (docs/INLAND_SECTIONS.md, src/render/sections.ts) */
   secSoil: hex('#c9a985'),
   secSand: hex('#f2dcbc'),
+  /** a section row's ground where it is beach sand (boardwalk, dunes, sand):
+      the fixed colour here is only the fallback for the shore site's
+      pictures, which draw the beach in the day palette's sand (#f6e3c3,
+      server/src/beachImage.ts). In the game the layer paints this ground
+      with the live sandDry, so it matches the beach in every theme. */
+  secSandGround: hex('#f6e3c3'),
   secTrail: hex('#e6c9a2'),
   secGrass: hex('#9dbb7a'),
   secGrassDark: hex('#7c9f62'),
@@ -350,6 +356,8 @@ export const ANIMAL_COLORS = {
     /** what it blends to when still (sandy shallows) */
     camo: hex('#c9b48c'),
     eyes: hex('#231e24'),
+    /** pale dot on each eye, so the eyes still read against the dark pupil from above */
+    eyeGlint: hex('#f7f3e8'),
     ink: hex('#2a2433'),
   },
   seal: {

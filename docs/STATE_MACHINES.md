@@ -21,6 +21,10 @@ rest of `npm test` in `server/`. No E2E, no rendering.
 | Inland sections | `InlandSections.tla` | `sections.test.ts` | a reorder from one device silently undone by another, one section placed on two beaches, a placed section traded in |
 | Push notifications | `Push.tla` | `push.test.ts` | a push sent twice, two in an hour, a push after unsubscribing, signing out, blocking or muting |
 | Promo codes | `PromoBucks.tla` | `promo.test.ts` | a capped code oversold, a player using a code twice (standalone + pack race), a bonus not clawed back on refund |
+| Claw and vending machines | `Claw.tla` | `claw.test.ts` | two free goes in one rest, a starter gift twice, a paid try charged without the bucks, a unique prize in two bags or claimed for nobody |
+| Buried finds | `DigFinds.tla` | `digFinds.test.ts` | more than 3 finds a day, two rolls inside 30 s, a roll from before midnight counted on the new day |
+| Shop orders and refunds | `ShopOrders.tla` | `shop.test.ts` | a payment granted twice, a refund that doesn't stick, a paid order left ungranted (app stores, Xsolla, Steam) |
+| Checkpoints | `Checkpoints.tla` | `checkpoints.test.ts` | more named checkpoints than the limit, the 16 MB store overfilled by two at once |
 
 ## How it fits together
 
@@ -36,7 +40,8 @@ rest of `npm test` in `server/`. No E2E, no rendering.
    thresholds of 2), which is enough for these races, and each run takes
    seconds to minutes.
 3. **Reference models.** `snacksModel.ts`, `editingModel.ts`,
-   `neighborsModel.ts`, `copyModel.ts` and `bucksModel.ts` are the specs in TypeScript, `Fixed = TRUE`, one
+   `neighborsModel.ts`, `copyModel.ts`, `bucksModel.ts`, `clawModel.ts`,
+   `digFindsModel.ts`, `shopModel.ts`, `checkpointsModel.ts` and the rest are the specs in TypeScript, `Fixed = TRUE`, one
    action at a time. Each method is one TLA+ action and returns the HTTP
    answer the server should give.
 4. **Tests**, in three layers per machine:
@@ -304,6 +309,141 @@ land at once; `server/test/stateMachines/systemMessages.test.ts` sends two
 at once on a fresh day (one goes out), runs transitions and a random walk
 against `systemMessagesModel.ts`. Push delivery is `Push.tla`'s, unchanged:
 `system` is one more pushed kind, under its own `news` preference.
+
+## Merch store orders (`MerchOrders.tla`)
+
+An order on store.beech.games ([MERCH_STORE.md](MERCH_STORE.md)): Stripe
+takes the payment and tells us by webhook (each event at least once, in any
+order), the return page asks Stripe too, and a worker sends the paid order
+to Printful (a draft keyed by our order id, then confirm). State:
+`merch_orders.status`, its claim, the beach snapshot on each "your beach"
+line, Stripe's session and refund, the events in flight, and Printful's
+draft and confirm.
+
+| Action | Route | Code |
+| --- | --- | --- |
+| `Checkout` | `POST /api/merch/checkout` | the Stripe session first (idempotency key = order id), then one transaction: the order and its lines, each beach print `INSERT … SELECT` from `beach WHERE owner_id = me` (its sand, look, pier and rows) |
+| `Edit` | the game's beach saves | (unchanged) the print never reads the beach again |
+| `Pays`, `Lapses`, `Refund` | Stripe | — |
+| `Completed` | `POST /api/merch/stripe-webhook` (`checkout.session.completed`), `GET /api/merch/orders/:id` (asks Stripe) | one statement: `UPDATE … SET status='paid' WHERE status IN ('open','expired') RETURNING`; only the caller that gets the row starts the send |
+| `Expired` | webhook `checkout.session.expired` | `UPDATE … SET status='expired' WHERE status='open'` (we never expire orders ourselves) |
+| `Refunded` | webhook `charge.refunded` (full refunds) | one statement: anything before `sent` → `canceled`, `sent`/`shipped` → `refunded`; an order whose "completed" hasn't come is found through the payment intent's metadata |
+| `Claim` | `send()` in `merch.ts` (after `Completed`, and the sweep) | `UPDATE … SET status='sending', claim=$token WHERE status='paid' RETURNING` |
+| `Draft` | Printful `GET/POST /orders` | `external_id` = order id; print files from the snapshot (`/api/merch/print/<key>.png`) |
+| `Mark` | `send()` | `UPDATE … SET status='sent' WHERE status='sending' AND claim=$token`, before the confirm |
+| `Confirm` | Printful `POST /orders/@id/confirm` | then `confirmed_at`; the sweep re-confirms a `sent` order left unconfirmed |
+| `Crash`, `Recover` | the sweep (`tick()`, once a minute in `server.ts`) | `UPDATE … SET status='paid', claim=NULL WHERE status='sending' AND claimed_at` older than 10 minutes |
+| `Ships` | `POST /api/merch/printful-webhook?s=<secret>` (`package_shipped`) | `UPDATE … SET status='shipped' WHERE status='sent'` |
+
+Invariants: `OneReceipt`, `PrintOnlyPaid`, `NoPrintAfterEarlyRefund`,
+`PrintIsWhatTheyBought`, `PaidIsFulfilled` and `RefundIsFinal` (the last
+two once all events are in and no worker is busy). The obvious build
+(read-then-mark-paid, our own expiry sweep, the print drawn at send time,
+confirm before mark, a refund that only cancels paid orders) breaks all but
+`PrintOnlyPaid`. `server/test/stateMachines/merch.test.ts` runs the
+transitions against fake Stripe and Printful (`merchFakes.ts`), replays the
+refund that lands between the draft and the mark (it fails when the confirm
+comes first), and walks 300 random steps against `merchModel.ts`.
+
+## Claw and vending machines (`Claw.tla`)
+
+[PRICING.md](PRICING.md). State: each player's go count and rest
+(`pull_state`), their beech bucks, the one unique item's owner
+(`unique_items`), what pulls put in the bag, and each request's step. One
+player pulls from two devices, a second from one.
+
+| Action | Route | Code |
+| --- | --- | --- |
+| `FreeDraw` | `POST /pulls/:pool` | reads `pull_state.count` (and the claw's history for the starter gifts), then draws; a unique is claimed first (`claimUnique`: `INSERT … ON CONFLICT DO UPDATE … WHERE owner_id IS NULL`, else a rare) |
+| `FreeClaim` | the same | one statement: `UPDATE pull_state … WHERE next_at <= now AND count = $seen`, the pull log and the grant in its `WITH` |
+| `PaidDraw`, `PaidClaim` | `POST /pulls/:pool/paid` | the same draw (no starters); `claimPaidPull`: one statement, `UPDATE users … WHERE credit_cents >= price`, the ledger, the log and the grant |
+| `Release` | both | a claim that lost (or threw) lets its unique go: `… WHERE owner_id = me AND found_at = now` |
+| `Tick` | the clock | the rest runs out |
+
+Invariants: `OneGoPerRest`, `StarterOnce`, `UniqueOnce`, `PaidInFull`,
+`NoStrandedUnique`. The read-then-write build breaks the first, second and
+fourth. `claw.test.ts` replays each, and the random walk found a real bug:
+pulls were keyed by `(user_id, pool, created_at)`, so two goes on one
+machine in the same millisecond collided, the second answered 500 and its
+unique stayed claimed for nobody (migration 47; see "Bugs found
+(2026-11-28)").
+
+## Buried finds (`DigFinds.tla`)
+
+`server/src/digFinds.ts`. State: `dig_state` (day, finds, last roll), the
+clock, and each request's `now` and step. One player digs on two devices.
+
+| Action | Route | Code |
+| --- | --- | --- |
+| `Roll` | `POST /dig-finds` | reads the clock once, the early 409s (cap, cooldown), the roll |
+| `Write` | the same | one statement: `INSERT INTO dig_state … ON CONFLICT DO UPDATE … WHERE (day <> today OR finds < cap) AND now - last_roll_at >= cooldown`, with the pull log and the grant (a miss records its roll the same way) |
+| `Tick` | the clock | |
+
+Invariants: `CapHolds`, `OneRollPerCooldown`, `Counted`. A write that
+trusts the early read breaks the first two. `digFinds.test.ts` replays two
+devices at once and a roll that started before midnight and landed after
+another device rolled the new day. No code change was needed.
+
+## Shop orders and refunds (`ShopOrders.tla`)
+
+[WEB_PAYMENTS.md](WEB_PAYMENTS.md), [STEAM.md](STEAM.md). One purchase on
+each way to pay, two devices or retries at once.
+
+| Action | Route | Code |
+| --- | --- | --- |
+| `NPay`, `NStoreRefund` | Apple, Google | — |
+| `NCheck` | `POST /store/purchase` | the store verifies (refunded: 402) |
+| `NRecord` | the same | one transaction: `lockStoreTransaction` (an advisory lock per store transaction), refuse if `store_refunds` has it and no purchase does, `INSERT INTO purchases … ON CONFLICT DO NOTHING`, grant |
+| `NNote` | `POST /store/apple/notifications`, `POST /store/google/rtdn` | `revokeStorePurchase`: the same lock, `INSERT INTO store_refunds`, mark the purchase, revoke |
+| `XPay`, `XCancel`, `XRefund` | Xsolla | — |
+| `XPaidHook` | `POST /store/xsolla/webhook` (`order_paid`) | one transaction holding the order row: grants only a `created` order |
+| `XBackHook` | the same (`order_canceled`, `refund`) | one transaction: `paid` → `refunded`, `created` → `canceled`, revoke |
+| `SAuthorize`, `SDecline`, `SRefund` | Steam | — |
+| `SCancel` | `POST /store/steam/cancel` | `UPDATE … WHERE status = 'created'` |
+| `SFinRead`, `SFinSteam` | `POST /store/steam/finalize` | read the order; `FinalizeTxn` |
+| `SFinGrant` | the same | one transaction holding the order row: grants a `created` or `canceled` order (Steam has the money) |
+| `SSync` | `syncSteamRefunds` | `created`, `paid` or `canceled` → `refunded`, revoke |
+
+Invariants: `GrantedOnce`, `RefundIsFinal`, `PaidIsGranted`. The code as it
+was broke the last two (see "Bugs found (2026-11-28)"). `shop.test.ts` runs
+fake app stores, Xsolla and Steam: transitions, the replays, and random
+walks against `shopModel.ts`.
+
+## Checkpoints (`Checkpoints.tla`)
+
+[CHECKPOINTS.md](CHECKPOINTS.md). State: named checkpoints, each beach's
+automatic slot, and the store's bytes (one unit a checkpoint). Two devices.
+
+| Action | Route | Code |
+| --- | --- | --- |
+| `MakeCheck` (`MakeWrite`) | `POST /beaches/mine/:id/checkpoints`, `POST /checkpoints`, `POST /checkpoints/copy` | one transaction under `withPlayerWriteLock`: `checkRoom` (`checkpointRoom`, proved in `limits.ts`) and the `INSERT` |
+| `AutoCheck` (`AutoWrite`) | `writeAutoCheckpoint` (daily auto-save, before a big edit), `POST /beaches/mine/:id/checkpoints { auto }` | the same lock: measure (`autoSlotFits`) and upsert the slot |
+| `Restore` | `writeOnto` (restore, copy onto a beach) | fills the slot unchecked, on purpose: a restore never fails for space |
+| `DeleteNamed`, `DeleteSlot` | `DELETE /checkpoints/:id` | |
+
+Invariants: `NamedWithinLimit`, `FitsWhenAdded` (a restore's own slot may
+take the store over; the next checked write is refused). The two-statement
+build broke both; `checkpoints.test.ts` replays them.
+
+## Bugs found (2026-11-28), all fixed
+
+6. **A pull lost in the same millisecond** (found by the claw walk, not
+   TLC). Two goes by one player on one machine in the same millisecond
+   collided on the `pulls` key; the second answered 500, and a unique
+   claimed for it stayed claimed (`NoStrandedUnique`). Fix: migration 47
+   gives each pull its own id, and a claim that throws releases its unique.
+7. **A refunded app-store purchase granted** (`RefundIsFinal`). A refund
+   notification for a purchase not recorded yet changed nothing, so a
+   purchase checked just before its refund was recorded just after. Fix:
+   `store_refunds` (migration 48) keeps the refund, and recording and
+   refunding take the same per-transaction lock.
+8. **A Steam purchase charged but not granted** (`PaidIsGranted`). A cancel
+   while finalize was at Steam made the grant refuse. Fix: a finalize
+   Steam confirmed grants a canceled order, and the refund sync refunds
+   canceled orders too (otherwise that grant could land after a refund).
+9. **Checkpoints over the limit** (`NamedWithinLimit`, `FitsWhenAdded`).
+   The room check and the insert were separate statements. Fix: one
+   transaction holding the player row lock.
 
 ## Bugs found (2026-11-25), all fixed
 

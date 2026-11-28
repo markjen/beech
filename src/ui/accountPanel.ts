@@ -75,6 +75,7 @@ export class AccountPanel {
   /** diagnostics of the last failed native sign-in, for the on-screen readout (null otherwise) */
   private signInDiagnostics: SignInDiagnostics | null = null;
   private confirmDelete = 0;
+  private nameSavedUntil = 0;
   /** The beach currently selected *in settings* (independent of which beach you're editing in 3D). */
   private selectedId: string | null = null;
   /** Cached neighbor state for `selectedId` when it isn't the shore's own (`NeighborView.state`). */
@@ -821,14 +822,33 @@ export class AccountPanel {
     const box = document.createElement('div');
     box.className = 'account';
     if (u) {
+      const saved = performance.now() < this.nameSavedUntil;
       box.innerHTML = `
         <div class="who">signed in${u.name ? ` as <b></b>` : ''}</div>
+        <form class="name-form">
+          <input type="text" maxlength="30" placeholder="screen name" autocomplete="off" aria-label="Screen name"/>
+          <button type="submit" class="action">${saved ? 'saved' : 'save name'}</button>
+        </form>
         <div class="status sync-status"></div>
         <div class="buttons">
           <button type="button" class="action" data-act="signout">sign out</button>
           <button type="button" class="action" data-act="delete">delete account</button>
         </div>`;
       if (u.name) box.querySelector('b')!.textContent = u.name;
+      const nameForm = box.querySelector<HTMLFormElement>('.name-form')!;
+      const nameInput = nameForm.querySelector<HTMLInputElement>('input')!;
+      nameInput.value = u.name;
+      nameForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        void this.guard(async () => {
+          await this.account.updateName(nameInput.value);
+          this.nameSavedUntil = performance.now() + 2500;
+          this.render();
+          window.setTimeout(() => {
+            if (performance.now() >= this.nameSavedUntil) this.render();
+          }, 2600);
+        });
+      });
       box.appendChild(this.linkSection());
       box.appendChild(this.identitiesSection());
       box.appendChild(this.topUpSection());

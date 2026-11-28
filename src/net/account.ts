@@ -208,6 +208,20 @@ export class Account {
     }
   }
 
+  /** Choose a screen name (PATCH /api/me). */
+  async updateName(name: string): Promise<AccountUser> {
+    const res = await this.call('/api/me', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    if (!res.ok) throw await errorOf(res, 'could not save screen name');
+    const { user } = (await res.json()) as { user: AccountUser };
+    this.user = user;
+    this.emit();
+    return user;
+  }
+
   signInWithGoogle(credential: string): Promise<AccountUser> {
     return this.call('/api/auth/google', {
       method: 'POST',

@@ -70,6 +70,24 @@ The single list of what's left to do, for the owner and for agents.
   (`https://discord.gg/y7EGw2yg2d`) is in PR #40 (draft) — tick this once
   that merges.
 
+- [ ] **Open the merch store** (2026-11-27; docs/MERCH_STORE.md, "Turning
+  it on"): Printful account + token, Stripe account + webhook, the four
+  secrets in Secret Manager, `MERCH_ENABLED=1`, the `store.beech.games`
+  domain mapping and DNS, the store origin on the Google OAuth client and
+  the Apple Services ID. Test with `PRINTFUL_DRAFTS_ONLY=1` and Stripe test
+  keys, then order one of each for real. Then a release note.
+- [ ] **Sunglasses stock for the store** (2026-11-27; not a launch
+  blocker): order logo sunglasses in bulk, send them to Printful
+  Warehousing, set `MERCH_SUNGLASSES_VARIANT`. The sunglasses then come
+  back as their own product; the set stays the five printed things.
+
+- [ ] **Check the new merch lineup's placements with Printful drafts**
+  (2026-11-28): with `PRINTFUL_DRAFTS_ONLY=1`, order one of each new
+  product. In Printful's preview, check where the chest word, back square,
+  side square, badge, the sweatpants' leg prints, the bucket hat's DTF mark
+  and the wraps land, and the single-thread embroidery on the hat and
+  beanie. Then add the live Stripe records for the new products.
+
 ## Owner decisions
 
 - [ ] **Invite rewards** (2026-11-23): check the ladder (parasol,
@@ -184,14 +202,20 @@ picked up.
 
 ## Ideas
 
-- Model more state machines the same way: the claw machine (goes,
-  cooldowns, starter gifts), dig finds (daily cap), shop orders and refunds
-  (Xsolla, Steam, Apple and Google), checkpoints (limits, the auto slot),
-  and the app's BeachStore save pipeline (see STATE_MACHINES.md).
+- [ ] **Merch: a buyer's beach from the side** (2026-11-28): a side-view
+  renderer (profile of their beach, items as line drawings on the ground
+  line) for the side view tee, the bottle, the tumbler and the mug.
+- [ ] **Merch: all-over panel items and Tapstitch** (2026-11-28): board
+  shorts, swim trunks, the reversible bucket hat and fanny pack need art per
+  panel template; Tapstitch's heavyweight line needs an order API (ask their
+  Enterprise team) or hand-placed orders.
+- [ ] **Store: Printful mockups, your beach on the towel, store links in
+  the game and on beechshore** (docs/MERCH_STORE.md, "Not built").
+- Model more state machines the same way: the app's BeachStore save
+  pipeline (see STATE_MACHINES.md).
 
-- Verify more with LemmaScript: the app's copy of the restore check
-  (`src/world/checkpointFit.ts`), item-size and beach-capacity limits,
-  referral ladder rewards. See [VERIFICATION.md](VERIFICATION.md).
+- Verify more with LemmaScript: item sizes need a different tool (they're
+  floating point); see [VERIFICATION.md](VERIFICATION.md).
 - [ ] Sand-castle bucket stamps as a fourth tool.
 - [ ] Per-beach slope and sand-grain colour for the real beaches.
 - [ ] More real beaches where a tide gauge is near enough. Reynisfjara,
@@ -205,6 +229,22 @@ picked up.
 
 ## Done (recent)
 
+- [x] **Merch lineup, round 2** (2026-11-28; Mark): straight-on beach
+  designs, the line mark, at-cost pricing per size from Printful's catalog,
+  27 products. MERCH_STORE.md.
+- [x] **More state machines and proofs** (2026-11-28; agent): TLA+ models
+  of the claw and vending machines, buried finds, shop orders and refunds
+  (app stores, Xsolla, Steam) and checkpoints, each with transition tests,
+  replays and random walks (STATE_MACHINES.md). They found and fixed four
+  bugs: same-millisecond pulls (migration 47), a refunded app-store purchase
+  granted (`store_refunds`, migration 48), a Steam purchase charged but not
+  granted after a cancel, and checkpoints over the limit. LemmaScript proofs
+  of the referral ladder, the beach and checkpoint limits (`limits.ts`), what
+  a save keeps (`objectsToSave`) and the app's restore check
+  (VERIFICATION.md).
+- [x] **Merch store** (2026-11-27; Mark): store.beech.games with the six
+  beech things, the set, and your-beach tees and hoodies; Stripe Checkout +
+  Printful, `specs/tla/MerchOrders.tla`. MERCH_STORE.md.
 - [x] **Inland sections: just sand for now, and coin prices** (2026-11-27;
   Mark): only the sand extension is sold, at 50 beech bucks, in the shop's
   Beaches tab; the other types are hidden unless already in your bag. Prices

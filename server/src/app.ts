@@ -49,9 +49,11 @@ import { ledgerOf } from './ledger.js';
 import { displayName } from './prizeNames.js';
 import { createWeather } from './weather.js';
 import { creditBalance, grantPurchase } from './bucksDb.js';
+import { autoSlotFits, BEACH_CAP, beachAllowance, checkpointLimit, checkpointRoom } from './limits.js';
 import { SECTION_IDS, SECTION_ROWS, isSection } from './sections.js';
 import { BUCK, bucksToCents, centsToBucks, listBucks, roundToBuck, shareOut, tradeable, unitsOf } from './bucks.js';
 import { issueSubmissionSession, UUID_PATTERN } from './itemSubmissions.js';
+import { createMerch, type Merch } from './merch.js';
 import { awardCheckoutCreatorCredit, awardCreatorCredit, creatorOffer, creatorOffers, lockCreditUsers, nativeSalePrice, reverseCreatorCreditByRef, salePriceCents } from './creatorCredit.js';
 import {
   claimCreditPurchase,
@@ -63,7 +65,7 @@ import {
   promoBonusCents,
   type Promo,
 } from './giftCards.js';
-import { appleRefund, googleVoided, revokeStorePurchase, verifyAppleTransaction, verifyGoogleOidc, verifyGooglePurchase, type VerifiedPurchase } from './store.js';
+import { appleRefund, googleVoided, lockStoreTransaction, revokeStorePurchase, storeRefunded, verifyAppleTransaction, verifyGoogleOidc, verifyGooglePurchase, type VerifiedPurchase } from './store.js';
 import { NOTIFY_PREFS, PUSH_DEVICES, lockPush, makeSender, pushTick, validEndpoint, validTz, type NotifyPref, type PushConfig, type PushSender } from './push.js';
 import { POOLS, GRAB_CHANCE, COOLDOWN_MAX_MS, COOLDOWN_MIN_MS, cooldownAfter, cryptoRandom, draw, grab, pullDay, starterPrize, STARTER, type Rarity } from './pulls.js';
 import { currentSet, drawVending, nextUtcMidnight } from './vending.js';
@@ -113,7 +115,6 @@ import {
   BadBlob,
   CHECKPOINT_BYTES_PER_USER,
   CHECKPOINT_NAME_MAX,
-  CHECKPOINTS_PER_BEACH,
   MAX_BEACH_BYTES,
   MAX_CELLS,
   OLD_MAX_OBJECTS,
@@ -135,6 +136,7 @@ import {
   QUICK_NOTES,
   RATING_EVERY_MS,
   checkNote,
+  checkScreenName,
   utcDay,
 } from './inbox.js';
 import {
@@ -153,6 +155,7 @@ import {
 import { createRateLimiter, logEvent, parseClientEvent, routeLabel } from './observability.js';
 import { createLiveBeaches, liveConfig, type LiveConfig } from './liveBeach.js';
 import { createPaymentToken, payStationUrl, verifyWebhookSignature, xsollaError, type CreateToken, type XsollaConfig, type XsollaWebhook } from './xsolla.js';
+import { createCheckoutSession, verifyStripeSignature, type CreateCheckoutSession, type StripeConfig, type StripeEvent } from './stripe.js';
 import { finalizeSteamTxn, initSteamTxn, type SteamStoreConfig } from './steamStore.js';
 
 export interface AppConfig {
@@ -213,6 +216,15 @@ export interface AppConfig {
   /** injectable for tests: how a Pay Station payment token is made */
   xsollaToken?: CreateToken;
   /**
+   * Web checkout through Stripe (docs/STRIPE_PAYMENTS.md), the backup to
+   * Xsolla. Unset: Stripe checkout stays off. Xsolla is the primary
+   * whenever it is set; the client falls back to Stripe only when Xsolla
+   * is off and Stripe is on.
+   */
+  stripe?: StripeConfig;
+  /** injectable for tests: how a Checkout Session is made */
+  stripeSession?: CreateCheckoutSession;
+  /**
    * Push notifications (docs/INBOX_NOTIFICATIONS.md, server/src/push.ts):
    * which platforms are set up, how a push is sent (tests pass their own),
    * and who may call POST /push/tick (Cloud Scheduler's OIDC token).
@@ -220,6 +232,8 @@ export interface AppConfig {
   push?: { config: PushConfig; send?: PushSender; tick?: { audience: string; email: string } };
   /** the shore site's public origin (SHORE_URL): where a top-up from your account page comes back to */
   shoreUrl?: string;
+  /** the merch store's orders (docs/MERCH_STORE.md, merch.ts), mounted at /merch; unset: the catalog only */
+  merch?: Merch;
 }
 
 export interface User {
@@ -230,7 +244,7 @@ export interface User {
 type Env = { Variables: { user: User; tokenHash: string; shore: boolean } };
 
 /** most beaches one person can have */
-export const BEACH_CAP = 8;
+export { BEACH_CAP } from './limits.js';
 
 /** A strict copy that's short: thrown inside the transaction so a new beach made for it rolls back too. */
 class CopyShort extends Error {
@@ -330,7 +344,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   // forwarded IP (tests, local development) aren't limited.
   const perIp = createRateLimiter(cfg.rateLimit?.perMinute ?? 300);
   const signIns = createRateLimiter(cfg.rateLimit?.signInsPerMinute ?? 20);
-  const WEBHOOKS = ['/store/apple/notifications', '/store/google/rtdn', '/store/xsolla/webhook'];
+  const WEBHOOKS = ['/store/apple/notifications', '/store/google/rtdn', '/store/xsolla/webhook', '/store/stripe/webhook', '/merch/stripe-webhook', '/merch/printful-webhook'];
   app.use('*', async (c, next) => {
     const ip = (c.req.header('x-forwarded-for') ?? '').split(',')[0]?.trim();
     if (ip && c.req.method !== 'OPTIONS' && !WEBHOOKS.some((w) => c.req.path.endsWith(w))) {
@@ -358,13 +372,16 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   });
   app.notFound((c) => c.json({ error: 'not found' }, 404));
 
+  // the merch store (docs/MERCH_STORE.md): store.beech.games forwards /api/* here
+  app.route('/merch', (cfg.merch ?? createMerch(db, { now: () => (cfg.now ?? Date.now)() })).app);
+
   // ---------------------------------------------------------------- sessions
   /** Find or create the account for a verified identity and start a game session for it. */
   async function createSession(who: VerifiedIdentity | { provider: 'dev'; sub: string; name: string }) {
     const now = (cfg.now ?? Date.now)();
     const email = 'email' in who ? who.email ?? null : null;
-    let rows = await db.query<User>(
-      'SELECT u.id, u.name FROM user_identities ui JOIN users u ON u.id = ui.user_id WHERE ui.provider = $1 AND ui.provider_sub = $2',
+    let rows = await db.query<User & { name_chosen?: boolean }>(
+      'SELECT u.id, u.name, u.name_chosen FROM user_identities ui JOIN users u ON u.id = ui.user_id WHERE ui.provider = $1 AND ui.provider_sub = $2',
       [who.provider, who.sub],
     );
     let user = rows[0];
@@ -385,9 +402,12 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
           if (attempt === 4) throw e;
         }
       }
-    } else if (who.name && who.name !== user.name) {
-      await db.query('UPDATE users SET name = $1 WHERE id = $2', [who.name, user.id]);
-      user.name = who.name;
+    } else if (who.name && who.name !== user.name && !user.name_chosen) {
+      const updated = await db.query<{ name: string }>(
+        'UPDATE users SET name = $1 WHERE id = $2 AND NOT name_chosen RETURNING name',
+        [who.name, user.id],
+      );
+      if (updated[0]) user.name = updated[0].name;
     }
     // a Google sign-in refreshes the verified email (the admin console
     // searches by it); an unverified or absent address never overwrites a stored one
@@ -408,7 +428,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       now + SESSION_DAYS * 86400000,
     ]);
     await db.query('DELETE FROM sessions WHERE user_id = $1 AND expires_at < $2', [user!.id, now]);
-    return { token, tokenHash, user: user! };
+    return { token, tokenHash, user: { id: user!.id, name: user!.name } };
   }
 
   async function startSession(c: Context<Env>, who: VerifiedIdentity | { provider: 'dev'; sub: string; name: string }) {
@@ -645,7 +665,21 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     return c.body(null, 204);
   });
 
+  const updateScreenName = async (c: Context<Env>) => {
+    const me = c.get('user').id;
+    const b = await body<{ name?: unknown }>(c);
+    const chk = checkScreenName(b.name);
+    if (!chk.ok) return fail(400, chk.reason);
+    const [updated] = await db.query<User>(
+      'UPDATE users SET name = $1, name_chosen = true WHERE id = $2 RETURNING id, name',
+      [chk.text, me],
+    );
+    if (!updated) fail(404, 'no such user');
+    return c.json({ user: updated });
+  };
+
   app.get('/me', requireUser, (c) => c.json({ user: c.get('user') }));
+  app.patch('/me', requireUser, updateScreenName);
 
   // ---------------------------------------------------------------- edit sessions
   // One active editor per person (docs/EDIT_SESSIONS.md). An instance
@@ -955,17 +989,6 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     )[0];
     if (!cur) return false; // first save: nothing to keep
     const bytes = toBytes(cur.sand);
-    // the one auto slot's bytes already count toward the total; only
-    // snapshot if the replacement still fits
-    const use = (
-      await db.query<{ total: string; auto_bytes: string }>(
-        `SELECT COALESCE(SUM(bytes), 0) AS total,
-                COALESCE(SUM(bytes) FILTER (WHERE kind = 'auto' AND from_beach = $2), 0) AS auto_bytes
-           FROM checkpoints WHERE owner_id = $1`,
-        [userId, beachId],
-      )
-    )[0];
-    if (Number(use.total) - Number(use.auto_bytes) + bytes.byteLength > CHECKPOINT_BYTES_PER_USER) return false;
     let items: Record<string, number> = {};
     let objects = 0;
     try {
@@ -973,17 +996,31 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     } catch {
       /* an unreadable old save: keep the bytes, uncounted */
     }
-    await db.query(
-      `INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at, origin_beach_id)
-       SELECT $1, owner_id, $2, 'auto', 'beach', id, name, location, nx, ny, sand, octet_length(sand), $3, $4, $5, id
-         FROM beach WHERE id = $6 AND sand IS NOT NULL
-       ON CONFLICT (from_beach) WHERE kind = 'auto' DO UPDATE SET
-         name = EXCLUDED.name, from_name = EXCLUDED.from_name, location = EXCLUDED.location, nx = EXCLUDED.nx, ny = EXCLUDED.ny,
-         sand = EXCLUDED.sand, bytes = EXCLUDED.bytes, items = EXCLUDED.items, objects = EXCLUDED.objects, created_at = EXCLUDED.created_at,
-         origin_beach_id = EXCLUDED.origin_beach_id`,
-      [crypto.randomUUID(), name, JSON.stringify(items), objects, now, beachId],
-    );
-    return true;
+    // the measure and the write together, under the player lock (Checkpoints.tla)
+    return withPlayerWriteLock(userId, async (tx) => {
+      // the one auto slot's bytes already count toward the total; only
+      // snapshot if the replacement still fits
+      const use = (
+        await tx.query<{ total: string; auto_bytes: string }>(
+          `SELECT COALESCE(SUM(bytes), 0) AS total,
+                  COALESCE(SUM(bytes) FILTER (WHERE kind = 'auto' AND from_beach = $2), 0) AS auto_bytes
+             FROM checkpoints WHERE owner_id = $1`,
+          [userId, beachId],
+        )
+      )[0];
+      if (!autoSlotFits(Number(use.total), Number(use.auto_bytes), bytes.byteLength)) return false;
+      await tx.query(
+        `INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at, origin_beach_id)
+         SELECT $1, owner_id, $2, 'auto', 'beach', id, name, location, nx, ny, sand, octet_length(sand), $3, $4, $5, id
+           FROM beach WHERE id = $6 AND sand IS NOT NULL
+         ON CONFLICT (from_beach) WHERE kind = 'auto' DO UPDATE SET
+           name = EXCLUDED.name, from_name = EXCLUDED.from_name, location = EXCLUDED.location, nx = EXCLUDED.nx, ny = EXCLUDED.ny,
+           sand = EXCLUDED.sand, bytes = EXCLUDED.bytes, items = EXCLUDED.items, objects = EXCLUDED.objects, created_at = EXCLUDED.created_at,
+           origin_beach_id = EXCLUDED.origin_beach_id`,
+        [crypto.randomUUID(), name, JSON.stringify(items), objects, now, beachId],
+      );
+      return true;
+    });
   };
 
   /**
@@ -1244,7 +1281,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       `SELECT SUM(quantity) AS n FROM inventory WHERE user_id = $1 AND item_id = 'beach' AND (expires_at IS NULL OR expires_at > $2)`,
       [user, Date.now()],
     );
-    return Math.min(BEACH_CAP, 1 + Number(rows[0]?.n ?? 0));
+    return beachAllowance(Number(rows[0]?.n ?? 0));
   };
   /** my home beach (its id is mine unless I've made another beach home) */
   const homeOf = async (user: string): Promise<string> =>
@@ -1796,14 +1833,15 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     // won, so there is nothing to log or give — only the claim runs. (The
     // miss claim has its own numbering: every parameter must be used, or
     // Postgres can't tell its type.)
-    const rows = missed
-      ? await db.query(
+    // a claim that fails or throws lets its unique go again (NoStrandedUnique)
+    const rows = await (missed
+      ? db.query(
           `UPDATE pull_state SET count = count + 1, next_at = $3 + $4
             WHERE user_id = $1 AND pool = $2 AND next_at <= $3 AND count = $5
             RETURNING user_id`,
           [me, poolId, now, wait, count],
         )
-      : await db.query<{ item_id: string }>(
+      : db.query<{ item_id: string }>(
           `WITH claim AS (
              UPDATE pull_state SET count = count + 1, next_at = $6 + $7
               WHERE user_id = $1 AND pool = $2 AND next_at <= $6 AND count = $8
@@ -1815,7 +1853,11 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
            INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at, expires_at)
            SELECT user_id, $4, 1, 'pull', $6, NULL FROM logged RETURNING item_id`,
           [me, poolId, pullDay(now), got.item, got.rarity, now, wait, count],
-        );
+        )
+    ).catch(async (e) => {
+      await unique.release();
+      throw e;
+    });
     if (!rows[0]) await unique.release();
     const st = (await freeAt(me)).get(poolId);
     if (!rows[0])
@@ -1862,6 +1904,9 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       item: missed ? null : got.item,
       rarity: missed ? null : got.rarity,
       now,
+    }).catch(async (e) => {
+      await unique.release();
+      throw e;
     });
     if (!paid) {
       await unique.release();
@@ -1969,7 +2014,10 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
        INSERT INTO inventory (user_id, item_id, quantity, source, acquired_at, expires_at)
        SELECT user_id, $6, 1, 'pull', $5, NULL FROM logged RETURNING item_id`,
       [me, today, DIG_FIND_DAILY_CAP, DIG_FIND_ROLL_COOLDOWN_MS, now, drawn.item, drawn.rarity],
-    );
+    ).catch(async (e) => {
+      await unique.release();
+      throw e;
+    });
     if (!rows[0]) {
       await unique.release();
       return c.json({ error: 'slow down', nextRollAt: now + DIG_FIND_ROLL_COOLDOWN_MS }, 409);
@@ -2441,18 +2489,25 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     return name;
   };
   /** named checkpoints you may keep: 5 for each beach of your allowance */
-  const checkpointLimit = async (user: string) => CHECKPOINTS_PER_BEACH * (await allowance(user));
-  const checkpointUse = async (user: string) => {
-    const rows = await db.query<{ named: string; bytes: string | null }>(
+  const checkpointLimitOf = async (user: string, q: Db = db) => checkpointLimit(await allowance(user, q));
+  const checkpointUse = async (user: string, q: Db = db) => {
+    const rows = await q.query<{ named: string; bytes: string | null }>(
       `SELECT COUNT(*) FILTER (WHERE kind = 'named') AS named, SUM(bytes) FILTER (WHERE kind <> 'tide') AS bytes FROM checkpoints WHERE owner_id = $1`,
       [user],
     );
     return { named: Number(rows[0]?.named ?? 0), bytes: Number(rows[0]?.bytes ?? 0) };
   };
-  const checkRoom = async (user: string, adding: number) => {
-    const [use, limit] = await Promise.all([checkpointUse(user), checkpointLimit(user)]);
-    if (use.named >= limit) fail(409, `you have ${limit} checkpoints, the most you can keep: delete one first`);
-    if (use.bytes + adding > CHECKPOINT_BYTES_PER_USER) fail(413, 'your checkpoints are full: delete some first');
+  /**
+   * Is there room for another named checkpoint? Run it inside
+   * withPlayerWriteLock with the INSERT (specs/tla/Checkpoints.tla): two
+   * checkpoints made at once otherwise both pass and go over the limit.
+   */
+  const checkRoom = async (user: string, adding: number, q: Db) => {
+    const use = await checkpointUse(user, q);
+    const limit = await checkpointLimitOf(user, q);
+    const full = checkpointRoom(use.named, limit, use.bytes, adding);
+    if (full === 'count') fail(409, `you have ${limit} checkpoints, the most you can keep: delete one first`);
+    if (full === 'bytes') fail(413, 'your checkpoints are full: delete some first');
   };
   const inspect = (bytes: Uint8Array) => {
     try {
@@ -2514,7 +2569,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
         `SELECT ${CHECKPOINT_COLS} FROM checkpoints c LEFT JOIN beach b ON b.id = c.from_beach WHERE c.owner_id = $1 ORDER BY c.created_at DESC, c.name`,
         [me],
       ),
-      checkpointLimit(me),
+      checkpointLimitOf(me),
       checkpointUse(me),
     ]);
     return c.json({ limit, named: use.named, bytesUsed: use.bytes, bytesLimit: CHECKPOINT_BYTES_PER_USER, checkpoints: rows.map(checkpointJson) });
@@ -2536,35 +2591,39 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     if (!rows[0]) fail(404, 'that beach has nothing saved yet');
     const bytes = toBytes(rows[0].sand);
     const info = inspect(bytes);
-    if (auto) {
-      const total = await checkpointUse(me);
-      if (total.bytes + bytes.byteLength > CHECKPOINT_BYTES_PER_USER) fail(413, 'your checkpoints are full: delete some first');
-    } else await checkRoom(me, bytes.byteLength);
-    const r = await db.query<{ id: string }>(
-      `INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at, origin_beach_id)
-       VALUES ($1, $2, $3, $14, 'beach', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $4)
-       ON CONFLICT (from_beach) WHERE kind = 'auto' DO UPDATE SET
-         name = EXCLUDED.name, from_name = EXCLUDED.from_name, location = EXCLUDED.location, nx = EXCLUDED.nx, ny = EXCLUDED.ny,
-         sand = EXCLUDED.sand, bytes = EXCLUDED.bytes, items = EXCLUDED.items, objects = EXCLUDED.objects, created_at = EXCLUDED.created_at,
-         origin_beach_id = EXCLUDED.origin_beach_id
-       RETURNING id`,
-      [
-        crypto.randomUUID(),
-        me,
-        label,
-        beachId,
-        rows[0].name,
-        rows[0].location,
-        rows[0].nx,
-        rows[0].ny,
-        bytes,
-        bytes.byteLength,
-        JSON.stringify(info.items),
-        info.objects,
-        clock(),
-        auto ? 'auto' : 'named',
-      ],
-    );
+    // the room check and the write together, under the player lock (Checkpoints.tla)
+    const r = await withPlayerWriteLock(me, async (tx) => {
+      if (auto) {
+        const total = await checkpointUse(me, tx);
+        // counts the slot it replaces too: stricter than the save path's copy
+        if (!autoSlotFits(total.bytes, 0, bytes.byteLength)) fail(413, 'your checkpoints are full: delete some first');
+      } else await checkRoom(me, bytes.byteLength, tx);
+      return tx.query<{ id: string }>(
+        `INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at, origin_beach_id)
+         VALUES ($1, $2, $3, $14, 'beach', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $4)
+         ON CONFLICT (from_beach) WHERE kind = 'auto' DO UPDATE SET
+           name = EXCLUDED.name, from_name = EXCLUDED.from_name, location = EXCLUDED.location, nx = EXCLUDED.nx, ny = EXCLUDED.ny,
+           sand = EXCLUDED.sand, bytes = EXCLUDED.bytes, items = EXCLUDED.items, objects = EXCLUDED.objects, created_at = EXCLUDED.created_at,
+           origin_beach_id = EXCLUDED.origin_beach_id
+         RETURNING id`,
+        [
+          crypto.randomUUID(),
+          me,
+          label,
+          beachId,
+          rows[0].name,
+          rows[0].location,
+          rows[0].nx,
+          rows[0].ny,
+          bytes,
+          bytes.byteLength,
+          JSON.stringify(info.items),
+          info.objects,
+          clock(),
+          auto ? 'auto' : 'named',
+        ],
+      );
+    });
     return c.json({ checkpoint: checkpointJson((await myCheckpoint(c, r[0].id)) as CheckpointRow) }, 201);
   });
 
@@ -2587,13 +2646,15 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     // (square, or deeper with sand rows inland)
     if (info.ny < info.nx) fail(400, 'not a saved beach (the grid must be square)');
     if (!makeLimiter(me)) fail(429, 'too many checkpoints at once: try again later');
-    await checkRoom(me, bytes.byteLength);
     const id = crypto.randomUUID();
-    await db.query(
-      `INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at)
-       VALUES ($1, $2, $3, 'named', 'import', NULL, '', NULLIF($4, ''), $5, $6, $7, $8, $9, $10, $11)`,
-      [id, me, label, location, info.nx, info.ny, bytes, bytes.byteLength, JSON.stringify(info.items), info.objects, clock()],
-    );
+    await withPlayerWriteLock(me, async (tx) => {
+      await checkRoom(me, bytes.byteLength, tx);
+      await tx.query(
+        `INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at)
+         VALUES ($1, $2, $3, 'named', 'import', NULL, '', NULLIF($4, ''), $5, $6, $7, $8, $9, $10, $11)`,
+        [id, me, label, location, info.nx, info.ny, bytes, bytes.byteLength, JSON.stringify(info.items), info.objects, clock()],
+      );
+    });
     return c.json({ checkpoint: checkpointJson((await myCheckpoint(c, id)) as CheckpointRow) }, 201);
   });
 
@@ -2879,14 +2940,16 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     if (p.version !== undefined && Number(src.version) !== p.version) return c.json({ error: 'changed', version: Number(src.version) }, 409);
     const bytes = toBytes(src.sand);
     const info = inspect(bytes);
-    await checkRoom(me, bytes.byteLength);
     const id = crypto.randomUUID();
     const label = (src.name || src.code).slice(0, CHECKPOINT_NAME_MAX);
-    await db.query(
-      `INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at)
-       VALUES ($1, $2, $3, 'named', 'copy', NULL, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-      [id, me, label, `${src.owner_name?.trim() || 'Someone'} · ${src.code}`, src.location, info.nx, info.ny, bytes, bytes.byteLength, JSON.stringify(info.items), info.objects, clock()],
-    );
+    await withPlayerWriteLock(me, async (tx) => {
+      await checkRoom(me, bytes.byteLength, tx);
+      await tx.query(
+        `INSERT INTO checkpoints (id, owner_id, name, kind, source, from_beach, from_name, location, nx, ny, sand, bytes, items, objects, created_at)
+         VALUES ($1, $2, $3, 'named', 'copy', NULL, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+        [id, me, label, `${src.owner_name?.trim() || 'Someone'} · ${src.code}`, src.location, info.nx, info.ny, bytes, bytes.byteLength, JSON.stringify(info.items), info.objects, clock()],
+      );
+    });
     return c.json({ checkpoint: checkpointJson((await myCheckpoint(c, id)) as CheckpointRow) }, 201);
   });
 
@@ -2909,8 +2972,9 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
         const cents = price(p);
         return cents === null ? [] : [{ id: p.id, name: p.name, grants: p.grants, usd: cents / 100, blurb: p.blurb, featured: !!p.featured }];
       }),
-      // the web shop can take payment itself (Xsolla), instead of pointing at the apps
+      // the web shop can take payment itself (Xsolla, or Stripe when Xsolla is off), instead of pointing at the apps
       webCheckout: !!cfg.xsolla,
+      stripeCheckout: !!cfg.stripe,
     });
   });
 
@@ -2936,6 +3000,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
         return bucks === null || bucks === undefined ? [] : [{ id: p.id, name: p.name, grants: p.grants, bucks, blurb: p.blurb, featured: !!p.featured }];
       }),
       webCheckout: !!cfg.xsolla,
+      stripeCheckout: !!cfg.stripe,
     });
   });
 
@@ -2966,7 +3031,12 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const now = clock();
     // Record it once, then grant (a pack's beech bucks, or an old app's
     // things) and any creator credit in the same transaction.
-    const { rows, promo } = await db.withTransaction(async (tx) => {
+    const { rows, promo, refunded } = await db.withTransaction(async (tx) => {
+      // a refund notification may have come first (specs/tla/ShopOrders.tla, NRecord)
+      await lockStoreTransaction(tx, v.store, v.transactionId);
+      // (a purchase recorded before its refund answers "already", as before)
+      const known = await tx.query('SELECT 1 FROM purchases WHERE store = $1 AND transaction_id = $2', [v.store, v.transactionId]);
+      if (!known.length && (await storeRefunded(tx, v.store, v.transactionId))) return { rows: [], promo: null, refunded: true };
       const granted = await tx.query<{ purchase_id: string }>(
         `INSERT INTO purchases (user_id, store, transaction_id, product_id, environment, purchased_at, granted_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (store, transaction_id) DO NOTHING
@@ -2987,8 +3057,9 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
           });
         }
       }
-      return { rows: granted, promo: appliedPromo };
+      return { rows: granted, promo: appliedPromo, refunded: false };
     });
+    if (refunded) return c.json({ error: 'the store did not confirm this purchase: purchase was refunded' }, 402);
     if (!rows.length) {
       const prev = (await db.query<{ user_id: string }>('SELECT user_id FROM purchases WHERE store = $1 AND transaction_id = $2', [v!.store, v!.transactionId]))[0];
       if (prev && prev.user_id !== me) fail(409, 'that purchase was already used by another account');
@@ -3044,6 +3115,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     product_id: string;
     amount_cents: number;
     creator_submission_id: string | null;
+    /** 'xsolla' or 'stripe': which provider took the money */
+    provider: string;
     provider_order_id: string | null;
     sandbox: boolean;
     status: string;
@@ -3068,6 +3141,72 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     };
   };
   const isUuid = (s: string) => UUID_PATTERN.test(s);
+
+  /**
+   * Grant a paid web order once, whoever took the money (Xsolla or Stripe).
+   * Records the payment once, marks the order paid, and grants (beech bucks)
+   * and credit atomically. A retried webhook hits the purchases unique key
+   * and changes nothing. An order already canceled is not revived by a late
+   * payment. Returns the granted rows (empty when already settled) and any
+   * promo outcome, for the caller's log line.
+   */
+  const grantWebOrder = async (
+    o: WebOrderRow,
+    providerId: string,
+    store: 'xsolla' | 'stripe',
+    testPayment: boolean,
+  ): Promise<{ granted: { purchase_id: string }[]; promo: string | null }> => {
+    const product = storeProductById(o.product_id)!;
+    const now = clock();
+    let promoResult: string | null = null;
+    const granted = await db.withTransaction(async (tx) => {
+      const [order] = await tx.query<{ status: string }>('SELECT status FROM web_orders WHERE id = $1 FOR NO KEY UPDATE', [o.id]);
+      if (order?.status !== 'created') return [];
+      // the promo's row before the player's (claimPromo's lock order)
+      if (o.promo_code) await tx.query('SELECT 1 FROM promo_codes WHERE code = $1 FOR UPDATE', [o.promo_code]);
+      const rows = await tx.query<{ purchase_id: string }>(
+        `WITH p AS (
+           INSERT INTO purchases (user_id, store, transaction_id, product_id, environment, purchased_at, granted_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $6)
+           ON CONFLICT (store, transaction_id) DO NOTHING
+           RETURNING id, user_id
+         ), o AS (
+           UPDATE web_orders SET status = 'paid', paid_at = $6 WHERE id = $7 AND status = 'created' AND EXISTS (SELECT 1 FROM p)
+           RETURNING id
+         )
+         SELECT p.id AS purchase_id FROM p`,
+        [o.user_id, store, providerId, product.id, testPayment ? 'Sandbox' : 'Production', now, o.id],
+      );
+      if (rows.length) await grantPurchase(tx, { userId: o.user_id, purchaseId: rows[0].purchase_id, product, now });
+      // the pack always; its promo's bonus on top only if the code is still good
+      if (rows.length && o.promo_code) {
+        const got = await claimPromo(tx, o.user_id, o.promo_code, { product, purchaseId: rows[0].purchase_id }, now);
+        promoResult = 'bonusCents' in got ? `bonus:${got.bonusCents}` : `no_bonus:${got.error}`;
+      }
+      if (rows.length && o.creator_submission_id && !testPayment && !o.sandbox) {
+        await awardCheckoutCreatorCredit(tx, {
+          submissionId: o.creator_submission_id, product, buyer: o.user_id, storePurchaseId: rows[0].purchase_id,
+          paidCents: Number(o.amount_cents), now,
+        });
+      }
+      return rows;
+    });
+    return { granted, promo: promoResult };
+  };
+
+  /** Take back a paid web order, or cancel one that never paid — whoever took the money. */
+  const cancelWebOrder = async (o: WebOrderRow): Promise<void> => {
+    await db.withTransaction(async (tx) => {
+      // Take the order lock first, just like settlement. A concurrent refund
+      // either prevents the grant or reverses the already completed grant.
+      await tx.query(
+        `UPDATE web_orders SET status = CASE WHEN status = 'paid' THEN 'refunded' ELSE 'canceled' END
+          WHERE id = $1 AND status IN ('created', 'paid')`,
+        [o.id],
+      );
+      if (o.provider_order_id) await revokeStorePurchase(tx, o.provider as 'xsolla' | 'stripe', o.provider_order_id, clock());
+    });
+  };
 
   const webCheckout = async (c: Context<Env>) => {
     if (!cfg.xsolla) fail(404, 'buying on the web is not open yet: buy in the beech app');
@@ -3222,44 +3361,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
         return c.json(xsollaError('INCORRECT_AMOUNT', 'Incorrect amount'), 400);
       }
       if (currency && currency !== 'USD') log('local_currency', { currency });
-      const now = clock();
-      // Record the payment once, mark the order paid, and grant (beech bucks) and credit atomically.
-      // A retried webhook hits the purchases unique key and changes nothing.
-      // An order Xsolla already canceled is not revived by a late payment.
-      let promoResult: string | null = null;
-      const granted = await db.withTransaction(async (tx) => {
-        const [order] = await tx.query<{ status: string }>('SELECT status FROM web_orders WHERE id = $1 FOR NO KEY UPDATE', [o.id]);
-        if (order?.status !== 'created') return [];
-        // the promo's row before the player's (claimPromo's lock order)
-        if (o.promo_code) await tx.query('SELECT 1 FROM promo_codes WHERE code = $1 FOR UPDATE', [o.promo_code]);
-        const rows = await tx.query<{ purchase_id: string }>(
-          `WITH p AS (
-             INSERT INTO purchases (user_id, store, transaction_id, product_id, environment, purchased_at, granted_at)
-             VALUES ($1, 'xsolla', $2, $3, $4, $5, $5)
-             ON CONFLICT (store, transaction_id) DO NOTHING
-             RETURNING id, user_id
-           ), o AS (
-             UPDATE web_orders SET status = 'paid', paid_at = $5 WHERE id = $6 AND status = 'created' AND EXISTS (SELECT 1 FROM p)
-             RETURNING id
-           )
-           SELECT p.id AS purchase_id FROM p`,
-          [o.user_id, providerId, product.id, testPayment ? 'Sandbox' : 'Production', now, o.id],
-        );
-        if (rows.length) await grantPurchase(tx, { userId: o.user_id, purchaseId: rows[0].purchase_id, product, now });
-        // the pack always; its promo's bonus on top only if the code is still good
-        if (rows.length && o.promo_code) {
-          const got = await claimPromo(tx, o.user_id, o.promo_code, { product, purchaseId: rows[0].purchase_id }, now);
-          promoResult = 'bonusCents' in got ? `bonus:${got.bonusCents}` : `no_bonus:${got.error}`;
-        }
-        if (rows.length && o.creator_submission_id && !testPayment && !o.sandbox) {
-          await awardCheckoutCreatorCredit(tx, {
-            submissionId: o.creator_submission_id, product, buyer: o.user_id, storePurchaseId: rows[0].purchase_id,
-            paidCents: Number(o.amount_cents), now,
-          });
-        }
-        return rows;
-      });
-      log(granted.length ? 'granted' : 'already', { product: product.id, ...(promoResult ? { promo: promoResult } : {}) });
+      const { granted, promo } = await grantWebOrder(o, providerId, 'xsolla', testPayment);
+      log(granted.length ? 'granted' : 'already', { product: product.id, ...(promo ? { promo } : {}) });
       return c.body(null, 204);
     }
 
@@ -3270,16 +3373,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
         // nothing of ours to take back; don't make Xsolla retry for days
         return c.body(null, 204);
       }
-      await db.withTransaction(async (tx) => {
-        // Take the order lock first, just like settlement. A concurrent refund
-        // either prevents the grant or reverses the already completed grant.
-        await tx.query(
-          `UPDATE web_orders SET status = CASE WHEN status = 'paid' THEN 'refunded' ELSE 'canceled' END
-            WHERE id = $1 AND status IN ('created', 'paid')`,
-          [o.id],
-        );
-        if (o.provider_order_id) await revokeStorePurchase(tx, 'xsolla', o.provider_order_id, clock());
-      });
+      await cancelWebOrder(o);
       log('revoked', { was: o.status });
       return c.body(null, 204);
     }
@@ -3288,6 +3382,159 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     // on elsewhere (order_paid / order_canceled carry what we need)
     log('ignored');
     return c.body(null, 204);
+  });
+
+  // ---------------------------------------------------------------- web checkout (Stripe)
+  // docs/STRIPE_PAYMENTS.md. The backup to Xsolla: the same web_orders row
+  // and the same grant, through Stripe's hosted Checkout page instead of
+  // Pay Station. The client uses it only when Xsolla is off and Stripe is
+  // on; Xsolla stays the primary whenever it works.
+  const stripeSession = cfg.stripeSession ?? createCheckoutSession;
+
+  const stripeCheckout = async (c: Context<Env>) => {
+    if (!cfg.stripe) fail(404, 'buying on the web is not open yet: buy in the beech app');
+    const me = c.get('user').id;
+    if (!checkoutLimiter(me)) return c.json({ error: 'slow down' }, 429);
+    const { productId, promoCode } = await body<{ productId?: string; promoCode?: string }>(c);
+    const product = realMoneyProductById(productId ?? '');
+    if (!product) fail(404, 'no such product');
+    // A promo code never takes money off: it gives bonus bucks on top of a
+    // pack. Checked now so a bad code is said before paying; used only when
+    // the payment comes in, if still good.
+    const id = crypto.randomUUID();
+    const now = clock();
+    let promo: string | null = null;
+    let bonus = 0;
+    if (promoCode !== undefined && promoCode !== '') {
+      if (typeof promoCode !== 'string' || !isPromoCodeShape(promoCode)) fail(400, "that code isn't valid");
+      if (!packById(product!.id)) fail(400, 'codes give bonus bucks on beech-buck packs only');
+      promo = normalizePromoCode(promoCode);
+      bonus = await promoPreview(me, promo, product!, now);
+    }
+    const offer = await creatorOffer(db, product!);
+    const amount = salePriceCents(product!, offer) ?? fail(404, 'that product is not for sale');
+    // a free item has nothing to pay: it's claimed through /store/credit-purchase
+    if (amount === 0) fail(400, 'that one is free: claim it in the shop');
+    await db.query(
+      `INSERT INTO web_orders (id, user_id, product_id, amount_cents, sandbox, created_at, creator_submission_id, promo_code, provider)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'stripe')`,
+      [id, me, product!.id, amount, cfg.stripe!.sandbox, now, offer?.id ?? null, promo],
+    );
+    let s: { sessionId: string; url: string };
+    try {
+      s = await stripeSession(cfg.stripe!, {
+        userId: me,
+        productId: product!.id,
+        productName: product!.name,
+        amountCents: amount,
+        webOrderId: id,
+      });
+    } catch (e) {
+      // the order never got a session: nothing can pay it, so drop it
+      await db.query('DELETE FROM web_orders WHERE id = $1', [id]);
+      logEvent('stripe_checkout_error', { product: product!.id, message: (e as Error).message }, 'ERROR');
+      return c.json({ error: 'the checkout could not be opened right now: try again in a minute' }, 502);
+    }
+    await db.query('UPDATE web_orders SET provider_order_id = $2 WHERE id = $1', [id, s!.sessionId]);
+    logEvent('stripe_checkout', { product: product!.id, order: id, sandbox: cfg.stripe!.sandbox });
+    return c.json({ order: id, url: s!.url, ...(promo ? { promo, bonus: centsToBucks(bonus) } : {}) });
+  };
+  app.post('/store/stripe-checkout', requireUser, stripeCheckout);
+
+  /**
+   * Stripe's webhooks. Not session-authenticated: the signature is the
+   * authentication, checked over the raw body before anything is parsed.
+   * Answers 200 to anything verified and handled (including a repeat, so
+   * Stripe's retries are harmless), 400 otherwise.
+   */
+  app.post('/store/stripe/webhook', async (c) => {
+    if (!cfg.stripe) fail(404, 'not set up');
+    const s = cfg.stripe!;
+    const raw = new Uint8Array(await c.req.arrayBuffer());
+    if (!verifyStripeSignature(raw, c.req.header('Stripe-Signature'), s.webhookSecret)) {
+      logEvent('stripe_webhook', { outcome: 'bad_signature' }, 'WARNING');
+      return c.json({ error: 'invalid signature' }, 400);
+    }
+    let w: StripeEvent;
+    try {
+      w = JSON.parse(new TextDecoder().decode(raw)) as StripeEvent;
+    } catch {
+      return c.json({ error: 'invalid JSON' }, 400);
+    }
+    const type = w.type ?? '';
+    const obj = w.data?.object ?? {};
+    const log = (outcome: string, extra: Record<string, unknown> = {}, sev: 'INFO' | 'WARNING' | 'ERROR' = 'INFO') =>
+      logEvent('stripe_webhook', { type, outcome, order: obj.id ?? null, ...extra }, sev);
+    // a live event never grants in a test setup, and a test event never
+    // grants in a live one (Stripe sends both kinds to the same endpoint
+    // while the keys are being swapped)
+    if (w.livemode === true && s.sandbox) {
+      log('live_event_on_test', {}, 'ERROR');
+      return c.json({ error: 'live event in test mode' }, 400);
+    }
+    if (w.livemode === false && !s.sandbox) {
+      log('test_event_on_live', {}, 'ERROR');
+      return c.json({ error: 'test event in live mode' }, 400);
+    }
+
+    // find our order: the id we sent in metadata (and client_reference_id)
+    const ours = obj.metadata?.web_order ?? obj.client_reference_id;
+    const find = async () => {
+      if (ours && isUuid(ours)) return (await db.query<WebOrderRow>('SELECT * FROM web_orders WHERE id = $1', [ours]))[0];
+      return undefined;
+    };
+
+    if (type === 'checkout.session.completed') {
+      const o = await find();
+      if (!o || !obj.id || o.provider_order_id !== obj.id) {
+        log('unknown_order', {}, 'ERROR');
+        return c.json({ error: 'unknown order' }, 400);
+      }
+      // the session must be paid, for our order, our player, our price
+      if (obj.payment_status !== 'paid') {
+        log('unpaid_session', { payment_status: obj.payment_status }, 'ERROR');
+        return c.json({ error: 'session not paid' }, 400);
+      }
+      if (obj.metadata?.user_id && obj.metadata.user_id !== o.user_id) {
+        log('wrong_user', {}, 'ERROR');
+        return c.json({ error: 'wrong user' }, 400);
+      }
+      const currency = (obj.currency ?? '').toUpperCase();
+      if (currency !== 'USD' || Number(obj.amount_total) !== Number(o.amount_cents)) {
+        log('wrong_amount', { amount_total: obj.amount_total, want_cents: Number(o.amount_cents) }, 'ERROR');
+        return c.json({ error: 'incorrect amount' }, 400);
+      }
+      const testPayment = !w.livemode;
+      const { granted, promo } = await grantWebOrder(o, obj.id, 'stripe', testPayment);
+      log(granted.length ? 'granted' : 'already', { product: o.product_id, ...(promo ? { promo } : {}) });
+      return c.body(null, 200);
+    }
+
+    if (type === 'charge.refunded') {
+      const o = await find();
+      if (!o) {
+        log('unknown_order', {}, 'WARNING');
+        // nothing of ours to take back; don't make Stripe retry for days
+        return c.body(null, 200);
+      }
+      await cancelWebOrder(o);
+      log('revoked', { was: o.status });
+      return c.body(null, 200);
+    }
+
+    if (type === 'checkout.session.expired') {
+      const o = await find();
+      if (o && o.status === 'created') {
+        await cancelWebOrder(o);
+        log('expired', { was: o.status });
+      } else {
+        log('ignored');
+      }
+      return c.body(null, 200);
+    }
+
+    log('ignored');
+    return c.body(null, 200);
   });
 
   // ---------------------------------------------------------------- Steam Wallet (ISteamMicroTxn)
@@ -3374,7 +3621,10 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     const granted = await db.withTransaction(async (tx) => {
       const [order] = await tx.query<{ status: string }>('SELECT status FROM steam_orders WHERE order_id = $1 FOR NO KEY UPDATE', [oid]);
       if (order?.status === 'paid') return { rows: [] as { purchase_id: string }[], promo: null };
-      if (order?.status !== 'created') fail(409, 'the order is no longer open');
+      // Steam has taken the money: a cancel that landed meanwhile (another
+      // device, the overlay closing) doesn't stop the grant; a refund does
+      // (specs/tla/ShopOrders.tla, SFinGrant)
+      if (order?.status !== 'created' && order?.status !== 'canceled') fail(409, 'the order is no longer open');
       const rows = await tx.query<{ purchase_id: string }>(
         `WITH p AS (
            INSERT INTO purchases (user_id, store, transaction_id, product_id, environment, purchased_at, granted_at)
@@ -3383,7 +3633,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
            RETURNING id, user_id
          ), o AS (
            UPDATE steam_orders SET status = 'paid', trans_id = $2, paid_at = $5
-            WHERE order_id = $6 AND status = 'created' AND EXISTS (SELECT 1 FROM p)
+            WHERE order_id = $6 AND status IN ('created', 'canceled') AND EXISTS (SELECT 1 FROM p)
            RETURNING order_id
          )
          SELECT p.id AS purchase_id FROM p`,
@@ -4188,6 +4438,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   // to another account), under the shore token instead of a game session.
   // The provider's own sign-in sheet runs on this page now (accountPage.ts),
   // so the shore can link without going through the game.
+  app.patch('/shore-account/name', requireShoreAccount, updateScreenName);
   app.get('/shore-account/identities', requireShoreAccount, async (c) => {
     return c.json({ identities: await identitiesOf(c.get('user').id) });
   });

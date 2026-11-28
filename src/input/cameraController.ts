@@ -82,15 +82,21 @@ class OrbitCamera extends TargetCamera {
 
 export type ViewMode = 'diorama' | 'chair';
 
-/** Chair view: sitting on the sand, looking out to sea. */
+/** Chair view: standing/walking on the sand, looking out to sea. */
 export const CHAIR = {
   /** eye height above the sand (m) */
   eye: 1.15,
-  /** where the chair stands, world metres (sea is toward -Z) */
+  /** where the chair starts, world metres (sea is toward -Z) */
   seatX: 0,
   seatZ: WORLD_SIZE_Z / 2 - 5.5,
-  /** m/s when walking along the beach */
+  /** m/s when walking around the beach */
   walkSpeed: 1.8,
+  /** deepest water (m) allowed before the waterline blocks walking */
+  maxWaterDepth: 0.02,
+  /** foot clearance radius (m) checked around the walker against water */
+  waterMargin: 0.35,
+  /** margin (m) kept inside the edges of the beach */
+  edgeMargin: 1.5,
   fov: 0.95,
   minFov: 0.12,
   maxFov: 1.35,
@@ -131,9 +137,13 @@ export class CameraController {
   pitch = CHAIR.defaultPitch;
   fov = CHAIR.fov;
   seatX = CHAIR.seatX;
-  /** chair: walking along the beach, -1 (to your left) .. 1 (to your right); set by the on-screen buttons */
+  seatZ = CHAIR.seatZ;
+  /** chair: walking left/right, -1 (to your left) .. 1 (to your right); set by the on-screen buttons */
   walk = 0;
-  private walkVel = 0;
+  /** chair: walking forward/back, -1 (backward) .. 1 (forward); set by the on-screen buttons */
+  walkFwd = 0;
+  private walkVelX = 0;
+  private walkVelZ = 0;
   /** seconds the walk has been held (walking speeds up the longer you hold) */
   private walkHeld = 0;
   /** gliding along the shore to this x (the home button) */
@@ -141,6 +151,8 @@ export class CameraController {
   private glideZ: number | null = null;
   /** sand height lookup (set by main), so the chair sits on the real surface */
   groundHeight: (x: number, z: number) => number = () => 0.8;
+  /** water depth lookup (set by main), so chair walking stays out of the water; Infinity off-beach */
+  waterDepth: (x: number, z: number) => number = () => 0;
   private listeners: ((m: ViewMode) => void)[] = [];
 
   constructor(
@@ -190,11 +202,17 @@ export class CameraController {
     }
     if (m === this.mode) return;
     this.panVel.setAll(0);
+    this.walk = 0;
+    this.walkFwd = 0;
+    this.walkVelX = 0;
+    this.walkVelZ = 0;
+    this.walkHeld = 0;
     // stand up where you were sitting
     if (m === 'diorama') this.camera.target.x = Math.min(this.maxX, Math.max(this.minX, this.seatX));
     if (m === 'chair') {
       // sit facing where the diorama camera was looking, roughly
       this.seatX = Math.min(this.maxX - 2, Math.max(this.minX + 2, this.camera.target.x));
+      this.seatZ = this.drySeatZ(this.seatX, CHAIR.seatZ);
       this.yaw = 0;
       this.pitch = CHAIR.defaultPitch;
       this.fov = CHAIR.fov;
@@ -236,8 +254,8 @@ export class CameraController {
     const D0 = 300;
     const H0 = 2 * this.halfH;
     // chair end
-    const ground = this.groundHeight(this.seatX, CHAIR.seatZ);
-    const eye1 = new Vector3(this.seatX, (Number.isFinite(ground) ? ground : 0.8) + CHAIR.eye, CHAIR.seatZ);
+    const ground = this.groundHeight(this.seatX, this.seatZ);
+    const eye1 = new Vector3(this.seatX, (Number.isFinite(ground) ? ground : 0.8) + CHAIR.eye, this.seatZ);
     const cp = Math.cos(this.pitch);
     const fwd = new Vector3(-Math.sin(this.yaw) * cp, Math.sin(this.pitch), -Math.cos(this.yaw) * cp);
     const D1 = 12;
@@ -438,10 +456,12 @@ export class CameraController {
   /** Move along the shore to world x: glide there, or jump. */
   goTo(x: number, instant = false): void {
     this.panVel.setAll(0);
-    this.walkVel = 0;
+    this.walkVelX = 0;
+    this.walkVelZ = 0;
     if (instant) {
       this.glideX = null;
       this.seatX = x;
+      this.seatZ = this.drySeatZ(x, CHAIR.seatZ);
       this.camera.target.x = x;
       if (this.mode === 'chair') this.applyChair();
       return;
@@ -482,7 +502,7 @@ export class CameraController {
 
   /** Chair: turn the head (yaw right +, pitch up +). */
   look(dYaw: number, dPitch: number): void {
-    this.yaw = Math.max(-1.9, Math.min(1.9, this.yaw + dYaw));
+    this.yaw = ((((this.yaw + dYaw + Math.PI) % TAU) + TAU) % TAU) - Math.PI;
     this.pitch = Math.max(CHAIR.minPitch, Math.min(CHAIR.maxPitch, this.pitch + dPitch));
     this.applyChair();
   }
@@ -575,9 +595,94 @@ export class CameraController {
     this.camera.orthoRight = this.halfH * a;
   }
 
+  /** Deepest water (m) across a small footprint around (x, z); Infinity off-beach. */
+  private footWaterDepth(x: number, z: number): number {
+    const r = CHAIR.waterMargin;
+    return Math.max(
+      this.waterDepth(x, z),
+      this.waterDepth(x - r, z),
+      this.waterDepth(x + r, z),
+      this.waterDepth(x, z - r),
+      this.waterDepth(x, z + r),
+    );
+  }
+
+  /** Nearest dry Z at or inland of `preferredZ` for starting/resetting chair position. */
+  private drySeatZ(x: number, preferredZ: number): number {
+    const minZ = -WORLD_SIZE_Z / 2 + CHAIR.edgeMargin;
+    const maxZ = this.maxZ - CHAIR.edgeMargin;
+    const startZ = Math.min(maxZ, Math.max(minZ, preferredZ));
+    if (this.footWaterDepth(x, startZ) <= CHAIR.maxWaterDepth) return startZ;
+    let bestZ = startZ;
+    let bestD = this.footWaterDepth(x, startZ);
+    for (let z = startZ + 0.5; z <= maxZ; z += 0.5) {
+      const d = this.footWaterDepth(x, z);
+      if (d <= CHAIR.maxWaterDepth) return z;
+      if (d < bestD) {
+        bestD = d;
+        bestZ = z;
+      }
+    }
+    return bestZ;
+  }
+
+  /** Move the chair walker by (dx, dz), staying within beach bounds and out of water. */
+  private tryMoveChair(dx: number, dz: number): void {
+    const dist = Math.hypot(dx, dz);
+    if (dist < 1e-6) return;
+    const minX = this.minX + CHAIR.edgeMargin;
+    const maxX = this.maxX - CHAIR.edgeMargin;
+    const minZ = -WORLD_SIZE_Z / 2 + CHAIR.edgeMargin;
+    const maxZ = this.maxZ - CHAIR.edgeMargin;
+    const steps = Math.max(1, Math.ceil(dist / 0.25));
+    const sx = dx / steps;
+    const sz = dz / steps;
+    const canStep = (nx: number, nz: number, curDepth: number): boolean => {
+      if (nx < minX || nx > maxX || nz < minZ || nz > maxZ) return false;
+      const d = this.footWaterDepth(nx, nz);
+      if (!Number.isFinite(d)) return false;
+      if (d <= CHAIR.maxWaterDepth) return true;
+      return curDepth > CHAIR.maxWaterDepth && d < curDepth;
+    };
+    for (let i = 0; i < steps; i++) {
+      const curX = this.seatX;
+      const curZ = this.seatZ;
+      const curDepth = this.footWaterDepth(curX, curZ);
+      const tx = Math.min(maxX, Math.max(minX, curX + sx));
+      const tz = Math.min(maxZ, Math.max(minZ, curZ + sz));
+      if (canStep(tx, tz, curDepth)) {
+        this.seatX = tx;
+        this.seatZ = tz;
+      } else if (sx !== 0 && canStep(tx, curZ, curDepth)) {
+        this.seatX = tx;
+        this.walkVelZ = 0;
+      } else if (sz !== 0 && canStep(curX, tz, curDepth)) {
+        this.seatZ = tz;
+        this.walkVelX = 0;
+      } else {
+        this.walkVelX = 0;
+        this.walkVelZ = 0;
+        break;
+      }
+    }
+  }
+
+  /** If a wave, rising tide, or dug pool puts water under the walker, nudge back inland onto dry sand. */
+  private retreatFromWater(dt: number): void {
+    const curDepth = this.footWaterDepth(this.seatX, this.seatZ);
+    if (curDepth <= CHAIR.maxWaterDepth) return;
+    const maxZ = this.maxZ - CHAIR.edgeMargin;
+    if (this.seatZ >= maxZ) return;
+    const nextZ = Math.min(maxZ, this.seatZ + Math.min(0.5, CHAIR.walkSpeed * 1.5 * dt));
+    const nextDepth = this.footWaterDepth(this.seatX, nextZ);
+    if (Number.isFinite(nextDepth) && (nextDepth <= CHAIR.maxWaterDepth || nextDepth < curDepth)) {
+      this.seatZ = nextZ;
+    }
+  }
+
   private applyChair(): void {
-    const ground = this.groundHeight(this.seatX, CHAIR.seatZ);
-    this.chairCam.position.set(this.seatX, (Number.isFinite(ground) ? ground : 0.8) + CHAIR.eye, CHAIR.seatZ);
+    const ground = this.groundHeight(this.seatX, this.seatZ);
+    this.chairCam.position.set(this.seatX, (Number.isFinite(ground) ? ground : 0.8) + CHAIR.eye, this.seatZ);
     // FreeCamera looks down +Z at rotation 0; the sea is toward -Z
     this.chairCam.rotation.set(-this.pitch, Math.PI + this.yaw, 0);
     this.chairCam.fov = this.fov;
@@ -594,31 +699,50 @@ export class CameraController {
       return;
     }
     if (this.mode === 'chair') {
-      // keys / TV remote: look around, +/- zoom
+      // keys: Q/E turn head, R/F tilt up/down, +/- zoom
       if (this.held.size) {
         const s = dt * 0.9;
-        const up = (this.held.has('w') || this.held.has('r') ? s : 0) - (this.held.has('s') || this.held.has('f') ? s : 0);
-        this.look((this.held.has('d') ? s : 0) - (this.held.has('a') ? s : 0), up);
+        const dYaw = (this.held.has('e') ? s : 0) - (this.held.has('q') ? s : 0);
+        const dPitch = (this.held.has('r') ? s : 0) - (this.held.has('f') ? s : 0);
+        if (dYaw || dPitch) this.look(dYaw, dPitch);
         if (this.held.has('+')) this.zoomAt(Math.exp(-dt * 1.2), 0, 0);
         if (this.held.has('-')) this.zoomAt(Math.exp(dt * 1.2), 0, 0);
       }
-      // walking along the beach (buttons, or Q/E). Facing the sea, your right is -X.
-      const dir = Math.max(-1, Math.min(1, this.walk + (this.held.has('e') ? 1 : 0) - (this.held.has('q') ? 1 : 0)));
+      // walking around the beach (on-screen buttons, or WASD / arrow keys)
+      const rightIn = Math.max(-1, Math.min(1, this.walk + (this.held.has('d') ? 1 : 0) - (this.held.has('a') ? 1 : 0)));
+      const fwdIn = Math.max(-1, Math.min(1, this.walkFwd + (this.held.has('w') ? 1 : 0) - (this.held.has('s') ? 1 : 0)));
+      const mag = Math.hypot(rightIn, fwdIn);
+      const norm = mag > 1 ? 1 / mag : 1;
+      const rNorm = rightIn * norm;
+      const fNorm = fwdIn * norm;
       // hold longer to stride out (up to 4x): beaches down the shore are 34 m apart
-      this.walkHeld = dir ? this.walkHeld + dt : 0;
-      if (dir) this.glideX = null;
+      this.walkHeld = mag > 0 ? this.walkHeld + dt : 0;
+      if (mag > 0) this.glideX = null;
       const speed = CHAIR.walkSpeed * (1 + Math.min(3, Math.max(0, this.walkHeld - 1) * 1.2));
-      this.walkVel += (dir * speed - this.walkVel) * Math.min(1, dt * 4);
+      // horizontal camera basis (at yaw = 0, facing sea is -Z and right is -X)
+      const sinY = Math.sin(this.yaw);
+      const cosY = Math.cos(this.yaw);
+      const targetVx = (-sinY * fNorm - cosY * rNorm) * speed;
+      const targetVz = (-cosY * fNorm + sinY * rNorm) * speed;
+      const blend = Math.min(1, dt * 6);
+      this.walkVelX += (targetVx - this.walkVelX) * blend;
+      this.walkVelZ += (targetVz - this.walkVelZ) * blend;
       if (this.glideX !== null) {
-        const d = this.glideX - this.seatX;
-        this.seatX += d * Math.min(1, dt * 2.5) + Math.sign(d) * Math.min(Math.abs(d), dt * 2);
-        if (Math.abs(d) < 0.02) this.glideX = null;
+        const dx = this.glideX - this.seatX;
+        const stepX = dx * Math.min(1, dt * 2.5) + Math.sign(dx) * Math.min(Math.abs(dx), dt * 2);
+        const goalZ = this.drySeatZ(this.glideX, CHAIR.seatZ);
+        const dz = goalZ - this.seatZ;
+        const stepZ = dz * Math.min(1, dt * 2.5);
+        this.tryMoveChair(stepX, stepZ);
+        if (Math.abs(this.glideX - this.seatX) < 0.02) this.glideX = null;
       }
-      if (Math.abs(this.walkVel) > 1e-3) {
-        this.seatX = Math.min(this.maxX - 1.5, Math.max(this.minX + 1.5, this.seatX - this.walkVel * dt));
+      if (Math.hypot(this.walkVelX, this.walkVelZ) > 1e-3) {
+        this.tryMoveChair(this.walkVelX * dt, this.walkVelZ * dt);
       } else {
-        this.walkVel = 0;
+        this.walkVelX = 0;
+        this.walkVelZ = 0;
       }
+      this.retreatFromWater(dt);
       this.applyChair(); // the sand under the chair can change
       return;
     }

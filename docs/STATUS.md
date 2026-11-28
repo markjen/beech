@@ -270,12 +270,18 @@ accepted the repo's default branch, so the deploy job ran only there.
   haze over about 900 m) plus static shore either side, built from the same
   rest profile. Sun and moon discs are projected exactly. The brush radius
   depends on distance so it stays the same size on screen.
-- **Walking the chair:** hold the ‹ › buttons (chair view only) or Q/E to
-  move along the beach at 1.8 m/s (eased), across your neighbors' beaches
-  too. The seat height follows your sand, then a neighbor's, then the rest
-  profile. The static shore shader (`shoreFragment`) paints the swash: a wet
-  band and a foam edge that rises and falls with the swell, phase-shifted
-  along the shore.
+- **Walking the chair:** hold the 4-way directional buttons (chair view only)
+  or WASD / arrow keys to walk anywhere around the beach (forward, back, left,
+  right relative to where you're looking, with full 360° turning and Q/E to
+  turn) at 1.8 m/s (ramping up to 4× when held), across your neighbors' beaches
+  and inland sand rows too. Walking checks `cam.waterDepth` (live swash, tide,
+  dug pools, neighbor water, rest profile) with a 0.35 m foot clearance so the
+  waterline blocks you from going in the water (sliding along the shore when
+  walking diagonally, and nudging you back inland if a wave or rising tide
+  reaches your feet). The seat height follows your sand, then a neighbor's,
+  then the rest profile. The static shore shader (`shoreFragment`) paints the
+  swash: a wet band and a foam edge that rises and falls with the swell,
+  phase-shifted along the shore.
 - **Ambient/TV:** `src/ui/ambient.ts` hides idle controls and holds a screen
   wake lock. There's a full-screen button. Android TV gets the leanback
   launcher, optional touchscreen, and `res/drawable-xhdpi/banner.png`
@@ -332,6 +338,63 @@ accepted the repo's default branch, so the deploy job ran only there.
   `price`. The server has an `inventory` table (migration 2) and
   `GET /api/inventory` for owned, unexpired non-free items. Nothing writes to
   it yet.
+
+## More state machines and proofs (2026-11-28)
+
+Four more machines are modelled in TLA+ and tested against the real
+server (docs/STATE_MACHINES.md): `Claw.tla`, `DigFinds.tla`,
+`ShopOrders.tla` and `Checkpoints.tla`. They found four bugs, all fixed:
+pulls in the same millisecond collided (migration 47 gives each pull an
+id); an app-store refund that arrived before the purchase was recorded
+didn't stick (`store_refunds`, migration 48, and a lock per store
+transaction); a Steam cancel during finalize left a charged order
+ungranted (finalize now grants it; the refund sync refunds canceled
+orders); and checkpoint room checks raced their inserts (now one
+transaction under the player lock). New LemmaScript proofs
+(docs/VERIFICATION.md): the referral ladder (`ladderAt`), the beach and
+checkpoint limits (`server/src/limits.ts`, which now holds `BEACH_CAP`),
+what a save keeps (`objectsToSave`) and the app's restore check. Item
+sizes are floating point, so they aren't proved.
+
+## Merch store lineup (2026-11-28)
+
+The store's second lineup, reviewed with Mark:
+- shirt designs with the beach straight from above or from the side, in a
+  square or a circle on soft neutral bases;
+- a one-colour line mark instead of the 3D block logo;
+- line drawings that wrap round a bottle, a tumbler and a mug;
+- 27 products in all.
+
+Anything with beech on it is sold at cost, per size, from Printful's own
+prices for this store (`scripts/merch-catalog.mjs` →
+`generated/merchCatalogData.ts`). With a buyer's own beach (top view
+square, or the whole beach on wall art), items keep a margin.
+
+Print files come from three places:
+- `scripts/merch-art.mjs` draws the brand files;
+- `scripts/merch-sample.mts` renders the sample beach, Sunny cove;
+- `merchPrint.ts` renders a buyer's beach.
+
+Each print is placed with Printful file positions.
+
+Not yet: the sunglasses, all-over panel items, Tapstitch (no API), a
+buyer's beach from the side. No order-model change. See
+[MERCH_STORE.md](MERCH_STORE.md).
+
+## Merch store (2026-11-27)
+
+store.beech.games sells a beech tee, hoodie, dad hat, flip flops and
+beach towel, the whole set (all five) at $160, and "your beach" tees
+and hoodies that print the shopper's own beach as it was at checkout.
+Stripe Checkout takes the payment; Printful prints and ships. The
+sunglasses are out of the store for now: nobody prints them on demand,
+so they need a bulk order sent to Printful's warehouse first, and they
+come back as their own product when that is done. Built model-first
+(`specs/tla/MerchOrders.tla`); off until the
+owner sets up Stripe and Printful, and the page says it opens soon. Server:
+`merchCatalog.ts`, `merchProviders.ts`, `merch.ts` (API at `/api/merch/*`),
+`merchSite.ts` (the page, on the store host and at `/merch-store`),
+migration 45. See [MERCH_STORE.md](MERCH_STORE.md).
 
 ## Live handover: no blank beach (2026-11-27)
 
@@ -1912,3 +1975,8 @@ Five findings, all fixed with a test each:
 ## How beech was built: /story (2026-11-27)
 
 https://beech.games/story (`server/src/story.ts`) tells how beech was built in a few days by Mark and the agents (Claude, Antigravity, Muse, Codex). It is linked from the landing footer as "How it was built" and served on the landing host. The source logs, one per agent, are in `docs/story/`. Codex's log is still to come; add it to `docs/story/` and the page when it exists.
+
+## Screen names (2026-11-28)
+
+Players can choose a screen name instead of using their real name from Google/Apple/Steam. Migration 49 adds `users.name_chosen` (`BOOLEAN NOT NULL DEFAULT false`); once set via `PATCH /api/me` (in-game Manage → Settings, `src/ui/accountPanel.ts`) or `PATCH /account/api/name` (beechshore `/account`, `server/src/accountPage.ts`), subsequent sign-ins keep the chosen name instead of overwriting it with the provider's name (`WHERE NOT name_chosen`). Account merges (`server/src/accountMerge.ts`) preserve a chosen screen name when the survivor hasn't chosen one. Validation (`checkScreenName` in `server/src/inbox.ts`) allows 1–30 characters and blocks links, handles, phone numbers, and blocked words. No TLA+ model: single-row user profile attribute updated atomically.
+

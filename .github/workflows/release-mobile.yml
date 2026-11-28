@@ -3,6 +3,11 @@ name: Release to stores
 # Manual: Actions -> "Release to stores" -> Run workflow.
 # Needs the secrets listed in docs/MOBILE.md. Bump the version first with
 #   node scripts/set-version.mjs <version> <build>
+# iOS also builds automatically after every successful production deploy
+# (docs/MOBILE.md, "iOS auto-build"): the build number is this workflow's
+# run number, so it always goes up and is never committed back to main.
+# Android stays manual: it is a hosted shell, so web deploys reach it
+# without a rebuild.
 on:
   workflow_dispatch:
     inputs:
@@ -14,10 +19,14 @@ on:
         description: Upload iOS build to App Store Connect (TestFlight)
         type: boolean
         default: true
+  workflow_run:
+    workflows: ["Deploy production (Google Cloud Run)"]
+    types: [completed]
+    branches: [main]
 
 jobs:
   android:
-    if: ${{ inputs.android }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.android }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -59,14 +68,64 @@ jobs:
           status: draft
 
   ios:
-    if: ${{ inputs.ios }}
+    # Manual dispatch, or an auto-build after a successful production
+    # deploy. On workflow_run the inputs are empty, so the gate has to
+    # name the event; a plain `inputs.ios` would silently skip the job.
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.ios) || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main') }}
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # workflow_run checks out the default branch, not the deployed
+          # commit; build exactly what deployed, not whatever main has
+          # since (a later, undeployed commit must wait for its own deploy).
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+      # Auto-build (docs/MOBILE.md, "iOS auto-build"): the build number is
+      # this workflow's run number — monotonic across manual and auto runs,
+      # so Apple never sees a duplicate, and nothing is committed back to
+      # main (no push-loop risk). The checked-in CURRENT_PROJECT_VERSION
+      # lags what is in TestFlight; see the manual guard below.
+      - name: Auto build number
+        if: ${{ github.event_name == 'workflow_run' }}
+        run: |
+          node scripts/set-version.mjs "$(node -p "require('./package.json').version")" "${{ github.run_number }}"
+          echo "iOS build number is ${{ github.run_number }} (this workflow's run number)"
+      # Manual releases must bump first when the checked-in marketing
+      # version is the one auto-builds have been uploading: the build
+      # number has to be ahead of every auto-build number already
+      # uploaded for that version, or Apple rejects the upload as a
+      # duplicate. Build numbers restart per marketing version, so a
+      # manual release that bumps the marketing version skips the check.
+      # Fails fast here instead of five minutes into the archive.
+      - name: Manual build number must be ahead of auto builds
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          checked_in_build=$(grep -m1 'CURRENT_PROJECT_VERSION =' ios/App/App.xcodeproj/project.pbxproj | grep -Eo '[0-9]+')
+          checked_in_version=$(grep -m1 'MARKETING_VERSION =' ios/App/App.xcodeproj/project.pbxproj | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+')
+          # The marketing version auto-builds have been uploading: the
+          # package.json version at the head of the last successful
+          # auto-build run. No successful auto-build yet means nothing
+          # can collide, so the check is skipped.
+          last_auto_sha=$(gh api "repos/${{ github.repository }}/actions/workflows/release-mobile.yml/runs?event=workflow_run&per_page=5" --jq '[.workflow_runs[] | select(.conclusion == "success")] | first | .head_sha // empty')
+          if [ -z "$last_auto_sha" ]; then
+            echo "No successful auto-build yet; the run-number check does not apply."
+            exit 0
+          fi
+          auto_version=$(gh api "repos/${{ github.repository }}/contents/package.json?ref=${last_auto_sha}" -H "Accept: application/vnd.github.raw" | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).version")
+          if [ "$checked_in_version" != "$auto_version" ]; then
+            echo "Checked-in marketing version $checked_in_version differs from the version auto-builds have been uploading ($auto_version); build numbers restart per version, so no collision check applies."
+            exit 0
+          fi
+          if [ "$checked_in_build" -le $(( ${{ github.run_number }} - 1 )) ]; then
+            echo "::error::CURRENT_PROJECT_VERSION is $checked_in_build for $checked_in_version, but run numbers up to $(( ${{ github.run_number }} - 1 )) are already spoken for by earlier release-mobile runs (auto-builds upload the run number as the build number). Bump it first: node scripts/set-version.mjs <version> <build> with a build number above $(( ${{ github.run_number }} - 1 )), or bump the marketing version (e.g. 1.0.0 -> 1.0.1) to restart build numbers. See docs/MOBILE.md, 'iOS auto-build'."
+            exit 1
+          fi
       - run: npm ci && npm test && npm run build && npx cap sync ios
         env:
           BEECH_NATIVE_PUSH: ${{ vars.NATIVE_PUSH }}

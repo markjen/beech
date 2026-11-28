@@ -48,6 +48,7 @@ export interface MergePreview {
 interface MergeAccount {
   id: string;
   name: string;
+  nameChosen: boolean;
   email: string | null;
   neighborCode: string;
   creditCents: number;
@@ -127,12 +128,13 @@ async function userRow(q: Db, id: string): Promise<MergeAccount | null> {
   const rows = await q.query<{
     id: string;
     name: string;
+    name_chosen: boolean;
     email: string | null;
     neighbor_code: string;
     credit_cents: string;
     creator_credit_debt_cents: string;
   }>(
-    'SELECT id, name, email, neighbor_code, credit_cents, creator_credit_debt_cents FROM users WHERE id = $1',
+    'SELECT id, name, name_chosen, email, neighbor_code, credit_cents, creator_credit_debt_cents FROM users WHERE id = $1',
     [id],
   );
   const r = rows[0];
@@ -140,6 +142,7 @@ async function userRow(q: Db, id: string): Promise<MergeAccount | null> {
   return {
     id: r.id,
     name: r.name,
+    nameChosen: Boolean(r.name_chosen),
     email: r.email,
     neighborCode: r.neighbor_code,
     creditCents: num(r.credit_cents),
@@ -551,7 +554,9 @@ export async function planAccountMerge(
       inventoryMerges,
       referralReranks,
       inboxFolds,
-      takeName: survivor.name === '' && absorbed.name !== '',
+      takeName:
+        (survivor.name === '' && absorbed.name !== '') ||
+        (!survivor.nameChosen && absorbed.nameChosen && absorbed.name !== ''),
       takeEmail: survivor.email === null && absorbed.email !== null,
       moveDigState: absorbedDig && !survivorDig,
       other,
@@ -769,8 +774,10 @@ export async function executeAccountMerge(tx: Db, plan: MergePlan, now: number):
   await tx.query('UPDATE inbox SET user_id = $1 WHERE user_id = $2', [s, a]);
 
   // --- the absorbed account itself ------------------------------------------
-  // name / email only fill blanks on the survivor, never overwrite
-  if (plan.internal.takeName) await tx.query('UPDATE users SET name = $1 WHERE id = $2', [absorbed.name, s]);
+  // name / email only fill blanks on the survivor (or keep a chosen screen name), never overwrite a chosen one
+  if (plan.internal.takeName) {
+    await tx.query('UPDATE users SET name = $1, name_chosen = $2 WHERE id = $3', [absorbed.name, absorbed.nameChosen, s]);
+  }
   if (plan.internal.takeEmail) await tx.query('UPDATE users SET email = $1 WHERE id = $2', [absorbed.email, s]);
   // identities move first, so a sign-in with the absorbed provider lands on
   // the survivor from here on; sessions die with the user row (and take

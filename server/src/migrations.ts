@@ -1075,6 +1075,94 @@ const MIGRATIONS: string[] = [
   CREATE INDEX inbox_unpushed ON inbox (user_id)
     WHERE pushed_at IS NULL AND kind IN ('visit', 'gift', 'neighbor_request', 'neighbor_linked', 'invite_settled', 'tide', 'pet_fed', 'system');
   `,
+
+  // 45: the merch store (docs/MERCH_STORE.md, specs/tla/MerchOrders.tla).
+  // One row per checkout; Stripe says when it's paid (or expired, or
+  // refunded), and the submit worker claims a paid order (claim + claimed_at)
+  // to send it to Printful. A "your beach" line keeps the beach as it was at
+  // checkout (design + its look), so later building never changes the print;
+  // print_key names its print file for Printful to fetch.
+  `
+  CREATE TABLE merch_orders (
+    id UUID PRIMARY KEY,
+    status TEXT NOT NULL CHECK (status IN ('open', 'expired', 'paid', 'sending', 'sent', 'shipped', 'canceled', 'refunded')),
+    user_id UUID REFERENCES users (id) ON DELETE SET NULL,
+    stripe_session TEXT NOT NULL UNIQUE,
+    payment_intent TEXT UNIQUE,
+    subtotal_cents INTEGER NOT NULL CHECK (subtotal_cents > 0),
+    shipping_cents INTEGER NOT NULL CHECK (shipping_cents >= 0),
+    total_cents INTEGER,
+    tax_cents INTEGER,
+    email TEXT,
+    recipient JSONB,
+    claim UUID,
+    claimed_at BIGINT,
+    printful_id BIGINT,
+    tracking JSONB,
+    created_at BIGINT NOT NULL,
+    paid_at BIGINT,
+    sent_at BIGINT,
+    confirmed_at BIGINT,
+    shipped_at BIGINT,
+    refunded_at BIGINT
+  );
+  CREATE INDEX merch_orders_work ON merch_orders (status) WHERE status IN ('paid', 'sending', 'sent');
+  CREATE INDEX merch_orders_user ON merch_orders (user_id);
+  CREATE TABLE merch_lines (
+    id BIGSERIAL PRIMARY KEY,
+    order_id UUID NOT NULL REFERENCES merch_orders (id) ON DELETE CASCADE,
+    product TEXT NOT NULL,
+    label TEXT NOT NULL,
+    choice JSONB NOT NULL,
+    parts JSONB,
+    quantity INTEGER NOT NULL CHECK (quantity BETWEEN 1 AND 10),
+    unit_cents INTEGER NOT NULL CHECK (unit_cents > 0),
+    beach_id UUID REFERENCES beach (id) ON DELETE SET NULL,
+    beach_name TEXT,
+    design BYTEA,
+    design_location TEXT,
+    design_pier BOOLEAN,
+    design_sections TEXT,
+    print_key TEXT UNIQUE
+  );
+  CREATE INDEX merch_lines_order ON merch_lines (order_id);
+  `,
+  // 46: Stripe web checkout (docs/STRIPE_PAYMENTS.md) — the backup to
+  // Xsolla. Stripe payments are purchases with store 'stripe', granted and
+  // revoked through the same plumbing. (Numbered 46, not 45, because main's
+  // 45 is the merch store, which landed while this branch was open.)
+  `
+  ALTER TABLE purchases DROP CONSTRAINT purchases_store_check;
+  ALTER TABLE purchases ADD CONSTRAINT purchases_store_check CHECK (store IN ('apple', 'google', 'dev', 'xsolla', 'steam', 'stripe'));
+  `,
+  // 47: each pull gets its own id (specs/tla/Claw.tla). The key was
+  // (user_id, pool, created_at), so two goes by one player on one machine in
+  // the same millisecond (a free ball and a paid one from two devices)
+  // collided: the second failed with a 500, and a unique prize claimed for it
+  // was left owned by nobody's bag. An account merge could collide the same way.
+  `
+  ALTER TABLE pulls DROP CONSTRAINT pulls_pkey;
+  ALTER TABLE pulls ADD COLUMN id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY;
+  CREATE INDEX pulls_user_pool ON pulls (user_id, pool, created_at);
+  `,
+  // 48: refunds the stores told us about (specs/tla/ShopOrders.tla). A refund
+  // notification can come for a purchase the app hasn't posted yet (checked
+  // with the store just before the refund, recorded just after): kept here,
+  // so recording it then refuses instead of granting a refunded purchase.
+  `
+  CREATE TABLE store_refunds (
+    store TEXT NOT NULL,
+    transaction_id TEXT NOT NULL,
+    refunded_at BIGINT NOT NULL,
+    PRIMARY KEY (store, transaction_id)
+  );
+  `,
+  // 49: player-chosen screen names. When true, subsequent sign-ins from
+  // Google/Apple/Steam keep the chosen name instead of overwriting it with
+  // the provider's name.
+  `
+  ALTER TABLE users ADD COLUMN name_chosen BOOLEAN NOT NULL DEFAULT false;
+  `,
 ];
 
 /** Apply migrations up to `upTo` (default: all). Tests use `upTo` to check a migration on older data. */

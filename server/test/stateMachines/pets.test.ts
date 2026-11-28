@@ -159,6 +159,31 @@ describe('pets: one transition at a time', () => {
     expect(await where(o)).toEqual({ onBeach: [o.beaches[1]], bag: 1 });
   });
 
+  it('vacuum: stow a beach’s pet, then a different pet goes on the same beach', async () => {
+    const o = await owner();
+    await s.grant(o.token, 'pet-crab');
+    await s.grant(o.token, 'pet-seal');
+    expect((await adoptShop(o, o.beaches[0], 'crab')).status).toBe(200);
+    expect((await adoptShop(o, o.beaches[1], 'seal')).status).toBe(200);
+    // vacuum the crab off the first beach: it goes back in the bag, still Pip
+    const stowed = (await (await stow(o, o.beaches[0])).json()) as { pet: { id: number; species: string; name: string } };
+    expect(stowed.pet).toMatchObject({ species: 'crab', name: 'Pip' });
+    expect(await where(o)).toEqual({ onBeach: [o.beaches[1]], bag: 1 });
+    // and the seal from the second beach takes its place
+    const seal = ((await (await stow(o, o.beaches[1])).json()) as { pet: { id: number } }).pet;
+    expect((await place(o, o.beaches[0], seal.id)).status).toBe(200);
+    expect(await where(o)).toEqual({ onBeach: [o.beaches[0]], bag: 1 });
+    expect((await bag(o)).map((p) => p.species)).toEqual(['crab']);
+  });
+
+  it('stow on a beach with no pet is a 404 and nothing moves', async () => {
+    const o = await owner();
+    await s.grant(o.token, 'pet-crab');
+    expect((await adoptShop(o, o.beaches[0], 'crab')).status).toBe(200);
+    expect((await stow(o, o.beaches[1])).status).toBe(404);
+    expect(await where(o)).toEqual({ onBeach: [o.beaches[0]], bag: 0 });
+  });
+
   it('a pet can be moved to a new spot on its beach, kept on the slab', async () => {
     const o = await owner();
     await s.grant(o.token, 'pet-octopus');

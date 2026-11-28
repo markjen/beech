@@ -339,6 +339,15 @@ async function boot() {
     objects: [],
     tickMs: 0,
   };
+  // water depth at world (x, z) so chair walking stays on dry sand (Infinity past the back of a beach without inland rows)
+  cam.waterDepth = (x, z) => {
+    const h = picker.heightAt(x, z);
+    if (Number.isFinite(h)) return Math.max(picker.waterAt(x, z), info.tide - h);
+    const n = neighbors?.heightAtWorld(x, z) ?? NaN;
+    if (Number.isFinite(n)) return Math.max(neighbors!.waterAtWorld(x, z), info.tide - n);
+    if (z > WORLD_SIZE_Z / 2) return Infinity;
+    return Math.max(0, info.tide - restHeight(x + WORLD_SIZE_X / 2, z - ORIGIN_Z, seed));
+  };
   let prevT = 0;
   let frameAt = performance.now();
   let frames = 0;
@@ -1765,19 +1774,27 @@ async function boot() {
     return { title: `${mine || 'Your beach'} · ${beach.name}` };
   };
 
-  // chair: hold ‹ or › to walk the chair along the beach (and over to the neighbors)
+  // chair: hold the arrows to walk around the beach (and over to the neighbors)
   const walkGroup = document.createElement('div');
   walkGroup.className = 'hud-walk';
-  for (const [dir, icon, label] of [[-1, 'left', 'Walk left'], [1, 'right', 'Walk right']] as const) {
+  const walkDirs: readonly [axis: 'x' | 'z', dir: -1 | 1, icon: 'up' | 'down' | 'left' | 'right', label: string, area: string][] = [
+    ['z', 1, 'up', 'Walk forward', 'up'],
+    ['x', -1, 'left', 'Walk left', 'left'],
+    ['z', -1, 'down', 'Walk back', 'down'],
+    ['x', 1, 'right', 'Walk right', 'right'],
+  ];
+  for (const [axis, dir, icon, label, area] of walkDirs) {
     const b = hud.button(icon, label);
-    b.dataset.walk = String(dir);
+    b.dataset.walk = area;
     const stop = () => {
-      if (cam.walk === dir) cam.walk = 0;
+      if (axis === 'x' && cam.walk === dir) cam.walk = 0;
+      if (axis === 'z' && cam.walkFwd === dir) cam.walkFwd = 0;
       b.classList.remove('pressed');
     };
     b.addEventListener('pointerdown', (e) => {
       e.preventDefault();
-      cam.walk = dir;
+      if (axis === 'x') cam.walk = dir;
+      else cam.walkFwd = dir;
       b.classList.add('pressed');
     });
     b.addEventListener('pointerup', stop);
@@ -2460,6 +2477,9 @@ async function boot() {
       animals.setPet(pet ? { species: pet.species, name: pet.name, mood: pet.mood, home: pet.home ?? null } : null, animalEnv);
       petForReminder = pet && { name: pet.name, lastFedAt: pet.lastFedAt };
       if (settings.petReminders) updatePetReminder();
+      // the bag shows the live beach's placed pet, with a vacuum button
+      const bId = sync.id && sync.id !== LOCAL_BEACH ? sync.id : undefined;
+      inventory.setPlacedPet(pet && bId ? { species: pet.species, name: pet.name, beachId: bId } : null);
     };
     const refreshPet = () => {
       const userId = account.user?.id;
@@ -2546,6 +2566,25 @@ async function boot() {
           showToast(uiRoot, err instanceof Error ? err.message : 'Couldn’t put the pet away.');
         });
     };
+    /** Vacuum the placed pet off a beach and back into the bag (docs/PETS.md):
+     * the bag's vacuum button (two taps to confirm), so a different pet can
+     * take its place. The bag stays open: the swap happens right there. */
+    const vacuumPet = (beachId: string) => {
+      if (!animalsApi) return;
+      cancelPetHand();
+      void animalsApi
+        .stowPet(beachId)
+        .then((r) => {
+          if (isLive(beachId)) applyPet(null);
+          inventory.setBagPets(r.bag);
+          haptics.impact('medium');
+          showPaneToast(placeWrap, `${r.pet.name || petKind(r.pet.species).name} is in your bag`);
+        })
+        .catch((err: unknown) => {
+          showToast(uiRoot, err instanceof Error ? err.message : 'Couldn’t vacuum the pet up.');
+        });
+    };
+    inventory.onVacuumPet = (beachId) => vacuumPet(beachId);
     let petBusy = false;
     setPetDown = (hit) => {
       const p = petInHand;
@@ -2576,7 +2615,7 @@ async function boot() {
         return;
       }
       if (animals.snapshot().isPet) {
-        showToast(uiRoot, 'This beach has a pet.');
+        showToast(uiRoot, 'This beach already has a pet — vacuum it up from your bag to swap.');
         return;
       }
       petBusy = true;
@@ -3595,6 +3634,13 @@ async function boot() {
     });
     refreshOwned = () => {
       void loadOwned();
+    };
+    // the trade-in counts go stale while you pick things up off the beach
+    // (the server counts what's on it as last saved): save first, then
+    // re-fetch, so the bag shows what's actually off the beach now
+    inventory.onOpen = () => {
+      if (!acct.user) return;
+      void store.flushAll().then(() => refreshOwned());
     };
     acct.onChange(() => void loadOwned());
     inventory.setSignIn(acct.user ? null : showSignIn);

@@ -266,7 +266,7 @@ Actions variables, and the Play Data safety form line for the push
 token (device IDs). See `docs/INBOX_NOTIFICATIONS.md`, "Turning on
 push". iOS push is APNs directly, not Firebase (same doc, §B).
 
-## 8. Push tick (Cloud Scheduler)
+## 8. Scheduler ticks (Cloud Scheduler)
 
 Push delivery is ticked once a minute by Cloud Scheduler
 (`docs/INBOX_NOTIFICATIONS.md`, "Push"): the `beech-push-tick` job
@@ -279,15 +279,23 @@ by GitHub Actions, not Terraform, so the job's target URL comes from
 the `beech_service_url` variable (the run.app URL — it does not
 change across revisions or redeploys).
 
-The job was created with gcloud on 2026-11-26, before this
-configuration existed, and then imported into state — do not recreate
-it in the console. The imports used:
+The merch sweep is ticked the same way (`docs/MERCH_STORE.md`,
+"Sweep"): the `beech-merch-tick` job POSTs `/api/merch/tick` every
+minute with the same service account. It moved off the in-process
+timer in PR #211 — the sweep's first query measured ~1s wall-clock on
+an idle throttled instance and kept tripping the slow-database-queries
+alert, the same failure mode as the push tick.
+
+The jobs were created with gcloud (push on 2026-11-26, merch on
+2026-11-28), before this configuration existed, and then imported
+into state — do not recreate them in the console. The imports used:
 
 ```bash
 cd infra
 terraform import google_service_account.beech_scheduler 'projects/beech-prod/serviceAccounts/beech-scheduler@beech-prod.iam.gserviceaccount.com'
 terraform import google_cloud_run_v2_service_iam_member.beech_scheduler_invoker 'projects/beech-prod/locations/us-central1/services/beech roles/run.invoker serviceAccount:beech-scheduler@beech-prod.iam.gserviceaccount.com'
 terraform import google_cloud_scheduler_job.beech_push_tick 'projects/beech-prod/locations/us-central1/jobs/beech-push-tick'
+terraform import google_cloud_scheduler_job.beech_merch_tick 'projects/beech-prod/locations/us-central1/jobs/beech-merch-tick'
 terraform import 'google_project_service.apis["cloudscheduler.googleapis.com"]' beech-prod/cloudscheduler.googleapis.com
 ```
 

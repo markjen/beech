@@ -115,10 +115,10 @@ export function webOrderFromUrl(search: string): string | null {
   return /^[0-9a-f-]{36}$/i.test(id) ? id : null;
 }
 
-/** The query string without the return parameters (ours, and the ones Xsolla adds). */
+/** The query string without the return parameters (ours, and the ones the providers add). */
 export function withoutWebOrderParams(search: string): string {
   const q = new URLSearchParams(search);
-  for (const k of ['web_order', 'user_id', 'foreignInvoice', 'invoice_id', 'status']) q.delete(k);
+  for (const k of ['web_order', 'user_id', 'foreignInvoice', 'invoice_id', 'status', 'session_id']) q.delete(k);
   const s = q.toString();
   return s ? `?${s}` : '';
 }
@@ -188,6 +188,8 @@ function native(): Promise<{ purchases: Purchases }> {
 export class ShopApi {
   /** the server takes card payments on the web (Xsolla); learned from the product list */
   webCheckout = false;
+  /** the server takes card payments on the web through Stripe (the backup); Xsolla wins when both are on */
+  stripeCheckout = false;
   private readonly creditRequests = new Map<string, string>();
 
   constructor(private readonly account: Account) {}
@@ -202,8 +204,9 @@ export class ShopApi {
   async catalog(): Promise<{ packs: ShopPack[]; offers: ShopOffer[]; storePacksAvailable: boolean }> {
     const res = await this.account.fetch('/api/store/catalog');
     if (!res.ok) throw new Error('the shop is closed right now');
-    const data = (await res.json()) as { packs: ShopPack[]; offers: ShopOffer[]; webCheckout?: boolean };
+    const data = (await res.json()) as { packs: ShopPack[]; offers: ShopOffer[]; webCheckout?: boolean; stripeCheckout?: boolean };
     this.webCheckout = !!data.webCheckout;
+    this.stripeCheckout = !!data.stripeCheckout;
     let packs = data.packs;
     let storePacksAvailable = true;
     if (shopMode() === 'native') {
@@ -295,9 +298,10 @@ export class ShopApi {
   async products(): Promise<ShopProduct[]> {
     const res = await this.account.fetch('/api/store/products');
     if (!res.ok) throw new Error('the shop is closed right now');
-    const data = (await res.json()) as { products: ShopProduct[]; webCheckout?: boolean };
+    const data = (await res.json()) as { products: ShopProduct[]; webCheckout?: boolean; stripeCheckout?: boolean };
     const list = data.products;
     this.webCheckout = !!data.webCheckout;
+    this.stripeCheckout = !!data.stripeCheckout;
     if (shopMode() === 'native') {
       try {
         const p = (await native()).purchases;
@@ -604,6 +608,30 @@ export class ShopApi {
       const msg = ((await res.json().catch(() => ({}))) as { error?: string }).error;
       const err = new Error(msg ?? 'the checkout could not be opened');
       reportError('shop', err, { source: 'shop:webCheckout', meta: { product: productId, status: res.status } });
+      throw err;
+    }
+    const { order, url } = (await res.json()) as { order: string; url: string };
+    writeWebOrders([...readWebOrders().filter((x) => x !== order), order]);
+    return url;
+  }
+
+  // --- Stripe checkout (docs/STRIPE_PAYMENTS.md): the backup to Xsolla ---
+  /**
+   * Start paying for a product on the web through Stripe. Returns the
+   * hosted Checkout page to send the player to; the server prices it, and
+   * grants it when Stripe says it's paid. Same order tracking as Xsolla.
+   */
+  async startStripeCheckout(productId: string, promoCode?: string): Promise<string> {
+    if (shopMode() !== 'web') throw new Error('buy in the beech app');
+    const res = await this.account.fetch('/api/store/stripe-checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ productId, ...(promoCode ? { promoCode } : {}) }),
+    });
+    if (!res.ok) {
+      const msg = ((await res.json().catch(() => ({}))) as { error?: string }).error;
+      const err = new Error(msg ?? 'the checkout could not be opened');
+      reportError('shop', err, { source: 'shop:stripeCheckout', meta: { product: productId, status: res.status } });
       throw err;
     }
     const { order, url } = (await res.json()) as { order: string; url: string };

@@ -721,11 +721,11 @@ resource "google_monitoring_alert_policy" "push_failed" {
   combiner              = "OR"
   notification_channels = [google_monitoring_notification_channel.email.id]
   documentation {
-    content   = "Ticks that pushed averaged more than 5 failed sends each over 30 minutes: a push service (web push, APNs, FCM) is refusing or timing out, or a key expired. Failed sends are retried next tick; devices that are gone are dropped. Look at jsonPayload.event=\"push_tick\" lines (sent / gone / failed) and push_config at startup. docs/INBOX_NOTIFICATIONS.md, \"Push: as built\"."
+    content   = "The median tick that pushed had more than 5 failed sends over 30 minutes: a push service (web push, APNs, FCM) is refusing or timing out, or a key expired. Failed sends are retried next tick; devices that are gone are dropped. Look at jsonPayload.event=\"push_tick\" lines (sent / gone / failed) and push_config at startup. docs/INBOX_NOTIFICATIONS.md, \"Push: as built\"."
     mime_type = "text/markdown"
   }
   conditions {
-    display_name = "mean failed sends per tick > 5"
+    display_name = "median failed sends per tick > 5"
     condition_threshold {
       filter          = "metric.type=\"logging.googleapis.com/user/beech_push_failed\" AND resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"beech\""
       duration        = "0s"
@@ -733,7 +733,7 @@ resource "google_monitoring_alert_policy" "push_failed" {
       threshold_value = 5
       aggregations {
         alignment_period   = "1800s"
-        per_series_aligner = "ALIGN_MEAN"
+        per_series_aligner = "ALIGN_PERCENTILE_50"
       }
     }
   }

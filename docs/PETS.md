@@ -27,8 +27,11 @@ like the other things in your bag.
 5. **Pets are items.** A pet you own is on one of your beaches or in your bag.
    Pick it up on the beach (long-press) to carry it to a new spot, or put it
    in your bag; place it from the bag on any of your beaches with no pet.
-   Moving between beaches = put in bag, then place. Name, fed count and
-   hunger come with it; a pet in the bag doesn't get hungrier.
+   Moving between beaches = put in bag, then place. To swap pets on a beach,
+   vacuum the one that's there up from the bag: the beach's placed pet has a
+   "vacuum up" button at the top of the bag's pets (tap twice to confirm),
+   and it goes back in the bag, ready to place again or swap for another.
+   Name, fed count and hunger come with it; a pet in the bag doesn't get hungrier.
 6. **Water pets are visible.** Sea pets swim at the surface: the dolphin's
    back and fin, the turtle's shell and head, the seal's head, the octopus's
    mantle in the shallows always break the water. A unit test holds every sea
@@ -78,7 +81,7 @@ Migration 35:
 |---|---|
 | `POST /animals/feed {species}` | tosses a snack; counts toward befriending that species (default crab) |
 | `POST /pet/adopt {species, mode}` | befriend (bond ≥ that species' feeds) or shop (spends `pet-<species>`) |
-| `POST /pet/stow {beachId}` | puts the beach's pet in your bag |
+| `POST /pet/stow {beachId}` | puts the beach's pet in your bag — the bag's vacuum button |
 | `POST /pet/place {petId, beachId}` | puts a bagged pet on a beach of yours with no pet |
 | `PATCH /pet {home: {x, z}}` | moves the pet's spot on its beach |
 | `DELETE /beaches/mine/:id` | puts that beach's pet in the bag before removing it |

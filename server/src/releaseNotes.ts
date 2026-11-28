@@ -16,8 +16,24 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    date: '2026-11-28',
+    title: 'Walk around the beach in chair view, choose your own screen name, and fewer rare purchase and checkpoint mix-ups',
+    changes: [
+      'In the chair view, you can now walk anywhere across the beach — forward, back, left and right — using the on-screen arrows or WASD/arrow keys, and look all the way around, while staying out of the water.',
+      'You can now choose a screen name instead of using your real name — set it under Manage → Settings or on your beechshore.com account page, and it stays put the next time you sign in.',
+      'A Steam purchase you cancelled just as it went through, from another device or by closing the overlay, now always arrives in your balance. Before, Steam could take the money without the beech bucks showing up.',
+      'Two checkpoints saved at the same moment, from two devices, can no longer take you past your checkpoint limit.',
+      'Using the claw or vending machine from two devices at the very same moment no longer fails with an error.',
+      'Picking things up off your beach now counts toward trade-ins right away — the bag no longer says “0 of 0” until your next sign-in.',
+      'A new sand extension now previews as beach sand right away, instead of showing as pale scenery with dune lips and grass until you save.',
+      'A boardwalk row’s sand now matches the beach’s sand, and the stray grass tufts around the deck are gone.',
+      'Your octopus is readable from above now — its eyes sit on top of the mantle and its arms fan out at the waterline, instead of hiding underwater.',
+      'The merch store has a whole new lineup — 27 things, from top-view tees to puzzles, with anything showing off beech sold at cost.',
+    ],
+  },
+  {
     date: '2026-11-27',
-    title: 'Sand extensions in the shop, coin prices, inland rows on beechshore.com, news from beech, beechshore.com keeps up with the tides, larger shop items, a higher pier, swap an inland row in place, pick a place for a copied beach, stars and finds in the status pane, multi-item trade-ins, promo bonus beech bucks, playable sand extensions, a quieter palm, more of the beach guide, ratings along the shore, a see-through pier preview and safer notes',
+    title: 'Sand extensions in the shop, coin prices, inland rows on beechshore.com, news from beech, beechshore.com keeps up with the tides, larger shop items, a higher pier, swap an inland row in place, pick a place for a copied beach, stars and finds in the status pane, multi-item trade-ins, promo bonus beech bucks, playable sand extensions, a quieter palm, more of the beach guide, ratings along the shore, a see-through pier preview, safer notes and the beech merch store',
     changes: [
       'Inland rows are simpler for now: the sand extension is the one to buy, at 50 beech bucks, and it’s in the shop’s Beaches tab. Rows of other kinds you already have stay on your beaches.',
       'Prices in the shop, the inland rows editor, the pier button and the copy sheet now show the gold beech-buck coin instead of “bb”.',
@@ -43,6 +59,8 @@ export const RELEASE_NOTES: ReleaseNote[] = [
       'When you look at someone’s beach, its average rating in shells and how many have rated it now show next to the star, once a few people have rated it.',
       'The beach guide has four more steps, each with a small gift: clear some sand away, calm the waves, try the vending machine and save a checkpoint.',
       'Going home right after following an invite link no longer gets undone when the visit you left behind finishes loading.',
+      'The beech merch store is open at store.beech.games: tees, hoodies, embroidered dad hats, flip flops and beach towels, the whole set, and your own beach printed big on a tee or a hoodie.',
+      'Want a different pet on your beach? In your bag, the pet that’s there has a “vacuum up” button — tap it twice and it goes back in the bag, so you can place another one.',
     ],
   },
   {

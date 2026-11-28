@@ -465,14 +465,18 @@
 }
 
 
-/* ---- chair view: walk along the beach ---- */
+/* ---- chair view: walk around the beach ---- */
 .hud-walk {
   position: absolute;
   left: 50%;
   bottom: calc(var(--pad) + env(safe-area-inset-bottom));
   transform: translateX(-50%);
-  display: flex;
-  gap: 56px;
+  display: grid;
+  grid-template-columns: repeat(3, 44px);
+  grid-template-areas:
+    '. up .'
+    'left down right';
+  gap: 6px;
   pointer-events: none;
   opacity: 0;
   transition: opacity 0.3s ease;
@@ -487,10 +491,17 @@
 }
 
 .hud-walk .hud-btn {
+  width: 44px;
+  height: 44px;
   pointer-events: none;
   user-select: none;
   -webkit-user-select: none;
 }
+
+.hud-walk [data-walk='up'] { grid-area: up; }
+.hud-walk [data-walk='left'] { grid-area: left; }
+.hud-walk [data-walk='down'] { grid-area: down; }
+.hud-walk [data-walk='right'] { grid-area: right; }
 
 @media (max-width: 520px) {
   /* narrow phones: centred in the space left of the rail */
@@ -1208,7 +1219,7 @@
 
 /* above the walk buttons in the chair view */
 .hud.chair .place-bar {
-  bottom: calc(var(--pad) + 64px + env(safe-area-inset-bottom));
+  bottom: calc(var(--pad) + 108px + env(safe-area-inset-bottom));
 }
 
 @media (max-width: 520px) {
@@ -1246,7 +1257,7 @@
   }
 
   .hud.chair .place-bar {
-    bottom: calc(var(--pad) + 64px + var(--sign-in-space) + env(safe-area-inset-bottom));
+    bottom: calc(var(--pad) + 108px + var(--sign-in-space) + env(safe-area-inset-bottom));
   }
 }
 
@@ -1310,7 +1321,7 @@
   }
 
   .hud.chair .place-bar.shown {
-    bottom: calc(var(--pad) + 134px + env(safe-area-inset-bottom));
+    bottom: calc(var(--pad) + 178px + env(safe-area-inset-bottom));
   }
 }
 
@@ -2117,7 +2128,7 @@
 }
 
 .hud.chair:not(.collapsed) .guide-coach {
-  bottom: calc(var(--pad) + 64px + var(--sign-in-space) + env(safe-area-inset-bottom));
+  bottom: calc(var(--pad) + 108px + var(--sign-in-space) + env(safe-area-inset-bottom));
 }
 
 @media (max-width: 620px) and (max-height: 560px) {

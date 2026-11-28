@@ -13,6 +13,8 @@ import { deflateSync } from 'node:zlib';
 import { expect } from 'vitest';
 import { createApp } from '../../src/app.js';
 import { type Db } from '../../src/db.js';
+import { createMerch } from '../../src/merch.js';
+import type { MerchConfig } from '../../src/merchProviders.js';
 import { openTestDb } from '../testDb.js';
 
 export interface Gate {
@@ -75,12 +77,20 @@ function gated(db: Db): { db: Db; gate: Gate } {
 export const T0 = Date.UTC(2026, 10, 25, 12);
 
 export async function startServer(
-  opts: { rand?: () => number; push?: Parameters<typeof createApp>[1]['push']; extra?: Partial<Parameters<typeof createApp>[1]> } = {},
+  opts: {
+    rand?: () => number;
+    push?: Parameters<typeof createApp>[1]['push'];
+    extra?: Partial<Parameters<typeof createApp>[1]>;
+    /** the merch store, with fake Stripe and Printful behind cfg.fetch (sends run in line) */
+    merch?: MerchConfig;
+  } = {},
 ) {
   const raw = await openTestDb();
   const { db, gate } = gated(raw);
   const clock = { now: T0 };
+  const merch = opts.merch ? createMerch(db, { cfg: opts.merch, now: () => clock.now, awaitSend: true }) : undefined;
   const app = createApp(db, {
+    merch,
     googleClientIds: [],
     appleClientIds: [],
     allowedOrigins: [],
@@ -113,7 +123,7 @@ export async function startServer(
     return ((await r.json()) as { token: string }).token;
   };
 
-  return { db: raw, gate, clock, app, req, post, signIn, grant, claim, close: () => raw.close() };
+  return { db: raw, gate, clock, app, merch, req, post, signIn, grant, claim, close: () => raw.close() };
 }
 
 export type Server = Awaited<ReturnType<typeof startServer>>;

@@ -61,6 +61,12 @@ variable "admin_custom_domain" {
   default     = ""
 }
 
+variable "store_custom_domain" {
+  description = "Optional custom domain for the merch store on the beech service, e.g. store.beech.games (docs/MERCH_STORE.md). Empty (the default) skips the domain mapping; after apply, add the DNS record the mapping prints in Squarespace."
+  type        = string
+  default     = ""
+}
+
 variable "alert_email" {
   description = "Email address monitoring alert notifications go to."
   type        = string
@@ -74,7 +80,7 @@ variable "monitoring_host" {
 }
 
 variable "beech_service_url" {
-  description = "URL of the Cloud Run beech service (the run.app URL, not a mapped domain). The service itself is deployed by GitHub Actions, not Terraform — this only needs its URL so the push-tick job (infra/scheduler.tf) can call /api/push/tick. Cloud Run service URLs do not change across revisions or redeploys."
+  description = "URL of the Cloud Run beech service (the run.app URL, not a mapped domain). The service itself is deployed by GitHub Actions, not Terraform — this only needs its URL so the Scheduler tick jobs (infra/scheduler.tf) can call /api/push/tick and /api/merch/tick. Cloud Run service URLs do not change across revisions or redeploys."
   type        = string
   default     = "https://beech-u4qtcimt3q-uc.a.run.app"
 }

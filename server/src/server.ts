@@ -31,6 +31,32 @@
 //                        set: the web shop takes card payments. Any missing: it doesn't.
 //   XSOLLA_SANDBOX       "1": test payments only (Xsolla sandbox, test cards)
 //   WEB_CHECKOUT_RETURN_URL  where Pay Station returns to (default https://play.beech.games/)
+//   STRIPE_SECRET_KEY, STRIPE_MERCH_WEBHOOK_SECRET, PRINTFUL_TOKEN, PRINTFUL_WEBHOOK_SECRET
+//                        the merch store (docs/MERCH_STORE.md; all from Secret Manager).
+//                        All four set: store.beech.games takes orders. Any missing:
+//                        it shows the catalog and "opening soon". The merch
+//                        secret key is the store's own — the game's checkout
+//                        has its own key (STRIPE_GAME_SECRET_KEY, below), so
+//                        the game stays in test mode while the store is live.
+//   STRIPE_GAME_SECRET_KEY, STRIPE_WEBHOOK_SECRET, STRIPE_SANDBOX
+//                        the game's Stripe web checkout (docs/STRIPE_PAYMENTS.md).
+//                        STRIPE_GAME_SECRET_KEY is Secret Manager
+//                        beech-stripe-game-secret-key (test key for now);
+//                        STRIPE_WEBHOOK_SECRET is beech-stripe-webhook-secret,
+//                        the game endpoint's signing secret — not the merch
+//                        endpoint's (STRIPE_MERCH_WEBHOOK_SECRET).
+//                        STRIPE_SANDBOX "1": test payments only (Stripe test
+//                        mode and test cards). All three set: the web shop
+//                        offers Stripe when Xsolla is off.
+//   PRINTFUL_STORE_ID    Printful store id, for an account-level token
+//   MERCH_SUNGLASSES_VARIANT  Printful Warehousing variant id of the sunglasses; unset:
+//                        the sunglasses stay out of the store (they come back
+//                        on their own later; the set does not wait on this)
+//   MERCH_STRIPE_TAX     "1": Stripe Tax on the checkout
+//   PRINTFUL_DRAFTS_ONLY "1": orders reach Printful as drafts and are never confirmed (testing)
+//   STORE_URL            the store's origin (default https://store.beech.games)
+//   STORE_HOSTS          hosts served as the store (default store.beech.games);
+//                        every other host has it under /merch-store
 //   CATCHUP_MAX_GAP_DAYS most of an unvisited gap the sea's catch-up simulates
 //                        (docs/LIVE_SIM.md), default 14
 //   ALLOWED_ORIGINS      extra CORS origins, default the Capacitor app shells
@@ -62,10 +88,13 @@ import { appleAuthKeyFromEnv } from './auth.js';
 import { openDbFromEnv } from './dbEnv.js';
 import { migrate } from './migrations.js';
 import { logEvent } from './observability.js';
-import { createRootApp, DEFAULT_SHORE, DEFAULT_LANDING } from './rootApp.js';
+import { createRootApp, DEFAULT_SHORE, DEFAULT_LANDING, DEFAULT_STORE } from './rootApp.js';
 import { steamStoreFromEnv, syncSteamRefunds } from './steamStore.js';
+import { stripeFromEnv } from './stripe.js';
 import { devVapidKeys, makeSender, pushFromEnv, pushTick } from './push.js';
 import { xsollaFromEnv } from './xsolla.js';
+import { createMerch } from './merch.js';
+import { merchFromEnv, merchTickFromEnv } from './merchProviders.js';
 
 const env = process.env;
 const list = (v?: string) => (v ?? '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -87,6 +116,14 @@ const xsolla = xsollaFromEnv(env);
 if (!xsolla.cfg && xsolla.missing.length < 3)
   logEvent('web_checkout_config', { warning: `web checkout is off: ${xsolla.missing.join(', ')} not set` }, 'WARNING');
 logEvent('web_checkout_config', { enabled: !!xsolla.cfg, sandbox: !!xsolla.cfg?.sandbox });
+
+// Stripe web checkout (docs/STRIPE_PAYMENTS.md), the backup: same rule — on
+// only when both test-mode secrets are set. Nothing here creates secrets;
+// see the doc for the Secret Manager step.
+const stripe = stripeFromEnv(env);
+if (!stripe.cfg && stripe.missing.length < 2)
+  logEvent('stripe_config', { warning: `stripe checkout is off: ${stripe.missing.join(', ')} not set` }, 'WARNING');
+logEvent('stripe_config', { enabled: !!stripe.cfg, sandbox: !!stripe.cfg?.sandbox });
 
 const adminDevPort = env.ADMIN_DEV_PORT ? Number(env.ADMIN_DEV_PORT) : null;
 if (adminDevPort && env.NODE_ENV === 'production') throw new Error('ADMIN_DEV_PORT is for local development only');
@@ -167,7 +204,38 @@ if ((pushConfig.web || pushConfig.apns || pushConfig.fcm) && !schedulerTick) {
   pushTimer.unref();
 }
 
+// The merch store (docs/MERCH_STORE.md): orders on only when Stripe and
+// Printful are both set up. The sweep sends paid orders on and recovers
+// stale claims once a minute (specs/tla/MerchOrders.tla, Recover) — ticked
+// by Cloud Scheduler (POST /api/merch/tick) once configured, the
+// in-process timer below only runs when Scheduler isn't (local dev),
+// because on Cloud Run an instance's CPU is throttled between requests
+// and the timer's query looked slow (~1 s wall-clock on an idle instance).
+// Same reason as the push tick (docs/INBOX_NOTIFICATIONS.md).
+const merchEnv = merchFromEnv(env);
+if (!merchEnv.cfg && merchEnv.missing.length < 4)
+  logEvent('merch_config', { warning: `the merch store is off: ${merchEnv.missing.join(', ')} not set` }, 'WARNING');
+logEvent('merch_config', { enabled: !!merchEnv.cfg, sunglasses: !!merchEnv.cfg?.sunglassesVariant, drafts_only: !!merchEnv.cfg?.printfulDraftsOnly });
+// The Scheduler tick, when its variables are set (see deploy-gcp.yml);
+// without them the endpoint 404s and the in-process timer below takes over.
+const merchSchedulerTick = merchTickFromEnv(env);
+const merch = createMerch(db, { cfg: merchEnv.cfg ?? undefined, now: Date.now, tick: merchSchedulerTick });
+if (merchEnv.cfg && !merchSchedulerTick) {
+  let sweeping = false;
+  const merchTimer = setInterval(() => {
+    if (sweeping) return;
+    sweeping = true;
+    void merch
+      .tick()
+      .then((r) => (r.recovered || r.confirmed || r.sent) && logEvent('merch_tick', { ...r }))
+      .catch((e) => logEvent('merch_tick_error', { message: (e as Error).message }, 'WARNING'))
+      .finally(() => (sweeping = false));
+  }, 60_000);
+  merchTimer.unref();
+}
+
 const api = createApp(db, {
+  merch,
   push: {
     config: pushConfig,
     send: pushSend,
@@ -186,6 +254,7 @@ const api = createApp(db, {
   codePepper,
   weatherApiKey: env.OPEN_METEO_API_KEY || undefined,
   xsolla: xsolla.cfg ?? undefined,
+  stripe: stripe.cfg ?? undefined,
   shoreUrl: env.SHORE_URL || undefined,
 });
 
@@ -195,6 +264,13 @@ const root = createRootApp(db, api, publicDir, {
     hosts: env.SHORE_HOSTS !== undefined ? list(env.SHORE_HOSTS) : DEFAULT_SHORE.hosts,
     url: env.SHORE_URL || DEFAULT_SHORE.url,
     gameUrl: env.GAME_URL || DEFAULT_SHORE.gameUrl,
+    googleClientId: env.GOOGLE_CLIENT_ID || undefined,
+    appleClientId: env.APPLE_CLIENT_ID || undefined,
+  },
+  store: {
+    hosts: env.STORE_HOSTS !== undefined ? list(env.STORE_HOSTS) : DEFAULT_STORE.hosts,
+    url: env.STORE_URL || DEFAULT_STORE.url,
+    gameUrl: env.GAME_URL || DEFAULT_STORE.gameUrl,
     googleClientId: env.GOOGLE_CLIENT_ID || undefined,
     appleClientId: env.APPLE_CLIENT_ID || undefined,
   },

@@ -49,6 +49,15 @@ export function accountContent(config: { api: string; auth: string; connect: str
   <noscript>Enable JavaScript to connect your account.</noscript>
 </section>
 <div id="account-body" hidden>
+<section class="submission-panel" id="screen-name">
+  <h2>Screen name</h2>
+  <p class="muted">Shown on your beaches, on the shore, in leaderboards and on notes you send.</p>
+  <form class="account-row" id="account-name-form">
+    <input name="name" type="text" maxlength="30" placeholder="Screen name" autocomplete="off" aria-label="Screen name" required>
+    <button class="btn" type="submit">Save</button>
+  </form>
+  <p class="account-status" id="account-name-status" role="status"></p>
+</section>
 <section class="submission-panel" id="balance">
   <h2>Balance</h2>
   <p class="account-balance" id="account-bucks"></p>
@@ -270,6 +279,7 @@ export function accountContent(config: { api: string; auth: string; connect: str
   const fromApp = new URLSearchParams(location.search).get('from') === 'app';
   function render() {
     const d = data;
+    $('name-form').elements.name.value = d.user?.name || '';
     document.getElementById('top-up').hidden = fromApp;
     document.getElementById('gift-card').hidden = fromApp;
     $('bucks').innerHTML = '<img src="/icons/beech-bucks.webp" alt="" class="bucks-icon" width="18" height="18"> ' + d.bucks + ' beech ' + (d.bucks === 1 ? 'buck' : 'bucks');
@@ -455,6 +465,20 @@ export function accountContent(config: { api: string; auth: string; connect: str
       await load();
     } catch (err) {
       $('redeem-status').textContent = err.message;
+    }
+  });
+
+  $('name-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const input = $('name-form').elements.name;
+    $('name-status').textContent = 'Saving…';
+    try {
+      const r = await call('/name', 'PATCH', { name: input.value });
+      data.user = r.user;
+      input.value = r.user.name;
+      $('name-status').textContent = 'Saved.';
+    } catch (err) {
+      $('name-status').textContent = err.message;
     }
   });
 

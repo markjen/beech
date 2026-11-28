@@ -35,7 +35,9 @@ playable sand since 2026-11-27 ("Playable sand: what was built", below).
   use), drawn by `NeighborView` for every beach in view, yours or anyone's.
   The shapes themselves are in `src/render/sectionShapes.ts` (no Babylon),
   which `npm run bundle:server` also bundles into
-  `server/src/generated/sections.ts`.
+  `server/src/generated/sections.ts`. A section row's sand ground is painted
+  with the beach's live sand colour (`SAND_GROUND_KEY`), not the fixed
+  secSand, so it matches the beach in every theme and time of day.
 - **On beechshore.com (2026-11-27):** a beach's thumbnail and its page's
   flat view are taller by its rows, drawn under the sand at the same scale
   from those same shapes seen from above (`drawRowsTop` in
@@ -68,7 +70,12 @@ and line up with it exactly (one surface, the same cells).
   row on the low, medium and high tiers); its width, cell size and front
   edge are unchanged. A sand extension behind another type stays scenery.
   `SectionLayer` skips the rows the beach draws itself (`SectionSpot.from`,
-  from the depth drawn now, so a preview still shows them as scenery).
+  from the depth drawn now). Leading sand rows the grid hasn't reached yet —
+  a preview in the editor, or a beach still refitting after a save — are
+  drawn plain, in the beach's own sand colour with no dune lip or grass, so
+  the preview looks like the sand they become (2026-11-28, Discord #bugs,
+  kt22chute75: before that a preview showed them as scenery, pale with dune
+  lips and grass tufts at both ends).
 - **The ground.** The rest profile carries on past 32 m (the back of the
   beach rises to about 0.93 m within the first metres and stays there),
   so the sand runs straight on. The sea never reaches it. The sim's cost is

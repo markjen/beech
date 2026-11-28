@@ -22,9 +22,8 @@ const MAX_OBJECTS_JSON = 512 * 1024;
  */
 export const FREE_ITEMS: ReadonlySet<string> = new Set(['rock', 'driftwood', 'shell', 'seaglass', 'trash', 'seaweed', 'cowrie', 'flag', 'footprints']);
 
-/** checkpoint limits */
-export const CHECKPOINTS_PER_BEACH = 5;
-export const CHECKPOINT_BYTES_PER_USER = 16 * 1024 * 1024;
+/** checkpoint limits (the rules that use them are proved in limits.ts) */
+export { CHECKPOINTS_PER_BEACH, CHECKPOINT_BYTES_PER_USER } from './limits.js';
 export const CHECKPOINT_NAME_MAX = 40;
 
 /**

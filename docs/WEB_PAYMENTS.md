@@ -1,9 +1,12 @@
 # Web payments: buy store items on the web with Xsolla
 
-Status: **built, switched off until the Xsolla account exists.** The server
-code, the web shop and the tests are in; web checkout turns on by itself
-when the three Xsolla settings are present (see "Turning it on"). Until
-then the web shop behaves exactly as before and points people at the apps.
+Status: **built; switched off Nov 27, 2026.** Xsolla is the primary
+web checkout when it is on, but its sandbox token creation is blocked
+on a generic 422 [0401-2000] (partner support emailed Nov 26, 2026),
+so Stripe is the web checkout for now (docs/STRIPE_PAYMENTS.md).
+Web checkout turns on by itself when the three Xsolla settings are
+present (see "Turning it on") — re-adding them to deploy-gcp.yml
+restores Xsolla as primary.
 
 The shop sells through Apple and Google in the apps. This adds real web
 checkout for the same products, through a merchant of record, so a player
@@ -13,7 +16,9 @@ every device — no app install, and no card details ever reach us.
 **Provider: Xsolla Pay Station** (In-Game Store API). The comparison with
 FastSpring is below; the short version is that beech's items cost
 $0.99–$9.99 and FastSpring's reported $0.95 fixed fee per transaction eats
-most of the catalog, while Xsolla charges a percentage only.
+most of the catalog, while Xsolla charges a percentage only. Stripe is
+the backup, not a second primary — but it is the live web checkout
+for now, while Xsolla is off: docs/STRIPE_PAYMENTS.md.
 
 ## What it does
 
@@ -96,11 +101,14 @@ migration (past purchases stay valid; their `store` value just says
 `xsolla`). The one thing that doesn't transfer is the Xsolla catalog
 and any player payment methods saved with Xsolla.
 
-Stripe was considered and not recommended: with Stripe we are the
+Stripe was considered and not recommended as the primary: with Stripe we are the
 merchant of record, so tax/VAT filings, PCI scope and chargeback
 liability all land on us — the whole point of this change is to
 offload exactly that. Revisit only if web volume ever justifies
-running our own tax operation.
+running our own tax operation. **Update (Nov 2026):** Stripe now
+exists as the backup (docs/STRIPE_PAYMENTS.md) — same products, same
+grant plumbing, test mode only, Xsolla still the primary whenever it
+works. It may also serve a future online merch store.
 
 ## How it works (as built)
 
