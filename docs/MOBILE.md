@@ -47,6 +47,49 @@ node scripts/set-version.mjs 1.0.0 1     # version name + build number, everywhe
 
 Both stores reject an upload whose build number isn't higher than the last one.
 
+### iOS auto-build
+
+iOS bundles the web build, so a web feature only reaches the iPhone app
+with a new TestFlight build. `release-mobile.yml` therefore builds iOS
+automatically after every successful production deploy
+(`workflow_run` on "Deploy production (Google Cloud Run)", main only):
+the build ships exactly the commit that deployed, and only that commit —
+a failed deploy builds nothing, and a later, undeployed commit waits for
+its own deploy. Android stays manual: it is a hosted shell, so web
+deploys reach it without a rebuild.
+
+**Build number.** The auto-build uses this workflow's run number
+(`github.run_number`) as the iOS build number, set in the runner by
+`scripts/set-version.mjs` and never committed back to main, so there is
+no push loop. Run numbers are monotonic across manual and auto runs, so
+Apple never sees a duplicate. The trade-off: the checked-in
+`CURRENT_PROJECT_VERSION` (7 at the time of writing) lags what is in
+TestFlight, and the version in the repo no longer says which build is
+live — the Actions tab does.
+
+**Manual releases after auto-build exists.** A manual dispatch runs a
+guard first: the checked-in build number must be ahead of the run
+number, or the job fails fast with the bump command instead of failing
+five minutes into the archive with an Apple duplicate error. Prefer
+bumping the **marketing version** (e.g. 1.0.0 → 1.0.1) for a manual
+release: build numbers restart per version, while a build-number-only
+bump collides with a future auto-build once the run counter reaches it.
+
+**What "auto" does and does not mean.** A new build lands in TestFlight
+for internal testers right away, but it does **not** reach external
+testers (the Family group) instantly — each build still needs Beta App
+Review approval for the external group, and the new build has to be
+added to the group. And the trigger itself is only proven after merge:
+`workflow_run` does not fire from a PR branch, so the first auto-build
+run after landing needs watching.
+
+**Cost.** Every deploy now also spends macOS runner time: the build-7
+run's iOS job took ~5 minutes, and GitHub bills macOS at ~$0.08/min
+(10× Linux), so roughly $0.40 per build — at ~5 deploys a day, on the
+order of $2/day. If deploys get much more frequent, or a deploy lands
+while a build is still running (each run builds its own commit), revisit
+whether every deploy needs its own build.
+
 ## Icons and splash screens
 
 The artwork is generated from code (`scripts/make-icons.mjs`: an isometric
@@ -167,7 +210,7 @@ Already set in `Info.plist`:
 | Workflow | When | What |
 |---|---|---|
 | `mobile.yml` | push to `main` touching app code, or manual | Android debug APK plus release AAB (signed if secrets exist), and an iOS simulator build with no signing. Artifacts are uploaded. |
-| `release-mobile.yml` | manual only | Signed AAB to the Play **internal** track (draft), and an iOS archive uploaded to App Store Connect / TestFlight. |
+| `release-mobile.yml` | manual, plus an automatic iOS build after each successful production deploy (see "iOS auto-build" above) | Signed AAB to the Play **internal** track (draft), and an iOS archive uploaded to App Store Connect / TestFlight. |
 
 Repository secrets used (Settings → Secrets and variables → Actions):
 
