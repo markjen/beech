@@ -16,6 +16,13 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    date: '2026-11-27',
+    title: 'Turtle tracks fade away',
+    changes: [
+      'The pet turtle’s flipper tracks fade away after a while now, instead of piling up behind it forever.',
+    ],
+  },
+  {
     date: '2026-11-26',
     title: 'Real weather, 21 new beaches, piers, sand bucks, trade-ins, copying a beach and notifications',
     changes: [
