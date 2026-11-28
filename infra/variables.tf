@@ -80,7 +80,7 @@ variable "monitoring_host" {
 }
 
 variable "beech_service_url" {
-  description = "URL of the Cloud Run beech service (the run.app URL, not a mapped domain). The service itself is deployed by GitHub Actions, not Terraform — this only needs its URL so the push-tick job (infra/scheduler.tf) can call /api/push/tick. Cloud Run service URLs do not change across revisions or redeploys."
+  description = "URL of the Cloud Run beech service (the run.app URL, not a mapped domain). The service itself is deployed by GitHub Actions, not Terraform — this only needs its URL so the Scheduler tick jobs (infra/scheduler.tf) can call /api/push/tick and /api/merch/tick. Cloud Run service URLs do not change across revisions or redeploys."
   type        = string
   default     = "https://beech-u4qtcimt3q-uc.a.run.app"
 }
