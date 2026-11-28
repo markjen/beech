@@ -1157,6 +1157,12 @@ const MIGRATIONS: string[] = [
     PRIMARY KEY (store, transaction_id)
   );
   `,
+  // 49: player-chosen screen names. When true, subsequent sign-ins from
+  // Google/Apple/Steam keep the chosen name instead of overwriting it with
+  // the provider's name.
+  `
+  ALTER TABLE users ADD COLUMN name_chosen BOOLEAN NOT NULL DEFAULT false;
+  `,
 ];
 
 /** Apply migrations up to `upTo` (default: all). Tests use `upTo` to check a migration on older data. */

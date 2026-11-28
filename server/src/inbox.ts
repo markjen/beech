@@ -101,5 +101,23 @@ export function checkNote(raw: unknown): NoteCheck {
   return { ok: true, text };
 }
 
+/** longest screen name, in characters */
+export const SCREEN_NAME_MAX = 30;
+
+/**
+ * Is this screen name fine to use? Trims it, collapses runs of spaces, and
+ * refuses empty, too long, links / handles / phone numbers, and blocked
+ * words.
+ */
+export function checkScreenName(raw: unknown): NoteCheck {
+  if (typeof raw !== 'string') return { ok: false, reason: 'a screen name is text' };
+  const text = raw.replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim();
+  if (!text) return { ok: false, reason: 'enter a screen name' };
+  if ([...text].length > SCREEN_NAME_MAX) return { ok: false, reason: `screen names are ${SCREEN_NAME_MAX} characters at most` };
+  if (LINKISH.test(text) || DIGITS.test(text)) return { ok: false, reason: 'no links, handles or phone numbers' };
+  if (BLOCKED.test(fold(text))) return { ok: false, reason: 'that screen name can’t be used' };
+  return { ok: true, text };
+}
+
 /** UTC date, YYYY-MM-DD: the key for batched rows */
 export const utcDay = (ms: number): string => new Date(ms).toISOString().slice(0, 10);

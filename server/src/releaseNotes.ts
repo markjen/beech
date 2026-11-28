@@ -17,8 +17,9 @@ export interface ReleaseNote {
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
     date: '2026-11-28',
-    title: 'Fewer rare purchase and checkpoint mix-ups',
+    title: 'Choose your own screen name, and fewer rare purchase and checkpoint mix-ups',
     changes: [
+      'You can now choose a screen name instead of using your real name — set it under Manage → Settings or on your beechshore.com account page, and it stays put the next time you sign in.',
       'A Steam purchase you cancelled just as it went through, from another device or by closing the overlay, now always arrives in your balance. Before, Steam could take the money without the beech bucks showing up.',
       'Two checkpoints saved at the same moment, from two devices, can no longer take you past your checkpoint limit.',
       'Using the claw or vending machine from two devices at the very same moment no longer fails with an error.',

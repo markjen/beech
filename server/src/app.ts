@@ -136,6 +136,7 @@ import {
   QUICK_NOTES,
   RATING_EVERY_MS,
   checkNote,
+  checkScreenName,
   utcDay,
 } from './inbox.js';
 import {
@@ -379,8 +380,8 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   async function createSession(who: VerifiedIdentity | { provider: 'dev'; sub: string; name: string }) {
     const now = (cfg.now ?? Date.now)();
     const email = 'email' in who ? who.email ?? null : null;
-    let rows = await db.query<User>(
-      'SELECT u.id, u.name FROM user_identities ui JOIN users u ON u.id = ui.user_id WHERE ui.provider = $1 AND ui.provider_sub = $2',
+    let rows = await db.query<User & { name_chosen?: boolean }>(
+      'SELECT u.id, u.name, u.name_chosen FROM user_identities ui JOIN users u ON u.id = ui.user_id WHERE ui.provider = $1 AND ui.provider_sub = $2',
       [who.provider, who.sub],
     );
     let user = rows[0];
@@ -401,9 +402,12 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
           if (attempt === 4) throw e;
         }
       }
-    } else if (who.name && who.name !== user.name) {
-      await db.query('UPDATE users SET name = $1 WHERE id = $2', [who.name, user.id]);
-      user.name = who.name;
+    } else if (who.name && who.name !== user.name && !user.name_chosen) {
+      const updated = await db.query<{ name: string }>(
+        'UPDATE users SET name = $1 WHERE id = $2 AND NOT name_chosen RETURNING name',
+        [who.name, user.id],
+      );
+      if (updated[0]) user.name = updated[0].name;
     }
     // a Google sign-in refreshes the verified email (the admin console
     // searches by it); an unverified or absent address never overwrites a stored one
@@ -424,7 +428,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
       now + SESSION_DAYS * 86400000,
     ]);
     await db.query('DELETE FROM sessions WHERE user_id = $1 AND expires_at < $2', [user!.id, now]);
-    return { token, tokenHash, user: user! };
+    return { token, tokenHash, user: { id: user!.id, name: user!.name } };
   }
 
   async function startSession(c: Context<Env>, who: VerifiedIdentity | { provider: 'dev'; sub: string; name: string }) {
@@ -661,7 +665,21 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
     return c.body(null, 204);
   });
 
+  const updateScreenName = async (c: Context<Env>) => {
+    const me = c.get('user').id;
+    const b = await body<{ name?: unknown }>(c);
+    const chk = checkScreenName(b.name);
+    if (!chk.ok) return fail(400, chk.reason);
+    const [updated] = await db.query<User>(
+      'UPDATE users SET name = $1, name_chosen = true WHERE id = $2 RETURNING id, name',
+      [chk.text, me],
+    );
+    if (!updated) fail(404, 'no such user');
+    return c.json({ user: updated });
+  };
+
   app.get('/me', requireUser, (c) => c.json({ user: c.get('user') }));
+  app.patch('/me', requireUser, updateScreenName);
 
   // ---------------------------------------------------------------- edit sessions
   // One active editor per person (docs/EDIT_SESSIONS.md). An instance
@@ -4420,6 +4438,7 @@ export function createApp(db: Db, cfg: AppConfig): Hono<Env> {
   // to another account), under the shore token instead of a game session.
   // The provider's own sign-in sheet runs on this page now (accountPage.ts),
   // so the shore can link without going through the game.
+  app.patch('/shore-account/name', requireShoreAccount, updateScreenName);
   app.get('/shore-account/identities', requireShoreAccount, async (c) => {
     return c.json({ identities: await identitiesOf(c.get('user').id) });
   });

@@ -1942,3 +1942,8 @@ Five findings, all fixed with a test each:
 ## How beech was built: /story (2026-11-27)
 
 https://beech.games/story (`server/src/story.ts`) tells how beech was built in a few days by Mark and the agents (Claude, Antigravity, Muse, Codex). It is linked from the landing footer as "How it was built" and served on the landing host. The source logs, one per agent, are in `docs/story/`. Codex's log is still to come; add it to `docs/story/` and the page when it exists.
+
+## Screen names (2026-11-28)
+
+Players can choose a screen name instead of using their real name from Google/Apple/Steam. Migration 49 adds `users.name_chosen` (`BOOLEAN NOT NULL DEFAULT false`); once set via `PATCH /api/me` (in-game Manage → Settings, `src/ui/accountPanel.ts`) or `PATCH /account/api/name` (beechshore `/account`, `server/src/accountPage.ts`), subsequent sign-ins keep the chosen name instead of overwriting it with the provider's name (`WHERE NOT name_chosen`). Account merges (`server/src/accountMerge.ts`) preserve a chosen screen name when the survivor hasn't chosen one. Validation (`checkScreenName` in `server/src/inbox.ts`) allows 1–30 characters and blocks links, handles, phone numbers, and blocked words. No TLA+ model: single-row user profile attribute updated atomically.
+

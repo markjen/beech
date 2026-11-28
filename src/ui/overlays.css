@@ -654,6 +654,30 @@ a.action {
   font-size: 15px;
 }
 
+.account .name-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.account .name-form input {
+  font: inherit;
+  flex: 1 1 10em;
+  min-width: 0;
+  padding: 7px 10px;
+  border-radius: 10px;
+  border: 1.5px solid currentColor;
+  background: transparent;
+  color: inherit;
+  opacity: 0.85;
+}
+
+.account .name-form .action {
+  flex: none;
+  white-space: nowrap;
+}
+
 .account .status {
   font-size: 12px;
   opacity: 0.7;
