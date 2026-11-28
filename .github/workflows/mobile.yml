@@ -3,7 +3,8 @@ name: Mobile builds
 # Builds the native shells so breakage is caught early.
 #  - android: debug APK always; a signed release AAB when the signing secrets exist
 #  - ios: simulator build without signing (proves the Xcode project compiles)
-# Store uploads are a separate, manual workflow (release-mobile.yml).
+# Store uploads are a separate workflow (release-mobile.yml): Android is
+# manual, iOS also builds automatically after each production deploy.
 on:
   push:
     branches: [main, ccr-85f84f81-0scrin]
